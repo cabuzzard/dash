@@ -732,9 +732,11 @@ async function loadPlatforms() {
         row.target = '_blank';
         row.className = 'row';
         row.style.marginBottom = '6px';
+        // Strip "Platform × " prefix to show just the campaign name
+        const displayName = login.name.includes(' × ') ? login.name.split(' × ').slice(1).join(' × ') : login.name;
         row.innerHTML =
           '<div class="row-body">'+
-            '<div class="row-name">'+login.campaignName+'</div>'+
+            '<div class="row-name">'+displayName+'</div>'+
             '<div class="row-meta">'+login.site+(login.username?' · '+login.username:'')+'</div>'+
           '</div>'+
           '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:'+(login.status==='Active'?'#44ff44':'var(--text3)')+';border:1px solid var(--border2);">'+login.status+'</span>';
