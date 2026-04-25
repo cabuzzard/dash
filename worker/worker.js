@@ -403,8 +403,9 @@ export default {
 
       // Add todo
       if (action === "addTodo") {
-        const { name } = body;
+        const { name, category } = body;
         if (!name) return json({ error: "name required" }, 400);
+        const priority = category || "high";
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: {
@@ -416,7 +417,7 @@ export default {
             parent: { database_id: MAIN_TD_DB_ID },
             properties: {
               Name: { title: [{ type: "text", text: { content: name } }] },
-              priority: { multi_select: [{ name: "high" }] }
+              priority: { multi_select: [{ name: priority }] }
             }
           })
         });
