@@ -465,18 +465,28 @@ export default {
         });
         const logins = (loginData.results || []).map(l => {
           const props = l.properties;
-          const platformRef = props.Platform?.relation?.[0]?.id?.replace(/-/g,'') || '';
-          const campaignRef = props.Campaign?.relation?.[0]?.id?.replace(/-/g,'') || '';
+          // Notion returns relation as array of {id} objects — extract and strip dashes
+          const platformRaw = props.Platform?.relation?.[0]?.id || '';
+          const campaignRaw = props.Campaign?.relation?.[0]?.id || '';
           return {
             id: l.id.replace(/-/g, ''),
             name: props.Name?.title?.map(t => t.plain_text).join('') || '',
-            platformId: platformRef,
-            campaignId: campaignRef,
+            platformId: platformRaw.replace(/-/g, ''),
+            campaignId: campaignRaw.replace(/-/g, ''),
             accountUrl: props['Account URL']?.url || '',
             username: props.Username?.rich_text?.map(t => t.plain_text).join('') || '',
             status: props.Status?.select?.name || '',
           };
         });
+
+        // Debug: log first login's raw Platform relation
+        if (logins.length > 0) {
+          console.log('DEBUG login[0]:', JSON.stringify({
+            name: logins[0].name,
+            platformId: logins[0].platformId,
+            platforms: platforms.map(p => p.id)
+          }));
+        }
 
         // Group logins by platform
         const grouped = platforms.map(platform => ({
