@@ -32,6 +32,9 @@ const ALL_SITES = [
   { key: "main",            name: "🏠 Main" },
 ];
 
+const PLATFORMS_DB = "bb485a14-153d-4a7a-b9d3-82ca2dfa8f8d";
+const LOGINS_DB = "015d05ea-baa5-4dae-a855-5f128d3c31bf";
+
 const PLATFORM_URLS = {
   "LinkedIn":  "https://www.linkedin.com",
   "Beehiiv":   "https://app.beehiiv.com",
@@ -439,6 +442,49 @@ export default {
         const blocks = markdownToBlocks(content);
         if (blocks.length > 0) await notionPatch(`/blocks/${pageId}/children`, { children:blocks });
         return json({ saved:true });
+      }
+
+      // Get all logins grouped by platform
+      if (action === "getLogins") {
+        // Fetch all platforms
+        const platformData = await notionPost(`/databases/${PLATFORMS_DB}/query`, {
+          sorts: [{ property: "Name", direction: "ascending" }],
+          page_size: 50
+        });
+        const platforms = (platformData.results || []).map(p => ({
+          id: p.id.replace(/-/g, ''),
+          name: p.properties.Name?.title?.map(t => t.plain_text).join('') || '',
+          url: p.properties['Base URL']?.url || '',
+          status: p.properties.Status?.select?.name || '',
+        }));
+
+        // Fetch all logins
+        const loginData = await notionPost(`/databases/${LOGINS_DB}/query`, {
+          sorts: [{ property: "Name", direction: "ascending" }],
+          page_size: 100
+        });
+        const logins = (loginData.results || []).map(l => {
+          const props = l.properties;
+          const platformRef = props.Platform?.relation?.[0]?.id?.replace(/-/g,'') || '';
+          const campaignRef = props.Campaign?.relation?.[0]?.id?.replace(/-/g,'') || '';
+          return {
+            id: l.id.replace(/-/g, ''),
+            name: props.Name?.title?.map(t => t.plain_text).join('') || '',
+            platformId: platformRef,
+            campaignId: campaignRef,
+            accountUrl: props['Account URL']?.url || '',
+            username: props.Username?.rich_text?.map(t => t.plain_text).join('') || '',
+            status: props.Status?.select?.name || '',
+          };
+        });
+
+        // Group logins by platform
+        const grouped = platforms.map(platform => ({
+          ...platform,
+          logins: logins.filter(l => l.platformId === platform.id)
+        })).filter(p => p.logins.length > 0);
+
+        return json({ platforms: grouped });
       }
 
       return json({ error:"Unknown action" }, 400);
