@@ -465,9 +465,11 @@ export default {
         });
         const logins = (loginData.results || []).map(l => {
           const props = l.properties;
-          // Notion returns relation as array of {id} objects — extract and strip dashes
-          const platformRaw = props.Platform?.relation?.[0]?.id || '';
-          const campaignRaw = props.Campaign?.relation?.[0]?.id || '';
+          // Platform relation — Notion API returns [{id: "uuid-with-dashes"}]
+          const platformRelation = props.Platform?.relation || [];
+          const campaignRelation = props.Campaign?.relation || [];
+          const platformRaw = platformRelation.length > 0 ? (platformRelation[0].id || '') : '';
+          const campaignRaw = campaignRelation.length > 0 ? (campaignRelation[0].id || '') : '';
           return {
             id: l.id.replace(/-/g, ''),
             name: props.Name?.title?.map(t => t.plain_text).join('') || '',
@@ -479,20 +481,26 @@ export default {
           };
         });
 
-        // Debug: log first login's raw Platform relation
-        if (logins.length > 0) {
-          console.log('DEBUG login[0]:', JSON.stringify({
-            name: logins[0].name,
-            platformId: logins[0].platformId,
-            platforms: platforms.map(p => p.id)
-          }));
-        }
-
-        // Group logins by platform
+        // Group logins by platform — strip dashes from both for safe comparison
         const grouped = platforms.map(platform => ({
           ...platform,
-          logins: logins.filter(l => l.platformId === platform.id)
+          logins: logins.filter(l => {
+            const lid = l.platformId.replace(/-/g,'');
+            const pid = platform.id.replace(/-/g,'');
+            return lid === pid;
+          })
         })).filter(p => p.logins.length > 0);
+
+        // If relation matching failed (all platformIds empty), group by name match
+        const totalMatched = grouped.reduce((sum, p) => sum + p.logins.length, 0);
+        if (totalMatched === 0 && logins.length > 0) {
+          // Fall back: group logins by extracting platform name from login name "Platform × Campaign"
+          const nameGrouped = platforms.map(platform => ({
+            ...platform,
+            logins: logins.filter(l => l.name.startsWith(platform.name + ' ×'))
+          })).filter(p => p.logins.length > 0);
+          return json({ platforms: nameGrouped, fallback: true });
+        }
 
         return json({ platforms: grouped });
       }
