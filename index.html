@@ -716,20 +716,17 @@ async function loadPlatforms() {
   try {
     const data = await call('getLogins');
     el.innerHTML = '';
-    if (!data.platforms?.length) { el.innerHTML='<div class="empty">No platforms found.</div>'; return; }
+    if (!data.campaigns?.length) { el.innerHTML='<div class="empty">No logins found.</div>'; return; }
 
-    data.platforms.forEach(platform => {
-      // Platform header — clickable to platform URL
+    data.campaigns.forEach(campaign => {
+      // Campaign header
       const hdr = document.createElement('div');
-      hdr.className = 'platform-hdr';
-      hdr.style.cssText = 'font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin:16px 0 8px;display:flex;align-items:center;gap:6px;';
-      hdr.innerHTML = platform.url
-        ? '<a href="'+platform.url+'" target="_blank" style="color:var(--text2);text-decoration:none;border-bottom:1px solid var(--border2);">'+platform.name+' ↗</a>'
-        : platform.name;
+      hdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);margin:16px 0 8px;';
+      hdr.textContent = campaign.campaignName;
       el.appendChild(hdr);
 
-      // Login rows
-      platform.logins.forEach(login => {
+      // Login rows — one per platform
+      campaign.logins.forEach(login => {
         const row = document.createElement('a');
         row.href = login.accountUrl || nUrl(login.id);
         row.target = '_blank';
@@ -737,7 +734,7 @@ async function loadPlatforms() {
         row.style.marginBottom = '6px';
         row.innerHTML =
           '<div class="row-body">'+
-            '<div class="row-name">'+login.name+'</div>'+
+            '<div class="row-name">'+login.platformName+'</div>'+
             (login.username ? '<div class="row-meta">'+login.username+'</div>' : '')+
           '</div>'+
           '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:'+(login.status==='Active'?'#44ff44':'var(--text3)')+';border:1px solid var(--border2);">'+login.status+'</span>';

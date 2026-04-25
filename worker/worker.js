@@ -481,28 +481,27 @@ export default {
           };
         });
 
-        // Group logins by platform — strip dashes from both for safe comparison
-        const grouped = platforms.map(platform => ({
-          ...platform,
-          logins: logins.filter(l => {
-            const lid = l.platformId.replace(/-/g,'');
-            const pid = platform.id.replace(/-/g,'');
-            return lid === pid;
-          })
-        })).filter(p => p.logins.length > 0);
+        // Build a platform lookup by ID for name resolution
+        const platformById = {};
+        platforms.forEach(p => { platformById[p.id.replace(/-/g,'')] = p; });
 
-        // If relation matching failed (all platformIds empty), group by name match
-        const totalMatched = grouped.reduce((sum, p) => sum + p.logins.length, 0);
-        if (totalMatched === 0 && logins.length > 0) {
-          // Fall back: group logins by extracting platform name from login name "Platform × Campaign"
-          const nameGrouped = platforms.map(platform => ({
-            ...platform,
-            logins: logins.filter(l => l.name.startsWith(platform.name + ' ×'))
-          })).filter(p => p.logins.length > 0);
-          return json({ platforms: nameGrouped, fallback: true });
-        }
+        // Group logins by campaign — extract campaign name from login name "Platform × Campaign"
+        const campaignMap = {};
+        logins.forEach(l => {
+          // Extract campaign name from "Platform × Campaign" format
+          const parts = l.name.split(' × ');
+          const campaignName = parts.length > 1 ? parts.slice(1).join(' × ') : 'Other';
+          const platformName = parts[0] || l.name;
+          if (!campaignMap[campaignName]) campaignMap[campaignName] = [];
+          campaignMap[campaignName].push({ ...l, platformName });
+        });
 
-        return json({ platforms: grouped });
+        const grouped = Object.keys(campaignMap).sort().map(campaignName => ({
+          campaignName,
+          logins: campaignMap[campaignName].sort((a,b) => a.platformName.localeCompare(b.platformName))
+        }));
+
+        return json({ campaigns: grouped });
       }
 
       if (action === "testDbs") {
