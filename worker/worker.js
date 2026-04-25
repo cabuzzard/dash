@@ -1,15 +1,15 @@
-const NOTION_TOKEN = "ntn_i84528099155pTq2P4dwUSpqmZYBpTSsL0qFB9GsQP6bc4";
+let NOTION_TOKEN = null;
 const NOTION_VERSION = "2022-06-28";
 
-const ADMIN_PIN = "1246";
+let ADMIN_PIN = null;
+let SITE_PINS_ENV = null;
 const MAIN_TD_DB_ID = "3471f7d3a4bb80de87c1d9e850f4a426";
 const CONTENT_STRATEGY_DB = "9fa5f42f010b47e7a82032607e07d6a1";
 const CAMPAIGNS_DB = "087b1163b4e64975bc7a4b686ff801de";
 const ASSETS_DB = "e91bdb6e770b4d298e9f62166a0fd5de";
 
-const SITE_PINS = {
-  "mobility_mentor": "1234",
-};
+// SITE_PINS loaded from environment at request time
+const SITE_PINS = {};
 
 // Site key → Campaigns DB "site" select value
 const SITE_DB_NAMES = {
@@ -281,6 +281,11 @@ async function getTodos() {
 
 export default {
   async fetch(request, env) {
+    // Set secrets from environment at request time
+    NOTION_TOKEN = env.NOTION_TOKEN;
+    ADMIN_PIN = env.ADMIN_PIN;
+    // SITE_PINS stored as JSON in env: {"mobility_mentor":"1234"}
+    try { Object.assign(SITE_PINS, JSON.parse(env.SITE_PINS || '{}')); } catch(e) {}
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
     if (request.method === "GET") return json({ status:"ok" });
     if (request.method !== "POST") return new Response("Method not allowed", { status:405 });
@@ -394,6 +399,30 @@ export default {
       if (action === "getTodos") {
         const todos = await getTodos();
         return json({ todos });
+      }
+
+      // Add todo
+      if (action === "addTodo") {
+        const { name } = body;
+        if (!name) return json({ error: "name required" }, 400);
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            parent: { database_id: MAIN_TD_DB_ID },
+            properties: {
+              Name: { title: [{ type: "text", text: { content: name } }] },
+              priority: { multi_select: [{ name: "high" }] }
+            }
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok) return json({ error: data.message || "Failed to create" }, 400);
+        return json({ id: data.id.replace(/-/g, ''), name });
       }
 
       // Save page content
