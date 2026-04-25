@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Hermes</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0a0a0a; --surface:#111111; --surface2:#1a1a1a;
+    --border:#222222; --border2:#2e2e2e;
+    --text:#ffffff; --text2:#999999; --text3:#555555;
+    --accent:#ffffff; --danger:#ff4444;
+    --radius:12px; --radius-sm:8px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+
+  /* PIN */
+  .pin-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;padding:32px;}
+  .pin-screen.hidden{display:none;}
+  .pin-logo{font-size:11px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;margin-bottom:8px;}
+  .pin-title{font-size:28px;font-weight:600;margin-bottom:6px;}
+  .pin-sub{font-size:13px;color:var(--text2);margin-bottom:40px;text-align:center;}
+  .pin-dots{display:flex;gap:12px;margin-bottom:32px;}
+  .pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--border2);background:transparent;transition:all .15s;}
+  .pin-dot.filled{background:var(--accent);border-color:var(--accent);}
+  .pin-dot.error{background:var(--danger);border-color:var(--danger);}
+  .pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;width:100%;max-width:280px;}
+  .pin-btn{height:64px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:22px;font-weight:500;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .1s;}
+  .pin-btn:active{background:var(--surface2);transform:scale(.95);}
+  .pin-btn.del{font-size:16px;color:var(--text2);}
+  .pin-btn.empty{background:transparent;border:none;cursor:default;}
+  .pin-error{font-size:13px;color:var(--danger);margin-top:16px;min-height:20px;text-align:center;}
+
+  /* Header */
+  .header{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;}
+  .header-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0;}
+  .back-btn{display:none;width:32px;height:32px;background:var(--surface);border:1px solid var(--border2);border-radius:50%;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--text);flex-shrink:0;}
+  .back-btn.visible{display:flex;}
+  .crumb{display:flex;align-items:center;flex-wrap:nowrap;overflow:hidden;min-width:0;}
+  .crumb-root{font-size:12px;font-weight:600;color:var(--text);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;flex-shrink:0;cursor:pointer;}
+  .crumb-sep{font-size:11px;color:var(--text3);margin:0 4px;flex-shrink:0;}
+  .crumb-item{font-size:13px;font-weight:500;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+  .crumb-item:hover{color:var(--text);}
+  .crumb-item.cur{color:var(--text);cursor:default;}
+  .lock-btn{font-size:16px;cursor:pointer;color:var(--text3);padding:4px;flex-shrink:0;}
+
+  /* Views */
+  .view{display:none;padding:16px;}
+  .view.active{display:block;}
+
+  /* Section headers */
+  .sec{display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px;}
+  .sec-label{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);}
+  .sec-refresh{font-size:12px;color:var(--text3);cursor:pointer;padding:4px;}
+
+  /* Cards */
+  .card-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;}
+  .card:active{transform:scale(.97);}
+  .card-icon{font-size:20px;margin-bottom:8px;}
+  .card-name{font-size:13px;font-weight:500;color:var(--text);line-height:1.4;}
+  .card-sub{font-size:11px;color:var(--text3);margin-top:3px;}
+
+  /* List rows */
+  .row{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px;display:flex;align-items:center;gap:10px;margin-bottom:6px;text-decoration:none;cursor:pointer;}
+  .row:active{transform:scale(.98);}
+  .row-body{flex:1;min-width:0;}
+  .row-name{font-size:13px;font-weight:500;color:var(--text);line-height:1.4;}
+  .row-meta{font-size:11px;color:var(--text3);margin-top:2px;}
+  .row-arrow{color:var(--text3);font-size:14px;flex-shrink:0;}
+
+  /* Badges */
+  .badge{font-size:10px;padding:2px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0;}
+  .badge-review {background:#1a0000;color:#ff6666;border:1px solid #440000;}
+  .badge-publish{background:#1a1200;color:#ffcc00;border:1px solid #443300;}
+  .badge-explode{background:#0a0a1a;color:#8888ff;border:1px solid #333388;}
+
+  /* Sub-section label */
+  .sub-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin:16px 0 6px;}
+
+  /* Explode items */
+  .explode-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;display:flex;flex-direction:column;gap:6px;margin-bottom:6px;}
+  .explode-title{font-size:13px;font-weight:500;color:var(--text);text-decoration:none;line-height:1.4;}
+  .explode-campaign{font-size:11px;color:var(--text3);}
+  .explode-btns{display:flex;gap:8px;}
+  .explode-copy{flex:2;height:32px;background:#0a1a00;border:1px solid #1a4400;border-radius:6px;color:#44ff44;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+  .explode-claude{flex:1;height:32px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;text-decoration:none;}
+
+  /* Todo items */
+  .todo-list{display:flex;flex-direction:column;gap:6px;margin-bottom:4px;}
+  .todo-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;display:flex;flex-direction:column;gap:3px;text-decoration:none;}
+  .todo-item:active{transform:scale(.98);}
+  .todo-name{font-size:13px;font-weight:500;color:var(--text);line-height:1.4;}
+  .todo-sub{font-size:11px;color:var(--text3);}
+
+  /* Assets */
+  .asset-wrapper{display:flex;align-items:stretch;gap:6px;margin-bottom:6px;}
+  .asset-row{flex:1;border-radius:var(--radius-sm);padding:12px 14px;display:flex;align-items:center;gap:10px;text-decoration:none;border:1px solid;}
+  .asset-row:active{opacity:.85;}
+  .asset-row.publish  {background:#fff;border-color:#ddd;}
+  .asset-row.published{background:#111;border-color:#333;}
+  .asset-name{font-size:13px;font-weight:500;flex:1;min-width:0;line-height:1.3;}
+  .asset-row.publish   .asset-name{color:#111;}
+  .asset-row.published .asset-name{color:#aaa;}
+  .asset-meta{font-size:11px;margin-top:2px;}
+  .asset-row.publish   .asset-meta{color:#888;}
+  .asset-row.published .asset-meta{color:#555;}
+  .copy-btn{width:44px;min-width:44px;border-radius:var(--radius-sm);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;border:1px solid;}
+  .copy-btn.publish  {background:#fff;border-color:#ddd;color:#888;}
+  .copy-btn.published{background:#111;border-color:#333;color:#555;}
+  .platform-hdr{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin:14px 0 6px;display:flex;align-items:center;gap:6px;}
+  .platform-hdr a{color:var(--text3);text-decoration:none;border-bottom:1px solid var(--border2);}
+
+  /* Misc */
+  .loading-wrap{display:flex;align-items:center;gap:8px;padding:8px 0;color:var(--text3);font-size:13px;}
+  .spinner{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .empty{font-size:13px;color:var(--text3);font-style:italic;padding:8px 0;}
+  .error-msg{font-size:13px;color:var(--danger);padding:8px 0;}
+
+  /* Modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:flex-end;justify-content:center;z-index:200;opacity:0;pointer-events:none;transition:opacity .2s;}
+  .modal-overlay.visible{opacity:1;pointer-events:all;}
+  .modal{background:var(--surface);border-radius:16px 16px 0 0;padding:20px 16px 40px;width:100%;max-width:480px;transform:translateY(100%);transition:transform .25s;}
+  .modal-overlay.visible .modal{transform:translateY(0);}
+  .modal-title{font-size:11px;font-weight:600;color:var(--text2);margin-bottom:14px;letter-spacing:.08em;text-transform:uppercase;}
+  .modal-input{width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:16px;padding:12px 14px;outline:none;margin-bottom:12px;caret-color:var(--accent);}
+  .modal-input:focus{border-color:var(--accent);}
+  .modal-actions{display:flex;gap:8px;}
+  .btn{flex:1;height:44px;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .15s;}
+  .btn:active{transform:scale(.97);}
+  .btn-primary{background:var(--accent);color:#000;}
+  .btn-primary:disabled{background:#2a2a2a;color:var(--text3);cursor:default;}
+  .btn-secondary{background:var(--surface);border:1px solid var(--border2);color:var(--text2);}
+
+  /* Toast */
+  .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:10px 20px;font-size:13px;color:var(--text);opacity:0;transition:all .25s;z-index:998;white-space:nowrap;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.success{border-color:var(--accent);color:var(--accent);}
+  .toast.error{border-color:var(--danger);color:var(--danger);}
+</style>
+</head>
+<body>
+
+<!-- PIN -->
+<div class="pin-screen" id="pinScreen">
+  <div class="pin-logo">Hermes</div>
+  <div class="pin-title">Welcome</div>
+  <div class="pin-sub">Enter your PIN to continue</div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
+    <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
+  </div>
+  <div class="pin-pad">
+    <button class="pin-btn" onclick="pinPress('1')">1</button>
+    <button class="pin-btn" onclick="pinPress('2')">2</button>
+    <button class="pin-btn" onclick="pinPress('3')">3</button>
+    <button class="pin-btn" onclick="pinPress('4')">4</button>
+    <button class="pin-btn" onclick="pinPress('5')">5</button>
+    <button class="pin-btn" onclick="pinPress('6')">6</button>
+    <button class="pin-btn" onclick="pinPress('7')">7</button>
+    <button class="pin-btn" onclick="pinPress('8')">8</button>
+    <button class="pin-btn" onclick="pinPress('9')">9</button>
+    <button class="pin-btn empty"></button>
+    <button class="pin-btn" onclick="pinPress('0')">0</button>
+    <button class="pin-btn del" onclick="pinDel()">&#x232B;</button>
+  </div>
+  <div class="pin-error" id="pinError"></div>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div class="back-btn" id="backBtn" onclick="goBack()">&#8592;</div>
+    <div class="crumb" id="crumb"><span class="crumb-root" onclick="goL1()">Hermes</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="lock-btn" onclick="lockApp()">&#x1F512;</div>
+  </div>
+</div>
+
+<!-- L1: Sites + Queues + Todos -->
+<div class="view active" id="viewL1">
+  <div class="sec"><div class="sec-label">Sites</div></div>
+  <div id="l1Sites"></div>
+
+  <div class="sec" style="margin-top:8px">
+    <div class="sec-label">⚡ Explode Queue</div>
+    <span class="sec-refresh" onclick="loadExplodeQueue()">↻</span>
+  </div>
+  <div id="l1Explode"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+
+  <div class="sec">
+    <div class="sec-label">📤 Publish Queue</div>
+    <span class="sec-refresh" onclick="loadPublishQueue()">↻</span>
+  </div>
+  <div id="l1Publish"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+
+  <div class="sec">
+    <div class="sec-label">📋 Daily Content</div>
+    <span class="sec-refresh" onclick="loadTodosFor('daily content','tdContent')">↻</span>
+  </div>
+  <div id="tdContent"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+
+  <div class="sec">
+    <div class="sec-label">🏠 Daily Household</div>
+    <span class="sec-refresh" onclick="loadTodosFor('daily household','tdHousehold')">↻</span>
+  </div>
+  <div id="tdHousehold"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+
+  <div class="sec">
+    <div class="sec-label">🛒 Get</div>
+    <span class="sec-refresh" onclick="loadTodosFor('get','tdGet')">↻</span>
+  </div>
+  <div id="tdGet"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+</div>
+
+<!-- L2: Campaigns for a site -->
+<div class="view" id="viewL2">
+  <div class="sec"><div class="sec-label" id="l2Label">Campaigns</div></div>
+  <div id="l2Campaigns"></div>
+</div>
+
+<!-- L3: Titles for a campaign -->
+<div class="view" id="viewL3">
+  <div class="sec"><div class="sec-label" id="l3Label">Titles</div></div>
+  <div id="l3Titles"></div>
+</div>
+
+<!-- L4: Assets for a title -->
+<div class="view" id="viewL4">
+  <div class="sec"><div class="sec-label" id="l4Label">Assets</div></div>
+  <div id="l4Assets"></div>
+</div>
+
+<!-- Modal (kept for future use) -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">New page</div>
+    <input class="modal-input" id="modalInput" type="text" placeholder="Name..." />
+    <div class="modal-actions">
+      <button class="btn btn-secondary" style="flex:0;padding:0 20px" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmModal()">Create</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+
+let session = { pin:null, role:null, sites:[] };
+let state = { site:null, campaign:null, title:null };
+let currentView = 'L1';
+let pinBuffer = '';
+let cachedTodos = null;
+
+// ── PIN ───────────────────────────────────────────────────────────────
+function pinPress(d) {
+  if (pinBuffer.length >= 4) return;
+  pinBuffer += d; updateDots();
+  if (pinBuffer.length === 4) setTimeout(submitPin, 120);
+}
+function pinDel() {
+  pinBuffer = pinBuffer.slice(0,-1); updateDots();
+  document.getElementById('pinError').textContent = '';
+  document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error'));
+}
+function updateDots() {
+  for (let i=0;i<4;i++) {
+    const dot = document.getElementById('d'+i);
+    dot.classList.toggle('filled', i < pinBuffer.length);
+    dot.classList.remove('error');
+  }
+}
+async function submitPin() {
+  try {
+    const data = await call('auth', { pin: pinBuffer });
+    session.pin = pinBuffer; session.role = data.role; session.sites = data.sites;
+    document.getElementById('pinScreen').classList.add('hidden');
+    renderL1();
+  } catch(e) {
+    document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
+    document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
+    setTimeout(() => { pinBuffer=''; updateDots(); document.getElementById('pinError').textContent=''; }, 900);
+  }
+}
+function lockApp() {
+  pinBuffer=''; session={pin:null,role:null,sites:[]}; cachedTodos=null;
+  updateDots();
+  document.getElementById('pinScreen').classList.remove('hidden');
+  showView('L1');
+}
+
+// ── WORKER ────────────────────────────────────────────────────────────
+async function call(action, extra={}) {
+  const pin = extra.pin !== undefined ? extra.pin : session.pin;
+  const body = { action, pin, ...extra };
+  delete body.pin; body.pin = pin;
+  const resp = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  if (!resp.ok) { const d=await resp.json(); throw new Error(d.error||'Error '+resp.status); }
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────────────
+function nUrl(id) { return 'https://www.notion.so/' + (id||'').replace(/-/g,''); }
+
+function showView(v) {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('view'+v).classList.add('active');
+  currentView = v;
+  document.getElementById('backBtn').classList.toggle('visible', v !== 'L1');
+  buildCrumb();
+  window.scrollTo(0,0);
+}
+
+function buildCrumb() {
+  const el = document.getElementById('crumb');
+  const root = session.role==='admin' ? 'Hermes' : (session.sites[0]?.name||'Portal');
+  const parts = [];
+  if (state.site && currentView!=='L1') parts.push({ label:state.site.name, fn:'goL1' });
+  if (state.campaign && ['L3','L4'].includes(currentView)) parts.push({ label:state.campaign.name, fn:'goL2' });
+  if (state.title && currentView==='L4') parts.push({ label:state.title.title.substring(0,30)+'…', fn:'goL3' });
+
+  let html = '<span class="crumb-root" onclick="goL1()">' + root + '</span>';
+  parts.forEach((p,i) => {
+    const cur = i === parts.length-1;
+    html += '<span class="crumb-sep">›</span>';
+    html += cur
+      ? '<span class="crumb-item cur">'+p.label+'</span>'
+      : '<span class="crumb-item" onclick="'+p.fn+'()">'+p.label+'</span>';
+  });
+  el.innerHTML = html;
+}
+
+function goBack() {
+  if (currentView==='L4') goL3();
+  else if (currentView==='L3') goL2();
+  else if (currentView==='L2') goL1();
+}
+function goL1() { state={site:null,campaign:null,title:null}; showView('L1'); }
+function goL2() { state.campaign=null; state.title=null; renderL2(state.site); }
+function goL3() { state.title=null; renderL3(state.campaign); }
+
+// ── HELPERS ───────────────────────────────────────────────────────────
+function loading(msg) { return '<div class="loading-wrap"><div class="spinner"></div>'+(msg||'Loading...')+'</div>'; }
+
+// ── L1 ────────────────────────────────────────────────────────────────
+async function renderL1() {
+  if (session.role==='client' && session.sites.length===1) {
+    state.site = session.sites[0];
+    renderL2(state.site); return;
+  }
+  showView('L1');
+  // Render site cards
+  const grid = document.getElementById('l1Sites');
+  grid.innerHTML = '';
+  const g = document.createElement('div');
+  g.className = 'card-grid';
+  session.sites.forEach(site => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = '<div class="card-name">'+site.name+'</div>';
+    card.onclick = () => { state.site = site; renderL2(site); };
+    g.appendChild(card);
+  });
+  grid.appendChild(g);
+  loadExplodeQueue();
+  loadPublishQueue();
+  loadAllTodos();
+}
+
+async function loadExplodeQueue() {
+  const el = document.getElementById('l1Explode');
+  el.innerHTML = loading();
+  try {
+    const data = await call('getExplodeQueue');
+    el.innerHTML = '';
+    if (!data.titles?.length) { el.innerHTML='<div class="empty">No titles in explode queue.</div>'; return; }
+    data.titles.forEach(t => {
+      const item = document.createElement('div');
+      item.className = 'explode-item';
+      const a = document.createElement('a');
+      a.href = nUrl(t.titleId); a.target='_blank';
+      a.className = 'explode-title'; a.textContent = t.titleName;
+      const camp = document.createElement('div');
+      camp.className = 'explode-campaign';
+      camp.textContent = '↳ '+(t.campaignName||'');
+      const btns = document.createElement('div');
+      btns.className = 'explode-btns';
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'explode-copy'; copyBtn.textContent = '📋 Copy Prompt';
+      copyBtn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText('explode '+t.titleName+' — '+t.campaignName);
+          showToast('Prompt copied ✓','success');
+          copyBtn.textContent='✓ Copied';
+          setTimeout(()=>{copyBtn.textContent='📋 Copy Prompt';},2000);
+        } catch(e) { showToast('Copy failed','error'); }
+      };
+      const claudeBtn = document.createElement('a');
+      claudeBtn.href='https://claude.ai'; claudeBtn.target='_blank';
+      claudeBtn.className='explode-claude'; claudeBtn.textContent='↗ Claude';
+      btns.appendChild(copyBtn); btns.appendChild(claudeBtn);
+      item.appendChild(a); item.appendChild(camp); item.appendChild(btns);
+      el.appendChild(item);
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">Could not load.</div>'; }
+}
+
+async function loadPublishQueue() {
+  const el = document.getElementById('l1Publish');
+  el.innerHTML = loading();
+  try {
+    const data = await call('getPublishQueue');
+    el.innerHTML = '';
+    if (!data.titles?.length) { el.innerHTML='<div class="empty">Nothing queued.</div>'; return; }
+    data.titles.forEach(t => {
+      const row = document.createElement('a');
+      row.href = nUrl(t.id); row.target='_blank';
+      row.className = 'row';
+      row.innerHTML =
+        '<div class="row-body">'+
+          '<div class="row-name">'+t.title+'</div>'+
+          '<div class="row-meta">'+(t.grouping||'')+(t.scheduled?' · '+t.scheduled:'')+'</div>'+
+        '</div>'+
+        '<span class="badge badge-publish">PUBLISH</span>';
+      // Tap goes to assets
+      row.onclick = e => { e.preventDefault(); state.title=t; renderL4(t); };
+      el.appendChild(row);
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">Could not load.</div>'; }
+}
+
+async function loadAllTodos() {
+  try {
+    const data = await call('getTodos');
+    cachedTodos = data.todos || [];
+    renderTodos('daily content','tdContent');
+    renderTodos('daily household','tdHousehold');
+    renderTodos('get','tdGet');
+  } catch(e) {
+    ['tdContent','tdHousehold','tdGet'].forEach(id => {
+      document.getElementById(id).innerHTML='<div class="error-msg">Could not load.</div>';
+    });
+  }
+}
+
+async function loadTodosFor(category, containerId) {
+  document.getElementById(containerId).innerHTML = loading();
+  if (!cachedTodos) {
+    try { const d = await call('getTodos'); cachedTodos = d.todos||[]; } catch(e) { return; }
+  }
+  renderTodos(category, containerId);
+}
+
+function renderTodos(category, containerId) {
+  const el = document.getElementById(containerId);
+  const items = (cachedTodos||[]).filter(t => t.category===category);
+  el.innerHTML = '';
+  if (!items.length) { el.innerHTML='<div class="empty">None.</div>'; return; }
+  const list = document.createElement('div');
+  list.className = 'todo-list';
+  items.forEach(todo => {
+    const a = document.createElement('a');
+    a.href = nUrl(todo.id); a.target='_blank';
+    a.className = 'todo-item';
+    a.innerHTML =
+      '<div class="todo-name">'+todo.name+'</div>'+
+      (todo.campaign?'<div class="todo-sub">↳ '+todo.campaign+'</div>':'')+
+      (todo.site?'<div class="todo-sub">'+todo.site+'</div>':'');
+    list.appendChild(a);
+  });
+  el.appendChild(list);
+}
+
+// ── L2: Campaigns for a site ──────────────────────────────────────────
+async function renderL2(site) {
+  state.site = site;
+  document.getElementById('l2Label').textContent = site.name+' — Campaigns';
+  const el = document.getElementById('l2Campaigns');
+  el.innerHTML = loading('Loading campaigns...');
+  showView('L2');
+  try {
+    const data = await call('getCampaigns', { siteKey: site.key });
+    el.innerHTML = '';
+    if (!data.campaigns?.length) { el.innerHTML='<div class="empty">No campaigns found.</div>'; return; }
+    const grid = document.createElement('div');
+    grid.className = 'card-grid';
+    data.campaigns.forEach(campaign => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML =
+        '<div class="card-name">'+campaign.name+'</div>'+
+        '<div class="card-sub">'+campaign.status+'</div>';
+      card.onclick = () => renderL3(campaign);
+      grid.appendChild(card);
+    });
+    el.appendChild(grid);
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── L3: Titles for a campaign ─────────────────────────────────────────
+async function renderL3(campaign) {
+  state.campaign = campaign;
+  document.getElementById('l3Label').textContent = campaign.name+' — Titles';
+  const el = document.getElementById('l3Titles');
+  el.innerHTML = loading('Loading titles...');
+  showView('L3');
+  try {
+    const data = await call('getTitles', {
+      campaignId: campaign.id,
+      stages: ['Review','Publish','Approved','Explode','Writing','Done']
+    });
+    el.innerHTML = '';
+    const titles = data.titles || [];
+    if (!titles.length) { el.innerHTML='<div class="empty">No titles in this campaign yet.</div>'; return; }
+
+    const review  = titles.filter(t => t.stage==='Review');
+    const publish = titles.filter(t => ['Publish','Approved'].includes(t.stage));
+    const explode = titles.filter(t => ['Explode','Writing','Done'].includes(t.stage));
+
+    function renderSection(label, items, badgeCls) {
+      if (!items.length) return;
+      const lbl = document.createElement('div');
+      lbl.className = 'sub-label';
+      lbl.style.color = badgeCls==='badge-publish'?'#ffcc00':badgeCls==='badge-explode'?'#8888ff':'#ff6666';
+      lbl.textContent = label;
+      el.appendChild(lbl);
+
+      // Group by Post Type within each status section
+      let currentPostType = null;
+      items.forEach(t => {
+        if (t.postType && t.postType !== currentPostType) {
+          currentPostType = t.postType;
+          const ptLbl = document.createElement('div');
+          ptLbl.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin:10px 0 4px 2px;';
+          ptLbl.textContent = t.postType;
+          el.appendChild(ptLbl);
+        }
+        const row = document.createElement('a');
+        row.href = nUrl(t.id); row.target='_blank';
+        row.className = 'row';
+        row.innerHTML =
+          '<div class="row-body">'+
+            '<div class="row-name">'+t.title+'</div>'+
+            (t.cohort||t.scheduled?'<div class="row-meta">'+(t.cohort||'')+(t.scheduled?' · '+t.scheduled:'')+'</div>':'')+
+          '</div>'+
+          '<span class="badge '+badgeCls+'">'+label.split(' ')[0]+'</span>';
+        if (badgeCls==='badge-publish') {
+          row.onclick = e => { e.preventDefault(); state.title=t; renderL4(t); };
+        }
+        el.appendChild(row);
+      });
+    }
+
+    renderSection('Review', review, 'badge-review');
+    renderSection('Publish', publish, 'badge-publish');
+    renderSection('Explode', explode, 'badge-explode');
+
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── L4: Assets for a title ────────────────────────────────────────────
+async function renderL4(title) {
+  state.title = title;
+  document.getElementById('l4Label').textContent = title.title.substring(0,50);
+  const el = document.getElementById('l4Assets');
+  el.innerHTML = loading('Loading assets...');
+  showView('L4');
+  try {
+    const data = await call('getAssetsByTitle', { titleId: title.id });
+    el.innerHTML = '';
+    if (!data.assets?.length) { el.innerHTML='<div class="empty">No assets for this title.</div>'; return; }
+
+    const platforms = {};
+    data.assets.forEach(a => {
+      if (!platforms[a.platform]) platforms[a.platform]=[];
+      platforms[a.platform].push(a);
+    });
+
+    Object.keys(platforms).sort().forEach(platform => {
+      const pData = platforms[platform];
+      const pUrl = pData[0]?.platformUrl||'';
+      const hdr = document.createElement('div');
+      hdr.className = 'platform-hdr';
+      hdr.innerHTML = pUrl
+        ? '<a href="'+pUrl+'" target="_blank">'+platform+' ↗</a>'
+        : platform;
+      el.appendChild(hdr);
+
+      pData.forEach(asset => {
+        const isPublished = asset.status==='Published';
+        const cls = isPublished?'published':'publish';
+        const wrapper = document.createElement('div');
+        wrapper.className = 'asset-wrapper';
+
+        const link = document.createElement('a');
+        link.href = nUrl(asset.id); link.target='_blank';
+        link.className = 'asset-row '+cls;
+        link.innerHTML =
+          '<div style="flex:1;min-width:0">'+
+            '<div class="asset-name">'+asset.title+'</div>'+
+            '<div class="asset-meta">'+(asset.type||'')+(isPublished?' · Published ✓':' · Open in Notion →')+'</div>'+
+          '</div>';
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-btn '+cls;
+        copyBtn.textContent = '📋';
+        copyBtn.onclick = async e => {
+          e.preventDefault();
+          copyBtn.textContent='⏳'; copyBtn.disabled=true;
+          try {
+            const res = await call('getAssetContent', { assetId: asset.id });
+            if (res.content) {
+              await navigator.clipboard.writeText(res.content);
+              copyBtn.textContent='✓'; copyBtn.style.color='#44ff44';
+              setTimeout(()=>{ copyBtn.textContent='📋'; copyBtn.style.color=''; copyBtn.disabled=false; },2000);
+            } else throw new Error('No content');
+          } catch(err) {
+            copyBtn.textContent='✗';
+            setTimeout(()=>{ copyBtn.textContent='📋'; copyBtn.disabled=false; },2000);
+            showToast('Copy failed: '+err.message,'error');
+          }
+        };
+
+        wrapper.appendChild(link); wrapper.appendChild(copyBtn);
+        el.appendChild(wrapper);
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── MODAL ─────────────────────────────────────────────────────────────
+function hideModal() { document.getElementById('modalOverlay').classList.remove('visible'); }
+document.getElementById('modalOverlay').addEventListener('click', function(e) { if(e.target===this) hideModal(); });
+function confirmModal() { hideModal(); }
+
+// ── TOAST ─────────────────────────────────────────────────────────────
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent=msg; t.className='toast show '+(type||'');
+  setTimeout(()=>{ t.className='toast'; },2500);
+}
+</script>
+</body>
+</html>

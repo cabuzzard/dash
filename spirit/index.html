@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Mirror — Spiritual Perspectives</title>
+<meta name="description" content="Four wisdom traditions reflect on your joy and fear. Buddhist, Taoist, Biblical, Stoic.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Cinzel:wght@400;600&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #110e08;
+  background-image:
+    radial-gradient(ellipse at 20% 20%, rgba(184,134,11,0.07) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 80%, rgba(139,58,42,0.07) 0%, transparent 55%);
+  color: #f5ead8;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  min-height: 100vh;
+  padding: 0 1rem 5rem;
+}
+
+.mandala {
+  text-align: center;
+  padding: 2.5rem 0 0.4rem;
+  color: #b8860b;
+  font-size: 1.2rem;
+  letter-spacing: 0.8rem;
+  opacity: 0.5;
+}
+
+header { text-align: center; padding: 0.4rem 0 1.5rem; }
+
+h1 {
+  font-family: 'Cinzel', serif;
+  font-size: clamp(1.8rem, 5vw, 2.8rem);
+  font-weight: 400;
+  letter-spacing: 0.3em;
+  color: #d4a843;
+  text-shadow: 0 0 40px rgba(184,134,11,0.35);
+}
+
+.subtitle {
+  font-style: italic;
+  color: #6b6356;
+  margin-top: 0.4rem;
+  letter-spacing: 0.06em;
+  font-size: 1rem;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: 560px;
+  margin: 1.2rem auto 2rem;
+}
+.divider::before, .divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #b8860b, transparent);
+}
+.divider span { color: #b8860b; font-size: 0.75rem; letter-spacing: 0.3em; opacity: 0.6; }
+
+.card {
+  max-width: 640px;
+  margin: 0 auto 2rem;
+  background: linear-gradient(135deg, rgba(245,234,216,0.055) 0%, rgba(245,234,216,0.02) 100%);
+  border: 1px solid rgba(184,134,11,0.2);
+  border-top: 2px solid rgba(184,134,11,0.4);
+  border-radius: 2px;
+  padding: 2.2rem 2rem;
+}
+
+.field-label {
+  display: block;
+  font-family: 'Cinzel', serif;
+  font-size: 0.68rem;
+  letter-spacing: 0.25em;
+  color: #b8860b;
+  margin-bottom: 0.65rem;
+  opacity: 0.85;
+}
+
+textarea {
+  width: 100%;
+  background: rgba(17,14,8,0.65);
+  border: 1px solid rgba(184,134,11,0.15);
+  border-radius: 2px;
+  color: #f5ead8;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.05rem;
+  line-height: 1.7;
+  padding: 0.9rem 1.1rem;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.25s;
+}
+textarea::placeholder { color: rgba(245,234,216,0.45); font-style: italic; }
+textarea:focus { border-color: rgba(184,134,11,0.4); }
+
+.gap { margin-top: 1.6rem; }
+
+.seek-btn {
+  display: block;
+  margin: 2rem auto 0;
+  background: transparent;
+  border: 1px solid #b8860b;
+  color: #d4a843;
+  font-family: 'Cinzel', serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.35em;
+  padding: 0.9rem 2.8rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  border-radius: 2px;
+}
+.seek-btn:hover:not(:disabled) { background: #b8860b; color: #110e08; }
+.seek-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.loading { display: none; text-align: center; padding: 1.5rem 0; max-width: 640px; margin: 0 auto; }
+.loading.on { display: block; }
+.spin { display: inline-block; font-size: 2rem; color: #b8860b; opacity: 0.6; animation: spin 4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading p { font-style: italic; color: #6b6356; margin-top: 0.8rem; }
+
+.error {
+  display: none;
+  max-width: 640px;
+  margin: 0 auto 1.5rem;
+  border: 1px solid rgba(139,58,42,0.4);
+  padding: 1.2rem 1.5rem;
+  color: #c0614d;
+  font-style: italic;
+  line-height: 1.6;
+  font-size: 0.95rem;
+  border-radius: 2px;
+}
+.error.on { display: block; }
+
+.results { display: none; max-width: 640px; margin: 0 auto; }
+.results.on { display: block; }
+.results-header {
+  text-align: center;
+  font-style: italic;
+  color: #6b6356;
+  margin-bottom: 1.8rem;
+  font-size: 0.95rem;
+}
+
+.tcard {
+  margin-bottom: 1.6rem;
+  border-radius: 2px;
+  padding: 1.8rem;
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+}
+.tcard.show { opacity: 1; transform: translateY(0); }
+
+.tcard.buddhist { border: 1px solid rgba(74,124,89,0.35); background: linear-gradient(135deg, rgba(74,124,89,0.08) 0%, rgba(17,14,8,0.5) 100%); }
+.tcard.taoist   { border: 1px solid rgba(138,125,107,0.35); background: linear-gradient(135deg, rgba(138,125,107,0.08) 0%, rgba(17,14,8,0.5) 100%); }
+.tcard.biblical { border: 1px solid rgba(139,58,42,0.35); background: linear-gradient(135deg, rgba(139,58,42,0.08) 0%, rgba(17,14,8,0.5) 100%); }
+.tcard.stoic    { border: 1px solid rgba(184,134,11,0.3); background: linear-gradient(135deg, rgba(184,134,11,0.06) 0%, rgba(17,14,8,0.5) 100%); }
+
+.tcard-top { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 1rem; }
+.tcard-icon { font-size: 1.3rem; width: 2rem; text-align: center; }
+.tcard-name { font-family: 'Cinzel', serif; font-size: 0.7rem; letter-spacing: 0.25em; font-weight: 600; }
+
+.buddhist .tcard-icon, .buddhist .tcard-name { color: #4a7c59; }
+.taoist   .tcard-icon, .taoist   .tcard-name { color: #8a7d6b; }
+.biblical .tcard-icon, .biblical .tcard-name { color: #8b3a2a; }
+.stoic    .tcard-icon, .stoic    .tcard-name { color: #b8860b; }
+
+.tcard-text {
+  font-size: 1.1rem;
+  line-height: 1.85;
+  color: rgba(245,234,216,0.88);
+  font-weight: 300;
+}
+.tcard-quote {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(245,234,216,0.08);
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  color: rgba(245,234,216,0.42);
+  font-size: 0.98rem;
+  line-height: 1.7;
+}
+
+footer {
+  text-align: center;
+  margin-top: 3rem;
+  font-style: italic;
+  color: rgba(107,99,86,0.4);
+  font-size: 0.82rem;
+}
+</style>
+</head>
+<body>
+
+<div class="mandala">✦ ☽ ✦</div>
+
+<header>
+  <h1>THE MIRROR</h1>
+  <p class="subtitle">Four traditions. One moment. Your reflection.</p>
+</header>
+
+<div class="divider"><span>❧</span></div>
+
+<div class="card">
+  <label class="field-label">TODAY I AM GRATEFUL / HAPPY ABOUT</label>
+  <textarea id="happy" rows="3" placeholder="What is bringing you joy or gratitude today…"></textarea>
+  <div class="gap">
+    <label class="field-label">TODAY I AM FEARFUL / TROUBLED ABOUT</label>
+    <textarea id="fearful" rows="3" placeholder="What is weighing on your mind or heart…"></textarea>
+  </div>
+  <button class="seek-btn" id="seekBtn" onclick="seek()">SEEK PERSPECTIVE</button>
+</div>
+
+<div class="loading" id="loading">
+  <div class="spin">☸</div>
+  <p>Consulting the ancient currents…</p>
+</div>
+
+<div class="error" id="errorEl"></div>
+
+<div class="results" id="results">
+  <p class="results-header">Wisdom received from four rivers of light</p>
+
+  <div class="tcard buddhist" id="c-buddhist">
+    <div class="tcard-top"><div class="tcard-icon">☸</div><div class="tcard-name">BUDDHIST</div></div>
+    <div class="tcard-text" id="t-buddhist"></div>
+    <div class="tcard-quote" id="q-buddhist"></div>
+  </div>
+
+  <div class="tcard taoist" id="c-taoist">
+    <div class="tcard-top"><div class="tcard-icon">☯</div><div class="tcard-name">TAOIST</div></div>
+    <div class="tcard-text" id="t-taoist"></div>
+    <div class="tcard-quote" id="q-taoist"></div>
+  </div>
+
+  <div class="tcard biblical" id="c-biblical">
+    <div class="tcard-top"><div class="tcard-icon">✝</div><div class="tcard-name">BIBLICAL</div></div>
+    <div class="tcard-text" id="t-biblical"></div>
+    <div class="tcard-quote" id="q-biblical"></div>
+  </div>
+
+  <div class="tcard stoic" id="c-stoic">
+    <div class="tcard-top"><div class="tcard-icon">⚖</div><div class="tcard-name">STOIC</div></div>
+    <div class="tcard-text" id="t-stoic"></div>
+    <div class="tcard-quote" id="q-stoic"></div>
+  </div>
+</div>
+
+<footer>The Mirror — Beta · Built on living wisdom traditions</footer>
+
+<script>
+var PROXY = 'https://shy-lake-7349.trailnotes2026.workers.dev/';
+
+var SYSTEM = 'You are a deeply learned scholar of world spiritual traditions: Buddhism, Taoism, Biblical Christianity, and Stoicism. Given what someone is happy about and fearful about today, provide genuine grounded wisdom from each tradition. Respond ONLY with a raw JSON object — no prose, no markdown, no code fences, no backticks, no preamble. Use this exact structure: {"buddhist":{"perspective":"2-4 sentences addressing their joy and fear","quote":"real attributed quote"},"taoist":{"perspective":"...","quote":"..."},"biblical":{"perspective":"...","quote":"..."},"stoic":{"perspective":"...","quote":"..."}}';
+
+function extractJSON(text) {
+  try { return JSON.parse(text); } catch(e) {}
+  var s = text.replace(/```[\w]*\n?/g, '').replace(/```/g, '').trim();
+  try { return JSON.parse(s); } catch(e) {}
+  var a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a !== -1 && b > a) { try { return JSON.parse(s.slice(a, b+1)); } catch(e) {} }
+  return null;
+}
+
+function showError(msg) {
+  var el = document.getElementById('errorEl');
+  el.textContent = '⚠ ' + msg;
+  el.className = 'error on';
+}
+
+async function seek() {
+  var happy   = document.getElementById('happy').value.trim();
+  var fearful = document.getElementById('fearful').value.trim();
+
+  if (!happy && !fearful) {
+    showError('Please share at least one reflection before seeking perspective.');
+    return;
+  }
+
+  var btn = document.getElementById('seekBtn');
+  btn.disabled = true;
+  document.getElementById('results').className = 'results';
+  document.getElementById('errorEl').className = 'error';
+  document.getElementById('loading').className = 'loading on';
+  ['buddhist','taoist','biblical','stoic'].forEach(function(t) {
+    document.getElementById('c-' + t).className = 'tcard ' + t;
+  });
+
+  var userMsg = 'Today I am happy about: ' + (happy || 'nothing shared') +
+    '\nToday I am fearful about: ' + (fearful || 'nothing shared') +
+    '\n\nRespond with only a raw JSON object matching your instructions.';
+
+  try {
+    var res = await fetch(PROXY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system: SYSTEM,
+        messages: [{ role: 'user', content: userMsg }]
+      })
+    });
+
+    var data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error ? data.error.message : 'Proxy error ' + res.status);
+    }
+
+    var raw = (data.content || [])
+      .filter(function(b) { return b.type === 'text'; })
+      .map(function(b) { return b.text; })
+      .join('')
+      .trim();
+
+    if (!raw) throw new Error('Empty response from API.');
+
+    var wisdom = extractJSON(raw);
+    if (!wisdom) throw new Error('Could not parse wisdom. Raw: ' + raw.slice(0, 120));
+
+    var traditions = ['buddhist', 'taoist', 'biblical', 'stoic'];
+    for (var i = 0; i < traditions.length; i++) {
+      if (!wisdom[traditions[i]] || !wisdom[traditions[i]].perspective) {
+        throw new Error('Missing data for ' + traditions[i]);
+      }
+    }
+
+    document.getElementById('loading').className = 'loading';
+    document.getElementById('results').className = 'results on';
+
+    traditions.forEach(function(t, i) {
+      document.getElementById('t-' + t).textContent = wisdom[t].perspective;
+      document.getElementById('q-' + t).textContent = wisdom[t].quote || '';
+      setTimeout(function() {
+        document.getElementById('c-' + t).className = 'tcard ' + t + ' show';
+      }, i * 230);
+    });
+
+  } catch(err) {
+    document.getElementById('loading').className = 'loading';
+    showError(err.message);
+  }
+
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>
