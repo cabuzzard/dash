@@ -32,8 +32,8 @@ const ALL_SITES = [
   { key: "main",            name: "🏠 Main" },
 ];
 
-const PLATFORMS_DB = "bb485a14-153d-4a7a-b9d3-82ca2dfa8f8d";
-const LOGINS_DB = "015d05ea-baa5-4dae-a855-5f128d3c31bf";
+const PLATFORMS_DB = "8248b700ebb7428aa28d8b5246509898";
+const LOGINS_DB = "72d262278a4c4786b375959432fdd82a";
 
 const PLATFORM_URLS = {
   "LinkedIn":  "https://www.linkedin.com",
