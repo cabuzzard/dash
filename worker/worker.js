@@ -485,20 +485,49 @@ export default {
         const platformById = {};
         platforms.forEach(p => { platformById[p.id.replace(/-/g,'')] = p; });
 
-        // Group logins by campaign — extract campaign name from login name "Platform × Campaign"
-        const campaignMap = {};
-        logins.forEach(l => {
-          // Extract campaign name from "Platform × Campaign" format
-          const parts = l.name.split(' × ');
-          const campaignName = parts.length > 1 ? parts.slice(1).join(' × ') : 'Other';
-          const platformName = parts[0] || l.name;
-          if (!campaignMap[campaignName]) campaignMap[campaignName] = [];
-          campaignMap[campaignName].push({ ...l, platformName });
+        // Parse login names "Platform × Campaign" and resolve site from campaign relation
+        // Build campaign lookup from Campaigns DB for site info
+        const campaignData = await notionPost(`/databases/${"5e9f152a-bd65-4776-a81a-b6e85980cc41"}/query`, {
+          page_size: 100
+        });
+        const campaignById = {};
+        (campaignData.results || []).forEach(c => {
+          const id = c.id.replace(/-/g,'');
+          campaignById[id] = {
+            name: c.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
+            site: c.properties.site?.select?.name || ''
+          };
         });
 
-        const grouped = Object.keys(campaignMap).sort().map(campaignName => ({
-          campaignName,
-          logins: campaignMap[campaignName].sort((a,b) => a.platformName.localeCompare(b.platformName))
+        // Parse each login — extract platform + campaign names, resolve site
+        const parsed = logins.map(l => {
+          const parts = l.name.split(' × ');
+          const platformName = parts[0] || l.name;
+          const campaignName = parts.length > 1 ? parts.slice(1).join(' × ') : 'Other';
+          const campaignInfo = campaignById[l.campaignId.replace(/-/g,'')] || {};
+          const site = campaignInfo.site || 'Other';
+          return { ...l, platformName, campaignName, site };
+        });
+
+        // Sort by platform → site → campaign
+        parsed.sort((a, b) => {
+          const p = a.platformName.localeCompare(b.platformName);
+          if (p !== 0) return p;
+          const s = a.site.localeCompare(b.site);
+          if (s !== 0) return s;
+          return a.campaignName.localeCompare(b.campaignName);
+        });
+
+        // Group by platform
+        const platformMap = {};
+        parsed.forEach(l => {
+          if (!platformMap[l.platformName]) platformMap[l.platformName] = [];
+          platformMap[l.platformName].push(l);
+        });
+
+        const grouped = Object.keys(platformMap).sort().map(platformName => ({
+          platformName,
+          logins: platformMap[platformName]
         }));
 
         return json({ campaigns: grouped });
