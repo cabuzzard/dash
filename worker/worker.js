@@ -505,6 +505,15 @@ export default {
         return json({ platforms: grouped });
       }
 
+      if (action === "testDbs") {
+        const p = await notionPost(`/databases/${PLATFORMS_DB}/query`, { page_size: 3 });
+        const l = await notionPost(`/databases/${LOGINS_DB}/query`, { page_size: 3 });
+        return json({
+          platforms: { count: p.results?.length, error: p.message, ids: p.results?.map(r=>r.id) },
+          logins: { count: l.results?.length, error: l.message, ids: l.results?.map(r=>r.id) }
+        });
+      }
+
       return json({ error:"Unknown action" }, 400);
     } catch(err) {
       return json({ error:err.message }, 500);
