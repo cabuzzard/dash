@@ -199,9 +199,6 @@
     <div class="sec-label">📋 Campaigns · Logins · Methods</div>
   </div>
   <div style="margin-bottom:16px;">
-    <button onclick="showAllCampaigns()" style="width:100%;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;margin-bottom:8px;">
-      📋 All Campaigns →
-    </button>
     <div style="display:flex;gap:8px;">
       <button onclick="showPlatforms()" style="flex:1;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
         🔑 Platforms & Logins →
@@ -301,9 +298,12 @@
     <div class="sec-label">📅 Weekly Schedule</div>
     <span class="sec-refresh" onclick="loadWeeklySchedule()">↻</span>
   </div>
-  <a href="https://www.notion.so/087b1163b4e64975bc7a4b686ff801de?newRecord=true" target="_blank" style="display:flex;align-items:center;justify-content:center;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;text-decoration:none;gap:6px;margin-bottom:16px;">
+  <a href="https://www.notion.so/087b1163b4e64975bc7a4b686ff801de?newRecord=true" target="_blank" style="display:flex;align-items:center;justify-content:center;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;text-decoration:none;gap:6px;margin-bottom:8px;">
     + New Campaign
   </a>
+  <button onclick="showAllCampaigns()" style="width:100%;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;margin-bottom:16px;">
+    📋 View All Campaigns →
+  </button>
   <div id="weeklyList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
 
