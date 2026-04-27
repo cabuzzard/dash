@@ -32,6 +32,7 @@ const ALL_SITES = [
   { key: "main",            name: "🏠 Main" },
 ];
 
+const PRODUCTS_DB = "97ffe7fc-3071-4d9b-8111-49bafe569ef0";
 const PLATFORMS_DB = "8248b700ebb7428aa28d8b5246509898";
 const LOGINS_DB = "72d262278a4c4786b375959432fdd82a";
 
@@ -531,6 +532,50 @@ export default {
         }));
 
         return json({ campaigns: grouped });
+      }
+
+      if (action === "getProducts") {
+        const data = await notionPost(`/databases/${PRODUCTS_DB}/query`, {
+          sorts: [
+            { property: "Site", direction: "ascending" },
+            { property: "Name", direction: "ascending" }
+          ],
+          page_size: 100
+        });
+        const products = (data.results || []).map(p => {
+          const props = p.properties;
+          const campaignRollup = props['Campaign Name']?.rollup?.array || [];
+          const campaignName = campaignRollup.map(r => r.title?.map(t=>t.plain_text).join('')).filter(Boolean).join(', ');
+          return {
+            id: p.id.replace(/-/g,''),
+            name: props.Name?.title?.map(t=>t.plain_text).join('') || '',
+            description: props.Description?.rich_text?.map(t=>t.plain_text).join('') || '',
+            price: props.Price?.rich_text?.map(t=>t.plain_text).join('') || '',
+            site: props.Site?.select?.name || '',
+            status: props.Status?.select?.name || '',
+            campaign: campaignName,
+            url: props['URL']?.url || '',
+          };
+        });
+
+        // Group by site then campaign
+        const siteMap = {};
+        products.forEach(p => {
+          if (!siteMap[p.site]) siteMap[p.site] = {};
+          const camp = p.campaign || 'General';
+          if (!siteMap[p.site][camp]) siteMap[p.site][camp] = [];
+          siteMap[p.site][camp].push(p);
+        });
+
+        const grouped = Object.keys(siteMap).sort().map(site => ({
+          site,
+          campaigns: Object.keys(siteMap[site]).sort().map(campaign => ({
+            campaign,
+            products: siteMap[site][campaign]
+          }))
+        }));
+
+        return json({ sites: grouped });
       }
 
       if (action === "testDbs") {

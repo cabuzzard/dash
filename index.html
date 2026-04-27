@@ -195,6 +195,12 @@
     </button>
   </div>
 
+  <div style="margin-bottom:8px;">
+    <button onclick="showProducts()" style="width:100%;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
+      📦 View Products →
+    </button>
+  </div>
+
   <div class="sec" style="margin-top:8px">
     <div class="sec-label">⚡ Explode Queue</div>
     <span class="sec-refresh" onclick="loadExplodeQueue()">↻</span>
@@ -249,6 +255,15 @@
     <span class="sec-refresh" onclick="loadPlatforms()">↻</span>
   </div>
   <div id="platformsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+</div>
+
+<!-- Products view -->
+<div class="view" id="viewProducts">
+  <div class="sec">
+    <div class="sec-label">📦 Products</div>
+    <span class="sec-refresh" onclick="loadProducts()">↻</span>
+  </div>
+  <div id="productsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
 
 <!-- L2: Campaigns for a site -->
@@ -377,6 +392,7 @@ function goBack() {
   else if (currentView==='L3') goL2();
   else if (currentView==='L2') goL1();
   else if (currentView==='Platforms') goL1();
+  else if (currentView==='Products') goL1();
 }
 function goL1() { state={site:null,campaign:null,title:null}; showView('L1'); }
 function goL2() { state.campaign=null; state.title=null; renderL2(state.site); }
@@ -676,6 +692,63 @@ function hideModal() { document.getElementById('modalOverlay').classList.remove(
 document.getElementById('modalOverlay').addEventListener('click', function(e) { if(e.target===this) hideModal(); });
 function confirmModal() { hideModal(); }
 
+
+// ── PRODUCTS ─────────────────────────────────────────────────────────
+function showProducts() {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('viewProducts').classList.add('active');
+  currentView = 'Products';
+  document.getElementById('backBtn').classList.add('visible');
+  const el = document.getElementById('crumb');
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">Products</span>';
+  window.scrollTo(0,0);
+  loadProducts();
+}
+
+async function loadProducts() {
+  const el = document.getElementById('productsList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getProducts');
+    el.innerHTML = '';
+    if (!data.sites?.length) { el.innerHTML='<div class="empty">No products found.</div>'; return; }
+
+    data.sites.forEach(site => {
+      // Site header
+      const siteHdr = document.createElement('div');
+      siteHdr.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);margin:20px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border2);';
+      siteHdr.textContent = site.site;
+      el.appendChild(siteHdr);
+
+      site.campaigns.forEach(camp => {
+        // Campaign subheader
+        const campHdr = document.createElement('div');
+        campHdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin:12px 0 6px;';
+        campHdr.textContent = camp.campaign;
+        el.appendChild(campHdr);
+
+        camp.products.forEach(product => {
+          const row = document.createElement('a');
+          row.href = product.url || nUrl(product.id);
+          row.target = '_blank';
+          row.className = 'row';
+          row.style.marginBottom = '6px';
+          row.innerHTML =
+            '<div class="row-body">'+
+              '<div class="row-name">'+product.name+'</div>'+
+              '<div class="row-meta">'+
+                (product.price ? product.price : '')+
+                (product.price && product.description ? ' · ' : '')+
+                (product.description ? product.description.substring(0,60)+'…' : '')+
+              '</div>'+
+            '</div>'+
+            '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:'+(product.status==='Active'?'#44ff44':product.status==='In Development'?'#ffcc00':'var(--text3)')+';border:1px solid var(--border2);white-space:nowrap;">'+product.status+'</span>';
+          el.appendChild(row);
+        });
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
 
 // ── ADD TODO ──────────────────────────────────────────────────────────
 async function addTodo() {
