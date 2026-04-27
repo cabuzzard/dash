@@ -537,13 +537,16 @@ export default {
 
       if (action === "getMethods") {
         const data = await notionPost(`/databases/${METHODS_DB}/query`, {
-          sorts: [{ property: "Name", direction: "ascending" }],
+          sorts: [
+            { property: "Type", direction: "ascending" },
+            { property: "Name", direction: "ascending" }
+          ],
           page_size: 100
         });
         const methods = (data.results || []).map(m => ({
           id: m.id.replace(/-/g,''),
           name: m.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
-          type: m.properties.Type?.select?.name || '',
+          type: m.properties.Type?.select?.name || 'Other',
           platform: m.properties.Platform?.select?.name || '',
           notes: m.properties.Notes?.rich_text?.map(t=>t.plain_text).join('') || '',
         }));

@@ -853,7 +853,16 @@ async function loadMethods() {
     const data = await call('getMethods');
     el.innerHTML = '';
     if (!data.methods?.length) { el.innerHTML='<div class="empty">No methods found.</div>'; return; }
+    let currentType = null;
     data.methods.forEach(m => {
+      // Type group header
+      if (m.type !== currentType) {
+        currentType = m.type;
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);margin:16px 0 6px;';
+        hdr.textContent = m.type;
+        el.appendChild(hdr);
+      }
       const row = document.createElement('a');
       row.href = nUrl(m.id);
       row.target = '_blank';
@@ -862,7 +871,7 @@ async function loadMethods() {
       row.innerHTML =
         '<div class="row-body">'+
           '<div class="row-name">'+m.name+'</div>'+
-          '<div class="row-meta">'+(m.type||'')+(m.platform?' · '+m.platform:'')+'</div>'+
+          (m.platform ? '<div class="row-meta">'+m.platform+'</div>' : '')+
         '</div>';
       el.appendChild(row);
     });
