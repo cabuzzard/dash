@@ -535,6 +535,33 @@ export default {
         return json({ campaigns: grouped });
       }
 
+      if (action === "getAllCampaigns") {
+        const data = await notionPost(`/databases/${CAMPAIGNS_DB}/query`, {
+          sorts: [
+            { property: "site", direction: "ascending" },
+            { property: "Name", direction: "ascending" }
+          ],
+          page_size: 100
+        });
+        const all = (data.results || []).map(c => ({
+          id: c.id.replace(/-/g,''),
+          name: c.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
+          site: c.properties.site?.select?.name || 'Other',
+          status: c.properties.Status?.select?.name || '',
+        }));
+        // Group by site
+        const siteMap = {};
+        all.forEach(c => {
+          if (!siteMap[c.site]) siteMap[c.site] = [];
+          siteMap[c.site].push(c);
+        });
+        const sites = Object.keys(siteMap).sort().map(site => ({
+          site,
+          campaigns: siteMap[site]
+        }));
+        return json({ sites });
+      }
+
       if (action === "getMethods") {
         const data = await notionPost(`/databases/${METHODS_DB}/query`, {
           sorts: [

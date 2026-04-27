@@ -187,9 +187,12 @@
   <div id="l1Sites"></div>
 
   <div class="sec" style="margin-top:8px">
-    <div class="sec-label">🔑 Platforms & Logins</div>
+    <div class="sec-label">📋 Campaigns · Logins · Methods</div>
   </div>
   <div style="margin-bottom:16px;">
+    <button onclick="showAllCampaigns()" style="width:100%;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;margin-bottom:8px;">
+      📋 All Campaigns →
+    </button>
     <div style="display:flex;gap:8px;">
       <button onclick="showPlatforms()" style="flex:1;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
         🔑 Platforms & Logins →
@@ -271,6 +274,18 @@
   <div id="productsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
 
+<!-- All Campaigns view -->
+<div class="view" id="viewAllCampaigns">
+  <div class="sec">
+    <div class="sec-label">📋 All Campaigns</div>
+    <span class="sec-refresh" onclick="loadAllCampaigns()">↻</span>
+  </div>
+  <a href="https://www.notion.so/087b1163b4e64975bc7a4b686ff801de?newRecord=true" target="_blank" style="display:flex;align-items:center;justify-content:center;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;text-decoration:none;gap:6px;margin-bottom:16px;">
+    + New Campaign
+  </a>
+  <div id="allCampaignsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+</div>
+
 <!-- Methods view -->
 <div class="view" id="viewMethods">
   <div class="sec">
@@ -283,6 +298,7 @@
   <div id="methodsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
 
+<!-- All Campaigns view -->
 <!-- L2: Campaigns for a site -->
 <div class="view" id="viewL2">
   <div class="sec"><div class="sec-label" id="l2Label">Campaigns</div></div>
@@ -410,6 +426,7 @@ function goBack() {
   else if (currentView==='L2') goL1();
   else if (currentView==='Platforms') goL1();
   else if (currentView==='Methods') goL1();
+  else if (currentView==='AllCampaigns') goL1();
   else if (currentView==='Products') goL1();
 }
 function goL1() { state={site:null,campaign:null,title:null}; showView('L1'); }
@@ -837,6 +854,48 @@ async function loadPlatforms() {
   } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
 }
 
+// ── ALL CAMPAIGNS ────────────────────────────────────────────────────
+function showAllCampaigns() {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('viewAllCampaigns').classList.add('active');
+  currentView = 'AllCampaigns';
+  document.getElementById('backBtn').classList.add('visible');
+  const el = document.getElementById('crumb');
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">All Campaigns</span>';
+  window.scrollTo(0,0);
+  loadAllCampaigns();
+}
+
+async function loadAllCampaigns() {
+  const el = document.getElementById('allCampaignsList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getAllCampaigns');
+    el.innerHTML = '';
+    if (!data.sites?.length) { el.innerHTML='<div class="empty">No campaigns found.</div>'; return; }
+    data.sites.forEach(site => {
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);margin:16px 0 6px;';
+      hdr.textContent = site.site;
+      el.appendChild(hdr);
+      site.campaigns.forEach(campaign => {
+        const row = document.createElement('a');
+        row.href = nUrl(campaign.id);
+        row.target = '_blank';
+        row.className = 'row';
+        row.style.marginBottom = '6px';
+        row.innerHTML =
+          '<div class="row-body">'+
+            '<div class="row-name">'+campaign.name+'</div>'+
+          '</div>'+
+          '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:'+(campaign.status==='Active'?'#44ff44':'var(--text3)')+';border:1px solid var(--border2);">'+campaign.status+'</span>';
+        el.appendChild(row);
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── ALL CAMPAIGNS ───────────────────────────────────────────────────
 // ── METHODS ──────────────────────────────────────────────────────────
 function showMethods() {
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
