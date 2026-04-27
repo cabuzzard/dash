@@ -32,6 +32,7 @@ const ALL_SITES = [
   { key: "main",            name: "🏠 Main" },
 ];
 
+const METHODS_DB = "285ed0b668be4dad89dfd090350096bc";
 const PRODUCTS_DB = "e92fcfce75fc4f54b553df0b7672ff48";
 const PLATFORMS_DB = "8248b700ebb7428aa28d8b5246509898";
 const LOGINS_DB = "72d262278a4c4786b375959432fdd82a";
@@ -532,6 +533,21 @@ export default {
         }));
 
         return json({ campaigns: grouped });
+      }
+
+      if (action === "getMethods") {
+        const data = await notionPost(`/databases/${METHODS_DB}/query`, {
+          sorts: [{ property: "Name", direction: "ascending" }],
+          page_size: 100
+        });
+        const methods = (data.results || []).map(m => ({
+          id: m.id.replace(/-/g,''),
+          name: m.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
+          type: m.properties.Type?.select?.name || '',
+          platform: m.properties.Platform?.select?.name || '',
+          notes: m.properties.Notes?.rich_text?.map(t=>t.plain_text).join('') || '',
+        }));
+        return json({ methods });
       }
 
       if (action === "getProducts") {
