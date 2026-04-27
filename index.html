@@ -187,6 +187,15 @@
   <div id="l1Sites"></div>
 
   <div class="sec" style="margin-top:8px">
+    <div class="sec-label">📅 This Week</div>
+  </div>
+  <div style="margin-bottom:8px;">
+    <button onclick="showWeeklySchedule()" style="width:100%;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
+      📅 Weekly Schedule →
+    </button>
+  </div>
+
+  <div class="sec" style="margin-top:8px">
     <div class="sec-label">📋 Campaigns · Logins · Methods</div>
   </div>
   <div style="margin-bottom:16px;">
@@ -284,6 +293,15 @@
     + New Campaign
   </a>
   <div id="allCampaignsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+</div>
+
+<!-- Weekly Schedule view -->
+<div class="view" id="viewWeekly">
+  <div class="sec">
+    <div class="sec-label">📅 Weekly Schedule</div>
+    <span class="sec-refresh" onclick="loadWeeklySchedule()">↻</span>
+  </div>
+  <div id="weeklyList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
 
 <!-- Methods view -->
@@ -427,6 +445,7 @@ function goBack() {
   else if (currentView==='Platforms') goL1();
   else if (currentView==='Methods') goL1();
   else if (currentView==='AllCampaigns') goL1();
+  else if (currentView==='Weekly') goL1();
   else if (currentView==='Products') goL1();
 }
 function goL1() { state={site:null,campaign:null,title:null}; showView('L1'); }
@@ -848,6 +867,55 @@ async function loadPlatforms() {
             '<div class="row-meta">'+login.site+(login.username?' · '+login.username:'')+'</div>'+
           '</div>'+
           '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:'+(login.status==='Active'?'#44ff44':'var(--text3)')+';border:1px solid var(--border2);">'+login.status+'</span>';
+        el.appendChild(row);
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── WEEKLY SCHEDULE ──────────────────────────────────────────────────
+function showWeeklySchedule() {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('viewWeekly').classList.add('active');
+  currentView = 'Weekly';
+  document.getElementById('backBtn').classList.add('visible');
+  const el = document.getElementById('crumb');
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">Weekly Schedule</span>';
+  window.scrollTo(0,0);
+  loadWeeklySchedule();
+}
+
+async function loadWeeklySchedule() {
+  const el = document.getElementById('weeklyList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getWeeklySchedule');
+    el.innerHTML = '';
+    if (!data.week?.length) {
+      el.innerHTML = '<div class="empty">No campaigns scheduled yet. Add a Schedule Day to campaigns in Notion.</div>';
+      return;
+    }
+    data.week.forEach(dayGroup => {
+      // Day header
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin:16px 0 8px;';
+      hdr.innerHTML =
+        '<div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);">'+dayGroup.label+'</div>'+
+        '<div style="font-size:11px;color:var(--text3);">'+dayGroup.date+'</div>';
+      el.appendChild(hdr);
+
+      dayGroup.campaigns.forEach(c => {
+        const row = document.createElement('a');
+        row.href = nUrl(c.id);
+        row.target = '_blank';
+        row.className = 'row';
+        row.style.marginBottom = '6px';
+        row.innerHTML =
+          '<div class="row-body">'+
+            '<div class="row-name">'+c.name+'</div>'+
+            '<div class="row-meta">'+c.site+(c.time?' · '+c.time:'')+'</div>'+
+          '</div>'+
+          '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:'+(c.status==='Active'?'#44ff44':'var(--text3)')+';border:1px solid var(--border2);">'+c.status+'</span>';
         el.appendChild(row);
       });
     });
