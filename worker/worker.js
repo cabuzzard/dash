@@ -356,9 +356,7 @@ export default {
         const data = await notionPost(`/databases/${CONTENT_STRATEGY_DB}/query`, {
           filter: {
             or: [
-              { property:"Status", select:{equals:"Writing"} },
-              { property:"Status", select:{equals:"Done"} },
-              { property:"Status", select:{equals:"Approved"} },
+              { property:"Status", select:{equals:"Review"} },
             ]
           },
           sorts: [{ property:"Sequence Order", direction:"ascending" }],
