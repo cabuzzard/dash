@@ -630,55 +630,47 @@ async function renderL3(campaign) {
   el.innerHTML = loading('Loading titles...');
   showView('L3');
   try {
-    const data = await call('getTitles', {
-      campaignId: campaign.id,
-      stages: ['Review','Publish','Approved','Explode','Writing','Done']
-    });
+    const data = await call('getTitles', { campaignId: campaign.id });
     el.innerHTML = '';
     const titles = data.titles || [];
     if (!titles.length) { el.innerHTML='<div class="empty">No titles in this campaign yet.</div>'; return; }
 
-    const review  = titles.filter(t => t.stage==='Review');
-    const publish = titles.filter(t => ['Publish','Approved'].includes(t.stage));
-    const explode = titles.filter(t => ['Explode','Writing','Done'].includes(t.stage));
+    // Group by cohort, sorted by sequence (already sorted by worker)
+    const cohortMap = {};
+    titles.forEach(t => {
+      const cohort = t.cohort || 'Uncategorized';
+      if (!cohortMap[cohort]) cohortMap[cohort] = [];
+      cohortMap[cohort].push(t);
+    });
 
-    function renderSection(label, items, badgeCls) {
-      if (!items.length) return;
+    Object.keys(cohortMap).forEach(cohort => {
+      // Cohort header
       const lbl = document.createElement('div');
       lbl.className = 'sub-label';
-      lbl.style.color = badgeCls==='badge-publish'?'#ffcc00':badgeCls==='badge-explode'?'#8888ff':'#ff6666';
-      lbl.textContent = label;
+      lbl.style.color = 'var(--text2)';
+      lbl.textContent = cohort;
       el.appendChild(lbl);
 
-      // Group by Post Type within each status section
-      let currentPostType = null;
-      items.forEach(t => {
-        if (t.postType && t.postType !== currentPostType) {
-          currentPostType = t.postType;
-          const ptLbl = document.createElement('div');
-          ptLbl.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin:10px 0 4px 2px;';
-          ptLbl.textContent = t.postType;
-          el.appendChild(ptLbl);
-        }
+      cohortMap[cohort].forEach(t => {
+        const isPublish = ['Publish','Approved'].includes(t.stage);
+        const badgeCls = isPublish ? 'badge-publish'
+          : ['Explode','Writing','Done'].includes(t.stage) ? 'badge-explode'
+          : t.stage === 'Review' ? 'badge-review' : '';
         const row = document.createElement('a');
         row.href = nUrl(t.id); row.target='_blank';
         row.className = 'row';
         row.innerHTML =
           '<div class="row-body">'+
             '<div class="row-name">'+t.title+'</div>'+
-            (t.cohort||t.scheduled?'<div class="row-meta">'+(t.cohort||'')+(t.scheduled?' · '+t.scheduled:'')+'</div>':'')+
+            (t.scheduled?'<div class="row-meta">'+t.scheduled+'</div>':'')+
           '</div>'+
-          '<span class="badge '+badgeCls+'">'+label.split(' ')[0]+'</span>';
-        if (badgeCls==='badge-publish') {
+          (badgeCls ? '<span class="badge '+badgeCls+'">'+t.stage+'</span>' : '');
+        if (isPublish) {
           row.onclick = e => { e.preventDefault(); state.title=t; renderL4(t); };
         }
         el.appendChild(row);
       });
-    }
-
-    renderSection('Review', review, 'badge-review');
-    renderSection('Publish', publish, 'badge-publish');
-    renderSection('Explode', explode, 'badge-explode');
+    });
 
   } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
 }
