@@ -652,8 +652,7 @@ async function renderL3(campaign) {
       el.appendChild(lbl);
 
       cohortMap[cohort].forEach(t => {
-        const isPublish = ['Publish','Approved'].includes(t.stage);
-        const badgeCls = isPublish ? 'badge-publish'
+        const stageBadge = ['Publish','Approved'].includes(t.stage) ? 'badge-publish'
           : ['Explode','Writing','Done'].includes(t.stage) ? 'badge-explode'
           : t.stage === 'Review' ? 'badge-review' : '';
         const row = document.createElement('a');
@@ -664,8 +663,8 @@ async function renderL3(campaign) {
             '<div class="row-name">'+t.title+'</div>'+
             (t.scheduled?'<div class="row-meta">'+t.scheduled+'</div>':'')+
           '</div>'+
-          (badgeCls ? '<span class="badge '+badgeCls+'">'+t.stage+'</span>' : '');
-        if (isPublish) {
+          (stageBadge ? '<span class="badge '+stageBadge+'">'+t.stage+'</span>' : '');
+        if (['Publish','Approved'].includes(t.stage)) {
           row.onclick = e => { e.preventDefault(); state.title=t; renderL4(t); };
         }
         el.appendChild(row);

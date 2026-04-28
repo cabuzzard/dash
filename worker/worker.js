@@ -119,9 +119,8 @@ async function getCampaigns(siteName) {
 }
 
 // Get titles from Content Strategy DB filtered by campaign ID
-async function getTitles(campaignId, stages) {
+async function getTitles(campaignId) {
   const dashedId = campaignId.replace(/-/g, '').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
-  // No status filter — show all titles for the campaign regardless of stage
   const data = await notionPost(`/databases/${CONTENT_STRATEGY_DB}/query`, {
     filter: {
       property: "Campaign",
@@ -326,9 +325,9 @@ export default {
 
       // L3: Get titles for a campaign
       if (action === "getTitles") {
-        const { campaignId, stages } = body;
+        const { campaignId } = body;
         if (!campaignId) return json({ error:"campaignId required" }, 400);
-        const titles = await getTitles(campaignId, stages);
+        const titles = await getTitles(campaignId);
         return json({ titles });
       }
 
