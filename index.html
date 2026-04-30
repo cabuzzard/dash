@@ -84,9 +84,10 @@
   .explode-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;display:flex;flex-direction:column;gap:6px;margin-bottom:6px;}
   .explode-title{font-size:13px;font-weight:500;color:var(--text);text-decoration:none;line-height:1.4;}
   .explode-campaign{font-size:11px;color:var(--text3);}
-  .explode-btns{display:flex;gap:8px;}
-  .explode-copy{flex:2;height:32px;background:#0a1a00;border:1px solid #1a4400;border-radius:6px;color:#44ff44;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
-  .explode-claude{flex:1;height:32px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;text-decoration:none;}
+  .explode-btns{display:flex;flex-direction:column;gap:6px;}
+  .explode-copy{width:100%;height:32px;background:#0a1a00;border:1px solid #1a4400;border-radius:6px;color:#44ff44;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+  .explode-pillar{width:100%;height:32px;background:#0a1a00;border:1px solid #1a4400;border-radius:6px;color:#44ff44;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+  .explode-claude{width:100%;height:32px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;text-decoration:none;}
 
   /* Todo items */
   .todo-list{display:flex;flex-direction:column;gap:6px;margin-bottom:4px;}
@@ -499,34 +500,58 @@ async function loadExplodeQueue() {
     const data = await call('getExplodeQueue');
     el.innerHTML = '';
     if (!data.titles?.length) { el.innerHTML='<div class="empty">No titles in explode queue.</div>'; return; }
+    // Group: Pillar on top, everything else as "Review"
+    const groups = { Pillar: [], Review: [] };
     data.titles.forEach(t => {
-      const item = document.createElement('div');
-      item.className = 'explode-item';
-      const a = document.createElement('a');
-      a.href = nUrl(t.titleId); a.target='_blank';
-      a.className = 'explode-title'; a.textContent = t.titleName;
-      const camp = document.createElement('div');
-      camp.className = 'explode-campaign';
-      camp.textContent = '↳ '+(t.campaignName||'');
+      if (t.stage === 'Pillar') groups.Pillar.push(t);
+      else groups.Review.push(t);
+    });
+
+    function renderGroup(titles, label, color) {
+      if (!titles.length) return;
+      const groupLabel = document.createElement('div');
+      groupLabel.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:'+color+';margin:10px 0 6px;';
+      groupLabel.textContent = label;
+      el.appendChild(groupLabel);
+      titles.forEach(t => {
+        const item = document.createElement('div');
+        item.className = 'explode-item';
+        const a = document.createElement('a');
+        a.href = nUrl(t.titleId); a.target='_blank';
+        a.className = 'explode-title'; a.textContent = t.titleName;
+
       const btns = document.createElement('div');
       btns.className = 'explode-btns';
-      const copyBtn = document.createElement('button');
-      copyBtn.className = 'explode-copy'; copyBtn.textContent = '📋 Copy Prompt';
-      copyBtn.onclick = async () => {
+      const pillarBtn = document.createElement('button');
+      pillarBtn.className = 'explode-pillar'; pillarBtn.textContent = '🏛 Pillar';
+      pillarBtn.onclick = async () => {
         try {
-          await navigator.clipboard.writeText('explode '+t.titleName+' — '+t.campaignName);
-          showToast('Prompt copied ✓','success');
-          copyBtn.textContent='✓ Copied';
-          setTimeout(()=>{copyBtn.textContent='📋 Copy Prompt';},2000);
+          await navigator.clipboard.writeText('write "'+t.titleName+'" — delete any assets currently referenced in this title's asset relation column — we are starting with a new asset called "pillar". read all notes and content in the current title record. create one long form source post asset called pillar. please merge the vibe of this and existing publish and explode titles to update the current content strategy and direction of the campaign. please also write the post according to the keywords and direction of the existing strategy. when done set the title Status to "Explode". record the new pillar post as an asset in the "assets" database. and list the new asset as a relation in this title record asset column.');
+          showToast('Pillar prompt copied ✓','success');
+          pillarBtn.textContent='✓ Copied';
+          setTimeout(()=>{pillarBtn.textContent='🏛 Pillar';},2000);
+        } catch(e) { showToast('Copy failed','error'); }
+      };
+      const explodeBtn = document.createElement('button');
+      explodeBtn.className = 'explode-copy'; explodeBtn.textContent = '⚡ Explode';
+      explodeBtn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText('explode "'+t.titleName+'" — use the existing pillar post asset. create all assets for it for the platforms that are most relevant to the campaign content strategy.');
+          showToast('Explode prompt copied ✓','success');
+          explodeBtn.textContent='✓ Copied';
+          setTimeout(()=>{explodeBtn.textContent='⚡ Explode';},2000);
         } catch(e) { showToast('Copy failed','error'); }
       };
       const claudeBtn = document.createElement('a');
       claudeBtn.href='https://claude.ai'; claudeBtn.target='_blank';
-      claudeBtn.className='explode-claude'; claudeBtn.textContent='↗ Claude';
-      btns.appendChild(copyBtn); btns.appendChild(claudeBtn);
-      item.appendChild(a); item.appendChild(camp); item.appendChild(btns);
-      el.appendChild(item);
-    });
+      claudeBtn.className='explode-claude'; claudeBtn.textContent='↗';
+      btns.appendChild(pillarBtn); btns.appendChild(explodeBtn); btns.appendChild(claudeBtn);
+        item.appendChild(a); item.appendChild(btns);
+        el.appendChild(item);
+      });
+    }
+    renderGroup(groups.Pillar, '🏛 Pillar', '#bb88ff');
+    renderGroup(groups.Review, '👁 Review', '#ff8844');
   } catch(e) { el.innerHTML='<div class="error-msg">Could not load.</div>'; }
 }
 
