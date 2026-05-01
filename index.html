@@ -187,8 +187,8 @@
 
 <!-- L1: Sites + Queues + Todos -->
 <div class="view active" id="viewL1">
-  <div class="sec"><div class="sec-label">Sites</div></div>
-  <div id="l1Sites"></div>
+  <div class="sec"><div class="sec-label" onclick="toggleSection('l1Sites','sitesChevron')" style="cursor:pointer">Sites &amp; Titles</div><span class="sec-toggle" id="sitesChevron" onclick="toggleSection('l1Sites','sitesChevron')">▸</span></div>
+  <div id="l1Sites" class="collapsible collapsed"></div>
 
   <div class="sec" style="margin-top:8px">
     <div class="sec-label">📅 This Week</div>
@@ -231,16 +231,16 @@
   <div class="sec" style="margin-top:8px">
     <div class="sec-label" onclick="toggleSection('l1Explode','explodeChevron')" style="cursor:pointer">⚡ Explode Queue</div>
     <span class="sec-refresh" onclick="loadExplodeQueue()">↻</span>
-    <span class="sec-toggle" id="explodeChevron" onclick="toggleSection('l1Explode','explodeChevron')">▾</span>
+    <span class="sec-toggle" id="explodeChevron" onclick="toggleSection('l1Explode','explodeChevron')">▸</span>
   </div>
-  <div id="l1Explode" class="collapsible"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+  <div id="l1Explode" class="collapsible collapsed"></div>
 
   <div class="sec">
     <div class="sec-label" onclick="toggleSection('l1Publish','publishChevron')" style="cursor:pointer">📤 Publish Queue</div>
     <span class="sec-refresh" onclick="loadPublishQueue()">↻</span>
-    <span class="sec-toggle" id="publishChevron" onclick="toggleSection('l1Publish','publishChevron')">▾</span>
+    <span class="sec-toggle" id="publishChevron" onclick="toggleSection('l1Publish','publishChevron')">▸</span>
   </div>
-  <div id="l1Publish" class="collapsible"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+  <div id="l1Publish" class="collapsible collapsed"></div>
 
   <div class="sec">
     <div class="sec-label">📋 Daily Content</div>
@@ -493,8 +493,7 @@ async function renderL1() {
     g.appendChild(card);
   });
   grid.appendChild(g);
-  loadExplodeQueue();
-  loadPublishQueue();
+  // queues load lazily on expand
   loadAllTodos();
 }
 
@@ -565,6 +564,12 @@ function toggleSection(containerId, chevronId) {
   const ch = document.getElementById(chevronId);
   const collapsed = el.classList.toggle('collapsed');
   ch.textContent = collapsed ? '▸' : '▾';
+  // Lazy load queues on first expand
+  if (!collapsed) {
+    if (containerId === 'l1Explode' && !el.dataset.loaded) { el.dataset.loaded=1; loadExplodeQueue(); }
+    if (containerId === 'l1Publish' && !el.dataset.loaded) { el.dataset.loaded=1; loadPublishQueue(); }
+    if (containerId === 'l1Sites' && !el.dataset.loaded) { el.dataset.loaded=1; renderL1(); }
+  }
 }
 
 async function loadPublishQueue() {
