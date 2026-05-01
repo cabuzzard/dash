@@ -571,7 +571,7 @@ async function loadPublishQueue() {
           '<div class="row-name">'+t.title+'</div>'+
           '<div class="row-meta">'+(t.grouping||'')+(t.scheduled?' · '+t.scheduled:'')+'</div>'+
         '</div>'+
-        '<span class="badge badge-publish">PUBLISH</span>';
+        '<a href="'+nUrl(t.id)+'" target="_blank" class="badge badge-publish" onclick="event.stopPropagation()">↗ DB</a>';
       // Tap goes to assets
       row.onclick = e => { e.preventDefault(); state.title=t; renderL4(t); };
       el.appendChild(row);
