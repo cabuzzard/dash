@@ -245,14 +245,23 @@
   <div class="sec">
     <div class="sec-label">📋 Daily Content</div>
     <span class="sec-refresh" onclick="loadTodosFor('daily content','tdContent')">↻</span>
+    <span class="sec-toggle" id="contentChevron" onclick="toggleSection('tdContent','contentChevron')">▸</span>
   </div>
-  <div id="tdContent"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+  <div id="tdContent" class="collapsible collapsed"></div>
 
   <div class="sec">
     <div class="sec-label">🏠 Daily Household</div>
     <span class="sec-refresh" onclick="loadTodosFor('daily household','tdHousehold')">↻</span>
+    <span class="sec-toggle" id="householdChevron" onclick="toggleSection('tdHousehold','householdChevron')">▸</span>
   </div>
-  <div id="tdHousehold"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+  <div id="tdHousehold" class="collapsible collapsed"></div>
+
+  <div class="sec">
+    <div class="sec-label">🛒 Get</div>
+    <span class="sec-refresh" onclick="loadTodosFor('get','tdGet')">↻</span>
+    <span class="sec-toggle" id="getChevron" onclick="toggleSection('tdGet','getChevron')">▸</span>
+  </div>
+  <div id="tdGet" class="collapsible collapsed"></div>
 
   <div class="sec">
     <div class="sec-label">➕ Add Todo</div>
@@ -269,12 +278,6 @@
       <button onclick="addTodo()" style="height:44px;padding:0 18px;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;flex-shrink:0;">Add</button>
     </div>
   </div>
-
-  <div class="sec">
-    <div class="sec-label">🛒 Get</div>
-    <span class="sec-refresh" onclick="loadTodosFor('get','tdGet')">↻</span>
-  </div>
-  <div id="tdGet"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
 
 <!-- Platforms view -->
@@ -569,6 +572,9 @@ function toggleSection(containerId, chevronId) {
     if (containerId === 'l1Explode' && !el.dataset.loaded) { el.dataset.loaded=1; loadExplodeQueue(); }
     if (containerId === 'l1Publish' && !el.dataset.loaded) { el.dataset.loaded=1; loadPublishQueue(); }
     if (containerId === 'l1Sites' && !el.dataset.loaded) { el.dataset.loaded=1; renderL1(); }
+    if (containerId === 'tdContent' && !el.dataset.loaded) { el.dataset.loaded=1; loadTodosFor('daily content','tdContent'); }
+    if (containerId === 'tdHousehold' && !el.dataset.loaded) { el.dataset.loaded=1; loadTodosFor('daily household','tdHousehold'); }
+    if (containerId === 'tdGet' && !el.dataset.loaded) { el.dataset.loaded=1; loadTodosFor('get','tdGet'); }
   }
 }
 
