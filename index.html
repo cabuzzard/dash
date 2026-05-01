@@ -187,9 +187,6 @@
 
 <!-- L1: Sites + Queues + Todos -->
 <div class="view active" id="viewL1">
-  <div class="sec"><div class="sec-label" onclick="toggleSection('l1Sites','sitesChevron')" style="cursor:pointer">Sites &amp; Titles</div><span class="sec-toggle" id="sitesChevron" onclick="toggleSection('l1Sites','sitesChevron')">▸</span></div>
-  <div id="l1Sites" class="collapsible collapsed"></div>
-
   <div class="sec" style="margin-top:8px">
     <div class="sec-label">📅 This Week</div>
   </div>
@@ -227,6 +224,9 @@
       📝 All Titles →
     </a>
   </div>
+
+  <div class="sec"><div class="sec-label" onclick="toggleSection('l1Sites','sitesChevron')" style="cursor:pointer">Sites &amp; Titles</div><span class="sec-toggle" id="sitesChevron" onclick="toggleSection('l1Sites','sitesChevron')">▸</span></div>
+  <div id="l1Sites" class="collapsible collapsed"></div>
 
   <div class="sec" style="margin-top:8px">
     <div class="sec-label" onclick="toggleSection('l1Explode','explodeChevron')" style="cursor:pointer">⚡ Explode Queue</div>
