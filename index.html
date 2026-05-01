@@ -54,6 +54,9 @@
   .sec{display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px;}
   .sec-label{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);}
   .sec-refresh{font-size:12px;color:var(--text3);cursor:pointer;padding:4px;}
+  .sec-toggle{font-size:12px;color:var(--text3);cursor:pointer;padding:4px;margin-left:auto;user-select:none;}
+  .collapsible{overflow:hidden;transition:max-height 0.25s ease;max-height:2000px;}
+  .collapsible.collapsed{max-height:0;}
 
   /* Cards */
   .card-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;}
@@ -226,16 +229,18 @@
   </div>
 
   <div class="sec" style="margin-top:8px">
-    <div class="sec-label">⚡ Explode Queue</div>
+    <div class="sec-label" onclick="toggleSection('l1Explode','explodeChevron')" style="cursor:pointer">⚡ Explode Queue</div>
     <span class="sec-refresh" onclick="loadExplodeQueue()">↻</span>
+    <span class="sec-toggle" id="explodeChevron" onclick="toggleSection('l1Explode','explodeChevron')">▾</span>
   </div>
-  <div id="l1Explode"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+  <div id="l1Explode" class="collapsible"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 
   <div class="sec">
-    <div class="sec-label">📤 Publish Queue</div>
+    <div class="sec-label" onclick="toggleSection('l1Publish','publishChevron')" style="cursor:pointer">📤 Publish Queue</div>
     <span class="sec-refresh" onclick="loadPublishQueue()">↻</span>
+    <span class="sec-toggle" id="publishChevron" onclick="toggleSection('l1Publish','publishChevron')">▾</span>
   </div>
-  <div id="l1Publish"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+  <div id="l1Publish" class="collapsible"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 
   <div class="sec">
     <div class="sec-label">📋 Daily Content</div>
@@ -553,6 +558,13 @@ async function loadExplodeQueue() {
     renderGroup(groups.Pillar, '🏛 Pillar', '#bb88ff');
     renderGroup(groups.Review, '👁 Review', '#ff8844');
   } catch(e) { el.innerHTML='<div class="error-msg">Could not load.</div>'; }
+}
+
+function toggleSection(containerId, chevronId) {
+  const el = document.getElementById(containerId);
+  const ch = document.getElementById(chevronId);
+  const collapsed = el.classList.toggle('collapsed');
+  ch.textContent = collapsed ? '▸' : '▾';
 }
 
 async function loadPublishQueue() {
