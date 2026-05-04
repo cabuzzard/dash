@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-2
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -145,18 +144,6 @@
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
   .toast.success{border-color:var(--accent);color:var(--accent);}
   .toast.error{border-color:var(--danger);color:var(--danger);}
-
-  /* Health schedule items */
-  .health-day-hdr{display:flex;align-items:baseline;justify-content:space-between;margin:12px 0 6px;}
-  .health-day-label{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);}
-  .health-day-date{font-size:11px;color:var(--text3);}
-  .health-item{background:var(--surface);border:1px solid var(--border);border-left:3px solid #1D9E75;border-radius:var(--radius-sm);padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:6px;text-decoration:none;cursor:pointer;}
-  .health-item:active{transform:scale(.98);}
-  .health-item-body{flex:1;min-width:0;}
-  .health-item-name{font-size:13px;font-weight:500;color:var(--text);line-height:1.4;}
-  .health-item-time{font-size:11px;color:#1D9E75;margin-top:2px;}
-  .health-item-arrow{color:var(--text3);font-size:14px;flex-shrink:0;}
-
 </style>
 </head>
 <body>
@@ -256,6 +243,13 @@
   <div id="l1Publish" class="collapsible collapsed"></div>
 
   <div class="sec" style="margin-top:8px">
+    <div class="sec-label" onclick="toggleSection('healthSched','healthChevron')" style="cursor:pointer">🫀 Health Schedule</div>
+    <span class="sec-refresh" onclick="loadHealthSchedule()">↻</span>
+    <span class="sec-toggle" id="healthChevron" onclick="toggleSection('healthSched','healthChevron')">▸</span>
+  </div>
+  <div id="healthSched" class="collapsible collapsed"></div>
+
+    <div class="sec" style="margin-top:8px">
     <div class="sec-label" style="font-size:12px;color:var(--text);">Daily To Do</div>
   </div>
 
@@ -1076,53 +1070,41 @@ async function loadMethods() {
   } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
 }
 
-
-// ── HEALTH SCHEDULE ───────────────────────────────────────────────────
-let healthCollapsed = false;
-
-function toggleHealth() {
-  healthCollapsed = !healthCollapsed;
-  const el = document.getElementById('healthCollapsible');
-  const toggle = document.getElementById('healthToggle');
-  el.classList.toggle('collapsed', healthCollapsed);
-  toggle.textContent = healthCollapsed ? '▸' : '▾';
-}
-
+// ── HEALTH SCHEDULE ──────────────────────────────────────────────────
 async function loadHealthSchedule() {
-  const el = document.getElementById('healthList');
+  const el = document.getElementById('healthSched');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
     const data = await call('getHealthSchedule');
     el.innerHTML = '';
     if (!data.week?.length) {
-      el.innerHTML = '<div class="empty">No health items scheduled. Add Schedule Day to items in Notion.</div>';
+      el.innerHTML = '<div class="empty">No health items scheduled. Set Schedule Day on daily household items in Notion.</div>';
       return;
     }
     data.week.forEach(dayGroup => {
       const hdr = document.createElement('div');
-      hdr.className = 'health-day-hdr';
+      hdr.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin:16px 0 8px;';
       hdr.innerHTML =
-        '<div class="health-day-label">' + dayGroup.label + '</div>' +
-        '<div class="health-day-date">' + dayGroup.date + '</div>';
+        '<div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);">'+dayGroup.label+'</div>'+
+        '<div style="font-size:11px;color:var(--text3);">'+dayGroup.date+'</div>';
       el.appendChild(hdr);
 
-      dayGroup.items.forEach(item => {
+      dayGroup.todos.forEach(t => {
         const row = document.createElement('a');
-        row.href = 'https://www.notion.so/' + item.id;
+        row.href = 'https://www.notion.so/' + t.id;
         row.target = '_blank';
-        row.className = 'health-item';
+        row.className = 'row';
+        row.style.cssText = 'margin-bottom:6px;border-left:3px solid #1D9E75;';
         row.innerHTML =
-          '<div class="health-item-body">' +
-            '<div class="health-item-name">' + item.name + '</div>' +
-            (item.time ? '<div class="health-item-time">' + item.time + '</div>' : '') +
-          '</div>' +
-          '<span class="health-item-arrow">›</span>';
+          '<div class="row-body">'+
+            '<div class="row-name">'+t.name+'</div>'+
+            (t.time ? '<div class="row-meta">'+t.time+'</div>' : '')+
+          '</div>'+
+          '<span class="row-arrow">›</span>';
         el.appendChild(row);
       });
     });
-  } catch(e) {
-    el.innerHTML = '<div class="error-msg">' + e.message + '</div>';
-  }
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
 }
 
 // ── TOAST ─────────────────────────────────────────────────────────────

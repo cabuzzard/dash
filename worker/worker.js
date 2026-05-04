@@ -673,7 +673,6 @@ export default {
 
 
       if (action === "getHealthSchedule") {
-        // Query Main TD DB for daily household items that have a Schedule Day set
         const data = await notionPost(`/databases/${MAIN_TD_DB_ID}/query`, {
           filter: {
             and: [
@@ -681,49 +680,37 @@ export default {
               { property: "Schedule Day", select: { is_not_empty: true } }
             ]
           },
-          sorts: [{ property: "Schedule Day", direction: "ascending" }],
           page_size: 100
         });
 
-        const todos = (data.results || []).map(page => {
-          const props = page.properties;
+        const todos = (data.results || []).map(c => {
+          const props = c.properties;
           return {
-            id: page.id.replace(/-/g, ''),
-            name: props.Name?.title?.map(t => t.plain_text).join('') || 'Untitled',
+            id: c.id.replace(/-/g,''),
+            name: props.Name?.title?.map(t=>t.plain_text).join('') || '',
             day: props['Schedule Day']?.select?.name || '',
-            time: props['Schedule Time']?.rich_text?.map(t => t.plain_text).join('') || '',
+            time: props['Schedule Time']?.rich_text?.map(t=>t.plain_text).join('') || '',
           };
         });
 
-        // Group by day in week order
-        const dayOrder = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+        const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
         const today = new Date();
-        const todayIdx = today.getDay(); // 0=Sun
-        // Convert to Mon=0 index
-        const todayMon = todayIdx === 0 ? 6 : todayIdx - 1;
+        const todayIdx = today.getDay();
 
-        const grouped = {};
-        todos.forEach(t => {
-          if (!grouped[t.day]) grouped[t.day] = [];
-          grouped[t.day].push(t);
-        });
-
-        // Build 7-day window starting from today
         const week = [];
         for (let i = 0; i < 7; i++) {
-          const dayIdx = (todayMon + i) % 7;
-          const dayName = dayOrder[dayIdx];
-          const items = (grouped[dayName] || []).sort((a,b) => (a.time||'').localeCompare(b.time||''));
-          if (items.length > 0) {
+          const dayIdx = (todayIdx + i) % 7;
+          const dayName = days[dayIdx];
+          const dayTodos = todos
+            .filter(t => t.day === dayName)
+            .sort((a,b) => (a.time||'').localeCompare(b.time||''));
+          if (dayTodos.length > 0) {
             const date = new Date(today);
             date.setDate(today.getDate() + i);
-            const label = i === 0 ? 'Today — ' + dayName : i === 1 ? 'Tomorrow — ' + dayName : dayName;
-            week.push({
-              day: dayName,
-              label,
-              date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-              items
-            });
+            const label = i === 0 ? 'Today — ' + dayName
+              : i === 1 ? 'Tomorrow — ' + dayName
+              : dayName;
+            week.push({ day: dayName, label, date: date.toLocaleDateString('en-US', {month:'short', day:'numeric'}), todos: dayTodos });
           }
         }
         return json({ week });
