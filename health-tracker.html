@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Health Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --surface2: #1a1a1a;
+    --border: #222222;
+    --border2: #2e2e2e;
+    --text: #ffffff;
+    --text2: #999999;
+    --text3: #555555;
+    --accent: #7eb8f7;
+    --accent-dim: rgba(126,184,247,0.12);
+    --green: #44cc88;
+    --green-dim: rgba(68,204,136,0.12);
+    --danger: #ff4444;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+  /* PIN */
+  .pin-screen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; padding: 32px; }
+  .pin-screen.hidden { display: none; }
+  .pin-logo { font-size: 11px; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text); margin-bottom: 8px; }
+  .pin-title { font-size: 28px; font-weight: 600; margin-bottom: 6px; }
+  .pin-sub { font-size: 13px; color: var(--text2); margin-bottom: 40px; text-align: center; }
+  .pin-dots { display: flex; gap: 12px; margin-bottom: 32px; }
+  .pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border2); background: transparent; transition: all 0.15s; }
+  .pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+  .pin-dot.error { background: var(--danger); border-color: var(--danger); }
+  .pin-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; max-width: 280px; }
+  .pin-btn { height: 64px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); font-size: 22px; font-weight: 500; color: var(--text); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.1s; }
+  .pin-btn:active { background: var(--surface2); transform: scale(0.95); }
+  .pin-btn.del { font-size: 16px; color: var(--text2); }
+  .pin-btn.empty { background: transparent; border: none; cursor: default; }
+  .pin-error { font-size: 13px; color: var(--danger); margin-top: 16px; min-height: 20px; text-align: center; }
+
+  /* Header */
+  .header { position: sticky; top: 0; z-index: 100; background: var(--bg); border-bottom: 1px solid var(--border); padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .crumb-root { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text); }
+  .crumb-sep { font-size: 11px; color: var(--text3); margin: 0 4px; }
+  .crumb-item { font-size: 13px; font-weight: 500; color: var(--text2); }
+  .lock-btn { font-size: 16px; cursor: pointer; color: var(--text3); padding: 4px; }
+
+  /* Main */
+  .main { padding: 16px; max-width: 480px; margin: 0 auto; }
+
+  /* Week nav */
+  .week-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .week-label { font-size: 13px; font-weight: 500; color: var(--text2); }
+  .week-arrow { width: 28px; height: 28px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border2); color: var(--text2); font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .week-arrow:active { background: var(--surface2); transform: scale(0.92); }
+
+  /* Day row */
+  .day-row { margin-bottom: 8px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--surface); }
+  .day-header { display: flex; align-items: center; padding: 12px 14px; cursor: pointer; user-select: none; gap: 10px; transition: background 0.1s; }
+  .day-header:active { background: var(--surface2); }
+  .day-name { font-size: 13px; font-weight: 600; color: var(--text); flex: 1; }
+  .day-badge { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 8px; border-radius: 20px; }
+  .day-badge.plan { background: rgba(126,184,247,0.15); color: var(--accent); }
+  .day-badge.tally { background: rgba(68,204,136,0.15); color: var(--green); }
+  .day-badge.active-day { background: rgba(255,255,255,0.08); color: var(--text); }
+  .day-progress { display: flex; align-items: center; gap: 6px; }
+  .day-pct { font-size: 11px; color: var(--text3); font-family: 'DM Mono', monospace; min-width: 28px; text-align: right; }
+  .mini-bar { width: 40px; height: 3px; background: var(--border2); border-radius: 2px; overflow: hidden; }
+  .mini-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.3s; }
+  .day-chevron { font-size: 12px; color: var(--text3); transition: transform 0.2s; flex-shrink: 0; }
+  .day-chevron.open { transform: rotate(90deg); }
+
+  /* Day body */
+  .day-body { display: none; border-top: 1px solid var(--border); padding: 10px 14px 14px; }
+  .day-body.open { display: block; }
+
+  /* Weekly goals banner inside day */
+  .weekly-banner { background: var(--accent-dim); border: 1px solid rgba(126,184,247,0.2); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 10px; }
+  .weekly-banner.tally { background: var(--green-dim); border-color: rgba(68,204,136,0.2); }
+  .weekly-banner-label { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+  .weekly-banner.tally .weekly-banner-label { color: var(--green); }
+
+  /* Goals list */
+  .goals-label { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text3); margin: 10px 0 6px; }
+  .goal-item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .goal-item:last-child { border-bottom: none; }
+  .goal-check { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--border2); background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; }
+  .goal-check.done { background: var(--accent); border-color: var(--accent); }
+  .goal-check.done::after { content: '✓'; font-size: 11px; color: #000; font-weight: 600; }
+  .goal-text { font-size: 13px; color: var(--text); flex: 1; line-height: 1.4; }
+  .goal-text.done { color: var(--text3); text-decoration: line-through; }
+  .goal-tag { font-size: 10px; color: var(--text3); padding: 1px 7px; border-radius: 20px; border: 1px solid var(--border2); white-space: nowrap; }
+  .goal-delete { font-size: 16px; color: var(--text3); cursor: pointer; padding: 2px 4px; background: none; border: none; line-height: 1; opacity: 0; transition: opacity 0.15s; }
+  .goal-item:hover .goal-delete { opacity: 1; }
+
+  /* Tally items */
+  .tally-item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .tally-item:last-child { border-bottom: none; }
+  .tally-label { font-size: 13px; color: var(--text); flex: 1; }
+  .tally-controls { display: flex; align-items: center; gap: 8px; }
+  .tally-val { font-size: 15px; font-weight: 500; font-family: 'DM Mono', monospace; color: var(--text); min-width: 28px; text-align: center; }
+  .tally-btn { width: 28px; height: 28px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border2); color: var(--text); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
+  .tally-btn:active { transform: scale(0.9); }
+  .tally-target { font-size: 11px; color: var(--text3); }
+
+  /* Add record */
+  .add-record-btn { display: flex; align-items: center; gap: 8px; padding: 9px 0; cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 500; margin-top: 4px; }
+  .add-record-btn:active { opacity: 0.7; }
+
+  /* Modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: flex-end; justify-content: center; z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .modal-overlay.visible { opacity: 1; pointer-events: all; }
+  .modal { background: var(--surface); border-radius: 16px 16px 0 0; padding: 20px 16px 40px; width: 100%; max-width: 480px; transform: translateY(100%); transition: transform 0.25s; }
+  .modal-overlay.visible .modal { transform: translateY(0); }
+  .modal-title { font-size: 11px; font-weight: 600; color: var(--text2); margin-bottom: 16px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .modal-field { margin-bottom: 12px; }
+  .modal-field label { font-size: 11px; color: var(--text3); display: block; margin-bottom: 5px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .modal-input { width: 100%; background: var(--bg); border: 1px solid var(--border2); border-radius: var(--radius-sm); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 15px; padding: 11px 14px; outline: none; caret-color: var(--accent); }
+  .modal-input:focus { border-color: var(--accent); }
+  .modal-select { width: 100%; background: var(--bg); border: 1px solid var(--border2); border-radius: var(--radius-sm); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 15px; padding: 11px 14px; outline: none; appearance: none; }
+  .modal-select:focus { border-color: var(--accent); }
+  .modal-seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg-btn { padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border2); background: transparent; color: var(--text2); font-size: 12px; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.1s; }
+  .seg-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .btn { flex: 1; height: 44px; border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-secondary { background: var(--surface2); border: 1px solid var(--border2); color: var(--text2); }
+
+  /* Stats strip */
+  .stats-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; text-align: center; }
+  .stat-val { font-size: 20px; font-weight: 600; color: var(--text); font-family: 'DM Mono', monospace; }
+  .stat-label { font-size: 10px; color: var(--text3); margin-top: 3px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  /* Section label */
+  .section-label { font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text2); margin-bottom: 10px; margin-top: 4px; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--surface2); border: 1px solid var(--border2); border-radius: 20px; padding: 10px 20px; font-size: 13px; color: var(--text); opacity: 0; transition: all 0.25s; z-index: 998; white-space: nowrap; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--accent); color: var(--accent); }
+
+  .empty-state { font-size: 13px; color: var(--text3); font-style: italic; padding: 6px 0 2px; }
+</style>
+</head>
+<body>
+
+<!-- PIN -->
+<div class="pin-screen" id="pinScreen">
+  <div class="pin-logo">Health Tracker</div>
+  <div class="pin-title">Welcome back</div>
+  <div class="pin-sub">Enter your PIN to continue</div>
+  <div class="pin-dots" id="pinDots">
+    <div class="pin-dot" id="d0"></div>
+    <div class="pin-dot" id="d1"></div>
+    <div class="pin-dot" id="d2"></div>
+    <div class="pin-dot" id="d3"></div>
+  </div>
+  <div class="pin-pad">
+    <button class="pin-btn" onclick="pinPress('1')">1</button>
+    <button class="pin-btn" onclick="pinPress('2')">2</button>
+    <button class="pin-btn" onclick="pinPress('3')">3</button>
+    <button class="pin-btn" onclick="pinPress('4')">4</button>
+    <button class="pin-btn" onclick="pinPress('5')">5</button>
+    <button class="pin-btn" onclick="pinPress('6')">6</button>
+    <button class="pin-btn" onclick="pinPress('7')">7</button>
+    <button class="pin-btn" onclick="pinPress('8')">8</button>
+    <button class="pin-btn" onclick="pinPress('9')">9</button>
+    <button class="pin-btn empty"></button>
+    <button class="pin-btn" onclick="pinPress('0')">0</button>
+    <button class="pin-btn del" onclick="pinDel()">&#x232B;</button>
+  </div>
+  <div class="pin-error" id="pinError"></div>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div style="display:flex;align-items:center;gap:0;">
+      <span class="crumb-root">Health</span>
+      <span class="crumb-sep">›</span>
+      <span class="crumb-item" id="headerWeek">This week</span>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div class="lock-btn" onclick="lockApp()" title="Lock">🔒</div>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main" id="mainApp" style="display:none;">
+
+  <!-- Stats strip -->
+  <div class="stats-strip" id="statsStrip">
+    <div class="stat-card">
+      <div class="stat-val" id="statDone">0</div>
+      <div class="stat-label">Done today</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="statWeekPct">0%</div>
+      <div class="stat-label">Week rate</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="statStreak">0</div>
+      <div class="stat-label">Day streak</div>
+    </div>
+  </div>
+
+  <!-- Week nav -->
+  <div class="week-nav">
+    <button class="week-arrow" onclick="shiftWeek(-1)">‹</button>
+    <span class="week-label" id="weekLabel">Week of Mon 1 Jan</span>
+    <button class="week-arrow" onclick="shiftWeek(1)">›</button>
+  </div>
+
+  <div class="section-label">Weekly Schedule</div>
+  <div id="dayList"></div>
+
+</div>
+
+<!-- Add Record Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Add Goal</div>
+
+    <div class="modal-field">
+      <label>Goal / Task</label>
+      <input class="modal-input" id="modalGoalText" type="text" placeholder="e.g. Morning run, Log weight..." />
+    </div>
+
+    <div class="modal-field">
+      <label>Type</label>
+      <div class="modal-seg" id="typeSegment">
+        <button class="seg-btn active" onclick="selectType('goal')">✓ Goal</button>
+        <button class="seg-btn" onclick="selectType('tally')">＋ Tally</button>
+      </div>
+    </div>
+
+    <div class="modal-field" id="tallyTargetField" style="display:none;">
+      <label>Daily Target</label>
+      <input class="modal-input" id="modalTallyTarget" type="number" min="1" placeholder="e.g. 8 glasses" />
+    </div>
+
+    <div class="modal-field">
+      <label>Tag / Category</label>
+      <input class="modal-input" id="modalTag" type="text" placeholder="e.g. workout, sleep, water..." />
+    </div>
+
+    <div class="modal-field">
+      <label>Add to</label>
+      <div class="modal-seg" id="scopeSegment">
+        <button class="seg-btn active" onclick="selectScope('daily')">Daily</button>
+        <button class="seg-btn" onclick="selectScope('weekly')">Weekly</button>
+      </div>
+    </div>
+
+    <div class="modal-field" id="weekdayField">
+      <label>Day(s)</label>
+      <div class="modal-seg" id="daySegment">
+        <button class="seg-btn active" data-day="0" onclick="toggleDay(0)">Mon</button>
+        <button class="seg-btn active" data-day="1" onclick="toggleDay(1)">Tue</button>
+        <button class="seg-btn active" data-day="2" onclick="toggleDay(2)">Wed</button>
+        <button class="seg-btn active" data-day="3" onclick="toggleDay(3)">Thu</button>
+        <button class="seg-btn active" data-day="4" onclick="toggleDay(4)">Fri</button>
+        <button class="seg-btn" data-day="5" onclick="toggleDay(5)">Sat</button>
+        <button class="seg-btn" data-day="6" onclick="toggleDay(6)">Sun</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" style="flex:0;padding:0 20px;" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmAdd()">Add</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── Config ──────────────────────────────────────────────────────────────────
+const PIN = '1234';
+const DAY_NAMES = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+const DAY_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+// Day roles: planning days, tally days
+const DAY_ROLES = {
+  0: { type: 'plan', label: 'Planning' },   // Monday
+  6: { type: 'plan', label: 'Planning' },   // Sunday
+  4: { type: 'tally', label: 'Tally' },     // Friday
+};
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let weekOffset = 0;           // 0 = current week
+let openDays = new Set();     // which day indices are expanded
+let modalDay = null;          // which day index modal was opened from
+let modalType = 'goal';       // 'goal' | 'tally'
+let modalScope = 'daily';     // 'daily' | 'weekly'
+let modalDays = new Set([0,1,2,3,4]); // days selected in modal
+
+// Storage key per ISO week string
+function weekKey(offset) {
+  const mon = getMondayOfWeek(offset);
+  return 'ht_' + mon.toISOString().slice(0, 10);
+}
+
+// Data shape: { goals: [], tallies: [], weeklyGoals: [], completion: {} }
+// completion[goalId][dateStr] = true/false
+// tallies[id].counts[dateStr] = number
+
+function loadData() {
+  try { return JSON.parse(localStorage.getItem(weekKey(weekOffset)) || 'null') || defaultData(); }
+  catch(e) { return defaultData(); }
+}
+
+function defaultData() {
+  return {
+    goals: [
+      { id: g(), text: 'Morning walk', tag: 'workout', days: [0,1,2,3,4,5,6] },
+      { id: g(), text: 'Log weight', tag: 'health', days: [0,1,2,3,4,5,6] },
+      { id: g(), text: 'Stretch / mobility', tag: 'workout', days: [0,2,4] },
+    ],
+    tallies: [
+      { id: g(), text: 'Glasses of water', target: 8, days: [0,1,2,3,4,5,6] },
+    ],
+    weeklyGoals: [
+      { id: g(), text: 'Plan next week\'s workouts', day: 6, type: 'plan' },
+      { id: g(), text: 'Review week — wins & misses', day: 4, type: 'tally' },
+      { id: g(), text: 'Weigh in & note trends', day: 4, type: 'tally' },
+    ],
+    completion: {},
+    tallyCounts: {},
+  };
+}
+
+function saveData(data) {
+  localStorage.setItem(weekKey(weekOffset), JSON.stringify(data));
+}
+
+function g() { return Math.random().toString(36).slice(2, 9); }
+
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+function getMondayOfWeek(offset) {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun
+  const diff = (day === 0 ? -6 : 1 - day); // shift to Monday
+  const mon = new Date(now);
+  mon.setHours(0,0,0,0);
+  mon.setDate(now.getDate() + diff + (offset * 7));
+  return mon;
+}
+
+function getDateForDay(dayIndex, offset) {
+  const mon = getMondayOfWeek(offset);
+  const d = new Date(mon);
+  d.setDate(mon.getDate() + dayIndex);
+  return d;
+}
+
+function dateStr(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function todayIndex() {
+  // 0=Mon ... 6=Sun (returns -1 if not current week)
+  if (weekOffset !== 0) return -1;
+  const d = new Date().getDay();
+  return d === 0 ? 6 : d - 1;
+}
+
+function isToday(dayIndex) {
+  return dayIndex === todayIndex();
+}
+
+// ─── PIN ──────────────────────────────────────────────────────────────────────
+let pinBuffer = '';
+
+function pinPress(d) {
+  if (pinBuffer.length >= 4) return;
+  pinBuffer += d;
+  updateDots();
+  if (pinBuffer.length === 4) setTimeout(checkPin, 120);
+}
+function pinDel() {
+  pinBuffer = pinBuffer.slice(0, -1);
+  updateDots();
+  document.getElementById('pinError').textContent = '';
+  document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error'));
+}
+function updateDots() {
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById('d' + i);
+    dot.classList.toggle('filled', i < pinBuffer.length);
+    dot.classList.remove('error');
+  }
+}
+function checkPin() {
+  if (pinBuffer === PIN) {
+    document.getElementById('pinScreen').classList.add('hidden');
+    document.getElementById('mainApp').style.display = 'block';
+    // Auto-open today
+    const ti = todayIndex();
+    if (ti >= 0) openDays.add(ti);
+    render();
+  } else {
+    document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
+    document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
+    setTimeout(() => { pinBuffer = ''; updateDots(); document.getElementById('pinError').textContent = ''; }, 900);
+  }
+}
+function lockApp() {
+  pinBuffer = ''; updateDots();
+  document.getElementById('pinScreen').classList.remove('hidden');
+  document.getElementById('mainApp').style.display = 'none';
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  const data = loadData();
+  renderWeekLabel();
+  renderStats(data);
+  renderDays(data);
+}
+
+function renderWeekLabel() {
+  const mon = getMondayOfWeek(weekOffset);
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  const fmt = d => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  document.getElementById('weekLabel').textContent = fmt(mon) + ' – ' + fmt(sun);
+  document.getElementById('headerWeek').textContent = weekOffset === 0 ? 'This week' : weekOffset === -1 ? 'Last week' : weekOffset === 1 ? 'Next week' : fmt(mon);
+}
+
+function renderStats(data) {
+  const ti = todayIndex();
+  let doneToday = 0, totalToday = 0;
+  if (ti >= 0) {
+    const ds = dateStr(getDateForDay(ti, weekOffset));
+    data.goals.forEach(g => {
+      if (g.days.includes(ti)) {
+        totalToday++;
+        if (data.completion[g.id] && data.completion[g.id][ds]) doneToday++;
+      }
+    });
+  }
+
+  // Week completion rate
+  let weekDone = 0, weekTotal = 0;
+  for (let d = 0; d < 7; d++) {
+    const ds = dateStr(getDateForDay(d, weekOffset));
+    data.goals.forEach(g => {
+      if (g.days.includes(d)) {
+        weekTotal++;
+        if (data.completion[g.id] && data.completion[g.id][ds]) weekDone++;
+      }
+    });
+  }
+  const weekPct = weekTotal > 0 ? Math.round(weekDone / weekTotal * 100) : 0;
+
+  // Streak: count consecutive past days (from yesterday back) where all goals done
+  let streak = 0;
+  // simplified: count days this week where completion >= 50%
+  for (let d = 0; d <= (ti >= 0 ? ti : 6); d++) {
+    const ds = dateStr(getDateForDay(d, 0));
+    let dayDone = 0, dayTotal = 0;
+    data.goals.forEach(g => {
+      if (g.days.includes(d)) { dayTotal++; if (data.completion[g.id]?.[ds]) dayDone++; }
+    });
+    if (dayTotal > 0 && dayDone / dayTotal >= 0.5) streak++;
+  }
+
+  document.getElementById('statDone').textContent = totalToday > 0 ? doneToday + '/' + totalToday : '—';
+  document.getElementById('statWeekPct').textContent = weekPct + '%';
+  document.getElementById('statStreak').textContent = streak;
+}
+
+function renderDays(data) {
+  const list = document.getElementById('dayList');
+  list.innerHTML = '';
+
+  for (let d = 0; d < 7; d++) {
+    const dayDate = getDateForDay(d, weekOffset);
+    const ds = dateStr(dayDate);
+    const role = DAY_ROLES[d] || null;
+    const today = isToday(d) && weekOffset === 0;
+
+    // Count completions for this day
+    const dayGoals = data.goals.filter(g => g.days.includes(d));
+    const dayDone = dayGoals.filter(g => data.completion[g.id]?.[ds]).length;
+    const pct = dayGoals.length > 0 ? Math.round(dayDone / dayGoals.length * 100) : 0;
+
+    const isOpen = openDays.has(d);
+
+    const row = document.createElement('div');
+    row.className = 'day-row';
+    if (today) row.style.borderColor = 'rgba(126,184,247,0.35)';
+
+    // Badge
+    let badgeHtml = '';
+    if (today) badgeHtml = '<span class="day-badge active-day">Today</span>';
+    if (role?.type === 'plan') badgeHtml += '<span class="day-badge plan">' + role.label + '</span>';
+    if (role?.type === 'tally') badgeHtml += '<span class="day-badge tally">' + role.label + '</span>';
+
+    // Weekly goals for this day
+    const wGoals = data.weeklyGoals.filter(w => w.day === d);
+
+    // Build body HTML
+    let bodyHtml = '';
+
+    // Weekly banner if this day has weekly goals
+    if (wGoals.length > 0) {
+      const isTally = role?.type === 'tally';
+      bodyHtml += `<div class="weekly-banner${isTally ? ' tally' : ''}">
+        <div class="weekly-banner-label">${isTally ? '📊 Tally Day' : '📋 Planning Day'} — Weekly Goals</div>`;
+      wGoals.forEach(wg => {
+        const wdone = data.completion['w_' + wg.id]?.[ds];
+        bodyHtml += `<div class="goal-item">
+          <div class="goal-check${wdone ? ' done' : ''}" onclick="toggleWeeklyGoal('${wg.id}','${ds}')"></div>
+          <div class="goal-text${wdone ? ' done' : ''}">${wg.text}</div>
+          <button class="goal-delete" onclick="deleteWeeklyGoal('${wg.id}')">×</button>
+        </div>`;
+      });
+      bodyHtml += `</div>`;
+    }
+
+    // Daily goals
+    bodyHtml += `<div class="goals-label">Daily Goals</div>`;
+    if (dayGoals.length === 0) {
+      bodyHtml += `<div class="empty-state">No goals — tap + to add one</div>`;
+    } else {
+      dayGoals.forEach(g => {
+        const done = data.completion[g.id]?.[ds];
+        const tagHtml = g.tag ? `<span class="goal-tag">${g.tag}</span>` : '';
+        bodyHtml += `<div class="goal-item">
+          <div class="goal-check${done ? ' done' : ''}" onclick="toggleGoal('${g.id}','${ds}')"></div>
+          <div class="goal-text${done ? ' done' : ''}">${g.text}</div>
+          ${tagHtml}
+          <button class="goal-delete" onclick="deleteGoal('${g.id}')">×</button>
+        </div>`;
+      });
+    }
+
+    // Tallies
+    const dayTallies = data.tallies.filter(t => t.days.includes(d));
+    if (dayTallies.length > 0) {
+      bodyHtml += `<div class="goals-label" style="margin-top:12px;">Tallies</div>`;
+      dayTallies.forEach(t => {
+        const count = data.tallyCounts[t.id]?.[ds] || 0;
+        const pctT = t.target > 0 ? Math.min(100, Math.round(count / t.target * 100)) : 0;
+        bodyHtml += `<div class="tally-item">
+          <div class="tally-label">${t.text}</div>
+          <div class="tally-controls">
+            <button class="tally-btn" onclick="adjustTally('${t.id}','${ds}',-1)">−</button>
+            <span class="tally-val">${count}</span>
+            <button class="tally-btn" onclick="adjustTally('${t.id}','${ds}',1)">+</button>
+          </div>
+          <span class="tally-target">/ ${t.target}</span>
+        </div>`;
+      });
+    }
+
+    // Add record button
+    bodyHtml += `<div class="add-record-btn" onclick="showModal(${d})">
+      <span style="font-size:18px;line-height:1;">+</span> Add record
+    </div>`;
+
+    row.innerHTML = `
+      <div class="day-header" onclick="toggleDay(${d}, event)">
+        <div class="day-name">${DAY_NAMES[d]}<span style="font-size:11px;color:var(--text3);font-weight:400;margin-left:6px;">${dayDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</span></div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${badgeHtml}
+          <div class="day-progress">
+            <div class="mini-bar"><div class="mini-bar-fill" style="width:${pct}%"></div></div>
+            <span class="day-pct">${dayGoals.length > 0 ? pct + '%' : '—'}</span>
+          </div>
+          <span class="day-chevron${isOpen ? ' open' : ''}">›</span>
+        </div>
+      </div>
+      <div class="day-body${isOpen ? ' open' : ''}">${bodyHtml}</div>
+    `;
+
+    list.appendChild(row);
+  }
+}
+
+// ─── Interactions ─────────────────────────────────────────────────────────────
+function toggleDay(dayIndex, e) {
+  if (e && e.target.closest('.goal-check, .tally-btn, .goal-delete, .add-record-btn')) return;
+  if (openDays.has(dayIndex)) openDays.delete(dayIndex);
+  else openDays.add(dayIndex);
+  render();
+}
+
+function toggleGoal(goalId, ds) {
+  const data = loadData();
+  if (!data.completion[goalId]) data.completion[goalId] = {};
+  data.completion[goalId][ds] = !data.completion[goalId][ds];
+  saveData(data);
+  render();
+}
+
+function toggleWeeklyGoal(goalId, ds) {
+  const data = loadData();
+  const key = 'w_' + goalId;
+  if (!data.completion[key]) data.completion[key] = {};
+  data.completion[key][ds] = !data.completion[key][ds];
+  saveData(data);
+  render();
+}
+
+function adjustTally(tallyId, ds, delta) {
+  const data = loadData();
+  if (!data.tallyCounts[tallyId]) data.tallyCounts[tallyId] = {};
+  const cur = data.tallyCounts[tallyId][ds] || 0;
+  data.tallyCounts[tallyId][ds] = Math.max(0, cur + delta);
+  saveData(data);
+  render();
+}
+
+function deleteGoal(goalId) {
+  const data = loadData();
+  data.goals = data.goals.filter(g => g.id !== goalId);
+  saveData(data);
+  render();
+}
+
+function deleteWeeklyGoal(goalId) {
+  const data = loadData();
+  data.weeklyGoals = data.weeklyGoals.filter(w => w.id !== goalId);
+  saveData(data);
+  render();
+}
+
+function shiftWeek(dir) {
+  weekOffset += dir;
+  render();
+}
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
+function showModal(dayIndex) {
+  modalDay = dayIndex;
+  modalType = 'goal';
+  modalScope = 'daily';
+  modalDays = new Set([0,1,2,3,4]);
+
+  document.getElementById('modalGoalText').value = '';
+  document.getElementById('modalTag').value = '';
+  document.getElementById('modalTallyTarget').value = '';
+  document.getElementById('modalTitle').textContent = 'Add Record — ' + DAY_NAMES[dayIndex];
+
+  // Reset type seg
+  document.querySelectorAll('#typeSegment .seg-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('#typeSegment .seg-btn').classList.add('active');
+  document.getElementById('tallyTargetField').style.display = 'none';
+
+  // Reset scope seg
+  document.querySelectorAll('#scopeSegment .seg-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('#scopeSegment .seg-btn').classList.add('active');
+
+  // Set day segment default — weekdays active, day of modal highlighted
+  document.querySelectorAll('#daySegment .seg-btn').forEach((b, i) => {
+    const isDefault = i < 5;
+    b.classList.toggle('active', isDefault);
+    if (isDefault) modalDays.add(i); else modalDays.delete(i);
+  });
+  // Highlight the specific day
+  const dayBtn = document.querySelector(`#daySegment .seg-btn[data-day="${dayIndex}"]`);
+  if (dayBtn) { dayBtn.classList.add('active'); modalDays.add(dayIndex); }
+
+  document.getElementById('weekdayField').style.display = 'block';
+  document.getElementById('modalOverlay').classList.add('visible');
+  setTimeout(() => document.getElementById('modalGoalText').focus(), 280);
+}
+
+function hideModal() {
+  document.getElementById('modalOverlay').classList.remove('visible');
+}
+
+function selectType(t) {
+  modalType = t;
+  document.querySelectorAll('#typeSegment .seg-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`#typeSegment .seg-btn[onclick="selectType('${t}')"]`).classList.add('active');
+  document.getElementById('tallyTargetField').style.display = t === 'tally' ? 'block' : 'none';
+}
+
+function selectScope(s) {
+  modalScope = s;
+  document.querySelectorAll('#scopeSegment .seg-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`#scopeSegment .seg-btn[onclick="selectScope('${s}')"]`).classList.add('active');
+  // Weekly goals go on a single day; daily goals go across selected days
+  document.getElementById('weekdayField').style.display = s === 'daily' ? 'block' : 'none';
+  if (s === 'weekly') document.getElementById('tallyTargetField').style.display = 'none';
+}
+
+function toggleDay(d) {
+  const btn = document.querySelector(`#daySegment .seg-btn[data-day="${d}"]`);
+  if (!btn) return;
+  if (modalDays.has(d)) { modalDays.delete(d); btn.classList.remove('active'); }
+  else { modalDays.add(d); btn.classList.add('active'); }
+}
+
+function confirmAdd() {
+  const text = document.getElementById('modalGoalText').value.trim();
+  if (!text) { document.getElementById('modalGoalText').focus(); return; }
+  const tag = document.getElementById('modalTag').value.trim();
+  const data = loadData();
+
+  if (modalScope === 'weekly') {
+    const role = DAY_ROLES[modalDay];
+    data.weeklyGoals.push({ id: g(), text, day: modalDay, type: role?.type || 'plan' });
+    showToast('Weekly goal added ✓', 'success');
+  } else if (modalType === 'tally') {
+    const target = parseInt(document.getElementById('modalTallyTarget').value) || 1;
+    data.tallies.push({ id: g(), text, target, tag, days: [...modalDays] });
+    showToast('Tally added ✓', 'success');
+  } else {
+    data.goals.push({ id: g(), text, tag, days: [...modalDays] });
+    showToast('Goal added ✓', 'success');
+  }
+
+  saveData(data);
+  hideModal();
+  render();
+}
+
+document.getElementById('modalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) hideModal();
+});
+document.getElementById('modalGoalText').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmAdd();
+  if (e.key === 'Escape') hideModal();
+});
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  setTimeout(() => { t.className = 'toast'; }, 2200);
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+// Override toggleDay so it doesn't conflict with modal day toggle
+// The day row toggle uses event delegation to avoid name collision
+document.getElementById('dayList').addEventListener('click', function(e) {});
+
+render();
+</script>
+</body>
+</html>
