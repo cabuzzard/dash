@@ -682,7 +682,6 @@ export default {
           },
           page_size: 100
         });
-
         const todos = (data.results || []).map(c => {
           const props = c.properties;
           return {
@@ -692,11 +691,9 @@ export default {
             time: props['Schedule Time']?.rich_text?.map(t=>t.plain_text).join('') || '',
           };
         });
-
         const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
         const today = new Date();
         const todayIdx = today.getDay();
-
         const week = [];
         for (let i = 0; i < 7; i++) {
           const dayIdx = (todayIdx + i) % 7;

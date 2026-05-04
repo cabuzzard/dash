@@ -1,7 +1,5 @@
 <!DOCTYPE html>
-
 <html lang="en">
-4--
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
@@ -245,17 +243,17 @@
   <div id="l1Publish" class="collapsible collapsed"></div>
 
   <div class="sec" style="margin-top:8px">
+    <div class="sec-label" style="font-size:12px;color:var(--text);">Daily To Do</div>
+  </div>
+
+  <div class="sec">
     <div class="sec-label" onclick="toggleSection('healthSched','healthChevron')" style="cursor:pointer">🫀 Health Schedule</div>
     <span class="sec-refresh" onclick="loadHealthSchedule()">↻</span>
     <span class="sec-toggle" id="healthChevron" onclick="toggleSection('healthSched','healthChevron')">▸</span>
   </div>
   <div id="healthSched" class="collapsible collapsed"></div>
 
-    <div class="sec" style="margin-top:8px">
-    <div class="sec-label" style="font-size:12px;color:var(--text);">Daily To Do</div>
-  </div>
-
-  <div class="sec">
+    <div class="sec">
     <div class="sec-label" onclick="toggleSection('tdContent','contentChevron')" style="cursor:pointer">📋 Daily Content</div>
     <span class="sec-refresh" onclick="loadTodosFor('daily content','tdContent')">↻</span>
     <span class="sec-toggle" id="contentChevron" onclick="toggleSection('tdContent','contentChevron')">▸</span>
@@ -588,6 +586,7 @@ function toggleSection(containerId, chevronId) {
     if (containerId === 'tdContent' && !el.dataset.loaded) { el.dataset.loaded=1; loadAllTodos(); }
     if (containerId === 'tdHousehold' && !el.dataset.loaded) { el.dataset.loaded=1; loadAllTodos(); }
     if (containerId === 'tdGet' && !el.dataset.loaded) { el.dataset.loaded=1; loadAllTodos(); }
+    if (containerId === 'healthSched' && !el.dataset.loaded) { el.dataset.loaded=1; loadHealthSchedule(); }
   }
 }
 
@@ -1090,7 +1089,6 @@ async function loadHealthSchedule() {
         '<div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);">'+dayGroup.label+'</div>'+
         '<div style="font-size:11px;color:var(--text3);">'+dayGroup.date+'</div>';
       el.appendChild(hdr);
-
       dayGroup.todos.forEach(t => {
         const row = document.createElement('a');
         row.href = 'https://www.notion.so/' + t.id;
