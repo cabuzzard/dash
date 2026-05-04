@@ -576,9 +576,9 @@ function toggleSection(containerId, chevronId) {
     if (containerId === 'l1Explode' && !el.dataset.loaded) { el.dataset.loaded=1; loadExplodeQueue(); }
     if (containerId === 'l1Publish' && !el.dataset.loaded) { el.dataset.loaded=1; loadPublishQueue(); }
     if (containerId === 'l1Sites' && !el.dataset.loaded) { el.dataset.loaded=1; renderL1(); }
-    if (containerId === 'tdContent' && !el.dataset.loaded) { el.dataset.loaded=1; loadTodosFor('daily content','tdContent'); }
-    if (containerId === 'tdHousehold' && !el.dataset.loaded) { el.dataset.loaded=1; loadTodosFor('daily household','tdHousehold'); }
-    if (containerId === 'tdGet' && !el.dataset.loaded) { el.dataset.loaded=1; loadTodosFor('get','tdGet'); }
+    if (containerId === 'tdContent' && !el.dataset.loaded) { el.dataset.loaded=1; loadAllTodos(); }
+    if (containerId === 'tdHousehold' && !el.dataset.loaded) { el.dataset.loaded=1; loadAllTodos(); }
+    if (containerId === 'tdGet' && !el.dataset.loaded) { el.dataset.loaded=1; loadAllTodos(); }
   }
 }
 
