@@ -247,21 +247,21 @@
   </div>
 
   <div class="sec">
-    <div class="sec-label">📋 Daily Content</div>
+    <div class="sec-label" onclick="toggleSection('tdContent','contentChevron')" style="cursor:pointer">📋 Daily Content</div>
     <span class="sec-refresh" onclick="loadTodosFor('daily content','tdContent')">↻</span>
     <span class="sec-toggle" id="contentChevron" onclick="toggleSection('tdContent','contentChevron')">▸</span>
   </div>
   <div id="tdContent" class="collapsible collapsed"></div>
 
   <div class="sec">
-    <div class="sec-label">🏠 Daily Household</div>
+    <div class="sec-label" onclick="toggleSection('tdHousehold','householdChevron')" style="cursor:pointer">🏠 Daily Household</div>
     <span class="sec-refresh" onclick="loadTodosFor('daily household','tdHousehold')">↻</span>
     <span class="sec-toggle" id="householdChevron" onclick="toggleSection('tdHousehold','householdChevron')">▸</span>
   </div>
   <div id="tdHousehold" class="collapsible collapsed"></div>
 
   <div class="sec">
-    <div class="sec-label">🛒 Get</div>
+    <div class="sec-label" onclick="toggleSection('tdGet','getChevron')" style="cursor:pointer">🛒 Get</div>
     <span class="sec-refresh" onclick="loadTodosFor('get','tdGet')">↻</span>
     <span class="sec-toggle" id="getChevron" onclick="toggleSection('tdGet','getChevron')">▸</span>
   </div>
