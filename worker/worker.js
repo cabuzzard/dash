@@ -687,7 +687,7 @@ export default {
           const props = c.properties;
           return {
             id: c.id.replace(/-/g,''),
-            name: props.Name?.title?.map(t=>t.plain_text).join('') || '',
+            name: props.Title?.title?.map(t=>t.plain_text).join('') || props.Name?.title?.map(t=>t.plain_text).join('') || '',
             day: props['Schedule Day']?.select?.name || '',
             time: props['Schedule Time']?.rich_text?.map(t=>t.plain_text).join('') || '',
           };
