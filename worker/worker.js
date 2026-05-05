@@ -256,7 +256,7 @@ async function getTodos() {
   if (!data.results) return [];
   const todos = await Promise.all(data.results.map(async (page) => {
     const props = page.properties;
-    const name = props.Name?.title?.map(t=>t.plain_text).join("") || "Untitled";
+    const name = props.Title?.title?.map(t=>t.plain_text).join("") || props.Name?.title?.map(t=>t.plain_text).join("") || "Untitled";
     const priorities = props.priority?.multi_select?.map(s=>s.name) || [];
     const site = props.site?.multi_select?.map(s=>s.name).join(", ") || "";
     const campaignRefs = props.campaign?.relation || [];
@@ -497,7 +497,7 @@ export default {
           const platformName = platformInfo.name || 'Other';
           const platformUrl = platformInfo.url || '';
           const campaignInfo = campaignById[l.campaignId] || {};
-          const campaignName = campaignInfo.name || 'Other';
+          const campaignName = campaignInfo.name || l.name;
           const site = campaignInfo.site || 'Other';
           return { ...l, platformName, platformUrl, campaignName, site };
         });
