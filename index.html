@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
------6
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
@@ -911,10 +910,12 @@ async function loadPlatforms() {
     if (!data.campaigns?.length) { el.innerHTML='<div class="empty">No logins found.</div>'; return; }
 
     data.campaigns.forEach(group => {
-      // Platform header
+      // Platform header with link
       const hdr = document.createElement('div');
-      hdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);margin:16px 0 8px;';
-      hdr.textContent = group.platformName;
+      hdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);margin:16px 0 8px;display:flex;align-items:center;gap:8px;';
+      const firstLogin = group.logins[0];
+      const pUrl = firstLogin?.platformUrl || '';
+      hdr.innerHTML = group.platformName + (pUrl ? ' <a href="'+pUrl+'" target="_blank" style="font-size:10px;color:var(--text3);text-decoration:none;font-weight:400;letter-spacing:0;">↗</a>' : '');
       el.appendChild(hdr);
 
       // Login rows — grouped by platform, db link + platform url
@@ -924,7 +925,7 @@ async function loadPlatforms() {
         row.target = '_blank';
         row.className = 'row';
         row.style.marginBottom = '6px';
-        const displayName = login.name.includes(' × ') ? login.name.split(' × ').slice(1).join(' × ') : login.name;
+        const displayName = login.campaignName || login.name;
         const platformLink = login.accountUrl
           ? '<a href="'+login.accountUrl+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:var(--text2);border:1px solid var(--border2);text-decoration:none;margin-left:6px;">↗ Site</a>'
           : '';

@@ -491,14 +491,15 @@ export default {
           };
         });
 
-        // Parse each login — extract platform + campaign names, resolve site
+        // Parse each login — use platform relation for grouping, campaign relation for site
         const parsed = logins.map(l => {
-          const parts = l.name.split(' × ');
-          const platformName = parts[0] || l.name;
-          const campaignName = parts.length > 1 ? parts.slice(1).join(' × ') : 'Other';
-          const campaignInfo = campaignById[l.campaignId.replace(/-/g,'')] || {};
+          const platformInfo = platformById[l.platformId] || {};
+          const platformName = platformInfo.name || 'Other';
+          const platformUrl = platformInfo.url || '';
+          const campaignInfo = campaignById[l.campaignId] || {};
+          const campaignName = campaignInfo.name || 'Other';
           const site = campaignInfo.site || 'Other';
-          return { ...l, platformName, campaignName, site };
+          return { ...l, platformName, platformUrl, campaignName, site };
         });
 
         // Sort by platform → site → campaign
