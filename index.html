@@ -916,21 +916,26 @@ async function loadPlatforms() {
       hdr.textContent = group.platformName;
       el.appendChild(hdr);
 
-      // Login rows — site · campaign
+      // Login rows — grouped by platform, db link + platform url
       group.logins.forEach(login => {
         const row = document.createElement('a');
-        row.href = login.accountUrl || nUrl(login.id);
+        row.href = nUrl(login.id);
         row.target = '_blank';
         row.className = 'row';
         row.style.marginBottom = '6px';
-        // Strip "Platform × " prefix to show just the campaign name
         const displayName = login.name.includes(' × ') ? login.name.split(' × ').slice(1).join(' × ') : login.name;
+        const platformLink = login.accountUrl
+          ? '<a href="'+login.accountUrl+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:var(--text2);border:1px solid var(--border2);text-decoration:none;margin-left:6px;">↗ Site</a>'
+          : '';
         row.innerHTML =
           '<div class="row-body">'+
             '<div class="row-name">'+displayName+'</div>'+
             '<div class="row-meta">'+login.site+(login.username?' · '+login.username:'')+'</div>'+
           '</div>'+
-          '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:'+(login.status==='Active'?'#44ff44':'var(--text3)')+';border:1px solid var(--border2);">'+login.status+'</span>';
+          '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'+
+            '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:'+(login.status==='Active'?'#44ff44':'var(--text3)')+';border:1px solid var(--border2);">'+login.status+'</span>'+
+            platformLink+
+          '</div>';
         el.appendChild(row);
       });
     });
