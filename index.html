@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------3<head>
+-----5<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -911,7 +911,7 @@ async function showNewCampaignModal() {
   document.getElementById('campaignModalOverlay').classList.add('visible');
 
   try {
-    const data = await call('getCampaigns');
+    const data = await call('getAllCampaigns');
     allCampaignsForModal = data.campaigns || [];
     renderAssocList('');
   } catch(e) {

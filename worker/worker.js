@@ -402,8 +402,9 @@ export default {
       }
 
       // Asset content for clipboard copy
-      if (action === "getCampaigns") {
+      if (action === "getAllCampaigns") {
         const data = await notionPost(`/databases/${CAMPAIGNS_DB}/query`, {
+          filter: { property: "Status", select: { does_not_equal: "Delete" } },
           sorts: [{ property: "Name", direction: "ascending" }],
           page_size: 100
         });
