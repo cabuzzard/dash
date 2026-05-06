@@ -426,7 +426,11 @@ export default {
         if (site) props.site = { select: { name: site } };
         if (day) props["Schedule Day"] = { select: { name: day } };
         if (associatedIds && associatedIds.length > 0) {
-          props["Associated Campaigns"] = { relation: associatedIds.map(id => ({ id })) };
+          props["Associated Campaigns"] = { relation: associatedIds.map(id => {
+            // Reformat to dashed UUID if needed
+            const dashed = id.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+            return { id: dashed };
+          }) };
         }
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
