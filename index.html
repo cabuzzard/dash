@@ -825,7 +825,29 @@ async function renderL4(title) {
           }
         };
 
-        wrapper.appendChild(link); wrapper.appendChild(copyBtn);
+        const pubBtn = document.createElement('button');
+        pubBtn.className = 'copy-btn '+cls;
+        pubBtn.textContent = isPublished ? '✓' : '📤';
+        pubBtn.title = isPublished ? 'Already Published' : 'Mark as Published';
+        pubBtn.disabled = isPublished;
+        pubBtn.onclick = async e => {
+          e.preventDefault();
+          pubBtn.textContent='⏳'; pubBtn.disabled=true;
+          try {
+            await call('markPublished', { assetId: asset.id });
+            pubBtn.textContent='✓';
+            pubBtn.style.color='#44ff44';
+            link.querySelector('.asset-meta').textContent=(asset.type||'')+' · Published ✓';
+            showToast('Marked as published ✓','success');
+          } catch(err) {
+            pubBtn.textContent='✗';
+            pubBtn.disabled=false;
+            setTimeout(()=>{ pubBtn.textContent='📤'; pubBtn.style.color=''; },2000);
+            showToast('Failed: '+err.message,'error');
+          }
+        };
+
+        wrapper.appendChild(link); wrapper.appendChild(copyBtn); wrapper.appendChild(pubBtn);
         el.appendChild(wrapper);
       });
     });

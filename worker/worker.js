@@ -402,6 +402,17 @@ export default {
       }
 
       // Asset content for clipboard copy
+      if (action === "markPublished") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: 'assetId required' }, 400);
+        await notionPatch(`/pages/${assetId}`, {
+          properties: {
+            "Asset Status": { select: { name: "Published" } }
+          }
+        });
+        return json({ success: true });
+      }
+
       if (action === "getAssetContent") {
         const { assetId } = body;
         if (!assetId) return json({ error:"assetId required" }, 400);
