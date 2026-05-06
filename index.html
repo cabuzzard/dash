@@ -328,9 +328,7 @@
     <div class="sec-label">📅 Weekly Schedule</div>
     <span class="sec-refresh" onclick="loadWeeklySchedule()">↻</span>
   </div>
-  <a href="https://www.notion.so/087b1163b4e64975bc7a4b686ff801de?newRecord=true" target="_blank" style="display:flex;align-items:center;justify-content:center;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;text-decoration:none;gap:6px;margin-bottom:8px;">
-    + New Campaign
-  </a>
+  <button onclick="showNewCampaignModal()" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;">+ New Campaign</button>
   <button onclick="showAllCampaigns()" style="width:100%;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;margin-bottom:16px;">
     📋 View All Campaigns →
   </button>
@@ -381,6 +379,47 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- New Campaign Modal -->
+<div class="modal-overlay" id="campaignModalOverlay">
+  <div class="modal" style="max-height:85vh;overflow-y:auto;">
+    <div class="modal-title">New Campaign</div>
+
+    <input class="modal-input" id="campName" type="text" placeholder="Campaign name..." />
+
+    <select class="modal-input" id="campSite" style="cursor:pointer;">
+      <option value="">Select site...</option>
+      <option value="Mountainwize Coaching">⛰️ Mountainwize Coaching</option>
+      <option value="Webguy Business Services">🖥️ Webguy Business Services</option>
+      <option value="Mobility Mentor">♿ Mobility Mentor</option>
+      <option value="Affiliates">💰 Affiliates</option>
+      <option value="Hermes">🤖 Hermes</option>
+      <option value="Household">🏠 Household</option>
+      <option value="Main Business">🏢 Main Business</option>
+    </select>
+
+    <select class="modal-input" id="campDay" style="cursor:pointer;">
+      <option value="">Select schedule day...</option>
+      <option>Monday</option>
+      <option>Tuesday</option>
+      <option>Wednesday</option>
+      <option>Thursday</option>
+      <option>Friday</option>
+      <option>Saturday</option>
+      <option>Sunday</option>
+    </select>
+
+    <div style="font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">Associated Campaigns</div>
+    <input class="modal-input" id="campAssocSearch" type="text" placeholder="Search campaigns..." oninput="filterAssocCampaigns()" style="margin-bottom:6px;" />
+    <div id="campAssocList" style="max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:12px;"></div>
+    <div id="campAssocSelected" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" style="flex:0;padding:0 20px" onclick="hideCampaignModal()">Cancel</button>
+      <button class="btn btn-primary" id="campCreateBtn" onclick="createCampaign()">Create</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -856,6 +895,100 @@ async function renderL4(title) {
 
 // ── MODAL ─────────────────────────────────────────────────────────────
 function hideModal() { document.getElementById('modalOverlay').classList.remove('visible'); }
+
+// ── NEW CAMPAIGN MODAL ────────────────────────────────────────────────
+let allCampaignsForModal = [];
+let selectedAssocIds = [];
+
+async function showNewCampaignModal() {
+  selectedAssocIds = [];
+  document.getElementById('campName').value = '';
+  document.getElementById('campSite').value = '';
+  document.getElementById('campDay').value = '';
+  document.getElementById('campAssocSearch').value = '';
+  document.getElementById('campAssocSelected').innerHTML = '';
+  document.getElementById('campAssocList').innerHTML = '<div class="empty">Loading campaigns...</div>';
+  document.getElementById('campaignModalOverlay').classList.add('visible');
+
+  try {
+    const data = await call('getCampaigns');
+    allCampaignsForModal = data.campaigns || [];
+    renderAssocList('');
+  } catch(e) {
+    document.getElementById('campAssocList').innerHTML = '<div class="error-msg">Could not load campaigns.</div>';
+  }
+}
+
+function hideCampaignModal() {
+  document.getElementById('campaignModalOverlay').classList.remove('visible');
+}
+
+document.getElementById('campaignModalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) hideCampaignModal();
+});
+
+function filterAssocCampaigns() {
+  const q = document.getElementById('campAssocSearch').value.toLowerCase();
+  renderAssocList(q);
+}
+
+function renderAssocList(query) {
+  const el = document.getElementById('campAssocList');
+  el.innerHTML = '';
+  const filtered = allCampaignsForModal.filter(c =>
+    !selectedAssocIds.includes(c.id) &&
+    c.name.toLowerCase().includes(query)
+  );
+  if (!filtered.length) { el.innerHTML = '<div class="empty">No campaigns found.</div>'; return; }
+  filtered.forEach(c => {
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:13px;cursor:pointer;color:var(--text);';
+    row.textContent = (c.site ? c.site + ' · ' : '') + c.name;
+    row.onclick = () => {
+      selectedAssocIds.push(c.id);
+      renderAssocSelected();
+      renderAssocList(document.getElementById('campAssocSearch').value.toLowerCase());
+    };
+    el.appendChild(row);
+  });
+}
+
+function renderAssocSelected() {
+  const el = document.getElementById('campAssocSelected');
+  el.innerHTML = '';
+  selectedAssocIds.forEach(id => {
+    const c = allCampaignsForModal.find(x => x.id === id);
+    if (!c) return;
+    const tag = document.createElement('div');
+    tag.style.cssText = 'padding:4px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:20px;font-size:11px;color:var(--text);display:flex;align-items:center;gap:6px;cursor:pointer;';
+    tag.innerHTML = c.name + ' <span style="color:var(--text3);">✕</span>';
+    tag.onclick = () => {
+      selectedAssocIds = selectedAssocIds.filter(x => x !== id);
+      renderAssocSelected();
+      renderAssocList(document.getElementById('campAssocSearch').value.toLowerCase());
+    };
+    el.appendChild(tag);
+  });
+}
+
+async function createCampaign() {
+  const name = document.getElementById('campName').value.trim();
+  const site = document.getElementById('campSite').value;
+  const day = document.getElementById('campDay').value;
+  if (!name) { showToast('Please enter a campaign name','error'); return; }
+  const btn = document.getElementById('campCreateBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    await call('createCampaign', { name, site, day, associatedIds: selectedAssocIds });
+    hideCampaignModal();
+    showToast('Campaign created ✓', 'success');
+    loadWeeklySchedule();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create';
+  }
+}
 document.getElementById('modalOverlay').addEventListener('click', function(e) { if(e.target===this) hideModal(); });
 function confirmModal() { hideModal(); }
 

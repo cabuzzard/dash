@@ -402,6 +402,45 @@ export default {
       }
 
       // Asset content for clipboard copy
+      if (action === "getCampaigns") {
+        const data = await notionPost(`/databases/${CAMPAIGNS_DB}/query`, {
+          sorts: [{ property: "Name", direction: "ascending" }],
+          page_size: 100
+        });
+        const campaigns = (data.results || []).map(c => ({
+          id: c.id.replace(/-/g,''),
+          name: c.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
+          site: c.properties.site?.select?.name || '',
+        }));
+        return json({ campaigns });
+      }
+
+      if (action === "createCampaign") {
+        const { name, site, day, associatedIds } = body;
+        if (!name) return json({ error: 'name required' }, 400);
+        const props = {
+          Name: { title: [{ type: "text", text: { content: name } }] },
+          "Schedule Time": { rich_text: [{ type: "text", text: { content: "11:00" } }] },
+        };
+        if (site) props.site = { select: { name: site } };
+        if (day) props["Schedule Day"] = { select: { name: day } };
+        if (associatedIds && associatedIds.length > 0) {
+          props["Associated Campaigns"] = { relation: associatedIds.map(id => ({ id })) };
+        }
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ parent: { database_id: CAMPAIGNS_DB }, properties: props })
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || 'Create failed' }, resp.status);
+        return json({ success: true, id: result.id });
+      }
+
       if (action === "markPublished") {
         const { assetId } = body;
         if (!assetId) return json({ error: 'assetId required' }, 400);
