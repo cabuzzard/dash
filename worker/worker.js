@@ -424,7 +424,7 @@ export default {
           "Schedule Time": { rich_text: [{ type: "text", text: { content: "11:00" } }] },
         };
         if (site) props.site = { select: { name: site } };
-        if (day) props["Schedule Day"] = { select: { name: day } };
+        if (day) props["Schedule Day"] = { multi_select: [{ name: day }] };
         if (associatedIds && associatedIds.length > 0) {
           props["Associated Campaigns"] = { relation: associatedIds.map(id => {
             // Reformat to dashed UUID if needed
@@ -605,21 +605,24 @@ export default {
         const data = await notionPost(`/databases/${"087b1163b4e64975bc7a4b686ff801de"}/query`, {
           filter: {
             property: "Schedule Day",
-            select: { is_not_empty: true }
+            multi_select: { is_not_empty: true }
           },
           page_size: 100
         });
 
-        const campaigns = (data.results || []).map(c => {
+        // Expand campaigns across all their scheduled days
+        const campaigns = [];
+        (data.results || []).forEach(c => {
           const props = c.properties;
-          return {
+          const days_scheduled = (props['Schedule Day']?.multi_select || []).map(s => s.name);
+          const base = {
             id: c.id.replace(/-/g,''),
             name: props.Name?.title?.map(t=>t.plain_text).join('') || '',
             site: props.site?.select?.name || '',
             status: props.Status?.select?.name || '',
-            day: props['Schedule Day']?.select?.name || '',
             time: props['Schedule Time']?.rich_text?.map(t=>t.plain_text).join('') || '',
           };
+          days_scheduled.forEach(day => campaigns.push({ ...base, day }));
         });
 
         // Build ordered 7-day window starting from today
@@ -762,7 +765,7 @@ export default {
           return {
             id: c.id.replace(/-/g,''),
             name: props.Title?.title?.map(t=>t.plain_text).join('') || props.Name?.title?.map(t=>t.plain_text).join('') || '',
-            day: props['Schedule Day']?.select?.name || '',
+            day: (props['Schedule Day']?.multi_select || [])[0]?.name || '',
             time: props['Schedule Time']?.rich_text?.map(t=>t.plain_text).join('') || '',
           };
         });
