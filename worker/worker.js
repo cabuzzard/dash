@@ -346,7 +346,14 @@ export default {
             stage: props.Status?.select?.name || '',
             grouping: props.Grouping?.rich_text?.map(t=>t.plain_text).join('') || '',
             scheduled: props['Scheduled Date']?.date?.start || '',
+            site: props.Site?.rollup?.array?.map(r=>r.select?.name).filter(Boolean).join('') || '',
           };
+        });
+        // Sort by site then grouping
+        titles.sort((a,b) => {
+          const s = (a.site||'').localeCompare(b.site||'');
+          if (s !== 0) return s;
+          return (a.grouping||'').localeCompare(b.grouping||'');
         });
         return json({ titles });
       }
@@ -411,7 +418,7 @@ export default {
           body: JSON.stringify({
             parent: { database_id: MAIN_TD_DB_ID },
             properties: {
-              Name: { title: [{ type: "text", text: { content: name } }] },
+              Title: { title: [{ type: "text", text: { content: name } }] },
               priority: { multi_select: [{ name: priority }] }
             }
           })

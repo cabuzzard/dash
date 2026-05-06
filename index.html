@@ -598,19 +598,46 @@ async function loadPublishQueue() {
     const data = await call('getPublishQueue');
     el.innerHTML = '';
     if (!data.titles?.length) { el.innerHTML='<div class="empty">Nothing queued.</div>'; return; }
+
+    // Group by site then campaign
+    const siteGroups = {};
     data.titles.forEach(t => {
-      const row = document.createElement('a');
-      row.href = nUrl(t.id); row.target='_blank';
-      row.className = 'row';
-      row.innerHTML =
-        '<div class="row-body">'+
-          '<div class="row-name">'+t.title+'</div>'+
-          '<div class="row-meta">'+(t.grouping||'')+(t.scheduled?' · '+t.scheduled:'')+'</div>'+
-        '</div>'+
-        '<a href="'+nUrl(t.id)+'" target="_blank" class="badge badge-publish" onclick="event.stopPropagation()">↗ DB</a>';
-      // Tap goes to assets
-      row.onclick = e => { e.preventDefault(); state.title=t; renderL4(t); };
-      el.appendChild(row);
+      const site = t.site || 'Other';
+      if (!siteGroups[site]) siteGroups[site] = {};
+      const campaign = t.grouping || 'Uncategorized';
+      if (!siteGroups[site][campaign]) siteGroups[site][campaign] = [];
+      siteGroups[site][campaign].push(t);
+    });
+
+    Object.keys(siteGroups).sort().forEach(site => {
+      // Site header
+      const siteHdr = document.createElement('div');
+      siteHdr.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);margin:14px 0 6px;';
+      siteHdr.textContent = site;
+      el.appendChild(siteHdr);
+
+      Object.keys(siteGroups[site]).sort().forEach(campaign => {
+        // Campaign header
+        const campHdr = document.createElement('div');
+        campHdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin:8px 0 4px;';
+        campHdr.textContent = campaign;
+        el.appendChild(campHdr);
+
+        siteGroups[site][campaign].forEach(t => {
+          const row = document.createElement('a');
+          row.href = nUrl(t.id); row.target='_blank';
+          row.className = 'row';
+          row.style.marginBottom = '6px';
+          row.innerHTML =
+            '<div class="row-body">'+
+              '<div class="row-name">'+t.title+'</div>'+
+              (t.scheduled?'<div class="row-meta">'+t.scheduled+'</div>':'')+
+            '</div>'+
+            '<a href="'+nUrl(t.id)+'" target="_blank" class="badge badge-publish" onclick="event.stopPropagation()">↗ DB</a>';
+          row.onclick = e => { e.preventDefault(); state.title=t; renderL4(t); };
+          el.appendChild(row);
+        });
+      });
     });
   } catch(e) { el.innerHTML='<div class="error-msg">Could not load.</div>'; }
 }
