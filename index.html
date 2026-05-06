@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------5<head>
+-----7<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -604,7 +604,7 @@ async function loadPublishQueue() {
     data.titles.forEach(t => {
       const site = t.site || 'Other';
       if (!siteGroups[site]) siteGroups[site] = {};
-      const campaign = t.grouping || 'Uncategorized';
+      const campaign = t.campaign || 'Uncategorized';
       if (!siteGroups[site][campaign]) siteGroups[site][campaign] = [];
       siteGroups[site][campaign].push(t);
     });

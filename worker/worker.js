@@ -333,6 +333,16 @@ export default {
 
       // L1 publish queue — all publish titles across all campaigns
       if (action === "getPublishQueue") {
+        // Fetch all campaigns for lookup
+        const campData = await notionPost(`/databases/${"5e9f152a-bd65-4776-a81a-b6e85980cc41"}/query`, { page_size: 100 });
+        const campById = {};
+        (campData.results || []).forEach(c => {
+          campById[c.id.replace(/-/g,'')] = {
+            name: c.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
+            site: c.properties.site?.select?.name || c.properties.Site?.select?.name || '',
+          };
+        });
+
         const data = await notionPost(`/databases/${CONTENT_STRATEGY_DB}/query`, {
           filter: { property:"Status", select:{ equals:"Publish" } },
           sorts: [{ property:"Sequence Order", direction:"ascending" }],
@@ -340,20 +350,22 @@ export default {
         });
         const titles = (data.results || []).map(page => {
           const props = page.properties;
+          const campaignRel = props.Campaign?.relation || [];
+          const campId = campaignRel.length > 0 ? campaignRel[0].id.replace(/-/g,'') : '';
+          const campInfo = campById[campId] || {};
           return {
             id: page.id.replace(/-/g,''),
             title: props.Title?.title?.map(t=>t.plain_text).join('') || 'Untitled',
             stage: props.Status?.select?.name || '',
-            grouping: props.Grouping?.rich_text?.map(t=>t.plain_text).join('') || '',
             scheduled: props['Scheduled Date']?.date?.start || '',
-            site: props.Site?.rollup?.array?.map(r=>r.select?.name).filter(Boolean).join('') || '',
+            campaign: campInfo.name || '',
+            site: campInfo.site || props.Site?.rollup?.array?.map(r=>r.select?.name).filter(Boolean).join('') || '',
           };
         });
-        // Sort by site then grouping
         titles.sort((a,b) => {
-          const s = (a.site||'').localeCompare(b.site||'');
+          const s = (a.site||'zzz').localeCompare(b.site||'zzz');
           if (s !== 0) return s;
-          return (a.grouping||'').localeCompare(b.grouping||'');
+          return (a.campaign||'zzz').localeCompare(b.campaign||'zzz');
         });
         return json({ titles });
       }
