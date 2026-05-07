@@ -111,11 +111,27 @@ async function getCampaigns(siteName) {
     sorts: [{ property: "Name", direction: "ascending" }],
     page_size: 50
   });
+
+  // Collect all cat relation IDs to resolve
+  const catIds = new Set();
+  (data.results || []).forEach(page => {
+    (page.properties.cat?.relation || []).forEach(r => catIds.add(r.id));
+  });
+
+  // Fetch method names
+  const methodNames = {};
+  await Promise.all([...catIds].map(async id => {
+    try {
+      const m = await notionGet(`/pages/${id}`);
+      methodNames[id] = m.properties?.Name?.title?.map(t => t.plain_text).join('') || '';
+    } catch(e) { methodNames[id] = ''; }
+  }));
+
   return (data.results || []).map(page => ({
     id: page.id.replace(/-/g, ''),
     name: page.properties.Name?.title?.map(t => t.plain_text).join('') || 'Untitled',
     status: page.properties.Status?.select?.name || '',
-    cat: (page.properties.cat?.multi_select || []).map(s=>s.name)[0] || '',
+    cat: (page.properties.cat?.relation || []).map(r => methodNames[r.id] || '').filter(Boolean).join(', ') || '',
   }));
 }
 
@@ -321,10 +337,7 @@ export default {
         const siteName = SITE_DB_NAMES[siteKey];
         if (!siteName) return json({ error:"Unknown site key" }, 400);
         const campaigns = await getCampaigns(siteName);
-        // Fetch cat options from DB schema
-        const dbMeta = await notionGet(`/databases/${CAMPAIGNS_DB}`);
-        const catOptions = (dbMeta.properties?.cat?.multi_select?.options || []).map(o => o.name);
-        return json({ campaigns, catOptions });
+        return json({ campaigns });
       }
 
       // L3: Get titles for a campaign
@@ -407,15 +420,44 @@ export default {
 
       // Asset content for clipboard copy
       if (action === "setCampaignCat") {
-        const { campaignId, cat } = body;
-        if (!campaignId || !cat) return json({ error: 'campaignId and cat required' }, 400);
+        const { campaignId, methodId } = body;
+        if (!campaignId || !methodId) return json({ error: 'campaignId and methodId required' }, 400);
         const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+        const mDashed = methodId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
         await notionPatch(`/pages/${dashed}`, {
           properties: {
-            cat: { multi_select: [{ name: cat }] }
+            cat: { relation: [{ id: mDashed }] }
           }
         });
         return json({ success: true });
+      }
+
+      if (action === "createMethod") {
+        const { name } = body;
+        if (!name) return json({ error: 'name required' }, 400);
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: "3ad260f2-ec9c-4dc7-8f3c-561f595f9455" },
+            properties: { Name: { title: [{ type: "text", text: { content: name } }] } }
+          })
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || 'Create failed' }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,'') });
+      }
+
+      if (action === "getMethodsForCat") {
+        const data = await notionPost(`/databases/${"3ad260f2-ec9c-4dc7-8f3c-561f595f9455"}/query`, {
+          sorts: [{ property: "Name", direction: "ascending" }],
+          page_size: 100
+        });
+        const methods = (data.results || []).map(m => ({
+          id: m.id.replace(/-/g,''),
+          name: m.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
+        }));
+        return json({ methods });
       }
 
       if (action === "getAllCampaigns") {
@@ -668,15 +710,44 @@ export default {
       }
 
       if (action === "setCampaignCat") {
-        const { campaignId, cat } = body;
-        if (!campaignId || !cat) return json({ error: 'campaignId and cat required' }, 400);
+        const { campaignId, methodId } = body;
+        if (!campaignId || !methodId) return json({ error: 'campaignId and methodId required' }, 400);
         const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+        const mDashed = methodId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
         await notionPatch(`/pages/${dashed}`, {
           properties: {
-            cat: { multi_select: [{ name: cat }] }
+            cat: { relation: [{ id: mDashed }] }
           }
         });
         return json({ success: true });
+      }
+
+      if (action === "createMethod") {
+        const { name } = body;
+        if (!name) return json({ error: 'name required' }, 400);
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: "3ad260f2-ec9c-4dc7-8f3c-561f595f9455" },
+            properties: { Name: { title: [{ type: "text", text: { content: name } }] } }
+          })
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || 'Create failed' }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,'') });
+      }
+
+      if (action === "getMethodsForCat") {
+        const data = await notionPost(`/databases/${"3ad260f2-ec9c-4dc7-8f3c-561f595f9455"}/query`, {
+          sorts: [{ property: "Name", direction: "ascending" }],
+          page_size: 100
+        });
+        const methods = (data.results || []).map(m => ({
+          id: m.id.replace(/-/g,''),
+          name: m.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
+        }));
+        return json({ methods });
       }
 
       if (action === "getAllCampaigns") {

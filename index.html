@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------524<head>
+-----5654<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -746,10 +746,7 @@ async function renderL2(site) {
     const data = await call('getCampaigns', { siteKey: site.key });
     el.innerHTML = '';
     if (!data.campaigns?.length) { el.innerHTML='<div class="empty">No campaigns found.</div>'; return; }
-    if (data.catOptions?.length) {
-      CAT_OPTIONS.length = 0;
-      data.catOptions.forEach(o => CAT_OPTIONS.push(o));
-    }
+
     const grid = document.createElement('div');
     grid.className = 'card-grid';
     // Group by cat, uncategorized last
@@ -974,28 +971,28 @@ function hideCatPicker() {
   catPickerCampaign = null;
 }
 
-function renderCatOptions(opts) {
+function renderCatOptions() {
   const el = document.getElementById('catPickerOptions');
   el.innerHTML = '';
-  opts.forEach(opt => {
+  allMethodsForCat.forEach(method => {
     const btn = document.createElement('button');
-    const isSelected = catPickerCampaign?.cat === opt;
+    const isSelected = catPickerCampaign?.cat === method.name;
     btn.style.cssText = 'width:100%;padding:8px 12px;background:'+(isSelected?'var(--accent)':'var(--bg)')+';color:'+(isSelected?'#000':'var(--text)')+';border:1px solid '+(isSelected?'var(--accent)':'var(--border2)')+';border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;text-align:left;font-family:"DM Sans",sans-serif;';
-    btn.textContent = opt;
-    btn.onclick = () => selectCat(opt);
+    btn.textContent = method.name;
+    btn.onclick = () => selectCat(method.id, method.name);
     el.appendChild(btn);
   });
 }
 
-async function selectCat(cat) {
+async function selectCat(methodId, methodName) {
   if (!catPickerCampaign) return;
   const campaign = catPickerCampaign;
   hideCatPicker();
   try {
-    await call('setCampaignCat', { campaignId: campaign.id, cat });
-    campaign.cat = cat;
-    if (catPickerCallback) catPickerCallback(cat);
-    showToast('Category set to "'+cat+'" ✓', 'success');
+    await call('setCampaignCat', { campaignId: campaign.id, methodId });
+    campaign.cat = methodName;
+    if (catPickerCallback) catPickerCallback(methodName);
+    showToast('Category set to "'+methodName+'" ✓', 'success');
   } catch(e) {
     showToast('Failed: '+e.message, 'error');
   }
@@ -1004,8 +1001,14 @@ async function selectCat(cat) {
 async function addNewCat() {
   const val = document.getElementById('catPickerNewInput').value.trim();
   if (!val) return;
-  if (!CAT_OPTIONS.includes(val)) CAT_OPTIONS.push(val);
-  await selectCat(val);
+  // Create new Methods record then set it
+  try {
+    const data = await call('createMethod', { name: val });
+    allMethodsForCat.push({ id: data.id, name: val });
+    await selectCat(data.id, val);
+  } catch(e) {
+    showToast('Failed to create: '+e.message, 'error');
+  }
 }
 
 // ── NEW CAMPAIGN MODAL ────────────────────────────────────────────────
