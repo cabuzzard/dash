@@ -664,6 +664,7 @@ export default {
           name: c.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
           site: c.properties.site?.select?.name || 'Other',
           status: c.properties.Status?.select?.name || '',
+          cat: (c.properties.cat?.multi_select || []).map(s=>s.name)[0] || '',
         }));
         // Group by site
         const siteMap = {};
