@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------521212121212<head>
+-----2<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -951,19 +951,25 @@ let catPickerCampaign = null;
 let catPickerCallback = null;
 const CAT_OPTIONS = ['lg', 'ctnt', 'aff', 'main'];
 
-function showCatPicker(e, campaign, onSet) {
+async function showCatPicker(e, campaign, onSet) {
   e.stopPropagation();
   catPickerCampaign = campaign;
   catPickerCallback = onSet;
   const panel = document.getElementById('catPickerPanel');
   const overlay = document.getElementById('catPickerOverlay');
   const rect = e.target.getBoundingClientRect();
-  // Position near the button
   panel.style.top = Math.min(rect.bottom + 6, window.innerHeight - 260) + 'px';
   panel.style.left = Math.max(rect.left - 100, 8) + 'px';
-  renderCatOptions(CAT_OPTIONS);
+  document.getElementById('catPickerOptions').innerHTML = '<div class="empty">Loading...</div>';
   document.getElementById('catPickerNewInput').value = '';
   overlay.style.display = 'block';
+  try {
+    const data = await call('getMethodsForCat');
+    allMethodsForCat = data.methods || [];
+    renderCatOptions();
+  } catch(err) {
+    document.getElementById('catPickerOptions').innerHTML = '<div class="error-msg">Could not load.</div>';
+  }
 }
 
 function hideCatPicker() {
