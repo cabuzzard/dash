@@ -741,7 +741,10 @@ async function renderL2(site) {
       card.className = 'card';
       card.innerHTML =
         '<div class="card-name">'+campaign.name+'</div>'+
-        '<div class="card-sub">'+campaign.status+'</div>';
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">'+
+          '<div class="card-sub">'+campaign.status+'</div>'+
+          '<a href="'+nUrl(campaign.id)+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:var(--text3);text-decoration:none;border:1px solid var(--border2);border-radius:4px;padding:2px 6px;">↗ DB</a>'+
+        '</div>';
       card.onclick = () => renderL3(campaign);
       grid.appendChild(card);
     });
