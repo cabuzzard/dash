@@ -321,7 +321,10 @@ export default {
         const siteName = SITE_DB_NAMES[siteKey];
         if (!siteName) return json({ error:"Unknown site key" }, 400);
         const campaigns = await getCampaigns(siteName);
-        return json({ campaigns });
+        // Fetch cat options from DB schema
+        const dbMeta = await notionGet(`/databases/${CAMPAIGNS_DB}`);
+        const catOptions = (dbMeta.properties?.cat?.multi_select?.options || []).map(o => o.name);
+        return json({ campaigns, catOptions });
       }
 
       // L3: Get titles for a campaign

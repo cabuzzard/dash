@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------535<head>
+-----524<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -746,6 +746,10 @@ async function renderL2(site) {
     const data = await call('getCampaigns', { siteKey: site.key });
     el.innerHTML = '';
     if (!data.campaigns?.length) { el.innerHTML='<div class="empty">No campaigns found.</div>'; return; }
+    if (data.catOptions?.length) {
+      CAT_OPTIONS.length = 0;
+      data.catOptions.forEach(o => CAT_OPTIONS.push(o));
+    }
     const grid = document.createElement('div');
     grid.className = 'card-grid';
     // Group by cat, uncategorized last
