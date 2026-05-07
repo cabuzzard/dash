@@ -115,6 +115,7 @@ async function getCampaigns(siteName) {
     id: page.id.replace(/-/g, ''),
     name: page.properties.Name?.title?.map(t => t.plain_text).join('') || 'Untitled',
     status: page.properties.Status?.select?.name || '',
+    cat: (page.properties.cat?.multi_select || []).map(s=>s.name)[0] || '',
   }));
 }
 
