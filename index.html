@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------2<head>
+-----5<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1013,6 +1013,7 @@ async function addNewCat() {
     allMethodsForCat.push({ id: data.id, name: val });
     await selectCat(data.id, val);
   } catch(e) {
+    console.error('createMethod error:', e.message);
     showToast('Failed to create: '+e.message, 'error');
   }
 }
