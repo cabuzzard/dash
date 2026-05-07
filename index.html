@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------22<head>
+-----533<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -380,6 +380,18 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Cat Picker -->
+<div id="catPickerOverlay" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.6);" onclick="hideCatPicker()">
+  <div id="catPickerPanel" style="position:absolute;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;min-width:180px;box-shadow:0 8px 32px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
+    <div style="font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;">Set Category</div>
+    <div id="catPickerOptions" style="display:flex;flex-direction:column;gap:6px;"></div>
+    <div style="display:flex;gap:6px;margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
+      <input id="catPickerNewInput" type="text" placeholder="New cat..." style="flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:6px 10px;outline:none;caret-color:var(--accent);" onkeydown="if(event.key==='Enter')addNewCat()" />
+      <button onclick="addNewCat()" style="height:32px;padding:0 12px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">+</button>
+    </div>
+  </div>
+</div>
+
 <!-- New Campaign Modal -->
 <div class="modal-overlay" id="campaignModalOverlay">
   <div class="modal" style="max-height:85vh;overflow-y:auto;">
@@ -734,6 +746,8 @@ async function renderL2(site) {
     const data = await call('getCampaigns', { siteKey: site.key });
     el.innerHTML = '';
     if (!data.campaigns?.length) { el.innerHTML='<div class="empty">No campaigns found.</div>'; return; }
+    const grid = document.createElement('div');
+    grid.className = 'card-grid';
     // Group by cat, uncategorized last
     const catMap = {};
     data.campaigns.forEach(c => {
@@ -741,34 +755,24 @@ async function renderL2(site) {
       if (!catMap[key]) catMap[key] = [];
       catMap[key].push(c);
     });
-
-    const catKeys = Object.keys(catMap).filter(k => k !== 'Uncategorized').sort();
+    const catKeys = Object.keys(catMap).filter(k=>k!=='Uncategorized').sort();
     if (catMap['Uncategorized']) catKeys.push('Uncategorized');
-
     let catIndex = 0;
     catKeys.forEach(cat => {
       const catId = 'cat-'+catIndex++;
-      // Category header
       const hdr = document.createElement('div');
       hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 0;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:6px;';
-      hdr.innerHTML =
-        '<span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text);">'+cat+'</span>'+
-        '<span id="chev-'+catId+'" style="color:var(--text3);font-size:12px;">▸</span>';
+      hdr.innerHTML = '<span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text);">'+cat+'</span><span id="chev-'+catId+'" style="color:var(--text3);font-size:12px;">▸</span>';
       hdr.onclick = () => {
-        const grid = document.getElementById(catId);
-        const chev = document.getElementById('chev-'+catId);
-        const collapsed = grid.style.display === 'none';
-        grid.style.display = collapsed ? 'grid' : 'none';
-        chev.textContent = collapsed ? '▾' : '▸';
+        const g = document.getElementById(catId);
+        const ch = document.getElementById('chev-'+catId);
+        const collapsed = g.style.display==='none';
+        g.style.display = collapsed?'grid':'none';
+        ch.textContent = collapsed?'▾':'▸';
       };
       el.appendChild(hdr);
-
-      // Campaign grid (starts collapsed)
-      const grid = document.createElement('div');
-      grid.id = catId;
-      grid.className = 'card-grid';
-      grid.style.display = 'none';
-
+      const g = document.createElement('div');
+      g.id = catId; g.className='card-grid'; g.style.display='none';
       catMap[cat].forEach(campaign => {
         const card = document.createElement('div');
         card.className = 'card';
@@ -776,12 +780,20 @@ async function renderL2(site) {
           '<div class="card-name">'+campaign.name+'</div>'+
           '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">'+
             '<div class="card-sub">'+campaign.status+'</div>'+
-            '<a href="'+nUrl(campaign.id)+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:#ffffff;text-decoration:none;border:1px solid var(--border2);border-radius:4px;padding:2px 6px;font-weight:600;">↗ DB</a>'+
+            '<a href="'+nUrl(campaign.id)+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:#fff;text-decoration:none;border:1px solid var(--border2);border-radius:4px;padding:2px 6px;font-weight:600;">↗ DB</a>'+
           '</div>';
+        const catRow = document.createElement('div');
+        catRow.style.cssText = 'display:flex;align-items:center;margin-top:6px;border-top:1px solid var(--border);padding-top:6px;';
+        const catBtn = document.createElement('button');
+        catBtn.style.cssText = 'font-size:10px;padding:2px 8px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--accent);cursor:pointer;font-family:"DM Sans",sans-serif;font-weight:600;';
+        catBtn.textContent = campaign.cat ? '🏷 '+campaign.cat : '🏷 set cat';
+        catBtn.onclick = e => showCatPicker(e, campaign, newCat => { catBtn.textContent='🏷 '+newCat; });
+        catRow.appendChild(catBtn);
+        card.appendChild(catRow);
         card.onclick = () => renderL3(campaign);
-        grid.appendChild(card);
+        g.appendChild(card);
       });
-      el.appendChild(grid);
+      el.appendChild(g);
     });
   } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
 }
@@ -932,6 +944,65 @@ async function renderL4(title) {
 
 // ── MODAL ─────────────────────────────────────────────────────────────
 function hideModal() { document.getElementById('modalOverlay').classList.remove('visible'); }
+
+// ── CAT PICKER ────────────────────────────────────────────────────────
+let catPickerCampaign = null;
+let catPickerCallback = null;
+const CAT_OPTIONS = ['lg', 'ctnt', 'aff', 'main'];
+
+function showCatPicker(e, campaign, onSet) {
+  e.stopPropagation();
+  catPickerCampaign = campaign;
+  catPickerCallback = onSet;
+  const panel = document.getElementById('catPickerPanel');
+  const overlay = document.getElementById('catPickerOverlay');
+  const rect = e.target.getBoundingClientRect();
+  // Position near the button
+  panel.style.top = Math.min(rect.bottom + 6, window.innerHeight - 260) + 'px';
+  panel.style.left = Math.max(rect.left - 100, 8) + 'px';
+  renderCatOptions(CAT_OPTIONS);
+  document.getElementById('catPickerNewInput').value = '';
+  overlay.style.display = 'block';
+}
+
+function hideCatPicker() {
+  document.getElementById('catPickerOverlay').style.display = 'none';
+  catPickerCampaign = null;
+}
+
+function renderCatOptions(opts) {
+  const el = document.getElementById('catPickerOptions');
+  el.innerHTML = '';
+  opts.forEach(opt => {
+    const btn = document.createElement('button');
+    const isSelected = catPickerCampaign?.cat === opt;
+    btn.style.cssText = 'width:100%;padding:8px 12px;background:'+(isSelected?'var(--accent)':'var(--bg)')+';color:'+(isSelected?'#000':'var(--text)')+';border:1px solid '+(isSelected?'var(--accent)':'var(--border2)')+';border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;text-align:left;font-family:"DM Sans",sans-serif;';
+    btn.textContent = opt;
+    btn.onclick = () => selectCat(opt);
+    el.appendChild(btn);
+  });
+}
+
+async function selectCat(cat) {
+  if (!catPickerCampaign) return;
+  const campaign = catPickerCampaign;
+  hideCatPicker();
+  try {
+    await call('setCampaignCat', { campaignId: campaign.id, cat });
+    campaign.cat = cat;
+    if (catPickerCallback) catPickerCallback(cat);
+    showToast('Category set to "'+cat+'" ✓', 'success');
+  } catch(e) {
+    showToast('Failed: '+e.message, 'error');
+  }
+}
+
+async function addNewCat() {
+  const val = document.getElementById('catPickerNewInput').value.trim();
+  if (!val) return;
+  if (!CAT_OPTIONS.includes(val)) CAT_OPTIONS.push(val);
+  await selectCat(val);
+}
 
 // ── NEW CAMPAIGN MODAL ────────────────────────────────────────────────
 let allCampaignsForModal = [];

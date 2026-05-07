@@ -402,6 +402,18 @@ export default {
       }
 
       // Asset content for clipboard copy
+      if (action === "setCampaignCat") {
+        const { campaignId, cat } = body;
+        if (!campaignId || !cat) return json({ error: 'campaignId and cat required' }, 400);
+        const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+        await notionPatch(`/pages/${dashed}`, {
+          properties: {
+            cat: { multi_select: [{ name: cat }] }
+          }
+        });
+        return json({ success: true });
+      }
+
       if (action === "getAllCampaigns") {
         const data = await notionPost(`/databases/${CAMPAIGNS_DB}/query`, {
           filter: { property: "Status", select: { does_not_equal: "Delete" } },
@@ -651,6 +663,18 @@ export default {
         return json({ week });
       }
 
+      if (action === "setCampaignCat") {
+        const { campaignId, cat } = body;
+        if (!campaignId || !cat) return json({ error: 'campaignId and cat required' }, 400);
+        const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+        await notionPatch(`/pages/${dashed}`, {
+          properties: {
+            cat: { multi_select: [{ name: cat }] }
+          }
+        });
+        return json({ success: true });
+      }
+
       if (action === "getAllCampaigns") {
         const data = await notionPost(`/databases/${CAMPAIGNS_DB}/query`, {
           sorts: [
@@ -664,7 +688,6 @@ export default {
           name: c.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
           site: c.properties.site?.select?.name || 'Other',
           status: c.properties.Status?.select?.name || '',
-          cat: (c.properties.cat?.multi_select || []).map(s=>s.name)[0] || '',
         }));
         // Group by site
         const siteMap = {};
