@@ -439,7 +439,7 @@ export default {
           method: "POST",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({
-            parent: { database_id: "3ad260f2-ec9c-4dc7-8f3c-561f595f9455" },
+            parent: { database_id: "285ed0b6-68be-4dad-89df-d090350096bc" },
             properties: { Name: { title: [{ type: "text", text: { content: name } }] } }
           })
         });
@@ -449,7 +449,7 @@ export default {
       }
 
       if (action === "getMethodsForCat") {
-        const data = await notionPost(`/databases/${"3ad260f2-ec9c-4dc7-8f3c-561f595f9455"}/query`, {
+        const data = await notionPost(`/databases/${"285ed0b6-68be-4dad-89df-d090350096bc"}/query`, {
           sorts: [{ property: "Name", direction: "ascending" }],
           page_size: 100
         });
@@ -722,24 +722,8 @@ export default {
         return json({ success: true });
       }
 
-      if (action === "createMethod") {
-        const { name } = body;
-        if (!name) return json({ error: 'name required' }, 400);
-        const resp = await fetch("https://api.notion.com/v1/pages", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            parent: { database_id: "3ad260f2-ec9c-4dc7-8f3c-561f595f9455" },
-            properties: { Name: { title: [{ type: "text", text: { content: name } }] } }
-          })
-        });
-        const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || 'Create failed' }, resp.status);
-        return json({ success: true, id: result.id.replace(/-/g,'') });
-      }
-
       if (action === "getMethodsForCat") {
-        const data = await notionPost(`/databases/${"3ad260f2-ec9c-4dc7-8f3c-561f595f9455"}/query`, {
+        const data = await notionPost(`/databases/${"285ed0b6-68be-4dad-89df-d090350096bc"}/query`, {
           sorts: [{ property: "Name", direction: "ascending" }],
           page_size: 100
         });

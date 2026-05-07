@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------5<head>
+-----88<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -384,7 +384,7 @@
 <div id="catPickerOverlay" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.6);" onclick="hideCatPicker()">
   <div id="catPickerPanel" style="position:absolute;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;min-width:180px;box-shadow:0 8px 32px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
     <div style="font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;">Set Category</div>
-    <div id="catPickerOptions" style="display:flex;flex-direction:column;gap:6px;"></div>
+    <div id="catPickerOptions" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
     <div style="display:flex;gap:6px;margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
       <input id="catPickerNewInput" type="text" placeholder="New cat..." style="flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:6px 10px;outline:none;caret-color:var(--accent);" onkeydown="if(event.key==='Enter')addNewCat()" />
       <button onclick="addNewCat()" style="height:32px;padding:0 12px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">+</button>
