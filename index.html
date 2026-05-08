@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------88<head>
+-----82<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -461,6 +461,7 @@ const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 let session = { pin:null, role:null, sites:[] };
 let state = { site:null, campaign:null, title:null };
 let currentView = 'L1';
+let modalSourceView = null;
 let pinBuffer = '';
 let cachedTodos = null;
 
@@ -1046,6 +1047,7 @@ let allCampaignsForModal = [];
 let selectedAssocIds = [];
 
 async function showNewCampaignModal() {
+  modalSourceView = currentView;
   selectedAssocIds = [];
   document.getElementById('campName').value = '';
   document.getElementById('campSite').value = '';
@@ -1124,11 +1126,11 @@ async function createCampaign() {
   const btn = document.getElementById('campCreateBtn');
   btn.disabled = true; btn.textContent = 'Creating...';
   try {
-    const setActive = currentView === 'Priority';
+    const setActive = modalSourceView === 'Priority';
     await call('createCampaign', { name, site, day, associatedIds: selectedAssocIds, setActive });
     hideCampaignModal();
     showToast('Campaign created ✓', 'success');
-    if (currentView === 'Priority') loadPrioritySchedule();
+    if (modalSourceView === 'Priority') loadPrioritySchedule();
     else loadWeeklySchedule();
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
