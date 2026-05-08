@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------83<head>
+-----8377<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -192,7 +192,7 @@
   </div>
   <div style="margin-bottom:8px;">
     <button onclick="showPrioritySchedule()" style="width:100%;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
-      ⚡ Priority Schedule →
+      📋 All Campaigns →
     </button>
   </div>
 
@@ -334,7 +334,7 @@
 <!-- Priority Schedule view -->
 <div class="view" id="viewPriority">
   <div class="sec">
-    <div class="sec-label">⚡ Priority Schedule</div>
+    <div class="sec-label">📋 All Campaigns</div>
     <span class="sec-refresh" onclick="loadPrioritySchedule()">↻</span>
   </div>
   <button onclick="showNewCampaignModal()" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;">+ New Campaign</button>
@@ -1430,7 +1430,7 @@ function showPrioritySchedule() {
   currentView = 'Priority';
   document.getElementById('backBtn').classList.add('visible');
   const el = document.getElementById('crumb');
-  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">Priority Schedule</span>';
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">All Campaigns</span>';
   window.scrollTo(0,0);
   loadPrioritySchedule();
 }
@@ -1442,10 +1442,40 @@ async function loadPrioritySchedule() {
     const data = await call('getPrioritySchedule');
     el.innerHTML = '';
     if (!data.campaigns?.length) {
-      el.innerHTML = '<div class="empty">No active campaigns. Set Status to Active in Notion.</div>';
+      el.innerHTML = '<div class="empty">No campaigns found.</div>';
       return;
     }
+
+    // Group by cat
+    const catMap = {};
     data.campaigns.forEach(c => {
+      const key = c.cat || 'Uncategorized';
+      if (!catMap[key]) catMap[key] = [];
+      catMap[key].push(c);
+    });
+    const catKeys = Object.keys(catMap).filter(k => k !== 'Uncategorized').sort();
+    if (catMap['Uncategorized']) catKeys.push('Uncategorized');
+    let catIdx = 0;
+
+    catKeys.forEach(cat => {
+      const catId = 'pcat-' + catIdx++;
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 0;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:6px;';
+      hdr.innerHTML = '<span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text);">'+cat+'</span><span id="pchev-'+catId+'" style="color:var(--text3);font-size:12px;">▸</span>';
+      hdr.onclick = () => {
+        const g = document.getElementById(catId);
+        const ch = document.getElementById('pchev-'+catId);
+        const collapsed = g.style.display === 'none';
+        g.style.display = collapsed ? 'block' : 'none';
+        ch.textContent = collapsed ? '▾' : '▸';
+      };
+      el.appendChild(hdr);
+
+      const grp = document.createElement('div');
+      grp.id = catId;
+      grp.style.display = 'none';
+
+      catMap[cat].forEach(c => {
       const wrap = document.createElement('div');
       wrap.style.cssText = 'margin-bottom:8px;';
 
@@ -1497,7 +1527,9 @@ async function loadPrioritySchedule() {
       btnRow.appendChild(deleteBtn);
       wrap.appendChild(row);
       wrap.appendChild(btnRow);
-      el.appendChild(wrap);
+      grp.appendChild(wrap);
+    });
+    el.appendChild(grp);
     });
   } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
 }
