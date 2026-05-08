@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------83<head>
+-----821<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1479,17 +1479,55 @@ async function loadPrioritySchedule() {
       const wrap = document.createElement('div');
       wrap.style.cssText = 'margin-bottom:8px;';
 
-      const row = document.createElement('a');
-      row.href = nUrl(c.id);
-      row.target = '_blank';
+      // Row — collapsible header with DB link
+      const row = document.createElement('div');
       row.className = 'row';
-      row.style.marginBottom = '4px';
+      row.style.cssText = 'margin-bottom:4px;cursor:pointer;';
+      const titlesId = 'ptitles-'+c.id;
       row.innerHTML =
         '<div class="row-body">'+
           '<div class="row-name">'+c.name+'</div>'+
           '<div class="row-meta">'+c.site+'</div>'+
         '</div>'+
-        '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:#0a1a00;color:#44ff44;border:1px solid #1a4400;">'+c.status+'</span>';
+        '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'+
+          '<a href="'+nUrl(c.id)+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:#fff;text-decoration:none;border:1px solid var(--border2);border-radius:4px;padding:2px 6px;font-weight:600;">↗ DB</a>'+
+          '<span id="arr-'+c.id+'" style="color:var(--text3);font-size:12px;">▸</span>'+
+        '</div>';
+      row.onclick = async () => {
+        const titlesEl = document.getElementById(titlesId);
+        const arr = document.getElementById('arr-'+c.id);
+        const isOpen = titlesEl.style.display !== 'none';
+        if (isOpen) { titlesEl.style.display='none'; arr.textContent='▸'; return; }
+        titlesEl.style.display='block'; arr.textContent='▾';
+        if (titlesEl.dataset.loaded) return;
+        titlesEl.dataset.loaded = '1';
+        titlesEl.innerHTML = '<div style="padding:6px 0;font-size:12px;color:var(--text3);">Loading...</div>';
+        try {
+          const data = await call('getPlanningTitles', { campaignId: c.id });
+          titlesEl.innerHTML = '';
+          if (!data.titles?.length) {
+            titlesEl.innerHTML = '<div style="padding:6px 0;font-size:12px;color:var(--text3);font-style:italic;">No titles in Development.</div>';
+            return;
+          }
+          data.titles.forEach(t => {
+            const trow = document.createElement('a');
+            trow.href = nUrl(t.id);
+            trow.target = '_blank';
+            trow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:7px 10px 7px 16px;border-left:2px solid var(--border2);margin-bottom:4px;text-decoration:none;border-radius:0 6px 6px 0;background:var(--surface);';
+            trow.innerHTML =
+              '<span style="font-size:12px;color:var(--text);">'+t.title+'</span>'+
+              '<span style="font-size:10px;color:var(--text3);">'+t.status+'</span>';
+            titlesEl.appendChild(trow);
+          });
+        } catch(e) {
+          titlesEl.innerHTML = '<div style="padding:6px 0;font-size:12px;color:var(--danger);">Could not load.</div>';
+        }
+      };
+
+      // Titles container (hidden)
+      const titlesEl = document.createElement('div');
+      titlesEl.id = titlesId;
+      titlesEl.style.cssText = 'display:none;margin:0 0 6px 4px;';
 
       const btnRow = document.createElement('div');
       btnRow.style.cssText = 'display:flex;gap:6px;padding:0 2px;';
@@ -1523,6 +1561,7 @@ async function loadPrioritySchedule() {
       btnRow.appendChild(assocBtn);
       btnRow.appendChild(deleteBtn);
       wrap.appendChild(row);
+      wrap.appendChild(titlesEl);
       wrap.appendChild(btnRow);
       grp.appendChild(wrap);
     });

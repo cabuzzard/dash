@@ -341,6 +341,31 @@ export default {
       }
 
       // L3: Get titles for a campaign
+      if (action === "getPlanningTitles") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: 'campaignId required' }, 400);
+        const dashedId = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+        const data = await notionPost(`/databases/${CONTENT_STRATEGY_DB}/query`, {
+          filter: {
+            and: [
+              { property: "Campaign", relation: { contains: dashedId } },
+              { property: "Status", select: { equals: "Development" } }
+            ]
+          },
+          sorts: [{ property: "Sequence Order", direction: "ascending" }],
+          page_size: 100
+        });
+        const titles = (data.results || []).map(page => {
+          const props = page.properties;
+          return {
+            id: page.id.replace(/-/g,''),
+            title: props.Title?.title?.map(t=>t.plain_text).join('') || 'Untitled',
+            status: props.Status?.select?.name || '',
+          };
+        });
+        return json({ titles });
+      }
+
       if (action === "getTitles") {
         const { campaignId } = body;
         if (!campaignId) return json({ error:"campaignId required" }, 400);
