@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------81<head>
+-----84<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -401,6 +401,25 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Status Picker -->
+<div id="statusPickerOverlay" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.6);" onclick="hideStatusPicker()">
+  <div id="statusPickerPanel" style="position:absolute;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;min-width:180px;box-shadow:0 8px 32px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
+    <div style="font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;">Set Status</div>
+    <div id="statusPickerOptions" style="display:flex;flex-direction:column;gap:6px;"></div>
+  </div>
+</div>
+
+<!-- Associated Campaigns Picker -->
+<div id="assocPickerOverlay" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.6);" onclick="hideAssocPicker()">
+  <div id="assocPickerPanel" style="position:absolute;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
+    <div style="font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;">Associated Campaigns</div>
+    <input id="assocSearchInput" type="text" placeholder="Search campaigns..." style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:7px 10px;outline:none;caret-color:var(--accent);margin-bottom:8px;" oninput="filterAssocPicker()" />
+    <div id="assocSelected" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;min-height:4px;"></div>
+    <div id="assocPickerList" style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;"></div>
+    <button onclick="saveAssocPicker()" style="width:100%;height:36px;background:var(--accent);border:none;border-radius:6px;color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-top:10px;">Save</button>
+  </div>
+</div>
 
 <!-- Cat Picker -->
 <div id="catPickerOverlay" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.6);" onclick="hideCatPicker()">
@@ -970,6 +989,135 @@ async function renderL4(title) {
 // ── MODAL ─────────────────────────────────────────────────────────────
 function hideModal() { document.getElementById('modalOverlay').classList.remove('visible'); }
 
+// ── STATUS PICKER ─────────────────────────────────────────────────────
+const STATUS_OPTIONS = ['Planning','Active','Paused','Complete','Delete'];
+let statusPickerCampaign = null;
+let statusPickerCallback = null;
+
+function showStatusPicker(e, campaign, onSet) {
+  e.preventDefault(); e.stopPropagation();
+  statusPickerCampaign = campaign;
+  statusPickerCallback = onSet;
+  const panel = document.getElementById('statusPickerPanel');
+  const rect = e.target.getBoundingClientRect();
+  panel.style.top = Math.min(rect.bottom + 6, window.innerHeight - 220) + 'px';
+  panel.style.left = Math.max(rect.left, 8) + 'px';
+  const el = document.getElementById('statusPickerOptions');
+  el.innerHTML = '';
+  STATUS_OPTIONS.forEach(opt => {
+    const btn = document.createElement('button');
+    const isCur = campaign.status === opt;
+    btn.style.cssText = 'width:100%;padding:8px 12px;background:'+(isCur?'var(--accent)':'var(--bg)')+';color:'+(isCur?'#000':'var(--text)')+';border:1px solid '+(isCur?'var(--accent)':'var(--border2)')+';border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;text-align:left;font-family:"DM Sans",sans-serif;';
+    btn.textContent = opt;
+    btn.onclick = () => selectStatus(opt);
+    el.appendChild(btn);
+  });
+  document.getElementById('statusPickerOverlay').style.display = 'block';
+}
+
+function hideStatusPicker() { document.getElementById('statusPickerOverlay').style.display = 'none'; }
+
+async function selectStatus(status) {
+  if (!statusPickerCampaign) return;
+  const campaign = statusPickerCampaign;
+  hideStatusPicker();
+  try {
+    await call('setCampaignStatus', { campaignId: campaign.id, status });
+    campaign.status = status;
+    if (statusPickerCallback) statusPickerCallback(status);
+    showToast('Status set to "'+status+'" ✓', 'success');
+  } catch(e) { showToast('Failed: '+e.message, 'error'); }
+}
+
+// ── ASSOC CAMPAIGNS PICKER ───────────────────────────────────────────
+let assocPickerCampaign = null;
+let assocPickerSelected = []; // [{id, name}]
+let assocAllCampaigns = [];
+
+async function showAssocPicker(e, campaign) {
+  e.preventDefault(); e.stopPropagation();
+  assocPickerCampaign = campaign;
+  assocPickerSelected = [...(campaign.assocIds || []).map(id => {
+    const found = assocAllCampaigns.find(c => c.id === id);
+    return found ? { id, name: found.name } : { id, name: id };
+  })];
+  const panel = document.getElementById('assocPickerPanel');
+  const rect = e.target.getBoundingClientRect();
+  panel.style.top = Math.min(rect.bottom + 6, window.innerHeight - 360) + 'px';
+  panel.style.left = Math.max(rect.left - 50, 8) + 'px';
+  document.getElementById('assocSearchInput').value = '';
+  document.getElementById('assocPickerOverlay').style.display = 'block';
+
+  if (!assocAllCampaigns.length) {
+    document.getElementById('assocPickerList').innerHTML = '<div class="empty">Loading...</div>';
+    try {
+      const data = await call('getAllCampaigns');
+      assocAllCampaigns = (data.campaigns || []);
+    } catch(err) {
+      document.getElementById('assocPickerList').innerHTML = '<div class="error-msg">Could not load.</div>';
+      return;
+    }
+  }
+  renderAssocPicker('');
+  renderAssocPickerSelected();
+}
+
+function hideAssocPicker() { document.getElementById('assocPickerOverlay').style.display = 'none'; }
+
+function filterAssocPicker() {
+  renderAssocPicker(document.getElementById('assocSearchInput').value.toLowerCase());
+}
+
+function renderAssocPicker(query) {
+  const el = document.getElementById('assocPickerList');
+  el.innerHTML = '';
+  const selectedIds = assocPickerSelected.map(s => s.id);
+  const filtered = assocAllCampaigns.filter(c =>
+    !selectedIds.includes(c.id) &&
+    c.id !== assocPickerCampaign?.id &&
+    c.name.toLowerCase().includes(query)
+  );
+  if (!filtered.length) { el.innerHTML = '<div class="empty">No campaigns found.</div>'; return; }
+  filtered.forEach(c => {
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:13px;cursor:pointer;color:var(--text);';
+    row.textContent = (c.site ? c.site+' · ' : '') + c.name;
+    row.onclick = () => {
+      assocPickerSelected.push({ id: c.id, name: c.name });
+      renderAssocPicker(document.getElementById('assocSearchInput').value.toLowerCase());
+      renderAssocPickerSelected();
+    };
+    el.appendChild(row);
+  });
+}
+
+function renderAssocPickerSelected() {
+  const el = document.getElementById('assocSelected');
+  el.innerHTML = '';
+  assocPickerSelected.forEach(s => {
+    const tag = document.createElement('div');
+    tag.style.cssText = 'padding:3px 8px;background:var(--surface2);border:1px solid var(--border2);border-radius:20px;font-size:11px;color:var(--text);display:flex;align-items:center;gap:5px;cursor:pointer;';
+    tag.innerHTML = s.name + ' <span style="color:var(--text3);">✕</span>';
+    tag.onclick = () => {
+      assocPickerSelected = assocPickerSelected.filter(x => x.id !== s.id);
+      renderAssocPickerSelected();
+      renderAssocPicker(document.getElementById('assocSearchInput').value.toLowerCase());
+    };
+    el.appendChild(tag);
+  });
+}
+
+async function saveAssocPicker() {
+  if (!assocPickerCampaign) return;
+  const campaign = assocPickerCampaign;
+  hideAssocPicker();
+  try {
+    await call('setCampaignAssoc', { campaignId: campaign.id, assocIds: assocPickerSelected.map(s => s.id) });
+    campaign.assocIds = assocPickerSelected.map(s => s.id);
+    showToast('Associated campaigns saved ✓', 'success');
+  } catch(e) { showToast('Failed: '+e.message, 'error'); }
+}
+
 // ── CAT PICKER ────────────────────────────────────────────────────────
 let catPickerCampaign = null;
 let catPickerCallback = null;
@@ -1298,18 +1446,44 @@ async function loadPrioritySchedule() {
       return;
     }
     data.campaigns.forEach(c => {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'margin-bottom:8px;';
+
       const row = document.createElement('a');
       row.href = nUrl(c.id);
       row.target = '_blank';
       row.className = 'row';
-      row.style.marginBottom = '6px';
+      row.style.marginBottom = '4px';
       row.innerHTML =
         '<div class="row-body">'+
           '<div class="row-name">'+c.name+'</div>'+
           '<div class="row-meta">'+c.site+'</div>'+
         '</div>'+
-        '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:#0a1a00;color:#44ff44;border:1px solid #1a4400;">Active</span>';
-      el.appendChild(row);
+        '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:#0a1a00;color:#44ff44;border:1px solid #1a4400;">'+c.status+'</span>';
+
+      const btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex;gap:6px;padding:0 2px;';
+
+      const statusBtn = document.createElement('button');
+      statusBtn.style.cssText = 'flex:1;height:30px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:"DM Sans",sans-serif;';
+      statusBtn.textContent = '⚡ Set Status';
+      statusBtn.onclick = e => showStatusPicker(e, c, newStatus => {
+        row.querySelector('span').textContent = newStatus;
+        row.querySelector('span').style.background = newStatus === 'Active' ? '#0a1a00' : 'var(--surface2)';
+        row.querySelector('span').style.color = newStatus === 'Active' ? '#44ff44' : 'var(--text3)';
+        row.querySelector('span').style.border = newStatus === 'Active' ? '1px solid #1a4400' : '1px solid var(--border2)';
+      });
+
+      const assocBtn = document.createElement('button');
+      assocBtn.style.cssText = 'flex:1;height:30px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:"DM Sans",sans-serif;';
+      assocBtn.textContent = '🔗 Associated';
+      assocBtn.onclick = e => showAssocPicker(e, c);
+
+      btnRow.appendChild(statusBtn);
+      btnRow.appendChild(assocBtn);
+      wrap.appendChild(row);
+      wrap.appendChild(btnRow);
+      el.appendChild(wrap);
     });
   } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
 }

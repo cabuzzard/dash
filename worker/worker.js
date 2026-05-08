@@ -419,6 +419,32 @@ export default {
       }
 
       // Asset content for clipboard copy
+      if (action === "setCampaignStatus") {
+        const { campaignId, status } = body;
+        if (!campaignId || !status) return json({ error: 'campaignId and status required' }, 400);
+        const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+        await notionPatch(`/pages/${dashed}`, {
+          properties: { Status: { select: { name: status } } }
+        });
+        return json({ success: true });
+      }
+
+      if (action === "setCampaignAssoc") {
+        const { campaignId, assocIds } = body;
+        if (!campaignId) return json({ error: 'campaignId required' }, 400);
+        const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+        await notionPatch(`/pages/${dashed}`, {
+          properties: {
+            "Associated Campaigns": {
+              relation: (assocIds || []).map(id => ({
+                id: id.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5')
+              }))
+            }
+          }
+        });
+        return json({ success: true });
+      }
+
       if (action === "setCampaignCat") {
         const { campaignId, methodId } = body;
         if (!campaignId || !methodId) return json({ error: 'campaignId and methodId required' }, 400);
@@ -673,6 +699,7 @@ export default {
             name: props.Name?.title?.map(t=>t.plain_text).join('') || '',
             site: props.site?.select?.name || '',
             status: props.Status?.select?.name || '',
+            assocIds: (props['Associated Campaigns']?.relation || []).map(r => r.id.replace(/-/g,'')),
           };
         });
         return json({ campaigns });
@@ -727,6 +754,32 @@ export default {
         }
 
         return json({ week });
+      }
+
+      if (action === "setCampaignStatus") {
+        const { campaignId, status } = body;
+        if (!campaignId || !status) return json({ error: 'campaignId and status required' }, 400);
+        const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+        await notionPatch(`/pages/${dashed}`, {
+          properties: { Status: { select: { name: status } } }
+        });
+        return json({ success: true });
+      }
+
+      if (action === "setCampaignAssoc") {
+        const { campaignId, assocIds } = body;
+        if (!campaignId) return json({ error: 'campaignId required' }, 400);
+        const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+        await notionPatch(`/pages/${dashed}`, {
+          properties: {
+            "Associated Campaigns": {
+              relation: (assocIds || []).map(id => ({
+                id: id.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5')
+              }))
+            }
+          }
+        });
+        return json({ success: true });
       }
 
       if (action === "setCampaignCat") {
