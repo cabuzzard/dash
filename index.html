@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="en">
+-----88<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Hermes</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0a0a0a; --surface:#111111; --surface2:#1a1a1a;
+    --border:#222222; --border2:#2e2e2e;
+    --text:#ffffff; --text2:#999999; --text3:#555555;
+    --accent:#ffffff; --danger:#ff4444;
+    --radius:12px; --radius-sm:8px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+
+  /* PIN */
+  .pin-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;padding:32px;}
+  .pin-screen.hidden{display:none;}
+  .pin-logo{font-size:11px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;margin-bottom:8px;}
+  .pin-title{font-size:28px;font-weight:600;margin-bottom:6px;}
+  .pin-sub{font-size:13px;color:var(--text2);margin-bottom:40px;text-align:center;}
+  .pin-dots{display:flex;gap:12px;margin-bottom:32px;}
+  .pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--border2);background:transparent;transition:all .15s;}
+  .pin-dot.filled{background:var(--accent);border-color:var(--accent);}
+  .pin-dot.error{background:var(--danger);border-color:var(--danger);}
+  .pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;width:100%;max-width:280px;}
+  .pin-btn{height:64px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:22px;font-weight:500;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .1s;}
+  .pin-btn:active{background:var(--surface2);transform:scale(.95);}
+  .pin-btn.del{font-size:16px;color:var(--text2);}
+  .pin-btn.empty{background:transparent;border:none;cursor:default;}
+  .pin-error{font-size:13px;color:var(--danger);margin-top:16px;min-height:20px;text-align:center;}
+
+  /* Header */
+  .header{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;}
+  .header-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0;}
+  .back-btn{display:none;width:32px;height:32px;background:var(--surface);border:1px solid var(--border2);border-radius:50%;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--text);flex-shrink:0;}
+  .back-btn.visible{display:flex;}
+  .crumb{display:flex;align-items:center;flex-wrap:nowrap;overflow:hidden;min-width:0;}
+  .crumb-root{font-size:12px;font-weight:600;color:var(--text);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;flex-shrink:0;cursor:pointer;}
+  .crumb-sep{font-size:11px;color:var(--text3);margin:0 4px;flex-shrink:0;}
+  .crumb-item{font-size:13px;font-weight:500;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+  .crumb-item:hover{color:var(--text);}
+  .crumb-item.cur{color:var(--text);cursor:default;}
+  .lock-btn{font-size:16px;cursor:pointer;color:var(--text3);padding:4px;flex-shrink:0;}
+
+  /* Views */
+  .view{display:none;padding:16px;}
+  .view.active{display:block;}
+
+  /* Section headers */
+  .sec{display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px;}
+  .sec-label{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);}
+  .sec-refresh{font-size:12px;color:var(--text3);cursor:pointer;padding:4px;}
+  .sec-toggle{font-size:12px;color:var(--text3);cursor:pointer;padding:4px;margin-left:auto;user-select:none;}
+  .collapsible{overflow:hidden;transition:max-height 0.25s ease;max-height:2000px;}
+  .collapsible.collapsed{max-height:0;}
+
+  /* Cards */
+  .card-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;}
+  .card:active{transform:scale(.97);}
+  .card-icon{font-size:20px;margin-bottom:8px;}
+  .card-name{font-size:13px;font-weight:500;color:var(--text);line-height:1.4;}
+  .card-sub{font-size:11px;color:var(--text3);margin-top:3px;}
+
+  /* List rows */
+  .row{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px;display:flex;align-items:center;gap:10px;margin-bottom:6px;text-decoration:none;cursor:pointer;}
+  .row:active{transform:scale(.98);}
+  .row-body{flex:1;min-width:0;}
+  .row-name{font-size:13px;font-weight:500;color:var(--text);line-height:1.4;}
+  .row-meta{font-size:11px;color:var(--text3);margin-top:2px;}
+  .row-arrow{color:var(--text3);font-size:14px;flex-shrink:0;}
+
+  /* Badges */
+  .badge{font-size:10px;padding:2px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0;}
+  .badge-review {background:#1a0000;color:#ff6666;border:1px solid #440000;}
+  .badge-publish{background:#1a1200;color:#ffcc00;border:1px solid #443300;}
+  .badge-explode{background:#0a0a1a;color:#8888ff;border:1px solid #333388;}
+
+  /* Sub-section label */
+  .sub-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin:16px 0 6px;}
+
+  /* Explode items */
+  .explode-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;display:flex;flex-direction:column;gap:6px;margin-bottom:6px;}
+  .explode-title{font-size:13px;font-weight:500;color:var(--text);text-decoration:none;line-height:1.4;}
+  .explode-campaign{font-size:11px;color:var(--text3);}
+  .explode-btns{display:flex;flex-direction:column;gap:6px;}
+  .explode-copy{width:100%;height:32px;background:#0a1a00;border:1px solid #1a4400;border-radius:6px;color:#44ff44;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+  .explode-pillar{width:100%;height:32px;background:#0a1a00;border:1px solid #1a4400;border-radius:6px;color:#44ff44;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+  .explode-claude{width:100%;height:32px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;text-decoration:none;}
+
+  /* Todo items */
+  .todo-list{display:flex;flex-direction:column;gap:6px;margin-bottom:4px;}
+  .todo-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;display:flex;flex-direction:column;gap:3px;text-decoration:none;}
+  .todo-item:active{transform:scale(.98);}
+  .todo-name{font-size:13px;font-weight:500;color:var(--text);line-height:1.4;}
+  .todo-sub{font-size:11px;color:var(--text3);}
+
+  /* Assets */
+  .asset-wrapper{display:flex;align-items:stretch;gap:6px;margin-bottom:6px;}
+  .asset-row{flex:1;border-radius:var(--radius-sm);padding:12px 14px;display:flex;align-items:center;gap:10px;text-decoration:none;border:1px solid;}
+  .asset-row:active{opacity:.85;}
+  .asset-row.publish  {background:#fff;border-color:#ddd;}
+  .asset-row.published{background:#111;border-color:#333;}
+  .asset-name{font-size:13px;font-weight:500;flex:1;min-width:0;line-height:1.3;}
+  .asset-row.publish   .asset-name{color:#111;}
+  .asset-row.published .asset-name{color:#aaa;}
+  .asset-meta{font-size:11px;margin-top:2px;}
+  .asset-row.publish   .asset-meta{color:#888;}
+  .asset-row.published .asset-meta{color:#555;}
+  .copy-btn{width:44px;min-width:44px;border-radius:var(--radius-sm);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;border:1px solid;}
+  .copy-btn.publish  {background:#fff;border-color:#ddd;color:#888;}
+  .copy-btn.published{background:#111;border-color:#333;color:#555;}
+  .platform-hdr{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin:14px 0 6px;display:flex;align-items:center;gap:6px;}
+  .platform-hdr a{color:var(--text3);text-decoration:none;border-bottom:1px solid var(--border2);}
+
+  /* Misc */
+  .loading-wrap{display:flex;align-items:center;gap:8px;padding:8px 0;color:var(--text3);font-size:13px;}
+  .spinner{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .empty{font-size:13px;color:var(--text3);font-style:italic;padding:8px 0;}
+  .error-msg{font-size:13px;color:var(--danger);padding:8px 0;}
+
+  /* Modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:flex-end;justify-content:center;z-index:200;opacity:0;pointer-events:none;transition:opacity .2s;}
+  .modal-overlay.visible{opacity:1;pointer-events:all;}
+  .modal{background:var(--surface);border-radius:16px 16px 0 0;padding:20px 16px 40px;width:100%;max-width:480px;transform:translateY(100%);transition:transform .25s;}
+  .modal-overlay.visible .modal{transform:translateY(0);}
+  .modal-title{font-size:11px;font-weight:600;color:var(--text2);margin-bottom:14px;letter-spacing:.08em;text-transform:uppercase;}
+  .modal-input{width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:16px;padding:12px 14px;outline:none;margin-bottom:12px;caret-color:var(--accent);}
+  .modal-input:focus{border-color:var(--accent);}
+  .modal-actions{display:flex;gap:8px;}
+  .btn{flex:1;height:44px;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .15s;}
+  .btn:active{transform:scale(.97);}
+  .btn-primary{background:var(--accent);color:#000;}
+  .btn-primary:disabled{background:#2a2a2a;color:var(--text3);cursor:default;}
+  .btn-secondary{background:var(--surface);border:1px solid var(--border2);color:var(--text2);}
+
+  /* Toast */
+  .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:10px 20px;font-size:13px;color:var(--text);opacity:0;transition:all .25s;z-index:998;white-space:nowrap;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.success{border-color:var(--accent);color:var(--accent);}
+  .toast.error{border-color:var(--danger);color:var(--danger);}
+</style>
+</head>
+<body>
+
+<!-- PIN -->
+<div class="pin-screen" id="pinScreen">
+  <div class="pin-logo">Hermes</div>
+  <div class="pin-title">Welcome</div>
+  <div class="pin-sub">Enter your PIN to continue</div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
+    <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
+  </div>
+  <div class="pin-pad">
+    <button class="pin-btn" onclick="pinPress('1')">1</button>
+    <button class="pin-btn" onclick="pinPress('2')">2</button>
+    <button class="pin-btn" onclick="pinPress('3')">3</button>
+    <button class="pin-btn" onclick="pinPress('4')">4</button>
+    <button class="pin-btn" onclick="pinPress('5')">5</button>
+    <button class="pin-btn" onclick="pinPress('6')">6</button>
+    <button class="pin-btn" onclick="pinPress('7')">7</button>
+    <button class="pin-btn" onclick="pinPress('8')">8</button>
+    <button class="pin-btn" onclick="pinPress('9')">9</button>
+    <button class="pin-btn empty"></button>
+    <button class="pin-btn" onclick="pinPress('0')">0</button>
+    <button class="pin-btn del" onclick="pinDel()">&#x232B;</button>
+  </div>
+  <div class="pin-error" id="pinError"></div>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div class="back-btn" id="backBtn" onclick="goBack()">&#8592;</div>
+    <div class="crumb" id="crumb"><span class="crumb-root" onclick="goL1()">Hermes</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="lock-btn" onclick="lockApp()">&#x1F512;</div>
+  </div>
+</div>
+
+<!-- L1: Sites + Queues + Todos -->
+<div class="view active" id="viewL1">
+  <div class="sec" style="margin-top:8px">
+    <div class="sec-label">📅 This Week</div>
+  </div>
+  <div style="margin-bottom:8px;">
+    <button onclick="showWeeklySchedule()" style="width:100%;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
+      📅 Weekly Schedule →
+    </button>
+  </div>
+
+  <div class="sec" style="margin-top:8px">
+    <div class="sec-label">📋 Campaigns · Logins · Methods</div>
+  </div>
+  <div style="margin-bottom:16px;">
+    <div style="display:flex;gap:8px;">
+      <button onclick="showPlatforms()" style="flex:1;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
+        🔑 Platforms & Logins →
+      </button>
+      <button onclick="showMethods()" style="flex:1;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
+        ⚙️ Methods →
+      </button>
+    </div>
+  </div>
+
+  <div style="margin-bottom:8px;">
+    <button onclick="showProducts()" style="width:100%;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
+      📦 View Products →
+    </button>
+  </div>
+
+  <div class="sec" style="margin-top:8px">
+    <div class="sec-label">📝 Content Strategy</div>
+  </div>
+  <div style="margin-bottom:8px;">
+    <a href="https://www.notion.so/9fa5f42f010b47e7a82032607e07d6a1" target="_blank" style="display:flex;align-items:center;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;text-decoration:none;padding:0 14px;">
+      📝 All Titles →
+    </a>
+  </div>
+
+  <div class="sec"><div class="sec-label" onclick="toggleSection('l1Sites','sitesChevron')" style="cursor:pointer">🗂 Sites &amp; Titles</div><span class="sec-toggle" id="sitesChevron" onclick="toggleSection('l1Sites','sitesChevron')">▸</span></div>
+  <div id="l1Sites" class="collapsible collapsed"></div>
+
+  <div class="sec" style="margin-top:8px">
+    <div class="sec-label" onclick="toggleSection('l1Explode','explodeChevron')" style="cursor:pointer">⚡ Explode Queue</div>
+    <span class="sec-refresh" onclick="loadExplodeQueue()">↻</span>
+    <span class="sec-toggle" id="explodeChevron" onclick="toggleSection('l1Explode','explodeChevron')">▸</span>
+  </div>
+  <div id="l1Explode" class="collapsible collapsed"></div>
+
+  <div class="sec">
+    <div class="sec-label" onclick="toggleSection('l1Publish','publishChevron')" style="cursor:pointer">📤 Publish Queue</div>
+    <span class="sec-refresh" onclick="loadPublishQueue()">↻</span>
+    <span class="sec-toggle" id="publishChevron" onclick="toggleSection('l1Publish','publishChevron')">▸</span>
+  </div>
+  <div id="l1Publish" class="collapsible collapsed"></div>
+
+  <div class="sec" style="margin-top:8px">
+    <div class="sec-label" style="font-size:12px;color:var(--text);">Daily To Do</div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-label" onclick="toggleSection('healthSched','healthChevron')" style="cursor:pointer">🫀 Health Schedule</div>
+    <a href="https://www.notion.so/3561f7d3a4bb81cf8355e7a163ffc1cc" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;padding:4px 2px;" title="Notion template">↗</a>
+    <span class="sec-refresh" onclick="loadHealthSchedule()">↻</span>
+    <span class="sec-toggle" id="healthChevron" onclick="toggleSection('healthSched','healthChevron')">▸</span>
+  </div>
+  <div id="healthSched" class="collapsible collapsed"></div>
+
+    <div class="sec">
+    <div class="sec-label" onclick="toggleSection('tdContent','contentChevron')" style="cursor:pointer">📋 Daily Content</div>
+    <span class="sec-refresh" onclick="loadTodosFor('daily content','tdContent')">↻</span>
+    <span class="sec-toggle" id="contentChevron" onclick="toggleSection('tdContent','contentChevron')">▸</span>
+  </div>
+  <div id="tdContent" class="collapsible collapsed"></div>
+
+  <div class="sec">
+    <div class="sec-label" onclick="toggleSection('tdHousehold','householdChevron')" style="cursor:pointer">🏠 Daily Household</div>
+    <span class="sec-refresh" onclick="loadTodosFor('daily household','tdHousehold')">↻</span>
+    <span class="sec-toggle" id="householdChevron" onclick="toggleSection('tdHousehold','householdChevron')">▸</span>
+  </div>
+  <div id="tdHousehold" class="collapsible collapsed"></div>
+
+  <div class="sec">
+    <div class="sec-label" onclick="toggleSection('tdGet','getChevron')" style="cursor:pointer">🛒 Get</div>
+    <span class="sec-refresh" onclick="loadTodosFor('get','tdGet')">↻</span>
+    <span class="sec-toggle" id="getChevron" onclick="toggleSection('tdGet','getChevron')">▸</span>
+  </div>
+  <div id="tdGet" class="collapsible collapsed"></div>
+
+  <div class="sec">
+    <div class="sec-label">➕ Add Todo</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+    <input id="newTodoInput" type="text" placeholder="Todo name..." style="width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;padding:11px 14px;outline:none;caret-color:var(--accent);" onkeydown="if(event.key==='Enter')addTodo()">
+    <div style="display:flex;gap:8px;">
+      <select id="newTodoCategory" style="flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:0 12px;height:44px;outline:none;cursor:pointer;">
+        <option value="high">⚡ High Priority</option>
+        <option value="daily content">📋 Daily Content</option>
+        <option value="daily household">🏠 Daily Household</option>
+        <option value="get">🛒 Get</option>
+      </select>
+      <button onclick="addTodo()" style="height:44px;padding:0 18px;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;flex-shrink:0;">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Platforms view -->
+<div class="view" id="viewPlatforms">
+  <div class="sec">
+    <div class="sec-label">🔑 Platforms & Logins</div>
+    <span class="sec-refresh" onclick="loadPlatforms()">↻</span>
+  </div>
+  <div id="platformsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+</div>
+
+<!-- Products view -->
+<div class="view" id="viewProducts">
+  <div class="sec">
+    <div class="sec-label">📦 Products</div>
+    <span class="sec-refresh" onclick="loadProducts()">↻</span>
+  </div>
+  <div id="productsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+</div>
+
+<!-- All Campaigns view -->
+<div class="view" id="viewAllCampaigns">
+  <div class="sec">
+    <div class="sec-label">📋 All Campaigns</div>
+    <span class="sec-refresh" onclick="loadAllCampaigns()">↻</span>
+  </div>
+  <a href="https://www.notion.so/087b1163b4e64975bc7a4b686ff801de?newRecord=true" target="_blank" style="display:flex;align-items:center;justify-content:center;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;text-decoration:none;gap:6px;margin-bottom:16px;">
+    + New Campaign
+  </a>
+  <div id="allCampaignsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+</div>
+
+<!-- Weekly Schedule view -->
+<div class="view" id="viewWeekly">
+  <div class="sec">
+    <div class="sec-label">📅 Weekly Schedule</div>
+    <span class="sec-refresh" onclick="loadWeeklySchedule()">↻</span>
+  </div>
+  <button onclick="showNewCampaignModal()" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;">+ New Campaign</button>
+  <button onclick="showAllCampaigns()" style="width:100%;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;margin-bottom:16px;">
+    📋 View All Campaigns →
+  </button>
+  <div id="weeklyList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+</div>
+
+<!-- Methods view -->
+<div class="view" id="viewMethods">
+  <div class="sec">
+    <div class="sec-label">⚙️ Methods</div>
+    <span class="sec-refresh" onclick="loadMethods()">↻</span>
+  </div>
+  <a href="https://www.notion.so/285ed0b668be4dad89dfd090350096bc?newRecord=true" target="_blank" style="display:flex;align-items:center;justify-content:center;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;text-decoration:none;gap:6px;margin-bottom:16px;">
+    + New Method
+  </a>
+  <div id="methodsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+</div>
+
+<!-- All Campaigns view -->
+<!-- L2: Campaigns for a site -->
+<div class="view" id="viewL2">
+  <div class="sec"><div class="sec-label" id="l2Label">Campaigns</div></div>
+  <div id="l2Campaigns"></div>
+</div>
+
+<!-- L3: Titles for a campaign -->
+<div class="view" id="viewL3">
+  <div class="sec"><div class="sec-label" id="l3Label">Titles</div></div>
+  <div id="l3Titles"></div>
+</div>
+
+<!-- L4: Assets for a title -->
+<div class="view" id="viewL4">
+  <div class="sec"><div class="sec-label" id="l4Label">Assets</div></div>
+  <div id="l4Assets"></div>
+</div>
+
+<!-- Modal (kept for future use) -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">New page</div>
+    <input class="modal-input" id="modalInput" type="text" placeholder="Name..." />
+    <div class="modal-actions">
+      <button class="btn btn-secondary" style="flex:0;padding:0 20px" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmModal()">Create</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Cat Picker -->
+<div id="catPickerOverlay" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.6);" onclick="hideCatPicker()">
+  <div id="catPickerPanel" style="position:absolute;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;min-width:180px;box-shadow:0 8px 32px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
+    <div style="font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;">Set Category</div>
+    <div id="catPickerOptions" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
+    <div style="display:flex;gap:6px;margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
+      <input id="catPickerNewInput" type="text" placeholder="New cat..." style="flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:6px 10px;outline:none;caret-color:var(--accent);" onkeydown="if(event.key==='Enter')addNewCat()" />
+      <button onclick="addNewCat()" style="height:32px;padding:0 12px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">+</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Campaign Modal -->
+<div class="modal-overlay" id="campaignModalOverlay">
+  <div class="modal" style="max-height:85vh;overflow-y:auto;">
+    <div class="modal-title">New Campaign</div>
+
+    <input class="modal-input" id="campName" type="text" placeholder="Campaign name..." />
+
+    <select class="modal-input" id="campSite" style="cursor:pointer;">
+      <option value="">Select site...</option>
+      <option value="Mountainwize Coaching">⛰️ Mountainwize Coaching</option>
+      <option value="Webguy Business Services">🖥️ Webguy Business Services</option>
+      <option value="Mobility Mentor">♿ Mobility Mentor</option>
+      <option value="Affiliates">💰 Affiliates</option>
+      <option value="Hermes">🤖 Hermes</option>
+      <option value="Household">🏠 Household</option>
+      <option value="Main Business">🏢 Main Business</option>
+    </select>
+
+    <select class="modal-input" id="campDay" style="cursor:pointer;">
+      <option value="">Select schedule day...</option>
+      <option>Monday</option>
+      <option>Tuesday</option>
+      <option>Wednesday</option>
+      <option>Thursday</option>
+      <option>Friday</option>
+      <option>Saturday</option>
+      <option>Sunday</option>
+    </select>
+
+    <div style="font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">Associated Campaigns</div>
+    <input class="modal-input" id="campAssocSearch" type="text" placeholder="Search campaigns..." oninput="filterAssocCampaigns()" style="margin-bottom:6px;" />
+    <div id="campAssocList" style="max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:12px;"></div>
+    <div id="campAssocSelected" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" style="flex:0;padding:0 20px" onclick="hideCampaignModal()">Cancel</button>
+      <button class="btn btn-primary" id="campCreateBtn" onclick="createCampaign()">Create</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+
+let session = { pin:null, role:null, sites:[] };
+let state = { site:null, campaign:null, title:null };
+let currentView = 'L1';
+let pinBuffer = '';
+let cachedTodos = null;
+
+// ── PIN ───────────────────────────────────────────────────────────────
+function pinPress(d) {
+  if (pinBuffer.length >= 4) return;
+  pinBuffer += d; updateDots();
+  if (pinBuffer.length === 4) setTimeout(submitPin, 120);
+}
+function pinDel() {
+  pinBuffer = pinBuffer.slice(0,-1); updateDots();
+  document.getElementById('pinError').textContent = '';
+  document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error'));
+}
+function updateDots() {
+  for (let i=0;i<4;i++) {
+    const dot = document.getElementById('d'+i);
+    dot.classList.toggle('filled', i < pinBuffer.length);
+    dot.classList.remove('error');
+  }
+}
+async function submitPin() {
+  try {
+    const data = await call('auth', { pin: pinBuffer });
+    session.pin = pinBuffer; session.role = data.role; session.sites = data.sites;
+    document.getElementById('pinScreen').classList.add('hidden');
+    renderL1();
+  } catch(e) {
+    document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
+    document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
+    setTimeout(() => { pinBuffer=''; updateDots(); document.getElementById('pinError').textContent=''; }, 900);
+  }
+}
+function lockApp() {
+  pinBuffer=''; session={pin:null,role:null,sites:[]}; cachedTodos=null;
+  updateDots();
+  document.getElementById('pinScreen').classList.remove('hidden');
+  showView('L1');
+}
+
+// ── WORKER ────────────────────────────────────────────────────────────
+async function call(action, extra={}) {
+  const pin = extra.pin !== undefined ? extra.pin : session.pin;
+  const body = { action, pin, ...extra };
+  delete body.pin; body.pin = pin;
+  const resp = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  if (!resp.ok) { const d=await resp.json(); throw new Error(d.error||'Error '+resp.status); }
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────────────
+function nUrl(id) { return 'https://www.notion.so/' + (id||'').replace(/-/g,''); }
+
+function showView(v) {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('view'+v).classList.add('active');
+  currentView = v;
+  document.getElementById('backBtn').classList.toggle('visible', v !== 'L1');
+  buildCrumb();
+  window.scrollTo(0,0);
+}
+
+function buildCrumb() {
+  const el = document.getElementById('crumb');
+  const root = session.role==='admin' ? 'Hermes' : (session.sites[0]?.name||'Portal');
+  const parts = [];
+  if (state.site && currentView!=='L1') parts.push({ label:state.site.name, fn:'goL1' });
+  if (state.campaign && ['L3','L4'].includes(currentView)) parts.push({ label:state.campaign.name, fn:'goL2' });
+  if (state.title && currentView==='L4') parts.push({ label:state.title.title.substring(0,30)+'…', fn:'goL3' });
+
+  let html = '<span class="crumb-root" onclick="goL1()">' + root + '</span>';
+  parts.forEach((p,i) => {
+    const cur = i === parts.length-1;
+    html += '<span class="crumb-sep">›</span>';
+    html += cur
+      ? '<span class="crumb-item cur">'+p.label+'</span>'
+      : '<span class="crumb-item" onclick="'+p.fn+'()">'+p.label+'</span>';
+  });
+  el.innerHTML = html;
+}
+
+function goBack() {
+  if (currentView==='L4') goL3();
+  else if (currentView==='L3') goL2();
+  else if (currentView==='L2') goL1();
+  else if (currentView==='Platforms') goL1();
+  else if (currentView==='Methods') goL1();
+  else if (currentView==='AllCampaigns') goL1();
+  else if (currentView==='Weekly') goL1();
+  else if (currentView==='Products') goL1();
+}
+function goL1() { state={site:null,campaign:null,title:null}; showView('L1'); }
+function goL2() { state.campaign=null; state.title=null; renderL2(state.site); }
+function goL3() { state.title=null; renderL3(state.campaign); }
+
+// ── HELPERS ───────────────────────────────────────────────────────────
+function loading(msg) { return '<div class="loading-wrap"><div class="spinner"></div>'+(msg||'Loading...')+'</div>'; }
+
+// ── L1 ────────────────────────────────────────────────────────────────
+async function renderL1() {
+  if (session.role==='client' && session.sites.length===1) {
+    state.site = session.sites[0];
+    renderL2(state.site); return;
+  }
+  showView('L1');
+  // Render site cards
+  const grid = document.getElementById('l1Sites');
+  grid.innerHTML = '';
+  const g = document.createElement('div');
+  g.className = 'card-grid';
+  session.sites.forEach(site => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = '<div class="card-name">'+site.name+'</div>';
+    card.onclick = () => { state.site = site; renderL2(site); };
+    g.appendChild(card);
+  });
+  grid.appendChild(g);
+  // queues load lazily on expand
+  loadAllTodos();
+}
+
+async function loadExplodeQueue() {
+  const el = document.getElementById('l1Explode');
+  el.innerHTML = loading();
+  try {
+    const data = await call('getExplodeQueue');
+    el.innerHTML = '';
+    if (!data.titles?.length) { el.innerHTML='<div class="empty">No titles in explode queue.</div>'; return; }
+    // Group: Pillar on top, everything else as "Review"
+    const groups = { Pillar: [], Review: [] };
+    data.titles.forEach(t => {
+      if (t.stage === 'Pillar') groups.Pillar.push(t);
+      else groups.Review.push(t);
+    });
+
+    function renderGroup(titles, label, color) {
+      if (!titles.length) return;
+      const groupLabel = document.createElement('div');
+      groupLabel.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:'+color+';margin:10px 0 6px;';
+      groupLabel.textContent = label;
+      el.appendChild(groupLabel);
+      titles.forEach(t => {
+        const item = document.createElement('div');
+        item.className = 'explode-item';
+        const a = document.createElement('a');
+        a.href = nUrl(t.titleId); a.target='_blank';
+        a.className = 'explode-title'; a.textContent = t.titleName;
+
+      const btns = document.createElement('div');
+      btns.className = 'explode-btns';
+      const pillarBtn = document.createElement('button');
+      pillarBtn.className = 'explode-pillar'; pillarBtn.textContent = '🏛 Pillar';
+      pillarBtn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(`write "${t.titleName}" — delete any assets currently referenced in this title's asset relation column — we are starting with a new asset called "pillar". read all notes and content in the current title record. create one long form source post asset called pillar. write the content to the body section of the asset record. do not create a standalone page. please merge the vibe of this and existing publish and explode titles to update the current content strategy and direction of the campaign. please also write the post according to the keywords and direction of the existing strategy. when done set the title Status to "Explode". record the new pillar post as an asset in the "assets" database. and list the new asset as a relation in this title record asset column.`);
+          showToast('Pillar prompt copied ✓','success');
+          pillarBtn.textContent='✓ Copied';
+          setTimeout(()=>{pillarBtn.textContent='🏛 Pillar';},2000);
+        } catch(e) { showToast('Copy failed','error'); }
+      };
+      const explodeBtn = document.createElement('button');
+      explodeBtn.className = 'explode-copy'; explodeBtn.textContent = '⚡ Explode';
+      explodeBtn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText('explode "'+t.titleName+'" — use the existing pillar post asset. create all assets for it for the platforms that are most relevant to the campaign content strategy.');
+          showToast('Explode prompt copied ✓','success');
+          explodeBtn.textContent='✓ Copied';
+          setTimeout(()=>{explodeBtn.textContent='⚡ Explode';},2000);
+        } catch(e) { showToast('Copy failed','error'); }
+      };
+      const claudeBtn = document.createElement('a');
+      claudeBtn.href='https://claude.ai'; claudeBtn.target='_blank';
+      claudeBtn.className='explode-claude'; claudeBtn.textContent='↗';
+      btns.appendChild(pillarBtn); btns.appendChild(explodeBtn); btns.appendChild(claudeBtn);
+        item.appendChild(a); item.appendChild(btns);
+        el.appendChild(item);
+      });
+    }
+    renderGroup(groups.Pillar, '🏛 Pillar', '#bb88ff');
+    renderGroup(groups.Review, '👁 Review', '#ff8844');
+  } catch(e) { el.innerHTML='<div class="error-msg">Could not load.</div>'; }
+}
+
+function toggleSection(containerId, chevronId) {
+  const el = document.getElementById(containerId);
+  const ch = document.getElementById(chevronId);
+  const collapsed = el.classList.toggle('collapsed');
+  ch.textContent = collapsed ? '▸' : '▾';
+  // Lazy load queues on first expand
+  if (!collapsed) {
+    if (containerId === 'l1Explode' && !el.dataset.loaded) { el.dataset.loaded=1; loadExplodeQueue(); }
+    if (containerId === 'l1Publish' && !el.dataset.loaded) { el.dataset.loaded=1; loadPublishQueue(); }
+    if (containerId === 'l1Sites' && !el.dataset.loaded) { el.dataset.loaded=1; renderL1(); }
+    if (containerId === 'tdContent' && !el.dataset.loaded) { el.dataset.loaded=1; loadAllTodos(); }
+    if (containerId === 'tdHousehold' && !el.dataset.loaded) { el.dataset.loaded=1; loadAllTodos(); }
+    if (containerId === 'tdGet' && !el.dataset.loaded) { el.dataset.loaded=1; loadAllTodos(); }
+    if (containerId === 'healthSched' && !el.dataset.loaded) { el.dataset.loaded=1; loadHealthSchedule(); }
+  }
+}
+
+async function loadPublishQueue() {
+  const el = document.getElementById('l1Publish');
+  el.innerHTML = loading();
+  try {
+    const data = await call('getPublishQueue');
+    el.innerHTML = '';
+    if (!data.titles?.length) { el.innerHTML='<div class="empty">Nothing queued.</div>'; return; }
+
+    // Group by site then campaign
+    const siteGroups = {};
+    data.titles.forEach(t => {
+      const site = t.site || 'Other';
+      if (!siteGroups[site]) siteGroups[site] = {};
+      const campaign = t.campaign || 'Uncategorized';
+      if (!siteGroups[site][campaign]) siteGroups[site][campaign] = [];
+      siteGroups[site][campaign].push(t);
+    });
+
+    Object.keys(siteGroups).sort().forEach(site => {
+      // Site header
+      const siteHdr = document.createElement('div');
+      siteHdr.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);margin:14px 0 6px;';
+      siteHdr.textContent = site;
+      el.appendChild(siteHdr);
+
+      Object.keys(siteGroups[site]).sort().forEach(campaign => {
+        // Campaign header
+        const campHdr = document.createElement('div');
+        campHdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin:8px 0 4px;';
+        campHdr.textContent = campaign;
+        el.appendChild(campHdr);
+
+        siteGroups[site][campaign].forEach(t => {
+          const row = document.createElement('a');
+          row.href = nUrl(t.id); row.target='_blank';
+          row.className = 'row';
+          row.style.marginBottom = '6px';
+          row.innerHTML =
+            '<div class="row-body">'+
+              '<div class="row-name">'+t.title+'</div>'+
+              (t.scheduled?'<div class="row-meta">'+t.scheduled+'</div>':'')+
+            '</div>'+
+            '<a href="'+nUrl(t.id)+'" target="_blank" class="badge badge-publish" onclick="event.stopPropagation()">↗ DB</a>';
+          row.onclick = e => { e.preventDefault(); state.title=t; renderL4(t); };
+          el.appendChild(row);
+        });
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">Could not load.</div>'; }
+}
+
+async function loadAllTodos() {
+  try {
+    const data = await call('getTodos');
+    cachedTodos = data.todos || [];
+    renderTodos('daily content','tdContent');
+    renderTodos('daily household','tdHousehold');
+    renderTodos('get','tdGet');
+  } catch(e) {
+    ['tdContent','tdHousehold','tdGet'].forEach(id => {
+      document.getElementById(id).innerHTML='<div class="error-msg">Could not load.</div>';
+    });
+  }
+}
+
+async function loadTodosFor(category, containerId) {
+  document.getElementById(containerId).innerHTML = loading();
+  if (!cachedTodos) {
+    try { const d = await call('getTodos'); cachedTodos = d.todos||[]; } catch(e) { return; }
+  }
+  renderTodos(category, containerId);
+}
+
+function renderTodos(category, containerId) {
+  const el = document.getElementById(containerId);
+  const items = (cachedTodos||[]).filter(t => t.category===category);
+  el.innerHTML = '';
+  if (!items.length) { el.innerHTML='<div class="empty">None.</div>'; return; }
+  const list = document.createElement('div');
+  list.className = 'todo-list';
+  items.forEach(todo => {
+    const a = document.createElement('a');
+    a.href = nUrl(todo.id); a.target='_blank';
+    a.className = 'todo-item';
+    a.innerHTML =
+      '<div class="todo-name">'+todo.name+'</div>'+
+      (todo.campaign?'<div class="todo-sub">↳ '+todo.campaign+'</div>':'')+
+      (todo.site?'<div class="todo-sub">'+todo.site+'</div>':'');
+    list.appendChild(a);
+  });
+  el.appendChild(list);
+}
+
+// ── L2: Campaigns for a site ──────────────────────────────────────────
+async function renderL2(site) {
+  state.site = site;
+  document.getElementById('l2Label').textContent = site.name+' — Campaigns';
+  const el = document.getElementById('l2Campaigns');
+  el.innerHTML = loading('Loading campaigns...');
+  showView('L2');
+  try {
+    const data = await call('getCampaigns', { siteKey: site.key });
+    el.innerHTML = '';
+    if (!data.campaigns?.length) { el.innerHTML='<div class="empty">No campaigns found.</div>'; return; }
+
+    const grid = document.createElement('div');
+    grid.className = 'card-grid';
+    // Group by cat, uncategorized last
+    const catMap = {};
+    data.campaigns.forEach(c => {
+      const key = c.cat || 'Uncategorized';
+      if (!catMap[key]) catMap[key] = [];
+      catMap[key].push(c);
+    });
+    const catKeys = Object.keys(catMap).filter(k=>k!=='Uncategorized').sort();
+    if (catMap['Uncategorized']) catKeys.push('Uncategorized');
+    let catIndex = 0;
+    catKeys.forEach(cat => {
+      const catId = 'cat-'+catIndex++;
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 0;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:6px;';
+      hdr.innerHTML = '<span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text);">'+cat+'</span><span id="chev-'+catId+'" style="color:var(--text3);font-size:12px;">▸</span>';
+      hdr.onclick = () => {
+        const g = document.getElementById(catId);
+        const ch = document.getElementById('chev-'+catId);
+        const collapsed = g.style.display==='none';
+        g.style.display = collapsed?'grid':'none';
+        ch.textContent = collapsed?'▾':'▸';
+      };
+      el.appendChild(hdr);
+      const g = document.createElement('div');
+      g.id = catId; g.className='card-grid'; g.style.display='none';
+      catMap[cat].forEach(campaign => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML =
+          '<div class="card-name">'+campaign.name+'</div>'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">'+
+            '<div class="card-sub">'+campaign.status+'</div>'+
+            '<a href="'+nUrl(campaign.id)+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:#fff;text-decoration:none;border:1px solid var(--border2);border-radius:4px;padding:2px 6px;font-weight:600;">↗ DB</a>'+
+          '</div>';
+        const catRow = document.createElement('div');
+        catRow.style.cssText = 'display:flex;align-items:center;margin-top:6px;border-top:1px solid var(--border);padding-top:6px;';
+        const catBtn = document.createElement('button');
+        catBtn.style.cssText = 'font-size:10px;padding:2px 8px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--accent);cursor:pointer;font-family:"DM Sans",sans-serif;font-weight:600;';
+        catBtn.textContent = campaign.cat ? '🏷 '+campaign.cat : '🏷 set cat';
+        catBtn.onclick = e => { e.stopPropagation(); showCatPicker(e, campaign, newCat => { catBtn.textContent='🏷 '+newCat; }); };
+        catRow.appendChild(catBtn);
+        card.appendChild(catRow);
+        card.onclick = () => renderL3(campaign);
+        g.appendChild(card);
+      });
+      el.appendChild(g);
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── L3: Titles for a campaign ─────────────────────────────────────────
+async function renderL3(campaign) {
+  state.campaign = campaign;
+  document.getElementById('l3Label').textContent = campaign.name+' — Titles';
+  const el = document.getElementById('l3Titles');
+  el.innerHTML = loading('Loading titles...');
+  showView('L3');
+  try {
+    const data = await call('getTitles', { campaignId: campaign.id });
+    el.innerHTML = '';
+    const titles = data.titles || [];
+    if (!titles.length) { el.innerHTML='<div class="empty">No titles in this campaign yet.</div>'; return; }
+
+    // Group by cohort, sorted by sequence (already sorted by worker)
+    const cohortMap = {};
+    titles.forEach(t => {
+      const cohort = t.cohort || 'Uncategorized';
+      if (!cohortMap[cohort]) cohortMap[cohort] = [];
+      cohortMap[cohort].push(t);
+    });
+
+    Object.keys(cohortMap).forEach(cohort => {
+      // Cohort header
+      const lbl = document.createElement('div');
+      lbl.className = 'sub-label';
+      lbl.style.color = 'var(--text2)';
+      lbl.textContent = cohort;
+      el.appendChild(lbl);
+
+      cohortMap[cohort].forEach(t => {
+        const stageBadge = ['Publish','Approved'].includes(t.stage) ? 'badge-publish'
+          : ['Explode','Writing','Done'].includes(t.stage) ? 'badge-explode'
+          : t.stage === 'Review' ? 'badge-review' : '';
+        const row = document.createElement('a');
+        row.href = nUrl(t.id); row.target='_blank';
+        row.className = 'row';
+        row.innerHTML =
+          '<div class="row-body">'+
+            '<div class="row-name">'+t.title+'</div>'+
+            (t.scheduled?'<div class="row-meta">'+t.scheduled+'</div>':'')+
+          '</div>'+
+          (stageBadge ? '<span class="badge '+stageBadge+'">'+t.stage+'</span>' : '');
+        if (['Publish','Approved'].includes(t.stage)) {
+          row.onclick = e => { e.preventDefault(); state.title=t; renderL4(t); };
+        }
+        el.appendChild(row);
+      });
+    });
+
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── L4: Assets for a title ────────────────────────────────────────────
+async function renderL4(title) {
+  state.title = title;
+  document.getElementById('l4Label').textContent = title.title.substring(0,50);
+  const el = document.getElementById('l4Assets');
+  el.innerHTML = loading('Loading assets...');
+  showView('L4');
+  try {
+    const data = await call('getAssetsByTitle', { titleId: title.id });
+    el.innerHTML = '';
+    if (!data.assets?.length) { el.innerHTML='<div class="empty">No assets for this title.</div>'; return; }
+
+    const platforms = {};
+    data.assets.forEach(a => {
+      if (!platforms[a.platform]) platforms[a.platform]=[];
+      platforms[a.platform].push(a);
+    });
+
+    Object.keys(platforms).sort().forEach(platform => {
+      const pData = platforms[platform];
+      const pUrl = pData[0]?.platformUrl||'';
+      const hdr = document.createElement('div');
+      hdr.className = 'platform-hdr';
+      hdr.innerHTML = pUrl
+        ? '<a href="'+pUrl+'" target="_blank">'+platform+' ↗</a>'
+        : platform;
+      el.appendChild(hdr);
+
+      pData.forEach(asset => {
+        const isPublished = asset.status==='Published';
+        const cls = isPublished?'published':'publish';
+        const wrapper = document.createElement('div');
+        wrapper.className = 'asset-wrapper';
+
+        const link = document.createElement('a');
+        link.href = nUrl(asset.id); link.target='_blank';
+        link.className = 'asset-row '+cls;
+        link.innerHTML =
+          '<div style="flex:1;min-width:0">'+
+            '<div class="asset-name">'+asset.title+'</div>'+
+            '<div class="asset-meta">'+(asset.type||'')+(isPublished?' · Published ✓':' · Open in Notion →')+'</div>'+
+          '</div>';
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-btn '+cls;
+        copyBtn.textContent = '📋';
+        copyBtn.onclick = async e => {
+          e.preventDefault();
+          copyBtn.textContent='⏳'; copyBtn.disabled=true;
+          try {
+            const res = await call('getAssetContent', { assetId: asset.id });
+            if (res.content) {
+              await navigator.clipboard.writeText(res.content);
+              copyBtn.textContent='✓'; copyBtn.style.color='#44ff44';
+              setTimeout(()=>{ copyBtn.textContent='📋'; copyBtn.style.color=''; copyBtn.disabled=false; },2000);
+            } else throw new Error('No content');
+          } catch(err) {
+            copyBtn.textContent='✗';
+            setTimeout(()=>{ copyBtn.textContent='📋'; copyBtn.disabled=false; },2000);
+            showToast('Copy failed: '+err.message,'error');
+          }
+        };
+
+        const pubBtn = document.createElement('button');
+        pubBtn.className = 'copy-btn '+cls;
+        pubBtn.textContent = isPublished ? '✓' : '📤';
+        pubBtn.title = isPublished ? 'Already Published' : 'Mark as Published';
+        pubBtn.disabled = isPublished;
+        pubBtn.onclick = async e => {
+          e.preventDefault();
+          pubBtn.textContent='⏳'; pubBtn.disabled=true;
+          try {
+            await call('markPublished', { assetId: asset.id });
+            pubBtn.textContent='✓';
+            pubBtn.style.color='#44ff44';
+            link.querySelector('.asset-meta').textContent=(asset.type||'')+' · Published ✓';
+            showToast('Marked as published ✓','success');
+          } catch(err) {
+            pubBtn.textContent='✗';
+            pubBtn.disabled=false;
+            setTimeout(()=>{ pubBtn.textContent='📤'; pubBtn.style.color=''; },2000);
+            showToast('Failed: '+err.message,'error');
+          }
+        };
+
+        wrapper.appendChild(link); wrapper.appendChild(copyBtn); wrapper.appendChild(pubBtn);
+        el.appendChild(wrapper);
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── MODAL ─────────────────────────────────────────────────────────────
+function hideModal() { document.getElementById('modalOverlay').classList.remove('visible'); }
+
+// ── CAT PICKER ────────────────────────────────────────────────────────
+let catPickerCampaign = null;
+let catPickerCallback = null;
+const CAT_OPTIONS = ['lg', 'ctnt', 'aff', 'main'];
+
+async function showCatPicker(e, campaign, onSet) {
+  e.stopPropagation();
+  catPickerCampaign = campaign;
+  catPickerCallback = onSet;
+  const panel = document.getElementById('catPickerPanel');
+  const overlay = document.getElementById('catPickerOverlay');
+  const rect = e.target.getBoundingClientRect();
+  panel.style.top = Math.min(rect.bottom + 6, window.innerHeight - 260) + 'px';
+  panel.style.left = Math.max(rect.left - 100, 8) + 'px';
+  document.getElementById('catPickerOptions').innerHTML = '<div class="empty">Loading...</div>';
+  document.getElementById('catPickerNewInput').value = '';
+  overlay.style.display = 'block';
+  try {
+    const data = await call('getMethodsForCat');
+    allMethodsForCat = data.methods || [];
+    renderCatOptions();
+  } catch(err) {
+    document.getElementById('catPickerOptions').innerHTML = '<div class="error-msg">Could not load.</div>';
+  }
+}
+
+function hideCatPicker() {
+  document.getElementById('catPickerOverlay').style.display = 'none';
+  catPickerCampaign = null;
+}
+
+function renderCatOptions() {
+  const el = document.getElementById('catPickerOptions');
+  el.innerHTML = '';
+  allMethodsForCat.forEach(method => {
+    const btn = document.createElement('button');
+    const isSelected = catPickerCampaign?.cat === method.name;
+    btn.style.cssText = 'width:100%;padding:8px 12px;background:'+(isSelected?'var(--accent)':'var(--bg)')+';color:'+(isSelected?'#000':'var(--text)')+';border:1px solid '+(isSelected?'var(--accent)':'var(--border2)')+';border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;text-align:left;font-family:"DM Sans",sans-serif;';
+    btn.textContent = method.name;
+    btn.onclick = () => selectCat(method.id, method.name);
+    el.appendChild(btn);
+  });
+}
+
+async function selectCat(methodId, methodName) {
+  if (!catPickerCampaign) return;
+  const campaign = catPickerCampaign;
+  hideCatPicker();
+  try {
+    await call('setCampaignCat', { campaignId: campaign.id, methodId });
+    campaign.cat = methodName;
+    if (catPickerCallback) catPickerCallback(methodName);
+    showToast('Category set to "'+methodName+'" ✓', 'success');
+  } catch(e) {
+    showToast('Failed: '+e.message, 'error');
+  }
+}
+
+async function addNewCat() {
+  const val = document.getElementById('catPickerNewInput').value.trim();
+  if (!val) return;
+  // Create new Methods record then set it
+  try {
+    const data = await call('createMethod', { name: val });
+    allMethodsForCat.push({ id: data.id, name: val });
+    await selectCat(data.id, val);
+  } catch(e) {
+    console.error('createMethod error:', e.message);
+    showToast('Failed to create: '+e.message, 'error');
+  }
+}
+
+// ── NEW CAMPAIGN MODAL ────────────────────────────────────────────────
+let allCampaignsForModal = [];
+let selectedAssocIds = [];
+
+async function showNewCampaignModal() {
+  selectedAssocIds = [];
+  document.getElementById('campName').value = '';
+  document.getElementById('campSite').value = '';
+  document.getElementById('campDay').value = '';
+  document.getElementById('campAssocSearch').value = '';
+  document.getElementById('campAssocSelected').innerHTML = '';
+  document.getElementById('campAssocList').innerHTML = '<div class="empty">Loading campaigns...</div>';
+  document.getElementById('campaignModalOverlay').classList.add('visible');
+
+  try {
+    const data = await call('getAllCampaigns');
+    allCampaignsForModal = data.campaigns || [];
+    renderAssocList('');
+  } catch(e) {
+    document.getElementById('campAssocList').innerHTML = '<div class="error-msg">Could not load campaigns.</div>';
+  }
+}
+
+function hideCampaignModal() {
+  document.getElementById('campaignModalOverlay').classList.remove('visible');
+}
+
+document.getElementById('campaignModalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) hideCampaignModal();
+});
+
+function filterAssocCampaigns() {
+  const q = document.getElementById('campAssocSearch').value.toLowerCase();
+  renderAssocList(q);
+}
+
+function renderAssocList(query) {
+  const el = document.getElementById('campAssocList');
+  el.innerHTML = '';
+  const filtered = allCampaignsForModal.filter(c =>
+    !selectedAssocIds.includes(c.id) &&
+    c.name.toLowerCase().includes(query)
+  );
+  if (!filtered.length) { el.innerHTML = '<div class="empty">No campaigns found.</div>'; return; }
+  filtered.forEach(c => {
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:13px;cursor:pointer;color:var(--text);';
+    row.textContent = (c.site ? c.site + ' · ' : '') + c.name;
+    row.onclick = () => {
+      selectedAssocIds.push(c.id);
+      renderAssocSelected();
+      renderAssocList(document.getElementById('campAssocSearch').value.toLowerCase());
+    };
+    el.appendChild(row);
+  });
+}
+
+function renderAssocSelected() {
+  const el = document.getElementById('campAssocSelected');
+  el.innerHTML = '';
+  selectedAssocIds.forEach(id => {
+    const c = allCampaignsForModal.find(x => x.id === id);
+    if (!c) return;
+    const tag = document.createElement('div');
+    tag.style.cssText = 'padding:4px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:20px;font-size:11px;color:var(--text);display:flex;align-items:center;gap:6px;cursor:pointer;';
+    tag.innerHTML = c.name + ' <span style="color:var(--text3);">✕</span>';
+    tag.onclick = () => {
+      selectedAssocIds = selectedAssocIds.filter(x => x !== id);
+      renderAssocSelected();
+      renderAssocList(document.getElementById('campAssocSearch').value.toLowerCase());
+    };
+    el.appendChild(tag);
+  });
+}
+
+async function createCampaign() {
+  const name = document.getElementById('campName').value.trim();
+  const site = document.getElementById('campSite').value;
+  const day = document.getElementById('campDay').value;
+  if (!name) { showToast('Please enter a campaign name','error'); return; }
+  const btn = document.getElementById('campCreateBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    await call('createCampaign', { name, site, day, associatedIds: selectedAssocIds });
+    hideCampaignModal();
+    showToast('Campaign created ✓', 'success');
+    loadWeeklySchedule();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create';
+  }
+}
+document.getElementById('modalOverlay').addEventListener('click', function(e) { if(e.target===this) hideModal(); });
+function confirmModal() { hideModal(); }
+
+
+// ── PRODUCTS ─────────────────────────────────────────────────────────
+function showProducts() {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('viewProducts').classList.add('active');
+  currentView = 'Products';
+  document.getElementById('backBtn').classList.add('visible');
+  const el = document.getElementById('crumb');
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">Products</span>';
+  window.scrollTo(0,0);
+  loadProducts();
+}
+
+async function loadProducts() {
+  const el = document.getElementById('productsList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getProducts');
+    el.innerHTML = '';
+    if (!data.sites?.length) { el.innerHTML='<div class="empty">No products found.</div>'; return; }
+
+    data.sites.forEach(site => {
+      // Site header
+      const siteHdr = document.createElement('div');
+      siteHdr.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);margin:20px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border2);';
+      siteHdr.textContent = site.site;
+      el.appendChild(siteHdr);
+
+      site.campaigns.forEach(camp => {
+        // Campaign subheader
+        const campHdr = document.createElement('div');
+        campHdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin:12px 0 6px;';
+        campHdr.textContent = camp.campaign;
+        el.appendChild(campHdr);
+
+        camp.products.forEach(product => {
+          const row = document.createElement('a');
+          row.href = product.url || nUrl(product.id);
+          row.target = '_blank';
+          row.className = 'row';
+          row.style.marginBottom = '6px';
+          row.innerHTML =
+            '<div class="row-body">'+
+              '<div class="row-name">'+product.name+'</div>'+
+              '<div class="row-meta">'+
+                (product.price ? product.price : '')+
+                (product.price && product.description ? ' · ' : '')+
+                (product.description ? product.description.substring(0,60)+'…' : '')+
+              '</div>'+
+            '</div>'+
+            '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:'+(product.status==='Active'?'#44ff44':product.status==='In Development'?'#ffcc00':'var(--text3)')+';border:1px solid var(--border2);white-space:nowrap;">'+product.status+'</span>';
+          el.appendChild(row);
+        });
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── ADD TODO ──────────────────────────────────────────────────────────
+async function addTodo() {
+  const input = document.getElementById('newTodoInput');
+  const name = input.value.trim();
+  if (!name) return;
+  const category = document.getElementById('newTodoCategory').value;
+  input.disabled = true;
+  try {
+    await call('addTodo', { name, category });
+    input.value = '';
+    cachedTodos = null;
+    await loadAllTodos();
+    showToast('Todo added ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
+  input.disabled = false;
+  input.focus();
+}
+
+// ── PLATFORMS ────────────────────────────────────────────────────────
+function showPlatforms() {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('viewPlatforms').classList.add('active');
+  currentView = 'Platforms';
+  document.getElementById('backBtn').classList.add('visible');
+  // Update crumb
+  const el = document.getElementById('crumb');
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">Platforms & Logins</span>';
+  window.scrollTo(0,0);
+  loadPlatforms();
+}
+
+async function loadPlatforms() {
+  const el = document.getElementById('platformsList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getLogins');
+    el.innerHTML = '';
+    if (!data.campaigns?.length) { el.innerHTML='<div class="empty">No logins found.</div>'; return; }
+
+    data.campaigns.forEach(group => {
+      // Platform header with link
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);margin:16px 0 8px;display:flex;align-items:center;gap:8px;';
+      const firstLogin = group.logins[0];
+      const pUrl = firstLogin?.platformUrl || '';
+      hdr.innerHTML = group.platformName + (pUrl ? ' <a href="'+pUrl+'" target="_blank" style="font-size:10px;color:var(--text3);text-decoration:none;font-weight:400;letter-spacing:0;">↗</a>' : '');
+      el.appendChild(hdr);
+
+      // Login rows — grouped by platform, db link + platform url
+      group.logins.forEach(login => {
+        const row = document.createElement('a');
+        row.href = nUrl(login.id);
+        row.target = '_blank';
+        row.className = 'row';
+        row.style.marginBottom = '6px';
+        const displayName = login.campaignName || login.name;
+        const platformLink = login.accountUrl
+          ? '<a href="'+login.accountUrl+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:var(--text2);border:1px solid var(--border2);text-decoration:none;margin-left:6px;">↗ Site</a>'
+          : '';
+        row.innerHTML =
+          '<div class="row-body">'+
+            '<div class="row-name">'+displayName+'</div>'+
+            '<div class="row-meta">'+login.site+(login.username?' · '+login.username:'')+'</div>'+
+          '</div>'+
+          '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'+
+            '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:'+(login.status==='Active'?'#44ff44':'var(--text3)')+';border:1px solid var(--border2);">'+login.status+'</span>'+
+            platformLink+
+          '</div>';
+        el.appendChild(row);
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── WEEKLY SCHEDULE ──────────────────────────────────────────────────
+function showWeeklySchedule() {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('viewWeekly').classList.add('active');
+  currentView = 'Weekly';
+  document.getElementById('backBtn').classList.add('visible');
+  const el = document.getElementById('crumb');
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">Weekly Schedule</span>';
+  window.scrollTo(0,0);
+  loadWeeklySchedule();
+}
+
+async function loadWeeklySchedule() {
+  const el = document.getElementById('weeklyList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getWeeklySchedule');
+    el.innerHTML = '';
+    if (!data.week?.length) {
+      el.innerHTML = '<div class="empty">No campaigns scheduled yet. Add a Schedule Day to campaigns in Notion.</div>';
+      return;
+    }
+    data.week.forEach(dayGroup => {
+      // Day header
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin:16px 0 8px;';
+      hdr.innerHTML =
+        '<div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);">'+dayGroup.label+'</div>'+
+        '<div style="font-size:11px;color:var(--text3);">'+dayGroup.date+'</div>';
+      el.appendChild(hdr);
+
+      dayGroup.campaigns.forEach(c => {
+        const row = document.createElement('a');
+        row.href = nUrl(c.id);
+        row.target = '_blank';
+        row.className = 'row';
+        row.style.marginBottom = '6px';
+        row.innerHTML =
+          '<div class="row-body">'+
+            '<div class="row-name">'+c.name+'</div>'+
+            '<div class="row-meta">'+c.site+(c.time?' · '+c.time:'')+'</div>'+
+          '</div>'+
+          '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:'+(c.status==='Active'?'#44ff44':'var(--text3)')+';border:1px solid var(--border2);">'+c.status+'</span>';
+        el.appendChild(row);
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── ALL CAMPAIGNS ────────────────────────────────────────────────────
+function showAllCampaigns() {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('viewAllCampaigns').classList.add('active');
+  currentView = 'AllCampaigns';
+  document.getElementById('backBtn').classList.add('visible');
+  const el = document.getElementById('crumb');
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">All Campaigns</span>';
+  window.scrollTo(0,0);
+  loadAllCampaigns();
+}
+
+async function loadAllCampaigns() {
+  const el = document.getElementById('allCampaignsList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getAllCampaigns');
+    el.innerHTML = '';
+    if (!data.sites?.length) { el.innerHTML='<div class="empty">No campaigns found.</div>'; return; }
+    data.sites.forEach(site => {
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);margin:16px 0 6px;';
+      hdr.textContent = site.site;
+      el.appendChild(hdr);
+      site.campaigns.forEach(campaign => {
+        const row = document.createElement('a');
+        row.href = nUrl(campaign.id);
+        row.target = '_blank';
+        row.className = 'row';
+        row.style.marginBottom = '6px';
+        row.innerHTML =
+          '<div class="row-body">'+
+            '<div class="row-name">'+campaign.name+'</div>'+
+          '</div>'+
+          '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--surface2);color:'+(campaign.status==='Active'?'#44ff44':'var(--text3)')+';border:1px solid var(--border2);">'+campaign.status+'</span>';
+        el.appendChild(row);
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── ALL CAMPAIGNS ───────────────────────────────────────────────────
+// ── METHODS ──────────────────────────────────────────────────────────
+function showMethods() {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('viewMethods').classList.add('active');
+  currentView = 'Methods';
+  document.getElementById('backBtn').classList.add('visible');
+  const el = document.getElementById('crumb');
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">Methods</span>';
+  window.scrollTo(0,0);
+  loadMethods();
+}
+
+async function loadMethods() {
+  const el = document.getElementById('methodsList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getMethods');
+    el.innerHTML = '';
+    if (!data.methods?.length) { el.innerHTML='<div class="empty">No methods found.</div>'; return; }
+    let currentType = null;
+    data.methods.forEach(m => {
+      // Type group header
+      if (m.type !== currentType) {
+        currentType = m.type;
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);margin:16px 0 6px;';
+        hdr.textContent = m.type;
+        el.appendChild(hdr);
+      }
+      const row = document.createElement('a');
+      row.href = nUrl(m.id);
+      row.target = '_blank';
+      row.className = 'row';
+      row.style.marginBottom = '6px';
+      row.innerHTML =
+        '<div class="row-body">'+
+          '<div class="row-name">'+m.name+'</div>'+
+          (m.platform ? '<div class="row-meta">'+m.platform+'</div>' : '')+
+        '</div>';
+      el.appendChild(row);
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── HEALTH SCHEDULE ──────────────────────────────────────────────────
+async function loadHealthSchedule() {
+  const el = document.getElementById('healthSched');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getHealthSchedule');
+    el.innerHTML = '';
+    if (!data.week?.length) {
+      el.innerHTML = '<div class="empty">No health items scheduled. Set Schedule Day on daily household items in Notion.</div>';
+      return;
+    }
+    data.week.forEach(dayGroup => {
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin:16px 0 8px;';
+      hdr.innerHTML =
+        '<div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);">'+dayGroup.label+'</div>'+
+        '<div style="font-size:11px;color:var(--text3);">'+dayGroup.date+'</div>';
+      el.appendChild(hdr);
+      dayGroup.todos.forEach(t => {
+        const row = document.createElement('a');
+        row.href = 'https://www.notion.so/' + t.id;
+        row.target = '_blank';
+        row.className = 'row';
+        row.style.cssText = 'margin-bottom:6px;border-left:3px solid #1D9E75;';
+        row.innerHTML =
+          '<div class="row-body">'+
+            '<div class="row-name">'+t.name+'</div>'+
+          '</div>'+
+          '<span class="row-arrow">›</span>';
+        el.appendChild(row);
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent=msg; t.className='toast show '+(type||'');
+  setTimeout(()=>{ t.className='toast'; },2500);
+}
+</script>
+</body>
+</html>
