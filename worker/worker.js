@@ -662,43 +662,20 @@ export default {
 
       if (action === "getPrioritySchedule") {
         const data = await notionPost(`/databases/${"087b1163b4e64975bc7a4b686ff801de"}/query`, {
-          filter: {
-            and: [
-              { property: "Schedule Day", multi_select: { is_not_empty: true } },
-              { property: "Status", select: { equals: "Active" } }
-            ]
-          },
+          filter: { property: "Status", select: { equals: "Active" } },
+          sorts: [{ property: "Name", direction: "ascending" }],
           page_size: 100
         });
-        const campaigns = [];
-        (data.results || []).forEach(c => {
+        const campaigns = (data.results || []).map(c => {
           const props = c.properties;
-          const days_scheduled = (props['Schedule Day']?.multi_select || []).map(s => s.name);
-          const base = {
+          return {
             id: c.id.replace(/-/g,''),
             name: props.Name?.title?.map(t=>t.plain_text).join('') || '',
             site: props.site?.select?.name || '',
             status: props.Status?.select?.name || '',
-            time: props['Schedule Time']?.rich_text?.map(t=>t.plain_text).join('') || '',
           };
-          days_scheduled.forEach(day => campaigns.push({ ...base, day }));
         });
-        const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-        const today = new Date();
-        const todayIdx = today.getDay();
-        const week = [];
-        for (let i = 0; i < 7; i++) {
-          const dayIdx = (todayIdx + i) % 7;
-          const dayName = days[dayIdx];
-          const dayCampaigns = campaigns.filter(c => c.day === dayName).sort((a,b) => (a.time||'').localeCompare(b.time||''));
-          if (dayCampaigns.length > 0) {
-            const date = new Date(today);
-            date.setDate(today.getDate() + i);
-            const label = i === 0 ? 'Today — '+dayName : i === 1 ? 'Tomorrow — '+dayName : dayName;
-            week.push({ day: dayName, label, date: date.toLocaleDateString('en-US', {month:'short', day:'numeric'}), campaigns: dayCampaigns });
-          }
-        }
-        return json({ week });
+        return json({ campaigns });
       }
 
       if (action === "getWeeklySchedule") {

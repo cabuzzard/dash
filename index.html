@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------82<head>
+-----81<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1293,31 +1293,23 @@ async function loadPrioritySchedule() {
   try {
     const data = await call('getPrioritySchedule');
     el.innerHTML = '';
-    if (!data.week?.length) {
-      el.innerHTML = '<div class="empty">No active campaigns scheduled. Set Status to Active and add a Schedule Day.</div>';
+    if (!data.campaigns?.length) {
+      el.innerHTML = '<div class="empty">No active campaigns. Set Status to Active in Notion.</div>';
       return;
     }
-    data.week.forEach(dayGroup => {
-      const hdr = document.createElement('div');
-      hdr.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin:16px 0 8px;';
-      hdr.innerHTML =
-        '<div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);">'+dayGroup.label+'</div>'+
-        '<div style="font-size:11px;color:var(--text3);">'+dayGroup.date+'</div>';
-      el.appendChild(hdr);
-      dayGroup.campaigns.forEach(c => {
-        const row = document.createElement('a');
-        row.href = nUrl(c.id);
-        row.target = '_blank';
-        row.className = 'row';
-        row.style.marginBottom = '6px';
-        row.innerHTML =
-          '<div class="row-body">'+
-            '<div class="row-name">'+c.name+'</div>'+
-            '<div class="row-meta">'+c.site+(c.time?' · '+c.time:'')+'</div>'+
-          '</div>'+
-          '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:#0a1a00;color:#44ff44;border:1px solid #1a4400;">Active</span>';
-        el.appendChild(row);
-      });
+    data.campaigns.forEach(c => {
+      const row = document.createElement('a');
+      row.href = nUrl(c.id);
+      row.target = '_blank';
+      row.className = 'row';
+      row.style.marginBottom = '6px';
+      row.innerHTML =
+        '<div class="row-body">'+
+          '<div class="row-name">'+c.name+'</div>'+
+          '<div class="row-meta">'+c.site+'</div>'+
+        '</div>'+
+        '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:#0a1a00;color:#44ff44;border:1px solid #1a4400;">Active</span>';
+      el.appendChild(row);
     });
   } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
 }
