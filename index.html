@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------84<head>
+-----83<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1479,8 +1479,22 @@ async function loadPrioritySchedule() {
       assocBtn.textContent = '🔗 Associated';
       assocBtn.onclick = e => showAssocPicker(e, c);
 
+      const deleteBtn = document.createElement('button');
+      deleteBtn.style.cssText = 'flex:0 0 36px;height:30px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;color:var(--danger);font-size:13px;cursor:pointer;font-family:"DM Sans",sans-serif;';
+      deleteBtn.textContent = '🗑';
+      deleteBtn.onclick = async e => {
+        e.preventDefault(); e.stopPropagation();
+        if (!confirm('Delete "'+c.name+'"?')) return;
+        try {
+          await call('deleteCampaign', { campaignId: c.id });
+          wrap.remove();
+          showToast('Deleted ✓', 'success');
+        } catch(err) { showToast('Failed: '+err.message, 'error'); }
+      };
+
       btnRow.appendChild(statusBtn);
       btnRow.appendChild(assocBtn);
+      btnRow.appendChild(deleteBtn);
       wrap.appendChild(row);
       wrap.appendChild(btnRow);
       el.appendChild(wrap);

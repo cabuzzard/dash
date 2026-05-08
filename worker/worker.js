@@ -419,6 +419,18 @@ export default {
       }
 
       // Asset content for clipboard copy
+      if (action === "deleteCampaign") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: 'campaignId required' }, 400);
+        const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+        await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true })
+        });
+        return json({ success: true });
+      }
+
       if (action === "setCampaignStatus") {
         const { campaignId, status } = body;
         if (!campaignId || !status) return json({ error: 'campaignId and status required' }, 400);
@@ -754,6 +766,18 @@ export default {
         }
 
         return json({ week });
+      }
+
+      if (action === "deleteCampaign") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: 'campaignId required' }, 400);
+        const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+        await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true })
+        });
+        return json({ success: true });
       }
 
       if (action === "setCampaignStatus") {
