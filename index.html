@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------88<head>
+-----85<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -187,6 +187,15 @@
 
 <!-- L1: Sites + Queues + Todos -->
 <div class="view active" id="viewL1">
+  <div class="sec" style="margin-top:8px">
+    <div class="sec-label">⚡ Priority</div>
+  </div>
+  <div style="margin-bottom:8px;">
+    <button onclick="showPrioritySchedule()" style="width:100%;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
+      ⚡ Priority Schedule →
+    </button>
+  </div>
+
   <div class="sec" style="margin-top:8px">
     <div class="sec-label">📅 This Week</div>
   </div>
@@ -530,6 +539,7 @@ function goBack() {
   else if (currentView==='Methods') goL1();
   else if (currentView==='AllCampaigns') goL1();
   else if (currentView==='Weekly') goL1();
+  else if (currentView==='Priority') goL1();
   else if (currentView==='Products') goL1();
 }
 function goL1() { state={site:null,campaign:null,title:null}; showView('L1'); }
@@ -1101,10 +1111,12 @@ async function createCampaign() {
   const btn = document.getElementById('campCreateBtn');
   btn.disabled = true; btn.textContent = 'Creating...';
   try {
-    await call('createCampaign', { name, site, day, associatedIds: selectedAssocIds });
+    const setActive = currentView === 'Priority';
+    await call('createCampaign', { name, site, day, associatedIds: selectedAssocIds, setActive });
     hideCampaignModal();
     showToast('Campaign created ✓', 'success');
-    loadWeeklySchedule();
+    if (currentView === 'Priority') loadPrioritySchedule();
+    else loadWeeklySchedule();
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
   } finally {
@@ -1249,6 +1261,52 @@ async function loadPlatforms() {
 }
 
 // ── WEEKLY SCHEDULE ──────────────────────────────────────────────────
+function showPrioritySchedule() {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('viewPriority').classList.add('active');
+  currentView = 'Priority';
+  document.getElementById('backBtn').classList.add('visible');
+  const el = document.getElementById('crumb');
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">Priority Schedule</span>';
+  window.scrollTo(0,0);
+  loadPrioritySchedule();
+}
+
+async function loadPrioritySchedule() {
+  const el = document.getElementById('priorityList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getPrioritySchedule');
+    el.innerHTML = '';
+    if (!data.week?.length) {
+      el.innerHTML = '<div class="empty">No active campaigns scheduled. Set Status to Active and add a Schedule Day.</div>';
+      return;
+    }
+    data.week.forEach(dayGroup => {
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin:16px 0 8px;';
+      hdr.innerHTML =
+        '<div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);">'+dayGroup.label+'</div>'+
+        '<div style="font-size:11px;color:var(--text3);">'+dayGroup.date+'</div>';
+      el.appendChild(hdr);
+      dayGroup.campaigns.forEach(c => {
+        const row = document.createElement('a');
+        row.href = nUrl(c.id);
+        row.target = '_blank';
+        row.className = 'row';
+        row.style.marginBottom = '6px';
+        row.innerHTML =
+          '<div class="row-body">'+
+            '<div class="row-name">'+c.name+'</div>'+
+            '<div class="row-meta">'+c.site+(c.time?' · '+c.time:'')+'</div>'+
+          '</div>'+
+          '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:#0a1a00;color:#44ff44;border:1px solid #1a4400;">Active</span>';
+        el.appendChild(row);
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
 function showWeeklySchedule() {
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.getElementById('viewWeekly').classList.add('active');
