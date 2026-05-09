@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------83blea<head>
+-----83<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -215,6 +215,55 @@
   </div>
 
   <div class="sec" style="margin-top:8px">
+    <div class="sec-label" style="font-size:12px;color:var(--text);">Daily To Do</div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-label" onclick="toggleSection('healthSched','healthChevron')" style="cursor:pointer">🫀 Health Schedule</div>
+    <a href="https://www.notion.so/3561f7d3a4bb81cf8355e7a163ffc1cc" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;padding:4px 2px;" title="Notion template">↗</a>
+    <span class="sec-refresh" onclick="loadHealthSchedule()">↻</span>
+    <span class="sec-toggle" id="healthChevron" onclick="toggleSection('healthSched','healthChevron')">▸</span>
+  </div>
+  <div id="healthSched" class="collapsible collapsed"></div>
+
+  <div class="sec">
+    <div class="sec-label" onclick="toggleSection('tdContent','contentChevron')" style="cursor:pointer">📋 Daily Content</div>
+    <span class="sec-refresh" onclick="loadTodosFor('daily content','tdContent')">↻</span>
+    <span class="sec-toggle" id="contentChevron" onclick="toggleSection('tdContent','contentChevron')">▸</span>
+  </div>
+  <div id="tdContent" class="collapsible collapsed"></div>
+
+  <div class="sec">
+    <div class="sec-label" onclick="toggleSection('tdHousehold','householdChevron')" style="cursor:pointer">🏠 Daily Household</div>
+    <span class="sec-refresh" onclick="loadTodosFor('daily household','tdHousehold')">↻</span>
+    <span class="sec-toggle" id="householdChevron" onclick="toggleSection('tdHousehold','householdChevron')">▸</span>
+  </div>
+  <div id="tdHousehold" class="collapsible collapsed"></div>
+
+  <div class="sec">
+    <div class="sec-label" onclick="toggleSection('tdGet','getChevron')" style="cursor:pointer">🛒 Get</div>
+    <span class="sec-refresh" onclick="loadTodosFor('get','tdGet')">↻</span>
+    <span class="sec-toggle" id="getChevron" onclick="toggleSection('tdGet','getChevron')">▸</span>
+  </div>
+  <div id="tdGet" class="collapsible collapsed"></div>
+
+  <div class="sec">
+    <div class="sec-label">➕ Add Todo</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+    <input id="newTodoInput" type="text" placeholder="Todo name..." style="width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;padding:11px 14px;outline:none;caret-color:var(--accent);" onkeydown="if(event.key==='Enter')addTodo()">
+    <div style="display:flex;gap:8px;">
+      <select id="newTodoCategory" style="flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:0 12px;height:44px;outline:none;cursor:pointer;">
+        <option value="high">⚡ High Priority</option>
+        <option value="daily content">📋 Daily Content</option>
+        <option value="daily household">🏠 Daily Household</option>
+        <option value="get">🛒 Get</option>
+      </select>
+      <button onclick="addTodo()" style="height:44px;padding:0 18px;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;flex-shrink:0;">Add</button>
+    </div>
+  </div>
+
+  <div class="sec" style="margin-top:8px">
     <div class="sec-label">📋 Campaigns · Logins · Methods</div>
   </div>
   <div style="margin-bottom:16px;">
@@ -327,56 +376,6 @@
   </button>
   <div id="weeklyList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 
-  <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px;">
-    <div class="sec" style="margin-top:0">
-      <div class="sec-label" style="font-size:12px;color:var(--text);">Daily To Do</div>
-    </div>
-
-    <div class="sec">
-      <div class="sec-label" onclick="toggleSection('healthSched','healthChevron')" style="cursor:pointer">🫀 Health Schedule</div>
-      <a href="https://www.notion.so/3561f7d3a4bb81cf8355e7a163ffc1cc" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;padding:4px 2px;" title="Notion template">↗</a>
-      <span class="sec-refresh" onclick="loadHealthSchedule()">↻</span>
-      <span class="sec-toggle" id="healthChevron" onclick="toggleSection('healthSched','healthChevron')">▸</span>
-    </div>
-    <div id="healthSched" class="collapsible collapsed"></div>
-
-    <div class="sec">
-      <div class="sec-label" onclick="toggleSection('tdContent','contentChevron')" style="cursor:pointer">📋 Daily Content</div>
-      <span class="sec-refresh" onclick="loadTodosFor('daily content','tdContent')">↻</span>
-      <span class="sec-toggle" id="contentChevron" onclick="toggleSection('tdContent','contentChevron')">▸</span>
-    </div>
-    <div id="tdContent" class="collapsible collapsed"></div>
-
-    <div class="sec">
-      <div class="sec-label" onclick="toggleSection('tdHousehold','householdChevron')" style="cursor:pointer">🏠 Daily Household</div>
-      <span class="sec-refresh" onclick="loadTodosFor('daily household','tdHousehold')">↻</span>
-      <span class="sec-toggle" id="householdChevron" onclick="toggleSection('tdHousehold','householdChevron')">▸</span>
-    </div>
-    <div id="tdHousehold" class="collapsible collapsed"></div>
-
-    <div class="sec">
-      <div class="sec-label" onclick="toggleSection('tdGet','getChevron')" style="cursor:pointer">🛒 Get</div>
-      <span class="sec-refresh" onclick="loadTodosFor('get','tdGet')">↻</span>
-      <span class="sec-toggle" id="getChevron" onclick="toggleSection('tdGet','getChevron')">▸</span>
-    </div>
-    <div id="tdGet" class="collapsible collapsed"></div>
-
-    <div class="sec">
-      <div class="sec-label">➕ Add Todo</div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
-      <input id="newTodoInput" type="text" placeholder="Todo name..." style="width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;padding:11px 14px;outline:none;caret-color:var(--accent);" onkeydown="if(event.key==='Enter')addTodo()">
-      <div style="display:flex;gap:8px;">
-        <select id="newTodoCategory" style="flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:0 12px;height:44px;outline:none;cursor:pointer;">
-          <option value="high">⚡ High Priority</option>
-          <option value="daily content">📋 Daily Content</option>
-          <option value="daily household">🏠 Daily Household</option>
-          <option value="get">🛒 Get</option>
-        </select>
-        <button onclick="addTodo()" style="height:44px;padding:0 18px;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;flex-shrink:0;">Add</button>
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- Methods view -->
