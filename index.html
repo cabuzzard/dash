@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------83<head>
+-----835<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -188,11 +188,11 @@
 <!-- L1: Sites + Queues + Todos -->
 <div class="view active" id="viewL1">
   <div class="sec" style="margin-top:8px">
-    <div class="sec-label">⚡ Priority</div>
+    <div class="sec-label">📋 Development</div>
   </div>
   <div style="margin-bottom:8px;">
     <button onclick="showPrioritySchedule()" style="width:100%;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
-      📋 All Campaigns →
+      📋 Development →
     </button>
   </div>
 
@@ -319,10 +319,10 @@
   <div id="productsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
 
-<!-- All Campaigns view -->
+<!-- Development view -->
 <div class="view" id="viewAllCampaigns">
   <div class="sec">
-    <div class="sec-label">📋 All Campaigns</div>
+    <div class="sec-label">📋 Development</div>
     <span class="sec-refresh" onclick="loadAllCampaigns()">↻</span>
   </div>
   <a href="https://www.notion.so/087b1163b4e64975bc7a4b686ff801de?newRecord=true" target="_blank" style="display:flex;align-items:center;justify-content:center;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;text-decoration:none;gap:6px;margin-bottom:16px;">
@@ -334,12 +334,12 @@
 <!-- Priority Schedule view -->
 <div class="view" id="viewPriority">
   <div class="sec">
-    <div class="sec-label">📋 All Campaigns</div>
+    <div class="sec-label">📋 Development</div>
     <span class="sec-refresh" onclick="loadPrioritySchedule()">↻</span>
   </div>
   <button onclick="showNewCampaignModal()" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;">+ New Campaign</button>
   <button onclick="showAllCampaigns()" style="width:100%;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;margin-bottom:16px;">
-    📋 View All Campaigns →
+    📋 View Development →
   </button>
   <div id="priorityList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
@@ -352,7 +352,7 @@
   </div>
   <button onclick="showNewCampaignModal()" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;">+ New Campaign</button>
   <button onclick="showAllCampaigns()" style="width:100%;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;margin-bottom:16px;">
-    📋 View All Campaigns →
+    📋 View Development →
   </button>
   <div id="weeklyList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
@@ -369,7 +369,7 @@
   <div id="methodsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
 
-<!-- All Campaigns view -->
+<!-- Development view -->
 <!-- L2: Campaigns for a site -->
 <div class="view" id="viewL2">
   <div class="sec"><div class="sec-label" id="l2Label">Campaigns</div></div>
@@ -1430,7 +1430,7 @@ function showPrioritySchedule() {
   currentView = 'Priority';
   document.getElementById('backBtn').classList.add('visible');
   const el = document.getElementById('crumb');
-  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">All Campaigns</span>';
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">Development</span>';
   window.scrollTo(0,0);
   loadPrioritySchedule();
 }
@@ -1668,7 +1668,7 @@ function showAllCampaigns() {
   currentView = 'AllCampaigns';
   document.getElementById('backBtn').classList.add('visible');
   const el = document.getElementById('crumb');
-  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">All Campaigns</span>';
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">Development</span>';
   window.scrollTo(0,0);
   loadAllCampaigns();
 }
