@@ -341,6 +341,23 @@ export default {
       }
 
       // L3: Get titles for a campaign
+      if (action === "getDevTitleCounts") {
+        // Get all Development titles and count by campaign
+        const data = await notionPost(`/databases/${CONTENT_STRATEGY_DB}/query`, {
+          filter: { property: "Status", select: { equals: "Development" } },
+          page_size: 100
+        });
+        const counts = {};
+        (data.results || []).forEach(page => {
+          const campaignRels = page.properties.Campaign?.relation || [];
+          campaignRels.forEach(r => {
+            const id = r.id.replace(/-/g,'');
+            counts[id] = (counts[id] || 0) + 1;
+          });
+        });
+        return json({ counts });
+      }
+
       if (action === "getPlanningTitles") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: 'campaignId required' }, 400);
