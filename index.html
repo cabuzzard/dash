@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------821<head>
+-----845<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1490,6 +1490,7 @@ async function loadPrioritySchedule() {
           '<div class="row-meta">'+c.site+'</div>'+
         '</div>'+
         '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'+
+          '<span id="devcount-'+c.id+'" style="font-size:11px;color:var(--text3);min-width:16px;text-align:center;"></span>'+
           '<a href="'+nUrl(c.id)+'" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:#fff;text-decoration:none;border:1px solid var(--border2);border-radius:4px;padding:2px 6px;font-weight:600;">↗ DB</a>'+
           '<span id="arr-'+c.id+'" style="color:var(--text3);font-size:12px;">▸</span>'+
         '</div>';
@@ -1505,6 +1506,8 @@ async function loadPrioritySchedule() {
         try {
           const data = await call('getPlanningTitles', { campaignId: c.id });
           titlesEl.innerHTML = '';
+          const countEl = document.getElementById('devcount-'+c.id);
+          if (countEl) countEl.textContent = data.titles?.length || 0;
           if (!data.titles?.length) {
             titlesEl.innerHTML = '<div style="padding:6px 0;font-size:12px;color:var(--text3);font-style:italic;">No titles in Development.</div>';
             return;
