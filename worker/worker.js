@@ -392,35 +392,35 @@ export default {
 
       // L1 publish queue — all publish titles across all campaigns
       if (action === "getPublishQueue") {
-        // Fetch all campaigns for lookup
-        const campData = await notionPost(`/databases/${"5e9f152a-bd65-4776-a81a-b6e85980cc41"}/query`, { page_size: 100 });
-        const campById = {};
-        (campData.results || []).forEach(c => {
-          campById[c.id.replace(/-/g,'')] = {
-            name: c.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
-            site: c.properties.site?.select?.name || c.properties.Site?.select?.name || '',
-          };
-        });
-
         const data = await notionPost(`/databases/${CONTENT_STRATEGY_DB}/query`, {
           filter: { property:"Status", select:{ equals:"Publish" } },
           sorts: [{ property:"Sequence Order", direction:"ascending" }],
           page_size: 100
         });
-        const titles = (data.results || []).map(page => {
+
+        // Resolve campaign names by fetching each related campaign page
+        const titles = await Promise.all((data.results || []).map(async page => {
           const props = page.properties;
           const campaignRel = props.Campaign?.relation || [];
-          const campId = campaignRel.length > 0 ? campaignRel[0].id.replace(/-/g,'') : '';
-          const campInfo = campById[campId] || {};
+          let campaignName = '';
+          let site = props.Site?.rollup?.array?.map(r=>r.select?.name).filter(Boolean).join('') || '';
+          if (campaignRel.length > 0) {
+            try {
+              const camp = await notionGet(`/pages/${campaignRel[0].id}`);
+              campaignName = camp.properties?.Name?.title?.map(t=>t.plain_text).join('') || '';
+              if (!site) site = camp.properties?.site?.select?.name || '';
+            } catch(e) {}
+          }
           return {
             id: page.id.replace(/-/g,''),
             title: props.Title?.title?.map(t=>t.plain_text).join('') || 'Untitled',
             stage: props.Status?.select?.name || '',
             scheduled: props['Scheduled Date']?.date?.start || '',
-            campaign: campInfo.name || '',
-            site: campInfo.site || props.Site?.rollup?.array?.map(r=>r.select?.name).filter(Boolean).join('') || '',
+            campaign: campaignName,
+            site,
           };
-        });
+        }));
+
         titles.sort((a,b) => {
           const s = (a.site||'zzz').localeCompare(b.site||'zzz');
           if (s !== 0) return s;
