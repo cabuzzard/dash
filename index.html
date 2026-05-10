@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------89<head>
+-----83idontthinkso<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -204,6 +204,11 @@
       📤 Publishing →
     </button>
   </div>
+  <div style="margin-bottom:8px;">
+    <button onclick="showPlatforms()" style="width:100%;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
+      🔑 Platforms →
+    </button>
+  </div>
 
   <div class="sec" style="margin-top:8px">
     <div class="sec-label">📅 This Week</div>
@@ -338,6 +343,16 @@
   <div id="allCampaignsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
 
+<!-- Platforms view -->
+<div class="view" id="viewPlatforms">
+  <div class="sec">
+    <div class="sec-label">🔑 Platforms</div>
+    <span class="sec-refresh" onclick="loadPlatformLogins()">↻</span>
+  </div>
+  <button onclick="showAddLoginModal()" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:12px;">+ Add Login</button>
+  <div id="platformLoginsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+</div>
+
 <!-- Publishing view -->
 <div class="view" id="viewPublishing">
   <div class="sec">
@@ -346,12 +361,6 @@
   </div>
   <div id="publishingList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 
-  <div class="sec" style="margin-top:24px;">
-    <div class="sec-label">🔑 Platforms</div>
-    <span class="sec-refresh" onclick="loadPlatformLogins()">↻</span>
-  </div>
-  <button onclick="showAddLoginModal()" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:12px;">+ Add Login</button>
-  <div id="platformLoginsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
 
 <!-- Priority Schedule view -->
@@ -615,6 +624,7 @@ function goBack() {
   else if (currentView==='Weekly') goL1();
   else if (currentView==='Priority') goL1();
   else if (currentView==='Publishing') goL1();
+  else if (currentView==='Platforms') goL1();
   else if (currentView==='Products') goL1();
 }
 function goL1() { state={site:null,campaign:null,title:null}; showView('L1'); }
@@ -1471,8 +1481,19 @@ async function loadPlatforms() {
 }
 
 // ── WEEKLY SCHEDULE ──────────────────────────────────────────────────
+function showPlatforms() {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('viewPlatforms').classList.add('active');
+  currentView = 'Platforms';
+  document.getElementById('backBtn').classList.add('visible');
+  const el = document.getElementById('crumb');
+  el.innerHTML = '<span class="crumb-root" onclick="goL1()">Hermes</span><span class="crumb-sep">›</span><span class="crumb-item cur">Platforms</span>';
+  window.scrollTo(0,0);
+  loadPlatformLogins();
+}
+
 async function loadPlatformLogins() {
-  const el = document.getElementById('platformLoginsList');
+  const el = document.getElementById(currentView === 'Publishing' ? 'platformLoginsListPub' : 'platformLoginsList');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
     const data = await call('getLoginsByCampaign');
