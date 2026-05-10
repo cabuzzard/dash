@@ -742,31 +742,21 @@ export default {
 
       if (action === "getPrioritySchedule") {
         const data = await notionPost(`/databases/${"087b1163b4e64975bc7a4b686ff801de"}/query`, {
-          sorts: [{ property: "Name", direction: "ascending" }],
+          sorts: [
+            { property: "site", direction: "ascending" },
+            { property: "Name", direction: "ascending" }
+          ],
           page_size: 100
         });
-
-        // Collect all cat relation IDs to resolve
-        const catIds = new Set();
-        (data.results || []).forEach(page => {
-          (page.properties.cat?.relation || []).forEach(r => catIds.add(r.id));
-        });
-        const methodNames = {};
-        await Promise.all([...catIds].map(async id => {
-          try {
-            const m = await notionGet(`/pages/${id}`);
-            methodNames[id] = m.properties?.Name?.title?.map(t=>t.plain_text).join('') || '';
-          } catch(e) { methodNames[id] = ''; }
-        }));
 
         const campaigns = (data.results || []).map(c => {
           const props = c.properties;
           return {
             id: c.id.replace(/-/g,''),
             name: props.Name?.title?.map(t=>t.plain_text).join('') || '',
-            site: props.site?.select?.name || '',
+            site: props.site?.select?.name || 'Other',
             status: props.Status?.select?.name || '',
-            cat: (props.cat?.relation || []).map(r => methodNames[r.id] || '').filter(Boolean).join(', ') || '',
+            cat: (props.cat?.relation || []).map(r => r.id).join(''),
             assocIds: (props['Associated Campaigns']?.relation || []).map(r => r.id.replace(/-/g,'')),
           };
         });

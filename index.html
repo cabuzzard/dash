@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------83oioytrfghj<head>
+-----83issiiiiick<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1476,15 +1476,15 @@ async function loadPrioritySchedule() {
       return;
     }
 
-    // Group by cat
+    // Group by site then sort campaigns by name within each site
     const catMap = {};
     data.campaigns.forEach(c => {
-      const key = c.cat || 'Uncategorized';
+      const key = c.site || 'Other';
       if (!catMap[key]) catMap[key] = [];
       catMap[key].push(c);
     });
-    const catKeys = Object.keys(catMap).filter(k => k !== 'Uncategorized').sort();
-    if (catMap['Uncategorized']) catKeys.push('Uncategorized');
+    const catKeys = Object.keys(catMap).filter(k => k !== 'Other').sort();
+    if (catMap['Other']) catKeys.push('Other');
     let catIdx = 0;
 
     catKeys.forEach(cat => {
