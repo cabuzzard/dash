@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------83yayayayayayay<head>
+-----83issnope<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1498,20 +1498,20 @@ async function loadPlatformLogins() {
   try {
     const data = await call('getLoginsByCampaign');
     el.innerHTML = '';
-    const siteMap = data.siteMap || {};
-    const sites = Object.keys(siteMap).sort();
-    if (!sites.length) { el.innerHTML = '<div class="empty">No logins found.</div>'; return; }
+    const groups = data.groups || [];
+    if (!groups.length) { el.innerHTML = '<div class="empty">No logins found.</div>'; return; }
 
     let idx = 0;
-    sites.forEach(site => {
+    groups.forEach(siteGroup => {
+      const site = siteGroup.site;
       // Site header
       const siteHdr = document.createElement('div');
       siteHdr.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);margin:16px 0 8px;';
       siteHdr.textContent = site;
       el.appendChild(siteHdr);
 
-      const campaigns = siteMap[site];
-      Object.keys(campaigns).sort().forEach(campName => {
+      (siteGroup.campaigns || []).forEach(campGroup => {
+        const campName = campGroup.campaign;
         const campId = 'plogin-' + idx++;
         // Campaign collapsible header
         const campHdr = document.createElement('div');
@@ -1531,7 +1531,7 @@ async function loadPlatformLogins() {
         grp.id = campId;
         grp.style.cssText = 'display:none;padding:4px 0 8px 12px;border-left:2px solid var(--border2);margin-bottom:4px;';
 
-        campaigns[campName].forEach(login => {
+        campGroup.logins.forEach(login => {
           const isActive = login.status === 'Active';
           const row = document.createElement('div');
           row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 10px;margin-bottom:4px;background:'+(isActive?'var(--bg)':'var(--surface)')+';border:1px solid var(--border);border-radius:var(--radius-sm);';

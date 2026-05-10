@@ -732,53 +732,6 @@ export default {
         return json({ success: true, id: result.id.replace(/-/g,'') });
       }
 
-      if (action === "getLoginsByCampaign") {
-        // Fetch all logins with campaign + platform info
-        const loginData = await notionPost(`/databases/${LOGINS_DB}/query`, {
-          sorts: [{ property: "Name", direction: "ascending" }],
-          page_size: 100
-        });
-
-        // Fetch campaigns for name + site lookup
-        const campData = await notionPost(`/databases/${"5e9f152a-bd65-4776-a81a-b6e85980cc41"}/query`, { page_size: 200 });
-        const campById = {};
-        (campData.results || []).forEach(c => {
-          campById[c.id.replace(/-/g,'')] = {
-            name: c.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
-            site: c.properties.site?.select?.name || 'Other',
-          };
-        });
-
-        const logins = (loginData.results || []).map(l => {
-          const props = l.properties;
-          const campRel = props.Campaign?.relation || [];
-          const campId = campRel.length > 0 ? campRel[0].id.replace(/-/g,'') : '';
-          const campInfo = campById[campId] || {};
-          return {
-            id: l.id.replace(/-/g,''),
-            name: props.Name?.title?.map(t=>t.plain_text).join('') || '',
-            status: props.Status?.select?.name || '',
-            accountUrl: props['Account URL']?.url || '',
-            username: props.Usr?.rich_text?.map(t=>t.plain_text).join('') || '',
-            campaignId: campId,
-            campaignName: campInfo.name || '',
-            site: campInfo.site || 'Other',
-          };
-        });
-
-        // Group by site → campaign
-        const siteMap = {};
-        logins.forEach(l => {
-          const site = l.site;
-          const camp = l.campaignName || 'No Campaign';
-          if (!siteMap[site]) siteMap[site] = {};
-          if (!siteMap[site][camp]) siteMap[site][camp] = [];
-          siteMap[site][camp].push(l);
-        });
-
-        return json({ siteMap });
-      }
-
       if (action === "createLogin") {
         const { name, campaignId, accountUrl, username } = body;
         if (!name) return json({ error: 'name required' }, 400);
