@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------83issnninininini<head>
+-----83issheklo<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -311,10 +311,11 @@
 <!-- Platforms view -->
 <div class="view" id="viewPlatforms">
   <div class="sec">
-    <div class="sec-label">🔑 Platforms & Logins</div>
-    <span class="sec-refresh" onclick="loadPlatforms()">↻</span>
+    <div class="sec-label">🔑 Platforms</div>
+    <span class="sec-refresh" onclick="loadPlatformLogins()">↻</span>
   </div>
-  <div id="platformsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+  <button onclick="showAddLoginModal()" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:12px;">+ Add Login</button>
+  <div id="platformLoginsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
 
 <!-- Products view -->
@@ -418,6 +419,21 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Add Login Modal -->
+<div class="modal-overlay" id="loginModalOverlay">
+  <div class="modal">
+    <div class="modal-title">Add Login</div>
+    <input class="modal-input" id="loginModalName" type="text" placeholder="Login name..." />
+    <input class="modal-input" id="loginModalUrl" type="url" placeholder="Account URL (optional)" />
+    <input class="modal-input" id="loginModalUser" type="text" placeholder="Username (optional)" />
+    <select class="modal-input" id="loginModalCamp" style="cursor:pointer;"><option value="">No campaign</option></select>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" style="flex:0;padding:0 20px" onclick="hideLoginModal()">Cancel</button>
+      <button class="btn btn-primary" id="loginModalBtn" onclick="confirmAddLogin()">Create Login</button>
+    </div>
+  </div>
+</div>
 
 <!-- Status Picker -->
 <div id="statusPickerOverlay" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.6);" onclick="hideStatusPicker()">
@@ -1305,6 +1321,9 @@ async function createCampaign() {
     btn.disabled = false; btn.textContent = 'Create';
   }
 }
+document.getElementById('loginModalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) hideLoginModal();
+});
 document.getElementById('modalOverlay').addEventListener('click', function(e) { if(e.target===this) hideModal(); });
 function confirmModal() { hideModal(); }
 
@@ -1387,10 +1406,104 @@ async function addTodo() {
 }
 
 // ── PLATFORMS ────────────────────────────────────────────────────────
+async function loadPlatformLogins() {
+  const el = document.getElementById('platformLoginsList');
+  if (!el) return;
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getLoginsByCampaign');
+    el.innerHTML = '';
+    const groups = data.groups || [];
+    if (!groups.length) { el.innerHTML = '<div class="empty">No logins found.</div>'; return; }
+    let idx = 0;
+    groups.forEach(siteGroup => {
+      const siteHdr = document.createElement('div');
+      siteHdr.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);margin:16px 0 8px;';
+      siteHdr.textContent = siteGroup.site;
+      el.appendChild(siteHdr);
+      (siteGroup.campaigns || []).forEach(campGroup => {
+        const campId = 'plogin-' + idx++;
+        const campHdr = document.createElement('div');
+        campHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:4px;cursor:pointer;';
+        campHdr.innerHTML = '<span style="font-size:13px;font-weight:600;color:var(--text);">'+campGroup.campaign+'</span><span id="plchev-'+campId+'" style="color:var(--text3);font-size:12px;">▸</span>';
+        campHdr.onclick = () => {
+          const grp = document.getElementById(campId);
+          const ch = document.getElementById('plchev-'+campId);
+          const open = grp.style.display !== 'none';
+          grp.style.display = open ? 'none' : 'block';
+          ch.textContent = open ? '▸' : '▾';
+        };
+        el.appendChild(campHdr);
+        const grp = document.createElement('div');
+        grp.id = campId;
+        grp.style.cssText = 'display:none;padding:4px 0 8px 12px;border-left:2px solid var(--border2);margin-bottom:4px;';
+        campGroup.logins.forEach(login => {
+          const isActive = login.status === 'Active';
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 10px;margin-bottom:4px;background:'+(isActive?'var(--bg)':'var(--surface)')+';border:1px solid var(--border);border-radius:var(--radius-sm);';
+          row.innerHTML =
+            '<div style="flex:1;min-width:0;">'+
+              '<div style="font-size:13px;font-weight:500;color:'+(isActive?'var(--text)':'var(--text3)')+';">'+login.name+'</div>'+
+              (login.usr?'<div style="font-size:11px;color:var(--text3);">@'+login.usr+'</div>':'')+
+            '</div>'+
+            '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">'+
+              '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:'+(isActive?'#0a1a00':'var(--surface2)')+';color:'+(isActive?'#44ff44':'var(--text3)')+';border:1px solid '+(isActive?'#1a4400':'var(--border2)')+';">'+login.status+'</span>'+
+              '<a href="'+nUrl(login.id)+'" target="_blank" style="font-size:10px;color:#fff;text-decoration:none;border:1px solid var(--border2);border-radius:4px;padding:2px 6px;font-weight:600;">↗ DB</a>'+
+            '</div>';
+          grp.appendChild(row);
+        });
+        el.appendChild(grp);
+      });
+    });
+  } catch(e) { el.innerHTML = '<div class="error-msg">'+e.message+'</div>'; }
+}
+
+let allCampaignsForLogin = [];
+
+async function showAddLoginModal() {
+  document.getElementById('loginModalName').value = '';
+  document.getElementById('loginModalUrl').value = '';
+  document.getElementById('loginModalUser').value = '';
+  document.getElementById('loginModalCamp').innerHTML = '<option value="">Loading...</option>';
+  document.getElementById('loginModalOverlay').classList.add('visible');
+  try {
+    const data = await call('getAllCampaigns');
+    allCampaignsForLogin = data.campaigns || [];
+    const sel = document.getElementById('loginModalCamp');
+    sel.innerHTML = '<option value="">No campaign</option>';
+    allCampaignsForLogin.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = (c.site ? c.site+' · ' : '') + c.name;
+      sel.appendChild(opt);
+    });
+  } catch(e) { document.getElementById('loginModalCamp').innerHTML = '<option value="">Could not load</option>'; }
+}
+
+function hideLoginModal() { document.getElementById('loginModalOverlay').classList.remove('visible'); }
+
+async function confirmAddLogin() {
+  const name = document.getElementById('loginModalName').value.trim();
+  const accountUrl = document.getElementById('loginModalUrl').value.trim();
+  const username = document.getElementById('loginModalUser').value.trim();
+  const campaignId = document.getElementById('loginModalCamp').value;
+  if (!name) { showToast('Please enter a login name', 'error'); return; }
+  const btn = document.getElementById('loginModalBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    await call('createLogin', { name, accountUrl, username, campaignId });
+    hideLoginModal();
+    showToast('Login created ✓', 'success');
+    loadPlatformLogins();
+  } catch(e) { showToast('Failed: '+e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Create Login'; }
+}
+
 function showPlatforms() {
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.getElementById('viewPlatforms').classList.add('active');
   currentView = 'Platforms';
+  loadPlatformLogins();
   document.getElementById('backBtn').classList.add('visible');
   // Update crumb
   const el = document.getElementById('crumb');
