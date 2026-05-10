@@ -651,6 +651,157 @@ export default {
       }
 
       // Get all logins grouped by platform
+      if (action === "getLoginsByCampaign") {
+        // Fetch all logins
+        const loginData = await notionPost(`/databases/${LOGINS_DB}/query`, {
+          sorts: [{ property: "Name", direction: "ascending" }],
+          page_size: 100
+        });
+
+        // Collect campaign IDs to resolve
+        const campIds = new Set();
+        (loginData.results || []).forEach(l => {
+          (l.properties.Campaign?.relation || []).forEach(r => campIds.add(r.id));
+        });
+
+        // Fetch campaign names + sites
+        const campById = {};
+        await Promise.all([...campIds].map(async id => {
+          try {
+            const c = await notionGet(`/pages/${id}`);
+            campById[id] = {
+              name: c.properties?.Name?.title?.map(t=>t.plain_text).join('') || '',
+              site: c.properties?.site?.select?.name || 'Other',
+            };
+          } catch(e) { campById[id] = { name: 'Unknown', site: 'Other' }; }
+        }));
+
+        const logins = (loginData.results || []).map(l => {
+          const props = l.properties;
+          const campRel = props.Campaign?.relation || [];
+          const campInfo = campRel.length > 0 ? (campById[campRel[0].id] || {}) : {};
+          return {
+            id: l.id.replace(/-/g,''),
+            name: props.Name?.title?.map(t=>t.plain_text).join('') || '',
+            usr: props.Usr?.rich_text?.map(t=>t.plain_text).join('') || '',
+            status: props.Status?.select?.name || '',
+            campaign: campInfo.name || 'Uncategorized',
+            site: campInfo.site || 'Other',
+          };
+        });
+
+        // Group by site → campaign
+        const siteMap = {};
+        logins.forEach(l => {
+          if (!siteMap[l.site]) siteMap[l.site] = {};
+          if (!siteMap[l.site][l.campaign]) siteMap[l.site][l.campaign] = [];
+          siteMap[l.site][l.campaign].push(l);
+        });
+
+        const groups = Object.keys(siteMap).sort().map(site => ({
+          site,
+          campaigns: Object.keys(siteMap[site]).sort().map(campaign => ({
+            campaign,
+            logins: siteMap[site][campaign]
+          }))
+        }));
+
+        return json({ groups });
+      }
+
+      if (action === "createLogin") {
+        const { name, usr, accountUrl, status, campaignId } = body;
+        if (!name) return json({ error: 'name required' }, 400);
+        const props = {
+          Name: { title: [{ type: "text", text: { content: name } }] },
+          Status: { select: { name: status || 'Active' } },
+        };
+        if (usr) props.Usr = { rich_text: [{ type: "text", text: { content: usr } }] };
+        if (accountUrl) props['Account URL'] = { url: accountUrl };
+        if (campaignId) {
+          const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+          props.Campaign = { relation: [{ id: dashed }] };
+        }
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: LOGINS_DB }, properties: props })
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || 'Create failed' }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,'') });
+      }
+
+      if (action === "getLoginsByCampaign") {
+        // Fetch all logins with campaign + platform info
+        const loginData = await notionPost(`/databases/${LOGINS_DB}/query`, {
+          sorts: [{ property: "Name", direction: "ascending" }],
+          page_size: 100
+        });
+
+        // Fetch campaigns for name + site lookup
+        const campData = await notionPost(`/databases/${"5e9f152a-bd65-4776-a81a-b6e85980cc41"}/query`, { page_size: 200 });
+        const campById = {};
+        (campData.results || []).forEach(c => {
+          campById[c.id.replace(/-/g,'')] = {
+            name: c.properties.Name?.title?.map(t=>t.plain_text).join('') || '',
+            site: c.properties.site?.select?.name || 'Other',
+          };
+        });
+
+        const logins = (loginData.results || []).map(l => {
+          const props = l.properties;
+          const campRel = props.Campaign?.relation || [];
+          const campId = campRel.length > 0 ? campRel[0].id.replace(/-/g,'') : '';
+          const campInfo = campById[campId] || {};
+          return {
+            id: l.id.replace(/-/g,''),
+            name: props.Name?.title?.map(t=>t.plain_text).join('') || '',
+            status: props.Status?.select?.name || '',
+            accountUrl: props['Account URL']?.url || '',
+            username: props.Usr?.rich_text?.map(t=>t.plain_text).join('') || '',
+            campaignId: campId,
+            campaignName: campInfo.name || '',
+            site: campInfo.site || 'Other',
+          };
+        });
+
+        // Group by site → campaign
+        const siteMap = {};
+        logins.forEach(l => {
+          const site = l.site;
+          const camp = l.campaignName || 'No Campaign';
+          if (!siteMap[site]) siteMap[site] = {};
+          if (!siteMap[site][camp]) siteMap[site][camp] = [];
+          siteMap[site][camp].push(l);
+        });
+
+        return json({ siteMap });
+      }
+
+      if (action === "createLogin") {
+        const { name, campaignId, accountUrl, username } = body;
+        if (!name) return json({ error: 'name required' }, 400);
+        const props = {
+          Name: { title: [{ type: "text", text: { content: name } }] },
+          Status: { select: { name: "Active" } },
+        };
+        if (accountUrl) props['Account URL'] = { url: accountUrl };
+        if (username) props['Usr'] = { rich_text: [{ type: "text", text: { content: username } }] };
+        if (campaignId) {
+          const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+          props['Campaign'] = { relation: [{ id: dashed }] };
+        }
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: LOGINS_DB }, properties: props })
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || 'Create failed' }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,'') });
+      }
+
       if (action === "getLogins") {
         // Fetch all platforms
         const platformData = await notionPost(`/databases/${PLATFORMS_DB}/query`, {
