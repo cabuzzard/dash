@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------83issilsislislislislisiiiiick<head>
+-----83isnotnope<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -338,9 +338,10 @@
     <div class="sec-label">📋 Development</div>
     <span class="sec-refresh" onclick="loadAllCampaigns()">↻</span>
   </div>
-  <a href="https://www.notion.so/087b1163b4e64975bc7a4b686ff801de?newRecord=true" target="_blank" style="display:flex;align-items:center;justify-content:center;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;text-decoration:none;gap:6px;margin-bottom:16px;">
+  <a href="https://www.notion.so/087b1163b4e64975bc7a4b686ff801de?newRecord=true" target="_blank" style="display:flex;align-items:center;justify-content:center;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;text-decoration:none;gap:6px;margin-bottom:8px;">
     + New Campaign
   </a>
+  <button onclick="showAddTitleModal()" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:16px;">+ Add Title</button>
   <div id="allCampaignsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
 
@@ -424,6 +425,19 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Add Title Modal -->
+<div class="modal-overlay" id="titleModalOverlay">
+  <div class="modal">
+    <div class="modal-title">Add Title</div>
+    <input class="modal-input" id="titleModalName" type="text" placeholder="Title..." />
+    <select class="modal-input" id="titleModalCamp" style="cursor:pointer;"><option value="">Select campaign...</option></select>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" style="flex:0;padding:0 20px" onclick="hideTitleModal()">Cancel</button>
+      <button class="btn btn-primary" id="titleModalBtn" onclick="confirmAddTitle()">Add Title</button>
+    </div>
+  </div>
+</div>
 
 <!-- Add Login Modal -->
 <div class="modal-overlay" id="loginModalOverlay">
@@ -1029,6 +1043,42 @@ async function renderL4(title) {
 // ── MODAL ─────────────────────────────────────────────────────────────
 function hideModal() { document.getElementById('modalOverlay').classList.remove('visible'); }
 
+// ── ADD TITLE MODAL ───────────────────────────────────────────────────
+async function showAddTitleModal() {
+  document.getElementById('titleModalName').value = '';
+  document.getElementById('titleModalCamp').innerHTML = '<option value="">Loading campaigns...</option>';
+  document.getElementById('titleModalOverlay').classList.add('visible');
+  setTimeout(() => document.getElementById('titleModalName').focus(), 280);
+  try {
+    const data = await call('getAllCampaigns');
+    const sel = document.getElementById('titleModalCamp');
+    sel.innerHTML = '<option value="">Select campaign...</option>';
+    (data.campaigns || []).forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = (c.site ? c.site+' · ' : '') + c.name;
+      sel.appendChild(opt);
+    });
+  } catch(e) { document.getElementById('titleModalCamp').innerHTML = '<option value="">Could not load</option>'; }
+}
+
+function hideTitleModal() { document.getElementById('titleModalOverlay').classList.remove('visible'); }
+
+async function confirmAddTitle() {
+  const title = document.getElementById('titleModalName').value.trim();
+  const campaignId = document.getElementById('titleModalCamp').value;
+  if (!title) { showToast('Please enter a title', 'error'); return; }
+  const btn = document.getElementById('titleModalBtn');
+  btn.disabled = true; btn.textContent = 'Adding...';
+  try {
+    await call('createTitle', { title, campaignId });
+    hideTitleModal();
+    showToast('"'+title+'" added ✓', 'success');
+    loadAllCampaigns();
+  } catch(e) { showToast('Failed: '+e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Add Title'; }
+}
+
 // ── STATUS PICKER ─────────────────────────────────────────────────────
 const STATUS_OPTIONS = ['Planning','Active','Paused','Complete','Delete'];
 let statusPickerCampaign = null;
@@ -1328,6 +1378,13 @@ async function createCampaign() {
 }
 document.getElementById('loginModalOverlay').addEventListener('click', function(e) {
   if (e.target === this) hideLoginModal();
+});
+document.getElementById('titleModalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) hideTitleModal();
+});
+document.getElementById('titleModalName')?.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') confirmAddTitle();
+  if (e.key === 'Escape') hideTitleModal();
 });
 document.getElementById('modalOverlay').addEventListener('click', function(e) { if(e.target===this) hideModal(); });
 function confirmModal() { hideModal(); }
