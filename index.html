@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------mgoatstotes uhnjhnj<head>
+-----8mgoats99999999999999<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -192,8 +192,31 @@
   </div>
   <div style="margin-bottom:8px;">
     <button onclick="showPrioritySchedule()" style="width:100%;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;">
-      📋 Development →
+      📋 Development Titles →
     </button>
+  </div>
+
+  <div class="sec">
+    <div class="sec-label" onclick="toggleSMSection()" style="cursor:pointer">📱 SM Posts</div>
+    <span class="sec-refresh" onclick="loadSMPosts('')">↻</span>
+    <span class="sec-toggle" id="smPostsChevron" onclick="toggleSMSection()">▸</span>
+  </div>
+  <div id="smPostsSection" class="collapsible collapsed">
+    <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:14px;margin-bottom:12px;">
+      <div style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:10px;">+ New SM Post</div>
+      <input id="smPostTitle" type="text" placeholder="Post title..." style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;padding:10px 12px;outline:none;caret-color:var(--accent);margin-bottom:8px;" />
+      <textarea id="smPostCopy" placeholder="Post copy..." style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;caret-color:var(--accent);margin-bottom:8px;resize:vertical;min-height:80px;line-height:1.5;"></textarea>
+      <select id="smPostCampaign" onchange="onSMCampaignChange()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;cursor:pointer;margin-bottom:8px;">
+        <option value="">Select campaign...</option>
+      </select>
+      <select id="smPostContentTitle" onchange="onSMTitleChange()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;cursor:pointer;margin-bottom:8px;">
+        <option value="">Select title...</option>
+      </select>
+      <div id="smPostLoginPreview" style="font-size:11px;color:var(--text3);min-height:16px;margin-bottom:6px;padding:0 2px;"></div>
+      <div id="smPostPlatformWrap" style="margin-bottom:8px;"></div>
+      <button onclick="submitSMPost()" id="smPostSubmitBtn" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:6px;color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Add Post</button>
+    </div>
+    <div id="smPostsList"><div class="empty">Open this section to load posts.</div></div>
   </div>
 
   <div class="sec" style="margin-top:8px">
@@ -335,7 +358,7 @@
 <!-- Development view -->
 <div class="view" id="viewAllCampaigns">
   <div class="sec">
-    <div class="sec-label">📋 Development</div>
+    <div class="sec-label">📋 Development Titles</div>
     <span class="sec-refresh" onclick="loadAllCampaigns()">↻</span>
   </div>
   <a href="https://www.notion.so/087b1163b4e64975bc7a4b686ff801de?newRecord=true" target="_blank" style="display:flex;align-items:center;justify-content:center;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;text-decoration:none;gap:6px;margin-bottom:8px;">
@@ -344,32 +367,6 @@
   <button onclick="showAddTitleModal()" style="width:100%;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;margin-bottom:16px;">+ Add Title</button>
   <div id="allCampaignsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 
-  <!-- SM Posts section -->
-  <div class="sec" style="margin-top:20px;">
-    <div class="sec-label" onclick="toggleSMSection()" style="cursor:pointer">📱 SM Posts</div>
-    <span class="sec-refresh" onclick="loadSMPosts('')">↻</span>
-    <span class="sec-toggle" id="smPostsChevron" onclick="toggleSMSection()">▸</span>
-  </div>
-  <div id="smPostsSection" class="collapsible collapsed">
-    <!-- Add SM Post form -->
-    <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:14px;margin-bottom:12px;">
-      <div style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:10px;">+ New SM Post</div>
-      <input id="smPostTitle" type="text" placeholder="Post title..." style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;padding:10px 12px;outline:none;caret-color:var(--accent);margin-bottom:8px;" />
-      <textarea id="smPostCopy" placeholder="Post copy..." style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;caret-color:var(--accent);margin-bottom:8px;resize:vertical;min-height:80px;line-height:1.5;"></textarea>
-      <select id="smPostCampaign" onchange="onSMCampaignChange()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;cursor:pointer;margin-bottom:8px;">
-        <option value="">Select campaign...</option>
-      </select>
-      <select id="smPostContentTitle" onchange="onSMTitleChange()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;cursor:pointer;margin-bottom:8px;">
-        <option value="">Select title...</option>
-      </select>
-      <div id="smPostLoginPreview" style="font-size:11px;color:var(--text3);min-height:16px;margin-bottom:6px;padding:0 2px;"></div>
-      <!-- Login checkboxes rendered here -->
-      <div id="smPostPlatformWrap" style="margin-bottom:8px;"></div>
-      <button onclick="submitSMPost()" id="smPostSubmitBtn" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:6px;color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Add Post</button>
-    </div>
-    <!-- SM posts list -->
-    <div id="smPostsList"><div class="empty">Open this section to load posts.</div></div>
-  </div>
 </div>
 
 <!-- Publishing view -->
@@ -384,12 +381,12 @@
 <!-- Priority Schedule view -->
 <div class="view" id="viewPriority">
   <div class="sec">
-    <div class="sec-label">📋 Development</div>
+    <div class="sec-label">📋 Development Titles</div>
     <span class="sec-refresh" onclick="loadPrioritySchedule()">↻</span>
   </div>
   <button onclick="showNewCampaignModal()" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;">+ New Campaign</button>
   <button onclick="showAllCampaigns()" style="width:100%;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;margin-bottom:16px;">
-    📋 View Development →
+    📋 View Development Titles →
   </button>
   <div id="priorityList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 </div>
@@ -402,7 +399,7 @@
   </div>
   <button onclick="showNewCampaignModal()" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;">+ New Campaign</button>
   <button onclick="showAllCampaigns()" style="width:100%;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;text-align:left;padding:0 14px;margin-bottom:16px;">
-    📋 View Development →
+    📋 View Development Titles →
   </button>
   <div id="weeklyList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 
