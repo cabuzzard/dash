@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------8mgoats99999999999999<head>
+-----65656767676767goats<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -2046,11 +2046,15 @@ async function loadSMPosts(campaignId) {
           const platformTags = (p.platforms||[]).map(pl =>
             '<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:var(--surface2);color:var(--text3);border:1px solid var(--border2);">' + pl + '</span>'
           ).join(' ');
+          const videoTag = p.videoUrl
+            ? '<a href="'+p.videoUrl+'" target="_blank" onclick="event.stopPropagation()" style="font-size:9px;padding:1px 6px;border-radius:10px;background:#0a1a0a;color:#44cc44;border:1px solid #1a4400;text-decoration:none;">▶ video</a>'
+            : '<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:var(--surface2);color:var(--text3);border:1px dashed var(--border2);">no video</span>';
           row.innerHTML =
             '<div class="row-body">' +
               '<div class="row-name">'+p.title+'</div>' +
               '<div class="row-meta" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:3px;">' +
                 platformTags +
+                videoTag +
                 (p.logins?.length ? '<span style="font-size:9px;color:var(--text3);">🔑 '+p.logins.join(', ')+'</span>' : '') +
               '</div>' +
             '</div>' +
