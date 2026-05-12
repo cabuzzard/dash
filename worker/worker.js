@@ -1198,6 +1198,7 @@ export default {
             campaign: campInfo.name || '',
             site: campInfo.site || 'Other',
             sequence: props.Sequence?.number || 999,
+            videoUrl: props['Video URL']?.url || '',
           };
         });
         return json({ posts });
