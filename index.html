@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------65656767676767goats<head>
+-----mgoatsiznasty<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -202,20 +202,7 @@
     <span class="sec-toggle" id="smPostsChevron" onclick="toggleSMSection()">▸</span>
   </div>
   <div id="smPostsSection" class="collapsible collapsed">
-    <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:14px;margin-bottom:12px;">
-      <div style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:10px;">+ New SM Post</div>
-      <input id="smPostTitle" type="text" placeholder="Post title..." style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;padding:10px 12px;outline:none;caret-color:var(--accent);margin-bottom:8px;" />
-      <textarea id="smPostCopy" placeholder="Post copy..." style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;caret-color:var(--accent);margin-bottom:8px;resize:vertical;min-height:80px;line-height:1.5;"></textarea>
-      <select id="smPostCampaign" onchange="onSMCampaignChange()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;cursor:pointer;margin-bottom:8px;">
-        <option value="">Select campaign...</option>
-      </select>
-      <select id="smPostContentTitle" onchange="onSMTitleChange()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;cursor:pointer;margin-bottom:8px;">
-        <option value="">Select title...</option>
-      </select>
-      <div id="smPostLoginPreview" style="font-size:11px;color:var(--text3);min-height:16px;margin-bottom:6px;padding:0 2px;"></div>
-      <div id="smPostPlatformWrap" style="margin-bottom:8px;"></div>
-      <button onclick="submitSMPost()" id="smPostSubmitBtn" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:6px;color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Add Post</button>
-    </div>
+    <button onclick="showSMPostModal()" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:var(--radius-sm);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:12px;">+ Add SM Post</button>
     <div id="smPostsList"><div class="empty">Open this section to load posts.</div></div>
   </div>
 
@@ -546,6 +533,27 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" style="flex:0;padding:0 20px" onclick="hideCampaignModal()">Cancel</button>
       <button class="btn btn-primary" id="campCreateBtn" onclick="createCampaign()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- SM Post Modal -->
+<div class="modal-overlay" id="smPostModalOverlay" onclick="if(event.target===this)hideSMPostModal()">
+  <div class="modal" style="max-height:85vh;overflow-y:auto;">
+    <div class="modal-title">New SM Post</div>
+    <input class="modal-input" id="smPostTitle" type="text" placeholder="Post title..." />
+    <textarea class="modal-input" id="smPostCopy" placeholder="Post copy..." style="resize:vertical;min-height:80px;line-height:1.5;"></textarea>
+    <select class="modal-input" id="smPostCampaign" onchange="onSMCampaignChange()" style="cursor:pointer;">
+      <option value="">Select campaign...</option>
+    </select>
+    <select class="modal-input" id="smPostContentTitle" onchange="onSMTitleChange()" style="cursor:pointer;">
+      <option value="">Select title...</option>
+    </select>
+    <div id="smPostLoginPreview" style="font-size:11px;color:var(--text3);min-height:16px;margin-bottom:6px;padding:0 2px;"></div>
+    <div id="smPostPlatformWrap" style="margin-bottom:12px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" style="flex:0;padding:0 20px" onclick="hideSMPostModal()">Cancel</button>
+      <button class="btn btn-primary" id="smPostSubmitBtn" onclick="submitSMPost()">Add Post</button>
     </div>
   </div>
 </div>
@@ -1894,6 +1902,16 @@ async function loadWeeklySchedule() {
 let smCampaignsCache = [];
 let smTitlesCache = {};
 
+function showSMPostModal() {
+  initSMPostForm();
+  document.getElementById('smPostModalOverlay').classList.add('visible');
+  setTimeout(() => document.getElementById('smPostTitle').focus(), 280);
+}
+
+function hideSMPostModal() {
+  document.getElementById('smPostModalOverlay').classList.remove('visible');
+}
+
 async function initSMPostForm() {
   const campSel = document.getElementById('smPostCampaign');
   if (smCampaignsCache.length === 0) {
@@ -2002,6 +2020,7 @@ async function submitSMPost() {
       loginIds, platforms,
     });
     showToast('SM Post created ✓', 'success');
+    hideSMPostModal();
     document.getElementById('smPostTitle').value = '';
     document.getElementById('smPostCopy').value = '';
     document.getElementById('smPostPlatformWrap').innerHTML = '';
@@ -2046,8 +2065,8 @@ async function loadSMPosts(campaignId) {
           const platformTags = (p.platforms||[]).map(pl =>
             '<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:var(--surface2);color:var(--text3);border:1px solid var(--border2);">' + pl + '</span>'
           ).join(' ');
-          const videoTag = p.videoUrl
-            ? '<a href="'+p.videoUrl+'" target="_blank" onclick="event.stopPropagation()" style="font-size:9px;padding:1px 6px;border-radius:10px;background:#0a1a0a;color:#44cc44;border:1px solid #1a4400;text-decoration:none;">▶ video</a>'
+          const videoTag = p.hasVideo
+            ? '<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:#0a1a0a;color:#ffffff;border:1px solid #1a4400;">▶ video</span>'
             : '<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:var(--surface2);color:var(--text3);border:1px dashed var(--border2);">no video</span>';
           row.innerHTML =
             '<div class="row-body">' +
@@ -2072,7 +2091,7 @@ function toggleSMSection() {
   const isCollapsed = section.classList.contains('collapsed');
   section.classList.toggle('collapsed');
   chevron.textContent = isCollapsed ? '▾' : '▸';
-  if (isCollapsed) { initSMPostForm(); loadSMPosts(''); }
+  if (isCollapsed) { loadSMPosts(''); }
 }
 
 // ── ALL CAMPAIGNS ────────────────────────────────────────────────────
