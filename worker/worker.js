@@ -1142,6 +1142,147 @@ export default {
         return json({ week });
       }
 
+      // ── SM POSTS ────────────────────────────────────────────────────
+
+      const SM_POSTS_DB = "addcfe1d1beb46dbbcaa397504a8041d";
+
+      if (action === "getSMPosts") {
+        const { campaignId } = body;
+        const filter = campaignId
+          ? { property: "Campaign", relation: { contains: campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,'$1-$2-$3-$4-$5') } }
+          : undefined;
+        const query = { sorts: [{ property: "Sequence", direction: "ascending" }], page_size: 100 };
+        if (filter) query.filter = filter;
+        const data = await notionPost(`/databases/${SM_POSTS_DB}/query`, query);
+
+        // Resolve campaign names + sites for grouping
+        const campIds = new Set();
+        (data.results || []).forEach(p => {
+          (p.properties.Campaign?.relation || []).forEach(r => campIds.add(r.id));
+        });
+        const campById = {};
+        await Promise.all([...campIds].map(async id => {
+          try {
+            const c = await notionGet(`/pages/${id}`);
+            campById[id] = {
+              name: c.properties?.Name?.title?.map(t => t.plain_text).join('') || '',
+              site: c.properties?.site?.select?.name || 'Other',
+            };
+          } catch(e) { campById[id] = { name: 'Unknown', site: 'Other' }; }
+        }));
+
+        // Resolve login names
+        const loginIds = new Set();
+        (data.results || []).forEach(p => {
+          (p.properties.Login?.relation || []).forEach(r => loginIds.add(r.id));
+        });
+        const loginById = {};
+        await Promise.all([...loginIds].map(async id => {
+          try {
+            const l = await notionGet(`/pages/${id}`);
+            loginById[id] = l.properties?.Name?.title?.map(t => t.plain_text).join('') || '';
+          } catch(e) { loginById[id] = ''; }
+        }));
+
+        const posts = (data.results || []).map(p => {
+          const props = p.properties;
+          const campRel = props.Campaign?.relation || [];
+          const campInfo = campRel.length ? (campById[campRel[0].id] || {}) : {};
+          const loginNames = (props.Login?.relation || []).map(r => loginById[r.id] || '').filter(Boolean);
+          return {
+            id: p.id.replace(/-/g,''),
+            title: props['Post Title']?.title?.map(t => t.plain_text).join('') || 'Untitled',
+            status: props.Status?.select?.name || 'Draft',
+            platforms: props.Platform?.multi_select?.map(s => s.name) || [],
+            logins: loginNames,
+            campaign: campInfo.name || '',
+            site: campInfo.site || 'Other',
+            sequence: props.Sequence?.number || 999,
+          };
+        });
+        return json({ posts });
+      }
+
+      if (action === "getLoginsForCampaign") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: 'campaignId required' }, 400);
+        const dashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,'$1-$2-$3-$4-$5');
+
+        // Query logins filtered by campaign relation
+        const data = await notionPost(`/databases/${LOGINS_DB}/query`, {
+          filter: { property: "Campaign", relation: { contains: dashed } },
+          sorts: [{ property: "Name", direction: "ascending" }],
+          page_size: 100
+        });
+
+        // Resolve platform names for each login
+        const platIds = new Set();
+        (data.results || []).forEach(l => {
+          (l.properties.Platform?.relation || []).forEach(r => platIds.add(r.id));
+        });
+        const platById = {};
+        await Promise.all([...platIds].map(async id => {
+          try {
+            const pl = await notionGet(`/pages/${id}`);
+            platById[id] = pl.properties?.Name?.title?.map(t => t.plain_text).join('') || '';
+          } catch(e) { platById[id] = ''; }
+        }));
+
+        const logins = (data.results || []).map(l => {
+          const props = l.properties;
+          const platRel = props.Platform?.relation || [];
+          const platformName = platRel.length ? (platById[platRel[0].id] || '') : '';
+          return {
+            id: l.id.replace(/-/g,''),
+            name: props.Name?.title?.map(t => t.plain_text).join('') || '',
+            usr: props.Usr?.rich_text?.map(t => t.plain_text).join('') || '',
+            status: props.Status?.select?.name || '',
+            platformName,
+          };
+        });
+        return json({ logins });
+      }
+
+      if (action === "createSMPost") {
+        const { title, copy, campaignId, contentTitleId, loginIds, platforms } = body;
+        if (!title) return json({ error: 'title required' }, 400);
+        if (!campaignId) return json({ error: 'campaignId required' }, 400);
+
+        const campDashed = campaignId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,'$1-$2-$3-$4-$5');
+
+        const props = {
+          'Post Title': { title: [{ type: "text", text: { content: title } }] },
+          Status: { select: { name: "Draft" } },
+          Campaign: { relation: [{ id: campDashed }] },
+        };
+
+        if (copy) props['Post Copy'] = { rich_text: [{ type: "text", text: { content: copy } }] };
+
+        if (contentTitleId) {
+          const titleDashed = contentTitleId.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,'$1-$2-$3-$4-$5');
+          props['Content Strategy'] = { relation: [{ id: titleDashed }] };
+        }
+
+        if (platforms && platforms.length > 0) {
+          props['Platform'] = { multi_select: platforms.map(name => ({ name })) };
+        }
+
+        if (loginIds && loginIds.length > 0) {
+          props['Login'] = { relation: loginIds.map(id => ({
+            id: id.replace(/-/g,'').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,'$1-$2-$3-$4-$5')
+          })) };
+        }
+
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: SM_POSTS_DB }, properties: props })
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || 'Create failed' }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,'') });
+      }
+
       return json({ error:"Unknown action" }, 400);
     } catch(err) {
       return json({ error:err.message }, 500);

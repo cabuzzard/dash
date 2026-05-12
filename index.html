@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------8389694783633267468istotes mgoats<head>
+-----mgoatstotes uhnjhnj<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -343,6 +343,33 @@
   </a>
   <button onclick="showAddTitleModal()" style="width:100%;height:40px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;margin-bottom:16px;">+ Add Title</button>
   <div id="allCampaignsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+
+  <!-- SM Posts section -->
+  <div class="sec" style="margin-top:20px;">
+    <div class="sec-label" onclick="toggleSMSection()" style="cursor:pointer">📱 SM Posts</div>
+    <span class="sec-refresh" onclick="loadSMPosts('')">↻</span>
+    <span class="sec-toggle" id="smPostsChevron" onclick="toggleSMSection()">▸</span>
+  </div>
+  <div id="smPostsSection" class="collapsible collapsed">
+    <!-- Add SM Post form -->
+    <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:14px;margin-bottom:12px;">
+      <div style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:10px;">+ New SM Post</div>
+      <input id="smPostTitle" type="text" placeholder="Post title..." style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;padding:10px 12px;outline:none;caret-color:var(--accent);margin-bottom:8px;" />
+      <textarea id="smPostCopy" placeholder="Post copy..." style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;caret-color:var(--accent);margin-bottom:8px;resize:vertical;min-height:80px;line-height:1.5;"></textarea>
+      <select id="smPostCampaign" onchange="onSMCampaignChange()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;cursor:pointer;margin-bottom:8px;">
+        <option value="">Select campaign...</option>
+      </select>
+      <select id="smPostContentTitle" onchange="onSMTitleChange()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;cursor:pointer;margin-bottom:8px;">
+        <option value="">Select title...</option>
+      </select>
+      <div id="smPostLoginPreview" style="font-size:11px;color:var(--text3);min-height:16px;margin-bottom:6px;padding:0 2px;"></div>
+      <!-- Login checkboxes rendered here -->
+      <div id="smPostPlatformWrap" style="margin-bottom:8px;"></div>
+      <button onclick="submitSMPost()" id="smPostSubmitBtn" style="width:100%;height:40px;background:var(--accent);border:none;border-radius:6px;color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Add Post</button>
+    </div>
+    <!-- SM posts list -->
+    <div id="smPostsList"><div class="empty">Open this section to load posts.</div></div>
+  </div>
 </div>
 
 <!-- Publishing view -->
@@ -1864,6 +1891,187 @@ async function loadWeeklySchedule() {
       });
     });
   } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+// ── SM POSTS ──────────────────────────────────────────────────────────
+let smCampaignsCache = [];
+let smTitlesCache = {};
+
+async function initSMPostForm() {
+  const campSel = document.getElementById('smPostCampaign');
+  if (smCampaignsCache.length === 0) {
+    try {
+      const data = await call('getAllCampaigns');
+      smCampaignsCache = (data.sites || []).flatMap(s =>
+        (s.campaigns || []).map(c => ({ ...c, site: s.site }))
+      );
+    } catch(e) {}
+  }
+  campSel.innerHTML = '<option value="">Select campaign...</option>';
+  smCampaignsCache.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.site + ' — ' + c.name;
+    campSel.appendChild(opt);
+  });
+}
+
+async function onSMCampaignChange() {
+  const campId = document.getElementById('smPostCampaign').value;
+  const titleSel = document.getElementById('smPostContentTitle');
+  const platformWrap = document.getElementById('smPostPlatformWrap');
+  const loginPreview = document.getElementById('smPostLoginPreview');
+  platformWrap.innerHTML = '';
+  loginPreview.textContent = '';
+  titleSel.innerHTML = '<option value="">Loading titles...</option>';
+  if (!campId) { titleSel.innerHTML = '<option value="">Select title...</option>'; return; }
+  try {
+    if (!smTitlesCache[campId]) {
+      const data = await call('getTitles', { campaignId: campId });
+      smTitlesCache[campId] = data.titles || [];
+    }
+    titleSel.innerHTML = '<option value="">Select title...</option>';
+    smTitlesCache[campId].forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.title;
+      titleSel.appendChild(opt);
+    });
+    loadSMPosts(campId);
+  } catch(e) {
+    titleSel.innerHTML = '<option value="">Error loading titles</option>';
+  }
+}
+
+async function onSMTitleChange() {
+  const campId = document.getElementById('smPostCampaign').value;
+  const platformWrap = document.getElementById('smPostPlatformWrap');
+  const loginPreview = document.getElementById('smPostLoginPreview');
+  platformWrap.innerHTML = '';
+  loginPreview.textContent = '';
+  if (!campId) return;
+  loginPreview.textContent = '⏳ Loading logins...';
+  try {
+    const data = await call('getLoginsForCampaign', { campaignId: campId });
+    loginPreview.textContent = '';
+    if (!data.logins || !data.logins.length) {
+      loginPreview.textContent = '⚠️ No logins found for this campaign';
+      return;
+    }
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px;';
+    label.textContent = 'Select Logins';
+    platformWrap.appendChild(label);
+    data.logins.forEach(login => {
+      const row = document.createElement('label');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;cursor:pointer;';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = login.id;
+      cb.dataset.platform = login.platformName || '';
+      cb.style.cssText = 'width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;';
+      const txt = document.createElement('div');
+      txt.style.cssText = 'flex:1;min-width:0;';
+      txt.innerHTML =
+        '<div style="font-size:13px;font-weight:500;color:var(--text);">' + login.name + '</div>' +
+        '<div style="font-size:11px;color:var(--text3);">' +
+          (login.platformName||'') + (login.usr ? ' · @' + login.usr : '') +
+        '</div>';
+      row.appendChild(cb);
+      row.appendChild(txt);
+      platformWrap.appendChild(row);
+    });
+  } catch(e) {
+    loginPreview.textContent = '⚠️ Could not load logins';
+  }
+}
+
+async function submitSMPost() {
+  const titleText = document.getElementById('smPostTitle').value.trim();
+  const copy = document.getElementById('smPostCopy').value.trim();
+  const campId = document.getElementById('smPostCampaign').value;
+  const contentTitleId = document.getElementById('smPostContentTitle').value;
+  const btn = document.getElementById('smPostSubmitBtn');
+  if (!titleText) { showToast('Post title required', 'error'); return; }
+  if (!campId) { showToast('Campaign required', 'error'); return; }
+  const checkedBoxes = document.querySelectorAll('#smPostPlatformWrap input[type=checkbox]:checked');
+  const loginIds = [...checkedBoxes].map(cb => cb.value);
+  const platforms = [...new Set([...checkedBoxes].map(cb => cb.dataset.platform).filter(Boolean))];
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    await call('createSMPost', {
+      title: titleText, copy, campaignId: campId,
+      contentTitleId: contentTitleId || null,
+      loginIds, platforms,
+    });
+    showToast('SM Post created ✓', 'success');
+    document.getElementById('smPostTitle').value = '';
+    document.getElementById('smPostCopy').value = '';
+    document.getElementById('smPostPlatformWrap').innerHTML = '';
+    document.getElementById('smPostLoginPreview').textContent = '';
+    loadSMPosts(campId);
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Add Post';
+  }
+}
+
+async function loadSMPosts(campaignId) {
+  const el = document.getElementById('smPostsList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getSMPosts', { campaignId: campaignId || '' });
+    el.innerHTML = '';
+    if (!data.posts || !data.posts.length) { el.innerHTML='<div class="empty">No SM posts yet.</div>'; return; }
+    const siteMap = {};
+    data.posts.forEach(p => {
+      const s = p.site || 'Other';
+      const c = p.campaign || 'Uncategorized';
+      if (!siteMap[s]) siteMap[s] = {};
+      if (!siteMap[s][c]) siteMap[s][c] = [];
+      siteMap[s][c].push(p);
+    });
+    Object.keys(siteMap).sort().forEach(site => {
+      const siteHdr = document.createElement('div');
+      siteHdr.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);margin:16px 0 6px;';
+      siteHdr.textContent = site;
+      el.appendChild(siteHdr);
+      Object.keys(siteMap[site]).sort().forEach(camp => {
+        const campHdr = document.createElement('div');
+        campHdr.style.cssText = 'font-size:11px;font-weight:600;color:var(--text3);margin:10px 0 6px;padding-left:4px;';
+        campHdr.textContent = camp;
+        el.appendChild(campHdr);
+        siteMap[site][camp].forEach(p => {
+          const row = document.createElement('a');
+          row.href = nUrl(p.id); row.target='_blank'; row.className='row'; row.style.marginBottom='6px';
+          const statusColor = p.status==='Published'?'#44ff44':p.status==='Publish'?'#ffcc00':p.status==='Review'?'#ff8844':'var(--text3)';
+          const platformTags = (p.platforms||[]).map(pl =>
+            '<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:var(--surface2);color:var(--text3);border:1px solid var(--border2);">' + pl + '</span>'
+          ).join(' ');
+          row.innerHTML =
+            '<div class="row-body">' +
+              '<div class="row-name">'+p.title+'</div>' +
+              '<div class="row-meta" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:3px;">' +
+                platformTags +
+                (p.logins?.length ? '<span style="font-size:9px;color:var(--text3);">🔑 '+p.logins.join(', ')+'</span>' : '') +
+              '</div>' +
+            '</div>' +
+            '<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--surface2);color:'+statusColor+';border:1px solid var(--border2);flex-shrink:0;">'+(p.status||'Draft')+'</span>';
+          el.appendChild(row);
+        });
+      });
+    });
+  } catch(e) { el.innerHTML='<div class="error-msg">'+e.message+'</div>'; }
+}
+
+function toggleSMSection() {
+  const section = document.getElementById('smPostsSection');
+  const chevron = document.getElementById('smPostsChevron');
+  const isCollapsed = section.classList.contains('collapsed');
+  section.classList.toggle('collapsed');
+  chevron.textContent = isCollapsed ? '▾' : '▸';
+  if (isCollapsed) { initSMPostForm(); loadSMPosts(''); }
 }
 
 // ── ALL CAMPAIGNS ────────────────────────────────────────────────────
