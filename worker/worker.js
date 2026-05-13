@@ -110,6 +110,59 @@ export default {
         const campaigns = await getCampaigns();
         return json({ campaigns });
       }
+
+      if (body.action === "getProducts") {
+        // Fetch products and campaigns in parallel so we can resolve campaign name + site
+        const [productRows, campRows] = await Promise.all([
+          notionQuery(PRODUCTS_DB, {
+            sorts: [{ property: "Name", direction: "ascending" }],
+          }),
+          notionQuery(CAMPAIGNS_DB, {
+            filter: { property: "Status", select: { does_not_equal: "Delete" } },
+          }),
+        ]);
+
+        // Build campaign lookup by id
+        const campById = {};
+        campRows.forEach(c => {
+          const id = c.id.replace(/-/g, "");
+          campById[id] = {
+            name: c.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+            site: c.properties.site?.select?.name || "Other",
+          };
+        });
+
+        const campaignIds = new Set(Object.keys(campById));
+
+        const products = productRows.map(p => {
+          const props = p.properties;
+          const id = p.id.replace(/-/g, "");
+
+          // Find campaign relation by scanning all relation props
+          let campaignName = "";
+          let site = props.Site?.select?.name || "";
+          Object.values(props).forEach(prop => {
+            if (prop.type !== "relation") return;
+            (prop.relation || []).forEach(r => {
+              const rid = r.id.replace(/-/g, "");
+              if (campaignIds.has(rid)) {
+                campaignName = campById[rid].name;
+                if (!site) site = campById[rid].site;
+              }
+            });
+          });
+
+          return {
+            id,
+            name:     props.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+            campaign: campaignName,
+            site,
+            status:   props.Status?.select?.name || "",
+          };
+        });
+
+        return json({ products });
+      }
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);

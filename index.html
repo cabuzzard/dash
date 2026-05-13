@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>magic j own la
+<head>la on ther ighte track  yea 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -171,7 +171,9 @@
   </div>
 
   <div class="tab-panel" id="tabProducts">
-    <div class="empty">Nothing here yet.</div>
+    <div id="prodContent">
+      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+    </div>
   </div>
 
 </div>
@@ -218,10 +220,12 @@ function checkPin() {
   }
 }
 function lockApp() {
-  pinBuffer = ''; session.authed = false; ovLoaded = false;
+  pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false;
   updateDots();
   document.getElementById('pinScreen').classList.remove('hidden');
   document.getElementById('ovContent').innerHTML =
+    '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  document.getElementById('prodContent').innerHTML =
     '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
 }
 
@@ -238,11 +242,89 @@ async function call(action, extra = {}) {
 }
 
 // ── TABS ─────────────────────────────────────────────────────────────
+let prodLoaded = false;
+
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   event.currentTarget.classList.add('active');
   document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+  if (name === 'products' && !prodLoaded) { prodLoaded = true; loadProducts(); }
+}
+
+// ── PRODUCTS ─────────────────────────────────────────────────────────
+let prodData = [];
+let prodSort = { col: 0, asc: true };
+
+async function loadProducts() {
+  const el = document.getElementById('prodContent');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getProducts');
+    prodData = data.products || [];
+    renderProducts();
+  } catch (e) {
+    el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderProducts() {
+  const el = document.getElementById('prodContent');
+  el.innerHTML = '';
+  if (!prodData.length) { el.innerHTML = '<div class="empty">No products found.</div>'; return; }
+
+  const cols = [
+    { label: 'Title',    key: 'name',     type: 'str' },
+    { label: 'Campaign', key: 'campaign', type: 'str' },
+    { label: 'Site',     key: 'site',     type: 'str' },
+    { label: 'Status',   key: 'status',   type: 'str' },
+  ];
+
+  const sorted = [...prodData].sort((a, b) => {
+    const col = cols[prodSort.col];
+    const av = a[col.key] || '';
+    const bv = b[col.key] || '';
+    const cmp = String(av).localeCompare(String(bv));
+    return prodSort.asc ? cmp : -cmp;
+  });
+
+  const table = document.createElement('table');
+  table.className = 'ov-table';
+
+  const thead = document.createElement('thead');
+  const hrow  = document.createElement('tr');
+  cols.forEach((col, i) => {
+    const th = document.createElement('th');
+    if (i === prodSort.col) th.classList.add('sorted');
+    const arrow = i === prodSort.col ? (prodSort.asc ? '▲' : '▼') : '⬍';
+    th.innerHTML = col.label + ' <span class="sort-arrow">' + arrow + '</span>';
+    th.onclick = () => {
+      if (prodSort.col === i) prodSort.asc = !prodSort.asc;
+      else { prodSort.col = i; prodSort.asc = true; }
+      renderProducts();
+    };
+    hrow.appendChild(th);
+  });
+  const dbTh = document.createElement('th');
+  dbTh.textContent = 'DB';
+  dbTh.style.cssText = 'text-align:center;cursor:default;';
+  hrow.appendChild(dbTh);
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  sorted.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="name">'  + esc(p.name)     + '</td>' +
+      '<td class="site">'  + esc(p.campaign || '—') + '</td>' +
+      '<td class="site">'  + esc(p.site     || '—') + '</td>' +
+      '<td class="site">'  + esc(p.status   || '—') + '</td>' +
+      '<td class="link"><a href="https://www.notion.so/' + p.id + '" target="_blank">↗</a></td>';
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  el.appendChild(table);
 }
 
 let ovData = [];
