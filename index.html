@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>beeeeeeeeeaz-yea
+<head>liarliarliar
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -78,8 +78,12 @@
     text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .12em;
     text-transform: uppercase; color: var(--text); padding: 0 10px 8px;
     border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none; white-space: nowrap;
   }
-  .ov-table thead th:last-child { text-align: center; }
+  .ov-table thead th:hover { color: var(--text); opacity: .7; }
+  .ov-table thead th .sort-arrow { margin-left: 4px; opacity: .4; font-style: normal; }
+  .ov-table thead th.sorted .sort-arrow { opacity: 1; }
+  .ov-table thead th:last-child { text-align: center; cursor: default; }
   .ov-table thead th.num { text-align: center; }
   .ov-table tbody tr { border-bottom: 1px solid var(--border); }
   .ov-table tbody tr:last-child { border-bottom: none; }
@@ -241,51 +245,87 @@ function toggleOverview() {
   if (open && !ovLoaded) { ovLoaded = true; loadOverview(); }
 }
 
+let ovData = [];
+let ovSort = { col: 0, asc: true }; // default: sort by site asc
+
 async function loadOverview() {
   const el = document.getElementById('ovContent');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
     const data = await call('getCampaigns');
-    const all  = (data.campaigns || []).sort((a, b) => {
-      const s = (a.site || '').localeCompare(b.site || '');
-      return s !== 0 ? s : (a.name || '').localeCompare(b.name || '');
-    });
-
-    el.innerHTML = '';
-    if (!all.length) { el.innerHTML = '<div class="empty">No campaigns found.</div>'; return; }
-
-    const table = document.createElement('table');
-    table.className = 'ov-table';
-    table.innerHTML =
-      '<thead><tr>' +
-        '<th>Site</th>' +
-        '<th>Campaign</th>' +
-        '<th class="num">Dev</th>' +
-        '<th class="num">Pub</th>' +
-        '<th class="num">Prod</th>' +
-        '<th>DB</th>' +
-      '</tr></thead>';
-
-    const tbody = document.createElement('tbody');
-    all.forEach(c => {
-      const notionUrl = 'https://www.notion.so/' + c.id;
-      const tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td class="site">' + esc(c.site || '—') + '</td>' +
-        '<td class="name">' + esc(c.name) + '</td>' +
-        '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '">' + c.devTitles + '</td>' +
-        '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>' +
-        '<td class="num' + (c.products  === 0 ? ' zero' : '') + '">' + c.products  + '</td>' +
-        '<td class="link"><a href="' + notionUrl + '" target="_blank">↗</a></td>';
-      tbody.appendChild(tr);
-    });
-
-    table.appendChild(tbody);
-    el.appendChild(table);
-
+    ovData = data.campaigns || [];
+    renderTable();
   } catch (e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
+}
+
+function renderTable() {
+  const el = document.getElementById('ovContent');
+  el.innerHTML = '';
+  if (!ovData.length) { el.innerHTML = '<div class="empty">No campaigns found.</div>'; return; }
+
+  // Columns: [label, key, type]
+  const cols = [
+    { label: 'Site',     key: 'site',      type: 'str' },
+    { label: 'Campaign', key: 'name',      type: 'str' },
+    { label: 'Dev',      key: 'devTitles', type: 'num' },
+    { label: 'Pub',      key: 'pubTitles', type: 'num' },
+    { label: 'Prod',     key: 'products',  type: 'num' },
+  ];
+
+  // Sort data
+  const sorted = [...ovData].sort((a, b) => {
+    const col = cols[ovSort.col];
+    const av = a[col.key] ?? (col.type === 'num' ? 0 : '');
+    const bv = b[col.key] ?? (col.type === 'num' ? 0 : '');
+    let cmp = col.type === 'num' ? av - bv : String(av).localeCompare(String(bv));
+    return ovSort.asc ? cmp : -cmp;
+  });
+
+  const table = document.createElement('table');
+  table.className = 'ov-table';
+
+  // Header
+  const thead = document.createElement('thead');
+  const hrow  = document.createElement('tr');
+  cols.forEach((col, i) => {
+    const th = document.createElement('th');
+    if (col.type === 'num') th.className = 'num';
+    if (i === ovSort.col)   th.classList.add('sorted');
+    const arrow = i === ovSort.col ? (ovSort.asc ? '▲' : '▼') : '⬍';
+    th.innerHTML = col.label + ' <span class="sort-arrow">' + arrow + '</span>';
+    th.onclick = () => {
+      if (ovSort.col === i) ovSort.asc = !ovSort.asc;
+      else { ovSort.col = i; ovSort.asc = col.type === 'num' ? false : true; }
+      renderTable();
+    };
+    hrow.appendChild(th);
+  });
+  // DB header — not sortable
+  const dbTh = document.createElement('th');
+  dbTh.textContent = 'DB';
+  dbTh.style.cssText = 'text-align:center;cursor:default;';
+  hrow.appendChild(dbTh);
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+
+  // Body
+  const tbody = document.createElement('tbody');
+  sorted.forEach(c => {
+    const notionUrl = 'https://www.notion.so/' + c.id;
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="site">' + esc(c.site || '—') + '</td>' +
+      '<td class="name">' + esc(c.name) + '</td>' +
+      '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '">' + c.devTitles + '</td>' +
+      '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>' +
+      '<td class="num' + (c.products  === 0 ? ' zero' : '') + '">' + c.products  + '</td>' +
+      '<td class="link"><a href="' + notionUrl + '" target="_blank">↗</a></td>';
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  el.appendChild(table);
 }
 
 function esc(s) {
