@@ -107,11 +107,16 @@ export default {
 
     try {
       if (body.action === "getDevTitles") {
-        const campRows = await notionQuery(CAMPAIGNS_DB, {
-          filter: { property: "Status", select: { does_not_equal: "Delete" } },
-        });
+        const [campRows, productRows] = await Promise.all([
+          notionQuery(CAMPAIGNS_DB, {
+            filter: { property: "Status", select: { does_not_equal: "Delete" } },
+          }),
+          notionQuery(PRODUCTS_DB, {
+            filter: { property: "Status", select: { equals: "Active" } },
+          }),
+        ]);
 
-        // Paginate through ALL titles — Notion caps at 100 per request
+        // Paginate through ALL titles
         let titleRows = [];
         let cursor = undefined;
         do {
@@ -141,6 +146,16 @@ export default {
           };
         });
 
+        // Count active products per campaign id
+        const activeProdCount = {};
+        const campaignIds = new Set(Object.keys(campById));
+        productRows.forEach(p => {
+          (p.properties["Campaigns"]?.relation || []).forEach(r => {
+            const id = r.id.replace(/-/g,"");
+            if (campaignIds.has(id)) activeProdCount[id] = (activeProdCount[id] || 0) + 1;
+          });
+        });
+
         const campTitles = {};
         titleRows.forEach(t => {
           const props  = t.properties;
@@ -156,11 +171,12 @@ export default {
         });
 
         const campaigns = Object.entries(campTitles).map(([campId, camp]) => {
-          const devCount = camp.titles.filter(t => t.status === "Development").length;
-          const pubCount = camp.titles.filter(t => t.status === "Publish").length;
+          const devCount  = camp.titles.filter(t => t.status === "Development").length;
+          const pubCount  = camp.titles.filter(t => t.status === "Publish").length;
+          const prodCount = activeProdCount[campId] || 0;
           const STATUS_RANK = { "Development": 0, "Publish": 1 };
           camp.titles.sort((a, b) => (STATUS_RANK[a.status] ?? 2) - (STATUS_RANK[b.status] ?? 2));
-          return { campId, name: camp.name, site: camp.site, titles: camp.titles, devCount, pubCount };
+          return { campId, name: camp.name, site: camp.site, titles: camp.titles, devCount, pubCount, prodCount };
         });
 
         campaigns.sort((a, b) => b.devCount - a.devCount);
@@ -168,12 +184,12 @@ export default {
       }
 
       if (body.action === "createDevTitle") {
-        const { title, campaignId } = body;
+        const { title, campaignId, status } = body;
         if (!title) return json({ error: "title required" }, 400);
 
         const props = {
           Title:  { title: [{ type: "text", text: { content: title } }] },
-          Status: { select: { name: "Development" } },
+          Status: { select: { name: status || "Development" } },
         };
         if (campaignId) {
           const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");

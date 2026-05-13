@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>good and eveil
+<head>thing
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -302,6 +303,18 @@
       <input class="modal-input" id="titleCampaignInput" type="text" placeholder="Search campaigns..." autocomplete="off" oninput="filterTitleCampaigns()" onfocus="filterTitleCampaigns()" />
       <input type="hidden" id="titleCampaignId" />
       <div id="titleCampDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Status</label>
+      <select class="modal-select" id="titleStatus">
+        <option value="Development">Development</option>
+        <option value="Writing">Writing</option>
+        <option value="Review">Review</option>
+        <option value="Approved">Approved</option>
+        <option value="Publish">Publish</option>
+        <option value="Done">Done</option>
+      </select>
     </div>
 
     <div class="modal-actions">
@@ -755,15 +768,16 @@ function renderDev() {
       campChev.style.cssText = 'font-size:10px;color:var(--text3);transition:transform .2s;flex-shrink:0;';
       campChev.textContent = '▶';
 
-      const devBadge = '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#fff;color:#000;margin-left:auto;">📋 ' + camp.devCount + '</span>';
-      const pubBadge = '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#00cc66;color:#000;margin-left:4px;">✓ ' + camp.pubCount + '</span>';
+      const devBadge  = '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#fff;color:#000;margin-left:auto;">📋 ' + camp.devCount + '</span>';
+      const pubBadge  = '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#00cc66;color:#000;margin-left:4px;">✓ ' + camp.pubCount + '</span>';
+      const prodBadge = camp.prodCount > 0 ? '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#ff6a00;color:#000;margin-left:4px;">📦 ' + camp.prodCount + '</span>' : '';
 
       campRow.appendChild(campChev);
       const nameSpan = document.createElement('span');
       nameSpan.style.cssText = 'font-size:12px;font-weight:600;color:var(--text2);flex:1;';
       nameSpan.textContent = camp.name;
       campRow.appendChild(nameSpan);
-      campRow.insertAdjacentHTML('beforeend', devBadge + pubBadge);
+      campRow.insertAdjacentHTML('beforeend', devBadge + pubBadge + prodBadge);
 
       const titlesEl = document.createElement('div');
       titlesEl.style.cssText = 'display:none;';
@@ -812,6 +826,7 @@ function openTitleModal() {
   document.getElementById('titleCampaignInput').value = '';
   document.getElementById('titleCampaignId').value = '';
   document.getElementById('titleCampDropdown').style.display = 'none';
+  document.getElementById('titleStatus').value = 'Development';
   document.getElementById('titleSubmitBtn').disabled = false;
   document.getElementById('titleSubmitBtn').textContent = 'Create';
   document.getElementById('titleModal').classList.add('open');
@@ -872,12 +887,13 @@ document.addEventListener('click', e => {
 async function submitTitle() {
   const title      = document.getElementById('titleName').value.trim();
   const campaignId = document.getElementById('titleCampaignId').value;
+  const status     = document.getElementById('titleStatus').value;
   if (!title) { document.getElementById('titleName').focus(); return; }
 
   const btn = document.getElementById('titleSubmitBtn');
   btn.disabled = true; btn.textContent = 'Creating...';
   try {
-    await call('createDevTitle', { title, campaignId });
+    await call('createDevTitle', { title, campaignId, status });
     closeTitleModal();
     showToast('Title created ✓', 'success');
     devLoaded = false;
