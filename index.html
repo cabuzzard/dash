@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  98698698uo85oi
+<head>yuiog
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -88,17 +87,7 @@
   .ov-row:active  { transform: scale(.98); }
   .ov-row:hover   { border-color: var(--border2); }
 
-  .ov-name  { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.4; margin-bottom: 9px; }
-  .ov-stats { display: flex; gap: 6px; flex-wrap: wrap; }
-  .ov-stat  {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; border: 1px solid;
-  }
-  .ov-stat-lbl { font-weight: 400; opacity: .6; }
-
-  .ov-stat.dev     { color: #8888ff; background: #07071a; border-color: #252555; }
-  .ov-stat.publish { color: #ffcc44; background: #130f00; border-color: #3a2d00; }
-  .ov-stat.prod    { color: #44dd88; background: #021008; border-color: #093d1e; }
+  .ov-name  { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.4; }
 
   /* ── MISC ── */
   .loading-wrap { display: flex; align-items: center; gap: 8px; padding: 12px 0; color: var(--text3); font-size: 13px; }
@@ -245,54 +234,18 @@ function toggleOverview() {
 
 async function loadOverview() {
   const el = document.getElementById('ovContent');
-  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading overview...</div>';
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
-    const [campData, devData, pubData, prodData] = await Promise.all([
-      call('getAllCampaigns'),
-      call('getDevTitleCounts'),
-      call('getPublishQueue'),
-      call('getProducts'),
-    ]);
+    const data = await call('getAllCampaigns');
 
-    // pub count by campaign name
-    const pubByName = {};
-    (pubData.titles || []).forEach(t => {
-      const k = t.campaign || '';
-      pubByName[k] = (pubByName[k] || 0) + 1;
-    });
-
-    // product count by campaign name
-    const prodByName = {};
-    (prodData.sites || []).forEach(sg => {
-      (sg.campaigns || []).forEach(cg => {
-        prodByName[cg.campaign] = (prodByName[cg.campaign] || 0) + (cg.products?.length || 0);
-      });
-    });
-
-    // flatten: getAllCampaigns returns { sites:[{ site, campaigns:[] }] }
-    const all = [];
-    (campData.sites || []).forEach(sg => {
-      (sg.campaigns || []).forEach(c => all.push({ ...c, site: sg.site }));
-    });
-
-    // attach counts
-    const devCounts = devData.counts || {};
-    all.forEach(c => {
-      c.devCount  = devCounts[c.id]   || 0;
-      c.pubCount  = pubByName[c.name] || 0;
-      c.prodCount = prodByName[c.name]|| 0;
-    });
-
-    // group by site, sort within site by devCount desc
+    // getAllCampaigns returns { sites:[{ site, campaigns:[] }] }
     const siteMap = {};
-    all.forEach(c => {
-      if (!siteMap[c.site]) siteMap[c.site] = [];
-      siteMap[c.site].push(c);
+    (data.sites || []).forEach(sg => {
+      if (sg.campaigns && sg.campaigns.length) siteMap[sg.site] = sg.campaigns;
     });
-    Object.keys(siteMap).forEach(s => siteMap[s].sort((a, b) => b.devCount - a.devCount));
 
     el.innerHTML = '';
-    if (!all.length) { el.innerHTML = '<div class="empty">No campaigns found.</div>'; return; }
+    if (!Object.keys(siteMap).length) { el.innerHTML = '<div class="empty">No campaigns found.</div>'; return; }
 
     const ICONS = {
       'Affiliates':               '💰',
@@ -313,13 +266,7 @@ async function loadOverview() {
       siteMap[site].forEach(c => {
         const row = document.createElement('div');
         row.className = 'ov-row';
-        row.innerHTML =
-          '<div class="ov-name">'   + esc(c.name) + '</div>' +
-          '<div class="ov-stats">'  +
-            pill('📋', c.devCount,  'Dev',     'dev')     +
-            pill('📤', c.pubCount,  'Publish', 'publish') +
-            pill('📦', c.prodCount, 'Products','prod')    +
-          '</div>';
+        row.textContent = c.name;
         el.appendChild(row);
       });
     });
@@ -327,13 +274,6 @@ async function loadOverview() {
   } catch (e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
-}
-
-function pill(emoji, n, label, cls) {
-  return '<div class="ov-stat ' + cls + '">' +
-    emoji + ' ' + n +
-    ' <span class="ov-stat-lbl">' + label + '</span>' +
-  '</div>';
 }
 
 function esc(s) {
