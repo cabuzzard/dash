@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>harsh babay999-
+<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -357,7 +357,7 @@ function switchTab(name) {
 
 // ── PRODUCTS ─────────────────────────────────────────────────────────
 let prodData = [];
-let prodSort = { col: 0, asc: true };
+let prodSort = { col: null, asc: true };
 
 async function loadProducts() {
   const el = document.getElementById('prodContent');
@@ -383,12 +383,21 @@ function renderProducts() {
     { label: 'Status',   key: 'status',   type: 'str' },
   ];
 
+  const STATUS_ORDER = { 'Active': 0, 'In Development': 1 };
+  const statusRank = s => STATUS_ORDER[s] ?? 2;
+
   const sorted = [...prodData].sort((a, b) => {
-    const col = cols[prodSort.col];
-    const av = a[col.key] || '';
-    const bv = b[col.key] || '';
-    const cmp = String(av).localeCompare(String(bv));
-    return prodSort.asc ? cmp : -cmp;
+    // If user has clicked a column header, use that sort
+    if (prodSort.col !== null) {
+      const col = cols[prodSort.col];
+      const av = a[col.key] || '';
+      const bv = b[col.key] || '';
+      const cmp = String(av).localeCompare(String(bv));
+      return prodSort.asc ? cmp : -cmp;
+    }
+    // Default: Active → In Development → everything else, then alpha by name
+    const rankCmp = statusRank(a.status) - statusRank(b.status);
+    return rankCmp !== 0 ? rankCmp : (a.name || '').localeCompare(b.name || '');
   });
 
   const table = document.createElement('table');
@@ -398,8 +407,8 @@ function renderProducts() {
   const hrow  = document.createElement('tr');
   cols.forEach((col, i) => {
     const th = document.createElement('th');
-    if (i === prodSort.col) th.classList.add('sorted');
-    const arrow = i === prodSort.col ? (prodSort.asc ? '▲' : '▼') : '⬍';
+    if (prodSort.col === i) th.classList.add('sorted');
+    const arrow = prodSort.col === i ? (prodSort.asc ? '▲' : '▼') : '⬍';
     th.innerHTML = col.label + ' <span class="sort-arrow">' + arrow + '</span>';
     th.onclick = () => {
       if (prodSort.col === i) prodSort.asc = !prodSort.asc;
