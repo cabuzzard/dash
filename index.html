@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>mattress firm
+<head>harsh babay
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -143,6 +143,13 @@
   }
   .status-select:hover  { border-color: var(--text3); color: var(--text); }
   .status-select:focus  { border-color: var(--text2); color: var(--text); }
+
+  /* ── STATUS ROW HIGHLIGHTS ── */
+  .ov-table tbody tr.status-active td { background: #00cc66; color: #000 !important; }
+  .ov-table tbody tr.status-active .status-select { background: #00aa55; border-color: #007733; color: #000; }
+
+  .ov-table tbody tr.status-indev td { background: #ffffff; color: #000 !important; }
+  .ov-table tbody tr.status-indev .status-select { background: #eeeeee; border-color: #ccc; color: #000; }
 
   /* ── CAMPAIGN AUTOCOMPLETE ── */
   .camp-dropdown {
@@ -413,6 +420,8 @@ function renderProducts() {
   const tbody = document.createElement('tbody');
   sorted.forEach(p => {
     const tr = document.createElement('tr');
+    if (p.status === 'Active')         tr.classList.add('status-active');
+    else if (p.status === 'In Development') tr.classList.add('status-indev');
 
     // Status cell — inline select
     const statusTd = document.createElement('td');
@@ -429,11 +438,18 @@ function renderProducts() {
       const prev = p.status;
       p.status = sel.value;
       sel.disabled = true; sel.style.opacity = '.5';
+      // Update row highlight immediately
+      tr.classList.remove('status-active', 'status-indev');
+      if (p.status === 'Active') tr.classList.add('status-active');
+      else if (p.status === 'In Development') tr.classList.add('status-indev');
       try {
         await call('updateProductStatus', { productId: p.id, status: sel.value });
         showToast('Status updated ✓', 'success');
       } catch (e) {
         p.status = prev; sel.value = prev;
+        tr.classList.remove('status-active', 'status-indev');
+        if (prev === 'Active') tr.classList.add('status-active');
+        else if (prev === 'In Development') tr.classList.add('status-indev');
         showToast('Failed: ' + e.message, 'error');
       }
       sel.disabled = false; sel.style.opacity = '';

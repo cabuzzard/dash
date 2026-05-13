@@ -151,18 +151,16 @@ export default {
           const props = p.properties;
           const id = p.id.replace(/-/g, "");
 
-          // Find campaign relation by scanning all relation props
+          // Find campaign via the "Campaigns" relation property
           let campaignName = "";
           let site = props.Site?.select?.name || "";
-          Object.values(props).forEach(prop => {
-            if (prop.type !== "relation") return;
-            (prop.relation || []).forEach(r => {
-              const rid = r.id.replace(/-/g, "");
-              if (campaignIds.has(rid)) {
-                campaignName = campById[rid].name;
-                if (!site) site = campById[rid].site;
-              }
-            });
+          const campRel = props["Campaigns"]?.relation || [];
+          campRel.forEach(r => {
+            const rid = r.id.replace(/-/g, "");
+            if (campaignIds.has(rid)) {
+              campaignName = campById[rid].name;
+              if (!site) site = campById[rid].site;
+            }
           });
 
           return {
@@ -176,6 +174,23 @@ export default {
 
         return json({ products });
       }
+      if (body.action === "getProductSchema") {
+        const resp = await fetch(`https://api.notion.com/v1/databases/${PRODUCTS_DB}`, {
+          headers: {
+            "Authorization":  `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+          },
+        });
+        const data = await resp.json();
+        if (!resp.ok) return json({ error: data.message || "Notion error" }, resp.status);
+        // Return all property names and types
+        const props = Object.entries(data.properties || {}).map(([name, val]) => ({
+          name,
+          type: val.type,
+        }));
+        return json({ props });
+      }
+
       if (body.action === "createCampaign") {
         const { name } = body;
         if (!name) return json({ error: "name required" }, 400);
@@ -208,8 +223,7 @@ export default {
         };
         if (campaignId) {
           const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
-          // Try setting campaign relation — property name may vary; worker will return error if wrong
-          props["Campaign"] = { relation: [{ id: dashed }] };
+          props["Campaigns"] = { relation: [{ id: dashed }] };
         }
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
