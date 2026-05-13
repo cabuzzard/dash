@@ -106,6 +106,19 @@ export default {
     if (body.pin !== PIN) return json({ error: "Unauthorized" }, 401);
 
     try {
+      if (body.action === "getProductStatuses") {
+        const resp = await fetch(`https://api.notion.com/v1/databases/${PRODUCTS_DB}`, {
+          headers: {
+            "Authorization":  `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+          },
+        });
+        const data = await resp.json();
+        if (!resp.ok) return json({ error: data.message || "Notion error" }, resp.status);
+        const options = (data.properties?.Status?.select?.options || []).map(o => o.name);
+        return json({ statuses: options });
+      }
+
       if (body.action === "getCampaigns") {
         const campaigns = await getCampaigns();
         return json({ campaigns });
@@ -164,17 +177,13 @@ export default {
         return json({ products });
       }
       if (body.action === "createProduct") {
-        const { title, campaignId, status } = body;
+        const { title, status } = body;
         if (!title) return json({ error: "title required" }, 400);
 
         const props = {
           Name:   { title: [{ type: "text", text: { content: title } }] },
           Status: { select: { name: status || "Active" } },
         };
-        if (campaignId) {
-          const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
-          props["Campaign"] = { relation: [{ id: dashed }] };
-        }
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",

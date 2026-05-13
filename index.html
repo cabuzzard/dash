@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>pre k
+<head>charlie and martin
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -235,20 +235,8 @@
     </div>
 
     <div class="modal-field">
-      <label class="modal-label">Campaign</label>
-      <select class="modal-select" id="prodCampaign">
-        <option value="">Select campaign...</option>
-      </select>
-    </div>
-
-    <div class="modal-field">
       <label class="modal-label">Status</label>
-      <select class="modal-select" id="prodStatus">
-        <option value="Active">Active</option>
-        <option value="Draft">Draft</option>
-        <option value="Paused">Paused</option>
-        <option value="Archived">Archived</option>
-      </select>
+      <select class="modal-select" id="prodStatus"></select>
     </div>
 
     <div class="modal-actions">
@@ -288,11 +276,15 @@ function updateDots() {
     dot.classList.remove('error');
   }
 }
+let prodStatuses = [];
+
 function checkPin() {
   if (pinBuffer === PIN) {
     session.authed = true;
     document.getElementById('pinScreen').classList.add('hidden');
     if (!ovLoaded) { ovLoaded = true; loadOverview(); }
+    // Fetch statuses in background for dropdowns
+    call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
   } else {
     document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
     document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
@@ -392,7 +384,7 @@ function renderProducts() {
   thead.appendChild(hrow);
   table.appendChild(thead);
 
-  const STATUSES = ['Active', 'Draft', 'Paused', 'Archived'];
+  const STATUSES = prodStatuses.length ? prodStatuses : ['Active', 'Research', 'In Development', 'Paused', 'Retired'];
 
   const tbody = document.createElement('tbody');
   sorted.forEach(p => {
@@ -522,18 +514,10 @@ function renderTable() {
 
 // ── PRODUCT MODAL ────────────────────────────────────────────────────
 function openProductModal() {
-  // Populate campaign dropdown from cached overview data
-  const sel = document.getElementById('prodCampaign');
-  sel.innerHTML = '<option value="">Select campaign...</option>';
-  const sorted = [...ovData].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  sorted.forEach(c => {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = c.name + (c.site ? '  (' + c.site + ')' : '');
-    sel.appendChild(opt);
-  });
+  const sel = document.getElementById('prodStatus');
+  const statuses = prodStatuses.length ? prodStatuses : ['Active', 'Research', 'In Development', 'Paused', 'Retired'];
+  sel.innerHTML = statuses.map(s => `<option value="${s}">${s}</option>`).join('');
   document.getElementById('prodTitle').value = '';
-  document.getElementById('prodStatus').value = 'Active';
   document.getElementById('prodSubmitBtn').disabled = false;
   document.getElementById('prodSubmitBtn').textContent = 'Create';
   document.getElementById('prodModal').classList.add('open');
@@ -555,7 +539,7 @@ async function submitProduct() {
   btn.disabled = true; btn.textContent = 'Creating...';
 
   try {
-    await call('createProduct', { title, campaignId, status });
+    await call('createProduct', { title, status });
     closeProductModal();
     showToast('Product created ✓', 'success');
     prodLoaded = false;
