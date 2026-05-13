@@ -85,11 +85,12 @@ async function getCampaigns() {
     const id = c.id.replace(/-/g, "");
     return {
       id,
-      name:     c.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
-      site:     c.properties.site?.select?.name || "Other",
-      devTitles: devCount[id]  || 0,
-      pubTitles: pubCount[id]  || 0,
-      products:  prodCount[id] || 0,
+      name:       c.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+      site:       c.properties.site?.select?.name || "Other",
+      keyMessage: c.properties["key message"]?.rich_text?.map(t => t.plain_text).join("") || "",
+      devTitles:  devCount[id]  || 0,
+      pubTitles:  pubCount[id]  || 0,
+      products:   prodCount[id] || 0,
     };
   });
 }

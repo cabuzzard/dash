@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>thing
-
+<head>dude     yaaa  a a a a aa 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -546,11 +545,12 @@ function renderTable() {
 
   // Columns: [label, key, type]
   const cols = [
-    { label: 'Site',     key: 'site',      type: 'str' },
-    { label: 'Campaign', key: 'name',      type: 'str' },
-    { label: 'Dev',      key: 'devTitles', type: 'num' },
-    { label: 'Pub',      key: 'pubTitles', type: 'num' },
-    { label: 'Prod',     key: 'products',  type: 'num' },
+    { label: 'Site',        key: 'site',       type: 'str' },
+    { label: 'Campaign',    key: 'name',       type: 'str' },
+    { label: 'Key Message', key: 'keyMessage', type: 'str' },
+    { label: 'Dev',         key: 'devTitles',  type: 'num' },
+    { label: 'Pub',         key: 'pubTitles',  type: 'num' },
+    { label: 'Prod',        key: 'products',   type: 'num' },
   ];
 
   // Sort data
@@ -597,6 +597,7 @@ function renderTable() {
     tr.innerHTML =
       '<td class="site">' + esc(c.site || '—') + '</td>' +
       '<td class="name">' + esc(c.name) + '</td>' +
+      '<td class="name" style="color:var(--text2);font-size:12px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(c.keyMessage || '—') + '</td>' +
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '">' + c.devTitles + '</td>' +
       '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>' +
       '<td class="num' + (c.products  === 0 ? ' zero' : '') + '">' + c.products  + '</td>' +
