@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>yuiog-----
+<head>minnnnnnnnneeeesssooototoott
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -236,16 +236,19 @@ async function loadOverview() {
   const el = document.getElementById('ovContent');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
-    const data = await call('getAllCampaigns');
+    const data = await call('getCampaigns');
+    const all  = data.campaigns || [];
 
-    // getAllCampaigns returns { sites:[{ site, campaigns:[] }] }
+    // Group by site
     const siteMap = {};
-    (data.sites || []).forEach(sg => {
-      if (sg.campaigns && sg.campaigns.length) siteMap[sg.site] = sg.campaigns;
+    all.forEach(c => {
+      const s = c.site || 'Other';
+      if (!siteMap[s]) siteMap[s] = [];
+      siteMap[s].push(c);
     });
 
     el.innerHTML = '';
-    if (!Object.keys(siteMap).length) { el.innerHTML = '<div class="empty">No campaigns found.</div>'; return; }
+    if (!all.length) { el.innerHTML = '<div class="empty">No campaigns found.</div>'; return; }
 
     const ICONS = {
       'Affiliates':               '💰',
