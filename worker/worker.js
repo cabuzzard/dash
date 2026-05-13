@@ -107,14 +107,31 @@ export default {
 
     try {
       if (body.action === "getDevTitles") {
-        const [titleRows, campRows] = await Promise.all([
-          notionQuery(CONTENT_STRATEGY_DB, {
-            sorts: [{ property: "Sequence Order", direction: "ascending" }],
-          }),
-          notionQuery(CAMPAIGNS_DB, {
-            filter: { property: "Status", select: { does_not_equal: "Delete" } },
-          }),
-        ]);
+        const campRows = await notionQuery(CAMPAIGNS_DB, {
+          filter: { property: "Status", select: { does_not_equal: "Delete" } },
+        });
+
+        // Paginate through ALL titles — Notion caps at 100 per request
+        let titleRows = [];
+        let cursor = undefined;
+        do {
+          const resp = await fetch(`https://api.notion.com/v1/databases/${CONTENT_STRATEGY_DB}/query`, {
+            method: "POST",
+            headers: {
+              "Authorization":  `Bearer ${NOTION_TOKEN}`,
+              "Notion-Version": NOTION_VERSION,
+              "Content-Type":   "application/json",
+            },
+            body: JSON.stringify({
+              page_size: 100,
+              sorts: [{ property: "Sequence Order", direction: "ascending" }],
+              ...(cursor ? { start_cursor: cursor } : {}),
+            }),
+          });
+          const page = await resp.json();
+          titleRows = titleRows.concat(page.results || []);
+          cursor = page.has_more ? page.next_cursor : undefined;
+        } while (cursor);
 
         const campById = {};
         campRows.forEach(c => {
@@ -124,10 +141,9 @@ export default {
           };
         });
 
-        // Group titles by campaign
-        const campTitles = {}; // campId -> { name, site, titles[] }
+        const campTitles = {};
         titleRows.forEach(t => {
-          const props = t.properties;
+          const props  = t.properties;
           const status = props.Status?.select?.name || "";
           const title  = props.Title?.title?.map(x => x.plain_text).join("") || "Untitled";
           const id     = t.id.replace(/-/g,"");
@@ -139,21 +155,15 @@ export default {
           campTitles[campId].titles.push({ id, title, status });
         });
 
-        // Build campaigns array with dev/pub counts per title, sort titles by devCount desc
         const campaigns = Object.entries(campTitles).map(([campId, camp]) => {
-          // Count per title is always 1 (it IS the title), but we want
-          // the campaign-level dev/pub counts to sort campaigns
           const devCount = camp.titles.filter(t => t.status === "Development").length;
           const pubCount = camp.titles.filter(t => t.status === "Publish").length;
-          // Sort titles: Development first, then Publish, then others
           const STATUS_RANK = { "Development": 0, "Publish": 1 };
           camp.titles.sort((a, b) => (STATUS_RANK[a.status] ?? 2) - (STATUS_RANK[b.status] ?? 2));
           return { campId, name: camp.name, site: camp.site, titles: camp.titles, devCount, pubCount };
         });
 
-        // Sort campaigns by devCount desc
         campaigns.sort((a, b) => b.devCount - a.devCount);
-
         return json({ campaigns });
       }
 

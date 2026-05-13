@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>come to me
+<head>good and eveil
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -739,11 +739,11 @@ function renderDev() {
     siteRow.appendChild(siteChev);
 
     const siteBody = document.createElement('div');
-    siteBody.style.cssText = 'overflow:hidden;max-height:0;transition:max-height .3s ease;margin-bottom:4px;';
+    siteBody.style.cssText = 'display:none;margin-bottom:4px;';
 
     siteRow.onclick = () => {
-      const open = siteBody.style.maxHeight !== '0px' && siteBody.style.maxHeight !== '';
-      siteBody.style.maxHeight = open ? '0' : siteBody.scrollHeight + 'px';
+      const open = siteBody.style.display !== 'none';
+      siteBody.style.display = open ? 'none' : 'block';
       siteChev.style.transform = open ? '' : 'rotate(90deg)';
     };
 
@@ -766,7 +766,7 @@ function renderDev() {
       campRow.insertAdjacentHTML('beforeend', devBadge + pubBadge);
 
       const titlesEl = document.createElement('div');
-      titlesEl.style.cssText = 'overflow:hidden;max-height:0;transition:max-height .25s ease;';
+      titlesEl.style.cssText = 'display:none;';
 
       camp.titles.forEach((t, idx) => {
         const isDev = t.status === 'Development';
@@ -791,8 +791,8 @@ function renderDev() {
       });
 
       campRow.onclick = () => {
-        const open = titlesEl.style.maxHeight !== '0px' && titlesEl.style.maxHeight !== '';
-        titlesEl.style.maxHeight = open ? '0' : titlesEl.scrollHeight + 'px';
+        const open = titlesEl.style.display !== 'none';
+        titlesEl.style.display = open ? 'none' : 'block';
         campChev.style.transform = open ? '' : 'rotate(90deg)';
         campRow.style.borderRadius = open ? 'var(--radius-sm)' : 'var(--radius-sm) var(--radius-sm) 0 0';
       };
