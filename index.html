@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>liarliarliar
+<head>magic j 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -54,24 +54,22 @@
   .header-title { font-size: 11px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--text); }
   .lock-btn { font-size: 15px; cursor: pointer; color: var(--text3); padding: 4px; }
 
-  /* ── VIEW ── */
-  .view { display: none; padding: 16px; }
-  .view.active { display: block; }
-
-  /* ── SECTION HEADER ── */
-  .sec {
-    display: flex; align-items: center; justify-content: space-between;
-    margin: 4px 0 10px; cursor: pointer; user-select: none;
+  /* ── TABS ── */
+  .tabs {
+    display: flex; gap: 0; border-bottom: 1px solid var(--border);
+    margin: 0 -16px 20px; padding: 0 16px;
   }
-  .sec-label { font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--text2); }
-  .sec-chev  { font-size: 11px; color: var(--text3); transition: transform .22s; }
-  .sec-chev.open { transform: rotate(90deg); }
-
-  /* ── COLLAPSIBLE ── */
-  .collapsible { overflow: hidden; transition: max-height .3s ease; max-height: 0; }
-  .collapsible.open { max-height: 99999px; }
-
-  /* ── OVERVIEW ── */
+  .tab {
+    font-size: 12px; font-weight: 600; letter-spacing: .06em;
+    color: var(--text3); padding: 10px 16px 9px;
+    cursor: pointer; border-bottom: 2px solid transparent;
+    margin-bottom: -1px; transition: color .15s, border-color .15s;
+    user-select: none;
+  }
+  .tab:hover { color: var(--text2); }
+  .tab.active { color: var(--text); border-bottom-color: var(--text); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
   /* ── TABLE ── */
   .ov-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
   .ov-table thead th {
@@ -159,16 +157,21 @@
 </div>
 
 <!-- Main -->
-<div class="view active" id="viewMain">
+<div id="viewMain" style="padding:16px;">
 
-  <div class="sec" onclick="toggleOverview()">
-    <div class="sec-label">📊 Overview</div>
-    <span class="sec-chev" id="ovChev">▶</span>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('overview')">Overview</div>
+    <div class="tab"        onclick="switchTab('products')">Products</div>
   </div>
-  <div class="collapsible" id="ovBody">
+
+  <div class="tab-panel active" id="tabOverview">
     <div id="ovContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
+  </div>
+
+  <div class="tab-panel" id="tabProducts">
+    <div class="empty">Nothing here yet.</div>
   </div>
 
 </div>
@@ -207,6 +210,7 @@ function checkPin() {
   if (pinBuffer === PIN) {
     session.authed = true;
     document.getElementById('pinScreen').classList.add('hidden');
+    if (!ovLoaded) { ovLoaded = true; loadOverview(); }
   } else {
     document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
     document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
@@ -217,9 +221,6 @@ function lockApp() {
   pinBuffer = ''; session.authed = false; ovLoaded = false;
   updateDots();
   document.getElementById('pinScreen').classList.remove('hidden');
-  const body = document.getElementById('ovBody');
-  const chev = document.getElementById('ovChev');
-  body.classList.remove('open'); chev.classList.remove('open');
   document.getElementById('ovContent').innerHTML =
     '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
 }
@@ -236,13 +237,12 @@ async function call(action, extra = {}) {
   return data;
 }
 
-// ── OVERVIEW ─────────────────────────────────────────────────────────
-function toggleOverview() {
-  const body = document.getElementById('ovBody');
-  const chev = document.getElementById('ovChev');
-  const open = body.classList.toggle('open');
-  chev.classList.toggle('open', open);
-  if (open && !ovLoaded) { ovLoaded = true; loadOverview(); }
+// ── TABS ─────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
 }
 
 let ovData = [];

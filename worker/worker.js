@@ -65,11 +65,19 @@ async function getCampaigns() {
   });
 
   // Count products per campaign id
+  // Scan every relation property on each product to find campaign links
+  // (works regardless of what the relation property is named)
   const prodCount = {};
+  const campaignIds = new Set(campRows.map(c => c.id.replace(/-/g, "")));
   productRows.forEach(p => {
-    (p.properties.Campaign?.relation || []).forEach(r => {
-      const id = r.id.replace(/-/g, "");
-      prodCount[id] = (prodCount[id] || 0) + 1;
+    Object.values(p.properties).forEach(prop => {
+      if (prop.type !== "relation") return;
+      (prop.relation || []).forEach(r => {
+        const id = r.id.replace(/-/g, "");
+        if (campaignIds.has(id)) {
+          prodCount[id] = (prodCount[id] || 0) + 1;
+        }
+      });
     });
   });
 
