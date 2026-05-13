@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>minnnnnnnnneeeesssooototoott
+<head>yes baby
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -72,22 +72,28 @@
   .collapsible.open { max-height: 99999px; }
 
   /* ── OVERVIEW ── */
-  .ov-site-hdr {
-    font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
-    color: var(--text2); margin: 18px 0 8px; padding-bottom: 7px;
+  /* ── TABLE ── */
+  .ov-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
+  .ov-table thead th {
+    text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--text3); padding: 0 10px 8px;
     border-bottom: 1px solid var(--border);
   }
-  .ov-site-hdr:first-child { margin-top: 4px; }
-
-  .ov-row {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); padding: 12px 14px;
-    margin-bottom: 6px; cursor: pointer; transition: border-color .15s;
+  .ov-table thead th:last-child { text-align: center; }
+  .ov-table tbody tr { border-bottom: 1px solid var(--border); }
+  .ov-table tbody tr:last-child { border-bottom: none; }
+  .ov-table tbody tr:active { background: var(--surface2); }
+  .ov-table td { padding: 10px; vertical-align: middle; }
+  .ov-table td.site { font-size: 11px; font-weight: 600; color: var(--text2); white-space: nowrap; }
+  .ov-table td.name { color: var(--text); font-weight: 500; }
+  .ov-table td.link { text-align: center; width: 44px; }
+  .ov-table td.link a {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 6px;
+    border: 1px solid var(--border2); color: var(--text3);
+    font-size: 12px; text-decoration: none; transition: all .15s;
   }
-  .ov-row:active  { transform: scale(.98); }
-  .ov-row:hover   { border-color: var(--border2); }
-
-  .ov-name  { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.4; }
+  .ov-table td.link a:hover { border-color: var(--text3); color: var(--text); }
 
   /* ── MISC ── */
   .loading-wrap { display: flex; align-items: center; gap: 8px; padding: 12px 0; color: var(--text3); font-size: 13px; }
@@ -237,42 +243,36 @@ async function loadOverview() {
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
     const data = await call('getCampaigns');
-    const all  = data.campaigns || [];
-
-    // Group by site
-    const siteMap = {};
-    all.forEach(c => {
-      const s = c.site || 'Other';
-      if (!siteMap[s]) siteMap[s] = [];
-      siteMap[s].push(c);
+    const all  = (data.campaigns || []).sort((a, b) => {
+      const s = (a.site || '').localeCompare(b.site || '');
+      return s !== 0 ? s : (a.name || '').localeCompare(b.name || '');
     });
 
     el.innerHTML = '';
     if (!all.length) { el.innerHTML = '<div class="empty">No campaigns found.</div>'; return; }
 
-    const ICONS = {
-      'Affiliates':               '💰',
-      'Webguy Business Services': '🖥️',
-      'Mountainwize Coaching':    '⛰️',
-      'Mobility Mentor':          '♿',
-      'Trading':                  '📈',
-      'Hermes':                   '🤖',
-      'Main Business':            '🏠',
-    };
+    const table = document.createElement('table');
+    table.className = 'ov-table';
+    table.innerHTML =
+      '<thead><tr>' +
+        '<th>Site</th>' +
+        '<th>Campaign</th>' +
+        '<th>DB</th>' +
+      '</tr></thead>';
 
-    Object.keys(siteMap).sort().forEach(site => {
-      const hdr = document.createElement('div');
-      hdr.className = 'ov-site-hdr';
-      hdr.textContent = (ICONS[site] || '🌐') + '  ' + site;
-      el.appendChild(hdr);
-
-      siteMap[site].forEach(c => {
-        const row = document.createElement('div');
-        row.className = 'ov-row';
-        row.textContent = c.name;
-        el.appendChild(row);
-      });
+    const tbody = document.createElement('tbody');
+    all.forEach(c => {
+      const notionUrl = 'https://www.notion.so/' + c.id;
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td class="site">' + esc(c.site || '—') + '</td>' +
+        '<td class="name">' + esc(c.name) + '</td>' +
+        '<td class="link"><a href="' + notionUrl + '" target="_blank">↗</a></td>';
+      tbody.appendChild(tr);
     });
+
+    table.appendChild(tbody);
+    el.appendChild(table);
 
   } catch (e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
