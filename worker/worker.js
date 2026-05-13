@@ -174,24 +174,6 @@ export default {
 
         return json({ products });
       }
-      if (body.action === "bulkSetProductStatus") {
-        const rows = await notionQuery(PRODUCTS_DB, {});
-        const results = [];
-        for (const p of rows) {
-          const name = p.properties.Name?.title?.map(t => t.plain_text).join("") || "";
-          if (name.toLowerCase().includes("sell websites")) { results.push({ name, skipped: true }); continue; }
-          const dashed = p.id;
-          const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
-            method: "PATCH",
-            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { Status: { select: { name: "Research" } } } }),
-          });
-          const result = await resp.json();
-          results.push({ name, success: resp.ok, error: resp.ok ? null : result.message });
-        }
-        return json({ results });
-      }
-
       if (body.action === "getProductSchema") {
         const resp = await fetch(`https://api.notion.com/v1/databases/${PRODUCTS_DB}`, {
           headers: {

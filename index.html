@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+<head>yea buddy
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -231,6 +231,7 @@
   <div class="tabs">
     <div class="tab active" onclick="switchTab('overview')">Overview</div>
     <div class="tab"        onclick="switchTab('products')">Products</div>
+    <div class="tab"        onclick="switchTab('development')">Development</div>
   </div>
 
   <div class="tab-panel active" id="tabOverview">
@@ -242,6 +243,13 @@
   <div class="tab-panel" id="tabProducts">
     <a class="add-link" onclick="openProductModal()">+ Add new product</a>
     <div id="prodContent">
+      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabDevelopment">
+    <a class="add-link" onclick="openTitleModal()">+ Add title</a>
+    <div id="devContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
   </div>
@@ -278,6 +286,30 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Add Title Modal -->
+<div class="modal-bg" id="titleModal" onclick="if(event.target===this)closeTitleModal()">
+  <div class="modal">
+    <div class="modal-title">New Development Title</div>
+
+    <div class="modal-field">
+      <label class="modal-label">Title</label>
+      <input class="modal-input" id="titleName" type="text" placeholder="Title name..." />
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Campaign</label>
+      <input class="modal-input" id="titleCampaignInput" type="text" placeholder="Search campaigns..." autocomplete="off" oninput="filterTitleCampaigns()" onfocus="filterTitleCampaigns()" />
+      <input type="hidden" id="titleCampaignId" />
+      <div id="titleCampDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeTitleModal()">Cancel</button>
+      <button class="btn btn-primary" id="titleSubmitBtn" onclick="submitTitle()">Create</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -323,13 +355,12 @@ function checkPin() {
   }
 }
 function lockApp() {
-  pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false;
+  pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false; devLoaded = false;
   updateDots();
   document.getElementById('pinScreen').classList.remove('hidden');
-  document.getElementById('ovContent').innerHTML =
-    '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
-  document.getElementById('prodContent').innerHTML =
-    '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  document.getElementById('ovContent').innerHTML   = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  document.getElementById('prodContent').innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  document.getElementById('devContent').innerHTML  = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
 }
 
 // ── WORKER ───────────────────────────────────────────────────────────
@@ -346,13 +377,15 @@ async function call(action, extra = {}) {
 
 // ── TABS ─────────────────────────────────────────────────────────────
 let prodLoaded = false;
+let devLoaded  = false;
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   event.currentTarget.classList.add('active');
   document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
-  if (name === 'products' && !prodLoaded) { prodLoaded = true; loadProducts(); }
+  if (name === 'products'    && !prodLoaded) { prodLoaded = true; loadProducts(); }
+  if (name === 'development' && !devLoaded)  { devLoaded  = true; loadDev(); }
 }
 
 // ── PRODUCTS ─────────────────────────────────────────────────────────
@@ -654,6 +687,159 @@ async function submitProduct() {
     showToast('Product created ✓', 'success');
     prodLoaded = false;
     loadProducts();
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Create';
+  }
+}
+
+// ── DEVELOPMENT ──────────────────────────────────────────────────────
+let devData = [];
+let devSort = { col: null, asc: true };
+
+async function loadDev() {
+  const el = document.getElementById('devContent');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getDevTitles');
+    devData = data.titles || [];
+    renderDev();
+  } catch (e) {
+    el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderDev() {
+  const el = document.getElementById('devContent');
+  el.innerHTML = '';
+  if (!devData.length) { el.innerHTML = '<div class="empty">No development titles.</div>'; return; }
+
+  const cols = [
+    { label: 'Title',    key: 'title',    type: 'str' },
+    { label: 'Campaign', key: 'campaign', type: 'str' },
+    { label: 'Site',     key: 'site',     type: 'str' },
+  ];
+
+  const sorted = [...devData].sort((a, b) => {
+    if (devSort.col === null) return (a.campaign || '').localeCompare(b.campaign || '');
+    const col = cols[devSort.col];
+    const cmp = String(a[col.key] || '').localeCompare(String(b[col.key] || ''));
+    return devSort.asc ? cmp : -cmp;
+  });
+
+  const table = document.createElement('table');
+  table.className = 'ov-table';
+
+  const thead = document.createElement('thead');
+  const hrow  = document.createElement('tr');
+  cols.forEach((col, i) => {
+    const th = document.createElement('th');
+    if (devSort.col === i) th.classList.add('sorted');
+    const arrow = devSort.col === i ? (devSort.asc ? '▲' : '▼') : '⬍';
+    th.innerHTML = col.label + ' <span class="sort-arrow">' + arrow + '</span>';
+    th.onclick = () => {
+      if (devSort.col === i) devSort.asc = !devSort.asc;
+      else { devSort.col = i; devSort.asc = true; }
+      renderDev();
+    };
+    hrow.appendChild(th);
+  });
+  const dbTh = document.createElement('th');
+  dbTh.textContent = 'DB'; dbTh.style.cssText = 'text-align:center;cursor:default;';
+  hrow.appendChild(dbTh);
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  sorted.forEach(t => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="name">' + esc(t.title)           + '</td>' +
+      '<td class="site">' + esc(t.campaign || '—')  + '</td>' +
+      '<td class="site">' + esc(t.site     || '—')  + '</td>' +
+      '<td class="link"><a href="https://www.notion.so/' + t.id + '" target="_blank">↗</a></td>';
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  el.appendChild(table);
+}
+
+// ── TITLE MODAL ──────────────────────────────────────────────────────
+function openTitleModal() {
+  document.getElementById('titleName').value = '';
+  document.getElementById('titleCampaignInput').value = '';
+  document.getElementById('titleCampaignId').value = '';
+  document.getElementById('titleCampDropdown').style.display = 'none';
+  document.getElementById('titleSubmitBtn').disabled = false;
+  document.getElementById('titleSubmitBtn').textContent = 'Create';
+  document.getElementById('titleModal').classList.add('open');
+  setTimeout(() => document.getElementById('titleName').focus(), 280);
+}
+
+function closeTitleModal() {
+  document.getElementById('titleModal').classList.remove('open');
+  document.getElementById('titleCampDropdown').style.display = 'none';
+}
+
+function filterTitleCampaigns() {
+  const query = document.getElementById('titleCampaignInput').value.trim().toLowerCase();
+  const dd = document.getElementById('titleCampDropdown');
+  const matches = ovData.filter(c => !query || c.name.toLowerCase().includes(query));
+  dd.innerHTML = '';
+  matches.slice(0, 8).forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = c.name + (c.site ? ' (' + c.site + ')' : '');
+    div.onmousedown = () => {
+      document.getElementById('titleCampaignInput').value = c.name;
+      document.getElementById('titleCampaignId').value = c.id;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+  // Create option if no exact match
+  const exact = ovData.some(c => c.name.toLowerCase() === query);
+  if (query && !exact) {
+    const div = document.createElement('div');
+    div.className = 'camp-option create';
+    div.textContent = '+ Create "' + document.getElementById('titleCampaignInput').value.trim() + '"';
+    div.onmousedown = async () => {
+      const name = document.getElementById('titleCampaignInput').value.trim();
+      div.textContent = 'Creating...';
+      try {
+        const res = await call('createCampaign', { name });
+        ovData.push({ id: res.id, name, site: '' });
+        document.getElementById('titleCampaignInput').value = name;
+        document.getElementById('titleCampaignId').value = res.id;
+        dd.style.display = 'none';
+        showToast('Campaign created ✓', 'success');
+      } catch (e) { showToast('Failed: ' + e.message, 'error'); }
+    };
+    dd.appendChild(div);
+  }
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#titleCampaignInput') && !e.target.closest('#titleCampDropdown')) {
+    const dd = document.getElementById('titleCampDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+async function submitTitle() {
+  const title      = document.getElementById('titleName').value.trim();
+  const campaignId = document.getElementById('titleCampaignId').value;
+  if (!title) { document.getElementById('titleName').focus(); return; }
+
+  const btn = document.getElementById('titleSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    await call('createDevTitle', { title, campaignId });
+    closeTitleModal();
+    showToast('Title created ✓', 'success');
+    devLoaded = false;
+    loadDev();
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Create';
