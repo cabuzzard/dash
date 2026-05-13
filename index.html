@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>charlie and martin
+<head>tineimteiteimteitmeitmtiemtm
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -143,6 +143,21 @@
   .status-select:hover  { border-color: var(--text3); color: var(--text); }
   .status-select:focus  { border-color: var(--text2); color: var(--text); }
 
+  /* ── CAMPAIGN AUTOCOMPLETE ── */
+  .camp-dropdown {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 300;
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: var(--radius-sm); overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0,0,0,.5); margin-top: 4px;
+  }
+  .camp-option {
+    padding: 11px 13px; font-size: 14px; color: var(--text); cursor: pointer;
+    transition: background .1s;
+  }
+  .camp-option:hover { background: var(--surface); }
+  .camp-option.create { color: #ff6a00; font-weight: 600; }
+  .camp-option.create:hover { background: #1a0d00; }
+
   /* ── ADD LINK ── */
   .add-link { font-size: 12px; font-weight: 600; color: #ff6a00; cursor: pointer; text-decoration: none; display: inline-block; margin-bottom: 14px; letter-spacing: .04em; }
   .add-link:hover { color: #ffaa55; }
@@ -232,6 +247,13 @@
     <div class="modal-field">
       <label class="modal-label">Title</label>
       <input class="modal-input" id="prodTitle" type="text" placeholder="Product name..." />
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Campaign</label>
+      <input class="modal-input" id="prodCampaignInput" type="text" placeholder="Search or type to create..." autocomplete="off" oninput="filterCampaigns()" onfocus="filterCampaigns()" />
+      <input type="hidden" id="prodCampaignId" />
+      <div id="campDropdown" class="camp-dropdown" style="display:none;"></div>
     </div>
 
     <div class="modal-field">
@@ -514,9 +536,16 @@ function renderTable() {
 
 // ── PRODUCT MODAL ────────────────────────────────────────────────────
 function openProductModal() {
-  const sel = document.getElementById('prodStatus');
+  // Status options
+  const statusSel = document.getElementById('prodStatus');
   const statuses = prodStatuses.length ? prodStatuses : ['Active', 'Research', 'In Development', 'Paused', 'Retired'];
-  sel.innerHTML = statuses.map(s => `<option value="${s}">${s}</option>`).join('');
+  statusSel.innerHTML = statuses.map(s => `<option value="${s}">${s}</option>`).join('');
+
+  // Clear campaign
+  document.getElementById('prodCampaignInput').value = '';
+  document.getElementById('prodCampaignId').value = '';
+  document.getElementById('campDropdown').style.display = 'none';
+
   document.getElementById('prodTitle').value = '';
   document.getElementById('prodSubmitBtn').disabled = false;
   document.getElementById('prodSubmitBtn').textContent = 'Create';
@@ -524,13 +553,67 @@ function openProductModal() {
   setTimeout(() => document.getElementById('prodTitle').focus(), 280);
 }
 
+function filterCampaigns() {
+  const query = document.getElementById('prodCampaignInput').value.trim().toLowerCase();
+  const dd = document.getElementById('campDropdown');
+  const matches = ovData.filter(c => !query || c.name.toLowerCase().includes(query));
+
+  dd.innerHTML = '';
+
+  matches.slice(0, 8).forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = c.name + (c.site ? ' (' + c.site + ')' : '');
+    div.onmousedown = () => {
+      document.getElementById('prodCampaignInput').value = c.name;
+      document.getElementById('prodCampaignId').value = c.id;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+
+  // "Create" option if typed something not in list
+  const exactMatch = ovData.some(c => c.name.toLowerCase() === query);
+  if (query && !exactMatch) {
+    const div = document.createElement('div');
+    div.className = 'camp-option create';
+    div.textContent = '+ Create "' + document.getElementById('prodCampaignInput').value.trim() + '"';
+    div.onmousedown = async () => {
+      const name = document.getElementById('prodCampaignInput').value.trim();
+      div.textContent = 'Creating...';
+      try {
+        const res = await call('createCampaign', { name });
+        // Add to local cache
+        ovData.push({ id: res.id, name, site: '' });
+        document.getElementById('prodCampaignInput').value = name;
+        document.getElementById('prodCampaignId').value = res.id;
+        dd.style.display = 'none';
+        showToast('Campaign created ✓', 'success');
+      } catch (e) {
+        showToast('Failed: ' + e.message, 'error');
+      }
+    };
+    dd.appendChild(div);
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+// Hide dropdown when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('#prodCampaignInput') && !e.target.closest('#campDropdown')) {
+    document.getElementById('campDropdown').style.display = 'none';
+  }
+});
+
 function closeProductModal() {
   document.getElementById('prodModal').classList.remove('open');
+  document.getElementById('campDropdown').style.display = 'none';
 }
 
 async function submitProduct() {
   const title      = document.getElementById('prodTitle').value.trim();
-  const campaignId = document.getElementById('prodCampaign').value;
+  const campaignId = document.getElementById('prodCampaignId').value;
   const status     = document.getElementById('prodStatus').value;
 
   if (!title) { document.getElementById('prodTitle').focus(); return; }
@@ -539,7 +622,7 @@ async function submitProduct() {
   btn.disabled = true; btn.textContent = 'Creating...';
 
   try {
-    await call('createProduct', { title, status });
+    await call('createProduct', { title, campaignId, status });
     closeProductModal();
     showToast('Product created ✓', 'success');
     prodLoaded = false;

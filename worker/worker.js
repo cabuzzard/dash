@@ -176,14 +176,41 @@ export default {
 
         return json({ products });
       }
+      if (body.action === "createCampaign") {
+        const { name } = body;
+        if (!name) return json({ error: "name required" }, 400);
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: {
+            "Authorization":  `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type":   "application/json",
+          },
+          body: JSON.stringify({
+            parent: { database_id: CAMPAIGNS_DB },
+            properties: {
+              Name: { title: [{ type: "text", text: { content: name } }] },
+            },
+          }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,""), name });
+      }
+
       if (body.action === "createProduct") {
-        const { title, status } = body;
+        const { title, status, campaignId } = body;
         if (!title) return json({ error: "title required" }, 400);
 
         const props = {
           Name:   { title: [{ type: "text", text: { content: title } }] },
           Status: { select: { name: status || "Active" } },
         };
+        if (campaignId) {
+          const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+          // Try setting campaign relation — property name may vary; worker will return error if wrong
+          props["Campaign"] = { relation: [{ id: dashed }] };
+        }
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
