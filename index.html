@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>dudetotes
+<head>honk
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -80,12 +80,15 @@
     border-bottom: 1px solid var(--border);
   }
   .ov-table thead th:last-child { text-align: center; }
+  .ov-table thead th.num { text-align: center; }
   .ov-table tbody tr { border-bottom: 1px solid var(--border); }
   .ov-table tbody tr:last-child { border-bottom: none; }
   .ov-table tbody tr:active { background: var(--surface2); }
   .ov-table td { padding: 10px; vertical-align: middle; }
   .ov-table td.site { font-size: 11px; font-weight: 600; color: var(--text2); white-space: nowrap; }
   .ov-table td.name { color: var(--text); font-weight: 500; }
+  .ov-table td.num  { text-align: center; font-size: 12px; font-family: 'DM Mono', monospace; color: var(--text2); width: 48px; }
+  .ov-table td.num.zero { color: var(--text3); }
   .ov-table td.link { text-align: center; width: 44px; }
   .ov-table td.link a {
     display: inline-flex; align-items: center; justify-content: center;
@@ -257,6 +260,9 @@ async function loadOverview() {
       '<thead><tr>' +
         '<th>Site</th>' +
         '<th>Campaign</th>' +
+        '<th class="num">Dev</th>' +
+        '<th class="num">Pub</th>' +
+        '<th class="num">Prod</th>' +
         '<th>DB</th>' +
       '</tr></thead>';
 
@@ -267,6 +273,9 @@ async function loadOverview() {
       tr.innerHTML =
         '<td class="site">' + esc(c.site || '—') + '</td>' +
         '<td class="name">' + esc(c.name) + '</td>' +
+        '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '">' + c.devTitles + '</td>' +
+        '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>' +
+        '<td class="num' + (c.products  === 0 ? ' zero' : '') + '">' + c.products  + '</td>' +
         '<td class="link"><a href="' + notionUrl + '" target="_blank">↗</a></td>';
       tbody.appendChild(tr);
     });

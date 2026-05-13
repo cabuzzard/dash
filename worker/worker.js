@@ -1,7 +1,9 @@
-const NOTION_TOKEN   = "ntn_i84528099155pTq2P4dwUSpqmZYBpTSsL0qFB9GsQP6bc4";
-const NOTION_VERSION = "2022-06-28";
-const CAMPAIGNS_DB   = "087b1163b4e64975bc7a4b686ff801de";
-const PIN            = "1246";
+const NOTION_TOKEN       = "ntn_i84528099155pTq2P4dwUSpqmZYBpTSsL0qFB9GsQP6bc4";
+const NOTION_VERSION     = "2022-06-28";
+const CAMPAIGNS_DB       = "087b1163b4e64975bc7a4b686ff801de";
+const CONTENT_STRATEGY_DB = "9fa5f42f010b47e7a82032607e07d6a1";
+const PRODUCTS_DB        = "e92fcfce75fc4f54b553df0b7672ff48";
+const PIN                = "1246";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -16,28 +18,72 @@ function json(data, status = 200) {
   });
 }
 
-async function getCampaigns() {
-  const resp = await fetch(`https://api.notion.com/v1/databases/${CAMPAIGNS_DB}/query`, {
+async function notionQuery(dbId, body) {
+  const resp = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
     method: "POST",
     headers: {
       "Authorization":  `Bearer ${NOTION_TOKEN}`,
       "Notion-Version": NOTION_VERSION,
       "Content-Type":   "application/json",
     },
-    body: JSON.stringify({
-      filter: { property: "Status", select: { does_not_equal: "Delete" } },
-      sorts:  [{ property: "Name", direction: "ascending" }],
-      page_size: 100,
-    }),
+    body: JSON.stringify({ page_size: 100, ...body }),
   });
   const data = await resp.json();
   if (!resp.ok) throw new Error(data.message || "Notion error");
+  return data.results || [];
+}
 
-  return (data.results || []).map(c => ({
-    id:   c.id.replace(/-/g, ""),
-    name: c.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
-    site: c.properties.site?.select?.name || "Other",
-  }));
+async function getCampaigns() {
+  // Fetch all three datasets in parallel
+  const [campRows, titleRows, productRows] = await Promise.all([
+    notionQuery(CAMPAIGNS_DB, {
+      filter: { property: "Status", select: { does_not_equal: "Delete" } },
+      sorts:  [{ property: "Name", direction: "ascending" }],
+    }),
+    notionQuery(CONTENT_STRATEGY_DB, {}),
+    notionQuery(PRODUCTS_DB, {}),
+  ]);
+
+  // Count dev titles per campaign id
+  const devCount = {};
+  titleRows.forEach(t => {
+    if (t.properties.Status?.select?.name !== "Development") return;
+    (t.properties.Campaign?.relation || []).forEach(r => {
+      const id = r.id.replace(/-/g, "");
+      devCount[id] = (devCount[id] || 0) + 1;
+    });
+  });
+
+  // Count publish titles per campaign id
+  const pubCount = {};
+  titleRows.forEach(t => {
+    if (t.properties.Status?.select?.name !== "Publish") return;
+    (t.properties.Campaign?.relation || []).forEach(r => {
+      const id = r.id.replace(/-/g, "");
+      pubCount[id] = (pubCount[id] || 0) + 1;
+    });
+  });
+
+  // Count products per campaign id
+  const prodCount = {};
+  productRows.forEach(p => {
+    (p.properties.Campaign?.relation || []).forEach(r => {
+      const id = r.id.replace(/-/g, "");
+      prodCount[id] = (prodCount[id] || 0) + 1;
+    });
+  });
+
+  return campRows.map(c => {
+    const id = c.id.replace(/-/g, "");
+    return {
+      id,
+      name:     c.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+      site:     c.properties.site?.select?.name || "Other",
+      devTitles: devCount[id]  || 0,
+      pubTitles: pubCount[id]  || 0,
+      products:  prodCount[id] || 0,
+    };
+  });
 }
 
 export default {
