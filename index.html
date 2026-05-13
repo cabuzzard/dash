@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
------mgoatsiznasty98989898989898<head>
+-----mgoatsiznasty43434343434334343434343434334<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -187,11 +187,12 @@
 
 <!-- L1: Sites + Queues + Todos -->
 <div class="view active" id="viewL1">
-  <div class="sec" style="margin-top:8px">
-    <div class="sec-label">New Section</div>
+  <div class="sec" style="margin-top:8px;cursor:pointer;" onclick="toggleSection('overviewBody','overviewChev')">
+    <div class="sec-label">📊 Overview</div>
+    <span class="sec-toggle" id="overviewChev">▸</span>
   </div>
-  <div style="margin-bottom:16px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:15px;font-weight:500;color:var(--text);">
-    Hello World
+  <div id="overviewBody" class="collapsible collapsed">
+    <div id="overviewContent"><div class="loading-wrap"><div class="spinner"></div>Loading overview...</div></div>
   </div>
 
   <div class="sec" style="margin-top:8px">
@@ -698,6 +699,98 @@ async function renderL1() {
   loadAllTodos();
 }
 
+// ── OVERVIEW ──────────────────────────────────────────────────────────
+async function loadOverview() {
+  const el = document.getElementById('overviewContent');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading overview...</div>';
+  try {
+    const [campData, devData, pubData, prodData] = await Promise.all([
+      call('getAllCampaigns'),
+      call('getDevTitleCounts'),
+      call('getPublishQueue'),
+      call('getProducts'),
+    ]);
+
+    // publish count by campaign name
+    const pubCountByName = {};
+    (pubData.titles || []).forEach(t => {
+      const k = t.campaign || '';
+      pubCountByName[k] = (pubCountByName[k] || 0) + 1;
+    });
+
+    // product count by campaign name
+    const prodCountByName = {};
+    (prodData.sites || []).forEach(sg => {
+      (sg.campaigns || []).forEach(cg => {
+        prodCountByName[cg.campaign] = (prodCountByName[cg.campaign] || 0) + (cg.products?.length || 0);
+      });
+    });
+
+    // flatten campaigns from getAllCampaigns { sites:[{site, campaigns:[]}] }
+    const allCampaigns = [];
+    (campData.sites || []).forEach(sg => {
+      (sg.campaigns || []).forEach(c => allCampaigns.push({ ...c, site: sg.site }));
+    });
+
+    // attach counts
+    const devCounts = devData.counts || {};
+    allCampaigns.forEach(c => {
+      c.devCount  = devCounts[c.id] || 0;
+      c.pubCount  = pubCountByName[c.name] || 0;
+      c.prodCount = prodCountByName[c.name] || 0;
+    });
+
+    // group by site, sort by devCount desc
+    const siteMap = {};
+    allCampaigns.forEach(c => {
+      if (!siteMap[c.site]) siteMap[c.site] = [];
+      siteMap[c.site].push(c);
+    });
+    Object.keys(siteMap).forEach(site => siteMap[site].sort((a,b) => b.devCount - a.devCount));
+
+    el.innerHTML = '';
+    if (!allCampaigns.length) { el.innerHTML='<div class="empty">No campaigns found.</div>'; return; }
+
+    const SITE_ICONS = {
+      'Affiliates':'💰','Webguy Business Services':'🖥️','Mountainwize Coaching':'⛰️',
+      'Mobility Mentor':'♿','Trading':'📈','Hermes':'🤖','Main Business':'🏠',
+    };
+
+    Object.keys(siteMap).sort().forEach(site => {
+      const icon = SITE_ICONS[site] || '🌐';
+      const siteHdr = document.createElement('div');
+      siteHdr.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border);';
+      siteHdr.textContent = icon + ' ' + site;
+      el.appendChild(siteHdr);
+
+      siteMap[site].forEach(c => {
+        const row = document.createElement('div');
+        row.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px;margin-bottom:6px;cursor:pointer;transition:border-color .15s;';
+        row.innerHTML =
+          '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;line-height:1.4;">' + c.name + '</div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+            ovStat('📋', c.devCount,  'Dev',     '#8888ff','#0a0a1a','#333388') +
+            ovStat('📤', c.pubCount,  'Publish', '#ffcc00','#1a1200','#443300') +
+            ovStat('📦', c.prodCount, 'Products','#44cc88','#001a0d','#004422') +
+          '</div>';
+        row.onmouseover = () => row.style.borderColor = 'var(--border2)';
+        row.onmouseout  = () => row.style.borderColor = 'var(--border)';
+        row.onclick = () => renderL3(c);
+        el.appendChild(row);
+      });
+    });
+
+  } catch(e) {
+    document.getElementById('overviewContent').innerHTML = '<div class="error-msg">Could not load: ' + e.message + '</div>';
+  }
+}
+
+function ovStat(emoji, count, label, color, bg, border) {
+  return '<div style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;background:'+bg+';border:1px solid '+border+';font-size:11px;font-weight:600;color:'+color+';">' +
+    emoji+' '+count+' <span style="font-weight:400;opacity:.75;">'+label+'</span>' +
+  '</div>';
+}
+
 async function loadExplodeQueue() {
   const el = document.getElementById('l1Explode');
   el.innerHTML = loading();
@@ -767,6 +860,7 @@ function toggleSection(containerId, chevronId) {
   ch.textContent = collapsed ? '▸' : '▾';
   // Lazy load queues on first expand
   if (!collapsed) {
+    if (containerId === 'overviewBody' && !el.dataset.loaded) { el.dataset.loaded=1; loadOverview(); }
     if (containerId === 'l1Explode' && !el.dataset.loaded) { el.dataset.loaded=1; loadExplodeQueue(); }
     if (containerId === 'l1Publish' && !el.dataset.loaded) { el.dataset.loaded=1; loadPublishQueue(); }
     if (containerId === 'l1Sites' && !el.dataset.loaded) { el.dataset.loaded=1; renderL1(); }
