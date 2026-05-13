@@ -163,6 +163,50 @@ export default {
 
         return json({ products });
       }
+      if (body.action === "createProduct") {
+        const { title, campaignId, status } = body;
+        if (!title) return json({ error: "title required" }, 400);
+
+        const props = {
+          Name:   { title: [{ type: "text", text: { content: title } }] },
+          Status: { select: { name: status || "Active" } },
+        };
+        if (campaignId) {
+          const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+          props["Campaign"] = { relation: [{ id: dashed }] };
+        }
+
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: {
+            "Authorization":  `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type":   "application/json",
+          },
+          body: JSON.stringify({ parent: { database_id: PRODUCTS_DB }, properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,"") });
+      }
+      if (body.action === "updateProductStatus") {
+        const { productId, status } = body;
+        if (!productId || !status) return json({ error: "productId and status required" }, 400);
+        const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: {
+            "Authorization":  `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type":   "application/json",
+          },
+          body: JSON.stringify({ properties: { Status: { select: { name: status } } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);

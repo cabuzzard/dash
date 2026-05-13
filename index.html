@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>la on ther ighte track  yea 
+<head>pre k
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -100,7 +100,52 @@
   }
   .ov-table td.link a:hover { border-color: #ff6a00; color: #ffaa55; }
 
-  /* ── MISC ── */
+  /* ── MODAL ── */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,.75);
+    display: flex; align-items: flex-end; justify-content: center;
+    z-index: 200; opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .modal-bg.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--surface); border-radius: 16px 16px 0 0;
+    padding: 24px 16px 40px; width: 100%; max-width: 480px;
+    transform: translateY(100%); transition: transform .25s;
+  }
+  .modal-bg.open .modal { transform: translateY(0); }
+  .modal-title { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--text2); margin-bottom: 18px; }
+  .modal-field { margin-bottom: 14px; }
+  .modal-label { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; display: block; }
+  .modal-input, .modal-select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border2);
+    border-radius: var(--radius-sm); color: var(--text);
+    font-family: 'DM Sans', sans-serif; font-size: 15px;
+    padding: 11px 13px; outline: none; caret-color: var(--accent);
+    transition: border-color .15s;
+  }
+  .modal-input:focus, .modal-select:focus { border-color: var(--text2); }
+  .modal-select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+  .modal-actions { display: flex; gap: 8px; margin-top: 20px; }
+  .btn { flex: 1; height: 44px; border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all .15s; }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:disabled { background: var(--surface2); color: var(--text3); cursor: default; }
+  .btn-secondary { background: transparent; border: 1px solid var(--border2); color: var(--text2); }
+
+  /* ── INLINE STATUS SELECT ── */
+  .status-cell { padding: 6px 10px; }
+  .status-select {
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: 6px; color: var(--text2); font-family: 'DM Sans', sans-serif;
+    font-size: 11px; font-weight: 600; padding: 4px 8px; cursor: pointer;
+    outline: none; transition: border-color .15s, color .15s;
+    appearance: none; -webkit-appearance: none;
+  }
+  .status-select:hover  { border-color: var(--text3); color: var(--text); }
+  .status-select:focus  { border-color: var(--text2); color: var(--text); }
+
+  /* ── ADD LINK ── */
+  .add-link { font-size: 12px; font-weight: 600; color: #ff6a00; cursor: pointer; text-decoration: none; display: inline-block; margin-bottom: 14px; letter-spacing: .04em; }
+  .add-link:hover { color: #ffaa55; }
   .loading-wrap { display: flex; align-items: center; gap: 8px; padding: 12px 0; color: var(--text3); font-size: 13px; }
   .spinner { width: 15px; height: 15px; border: 2px solid var(--border2); border-top-color: var(--text); border-radius: 50%; animation: spin .55s linear infinite; flex-shrink: 0; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -171,11 +216,46 @@
   </div>
 
   <div class="tab-panel" id="tabProducts">
+    <a class="add-link" onclick="openProductModal()">+ Add new product</a>
     <div id="prodContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
   </div>
 
+</div>
+
+<!-- Add Product Modal -->
+<div class="modal-bg" id="prodModal" onclick="if(event.target===this)closeProductModal()">
+  <div class="modal">
+    <div class="modal-title">New Product</div>
+
+    <div class="modal-field">
+      <label class="modal-label">Title</label>
+      <input class="modal-input" id="prodTitle" type="text" placeholder="Product name..." />
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Campaign</label>
+      <select class="modal-select" id="prodCampaign">
+        <option value="">Select campaign...</option>
+      </select>
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Status</label>
+      <select class="modal-select" id="prodStatus">
+        <option value="Active">Active</option>
+        <option value="Draft">Draft</option>
+        <option value="Paused">Paused</option>
+        <option value="Archived">Archived</option>
+      </select>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeProductModal()">Cancel</button>
+      <button class="btn btn-primary" id="prodSubmitBtn" onclick="submitProduct()">Create</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -312,15 +392,45 @@ function renderProducts() {
   thead.appendChild(hrow);
   table.appendChild(thead);
 
+  const STATUSES = ['Active', 'Draft', 'Paused', 'Archived'];
+
   const tbody = document.createElement('tbody');
   sorted.forEach(p => {
     const tr = document.createElement('tr');
+
+    // Status cell — inline select
+    const statusTd = document.createElement('td');
+    statusTd.className = 'status-cell';
+    const sel = document.createElement('select');
+    sel.className = 'status-select';
+    STATUSES.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s; opt.textContent = s;
+      if (s === p.status) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.onchange = async () => {
+      const prev = p.status;
+      p.status = sel.value;
+      sel.disabled = true; sel.style.opacity = '.5';
+      try {
+        await call('updateProductStatus', { productId: p.id, status: sel.value });
+        showToast('Status updated ✓', 'success');
+      } catch (e) {
+        p.status = prev; sel.value = prev;
+        showToast('Failed: ' + e.message, 'error');
+      }
+      sel.disabled = false; sel.style.opacity = '';
+    };
+    statusTd.appendChild(sel);
+
     tr.innerHTML =
-      '<td class="name">'  + esc(p.name)     + '</td>' +
-      '<td class="site">'  + esc(p.campaign || '—') + '</td>' +
-      '<td class="site">'  + esc(p.site     || '—') + '</td>' +
-      '<td class="site">'  + esc(p.status   || '—') + '</td>' +
-      '<td class="link"><a href="https://www.notion.so/' + p.id + '" target="_blank">↗</a></td>';
+      '<td class="name">'  + esc(p.name)            + '</td>' +
+      '<td class="site">'  + esc(p.campaign || '—')  + '</td>' +
+      '<td class="site">'  + esc(p.site     || '—')  + '</td>';
+    tr.appendChild(statusTd);
+    tr.insertAdjacentHTML('beforeend',
+      '<td class="link"><a href="https://www.notion.so/' + p.id + '" target="_blank">↗</a></td>');
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -408,6 +518,52 @@ function renderTable() {
   });
   table.appendChild(tbody);
   el.appendChild(table);
+}
+
+// ── PRODUCT MODAL ────────────────────────────────────────────────────
+function openProductModal() {
+  // Populate campaign dropdown from cached overview data
+  const sel = document.getElementById('prodCampaign');
+  sel.innerHTML = '<option value="">Select campaign...</option>';
+  const sorted = [...ovData].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  sorted.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name + (c.site ? '  (' + c.site + ')' : '');
+    sel.appendChild(opt);
+  });
+  document.getElementById('prodTitle').value = '';
+  document.getElementById('prodStatus').value = 'Active';
+  document.getElementById('prodSubmitBtn').disabled = false;
+  document.getElementById('prodSubmitBtn').textContent = 'Create';
+  document.getElementById('prodModal').classList.add('open');
+  setTimeout(() => document.getElementById('prodTitle').focus(), 280);
+}
+
+function closeProductModal() {
+  document.getElementById('prodModal').classList.remove('open');
+}
+
+async function submitProduct() {
+  const title      = document.getElementById('prodTitle').value.trim();
+  const campaignId = document.getElementById('prodCampaign').value;
+  const status     = document.getElementById('prodStatus').value;
+
+  if (!title) { document.getElementById('prodTitle').focus(); return; }
+
+  const btn = document.getElementById('prodSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+
+  try {
+    await call('createProduct', { title, campaignId, status });
+    closeProductModal();
+    showToast('Product created ✓', 'success');
+    prodLoaded = false;
+    loadProducts();
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Create';
+  }
 }
 
 function esc(s) {
