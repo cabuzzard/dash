@@ -106,6 +106,80 @@ export default {
     if (body.pin !== PIN) return json({ error: "Unauthorized" }, 401);
 
     try {
+      if (body.action === "getDevTitles") {
+        const [titleRows, campRows] = await Promise.all([
+          notionQuery(CONTENT_STRATEGY_DB, {
+            sorts: [{ property: "Sequence Order", direction: "ascending" }],
+          }),
+          notionQuery(CAMPAIGNS_DB, {
+            filter: { property: "Status", select: { does_not_equal: "Delete" } },
+          }),
+        ]);
+
+        const campById = {};
+        campRows.forEach(c => {
+          campById[c.id.replace(/-/g,"")] = {
+            name: c.properties.Name?.title?.map(t => t.plain_text).join("") || "",
+            site: c.properties.site?.select?.name || "Other",
+          };
+        });
+
+        // Group titles by campaign
+        const campTitles = {}; // campId -> { name, site, titles[] }
+        titleRows.forEach(t => {
+          const props = t.properties;
+          const status = props.Status?.select?.name || "";
+          const title  = props.Title?.title?.map(x => x.plain_text).join("") || "Untitled";
+          const id     = t.id.replace(/-/g,"");
+          const campRel = props.Campaign?.relation || [];
+          const campId  = campRel.length ? campRel[0].id.replace(/-/g,"") : "__none__";
+          const camp    = campById[campId] || { name: "—", site: "Other" };
+
+          if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, titles: [] };
+          campTitles[campId].titles.push({ id, title, status });
+        });
+
+        // Build campaigns array with dev/pub counts per title, sort titles by devCount desc
+        const campaigns = Object.entries(campTitles).map(([campId, camp]) => {
+          // Count per title is always 1 (it IS the title), but we want
+          // the campaign-level dev/pub counts to sort campaigns
+          const devCount = camp.titles.filter(t => t.status === "Development").length;
+          const pubCount = camp.titles.filter(t => t.status === "Publish").length;
+          // Sort titles: Development first, then Publish, then others
+          const STATUS_RANK = { "Development": 0, "Publish": 1 };
+          camp.titles.sort((a, b) => (STATUS_RANK[a.status] ?? 2) - (STATUS_RANK[b.status] ?? 2));
+          return { campId, name: camp.name, site: camp.site, titles: camp.titles, devCount, pubCount };
+        });
+
+        // Sort campaigns by devCount desc
+        campaigns.sort((a, b) => b.devCount - a.devCount);
+
+        return json({ campaigns });
+      }
+
+      if (body.action === "createDevTitle") {
+        const { title, campaignId } = body;
+        if (!title) return json({ error: "title required" }, 400);
+
+        const props = {
+          Title:  { title: [{ type: "text", text: { content: title } }] },
+          Status: { select: { name: "Development" } },
+        };
+        if (campaignId) {
+          const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+          props["Campaign"] = { relation: [{ id: dashed }] };
+        }
+
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,"") });
+      }
+
       if (body.action === "getProductStatuses") {
         const resp = await fetch(`https://api.notion.com/v1/databases/${PRODUCTS_DB}`, {
           headers: {

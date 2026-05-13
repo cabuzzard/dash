@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>911 call----   yea
+<head>come to me
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -702,7 +702,7 @@ async function loadDev() {
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
     const data = await call('getDevTitles');
-    devData = data.titles || [];
+    devData = data.campaigns || [];
     renderDev();
   } catch (e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
@@ -712,80 +712,97 @@ async function loadDev() {
 function renderDev() {
   const el = document.getElementById('devContent');
   el.innerHTML = '';
-  if (!devData.length) { el.innerHTML = '<div class="empty">No development titles.</div>'; return; }
+  if (!devData.length) { el.innerHTML = '<div class="empty">No titles found.</div>'; return; }
 
-  // Build: site → campaign → titles[]
+  // devData is now campaigns[], each with { name, site, titles[], devCount, pubCount }
+  // Group campaigns by site, already sorted by devCount desc within site
   const siteMap = {};
-  devData.forEach(t => {
-    const site     = t.site     || '—';
-    const campaign = t.campaign || '—';
-    if (!siteMap[site]) siteMap[site] = {};
-    if (!siteMap[site][campaign]) siteMap[site][campaign] = [];
-    siteMap[site][campaign].push(t);
+  devData.forEach(camp => {
+    const site = camp.site || 'Other';
+    if (!siteMap[site]) siteMap[site] = [];
+    siteMap[site].push(camp);
   });
 
-  const siteKeys = Object.keys(siteMap).sort((a, b) => {
-    if (a === '—') return 1; if (b === '—') return -1; return a.localeCompare(b);
-  });
+  const SITE_ICONS = {
+    'Affiliates':'💰','Webguy Business Services':'🖥️','Mountainwize Coaching':'⛰️',
+    'Mobility Mentor':'♿','Trading':'📈','Hermes':'🤖','Main Business':'🏠','Other':'🌐',
+  };
 
-  siteKeys.forEach(site => {
-    // Site header
-    const siteHdr = document.createElement('div');
-    siteHdr.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text);margin:20px 0 8px;padding-bottom:7px;border-bottom:1px solid var(--border2);';
-    siteHdr.textContent = site;
-    el.appendChild(siteHdr);
+  Object.keys(siteMap).sort().forEach(site => {
+    // ── Site row ──
+    const siteRow = document.createElement('div');
+    siteRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);margin-bottom:4px;cursor:pointer;user-select:none;';
+    const siteChev = document.createElement('span');
+    siteChev.style.cssText = 'font-size:11px;color:var(--text3);transition:transform .2s;';
+    siteChev.textContent = '▶';
+    siteRow.innerHTML = '<span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text);">' + (SITE_ICONS[site]||'🌐') + '  ' + esc(site) + '</span>';
+    siteRow.appendChild(siteChev);
 
-    const campKeys = Object.keys(siteMap[site]).sort((a, b) => {
-      if (a === '—') return 1; if (b === '—') return -1; return a.localeCompare(b);
-    });
+    const siteBody = document.createElement('div');
+    siteBody.style.cssText = 'overflow:hidden;max-height:0;transition:max-height .3s ease;margin-bottom:4px;';
 
-    campKeys.forEach(campaign => {
-      const titles = siteMap[site][campaign];
-      const uid = 'dev-' + Math.random().toString(36).slice(2);
+    siteRow.onclick = () => {
+      const open = siteBody.style.maxHeight !== '0px' && siteBody.style.maxHeight !== '';
+      siteBody.style.maxHeight = open ? '0' : siteBody.scrollHeight + 'px';
+      siteChev.style.transform = open ? '' : 'rotate(90deg)';
+    };
 
-      // Campaign toggle row
+    // ── Campaigns under this site ──
+    siteMap[site].forEach(camp => {
       const campRow = document.createElement('div');
-      campRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:4px;cursor:pointer;user-select:none;';
-      const chev = document.createElement('span');
-      chev.style.cssText = 'font-size:11px;color:var(--text3);transition:transform .2s;margin-left:8px;flex-shrink:0;';
-      chev.textContent = '▶';
-      campRow.innerHTML =
-        '<span style="font-size:12px;font-weight:600;color:var(--text2);">' + esc(campaign) + '</span>' +
-        '<span style="font-size:11px;color:var(--text3);margin-left:auto;margin-right:8px;">' + titles.length + '</span>';
-      campRow.appendChild(chev);
+      campRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 12px 9px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;';
+      const campChev = document.createElement('span');
+      campChev.style.cssText = 'font-size:10px;color:var(--text3);transition:transform .2s;flex-shrink:0;';
+      campChev.textContent = '▶';
 
-      // Titles container — collapsed by default
+      const devBadge = '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#fff;color:#000;margin-left:auto;">📋 ' + camp.devCount + '</span>';
+      const pubBadge = '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#00cc66;color:#000;margin-left:4px;">✓ ' + camp.pubCount + '</span>';
+
+      campRow.appendChild(campChev);
+      const nameSpan = document.createElement('span');
+      nameSpan.style.cssText = 'font-size:12px;font-weight:600;color:var(--text2);flex:1;';
+      nameSpan.textContent = camp.name;
+      campRow.appendChild(nameSpan);
+      campRow.insertAdjacentHTML('beforeend', devBadge + pubBadge);
+
       const titlesEl = document.createElement('div');
       titlesEl.style.cssText = 'overflow:hidden;max-height:0;transition:max-height .25s ease;';
-      titlesEl.id = uid;
 
-      titles.forEach(t => {
-        const row = document.createElement('a');
-        row.href = 'https://www.notion.so/' + t.id;
-        row.target = '_blank';
-        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 14px 9px 24px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-decoration:none;background:var(--bg);transition:background .15s;';
-        row.onmouseover = () => row.style.background = 'var(--surface)';
-        row.onmouseout  = () => row.style.background = 'var(--bg)';
-        row.innerHTML =
-          '<span style="font-size:13px;font-weight:400;color:var(--text);line-height:1.4;">' + esc(t.title) + '</span>' +
-          '<span style="font-size:11px;color:#ff6a00;flex-shrink:0;margin-left:12px;">↗</span>';
-        titlesEl.appendChild(row);
+      camp.titles.forEach((t, idx) => {
+        const isDev = t.status === 'Development';
+        const isPub = t.status === 'Publish';
+        const isLast = idx === camp.titles.length - 1;
+
+        const tRow = document.createElement('a');
+        tRow.href = 'https://www.notion.so/' + t.id;
+        tRow.target = '_blank';
+        const bg  = isPub ? '#00cc66' : isDev ? '#ffffff' : 'var(--bg)';
+        const clr = (isPub || isDev) ? '#000' : 'var(--text2)';
+        const br  = isLast ? '0 0 var(--radius-sm) var(--radius-sm)' : '0';
+        tRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px 36px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-decoration:none;background:'+bg+';border-radius:'+br+';transition:opacity .15s;';
+        tRow.onmouseover = () => tRow.style.opacity = '.8';
+        tRow.onmouseout  = () => tRow.style.opacity = '1';
+
+        const statusDot = isPub ? '● ' : isDev ? '○ ' : '  ';
+        tRow.innerHTML =
+          '<span style="font-size:12px;font-weight:500;color:'+clr+';line-height:1.4;">' + statusDot + esc(t.title) + '</span>' +
+          '<span style="font-size:10px;font-weight:600;color:'+(isPub?'#005522':isDev?'#555':'#ff6a00')+';flex-shrink:0;margin-left:10px;">' + (isPub?'PUB':isDev?'DEV':'↗') + '</span>';
+        titlesEl.appendChild(tRow);
       });
 
-      // Last title row gets rounded bottom
-      if (titlesEl.lastChild) titlesEl.lastChild.style.borderRadius = '0 0 var(--radius-sm) var(--radius-sm)';
-
       campRow.onclick = () => {
-        const isOpen = titlesEl.style.maxHeight !== '0px' && titlesEl.style.maxHeight !== '';
-        titlesEl.style.maxHeight = isOpen ? '0' : titlesEl.scrollHeight + 'px';
-        chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
-        campRow.style.borderRadius = isOpen ? 'var(--radius-sm)' : 'var(--radius-sm) var(--radius-sm) 0 0';
-        campRow.style.borderBottom = isOpen ? '1px solid var(--border)' : 'none';
+        const open = titlesEl.style.maxHeight !== '0px' && titlesEl.style.maxHeight !== '';
+        titlesEl.style.maxHeight = open ? '0' : titlesEl.scrollHeight + 'px';
+        campChev.style.transform = open ? '' : 'rotate(90deg)';
+        campRow.style.borderRadius = open ? 'var(--radius-sm)' : 'var(--radius-sm) var(--radius-sm) 0 0';
       };
 
-      el.appendChild(campRow);
-      el.appendChild(titlesEl);
+      siteBody.appendChild(campRow);
+      siteBody.appendChild(titlesEl);
     });
+
+    el.appendChild(siteRow);
+    el.appendChild(siteBody);
   });
 }
 
