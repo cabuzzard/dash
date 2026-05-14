@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>offffended2222222222222222222222222222222222S
+<head>duhhhhhhhhhhhhhhhhhhhhhhh
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -299,6 +299,20 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeTdModal()">Cancel</button>
       <button class="btn btn-primary" id="tdSaveBtn" onclick="saveTdLinks()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Campaign Name Modal -->
+<div class="modal-bg" id="nameModal" onclick="if(event.target===this)closeNameModal()">
+  <div class="modal">
+    <div class="modal-title">Edit Campaign Name</div>
+    <div class="modal-field">
+      <input class="modal-input" id="nameText" type="text" placeholder="Campaign name..." />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeNameModal()">Cancel</button>
+      <button class="btn btn-primary" id="nameSaveBtn" onclick="saveName()">Save</button>
     </div>
   </div>
 </div>
@@ -650,9 +664,16 @@ function renderTable() {
     kmCell.textContent = c.keyMessage || '—';
     kmCell.onclick = () => openKmModal(c, kmCell);
 
-    tr.innerHTML =
-      '<td class="site">' + esc(c.site || '—') + '</td>' +
-      '<td class="name">' + esc(c.name) + '</td>';
+    // Campaign name cell — clickable to edit
+    const nameCell = document.createElement('td');
+    nameCell.className = 'name';
+    nameCell.style.cssText = 'cursor:pointer;';
+    nameCell.title = 'Click to edit';
+    nameCell.textContent = c.name;
+    nameCell.onclick = () => openNameModal(c, nameCell);
+
+    tr.innerHTML = '<td class="site">' + esc(c.site || '—') + '</td>';
+    tr.appendChild(nameCell);
     tr.appendChild(kmCell);
     tr.appendChild(tdCell);
     tr.insertAdjacentHTML('beforeend',
@@ -1092,6 +1113,41 @@ async function saveTdLinks() {
     showToast('Saved ✓', 'success');
   } catch (e) {
     console.error('updateCampaignTodos error:', e.message);
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── CAMPAIGN NAME MODAL ───────────────────────────────────────────────
+let nameCampaign = null;
+let nameCell_ref = null;
+
+function openNameModal(campaign, cell) {
+  nameCampaign = campaign;
+  nameCell_ref = cell;
+  document.getElementById('nameText').value = campaign.name;
+  document.getElementById('nameSaveBtn').disabled = false;
+  document.getElementById('nameSaveBtn').textContent = 'Save';
+  document.getElementById('nameModal').classList.add('open');
+  setTimeout(() => { const el = document.getElementById('nameText'); el.focus(); el.select(); }, 280);
+}
+
+function closeNameModal() {
+  document.getElementById('nameModal').classList.remove('open');
+}
+
+async function saveName() {
+  const text = document.getElementById('nameText').value.trim();
+  if (!text) return;
+  const btn = document.getElementById('nameSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    await call('updateCampaignName', { campaignId: nameCampaign.id, name: text });
+    nameCampaign.name = text;
+    nameCell_ref.textContent = text;
+    closeNameModal();
+    showToast('Saved ✓', 'success');
+  } catch(e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
   }
