@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>stonezzzzzzzz
+<head>soy soy soy soys osyos oysoysoys
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -13,8 +13,8 @@
     --border:    #1e1e1e;
     --border2:   #2e2e2e;
     --text:      #ffffff;
-    --text2:     #888888;
-    --text3:     #444444;
+    --text2:     #ffffff;
+    --text3:     #ffffff;
     --accent:    #ffffff;
     --danger:    #ff4444;
     --radius:    12px;
@@ -86,10 +86,10 @@
   .ov-table tbody tr { border-bottom: 1px solid var(--border); }
   .ov-table tbody tr:last-child { border-bottom: none; }
   .ov-table tbody tr:active { background: var(--surface2); }
-  .ov-table td { padding: 10px; vertical-align: middle; }
-  .ov-table td.site { font-size: 11px; font-weight: 600; color: var(--text2); white-space: nowrap; }
-  .ov-table td.name { color: var(--text); font-weight: 500; }
-  .ov-table td.num  { text-align: center; font-size: 12px; font-family: 'DM Mono', monospace; color: var(--text); width: 48px; }
+  .ov-table td { padding: 10px; vertical-align: middle; color: #fff; }
+  .ov-table td.site { font-size: 11px; font-weight: 600; color: #fff; white-space: nowrap; }
+  .ov-table td.name { color: #fff; font-weight: 500; }
+  .ov-table td.num  { text-align: center; font-size: 12px; font-family: 'DM Mono', monospace; color: #fff; width: 48px; }
   .ov-table td.num.zero { color: var(--text3); }
   .ov-table td.link { text-align: center; width: 44px; }
   .ov-table td.link a {
@@ -760,7 +760,7 @@ function renderTable() {
     // Key message cell — clickable to edit
     const kmCell = document.createElement('td');
     kmCell.className = 'name';
-    kmCell.style.cssText = 'color:var(--text2);font-size:12px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;';
+    kmCell.style.cssText = 'color:#fff;font-size:12px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;';
     kmCell.title = 'Click to edit';
     kmCell.textContent = c.keyMessage || '—';
     kmCell.onclick = () => openKmModal(c, kmCell);
@@ -1039,7 +1039,7 @@ function renderDev() {
         const statusDot = isPub ? '● ' : isDev ? '○ ' : '  ';
         tRow.innerHTML =
           '<span style="font-size:12px;font-weight:500;color:'+clr+';line-height:1.4;">' + statusDot + esc(t.title) + '</span>' +
-          '<span style="font-size:10px;font-weight:600;color:'+(isPub?'#005522':isDev?'#555':'#ff6a00')+';flex-shrink:0;margin-left:10px;">' + (isPub?'PUB':isDev?'DEV':'↗') + '</span>';
+          '<span style="font-size:10px;font-weight:600;color:'+(isPub?'#005522':isDev?'#ffffff':'#ff6a00')+';flex-shrink:0;margin-left:10px;">' + (isPub?'PUB':isDev?'DEV':'↗') + '</span>';
         titlesEl.appendChild(tRow);
       });
 
