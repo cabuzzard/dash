@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>difntttttttttttttttttttttttkgkhljhkkhlkhlh99
+<head>none of it
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -965,102 +965,6 @@ async function submitTitle() {
   }
 }
 
-// ── MAIN TD MODAL ────────────────────────────────────────────────────
-let tdCampaign = null;
-let tdRenderCell = null;
-let tdSelected = []; // array of {id, name}
-
-function openTdModal(campaign, renderCell) {
-  tdCampaign  = campaign;
-  tdRenderCell = renderCell;
-  tdSelected  = (campaign.mainTd || []).map(id => {
-    const t = allTodos.find(t => t.id === id);
-    return { id, name: t ? t.name : id.slice(0,8) + '…' };
-  });
-  document.getElementById('tdModalCampName').textContent = campaign.name;
-  document.getElementById('tdSearchInput').value = '';
-  document.getElementById('tdSearchDropdown').style.display = 'none';
-  document.getElementById('tdSaveBtn').disabled = false;
-  document.getElementById('tdSaveBtn').textContent = 'Save';
-  renderTdLinked();
-  document.getElementById('tdModal').classList.add('open');
-  setTimeout(() => document.getElementById('tdSearchInput').focus(), 280);
-}
-
-function closeTdModal() {
-  document.getElementById('tdModal').classList.remove('open');
-  document.getElementById('tdSearchDropdown').style.display = 'none';
-}
-
-function renderTdLinked() {
-  const el = document.getElementById('tdLinkedList');
-  el.innerHTML = '';
-  if (!tdSelected.length) {
-    el.innerHTML = '<div class="empty">No todos linked.</div>';
-    return;
-  }
-  tdSelected.forEach((t, i) => {
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;';
-    row.innerHTML =
-      '<span style="font-size:13px;color:var(--text);">' + esc(t.name) + '</span>' +
-      '<span style="font-size:16px;color:var(--danger);cursor:pointer;padding:0 4px;" onclick="removeTdLink(' + i + ')">×</span>';
-    el.appendChild(row);
-  });
-}
-
-function removeTdLink(i) {
-  tdSelected.splice(i, 1);
-  renderTdLinked();
-}
-
-function filterTdSearch() {
-  const query = document.getElementById('tdSearchInput').value.trim().toLowerCase();
-  const dd = document.getElementById('tdSearchDropdown');
-  const matches = allTodos.filter(t =>
-    (!query || t.name.toLowerCase().includes(query)) &&
-    !tdSelected.find(s => s.id === t.id)
-  );
-  dd.innerHTML = '';
-  matches.slice(0, 10).forEach(t => {
-    const div = document.createElement('div');
-    div.className = 'camp-option';
-    div.textContent = t.name;
-    div.onmousedown = () => {
-      tdSelected.push({ id: t.id, name: t.name });
-      document.getElementById('tdSearchInput').value = '';
-      dd.style.display = 'none';
-      renderTdLinked();
-    };
-    dd.appendChild(div);
-  });
-  dd.style.display = matches.length ? 'block' : 'none';
-}
-
-document.addEventListener('click', e => {
-  if (!e.target.closest('#tdSearchInput') && !e.target.closest('#tdSearchDropdown')) {
-    const dd = document.getElementById('tdSearchDropdown');
-    if (dd) dd.style.display = 'none';
-  }
-});
-
-async function saveTdLinks() {
-  const btn = document.getElementById('tdSaveBtn');
-  btn.disabled = true; btn.textContent = 'Saving…';
-  try {
-    await call('updateCampaignTodos', {
-      campaignId: tdCampaign.id,
-      todoIds: tdSelected.map(t => t.id),
-    });
-    tdCampaign.mainTd = tdSelected.map(t => t.id);
-    if (tdRenderCell) tdRenderCell();
-    closeTdModal();
-    showToast('Saved ✓', 'success');
-  } catch (e) {
-    showToast('Failed: ' + e.message, 'error');
-    btn.disabled = false; btn.textContent = 'Save';
-  }
-}
 
 // ── MAIN TD MODAL ────────────────────────────────────────────────────
 let tdCampaign   = null;
