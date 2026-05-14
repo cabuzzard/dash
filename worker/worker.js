@@ -230,6 +230,46 @@ export default {
         return json({ todos: todos.slice(0, 50) });
       }
 
+      if (body.action === "createTodo") {
+        const { name, campaignId } = body;
+        if (!name) return json({ error: "name required" }, 400);
+
+        const dashId = raw => {
+          const s = raw.replace(/-/g, "");
+          return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20);
+        };
+
+        // Step 1: Create the todo
+        const createResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: MAIN_TD_DB },
+            properties: { Title: { title: [{ type: "text", text: { content: name } }] } }
+          }),
+        });
+        const created = await createResp.json();
+        if (!createResp.ok) return json({ error: created.message || "Create failed" }, createResp.status);
+        const newTodoId = created.id.replace(/-/g,"");
+
+        // Step 2: Fetch existing campaign todos and append new one
+        if (campaignId) {
+          const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+          });
+          const campPage = await campResp.json();
+          const existing = (campPage.properties?.["Associated To Do"]?.relation || []).map(r => ({ id: r.id }));
+          existing.push({ id: dashId(newTodoId) });
+          await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+            method: "PATCH",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Associated To Do": { relation: existing } } }),
+          });
+        }
+
+        return json({ success: true, id: newTodoId, name });
+      }
+
       if (body.action === "updateCampaignTodos") {
         const { campaignId, todoIds } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
@@ -243,15 +283,11 @@ export default {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({
-            properties: {
-              "Associated To Do": {
-                relation: (todoIds || []).map(id => ({ id: dashId(id) }))
-              }
-            }
+            properties: { "Associated To Do": { relation: (todoIds || []).map(id => ({ id: dashId(id) })) } }
           }),
         });
         const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || "Update failed", detail: result }, resp.status);
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
         return json({ success: true });
       }
 

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>hkhsgssisfufghnmfaniinininininininininininiini
+<head>stuff
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -996,12 +996,15 @@ function removeTdLink(i) {
 
 function filterTodos() {
   const query = document.getElementById('tdSearchInput').value.trim().toLowerCase();
+  const rawQuery = document.getElementById('tdSearchInput').value.trim();
   const dd = document.getElementById('tdDropdown');
   const matches = tdAllTodos.filter(t =>
     (!query || t.name.toLowerCase().includes(query)) &&
     !tdLinkedTodos.find(l => l.id === t.id)
   );
   dd.innerHTML = '';
+
+  // Existing matches
   matches.slice(0, 10).forEach(t => {
     const div = document.createElement('div');
     div.className = 'camp-option';
@@ -1014,7 +1017,35 @@ function filterTodos() {
     };
     dd.appendChild(div);
   });
-  dd.style.display = matches.length ? 'block' : 'none';
+
+  // "+ Create new" option if typed something
+  if (rawQuery) {
+    const div = document.createElement('div');
+    div.className = 'camp-option create';
+    div.textContent = '+ Create "' + rawQuery + '"';
+    div.onmousedown = async () => {
+      div.textContent = 'Creating...';
+      try {
+        const res = await call('createTodo', { name: rawQuery, campaignId: tdCampaign.id });
+        console.log('createTodo result:', JSON.stringify(res));
+        if (!res.id) throw new Error('No ID returned: ' + JSON.stringify(res));
+        const newTodo = { id: res.id, name: rawQuery };
+        tdAllTodos.push(newTodo);
+        tdLinkedTodos.push(newTodo);
+        document.getElementById('tdSearchInput').value = '';
+        dd.style.display = 'none';
+        renderLinked();
+        showToast('Todo created ✓', 'success');
+      } catch(e) {
+        console.error('createTodo error:', e.message);
+        showToast('Failed: ' + e.message, 'error');
+        div.textContent = '+ Create "' + rawQuery + '"';
+      }
+    };
+    dd.appendChild(div);
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
 }
 
 document.addEventListener('click', e => {
