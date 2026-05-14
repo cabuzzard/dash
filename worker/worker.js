@@ -270,6 +270,16 @@ export default {
         return json({ success: true, id: newTodoId, name });
       }
 
+      if (body.action === "getGroupingOptions") {
+        const resp = await fetch(`https://api.notion.com/v1/databases/${CAMPAIGNS_DB}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const data = await resp.json();
+        if (!resp.ok) return json({ error: data.message || "Notion error" }, resp.status);
+        const options = (data.properties?.Grouping?.multi_select?.options || []).map(o => o.name);
+        return json({ options });
+      }
+
       if (body.action === "updateGrouping") {
         const { campaignId, grouping } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);

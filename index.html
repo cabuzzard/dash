@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>junk
+<head>iokokokokokookkkokokokokokokok
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1152,12 +1152,12 @@ async function saveTdLinks() {
 }
 
 // ── GROUPING MODAL ────────────────────────────────────────────────────
-const GRP_OPTIONS = ['Group 1', 'Group 2', 'Group 3', 'Group 4'];
 let grpCampaign  = null;
 let grpRenderCb  = null;
 let grpSelected  = [];
+let grpOptions   = []; // loaded from Notion
 
-function openGrpModal(campaign, renderCb) {
+async function openGrpModal(campaign, renderCb) {
   grpCampaign = campaign;
   grpRenderCb = renderCb;
   grpSelected = [...(campaign.grouping || [])];
@@ -1168,6 +1168,13 @@ function openGrpModal(campaign, renderCb) {
   document.getElementById('grpSaveBtn').textContent = 'Save';
   renderGrpLinked();
   document.getElementById('grpModal').classList.add('open');
+  // Load options if not cached
+  if (!grpOptions.length) {
+    try {
+      const data = await call('getGroupingOptions');
+      grpOptions = data.options || [];
+    } catch(e) { grpOptions = []; }
+  }
   setTimeout(() => document.getElementById('grpInput').focus(), 280);
 }
 
@@ -1197,8 +1204,9 @@ function removeGrp(i) {
 
 function filterGrp() {
   const query = document.getElementById('grpInput').value.trim().toLowerCase();
-  const dd = document.getElementById('grpDropdown');
-  const available = GRP_OPTIONS.filter(g =>
+  const raw   = document.getElementById('grpInput').value.trim();
+  const dd    = document.getElementById('grpDropdown');
+  const available = grpOptions.filter(g =>
     (!query || g.toLowerCase().includes(query)) && !grpSelected.includes(g)
   );
   dd.innerHTML = '';
@@ -1214,12 +1222,11 @@ function filterGrp() {
     };
     dd.appendChild(div);
   });
-  // Allow adding custom value not in preset list
-  const exact = GRP_OPTIONS.some(g => g.toLowerCase() === query);
-  if (query && !exact && !grpSelected.includes(query)) {
+  // Allow adding custom value
+  const exact = grpOptions.some(g => g.toLowerCase() === query);
+  if (raw && !exact && !grpSelected.includes(raw)) {
     const div = document.createElement('div');
     div.className = 'camp-option create';
-    const raw = document.getElementById('grpInput').value.trim();
     div.textContent = '+ Add "' + raw + '"';
     div.onmousedown = () => {
       grpSelected.push(raw);
