@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>national staff   straight of hormuz
+<head>cia
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -622,7 +622,7 @@ function renderProducts() {
 }
 
 let ovData = [];
-let ovSort = { col: 0, asc: true }; // default: sort by site asc
+let ovSort = { col: null, asc: true };
 
 async function loadOverview() {
   const el = document.getElementById('ovContent');
@@ -653,13 +653,23 @@ function renderTable() {
     { label: 'Prod',        key: 'products',   type: 'num' },
   ];
 
-  // Sort data
+  // Sort data — true flat sort, no site grouping
   const sorted = [...ovData].sort((a, b) => {
+    if (ovSort.col === null) return 0;
     const col = cols[ovSort.col];
-    if (col.type === 'rel') return 0;
-    const av = a[col.key] ?? (col.type === 'num' ? 0 : '');
-    const bv = b[col.key] ?? (col.type === 'num' ? 0 : '');
-    let cmp = col.type === 'num' ? av - bv : String(av).localeCompare(String(bv));
+    let av, bv;
+    if (col.type === 'num') {
+      av = a[col.key] ?? 0;
+      bv = b[col.key] ?? 0;
+      return ovSort.asc ? av - bv : bv - av;
+    } else if (col.type === 'rel') {
+      av = (a[col.key]?.[0]?.name || a[col.key]?.[0] || '');
+      bv = (b[col.key]?.[0]?.name || b[col.key]?.[0] || '');
+    } else {
+      av = a[col.key] || '';
+      bv = b[col.key] || '';
+    }
+    const cmp = String(av).localeCompare(String(bv));
     return ovSort.asc ? cmp : -cmp;
   });
 
@@ -672,8 +682,8 @@ function renderTable() {
   cols.forEach((col, i) => {
     const th = document.createElement('th');
     if (col.type === 'num') th.className = 'num';
-    if (i === ovSort.col)   th.classList.add('sorted');
-    const arrow = i === ovSort.col ? (ovSort.asc ? '▲' : '▼') : '⬍';
+    if (i === ovSort.col) th.classList.add('sorted');
+    const arrow = ovSort.col === i ? (ovSort.asc ? '▲' : '▼') : '⬍';
     th.innerHTML = col.label + ' <span class="sort-arrow">' + arrow + '</span>';
     th.onclick = () => {
       if (ovSort.col === i) ovSort.asc = !ovSort.asc;
