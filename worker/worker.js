@@ -4,6 +4,7 @@ const CAMPAIGNS_DB       = "087b1163b4e64975bc7a4b686ff801de";
 const CONTENT_STRATEGY_DB = "9fa5f42f010b47e7a82032607e07d6a1";
 const PRODUCTS_DB        = "e92fcfce75fc4f54b553df0b7672ff48";
 const MAIN_TD_DB         = "3471f7d3a4bb80de87c1d9e850f4a426";
+const METHODS_DB         = "3ad260f2ec9c4dc78f3c561f595f9455";
 const PIN                = "1246";
 
 const CORS = {
@@ -35,7 +36,7 @@ async function notionQuery(dbId, body) {
 }
 
 async function getCampaigns() {
-  const [campRows, titleRows, productRows, todoRows] = await Promise.all([
+  const [campRows, titleRows, productRows, todoRows, methodRows] = await Promise.all([
     notionQuery(CAMPAIGNS_DB, {
       filter: { property: "Status", select: { does_not_equal: "Delete" } },
       sorts:  [{ property: "Name", direction: "ascending" }],
@@ -43,12 +44,23 @@ async function getCampaigns() {
     notionQuery(CONTENT_STRATEGY_DB, {}),
     notionQuery(PRODUCTS_DB, {}),
     notionQuery(MAIN_TD_DB, {}),
+    notionQuery(METHODS_DB, {}),
   ]);
 
-  // Build todo lookup by id
+  // Build lookups by id
   const todoById = {};
   todoRows.forEach(t => {
     todoById[t.id.replace(/-/g,"")] = t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled";
+  });
+
+  const productById = {};
+  productRows.forEach(p => {
+    productById[p.id.replace(/-/g,"")] = p.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
+  });
+
+  const methodById = {};
+  methodRows.forEach(m => {
+    methodById[m.id.replace(/-/g,"")] = m.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
   });
 
   // Count dev titles per campaign id
@@ -92,12 +104,21 @@ async function getCampaigns() {
     const id = c.id.replace(/-/g, "");
     return {
       id,
-      name:       c.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
-      site:       c.properties.site?.select?.name || "Other",
-      grouping:   (c.properties["Grouping"]?.multi_select || []).map(g => g.name),
-      mainTd:     (c.properties["Associated To Do"]?.relation || []).map(r => ({
+      name:             c.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+      site:             c.properties.site?.select?.name || "Other",
+      grouping:         (c.properties["Grouping"]?.multi_select || []).map(g => g.name),
+      keyMessage:       c.properties["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
+      mainTd:           (c.properties["Associated To Do"]?.relation || []).map(r => ({
         id:   r.id.replace(/-/g,""),
         name: todoById[r.id.replace(/-/g,"")] || "Untitled",
+      })),
+      campaignProducts: (c.properties["Products"]?.relation || []).map(r => ({
+        id:   r.id.replace(/-/g,""),
+        name: productById[r.id.replace(/-/g,"")] || "Untitled",
+      })),
+      campaignMethods:  (c.properties["Methods"]?.relation || []).map(r => ({
+        id:   r.id.replace(/-/g,""),
+        name: methodById[r.id.replace(/-/g,"")] || "Untitled",
       })),
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
@@ -334,6 +355,44 @@ export default {
         }
 
         return json({ success: true, id: newTodoId, name });
+      }
+
+      if (body.action === "searchMethods") {
+        const { query } = body;
+        const rows = await notionQuery(METHODS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
+        const methods = rows.map(m => ({
+          id:   m.id.replace(/-/g,""),
+          name: m.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
+        })).filter(m => !query || m.name.toLowerCase().includes(query.toLowerCase()));
+        return json({ methods: methods.slice(0, 50) });
+      }
+
+      if (body.action === "updateCampaignProducts") {
+        const { campaignId, productIds } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Products": { relation: (productIds||[]).map(id => ({ id: dashId(id) })) } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "updateCampaignMethods") {
+        const { campaignId, methodIds } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Methods": { relation: (methodIds||[]).map(id => ({ id: dashId(id) })) } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
       }
 
       if (body.action === "getGroupingOptions") {

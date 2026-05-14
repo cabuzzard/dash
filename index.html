@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>cia-cia
+<head>tim cook from apple
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -307,6 +307,24 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeTdModal()">Cancel</button>
       <button class="btn btn-primary" id="tdSaveBtn" onclick="saveTdLinks()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Relation Modal (Products / Methods) -->
+<div class="modal-bg" id="relModal" onclick="if(event.target===this)closeRelModal()">
+  <div class="modal">
+    <div class="modal-title" id="relModalTitle">Edit</div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label" id="relModalLabel">Search...</label>
+      <input class="modal-input" id="relSearchInput" type="text" placeholder="Search..." autocomplete="off" oninput="filterRel()" onfocus="filterRel()" />
+      <div id="relDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-label" style="margin-bottom:6px;">Linked</div>
+    <div id="relLinked" style="margin-bottom:16px;min-height:32px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeRelModal()">Cancel</button>
+      <button class="btn btn-primary" id="relSaveBtn" onclick="saveRel()">Save</button>
     </div>
   </div>
 </div>
@@ -643,14 +661,16 @@ function renderTable() {
 
   // Columns: [label, key, type]
   const cols = [
-    { label: 'Site',        key: 'site',       type: 'str' },
-    { label: 'Campaign',    key: 'name',       type: 'str' },
-    { label: 'Grouping',    key: 'grouping',   type: 'rel' },
-    { label: 'Key Message', key: 'keyMessage', type: 'str' },
-    { label: 'Main TD',     key: 'mainTd',     type: 'rel' },
-    { label: 'Dev',         key: 'devTitles',  type: 'num' },
-    { label: 'Pub',         key: 'pubTitles',  type: 'num' },
-    { label: 'Prod',        key: 'products',   type: 'num' },
+    { label: 'Site',        key: 'site',             type: 'str' },
+    { label: 'Campaign',    key: 'name',             type: 'str' },
+    { label: 'Grouping',    key: 'grouping',         type: 'rel' },
+    { label: 'Key Message', key: 'keyMessage',       type: 'str' },
+    { label: 'Main TD',     key: 'mainTd',           type: 'rel' },
+    { label: 'Products',    key: 'campaignProducts', type: 'rel' },
+    { label: 'Methods',     key: 'campaignMethods',  type: 'rel' },
+    { label: 'Dev',         key: 'devTitles',        type: 'num' },
+    { label: 'Pub',         key: 'pubTitles',        type: 'num' },
+    { label: 'Prod',        key: 'products',         type: 'num' },
   ];
 
   // Sort data — true flat sort, no site grouping
@@ -753,6 +773,34 @@ function renderTable() {
     tr.appendChild(grpCell);
     tr.appendChild(kmCell);
     tr.appendChild(tdCell);
+
+    // Campaign Products cell
+    const cpCell = document.createElement('td');
+    cpCell.style.cssText = 'cursor:pointer;';
+    cpCell.title = 'Click to edit';
+    const renderCpCell = () => {
+      const items = c.campaignProducts || [];
+      cpCell.innerHTML = items.length
+        ? items.map(p => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(p.name) + '</span>').join('')
+        : '<span style="font-size:11px;color:var(--text3);">—</span>';
+    };
+    renderCpCell();
+    cpCell.onclick = () => openRelModal('products', c, renderCpCell);
+    tr.appendChild(cpCell);
+
+    // Campaign Methods cell
+    const cmCell = document.createElement('td');
+    cmCell.style.cssText = 'cursor:pointer;';
+    cmCell.title = 'Click to edit';
+    const renderCmCell = () => {
+      const items = c.campaignMethods || [];
+      cmCell.innerHTML = items.length
+        ? items.map(m => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(m.name) + '</span>').join('')
+        : '<span style="font-size:11px;color:var(--text3);">—</span>';
+    };
+    renderCmCell();
+    cmCell.onclick = () => openRelModal('methods', c, renderCmCell);
+    tr.appendChild(cmCell);
     tr.insertAdjacentHTML('beforeend',
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '">' + c.devTitles + '</td>' +
       '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>' +
@@ -1190,6 +1238,119 @@ async function saveTdLinks() {
     showToast('Saved ✓', 'success');
   } catch (e) {
     console.error('updateCampaignTodos error:', e.message);
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── SHARED RELATION MODAL (Products / Methods) ───────────────────────
+let relType      = null; // 'products' or 'methods'
+let relCampaign  = null;
+let relRenderCb  = null;
+let relLinked    = [];
+let relAllItems  = [];
+
+async function openRelModal(type, campaign, renderCb) {
+  relType     = type;
+  relCampaign = campaign;
+  relRenderCb = renderCb;
+  relLinked   = [...(type === 'products' ? (campaign.campaignProducts||[]) : (campaign.campaignMethods||[]))];
+
+  const label = type === 'products' ? 'Products' : 'Methods';
+  document.getElementById('relModalTitle').textContent = label + ' — ' + campaign.name;
+  document.getElementById('relModalLabel').textContent = 'Search ' + label.toLowerCase() + '...';
+  document.getElementById('relSearchInput').placeholder = 'Search ' + label.toLowerCase() + '...';
+  document.getElementById('relSearchInput').value = '';
+  document.getElementById('relDropdown').style.display = 'none';
+  document.getElementById('relSaveBtn').disabled = false;
+  document.getElementById('relSaveBtn').textContent = 'Save';
+  renderRelLinked();
+  document.getElementById('relModal').classList.add('open');
+
+  // Load items if not cached for this type
+  if (!relAllItems.length || relAllItems._type !== type) {
+    try {
+      if (type === 'products') {
+        const data = await call('getProducts');
+        relAllItems = (data.products || []).map(p => ({ id: p.id, name: p.name }));
+      } else {
+        const data = await call('searchMethods', { query: '' });
+        relAllItems = data.methods || [];
+      }
+      relAllItems._type = type;
+    } catch(e) { relAllItems = []; }
+  }
+  setTimeout(() => document.getElementById('relSearchInput').focus(), 280);
+}
+
+function closeRelModal() {
+  document.getElementById('relModal').classList.remove('open');
+  document.getElementById('relDropdown').style.display = 'none';
+  relAllItems = [];
+}
+
+function renderRelLinked() {
+  const el = document.getElementById('relLinked');
+  if (!relLinked.length) { el.innerHTML = '<span style="font-size:12px;color:var(--text3);">None linked</span>'; return; }
+  el.innerHTML = relLinked.map((item, i) =>
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:4px;">' +
+      '<span style="font-size:13px;color:var(--text);">' + esc(item.name) + '</span>' +
+      '<span style="font-size:14px;color:var(--text3);cursor:pointer;padding:0 4px;" onclick="removeRelItem(' + i + ')">✕</span>' +
+    '</div>'
+  ).join('');
+}
+
+function removeRelItem(i) {
+  relLinked.splice(i, 1);
+  renderRelLinked();
+}
+
+function filterRel() {
+  const query = document.getElementById('relSearchInput').value.trim().toLowerCase();
+  const dd = document.getElementById('relDropdown');
+  const matches = relAllItems.filter(item =>
+    (!query || item.name.toLowerCase().includes(query)) &&
+    !relLinked.find(l => l.id === item.id)
+  );
+  dd.innerHTML = '';
+  matches.slice(0, 10).forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = item.name;
+    div.onmousedown = () => {
+      relLinked.push({ id: item.id, name: item.name });
+      document.getElementById('relSearchInput').value = '';
+      dd.style.display = 'none';
+      renderRelLinked();
+    };
+    dd.appendChild(div);
+  });
+  dd.style.display = matches.length ? 'block' : 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#relSearchInput') && !e.target.closest('#relDropdown')) {
+    const dd = document.getElementById('relDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+async function saveRel() {
+  const btn = document.getElementById('relSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    const ids = relLinked.map(i => i.id);
+    if (relType === 'products') {
+      await call('updateCampaignProducts', { campaignId: relCampaign.id, productIds: ids });
+      relCampaign.campaignProducts = [...relLinked];
+    } else {
+      await call('updateCampaignMethods', { campaignId: relCampaign.id, methodIds: ids });
+      relCampaign.campaignMethods = [...relLinked];
+    }
+    if (relRenderCb) relRenderCb();
+    closeRelModal();
+    showToast('Saved ✓', 'success');
+  } catch(e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
   }
