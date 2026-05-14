@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>dude     yaaa  a a a a aa 
+<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -285,6 +285,47 @@
   </div>
 </div>
 
+<!-- Main TD Edit Modal -->
+<div class="modal-bg" id="tdModal" onclick="if(event.target===this)closeTdModal()">
+  <div class="modal">
+    <div class="modal-title">Edit Main TD — <span id="tdModalCampName" style="text-transform:none;font-weight:400;"></span></div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Search &amp; add todos</label>
+      <input class="modal-input" id="tdSearchInput" type="text" placeholder="Search todos..." autocomplete="off" oninput="filterTdSearch()" onfocus="filterTdSearch()" />
+      <div id="tdSearchDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Linked todos</label>
+      <div id="tdLinkedList" style="display:flex;flex-direction:column;gap:6px;"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeTdModal()">Cancel</button>
+      <button class="btn btn-primary" id="tdSaveBtn" onclick="saveTdLinks()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main TD Editor Modal -->
+<div class="modal-bg" id="tdModal" onclick="if(event.target===this)closeTdModal()">
+  <div class="modal">
+    <div class="modal-title" id="tdModalTitle">Edit Main TD</div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Search & add todos</label>
+      <input class="modal-input" id="tdSearchInput" type="text" placeholder="Search todos..." autocomplete="off" oninput="filterTodos()" onfocus="filterTodos()" />
+      <div id="tdDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-label" style="margin-bottom:6px;">Linked</div>
+    <div id="tdLinked" style="margin-bottom:16px;min-height:32px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeTdModal()">Cancel</button>
+      <button class="btn btn-primary" id="tdSaveBtn" onclick="saveTdLinks()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- Add Title Modal -->
@@ -352,14 +393,15 @@ function updateDots() {
   }
 }
 let prodStatuses = [];
+let allTodos = [];
 
 function checkPin() {
   if (pinBuffer === PIN) {
     session.authed = true;
     document.getElementById('pinScreen').classList.add('hidden');
     if (!ovLoaded) { ovLoaded = true; loadOverview(); }
-    // Fetch statuses in background for dropdowns
     call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
+    call('searchTodos').then(d => { allTodos = d.todos || []; }).catch(() => {});
   } else {
     document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
     document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
@@ -548,6 +590,7 @@ function renderTable() {
     { label: 'Site',        key: 'site',       type: 'str' },
     { label: 'Campaign',    key: 'name',       type: 'str' },
     { label: 'Key Message', key: 'keyMessage', type: 'str' },
+    { label: 'Main TD',     key: 'mainTd',     type: 'rel' },
     { label: 'Dev',         key: 'devTitles',  type: 'num' },
     { label: 'Pub',         key: 'pubTitles',  type: 'num' },
     { label: 'Prod',        key: 'products',   type: 'num' },
@@ -556,6 +599,7 @@ function renderTable() {
   // Sort data
   const sorted = [...ovData].sort((a, b) => {
     const col = cols[ovSort.col];
+    if (col.type === 'rel') return 0;
     const av = a[col.key] ?? (col.type === 'num' ? 0 : '');
     const bv = b[col.key] ?? (col.type === 'num' ? 0 : '');
     let cmp = col.type === 'num' ? av - bv : String(av).localeCompare(String(bv));
@@ -594,14 +638,31 @@ function renderTable() {
   sorted.forEach(c => {
     const notionUrl = 'https://www.notion.so/' + c.id;
     const tr = document.createElement('tr');
+
+    // Main TD cell — shows linked todo names, click to edit
+    const tdCell = document.createElement('td');
+    tdCell.style.cssText = 'cursor:pointer;max-width:180px;';
+    tdCell.title = 'Click to edit';
+    const renderTdCell = () => {
+      const todos = c.mainTd || [];
+      tdCell.innerHTML = todos.length
+        ? todos.map(t => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(t.name) + '</span>').join('')
+        : '<span style="font-size:11px;color:var(--text3);">—</span>';
+    };
+    renderTdCell();
+    tdCell.onclick = () => openTdModal(c, renderTdCell);
+
     tr.innerHTML =
       '<td class="site">' + esc(c.site || '—') + '</td>' +
       '<td class="name">' + esc(c.name) + '</td>' +
-      '<td class="name" style="color:var(--text2);font-size:12px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(c.keyMessage || '—') + '</td>' +
+      '<td class="name" style="color:var(--text2);font-size:12px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(c.keyMessage || '—') + '</td>';
+    tr.appendChild(tdCell);
+    tr.insertAdjacentHTML('beforeend',
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '">' + c.devTitles + '</td>' +
       '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>' +
       '<td class="num' + (c.products  === 0 ? ' zero' : '') + '">' + c.products  + '</td>' +
-      '<td class="link"><a href="' + notionUrl + '" target="_blank">↗</a></td>';
+      '<td class="link"><a href="' + notionUrl + '" target="_blank">↗</a></td>'
+    );
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -902,6 +963,202 @@ async function submitTitle() {
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Create';
+  }
+}
+
+// ── MAIN TD MODAL ────────────────────────────────────────────────────
+let tdCampaign = null;
+let tdRenderCell = null;
+let tdSelected = []; // array of {id, name}
+
+function openTdModal(campaign, renderCell) {
+  tdCampaign  = campaign;
+  tdRenderCell = renderCell;
+  tdSelected  = (campaign.mainTd || []).map(id => {
+    const t = allTodos.find(t => t.id === id);
+    return { id, name: t ? t.name : id.slice(0,8) + '…' };
+  });
+  document.getElementById('tdModalCampName').textContent = campaign.name;
+  document.getElementById('tdSearchInput').value = '';
+  document.getElementById('tdSearchDropdown').style.display = 'none';
+  document.getElementById('tdSaveBtn').disabled = false;
+  document.getElementById('tdSaveBtn').textContent = 'Save';
+  renderTdLinked();
+  document.getElementById('tdModal').classList.add('open');
+  setTimeout(() => document.getElementById('tdSearchInput').focus(), 280);
+}
+
+function closeTdModal() {
+  document.getElementById('tdModal').classList.remove('open');
+  document.getElementById('tdSearchDropdown').style.display = 'none';
+}
+
+function renderTdLinked() {
+  const el = document.getElementById('tdLinkedList');
+  el.innerHTML = '';
+  if (!tdSelected.length) {
+    el.innerHTML = '<div class="empty">No todos linked.</div>';
+    return;
+  }
+  tdSelected.forEach((t, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;';
+    row.innerHTML =
+      '<span style="font-size:13px;color:var(--text);">' + esc(t.name) + '</span>' +
+      '<span style="font-size:16px;color:var(--danger);cursor:pointer;padding:0 4px;" onclick="removeTdLink(' + i + ')">×</span>';
+    el.appendChild(row);
+  });
+}
+
+function removeTdLink(i) {
+  tdSelected.splice(i, 1);
+  renderTdLinked();
+}
+
+function filterTdSearch() {
+  const query = document.getElementById('tdSearchInput').value.trim().toLowerCase();
+  const dd = document.getElementById('tdSearchDropdown');
+  const matches = allTodos.filter(t =>
+    (!query || t.name.toLowerCase().includes(query)) &&
+    !tdSelected.find(s => s.id === t.id)
+  );
+  dd.innerHTML = '';
+  matches.slice(0, 10).forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = t.name;
+    div.onmousedown = () => {
+      tdSelected.push({ id: t.id, name: t.name });
+      document.getElementById('tdSearchInput').value = '';
+      dd.style.display = 'none';
+      renderTdLinked();
+    };
+    dd.appendChild(div);
+  });
+  dd.style.display = matches.length ? 'block' : 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#tdSearchInput') && !e.target.closest('#tdSearchDropdown')) {
+    const dd = document.getElementById('tdSearchDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+async function saveTdLinks() {
+  const btn = document.getElementById('tdSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await call('updateCampaignTodos', {
+      campaignId: tdCampaign.id,
+      todoIds: tdSelected.map(t => t.id),
+    });
+    tdCampaign.mainTd = tdSelected.map(t => t.id);
+    if (tdRenderCell) tdRenderCell();
+    closeTdModal();
+    showToast('Saved ✓', 'success');
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── MAIN TD MODAL ────────────────────────────────────────────────────
+let tdCampaign   = null;
+let tdRenderCb   = null;
+let tdLinkedTodos = []; // [{id, name}]
+let tdAllTodos   = [];
+
+async function openTdModal(campaign, renderCb) {
+  tdCampaign    = campaign;
+  tdRenderCb    = renderCb;
+  tdLinkedTodos = [...(campaign.mainTd || [])];
+
+  document.getElementById('tdModalTitle').textContent = 'Main TD — ' + campaign.name;
+  document.getElementById('tdSearchInput').value = '';
+  document.getElementById('tdDropdown').style.display = 'none';
+  document.getElementById('tdSaveBtn').disabled = false;
+  document.getElementById('tdSaveBtn').textContent = 'Save';
+  renderLinked();
+  document.getElementById('tdModal').classList.add('open');
+
+  // Load todos if not cached
+  if (!tdAllTodos.length) {
+    const data = await call('searchTodos', { query: '' });
+    tdAllTodos = data.todos || [];
+  }
+  setTimeout(() => document.getElementById('tdSearchInput').focus(), 280);
+}
+
+function closeTdModal() {
+  document.getElementById('tdModal').classList.remove('open');
+  document.getElementById('tdDropdown').style.display = 'none';
+}
+
+function renderLinked() {
+  const el = document.getElementById('tdLinked');
+  if (!tdLinkedTodos.length) {
+    el.innerHTML = '<span style="font-size:12px;color:var(--text3);">None linked</span>';
+    return;
+  }
+  el.innerHTML = tdLinkedTodos.map((t, i) =>
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:4px;">' +
+      '<span style="font-size:13px;color:var(--text);">' + esc(t.name) + '</span>' +
+      '<span style="font-size:14px;color:var(--text3);cursor:pointer;padding:0 4px;" onclick="removeTdLink(' + i + ')">✕</span>' +
+    '</div>'
+  ).join('');
+}
+
+function removeTdLink(i) {
+  tdLinkedTodos.splice(i, 1);
+  renderLinked();
+}
+
+function filterTodos() {
+  const query = document.getElementById('tdSearchInput').value.trim().toLowerCase();
+  const dd = document.getElementById('tdDropdown');
+  const matches = tdAllTodos.filter(t =>
+    (!query || t.name.toLowerCase().includes(query)) &&
+    !tdLinkedTodos.find(l => l.id === t.id)
+  );
+  dd.innerHTML = '';
+  matches.slice(0, 10).forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = t.name;
+    div.onmousedown = () => {
+      tdLinkedTodos.push({ id: t.id, name: t.name });
+      document.getElementById('tdSearchInput').value = '';
+      dd.style.display = 'none';
+      renderLinked();
+    };
+    dd.appendChild(div);
+  });
+  dd.style.display = matches.length ? 'block' : 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#tdSearchInput') && !e.target.closest('#tdDropdown')) {
+    const dd = document.getElementById('tdDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+async function saveTdLinks() {
+  const btn = document.getElementById('tdSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    await call('updateCampaignTodos', {
+      campaignId: tdCampaign.id,
+      todoIds: tdLinkedTodos.map(t => t.id),
+    });
+    tdCampaign.mainTd = [...tdLinkedTodos];
+    if (tdRenderCb) tdRenderCb();
+    closeTdModal();
+    showToast('Saved ✓', 'success');
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
   }
 }
 
