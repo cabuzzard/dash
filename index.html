@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>the hillz
+<head>stonezzzzzzzz
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -307,6 +307,25 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeTdModal()">Cancel</button>
       <button class="btn btn-primary" id="tdSaveBtn" onclick="saveTdLinks()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Title Modal (from overview row) -->
+<div class="modal-bg" id="quickTitleModal" onclick="if(event.target===this)closeQuickTitleModal()">
+  <div class="modal">
+    <div class="modal-title" id="quickTitleModalTitle">Add Development Title</div>
+    <div class="modal-field">
+      <label class="modal-label">Title</label>
+      <input class="modal-input" id="quickTitleName" type="text" placeholder="Title name..." />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Grouping</label>
+      <input class="modal-input" id="quickTitleGrouping" type="text" placeholder="e.g. Week 1, Q2 batch..." />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeQuickTitleModal()">Cancel</button>
+      <button class="btn btn-primary" id="quickTitleSubmitBtn" onclick="submitQuickTitle()">Create</button>
     </div>
   </div>
 </div>
@@ -670,7 +689,6 @@ function renderTable() {
     { label: 'Methods',     key: 'campaignMethods',  type: 'rel' },
     { label: 'Dev',         key: 'devTitles',        type: 'num' },
     { label: 'Pub',         key: 'pubTitles',        type: 'num' },
-    { label: 'Prod',        key: 'products',         type: 'num' },
   ];
 
   // Sort data — true flat sort, no site grouping
@@ -803,8 +821,23 @@ function renderTable() {
     tr.appendChild(cmCell);
     tr.insertAdjacentHTML('beforeend',
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '">' + c.devTitles + '</td>' +
-      '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>' +
-      '<td class="num' + (c.products  === 0 ? ' zero' : '') + '">' + c.products  + '</td>' +
+      '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>'
+    );
+
+    // + button — opens add title modal pre-set to this campaign
+    const addTd = document.createElement('td');
+    addTd.style.cssText = 'text-align:center;width:36px;';
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '+';
+    addBtn.title = 'Add development title';
+    addBtn.style.cssText = 'background:none;border:1px solid var(--border2);border-radius:6px;color:var(--text2);font-size:16px;font-weight:600;width:26px;height:26px;cursor:pointer;line-height:1;transition:all .15s;display:flex;align-items:center;justify-content:center;';
+    addBtn.onmouseover = () => { addBtn.style.borderColor = 'var(--text)'; addBtn.style.color = 'var(--text)'; };
+    addBtn.onmouseout  = () => { addBtn.style.borderColor = 'var(--border2)'; addBtn.style.color = 'var(--text2)'; };
+    addBtn.onclick = () => openQuickTitleModal(c);
+    addTd.appendChild(addBtn);
+    tr.appendChild(addTd);
+
+    tr.insertAdjacentHTML('beforeend',
       '<td class="link"><a href="' + notionUrl + '" target="_blank">↗</a></td>'
     );
     tbody.appendChild(tr);
@@ -1240,6 +1273,42 @@ async function saveTdLinks() {
     console.error('updateCampaignTodos error:', e.message);
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── QUICK TITLE MODAL (from overview) ────────────────────────────────
+let quickTitleCampaign = null;
+
+function openQuickTitleModal(campaign) {
+  quickTitleCampaign = campaign;
+  document.getElementById('quickTitleModalTitle').textContent = '+ Dev Title — ' + campaign.name;
+  document.getElementById('quickTitleName').value = '';
+  document.getElementById('quickTitleGrouping').value = '';
+  document.getElementById('quickTitleSubmitBtn').disabled = false;
+  document.getElementById('quickTitleSubmitBtn').textContent = 'Create';
+  document.getElementById('quickTitleModal').classList.add('open');
+  setTimeout(() => document.getElementById('quickTitleName').focus(), 280);
+}
+
+function closeQuickTitleModal() {
+  document.getElementById('quickTitleModal').classList.remove('open');
+}
+
+async function submitQuickTitle() {
+  const title    = document.getElementById('quickTitleName').value.trim();
+  const grouping = document.getElementById('quickTitleGrouping').value.trim();
+  if (!title) { document.getElementById('quickTitleName').focus(); return; }
+  const btn = document.getElementById('quickTitleSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    await call('createDevTitle', { title, campaignId: quickTitleCampaign.id, status: 'Development', grouping });
+    closeQuickTitleModal();
+    showToast('Title created ✓', 'success');
+    quickTitleCampaign.devTitles = (quickTitleCampaign.devTitles || 0) + 1;
+    renderTable();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Create';
   }
 }
 

@@ -217,16 +217,17 @@ export default {
       }
 
       if (body.action === "createDevTitle") {
-        const { title, campaignId, status } = body;
+        const { title, campaignId, status, grouping } = body;
         if (!title) return json({ error: "title required" }, 400);
 
         const props = {
           Title:  { title: [{ type: "text", text: { content: title } }] },
           Status: { select: { name: status || "Development" } },
         };
+        if (grouping) props["Grouping"] = { rich_text: [{ type: "text", text: { content: grouping } }] };
         if (campaignId) {
-          const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
-          props["Campaign"] = { relation: [{ id: dashed }] };
+          const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+          props["Campaign"] = { relation: [{ id: dashId(campaignId) }] };
         }
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
