@@ -233,23 +233,26 @@ export default {
       if (body.action === "updateCampaignTodos") {
         const { campaignId, todoIds } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
-        const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
-        const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+
+        const dashId = raw => {
+          const s = raw.replace(/-/g, "");
+          return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20);
+        };
+
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({
             properties: {
               "Associated To Do": {
-                relation: (todoIds || []).map(id => ({
-                  id: id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5")
-                }))
+                relation: (todoIds || []).map(id => ({ id: dashId(id) }))
               }
             }
           }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed", detail: result }, resp.status);
-        return json({ success: true, result });
+        return json({ success: true });
       }
 
       if (body.action === "getPropertyNames") {
