@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>stuff
+<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -299,6 +299,20 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeTdModal()">Cancel</button>
       <button class="btn btn-primary" id="tdSaveBtn" onclick="saveTdLinks()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Key Message Modal -->
+<div class="modal-bg" id="kmModal" onclick="if(event.target===this)closeKmModal()">
+  <div class="modal">
+    <div class="modal-title" id="kmModalTitle">Key Message</div>
+    <div class="modal-field">
+      <textarea class="modal-input" id="kmText" rows="6" placeholder="Enter key message..." style="resize:vertical;line-height:1.6;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeKmModal()">Cancel</button>
+      <button class="btn btn-primary" id="kmSaveBtn" onclick="saveKm()">Save</button>
     </div>
   </div>
 </div>
@@ -628,10 +642,18 @@ function renderTable() {
     renderTdCell();
     tdCell.onclick = () => openTdModal(c, renderTdCell);
 
+    // Key message cell — clickable to edit
+    const kmCell = document.createElement('td');
+    kmCell.className = 'name';
+    kmCell.style.cssText = 'color:var(--text2);font-size:12px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;';
+    kmCell.title = 'Click to edit';
+    kmCell.textContent = c.keyMessage || '—';
+    kmCell.onclick = () => openKmModal(c, kmCell);
+
     tr.innerHTML =
       '<td class="site">' + esc(c.site || '—') + '</td>' +
-      '<td class="name">' + esc(c.name) + '</td>' +
-      '<td class="name" style="color:var(--text2);font-size:12px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(c.keyMessage || '—') + '</td>';
+      '<td class="name">' + esc(c.name) + '</td>';
+    tr.appendChild(kmCell);
     tr.appendChild(tdCell);
     tr.insertAdjacentHTML('beforeend',
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '">' + c.devTitles + '</td>' +
@@ -1070,6 +1092,41 @@ async function saveTdLinks() {
     showToast('Saved ✓', 'success');
   } catch (e) {
     console.error('updateCampaignTodos error:', e.message);
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── KEY MESSAGE MODAL ────────────────────────────────────────────────
+let kmCampaign = null;
+let kmCell     = null;
+
+function openKmModal(campaign, cell) {
+  kmCampaign = campaign;
+  kmCell     = cell;
+  document.getElementById('kmModalTitle').textContent = campaign.name;
+  document.getElementById('kmText').value = campaign.keyMessage || '';
+  document.getElementById('kmSaveBtn').disabled = false;
+  document.getElementById('kmSaveBtn').textContent = 'Save';
+  document.getElementById('kmModal').classList.add('open');
+  setTimeout(() => document.getElementById('kmText').focus(), 280);
+}
+
+function closeKmModal() {
+  document.getElementById('kmModal').classList.remove('open');
+}
+
+async function saveKm() {
+  const text = document.getElementById('kmText').value.trim();
+  const btn  = document.getElementById('kmSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    await call('updateKeyMessage', { campaignId: kmCampaign.id, keyMessage: text });
+    kmCampaign.keyMessage = text;
+    kmCell.textContent = text || '—';
+    closeKmModal();
+    showToast('Saved ✓', 'success');
+  } catch(e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
   }
