@@ -218,13 +218,41 @@ export default {
         return json({ success: true, id: result.id.replace(/-/g,"") });
       }
 
+      if (body.action === "deleteTdItem") {
+        const { itemId } = body;
+        if (!itemId) return json({ error: "itemId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/blocks/${dashId(itemId)}`, {
+          method: "DELETE",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Delete failed" }, resp.status); }
+        return json({ success: true });
+      }
+
+      if (body.action === "updateTdPriority") {
+        const { itemId, priority } = body;
+        if (!itemId) return json({ error: "itemId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(itemId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { priority: { multi_select: (priority || []).map(name => ({ name })) } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
       if (body.action === "getTdItems") {
         const rows = await notionQuery(MAIN_TD_DB, {
           filter: {
             or: [
               { property: "priority", multi_select: { contains: "get" } },
+              { property: "priority", multi_select: { contains: "got" } },
               { property: "priority", multi_select: { contains: "daily content" } },
               { property: "priority", multi_select: { contains: "daily household" } },
+              { property: "priority", multi_select: { contains: "done" } },
             ]
           },
           sorts: [{ property: "Title", direction: "ascending" }],

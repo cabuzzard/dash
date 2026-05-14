@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>lab grown virus virulent
+<head>winnin the pooh
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1367,9 +1367,9 @@ async function saveKm() {
 
 // ── TD TAB ───────────────────────────────────────────────────────────
 const TD_GROUPS = [
-  { key: 'get',             label: 'Get',             color: '#ff8844' },
-  { key: 'daily content',   label: 'Daily Content',   color: '#4488ff' },
-  { key: 'daily household', label: 'Daily Household', color: '#44cc88' },
+  { key: 'get',             doneKey: 'got',  label: 'Get',             color: '#ff8844' },
+  { key: 'daily content',   doneKey: 'done', label: 'Daily Content',   color: '#4488ff' },
+  { key: 'daily household', doneKey: 'done', label: 'Daily Household', color: '#44cc88' },
 ];
 
 async function loadTdTab() {
@@ -1388,34 +1388,94 @@ function renderTdTab(items) {
   el.innerHTML = '';
 
   TD_GROUPS.forEach(grp => {
-    const grpItems = items.filter(t => (t.priority || []).includes(grp.key));
+    const finalItems = items.filter(t => (t.priority || []).includes(grp.key));
 
     const hdrRow = document.createElement('div');
     hdrRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;margin-top:12px;';
     const chev = document.createElement('span');
     chev.style.cssText = 'font-size:10px;color:var(--text3);transition:transform .2s;';
     chev.textContent = '▶';
-    hdrRow.innerHTML = '<span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + grp.color + ';">' + grp.label + '</span><span style="font-size:11px;color:var(--text3);margin-left:auto;margin-right:8px;">' + grpItems.length + '</span>';
+    hdrRow.innerHTML = '<span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + grp.color + ';">' + grp.label + '</span><span style="font-size:11px;color:var(--text3);margin-left:auto;margin-right:8px;">' + finalItems.length + '</span>';
     hdrRow.appendChild(chev);
 
     const body = document.createElement('div');
     body.style.display = 'none';
 
-    grpItems.forEach((t, idx) => {
-      const isLast = idx === grpItems.length - 1;
-      const row = document.createElement('a');
-      row.href = 'https://www.notion.so/' + t.id;
-      row.target = '_blank';
-      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 14px 9px 24px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-decoration:none;background:var(--bg);transition:background .15s;' + (isLast ? 'border-radius:0 0 var(--radius-sm) var(--radius-sm);' : '');
-      row.onmouseover = () => row.style.background = 'var(--surface)';
-      row.onmouseout  = () => row.style.background = 'var(--bg)';
-      row.innerHTML =
-        '<span style="font-size:13px;color:var(--text);line-height:1.4;">' + esc(t.name) + '</span>' +
-        '<span style="font-size:11px;color:#ff6a00;flex-shrink:0;margin-left:10px;">↗</span>';
+    finalItems.forEach((t, idx) => {
+      const isLast = idx === finalItems.length - 1;
+      const isDone = (t.priority || []).some(p => p === 'got' || p === 'done');
+      const toggleLabel = grp.key === 'get' ? 'got' : 'done';
+
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 14px 9px 24px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:' + (isDone ? '#ffffff' : 'var(--bg)') + ';transition:background .15s;' + (isLast ? 'border-radius:0 0 var(--radius-sm) var(--radius-sm);' : '');
+      row.onmouseover = () => { if (!isDoneRef()) row.style.background = 'var(--surface)'; };
+      row.onmouseout  = () => { row.style.background = isDoneRef() ? '#ffffff' : 'var(--bg)'; };
+
+      // Track done state for closure
+      let doneState = isDone;
+      const isDoneRef = () => doneState;
+
+      const link = document.createElement('a');
+      link.href = 'https://www.notion.so/' + t.id;
+      link.target = '_blank';
+      link.style.cssText = 'flex:1;text-decoration:none;';
+      link.innerHTML = '<span style="font-size:13px;color:' + (isDone ? '#000' : 'var(--text)') + ';line-height:1.4;font-weight:' + (isDone ? '600' : '400') + ';">' + esc(t.name) + '</span>';
+
+      const hlBtn = document.createElement('button');
+      hlBtn.title = doneState ? 'Mark undone' : ('Mark ' + toggleLabel);
+      hlBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:13px;padding:0 4px;flex-shrink:0;opacity:' + (doneState ? '1' : '.35') + ';transition:opacity .15s;';
+      hlBtn.textContent = doneState ? '★' : '☆';
+      hlBtn.onmouseover = () => hlBtn.style.opacity = '1';
+      hlBtn.onmouseout  = () => hlBtn.style.opacity = doneState ? '1' : '.35';
+      hlBtn.onclick = async () => {
+        hlBtn.disabled = true;
+        const newDone = !doneState;
+        // Build new priority array
+        const base = (t.priority || []).filter(p => p !== 'got' && p !== 'done');
+        if (newDone) base.push(toggleLabel);
+        try {
+          await call('updateTdPriority', { itemId: t.id, priority: base });
+          doneState = newDone;
+          t.priority = base;
+          row.style.background = newDone ? '#ffffff' : 'var(--bg)';
+          link.querySelector('span').style.color = newDone ? '#000' : 'var(--text)';
+          link.querySelector('span').style.fontWeight = newDone ? '600' : '400';
+          hlBtn.textContent = newDone ? '★' : '☆';
+          hlBtn.style.opacity = newDone ? '1' : '.35';
+          hlBtn.title = newDone ? 'Mark undone' : ('Mark ' + toggleLabel);
+          showToast(newDone ? 'Marked ' + toggleLabel + ' ✓' : 'Unmarked ✓', 'success');
+        } catch(e) {
+          showToast('Failed: ' + e.message, 'error');
+        }
+        hlBtn.disabled = false;
+      };
+
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '🗑';
+      delBtn.title = 'Delete';
+      delBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:14px;padding:0 4px;opacity:.4;transition:opacity .15s;flex-shrink:0;';
+      delBtn.onmouseover = () => delBtn.style.opacity = '1';
+      delBtn.onmouseout  = () => delBtn.style.opacity = '.4';
+      delBtn.onclick = async () => {
+        if (!confirm('Delete "' + t.name + '"?')) return;
+        delBtn.textContent = '⏳';
+        try {
+          await call('deleteTdItem', { itemId: t.id });
+          row.remove();
+          showToast('Deleted ✓', 'success');
+        } catch(e) {
+          delBtn.textContent = '🗑';
+          showToast('Failed: ' + e.message, 'error');
+        }
+      };
+
+      row.appendChild(link);
+      row.appendChild(hlBtn);
+      row.appendChild(delBtn);
       body.appendChild(row);
     });
 
-    if (!grpItems.length) {
+    if (!finalItems.length) {
       body.innerHTML = '<div style="padding:10px 14px 10px 24px;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);"><span class="empty">Nothing here.</span></div>';
     }
 
