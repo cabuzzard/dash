@@ -219,39 +219,6 @@ export default {
       }
 
       if (body.action === "searchTodos") {
-        const rows = await notionQuery(MAIN_TD_DB, {
-          sorts: [{ property: "Title", direction: "ascending" }],
-        });
-        const todos = rows.map(r => ({
-          id:   r.id.replace(/-/g,""),
-          name: r.properties.Title?.title?.map(t => t.plain_text).join("") || "Untitled",
-        }));
-        return json({ todos });
-      }
-
-      if (body.action === "updateCampaignTodos") {
-        const { campaignId, todoIds } = body;
-        if (!campaignId) return json({ error: "campaignId required" }, 400);
-        const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
-        const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            properties: {
-              "Associated To Do": {
-                relation: (todoIds || []).map(id => ({
-                  id: id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5")
-                }))
-              }
-            }
-          }),
-        });
-        const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
-        return json({ success: true });
-      }
-
-      if (body.action === "searchTodos") {
         const { query } = body;
         const rows = await notionQuery(MAIN_TD_DB, {
           sorts: [{ property: "Title", direction: "ascending" }],
@@ -260,7 +227,7 @@ export default {
           id:   t.id.replace(/-/g,""),
           name: t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled",
         })).filter(t => !query || t.name.toLowerCase().includes(query.toLowerCase()));
-        return json({ todos: todos.slice(0, 20) });
+        return json({ todos: todos.slice(0, 50) });
       }
 
       if (body.action === "updateCampaignTodos") {
@@ -281,8 +248,8 @@ export default {
           }),
         });
         const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
-        return json({ success: true });
+        if (!resp.ok) return json({ error: result.message || "Update failed", detail: result }, resp.status);
+        return json({ success: true, result });
       }
 
       if (body.action === "getPropertyNames") {

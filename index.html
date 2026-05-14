@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>none of it
+<head>dfghjklkjhgfdfghjkuytredfghjkkjhgre4567ikjnbgtyujnbgfrtyuikjh
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1051,15 +1051,17 @@ async function saveTdLinks() {
   const btn = document.getElementById('tdSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving...';
   try {
-    await call('updateCampaignTodos', {
+    const res = await call('updateCampaignTodos', {
       campaignId: tdCampaign.id,
       todoIds: tdLinkedTodos.map(t => t.id),
     });
+    console.log('updateCampaignTodos result:', JSON.stringify(res));
     tdCampaign.mainTd = [...tdLinkedTodos];
     if (tdRenderCb) tdRenderCb();
     closeTdModal();
     showToast('Saved ✓', 'success');
   } catch (e) {
+    console.error('updateCampaignTodos error:', e.message);
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
   }
