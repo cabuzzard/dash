@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>duhhhhhhhhhhhhhhhhhhhhhhh
+<head>try the chardonnaty;lk;lkj
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -303,6 +303,18 @@
   </div>
 </div>
 
+<!-- Grouping Modal -->
+<div class="modal-bg" id="grpModal" onclick="if(event.target===this)closeGrpModal()">
+  <div class="modal">
+    <div class="modal-title" id="grpModalTitle">Grouping</div>
+    <div id="grpOptions" style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeGrpModal()">Cancel</button>
+      <button class="btn btn-primary" id="grpSaveBtn" onclick="saveGrp()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Campaign Name Modal -->
 <div class="modal-bg" id="nameModal" onclick="if(event.target===this)closeNameModal()">
   <div class="modal">
@@ -593,6 +605,7 @@ function renderTable() {
   const cols = [
     { label: 'Site',        key: 'site',       type: 'str' },
     { label: 'Campaign',    key: 'name',       type: 'str' },
+    { label: 'Grouping',    key: 'grouping',   type: 'rel' },
     { label: 'Key Message', key: 'keyMessage', type: 'str' },
     { label: 'Main TD',     key: 'mainTd',     type: 'rel' },
     { label: 'Dev',         key: 'devTitles',  type: 'num' },
@@ -672,8 +685,22 @@ function renderTable() {
     nameCell.textContent = c.name;
     nameCell.onclick = () => openNameModal(c, nameCell);
 
+    // Grouping cell — shows tags, click to edit
+    const grpCell = document.createElement('td');
+    grpCell.style.cssText = 'cursor:pointer;';
+    grpCell.title = 'Click to edit';
+    const renderGrpCell = () => {
+      const tags = c.grouping || [];
+      grpCell.innerHTML = tags.length
+        ? tags.map(g => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(g) + '</span>').join('')
+        : '<span style="font-size:11px;color:var(--text3);">—</span>';
+    };
+    renderGrpCell();
+    grpCell.onclick = () => openGrpModal(c, renderGrpCell);
+
     tr.innerHTML = '<td class="site">' + esc(c.site || '—') + '</td>';
     tr.appendChild(nameCell);
+    tr.appendChild(grpCell);
     tr.appendChild(kmCell);
     tr.appendChild(tdCell);
     tr.insertAdjacentHTML('beforeend',
@@ -1113,6 +1140,49 @@ async function saveTdLinks() {
     showToast('Saved ✓', 'success');
   } catch (e) {
     console.error('updateCampaignTodos error:', e.message);
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── GROUPING MODAL ────────────────────────────────────────────────────
+const GRP_OPTIONS = ['Group 1', 'Group 2', 'Group 3', 'Group 4'];
+let grpCampaign = null;
+let grpRenderCb = null;
+
+function openGrpModal(campaign, renderCb) {
+  grpCampaign = campaign;
+  grpRenderCb = renderCb;
+  document.getElementById('grpModalTitle').textContent = campaign.name;
+  const el = document.getElementById('grpOptions');
+  el.innerHTML = '';
+  GRP_OPTIONS.forEach(opt => {
+    const checked = (campaign.grouping || []).includes(opt);
+    const label = document.createElement('label');
+    label.style.cssText = 'display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);cursor:pointer;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);';
+    label.innerHTML = '<input type="checkbox" value="' + opt + '"' + (checked ? ' checked' : '') + ' style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">' + esc(opt);
+    el.appendChild(label);
+  });
+  document.getElementById('grpSaveBtn').disabled = false;
+  document.getElementById('grpSaveBtn').textContent = 'Save';
+  document.getElementById('grpModal').classList.add('open');
+}
+
+function closeGrpModal() {
+  document.getElementById('grpModal').classList.remove('open');
+}
+
+async function saveGrp() {
+  const selected = [...document.querySelectorAll('#grpOptions input:checked')].map(i => i.value);
+  const btn = document.getElementById('grpSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    await call('updateGrouping', { campaignId: grpCampaign.id, grouping: selected });
+    grpCampaign.grouping = selected;
+    if (grpRenderCb) grpRenderCb();
+    closeGrpModal();
+    showToast('Saved ✓', 'success');
+  } catch(e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
   }

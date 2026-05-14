@@ -94,7 +94,7 @@ async function getCampaigns() {
       id,
       name:       c.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
       site:       c.properties.site?.select?.name || "Other",
-      keyMessage: c.properties["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
+      grouping:   (c.properties["Grouping"]?.multi_select || []).map(g => g.name),
       mainTd:     (c.properties["Associated To Do"]?.relation || []).map(r => ({
         id:   r.id.replace(/-/g,""),
         name: todoById[r.id.replace(/-/g,"")] || "Untitled",
@@ -268,6 +268,20 @@ export default {
         }
 
         return json({ success: true, id: newTodoId, name });
+      }
+
+      if (body.action === "updateGrouping") {
+        const { campaignId, grouping } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Grouping": { multi_select: (grouping || []).map(name => ({ name })) } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
       }
 
       if (body.action === "updateCampaignName") {
