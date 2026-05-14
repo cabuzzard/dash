@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>try the chardonnaty;lk;lkj
+<head>junk
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -307,7 +307,13 @@
 <div class="modal-bg" id="grpModal" onclick="if(event.target===this)closeGrpModal()">
   <div class="modal">
     <div class="modal-title" id="grpModalTitle">Grouping</div>
-    <div id="grpOptions" style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;"></div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Add group</label>
+      <input class="modal-input" id="grpInput" type="text" placeholder="Type to search or add..." autocomplete="off" oninput="filterGrp()" onfocus="filterGrp()" />
+      <div id="grpDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-label" style="margin-bottom:6px;">Selected</div>
+    <div id="grpLinked" style="margin-bottom:16px;min-height:32px;"></div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeGrpModal()">Cancel</button>
       <button class="btn btn-primary" id="grpSaveBtn" onclick="saveGrp()">Save</button>
@@ -1147,38 +1153,98 @@ async function saveTdLinks() {
 
 // ── GROUPING MODAL ────────────────────────────────────────────────────
 const GRP_OPTIONS = ['Group 1', 'Group 2', 'Group 3', 'Group 4'];
-let grpCampaign = null;
-let grpRenderCb = null;
+let grpCampaign  = null;
+let grpRenderCb  = null;
+let grpSelected  = [];
 
 function openGrpModal(campaign, renderCb) {
   grpCampaign = campaign;
   grpRenderCb = renderCb;
+  grpSelected = [...(campaign.grouping || [])];
   document.getElementById('grpModalTitle').textContent = campaign.name;
-  const el = document.getElementById('grpOptions');
-  el.innerHTML = '';
-  GRP_OPTIONS.forEach(opt => {
-    const checked = (campaign.grouping || []).includes(opt);
-    const label = document.createElement('label');
-    label.style.cssText = 'display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);cursor:pointer;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);';
-    label.innerHTML = '<input type="checkbox" value="' + opt + '"' + (checked ? ' checked' : '') + ' style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">' + esc(opt);
-    el.appendChild(label);
-  });
+  document.getElementById('grpInput').value = '';
+  document.getElementById('grpDropdown').style.display = 'none';
   document.getElementById('grpSaveBtn').disabled = false;
   document.getElementById('grpSaveBtn').textContent = 'Save';
+  renderGrpLinked();
   document.getElementById('grpModal').classList.add('open');
+  setTimeout(() => document.getElementById('grpInput').focus(), 280);
 }
 
 function closeGrpModal() {
   document.getElementById('grpModal').classList.remove('open');
+  document.getElementById('grpDropdown').style.display = 'none';
 }
 
+function renderGrpLinked() {
+  const el = document.getElementById('grpLinked');
+  if (!grpSelected.length) {
+    el.innerHTML = '<span style="font-size:12px;color:var(--text3);">None selected</span>';
+    return;
+  }
+  el.innerHTML = grpSelected.map((g, i) =>
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:4px;">' +
+      '<span style="font-size:13px;color:var(--text);">' + esc(g) + '</span>' +
+      '<span style="font-size:14px;color:var(--text3);cursor:pointer;padding:0 4px;" onclick="removeGrp(' + i + ')">✕</span>' +
+    '</div>'
+  ).join('');
+}
+
+function removeGrp(i) {
+  grpSelected.splice(i, 1);
+  renderGrpLinked();
+}
+
+function filterGrp() {
+  const query = document.getElementById('grpInput').value.trim().toLowerCase();
+  const dd = document.getElementById('grpDropdown');
+  const available = GRP_OPTIONS.filter(g =>
+    (!query || g.toLowerCase().includes(query)) && !grpSelected.includes(g)
+  );
+  dd.innerHTML = '';
+  available.forEach(g => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = g;
+    div.onmousedown = () => {
+      grpSelected.push(g);
+      document.getElementById('grpInput').value = '';
+      dd.style.display = 'none';
+      renderGrpLinked();
+    };
+    dd.appendChild(div);
+  });
+  // Allow adding custom value not in preset list
+  const exact = GRP_OPTIONS.some(g => g.toLowerCase() === query);
+  if (query && !exact && !grpSelected.includes(query)) {
+    const div = document.createElement('div');
+    div.className = 'camp-option create';
+    const raw = document.getElementById('grpInput').value.trim();
+    div.textContent = '+ Add "' + raw + '"';
+    div.onmousedown = () => {
+      grpSelected.push(raw);
+      document.getElementById('grpInput').value = '';
+      dd.style.display = 'none';
+      renderGrpLinked();
+    };
+    dd.appendChild(div);
+  }
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#grpInput') && !e.target.closest('#grpDropdown')) {
+    const dd = document.getElementById('grpDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
 async function saveGrp() {
-  const selected = [...document.querySelectorAll('#grpOptions input:checked')].map(i => i.value);
   const btn = document.getElementById('grpSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving...';
   try {
-    await call('updateGrouping', { campaignId: grpCampaign.id, grouping: selected });
-    grpCampaign.grouping = selected;
+    await call('updateGrouping', { campaignId: grpCampaign.id, grouping: grpSelected });
+    grpCampaign.grouping = [...grpSelected];
     if (grpRenderCb) grpRenderCb();
     closeGrpModal();
     showToast('Saved ✓', 'success');
