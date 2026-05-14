@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>iokokokokokookkkokokokokokokok
+<head>lab grown virus virulent
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -232,6 +232,7 @@
     <div class="tab active" onclick="switchTab('overview')">Overview</div>
     <div class="tab"        onclick="switchTab('products')">Products</div>
     <div class="tab"        onclick="switchTab('development')">Development</div>
+    <div class="tab"        onclick="switchTab('td')">TD</div>
   </div>
 
   <div class="tab-panel active" id="tabOverview">
@@ -250,6 +251,13 @@
   <div class="tab-panel" id="tabDevelopment">
     <a class="add-link" onclick="openTitleModal()">+ Add title</a>
     <div id="devContent">
+      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabTd">
+    <a class="add-link" onclick="openAddTdModal()">+ Add to do item</a>
+    <div id="tdTabContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
   </div>
@@ -299,6 +307,29 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeTdModal()">Cancel</button>
       <button class="btn btn-primary" id="tdSaveBtn" onclick="saveTdLinks()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add TD Item Modal -->
+<div class="modal-bg" id="addTdModal" onclick="if(event.target===this)closeAddTdModal()">
+  <div class="modal">
+    <div class="modal-title">New To Do Item</div>
+    <div class="modal-field">
+      <label class="modal-label">Title</label>
+      <input class="modal-input" id="addTdTitle" type="text" placeholder="What needs to be done..." />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Grouping</label>
+      <select class="modal-select" id="addTdGrouping">
+        <option value="get">Get</option>
+        <option value="daily content">Daily Content</option>
+        <option value="daily household">Daily Household</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeAddTdModal()">Cancel</button>
+      <button class="btn btn-primary" id="addTdSubmitBtn" onclick="submitAddTd()">Create</button>
     </div>
   </div>
 </div>
@@ -431,12 +462,13 @@ function checkPin() {
   }
 }
 function lockApp() {
-  pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false; devLoaded = false;
+  pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false; devLoaded = false; tdTabLoaded = false;
   updateDots();
   document.getElementById('pinScreen').classList.remove('hidden');
   document.getElementById('ovContent').innerHTML   = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   document.getElementById('prodContent').innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   document.getElementById('devContent').innerHTML  = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  document.getElementById('tdTabContent').innerHTML= '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
 }
 
 // ── WORKER ───────────────────────────────────────────────────────────
@@ -454,14 +486,16 @@ async function call(action, extra = {}) {
 // ── TABS ─────────────────────────────────────────────────────────────
 let prodLoaded = false;
 let devLoaded  = false;
+let tdTabLoaded = false;
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   event.currentTarget.classList.add('active');
   document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
-  if (name === 'products'    && !prodLoaded) { prodLoaded = true; loadProducts(); }
-  if (name === 'development' && !devLoaded)  { devLoaded  = true; loadDev(); }
+  if (name === 'products'    && !prodLoaded)   { prodLoaded   = true; loadProducts(); }
+  if (name === 'development' && !devLoaded)    { devLoaded    = true; loadDev(); }
+  if (name === 'td'          && !tdTabLoaded)  { tdTabLoaded  = true; loadTdTab(); }
 }
 
 // ── PRODUCTS ─────────────────────────────────────────────────────────
@@ -1328,6 +1362,105 @@ async function saveKm() {
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── TD TAB ───────────────────────────────────────────────────────────
+const TD_GROUPS = [
+  { key: 'get',             label: 'Get',             color: '#ff8844' },
+  { key: 'daily content',   label: 'Daily Content',   color: '#4488ff' },
+  { key: 'daily household', label: 'Daily Household', color: '#44cc88' },
+];
+
+async function loadTdTab() {
+  const el = document.getElementById('tdTabContent');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getTdItems');
+    renderTdTab(data.items || []);
+  } catch(e) {
+    el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderTdTab(items) {
+  const el = document.getElementById('tdTabContent');
+  el.innerHTML = '';
+
+  TD_GROUPS.forEach(grp => {
+    const grpItems = items.filter(t => (t.priority || []).includes(grp.key));
+
+    const hdrRow = document.createElement('div');
+    hdrRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;margin-top:12px;';
+    const chev = document.createElement('span');
+    chev.style.cssText = 'font-size:10px;color:var(--text3);transition:transform .2s;';
+    chev.textContent = '▶';
+    hdrRow.innerHTML = '<span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + grp.color + ';">' + grp.label + '</span><span style="font-size:11px;color:var(--text3);margin-left:auto;margin-right:8px;">' + grpItems.length + '</span>';
+    hdrRow.appendChild(chev);
+
+    const body = document.createElement('div');
+    body.style.display = 'none';
+
+    grpItems.forEach((t, idx) => {
+      const isLast = idx === grpItems.length - 1;
+      const row = document.createElement('a');
+      row.href = 'https://www.notion.so/' + t.id;
+      row.target = '_blank';
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 14px 9px 24px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-decoration:none;background:var(--bg);transition:background .15s;' + (isLast ? 'border-radius:0 0 var(--radius-sm) var(--radius-sm);' : '');
+      row.onmouseover = () => row.style.background = 'var(--surface)';
+      row.onmouseout  = () => row.style.background = 'var(--bg)';
+      row.innerHTML =
+        '<span style="font-size:13px;color:var(--text);line-height:1.4;">' + esc(t.name) + '</span>' +
+        '<span style="font-size:11px;color:#ff6a00;flex-shrink:0;margin-left:10px;">↗</span>';
+      body.appendChild(row);
+    });
+
+    if (!grpItems.length) {
+      body.innerHTML = '<div style="padding:10px 14px 10px 24px;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);"><span class="empty">Nothing here.</span></div>';
+    }
+
+    hdrRow.onclick = () => {
+      const open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : 'block';
+      chev.style.transform = open ? '' : 'rotate(90deg)';
+      hdrRow.style.borderRadius = open ? 'var(--radius-sm)' : 'var(--radius-sm) var(--radius-sm) 0 0';
+    };
+
+    el.appendChild(hdrRow);
+    el.appendChild(body);
+  });
+}
+
+// ── ADD TD MODAL ─────────────────────────────────────────────────────
+function openAddTdModal() {
+  document.getElementById('addTdTitle').value = '';
+  document.getElementById('addTdGrouping').value = 'get';
+  document.getElementById('addTdSubmitBtn').disabled = false;
+  document.getElementById('addTdSubmitBtn').textContent = 'Create';
+  document.getElementById('addTdModal').classList.add('open');
+  setTimeout(() => document.getElementById('addTdTitle').focus(), 280);
+}
+
+function closeAddTdModal() {
+  document.getElementById('addTdModal').classList.remove('open');
+}
+
+async function submitAddTd() {
+  const title    = document.getElementById('addTdTitle').value.trim();
+  const grouping = document.getElementById('addTdGrouping').value;
+  if (!title) { document.getElementById('addTdTitle').focus(); return; }
+
+  const btn = document.getElementById('addTdSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    await call('createTdItem', { title, grouping });
+    closeAddTdModal();
+    showToast('To do created ✓', 'success');
+    tdTabLoaded = false;
+    loadTdTab();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Create';
   }
 }
 

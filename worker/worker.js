@@ -218,6 +218,44 @@ export default {
         return json({ success: true, id: result.id.replace(/-/g,"") });
       }
 
+      if (body.action === "getTdItems") {
+        const rows = await notionQuery(MAIN_TD_DB, {
+          filter: {
+            or: [
+              { property: "priority", multi_select: { contains: "get" } },
+              { property: "priority", multi_select: { contains: "daily content" } },
+              { property: "priority", multi_select: { contains: "daily household" } },
+            ]
+          },
+          sorts: [{ property: "Title", direction: "ascending" }],
+        });
+        const items = rows.map(t => ({
+          id:       t.id.replace(/-/g,""),
+          name:     t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled",
+          priority: t.properties.priority?.multi_select?.map(s => s.name) || [],
+        }));
+        return json({ items });
+      }
+
+      if (body.action === "createTdItem") {
+        const { title, grouping } = body;
+        if (!title) return json({ error: "title required" }, 400);
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: MAIN_TD_DB },
+            properties: {
+              Title:    { title: [{ type: "text", text: { content: title } }] },
+              priority: { multi_select: [{ name: grouping }] },
+            }
+          }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,"") });
+      }
+
       if (body.action === "searchTodos") {
         const { query } = body;
         const rows = await notionQuery(MAIN_TD_DB, {
