@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>cuttttttttt
+<head>difntttttttttttttttttttttttkgkhlj
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -401,7 +401,6 @@ function checkPin() {
     document.getElementById('pinScreen').classList.add('hidden');
     if (!ovLoaded) { ovLoaded = true; loadOverview(); }
     call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
-    call('searchTodos').then(d => { allTodos = d.todos || []; }).catch(() => {});
   } else {
     document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
     document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
