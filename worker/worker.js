@@ -4,7 +4,7 @@ const CAMPAIGNS_DB       = "087b1163b4e64975bc7a4b686ff801de";
 const CONTENT_STRATEGY_DB = "9fa5f42f010b47e7a82032607e07d6a1";
 const PRODUCTS_DB        = "e92fcfce75fc4f54b553df0b7672ff48";
 const MAIN_TD_DB         = "3471f7d3a4bb80de87c1d9e850f4a426";
-const METHODS_DB         = "3ad260f2ec9c4dc78f3c561f595f9455";
+const METHODS_DB         = "285ed0b668be4dad89dfd090350096bc";
 const PIN                = "1246";
 
 const CORS = {
@@ -355,6 +355,22 @@ export default {
         }
 
         return json({ success: true, id: newTodoId, name });
+      }
+
+      if (body.action === "createMethod") {
+        const { title } = body;
+        if (!title) return json({ error: "title required" }, 400);
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: METHODS_DB },
+            properties: { Name: { title: [{ type: "text", text: { content: title } }] } }
+          }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,""), name: title });
       }
 
       if (body.action === "searchMethods") {

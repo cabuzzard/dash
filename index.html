@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>tim cook from apple is awesome
+<head>the hillz
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1306,10 +1306,11 @@ function removeRelItem(i) {
 }
 
 function filterRel() {
-  const query = document.getElementById('relSearchInput').value.trim().toLowerCase();
-  const dd = document.getElementById('relDropdown');
+  const query  = document.getElementById('relSearchInput').value.trim();
+  const queryL = query.toLowerCase();
+  const dd     = document.getElementById('relDropdown');
   const matches = relAllItems.filter(item =>
-    (!query || item.name.toLowerCase().includes(query)) &&
+    (!query || item.name.toLowerCase().includes(queryL)) &&
     !relLinked.find(l => l.id === item.id)
   );
   dd.innerHTML = '';
@@ -1325,7 +1326,34 @@ function filterRel() {
     };
     dd.appendChild(div);
   });
-  dd.style.display = matches.length ? 'block' : 'none';
+
+  // Add new option if typed something not already in list
+  const exact = relAllItems.some(i => i.name.toLowerCase() === queryL);
+  if (query && !exact) {
+    const div = document.createElement('div');
+    div.className = 'camp-option create';
+    div.textContent = '+ Create "' + query + '"';
+    div.onmousedown = async () => {
+      div.textContent = 'Creating...';
+      try {
+        const action = relType === 'products' ? 'createProduct' : 'createMethod';
+        const res = await call(action, { title: query, status: 'Active' });
+        const newItem = { id: res.id, name: query };
+        relAllItems.push(newItem);
+        relLinked.push(newItem);
+        document.getElementById('relSearchInput').value = '';
+        dd.style.display = 'none';
+        renderRelLinked();
+        showToast('Created ✓', 'success');
+      } catch(e) {
+        showToast('Failed: ' + e.message, 'error');
+        div.textContent = '+ Create "' + query + '"';
+      }
+    };
+    dd.appendChild(div);
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
 }
 
 document.addEventListener('click', e => {
