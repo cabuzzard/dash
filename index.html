@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winnin the pooh
+<head>national staff   
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1423,14 +1423,13 @@ function renderTdTab(items) {
 
       const hlBtn = document.createElement('button');
       hlBtn.title = doneState ? 'Mark undone' : ('Mark ' + toggleLabel);
-      hlBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:13px;padding:0 4px;flex-shrink:0;opacity:' + (doneState ? '1' : '.35') + ';transition:opacity .15s;';
+      hlBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:16px;padding:0 6px;flex-shrink:0;color:' + (doneState ? '#ffffff' : 'var(--text3)') + ';transition:color .15s;';
       hlBtn.textContent = doneState ? '★' : '☆';
-      hlBtn.onmouseover = () => hlBtn.style.opacity = '1';
-      hlBtn.onmouseout  = () => hlBtn.style.opacity = doneState ? '1' : '.35';
+      hlBtn.onmouseover = () => hlBtn.style.color = '#ffffff';
+      hlBtn.onmouseout  = () => hlBtn.style.color = doneState ? '#ffffff' : 'var(--text3)';
       hlBtn.onclick = async () => {
         hlBtn.disabled = true;
         const newDone = !doneState;
-        // Build new priority array
         const base = (t.priority || []).filter(p => p !== 'got' && p !== 'done');
         if (newDone) base.push(toggleLabel);
         try {
@@ -1441,8 +1440,9 @@ function renderTdTab(items) {
           link.querySelector('span').style.color = newDone ? '#000' : 'var(--text)';
           link.querySelector('span').style.fontWeight = newDone ? '600' : '400';
           hlBtn.textContent = newDone ? '★' : '☆';
-          hlBtn.style.opacity = newDone ? '1' : '.35';
+          hlBtn.style.color = newDone ? '#000' : 'var(--text3)';
           hlBtn.title = newDone ? 'Mark undone' : ('Mark ' + toggleLabel);
+          delBtn.style.color = newDone ? '#000' : '#ffffff';
           showToast(newDone ? 'Marked ' + toggleLabel + ' ✓' : 'Unmarked ✓', 'success');
         } catch(e) {
           showToast('Failed: ' + e.message, 'error');
@@ -1453,9 +1453,9 @@ function renderTdTab(items) {
       const delBtn = document.createElement('button');
       delBtn.textContent = '🗑';
       delBtn.title = 'Delete';
-      delBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:14px;padding:0 4px;opacity:.4;transition:opacity .15s;flex-shrink:0;';
-      delBtn.onmouseover = () => delBtn.style.opacity = '1';
-      delBtn.onmouseout  = () => delBtn.style.opacity = '.4';
+      delBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:15px;padding:0 6px;flex-shrink:0;color:' + (isDone ? '#000' : 'var(--text2)') + ';transition:color .15s;';
+      delBtn.onmouseover = () => delBtn.style.color = isDone ? '#000' : '#ffffff';
+      delBtn.onmouseout  = () => delBtn.style.color = doneState ? '#000' : 'var(--text2)';
       delBtn.onclick = async () => {
         if (!confirm('Delete "' + t.name + '"?')) return;
         delBtn.textContent = '⏳';
