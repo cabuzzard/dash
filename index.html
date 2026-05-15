@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>soy soy soy soys osyos oysoysoys
+<head>dude  dddddddddddddddddddddddddddddddddd
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -818,11 +818,50 @@ function renderTable() {
     };
     renderCmCell();
     cmCell.onclick = () => openRelModal('methods', c, renderCmCell);
+    // Highlight row if "this week" in grouping
+    const isThisWeek = (c.grouping || []).includes('this week');
+
     tr.appendChild(cmCell);
     tr.insertAdjacentHTML('beforeend',
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '">' + c.devTitles + '</td>' +
       '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>'
     );
+
+    // ★ this-week highlight toggle
+    const hlTd = document.createElement('td');
+    hlTd.style.cssText = 'text-align:center;width:28px;';
+    const hlBtn = document.createElement('button');
+    hlBtn.textContent = isThisWeek ? '★' : '☆';
+    hlBtn.title = isThisWeek ? 'Remove from this week' : 'Mark as this week';
+    hlBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:15px;color:' + (isThisWeek ? '#ffcc00' : 'var(--text3)') + ';transition:color .15s;padding:0;';
+    hlBtn.onmouseover = () => hlBtn.style.color = '#ffcc00';
+    hlBtn.onmouseout  = () => hlBtn.style.color = isThisWeek ? '#ffcc00' : 'var(--text3)';
+    let thisWeekState = isThisWeek;
+    hlBtn.onclick = async () => {
+      hlBtn.disabled = true;
+      const newState = !thisWeekState;
+      const newGrouping = newState
+        ? [...(c.grouping || []).filter(g => g !== 'this week'), 'this week']
+        : (c.grouping || []).filter(g => g !== 'this week');
+      try {
+        await call('updateGrouping', { campaignId: c.id, grouping: newGrouping });
+        c.grouping = newGrouping;
+        thisWeekState = newState;
+        hlBtn.textContent = newState ? '★' : '☆';
+        hlBtn.style.color = newState ? '#ffcc00' : 'var(--text3)';
+        hlBtn.title = newState ? 'Remove from this week' : 'Mark as this week';
+        tr.style.background = newState ? '#ffffff' : '';
+        // flip all text cells to black/white
+        tr.querySelectorAll('td').forEach(td => td.style.color = newState ? '#000' : '');
+        hlBtn.style.color = newState ? '#ffcc00' : 'var(--text3)';
+        showToast(newState ? 'Marked this week ✓' : 'Removed ✓', 'success');
+      } catch(e) {
+        showToast('Failed: ' + e.message, 'error');
+      }
+      hlBtn.disabled = false;
+    };
+    hlTd.appendChild(hlBtn);
+    tr.appendChild(hlTd);
 
     // + button — opens add title modal pre-set to this campaign
     const addTd = document.createElement('td');
@@ -841,6 +880,10 @@ function renderTable() {
       '<td class="link"><a href="' + notionUrl + '" target="_blank">↗</a></td>'
     );
     tbody.appendChild(tr);
+    if (isThisWeek) {
+      tr.style.background = '#ffffff';
+      tr.querySelectorAll('td').forEach(td => td.style.color = '#000');
+    }
   });
   table.appendChild(tbody);
   el.appendChild(table);
