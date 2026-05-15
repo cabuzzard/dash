@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>change the structure to work for america
+<head>winning  ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1101,26 +1101,47 @@ function renderDev() {
       const titlesEl = document.createElement('div');
       titlesEl.style.cssText = 'display:none;';
 
-      camp.titles.forEach((t, idx) => {
-        const isDev = t.status === 'Development';
-        const isPub = t.status === 'Publish';
-        const isLast = idx === camp.titles.length - 1;
+      // Sub-group by Grouping field
+      const grpMap = {};
+      camp.titles.forEach(t => {
+        const g = t.grouping || '—';
+        if (!grpMap[g]) grpMap[g] = [];
+        grpMap[g].push(t);
+      });
+      const grpKeys = Object.keys(grpMap).sort((a, b) => {
+        if (a === '—') return 1; if (b === '—') return -1; return a.localeCompare(b);
+      });
 
-        const tRow = document.createElement('a');
-        tRow.href = 'https://www.notion.so/' + t.id;
-        tRow.target = '_blank';
-        const bg  = isPub ? '#00cc66' : isDev ? '#ffffff' : 'var(--bg)';
-        const clr = (isPub || isDev) ? '#000' : 'var(--text2)';
-        const br  = isLast ? '0 0 var(--radius-sm) var(--radius-sm)' : '0';
-        tRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px 36px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-decoration:none;background:'+bg+';border-radius:'+br+';transition:opacity .15s;';
-        tRow.onmouseover = () => tRow.style.opacity = '.8';
-        tRow.onmouseout  = () => tRow.style.opacity = '1';
+      grpKeys.forEach((grpKey, gi) => {
+        const isLastGrp = gi === grpKeys.length - 1;
 
-        const statusDot = isPub ? '● ' : isDev ? '○ ' : '  ';
-        tRow.innerHTML =
-          '<span style="font-size:12px;font-weight:500;color:'+clr+';line-height:1.4;">' + statusDot + esc(t.title) + '</span>' +
-          '<span style="font-size:10px;font-weight:600;color:'+(isPub?'#005522':isDev?'#ffffff':'#ff6a00')+';flex-shrink:0;margin-left:10px;">' + (isPub?'PUB':isDev?'DEV':'↗') + '</span>';
-        titlesEl.appendChild(tRow);
+        // Sub-header (only if there are named groups)
+        if (grpKeys.length > 1 || grpKey !== '—') {
+          const subHdr = document.createElement('div');
+          subHdr.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:7px 14px 5px 36px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--surface2);';
+          subHdr.textContent = grpKey;
+          titlesEl.appendChild(subHdr);
+        }
+
+        grpMap[grpKey].forEach((t, idx) => {
+          const isLast = isLastGrp && idx === grpMap[grpKey].length - 1;
+          const isDev = t.status === 'Development';
+          const isPub = t.status === 'Publish';
+          const bg  = isPub ? '#00cc66' : isDev ? '#ffffff' : 'var(--bg)';
+          const clr = (isPub || isDev) ? '#000' : 'var(--text2)';
+          const br  = isLast ? '0 0 var(--radius-sm) var(--radius-sm)' : '0';
+          const tRow = document.createElement('a');
+          tRow.href = 'https://www.notion.so/' + t.id;
+          tRow.target = '_blank';
+          tRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px 36px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-decoration:none;background:'+bg+';border-radius:'+br+';transition:opacity .15s;';
+          tRow.onmouseover = () => tRow.style.opacity = '.8';
+          tRow.onmouseout  = () => tRow.style.opacity = '1';
+          const statusDot = isPub ? '● ' : isDev ? '○ ' : '  ';
+          tRow.innerHTML =
+            '<span style="font-size:12px;font-weight:500;color:'+clr+';line-height:1.4;">' + statusDot + esc(t.title) + '</span>' +
+            '<span style="font-size:10px;font-weight:600;color:'+(isPub?'#005522':isDev?'#ffffff':'#ff6a00')+';flex-shrink:0;margin-left:10px;">' + (isPub?'PUB':isDev?'DEV':'↗') + '</span>';
+          titlesEl.appendChild(tRow);
+        });
       });
 
       campRow.onclick = () => {

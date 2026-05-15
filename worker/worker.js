@@ -206,7 +206,7 @@ export default {
           const camp    = campById[campId] || { name: "—", site: "Other" };
 
           if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, titles: [] };
-          campTitles[campId].titles.push({ id, title, status });
+          campTitles[campId].titles.push({ id, title, status, grouping: props.Grouping?.rich_text?.map(x => x.plain_text).join("") || "" });
         });
 
         const campaigns = Object.entries(campTitles).map(([campId, camp]) => {
