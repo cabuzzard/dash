@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>dude  dddddddddddddddddddddddddddddddddd
+<head>change the structure to work for america
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -236,6 +236,7 @@
   </div>
 
   <div class="tab-panel active" id="tabOverview">
+    <a class="add-link" onclick="openNewCampaignModal()">+ New campaign</a>
     <div id="ovContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
@@ -307,6 +308,42 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeTdModal()">Cancel</button>
       <button class="btn btn-primary" id="tdSaveBtn" onclick="saveTdLinks()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Campaign Modal -->
+<div class="modal-bg" id="newCampaignModal" onclick="if(event.target===this)closeNewCampaignModal()">
+  <div class="modal">
+    <div class="modal-title">New Campaign</div>
+
+    <div class="modal-field">
+      <label class="modal-label">Name</label>
+      <input class="modal-input" id="newCampName" type="text" placeholder="Campaign name..." />
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Site</label>
+      <select class="modal-select" id="newCampSite">
+        <option value="Webguy Business Services">🖥️ Webguy Business Services</option>
+        <option value="Mountainwize Coaching">⛰️ Mountainwize Coaching</option>
+        <option value="Mobility Mentor">♿ Mobility Mentor</option>
+        <option value="Affiliates">💰 Affiliates</option>
+        <option value="Main Business">🏠 Main Business</option>
+        <option value="Hermes">🤖 Hermes</option>
+      </select>
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Grouping</label>
+      <input class="modal-input" id="newCampGrpInput" type="text" placeholder="Search or add grouping..." autocomplete="off" oninput="filterNewCampGrp()" onfocus="filterNewCampGrp()" />
+      <div id="newCampGrpDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div id="newCampGrpLinked" style="margin-bottom:12px;min-height:24px;"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeNewCampaignModal()">Cancel</button>
+      <button class="btn btn-primary" id="newCampSubmitBtn" onclick="submitNewCampaign()">Create</button>
     </div>
   </div>
 </div>
@@ -1316,6 +1353,106 @@ async function saveTdLinks() {
     console.error('updateCampaignTodos error:', e.message);
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── NEW CAMPAIGN MODAL ────────────────────────────────────────────────
+let newCampGrpSelected = [];
+
+function openNewCampaignModal() {
+  newCampGrpSelected = [];
+  document.getElementById('newCampName').value = '';
+  document.getElementById('newCampSite').value = 'Webguy Business Services';
+  document.getElementById('newCampGrpInput').value = '';
+  document.getElementById('newCampGrpDropdown').style.display = 'none';
+  document.getElementById('newCampSubmitBtn').disabled = false;
+  document.getElementById('newCampSubmitBtn').textContent = 'Create';
+  renderNewCampGrp();
+  document.getElementById('newCampaignModal').classList.add('open');
+  setTimeout(() => document.getElementById('newCampName').focus(), 280);
+}
+
+function closeNewCampaignModal() {
+  document.getElementById('newCampaignModal').classList.remove('open');
+  document.getElementById('newCampGrpDropdown').style.display = 'none';
+}
+
+function renderNewCampGrp() {
+  const el = document.getElementById('newCampGrpLinked');
+  if (!newCampGrpSelected.length) { el.innerHTML = ''; return; }
+  el.innerHTML = newCampGrpSelected.map((g, i) =>
+    '<div style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:600;color:var(--text);margin:2px;">' +
+      esc(g) +
+      '<span style="cursor:pointer;opacity:.6;margin-left:2px;" onclick="removeNewCampGrp(' + i + ')">✕</span>' +
+    '</div>'
+  ).join('');
+}
+
+function removeNewCampGrp(i) {
+  newCampGrpSelected.splice(i, 1);
+  renderNewCampGrp();
+}
+
+function filterNewCampGrp() {
+  const query = document.getElementById('newCampGrpInput').value.trim();
+  const queryL = query.toLowerCase();
+  const dd = document.getElementById('newCampGrpDropdown');
+  const available = (grpOptions.length ? grpOptions : []).filter(g =>
+    (!query || g.toLowerCase().includes(queryL)) && !newCampGrpSelected.includes(g)
+  );
+  dd.innerHTML = '';
+  available.forEach(g => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = g;
+    div.onmousedown = () => {
+      newCampGrpSelected.push(g);
+      document.getElementById('newCampGrpInput').value = '';
+      dd.style.display = 'none';
+      renderNewCampGrp();
+    };
+    dd.appendChild(div);
+  });
+  const exact = available.some(g => g.toLowerCase() === queryL);
+  if (query && !exact && !newCampGrpSelected.includes(query)) {
+    const div = document.createElement('div');
+    div.className = 'camp-option create';
+    div.textContent = '+ Add "' + query + '"';
+    div.onmousedown = () => {
+      newCampGrpSelected.push(query);
+      document.getElementById('newCampGrpInput').value = '';
+      dd.style.display = 'none';
+      renderNewCampGrp();
+    };
+    dd.appendChild(div);
+  }
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#newCampGrpInput') && !e.target.closest('#newCampGrpDropdown')) {
+    const dd = document.getElementById('newCampGrpDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+async function submitNewCampaign() {
+  const name     = document.getElementById('newCampName').value.trim();
+  const site     = document.getElementById('newCampSite').value;
+  const grouping = [...newCampGrpSelected];
+  if (!name) { document.getElementById('newCampName').focus(); return; }
+
+  const btn = document.getElementById('newCampSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    await call('createCampaign', { name, site, grouping });
+    closeNewCampaignModal();
+    showToast('Campaign created ✓', 'success');
+    ovLoaded = false;
+    loadOverview();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Create';
   }
 }
 

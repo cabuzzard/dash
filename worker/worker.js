@@ -38,8 +38,14 @@ async function notionQuery(dbId, body) {
 async function getCampaigns() {
   const [campRows, titleRows, productRows, todoRows, methodRows] = await Promise.all([
     notionQuery(CAMPAIGNS_DB, {
-      filter: { property: "Status", select: { does_not_equal: "Delete" } },
-      sorts:  [{ property: "Name", direction: "ascending" }],
+      filter: {
+        and: [
+          { property: "Status", select: { does_not_equal: "Delete" } },
+          { property: "Grouping", multi_select: { does_not_contain: "deprecate" } },
+          { property: "Grouping", multi_select: { does_not_contain: "Del" } },
+        ]
+      },
+      sorts: [{ property: "Name", direction: "ascending" }],
     }),
     notionQuery(CONTENT_STRATEGY_DB, {}),
     notionQuery(PRODUCTS_DB, {}),
@@ -579,21 +585,18 @@ export default {
       }
 
       if (body.action === "createCampaign") {
-        const { name } = body;
+        const { name, site, grouping } = body;
         if (!name) return json({ error: "name required" }, 400);
+        const props = {
+          Name:   { title: [{ type: "text", text: { content: name } }] },
+          Status: { select: { name: "Planning" } },
+        };
+        if (site)     props["site"]     = { select: { name: site } };
+        if (grouping?.length) props["Grouping"] = { multi_select: grouping.map(g => ({ name: g })) };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
-          headers: {
-            "Authorization":  `Bearer ${NOTION_TOKEN}`,
-            "Notion-Version": NOTION_VERSION,
-            "Content-Type":   "application/json",
-          },
-          body: JSON.stringify({
-            parent: { database_id: CAMPAIGNS_DB },
-            properties: {
-              Name: { title: [{ type: "text", text: { content: name } }] },
-            },
-          }),
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: CAMPAIGNS_DB }, properties: props }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
