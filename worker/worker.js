@@ -72,8 +72,17 @@ async function getCampaigns() {
   });
 
   const loginById = {};
+  const campaignToLogins = {};
   loginRows.forEach(l => {
-    loginById[l.id.replace(/-/g,"")] = l.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
+    const lid = l.id.replace(/-/g,"");
+    const lname = l.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
+    const lstatus = l.properties.Status?.select?.name || "";
+    loginById[lid] = lname;
+    (l.properties.Campaign?.relation || []).forEach(r => {
+      const cid = r.id.replace(/-/g,"");
+      if (!campaignToLogins[cid]) campaignToLogins[cid] = [];
+      campaignToLogins[cid].push({ id: lid, name: lname, status: lstatus });
+    });
   });
 
   // Count dev titles per campaign id
@@ -133,10 +142,7 @@ async function getCampaigns() {
         id:   r.id.replace(/-/g,""),
         name: methodById[r.id.replace(/-/g,"")] || "Untitled",
       })),
-      campaignLogins:   (c.properties["Logins"]?.relation || []).map(r => ({
-        id:   r.id.replace(/-/g,""),
-        name: loginById[r.id.replace(/-/g,"")] || "Untitled",
-      })),
+      campaignLogins:   campaignToLogins[id] || [],
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       products:   prodCount[id] || 0,
