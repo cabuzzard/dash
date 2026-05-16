@@ -724,6 +724,7 @@ function renderTable() {
     { label: 'Main TD',     key: 'mainTd',           type: 'rel' },
     { label: 'Products',    key: 'campaignProducts', type: 'rel' },
     { label: 'Methods',     key: 'campaignMethods',  type: 'rel' },
+    { label: 'Logins',      key: 'logins',           type: 'num' },
     { label: 'Dev',         key: 'devTitles',        type: 'num' },
     { label: 'Pub',         key: 'pubTitles',        type: 'num' },
   ];
@@ -860,6 +861,7 @@ function renderTable() {
 
     tr.appendChild(cmCell);
     tr.insertAdjacentHTML('beforeend',
+      '<td class="num' + ((c.logins ?? 0) === 0 ? ' zero' : '') + '">' + (c.logins ?? 0) + '</td>' +
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '">' + c.devTitles + '</td>' +
       '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>'
     );
