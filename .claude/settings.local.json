@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "mcp__claude_ai_Notion__notion-search",
+      "mcp__claude_ai_Notion__notion-fetch",
+      "Bash(npx wrangler *)",
+      "Bash(git -C \"C:\\\\Users\\\\18318\\\\dash\" add .claude/settings.local.json)",
+      "Bash(git -C 'C:\\\\Users\\\\18318\\\\dash' commit -m ' *)",
+      "Bash(git -C \"C:\\\\Users\\\\18318\\\\dash\" push)"
     ]
   }
 }
