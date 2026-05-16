@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>rlyrlyrlyrlyrlyrlyrlyrlyrlyrly  winning again ------------------------------------------------
+<head>winning again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -22,7 +22,7 @@
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
 
   /* ── PIN ── */
   .pin-screen {
@@ -71,7 +71,8 @@
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   /* ── TABLE ── */
-  .ov-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
+  .ov-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; min-width: 600px; }
   .ov-table thead th {
     text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .12em;
     text-transform: uppercase; color: var(--text); padding: 0 10px 8px;
@@ -692,7 +693,10 @@ function renderProducts() {
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
-  el.appendChild(table);
+  const wrap = document.createElement('div');
+  wrap.className = 'table-wrap';
+  wrap.appendChild(table);
+  el.appendChild(wrap);
 }
 
 let ovData = [];
@@ -939,7 +943,10 @@ function renderTable() {
     }
   });
   table.appendChild(tbody);
-  el.appendChild(table);
+  const wrap = document.createElement('div');
+  wrap.className = 'table-wrap';
+  wrap.appendChild(table);
+  el.appendChild(wrap);
 }
 
 // ── PRODUCT MODAL ────────────────────────────────────────────────────
