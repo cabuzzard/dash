@@ -5,6 +5,7 @@ const CONTENT_STRATEGY_DB = "9fa5f42f010b47e7a82032607e07d6a1";
 const PRODUCTS_DB        = "e92fcfce75fc4f54b553df0b7672ff48";
 const MAIN_TD_DB         = "3471f7d3a4bb80de87c1d9e850f4a426";
 const METHODS_DB         = "285ed0b668be4dad89dfd090350096bc";
+const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
 const PIN                = "1246";
 
 const CORS = {
@@ -36,7 +37,7 @@ async function notionQuery(dbId, body) {
 }
 
 async function getCampaigns() {
-  const [campRows, titleRows, productRows, todoRows, methodRows] = await Promise.all([
+  const [campRows, titleRows, productRows, todoRows, methodRows, loginRows] = await Promise.all([
     notionQuery(CAMPAIGNS_DB, {
       filter: {
         and: [
@@ -51,6 +52,7 @@ async function getCampaigns() {
     notionQuery(PRODUCTS_DB, {}),
     notionQuery(MAIN_TD_DB, {}),
     notionQuery(METHODS_DB, {}),
+    notionQuery(LOGINS_DB, {}),
   ]);
 
   // Build lookups by id
@@ -67,6 +69,11 @@ async function getCampaigns() {
   const methodById = {};
   methodRows.forEach(m => {
     methodById[m.id.replace(/-/g,"")] = m.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
+  });
+
+  const loginById = {};
+  loginRows.forEach(l => {
+    loginById[l.id.replace(/-/g,"")] = l.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
   });
 
   // Count dev titles per campaign id
@@ -125,6 +132,10 @@ async function getCampaigns() {
       campaignMethods:  (c.properties["Methods"]?.relation || []).map(r => ({
         id:   r.id.replace(/-/g,""),
         name: methodById[r.id.replace(/-/g,"")] || "Untitled",
+      })),
+      campaignLogins:   (c.properties["Logins"]?.relation || []).map(r => ({
+        id:   r.id.replace(/-/g,""),
+        name: loginById[r.id.replace(/-/g,"")] || "Untitled",
       })),
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
@@ -412,6 +423,46 @@ export default {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "Methods": { relation: (methodIds||[]).map(id => ({ id: dashId(id) })) } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "searchLogins") {
+        const { query } = body;
+        const rows = await notionQuery(LOGINS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
+        const logins = rows.map(l => ({
+          id:   l.id.replace(/-/g,""),
+          name: l.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
+        })).filter(l => !query || l.name.toLowerCase().includes(query.toLowerCase()));
+        return json({ logins: logins.slice(0, 50) });
+      }
+
+      if (body.action === "createLogin") {
+        const { title } = body;
+        if (!title) return json({ error: "title required" }, 400);
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: LOGINS_DB },
+            properties: { Name: { title: [{ type: "text", text: { content: title } }] } }
+          }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,""), name: title });
+      }
+
+      if (body.action === "updateCampaignLogins") {
+        const { campaignId, loginIds } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Logins": { relation: (loginIds||[]).map(id => ({ id: dashId(id) })) } } }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);

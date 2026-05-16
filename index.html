@@ -724,7 +724,7 @@ function renderTable() {
     { label: 'Main TD',     key: 'mainTd',           type: 'rel' },
     { label: 'Products',    key: 'campaignProducts', type: 'rel' },
     { label: 'Methods',     key: 'campaignMethods',  type: 'rel' },
-    { label: 'Logins',      key: 'logins',           type: 'num' },
+    { label: 'Logins',      key: 'campaignLogins',   type: 'rel' },
     { label: 'Dev',         key: 'devTitles',        type: 'num' },
     { label: 'Pub',         key: 'pubTitles',        type: 'num' },
   ];
@@ -860,8 +860,22 @@ function renderTable() {
     const isThisWeek = (c.grouping || []).includes('this week');
 
     tr.appendChild(cmCell);
+
+    // Logins cell
+    const lgCell = document.createElement('td');
+    lgCell.style.cssText = 'cursor:pointer;';
+    lgCell.title = 'Click to edit';
+    const renderLgCell = () => {
+      const items = c.campaignLogins || [];
+      lgCell.innerHTML = items.length
+        ? items.map(l => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(l.name) + '</span>').join('')
+        : '<span style="font-size:11px;color:var(--text3);">—</span>';
+    };
+    renderLgCell();
+    lgCell.onclick = () => openRelModal('logins', c, renderLgCell);
+    tr.appendChild(lgCell);
+
     tr.insertAdjacentHTML('beforeend',
-      '<td class="num' + ((c.logins ?? 0) === 0 ? ' zero' : '') + '">' + (c.logins ?? 0) + '</td>' +
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '">' + c.devTitles + '</td>' +
       '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>'
     );
@@ -1516,7 +1530,7 @@ async function submitQuickTitle() {
 }
 
 // ── SHARED RELATION MODAL (Products / Methods) ───────────────────────
-let relType      = null; // 'products' or 'methods'
+let relType      = null; // 'products' | 'methods' | 'logins'
 let relCampaign  = null;
 let relRenderCb  = null;
 let relLinked    = [];
@@ -1526,9 +1540,9 @@ async function openRelModal(type, campaign, renderCb) {
   relType     = type;
   relCampaign = campaign;
   relRenderCb = renderCb;
-  relLinked   = [...(type === 'products' ? (campaign.campaignProducts||[]) : (campaign.campaignMethods||[]))];
+  relLinked   = [...(type === 'products' ? (campaign.campaignProducts||[]) : type === 'logins' ? (campaign.campaignLogins||[]) : (campaign.campaignMethods||[]))];
 
-  const label = type === 'products' ? 'Products' : 'Methods';
+  const label = type === 'products' ? 'Products' : type === 'logins' ? 'Logins' : 'Methods';
   document.getElementById('relModalTitle').textContent = label + ' — ' + campaign.name;
   document.getElementById('relModalLabel').textContent = 'Search ' + label.toLowerCase() + '...';
   document.getElementById('relSearchInput').placeholder = 'Search ' + label.toLowerCase() + '...';
@@ -1545,6 +1559,9 @@ async function openRelModal(type, campaign, renderCb) {
       if (type === 'products') {
         const data = await call('getProducts');
         relAllItems = (data.products || []).map(p => ({ id: p.id, name: p.name }));
+      } else if (type === 'logins') {
+        const data = await call('searchLogins', { query: '' });
+        relAllItems = data.logins || [];
       } else {
         const data = await call('searchMethods', { query: '' });
         relAllItems = data.methods || [];
@@ -1608,7 +1625,7 @@ function filterRel() {
     div.onmousedown = async () => {
       div.textContent = 'Creating...';
       try {
-        const action = relType === 'products' ? 'createProduct' : 'createMethod';
+        const action = relType === 'products' ? 'createProduct' : relType === 'logins' ? 'createLogin' : 'createMethod';
         const res = await call(action, { title: query, status: 'Active' });
         const newItem = { id: res.id, name: query };
         relAllItems.push(newItem);
@@ -1643,6 +1660,9 @@ async function saveRel() {
     if (relType === 'products') {
       await call('updateCampaignProducts', { campaignId: relCampaign.id, productIds: ids });
       relCampaign.campaignProducts = [...relLinked];
+    } else if (relType === 'logins') {
+      await call('updateCampaignLogins', { campaignId: relCampaign.id, loginIds: ids });
+      relCampaign.campaignLogins = [...relLinked];
     } else {
       await call('updateCampaignMethods', { campaignId: relCampaign.id, methodIds: ids });
       relCampaign.campaignMethods = [...relLinked];
