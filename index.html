@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning aI am thenone  diane      gain  agin aign ------------------------------------------------
+<head>winning rat snake   oifjoifj'   again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1085,7 +1085,7 @@ function renderTable() {
     const renderPlatformCell = () => {
       const items = c.platforms || [];
       lgCell.innerHTML = items.length
-        ? items.map(p => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(p.name || p) + '</span>').join('')
+        ? items.map(p => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(typeof p === 'object' ? (p.name || '') : p) + '</span>').join('')
         : '<span style="font-size:11px;color:var(--text3);">—</span>';
     };
     renderPlatformCell();
@@ -1829,7 +1829,7 @@ async function openRelModal(type, campaign, renderCb) {
         const data = await call('getProducts');
         relAllItems = (data.products || []).map(p => ({ id: p.id, name: p.name }));
       } else if (type === 'platforms') {
-      relLinked = [...(campaign.platforms || [])];
+      relLinked = (campaign.platforms || []).map(p => typeof p === 'object' ? p : { id: p, name: p });
       loadFn = async () => {
         const data = await call('getPlatforms');
         return data.platforms || [];

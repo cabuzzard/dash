@@ -6,7 +6,7 @@ const PRODUCTS_DB        = "e92fcfce75fc4f54b553df0b7672ff48";
 const MAIN_TD_DB         = "3471f7d3a4bb80de87c1d9e850f4a426";
 const METHODS_DB         = "285ed0b668be4dad89dfd090350096bc";
 const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
-const PLATFORMS_DB       = "bb485a14153d4a7ab9d382ca2dfa8f8d";
+const PLATFORMS_DB       = "edc19791957542f2a6637127756720e8";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const PIN                = "1246";
 
