@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning rewertyuiojhgfdrtyuhjnbvgcfdfghjkiuytgfcvbnhjgdfghagain  agin aign ------------------------------------------------
+<head>winning is everything   again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1318,35 +1318,41 @@ function renderDev() {
           const bg  = isPub ? '#00cc66' : isDev ? '#ffffff' : 'var(--bg)';
           const clr = (isPub || isDev) ? '#000' : 'var(--text2)';
           const br  = isLast ? '0 0 var(--radius-sm) var(--radius-sm)' : '0';
-          const tRow = document.createElement('a');
-          tRow.href = 'https://www.notion.so/' + t.id;
-          tRow.target = '_blank';
-          tRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px 36px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-decoration:none;background:'+bg+';border-radius:'+br+';transition:opacity .15s;';
-          tRow.onmouseover = () => tRow.style.opacity = '.8';
-          tRow.onmouseout  = () => tRow.style.opacity = '1';
-          const statusDot = isPub ? '● ' : isDev ? '○ ' : '  ';
-          tRow.innerHTML =
-            '<span style="font-size:12px;font-weight:500;color:'+clr+';line-height:1.4;">' + statusDot + esc(t.title) + '</span>' +
-            '<span style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:10px;">' +
-              (isPub ? '<span class="pub-assets-btn" style="font-size:10px;font-weight:700;color:#005522;background:#00ff88;border-radius:4px;padding:2px 7px;cursor:pointer;">Assets →</span>' : '') +
-              '<span style="font-size:10px;font-weight:600;color:'+(isPub?'#005522':isDev?'#444':'#ff6a00')+'">' + (isPub?'PUB':isDev?'DEV':'↗') + '</span>' +
-            '</span>';
+          const tRow = document.createElement('div');
+          tRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 10px 7px 28px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:'+bg+';border-radius:'+br+';';
+
+          // Title name — clickable link
+          const titleLink = document.createElement('a');
+          titleLink.href = 'https://www.notion.so/' + t.id;
+          titleLink.target = '_blank';
+          titleLink.style.cssText = 'font-size:12px;font-weight:500;color:'+clr+';line-height:1.4;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;';
+          titleLink.textContent = esc(t.title);
+          tRow.appendChild(titleLink);
+
+          // Status badge — fixed width
+          const statusBadge = document.createElement('span');
+          statusBadge.style.cssText = 'font-size:10px;font-weight:700;width:32px;text-align:center;flex-shrink:0;color:'+(isPub?'#005522':isDev?'#444':'#ff6a00')+';';
+          statusBadge.textContent = isPub ? 'PUB' : isDev ? 'DEV' : '↗';
+          tRow.appendChild(statusBadge);
+
+          // Assets button for publish titles
           if (isPub) {
-            const assetsBtn = tRow.querySelector('.pub-assets-btn');
-            if (assetsBtn) {
-              assetsBtn.onclick = e => {
-                e.preventDefault(); e.stopPropagation();
-                showTitleAssets(t.id, t.title);
-              };
-            }
+            const assetsBtn = document.createElement('span');
+            assetsBtn.textContent = 'Assets →';
+            assetsBtn.style.cssText = 'font-size:10px;font-weight:700;color:#005522;background:#00ff88;border-radius:4px;padding:2px 7px;cursor:pointer;flex-shrink:0;';
+            assetsBtn.onclick = e => {
+              e.preventDefault(); e.stopPropagation();
+              showTitleAssets(t.id, t.title);
+            };
+            tRow.appendChild(assetsBtn);
           }
-          // Delete button
+
+          // Delete button — fixed width
           const delBtn = document.createElement('span');
           delBtn.textContent = '🗑';
-          delBtn.title = 'Delete title';
-          delBtn.style.cssText = 'font-size:13px;cursor:pointer;flex-shrink:0;opacity:0.4;margin-left:6px;';
+          delBtn.style.cssText = 'font-size:12px;cursor:pointer;flex-shrink:0;opacity:0.35;width:20px;text-align:center;';
           delBtn.onmouseover = () => delBtn.style.opacity = '1';
-          delBtn.onmouseout = () => delBtn.style.opacity = '0.4';
+          delBtn.onmouseout  = () => delBtn.style.opacity = '0.35';
           delBtn.onclick = async e => {
             e.preventDefault(); e.stopPropagation();
             if (!confirm('Delete "' + t.title + '"?')) return;
