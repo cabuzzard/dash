@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning again  agin aign ertyiuoiokljhgfdsfghjkl;iouytghjkl------------------------------------------------
+<head>winning again  agin aign wwwwwwwwwwwwwwwwwwww------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -458,7 +458,7 @@
 <div class="toast" id="toast"></div>
 
 <!-- Asset Overlay -->
-<div class="modal-overlay" id="assetOverlay">
+<div class="modal-overlay" id="assetOverlay" style="display:none;">
   <div class="modal" style="max-height:80vh;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
       <div class="modal-title" id="assetOverlayTitle" style="margin:0;"></div>
@@ -580,6 +580,7 @@ async function showCampaignAssets(campId, campName) {
   const body = document.getElementById('assetOverlayBody');
   title.textContent = campName + ' — Publish Assets';
   body.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  overlay.style.display = 'flex';
   overlay.classList.add('visible');
   try {
     const data = await call('getAssetsByCampaign', { campaignId: campId });
@@ -613,7 +614,9 @@ async function showCampaignAssets(campId, campName) {
 }
 
 function closeAssetOverlay() {
-  document.getElementById('assetOverlay').classList.remove('visible');
+  const o = document.getElementById('assetOverlay');
+  o.classList.remove('visible');
+  o.style.display = 'none';
 }
 
 function jumpToDev(campId) {
@@ -958,7 +961,7 @@ function renderTable() {
 
     tr.insertAdjacentHTML('beforeend',
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '" style="cursor:' + (c.devTitles > 0 ? 'pointer' : 'default') + ';" onclick="' + (c.devTitles > 0 ? 'jumpToDev(\'' + c.id + '\')' : '') + '">' + c.devTitles + '</td>' +
-      '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '" style="cursor:' + (c.pubTitles > 0 ? 'pointer' : 'default') + ';" onclick="' + (c.pubTitles > 0 ? 'showCampaignAssets(\'' + c.id + '\',\'' + esc(c.name) + '\')' : '') + '">' + c.pubTitles + '</td>'
+      '<td class="num pub-cell' + (c.pubTitles === 0 ? ' zero' : '') + '" data-cid="' + c.id + '">' + c.pubTitles + '</td>'
     );
 
     // ★ this-week highlight toggle
@@ -1014,6 +1017,12 @@ function renderTable() {
       '<td class="link"><a href="' + notionUrl + '" target="_blank">↗</a></td>'
     );
     tbody.appendChild(tr);
+    // Make pub cell clickable
+    const pubTd = tr.querySelector('td.pub-cell:not(.zero)');
+    if (pubTd) {
+      pubTd.style.cursor = 'pointer';
+      pubTd.onclick = () => showCampaignAssets(c.id, c.name);
+    }
     if (isThisWeek) {
       tr.style.background = '#ffffff';
       tr.querySelectorAll('td').forEach(td => td.style.color = '#000');
