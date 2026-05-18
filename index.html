@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning cuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuvbbbb again  agin aign ------------------------------------------------
+<head>winning the ocean     again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -74,6 +74,10 @@
   .tab-panel.active { display: block; }
   /* ── TABLE ── */
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; position: relative; }
+  .sticky-thead { position: fixed; z-index: 85; background: var(--bg); border-bottom: 1px solid var(--border2); display: none; overflow: hidden; pointer-events: none; }
+  .sticky-thead table { border-collapse: collapse; font-size: 13px; }
+  .sticky-thead th { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text2); padding: 8px 12px; text-align: left; white-space: nowrap; pointer-events: all; cursor: pointer; }
+  .sticky-thead th.num { text-align: center; width: 48px; }
   .ov-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; min-width: 600px; }
   .ov-table thead th {
     text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .12em;
@@ -238,6 +242,8 @@
     <div class="tab"        onclick="switchTab('td')">TD</div>
     <div class="tab" id="tabBtnPublishing" onclick="switchTab('publishing')">Publishing</div>
   </div>
+
+  <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
 
   <div class="tab-panel active" id="tabOverview">
     <a class="add-link" onclick="openNewCampaignModal()">+ New campaign</a>
@@ -867,6 +873,57 @@ async function loadOverview() {
   }
 }
 
+function syncStickyThead(cols, sortState, rerender) {
+  const stickyRow = document.getElementById('stickyTheadRow');
+  const stickyEl  = document.getElementById('stickyThead');
+  if (!stickyRow || !stickyEl) return;
+  stickyRow.innerHTML = '';
+  cols.forEach((col, i) => {
+    const th = document.createElement('th');
+    if (col.type === 'num') th.className = 'num';
+    const arrow = sortState.col === i ? (sortState.asc ? '▲' : '▼') : '⬍';
+    th.innerHTML = col.label + ' <span style="opacity:.4;font-style:normal;margin-left:4px;">' + arrow + '</span>';
+    th.onclick = () => {
+      if (sortState.col === i) sortState.asc = !sortState.asc;
+      else { sortState.col = i; sortState.asc = col.type === 'num' ? false : true; }
+      rerender();
+    };
+    stickyRow.appendChild(th);
+  });
+  const dbTh = document.createElement('th');
+  dbTh.textContent = 'DB';
+  dbTh.style.cssText = 'text-align:center;';
+  stickyRow.appendChild(dbTh);
+
+  // Position and width matching
+  const updateStickyPos = () => {
+    const wrap = document.querySelector('#tabOverview .table-wrap');
+    const realThead = document.querySelector('#tabOverview .ov-table thead');
+    if (!wrap || !realThead) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    const theadRect = realThead.getBoundingClientRect();
+    const tabsBottom = document.querySelector('.tabs')?.getBoundingClientRect().bottom || 88;
+    if (theadRect.bottom < tabsBottom) {
+      stickyEl.style.display = 'block';
+      stickyEl.style.top = tabsBottom + 'px';
+      stickyEl.style.left = wrapRect.left + 'px';
+      stickyEl.style.width = wrapRect.width + 'px';
+      // Sync column widths
+      const realThs = realThead.querySelectorAll('th');
+      const stickyThs = stickyRow.querySelectorAll('th');
+      realThs.forEach((th, i) => {
+        if (stickyThs[i]) stickyThs[i].style.width = th.offsetWidth + 'px';
+      });
+    } else {
+      stickyEl.style.display = 'none';
+    }
+  };
+  window.removeEventListener('scroll', window._stickyScroll);
+  window._stickyScroll = updateStickyPos;
+  window.addEventListener('scroll', updateStickyPos);
+  updateStickyPos();
+}
+
 function renderTable() {
   const el = document.getElementById('ovContent');
   el.innerHTML = '';
@@ -932,6 +989,9 @@ function renderTable() {
   hrow.appendChild(dbTh);
   thead.appendChild(hrow);
   table.appendChild(thead);
+
+  // Sync sticky thead
+  syncStickyThead(cols, ovSort, renderTable);
 
   // Body
   const tbody = document.createElement('tbody');
