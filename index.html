@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winni987595878796ng again  agin aign ------------------------------------------------
+<head>winning uytrewtuyi876545678765678again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1334,6 +1334,23 @@ function renderDev() {
               };
             }
           }
+          // Delete button
+          const delBtn = document.createElement('span');
+          delBtn.textContent = '🗑';
+          delBtn.title = 'Delete title';
+          delBtn.style.cssText = 'font-size:13px;cursor:pointer;flex-shrink:0;opacity:0.4;margin-left:6px;';
+          delBtn.onmouseover = () => delBtn.style.opacity = '1';
+          delBtn.onmouseout = () => delBtn.style.opacity = '0.4';
+          delBtn.onclick = async e => {
+            e.preventDefault(); e.stopPropagation();
+            if (!confirm('Delete "' + t.title + '"?')) return;
+            try {
+              await call('deleteTitle', { titleId: t.id });
+              tRow.remove();
+              showToast('Deleted ✓', 'success');
+            } catch(err) { showToast('Failed: ' + err.message, 'error'); }
+          };
+          tRow.appendChild(delBtn);
           titlesEl.appendChild(tRow);
         });
       });

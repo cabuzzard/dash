@@ -444,6 +444,18 @@ export default {
         return json({ success: true });
       }
 
+      if (body.action === "deleteTitle") {
+        const { titleId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        await fetch("https://api.notion.com/v1/pages/" + dash(titleId), {
+          method: "PATCH",
+          headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true })
+        });
+        return json({ success: true });
+      }
+
       if (body.action === "getTitleAssets") {
         const { titleId } = body;
         if (!titleId) return json({ error: "titleId required" }, 400);
