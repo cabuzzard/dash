@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning uytrewtuyi876545678765678again  agin aign ------------------------------------------------
+<head>winning rewertyuiojhgfdrtyuhjnbvgcfdfghjkiuytgfcvbnhjgdfghagain  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1269,16 +1269,22 @@ function renderDev() {
       campChev.style.cssText = 'font-size:10px;color:var(--text3);transition:transform .2s;flex-shrink:0;';
       campChev.textContent = '▶';
 
-      const devBadge  = '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#fff;color:#000;margin-left:auto;">📋 ' + camp.devCount + '</span>';
-      const pubBadge  = '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#00cc66;color:#000;margin-left:4px;">✓ ' + camp.pubCount + '</span>';
-      const prodBadge = camp.prodCount > 0 ? '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#ff6a00;color:#000;margin-left:4px;">📦 ' + camp.prodCount + '</span>' : '';
-
       campRow.appendChild(campChev);
       const nameSpan = document.createElement('span');
-      nameSpan.style.cssText = 'font-size:12px;font-weight:600;color:var(--text2);flex:1;';
+      nameSpan.style.cssText = 'font-size:12px;font-weight:600;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
       nameSpan.textContent = camp.name;
       campRow.appendChild(nameSpan);
-      campRow.insertAdjacentHTML('beforeend', devBadge + pubBadge + prodBadge);
+
+      // Fixed-width columns for counts
+      const mkBadge = (val, bg, fg, icon) => {
+        const s = document.createElement('span');
+        s.style.cssText = 'font-size:10px;font-weight:600;width:36px;text-align:center;flex-shrink:0;padding:2px 4px;border-radius:4px;background:'+bg+';color:'+fg+';';
+        s.textContent = icon + ' ' + val;
+        return s;
+      };
+      campRow.appendChild(mkBadge(camp.devCount, '#ffffff', '#000', '📋'));
+      campRow.appendChild(mkBadge(camp.pubCount, '#00cc66', '#000', '✓'));
+      campRow.appendChild(mkBadge(camp.prodCount, '#ff6a00', '#000', '📦'));
 
       const titlesEl = document.createElement('div');
       titlesEl.style.cssText = 'display:none;';
