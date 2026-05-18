@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning again  agin aign ------------------------------------------------
+<head>winning again  agin aign  noooooooooooooooooooooooo ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -563,6 +563,21 @@ let prodLoaded = false;
 let devLoaded  = false;
 let tdTabLoaded = false;
 
+function jumpToDev(campId) {
+  switchTab('development');
+  // Wait for tab to render then open the matching campaign dropdown
+  setTimeout(() => {
+    const rows = document.querySelectorAll('#devContent [data-campid]');
+    for (const row of rows) {
+      if (row.dataset.campid === campId) {
+        row.click();
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        break;
+      }
+    }
+  }, 150);
+}
+
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -880,7 +895,7 @@ function renderTable() {
     tr.appendChild(lgCell);
 
     tr.insertAdjacentHTML('beforeend',
-      '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '">' + c.devTitles + '</td>' +
+      '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '" style="cursor:' + (c.devTitles > 0 ? 'pointer' : 'default') + ';" onclick="' + (c.devTitles > 0 ? 'jumpToDev(\'' + c.id + '\')' : '') + '">' + c.devTitles + '</td>' +
       '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>'
     );
 
@@ -1106,6 +1121,7 @@ function renderDev() {
     siteMap[site].forEach(camp => {
       const campRow = document.createElement('div');
       campRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 12px 9px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;';
+      campRow.dataset.campid = camp.campId || camp.id || '';
       const campChev = document.createElement('span');
       campChev.style.cssText = 'font-size:10px;color:var(--text3);transition:transform .2s;flex-shrink:0;';
       campChev.textContent = '▶';
