@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>44winning again  agin aign ------------------------------------------------
+<head>55winning again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -623,25 +623,26 @@ function jumpToDev(campId) {
   switchTab('development');
   const doJump = () => {
     setTimeout(() => {
-    const rows = document.querySelectorAll('#devContent [data-campid]');
-    // Try exact match first, then partial
-    let found = null;
-    for (const row of rows) {
-      const rid = row.dataset.campid || '';
-      if (rid === campId || rid.replace(/-/g,'') === campId.replace(/-/g,'')) {
-        found = row; break;
+      const rows = document.querySelectorAll('#devContent [data-campid]');
+      let found = null;
+      for (const row of rows) {
+        const rid = row.dataset.campid || '';
+        if (rid === campId || rid.replace(/-/g,'') === campId.replace(/-/g,'')) {
+          found = row; break;
+        }
       }
-    }
-    if (found) {
-      // Open site parent first
-      const siteBody = found.closest('[data-sitebody]');
-      if (siteBody && siteBody.style.display === 'none') {
-        siteBody.previousElementSibling?.click();
+      if (found) {
+        const siteBody = found.closest('[data-sitebody]');
+        if (siteBody && siteBody.style.display === 'none') {
+          siteBody.previousElementSibling?.click();
+        }
+        found.click();
+        setTimeout(() => found.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
       }
-      found.click();
-      setTimeout(() => found.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-    }
-  }, 300);
+    }, 300);
+  };
+  if (!devLoaded) { devLoaded = true; loadDev().then(doJump); }
+  else { doJump(); }
 }
 
 function switchTab(name) {
