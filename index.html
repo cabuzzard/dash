@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>55009 winning again  agin aign ------------------------------------------------
+<head>winning again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -620,16 +620,21 @@ function closeAssetOverlay() {
 }
 
 function jumpToDev(campId) {
-  switchTab('development');
+  // Switch to dev tab visually
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const devTab = document.querySelector('.tab[onclick*="development"]');
+  if (devTab) devTab.classList.add('active');
+  document.getElementById('tabDevelopment').classList.add('active');
+
   const doJump = () => {
     setTimeout(() => {
       const rows = document.querySelectorAll('#devContent [data-campid]');
       let found = null;
       for (const row of rows) {
-        const rid = row.dataset.campid || '';
-        if (rid === campId || rid.replace(/-/g,'') === campId.replace(/-/g,'')) {
-          found = row; break;
-        }
+        const rid = (row.dataset.campid || '').replace(/-/g,'');
+        const cid = campId.replace(/-/g,'');
+        if (rid === cid) { found = row; break; }
       }
       if (found) {
         const siteBody = found.closest('[data-sitebody]');
@@ -637,9 +642,9 @@ function jumpToDev(campId) {
           siteBody.previousElementSibling?.click();
         }
         found.click();
-        setTimeout(() => found.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+        setTimeout(() => found.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
       }
-    }, 300);
+    }, 100);
   };
   if (!devLoaded) { devLoaded = true; loadDev().then(doJump); }
   else { doJump(); }

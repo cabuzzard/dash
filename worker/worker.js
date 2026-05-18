@@ -440,42 +440,48 @@ export default {
       if (body.action === "getAssetsByCampaign") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
-        const dashedCampId = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-        const titlesData = await notionPost(`/databases/${CONTENT_STRATEGY_DB}/query`, {
-          filter: { and: [
-            { property: "Campaign", relation: { contains: dashedCampId } },
-            { property: "Status", select: { equals: "Publish" } }
-          ]},
-          page_size: 100
-        });
-        const titles = (titlesData.results || []).map(p => ({
-          id: p.id.replace(/-/g,""),
-          title: p.properties.Title?.title?.map(t=>t.plain_text).join("") || "Untitled",
-        }));
-        const assets = [];
-        await Promise.all(titles.map(async title => {
-          const dashedId = title.id.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-          const ad = await notionPost(`/databases/${ASSETS_DB}/query`, {
-            filter: { property: "Content Strategy", relation: { contains: dashedId } },
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        try {
+          const titlesData = await notionPost(`/databases/${CONTENT_STRATEGY_DB}/query`, {
+            filter: { and: [
+              { property: "Campaign", relation: { contains: dash(campaignId) } },
+              { property: "Status", select: { equals: "Publish" } }
+            ]},
             page_size: 100
           });
-          (ad.results || []).forEach(a => {
-            const p = a.properties;
-            assets.push({
-              id: a.id.replace(/-/g,""),
-              assetTitle: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
-              titleName: title.title,
-              titleId: title.id,
-              platform: p["Platform Name"]?.select?.name || "",
-              type: p["Asset Type"]?.select?.name || "",
-              status: p["Asset Status"]?.select?.name || "",
-            });
-          });
-        }));
-        const grouped = {};
-        titles.forEach(t => { grouped[t.id] = { title: t.title, assets: [] }; });
-        assets.forEach(a => { if (grouped[a.titleId]) grouped[a.titleId].assets.push(a); });
-        return json({ titles: Object.values(grouped) });
+          if (titlesData.message) return json({ error: titlesData.message, titles: [] });
+          const titles = (titlesData.results || []).map(p => ({
+            id: p.id.replace(/-/g,""),
+            title: p.properties.Title?.title?.map(t=>t.plain_text).join("") || "Untitled",
+          }));
+          const assets = [];
+          await Promise.all(titles.map(async title => {
+            try {
+              const ad = await notionPost(`/databases/${ASSETS_DB}/query`, {
+                filter: { property: "Content Strategy", relation: { contains: dash(title.id) } },
+                page_size: 100
+              });
+              (ad.results || []).forEach(a => {
+                const p = a.properties;
+                assets.push({
+                  id: a.id.replace(/-/g,""),
+                  assetTitle: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
+                  titleName: title.title,
+                  titleId: title.id,
+                  platform: p["Platform Name"]?.select?.name || "",
+                  type: p["Asset Type"]?.select?.name || "",
+                  status: p["Asset Status"]?.select?.name || "",
+                });
+              });
+            } catch(e) { /* skip failed asset lookups */ }
+          }));
+          const grouped = {};
+          titles.forEach(t => { grouped[t.id] = { title: t.title, assets: [] }; });
+          assets.forEach(a => { if (grouped[a.titleId]) grouped[a.titleId].assets.push(a); });
+          return json({ titles: Object.values(grouped) });
+        } catch(e) {
+          return json({ error: e.message, titles: [] });
+        }
       }
 
       if (body.action === "searchLogins") {
