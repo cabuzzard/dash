@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning again  agin aign  noooooooooooooooooooooooo ------------------------------------------------
+<head>winning again  agin aign hot ffffffffffffffffffffffff     yay  ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -565,17 +565,26 @@ let tdTabLoaded = false;
 
 function jumpToDev(campId) {
   switchTab('development');
-  // Wait for tab to render then open the matching campaign dropdown
   setTimeout(() => {
     const rows = document.querySelectorAll('#devContent [data-campid]');
+    // Try exact match first, then partial
+    let found = null;
     for (const row of rows) {
-      if (row.dataset.campid === campId) {
-        row.click();
-        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        break;
+      const rid = row.dataset.campid || '';
+      if (rid === campId || rid.replace(/-/g,'') === campId.replace(/-/g,'')) {
+        found = row; break;
       }
     }
-  }, 150);
+    if (found) {
+      // Open site parent first
+      const siteBody = found.closest('[data-sitebody]');
+      if (siteBody && siteBody.style.display === 'none') {
+        siteBody.previousElementSibling?.click();
+      }
+      found.click();
+      setTimeout(() => found.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+    }
+  }, 300);
 }
 
 function switchTab(name) {
@@ -1110,6 +1119,7 @@ function renderDev() {
 
     const siteBody = document.createElement('div');
     siteBody.style.cssText = 'display:none;margin-bottom:4px;';
+    siteBody.dataset.sitebody = '1';
 
     siteRow.onclick = () => {
       const open = siteBody.style.display !== 'none';
