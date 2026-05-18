@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning the ocean     again  agin aign ------------------------------------------------
+<head>winning dairy queen   dlkfjflkj again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -938,7 +938,7 @@ function renderTable() {
     { label: 'Main TD',     key: 'mainTd',           type: 'rel' },
     { label: 'Products',    key: 'campaignProducts', type: 'rel' },
     { label: 'Methods',     key: 'campaignMethods',  type: 'rel' },
-    { label: 'Logins',      key: 'campaignLogins',   type: 'rel' },
+    { label: 'Platforms',   key: 'platforms',        type: 'rel' },
     { label: 'Dev',         key: 'devTitles',        type: 'num' },
     { label: 'Pub',         key: 'pubTitles',        type: 'num' },
   ];
@@ -1080,16 +1080,10 @@ function renderTable() {
 
     // Logins cell
     const lgCell = document.createElement('td');
-    lgCell.style.cssText = 'cursor:pointer;';
-    lgCell.title = 'Click to edit';
-    const renderLgCell = () => {
-      const items = c.campaignLogins || [];
-      lgCell.innerHTML = items.length
-        ? items.map(l => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(l.name) + '</span>').join('')
-        : '<span style="font-size:11px;color:var(--text3);">—</span>';
-    };
-    renderLgCell();
-    lgCell.onclick = () => openRelModal('logins', c, renderLgCell);
+    const platforms = c.platforms || [];
+    lgCell.innerHTML = platforms.length
+      ? platforms.map(p => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(p) + '</span>').join('')
+      : '<span style="font-size:11px;color:var(--text3);">—</span>';
     tr.appendChild(lgCell);
 
     tr.insertAdjacentHTML('beforeend',

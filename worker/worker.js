@@ -150,6 +150,7 @@ async function getCampaigns() {
         name: methodById[r.id.replace(/-/g,"")] || "Untitled",
       })),
       campaignLogins:   campaignToLogins[id] || [],
+      platforms: (c.properties["Platforms"]?.multi_select || []).map(s => s.name),
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       pubTitleData: pubTitleMap[id] || [],
