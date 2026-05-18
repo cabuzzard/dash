@@ -6,6 +6,7 @@ const PRODUCTS_DB        = "e92fcfce75fc4f54b553df0b7672ff48";
 const MAIN_TD_DB         = "3471f7d3a4bb80de87c1d9e850f4a426";
 const METHODS_DB         = "285ed0b668be4dad89dfd090350096bc";
 const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
+const PLATFORMS_DB       = "bb485a14153d4a7ab9d382ca2dfa8f8d";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const PIN                = "1246";
 
@@ -70,6 +71,13 @@ async function getCampaigns() {
   const methodById = {};
   methodRows.forEach(m => {
     methodById[m.id.replace(/-/g,"")] = m.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
+  });
+
+  // Build platform name lookup
+  const platformRows = await notionQuery(PLATFORMS_DB, { page_size: 100 });
+  const platformById = {};
+  (platformRows.results || []).forEach(p => {
+    platformById[p.id.replace(/-/g,"")] = p.properties.Name?.title?.map(t=>t.plain_text).join("") || "";
   });
 
   const loginById = {};
@@ -150,7 +158,7 @@ async function getCampaigns() {
         name: methodById[r.id.replace(/-/g,"")] || "Untitled",
       })),
       campaignLogins:   campaignToLogins[id] || [],
-      platforms: (c.properties["Platforms"]?.multi_select || []).map(s => s.name),
+      platforms: (c.properties["Platforms"]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "" })),
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       pubTitleData: pubTitleMap[id] || [],
@@ -458,6 +466,27 @@ export default {
           method: "PATCH",
           headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ archived: true })
+        });
+        return json({ success: true });
+      }
+
+      if (body.action === "getPlatforms") {
+        const data = await notionQuery(PLATFORMS_DB, { sorts: [{ property: "Name", direction: "ascending" }], page_size: 100 });
+        const platforms = (data.results || []).map(p => ({
+          id: p.id.replace(/-/g,""),
+          name: p.properties.Name?.title?.map(t=>t.plain_text).join("") || "",
+        }));
+        return json({ platforms });
+      }
+
+      if (body.action === "updateCampaignPlatforms") {
+        const { campaignId, platformIds } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        await fetch("https://api.notion.com/v1/pages/" + dash(campaignId), {
+          method: "PATCH",
+          headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Platforms: { relation: (platformIds || []).map(id => ({ id: dash(id) })) } } })
         });
         return json({ success: true });
       }

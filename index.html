@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning dairy queen   dlkfjflkj again  agin aign ------------------------------------------------
+<head>winning aI am thenone    gain  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1080,10 +1080,16 @@ function renderTable() {
 
     // Logins cell
     const lgCell = document.createElement('td');
-    const platforms = c.platforms || [];
-    lgCell.innerHTML = platforms.length
-      ? platforms.map(p => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(p) + '</span>').join('')
-      : '<span style="font-size:11px;color:var(--text3);">—</span>';
+    lgCell.style.cursor = 'pointer';
+    lgCell.title = 'Click to edit';
+    const renderPlatformCell = () => {
+      const items = c.platforms || [];
+      lgCell.innerHTML = items.length
+        ? items.map(p => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(p.name || p) + '</span>').join('')
+        : '<span style="font-size:11px;color:var(--text3);">—</span>';
+    };
+    renderPlatformCell();
+    lgCell.onclick = () => openRelModal('platforms', c, renderPlatformCell);
     tr.appendChild(lgCell);
 
     tr.insertAdjacentHTML('beforeend',
@@ -1822,7 +1828,17 @@ async function openRelModal(type, campaign, renderCb) {
       if (type === 'products') {
         const data = await call('getProducts');
         relAllItems = (data.products || []).map(p => ({ id: p.id, name: p.name }));
-      } else if (type === 'logins') {
+      } else if (type === 'platforms') {
+      relLinked = [...(campaign.platforms || [])];
+      loadFn = async () => {
+        const data = await call('getPlatforms');
+        return data.platforms || [];
+      };
+      saveFn = async (items) => {
+        await call('updateCampaignPlatforms', { campaignId: campaign.id, platformIds: items.map(i => i.id) });
+        campaign.platforms = items;
+      };
+    } else if (type === 'logins') {
         const data = await call('searchLogins', { query: '' });
         relAllItems = data.logins || [];
       } else {
