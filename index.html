@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>w767676inning again  agin aign ------------------------------------------------
+<head>winni987595878796ng again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -650,18 +650,33 @@ async function showTitleAssets(titleId, titleName) {
       return;
     }
 
+    // Group by platform
+    const platformMap = {};
     assets.forEach(a => {
-      const row = document.createElement('a');
-      row.href = 'https://www.notion.so/' + a.id;
-      row.target = '_blank';
-      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);text-decoration:none;';
-      row.innerHTML =
-        '<div>' +
-          '<div style="font-size:13px;font-weight:500;color:var(--text);">' + esc(a.title) + '</div>' +
-          '<div style="font-size:11px;color:var(--text3);margin-top:2px;">' + esc(a.platform) + (a.type ? ' · ' + esc(a.type) : '') + '</div>' +
-        '</div>' +
-        '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:' + (a.status==='Published'?'var(--surface2)':'#0a1a00') + ';color:' + (a.status==='Published'?'var(--text3)':'#44ff44') + ';border:1px solid ' + (a.status==='Published'?'var(--border2)':'#1a4400') + ';">' + esc(a.status||'') + '</span>';
-      el.appendChild(row);
+      const key = a.platform || 'Other';
+      if (!platformMap[key]) platformMap[key] = [];
+      platformMap[key].push(a);
+    });
+
+    Object.keys(platformMap).sort().forEach(platform => {
+      const platHdr = document.createElement('div');
+      platHdr.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:16px 0 6px;padding:4px 0;border-bottom:1px solid var(--border);';
+      platHdr.textContent = platform;
+      el.appendChild(platHdr);
+
+      platformMap[platform].forEach(a => {
+        const row = document.createElement('a');
+        row.href = 'https://www.notion.so/' + a.id;
+        row.target = '_blank';
+        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);text-decoration:none;';
+        row.innerHTML =
+          '<div>' +
+            '<div style="font-size:13px;font-weight:500;color:var(--text);">' + esc(a.title) + '</div>' +
+            (a.type ? '<div style="font-size:11px;color:var(--text3);margin-top:2px;">' + esc(a.type) + '</div>' : '') +
+          '</div>' +
+          '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:' + (a.status==='Published'?'var(--surface2)':'#0a1a00') + ';color:' + (a.status==='Published'?'var(--text3)':'#44ff44') + ';border:1px solid ' + (a.status==='Published'?'var(--border2)':'#1a4400') + ';">' + esc(a.status||'') + '</span>';
+        el.appendChild(row);
+      });
     });
   } catch(e) {
     el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
