@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>77winning again  agin aign ------------------------------------------------
+<head>88  winning again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -575,6 +575,7 @@ let devLoaded  = false;
 let tdTabLoaded = false;
 
 async function showCampaignAssets(campId, campName) {
+  if (!campName) return;
   const overlay = document.getElementById('assetOverlay');
   const title = document.getElementById('assetOverlayTitle');
   const body = document.getElementById('assetOverlayBody');
@@ -583,7 +584,7 @@ async function showCampaignAssets(campId, campName) {
   overlay.style.display = 'flex';
   overlay.classList.add('visible');
   try {
-    const data = await call('getAssetsByCampaign', { campaignId: campId });
+    const data = await call('getAssetsByCampaign', { campaignName: campName });
     body.innerHTML = '';
     const titles = data.titles || [];
     if (!titles.length) { body.innerHTML = '<div class="empty">No publish assets found.</div>'; return; }

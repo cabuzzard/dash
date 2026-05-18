@@ -438,26 +438,36 @@ export default {
       }
 
       if (body.action === "getAssetsByCampaign") {
-        const { campaignId } = body;
-        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const { campaignName } = body;
+        if (!campaignName) return json({ error: "campaignName required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         try {
-          const titlesData = await notionPost(`/databases/${CONTENT_STRATEGY_DB}/query`, {
-            filter: { and: [
-              { property: "Campaign", relation: { contains: dash(campaignId) } },
-              { property: "Status", select: { equals: "Publish" } }
-            ]},
+          // Get all publish titles
+          const titlesData = await notionQuery(CONTENT_STRATEGY_DB, {
+            filter: { property: "Status", select: { equals: "Publish" } },
             page_size: 100
           });
           if (titlesData.message) return json({ error: titlesData.message, titles: [] });
-          const titles = (titlesData.results || []).map(p => ({
+
+          // Get campaign IDs that match the name
+          const campRows = await notionQuery(CAMPAIGNS_DB, {
+            filter: { property: "Name", title: { equals: campaignName } }
+          });
+          const matchingCampIds = new Set((campRows.results || []).map(c => c.id.replace(/-/g,"")));
+
+          // Filter titles whose Campaign relation matches
+          const titleObjs = (titlesData.results || []).filter(p => {
+            const campRels = p.properties.Campaign?.relation || [];
+            return campRels.some(r => matchingCampIds.has(r.id.replace(/-/g,"")));
+          }).map(p => ({
             id: p.id.replace(/-/g,""),
             title: p.properties.Title?.title?.map(t=>t.plain_text).join("") || "Untitled",
           }));
+
           const assets = [];
-          await Promise.all(titles.map(async title => {
+          await Promise.all(titleObjs.map(async title => {
             try {
-              const ad = await notionPost(`/databases/${ASSETS_DB}/query`, {
+              const ad = await notionQuery(ASSETS_DB, {
                 filter: { property: "Content Strategy", relation: { contains: dash(title.id) } },
                 page_size: 100
               });
@@ -473,10 +483,10 @@ export default {
                   status: p["Asset Status"]?.select?.name || "",
                 });
               });
-            } catch(e) { /* skip failed asset lookups */ }
+            } catch(e) { /* skip */ }
           }));
           const grouped = {};
-          titles.forEach(t => { grouped[t.id] = { title: t.title, assets: [] }; });
+          titleObjs.forEach(t => { grouped[t.id] = { title: t.title, assets: [] }; });
           assets.forEach(a => { if (grouped[a.titleId]) grouped[a.titleId].assets.push(a); });
           return json({ titles: Object.values(grouped) });
         } catch(e) {
