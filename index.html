@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>22 winning again  agin aign ------------------------------------------------
+<head>w767676inning again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -234,6 +234,7 @@
     <div class="tab"        onclick="switchTab('products')">Products</div>
     <div class="tab"        onclick="switchTab('development')">Development</div>
     <div class="tab"        onclick="switchTab('td')">TD</div>
+    <div class="tab" id="tabBtnPublishing" onclick="switchTab('publishing')">Publishing</div>
   </div>
 
   <div class="tab-panel active" id="tabOverview">
@@ -255,6 +256,10 @@
     <div id="devContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
+  </div>
+
+  <div class="tab-panel" id="tabPublishing">
+    <div id="publishingContent"><div class="empty" style="margin-top:32px;text-align:center;">Tap 'Assets →' on a publish title in Development view.</div></div>
   </div>
 
   <div class="tab-panel" id="tabTd">
@@ -618,6 +623,49 @@ function closeAssetOverlay() {
   const o = document.getElementById('assetOverlay');
   o.classList.remove('visible');
   o.style.display = 'none';
+}
+
+async function showTitleAssets(titleId, titleName) {
+  // Switch to Publishing tab
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tabBtnPublishing').classList.add('active');
+  document.getElementById('tabPublishing').classList.add('active');
+
+  const el = document.getElementById('publishingContent');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading assets for ' + esc(titleName) + '...</div>';
+
+  try {
+    const data = await call('getTitleAssets', { titleId });
+    el.innerHTML = '';
+
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:13px;font-weight:700;color:var(--text);margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border);';
+    hdr.textContent = titleName;
+    el.appendChild(hdr);
+
+    const assets = data.assets || [];
+    if (!assets.length) {
+      el.innerHTML += '<div class="empty">No assets linked to this title.</div>';
+      return;
+    }
+
+    assets.forEach(a => {
+      const row = document.createElement('a');
+      row.href = 'https://www.notion.so/' + a.id;
+      row.target = '_blank';
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);text-decoration:none;';
+      row.innerHTML =
+        '<div>' +
+          '<div style="font-size:13px;font-weight:500;color:var(--text);">' + esc(a.title) + '</div>' +
+          '<div style="font-size:11px;color:var(--text3);margin-top:2px;">' + esc(a.platform) + (a.type ? ' · ' + esc(a.type) : '') + '</div>' +
+        '</div>' +
+        '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:' + (a.status==='Published'?'var(--surface2)':'#0a1a00') + ';color:' + (a.status==='Published'?'var(--text3)':'#44ff44') + ';border:1px solid ' + (a.status==='Published'?'var(--border2)':'#1a4400') + ';">' + esc(a.status||'') + '</span>';
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
+  }
 }
 
 function jumpToDev(campId) {
@@ -1258,7 +1306,19 @@ function renderDev() {
           const statusDot = isPub ? '● ' : isDev ? '○ ' : '  ';
           tRow.innerHTML =
             '<span style="font-size:12px;font-weight:500;color:'+clr+';line-height:1.4;">' + statusDot + esc(t.title) + '</span>' +
-            '<span style="font-size:10px;font-weight:600;color:'+(isPub?'#005522':isDev?'#ffffff':'#ff6a00')+';flex-shrink:0;margin-left:10px;">' + (isPub?'PUB':isDev?'DEV':'↗') + '</span>';
+            '<span style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:10px;">' +
+              (isPub ? '<span class="pub-assets-btn" style="font-size:10px;font-weight:700;color:#005522;background:#00ff88;border-radius:4px;padding:2px 7px;cursor:pointer;">Assets →</span>' : '') +
+              '<span style="font-size:10px;font-weight:600;color:'+(isPub?'#005522':isDev?'#444':'#ff6a00')+'">' + (isPub?'PUB':isDev?'DEV':'↗') + '</span>' +
+            '</span>';
+          if (isPub) {
+            const assetsBtn = tRow.querySelector('.pub-assets-btn');
+            if (assetsBtn) {
+              assetsBtn.onclick = e => {
+                e.preventDefault(); e.stopPropagation();
+                showTitleAssets(t.id, t.title);
+              };
+            }
+          }
           titlesEl.appendChild(tRow);
         });
       });

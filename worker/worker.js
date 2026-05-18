@@ -153,7 +153,6 @@ async function getCampaigns() {
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       pubTitleData: pubTitleMap[id] || [],
-      pubTitleIds: pubTitleIds[id] || [],
       products:   prodCount[id] || 0,
     };
   });
@@ -443,6 +442,38 @@ export default {
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
         return json({ success: true });
+      }
+
+      if (body.action === "getTitleAssets") {
+        const { titleId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        try {
+          const page = await fetch("https://api.notion.com/v1/pages/" + dash(titleId), {
+            headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+          });
+          const titlePage = await page.json();
+          const assetIds = (titlePage.properties?.Assets?.relation || []).map(r => r.id.replace(/-/g,""));
+          const assets = await Promise.all(assetIds.map(async assetId => {
+            try {
+              const resp = await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
+                headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+              });
+              const a = await resp.json();
+              const p = a.properties || {};
+              return {
+                id: assetId,
+                title: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
+                platform: p["Platform Name"]?.select?.name || "",
+                type: p["Asset Type"]?.select?.name || "",
+                status: p["Asset Status"]?.select?.name || "",
+              };
+            } catch(e) { return null; }
+          }));
+          return json({ assets: assets.filter(Boolean) });
+        } catch(e) {
+          return json({ error: e.message, assets: [] });
+        }
       }
 
       if (body.action === "getAssetsByCampaign") {
