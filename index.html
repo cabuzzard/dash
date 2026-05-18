@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning is everything   again  agin aign ------------------------------------------------
+<head>winning the big one   again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1333,9 +1333,7 @@ function renderDev() {
           const statusBadge = document.createElement('span');
           statusBadge.style.cssText = 'font-size:10px;font-weight:700;width:32px;text-align:center;flex-shrink:0;color:'+(isPub?'#005522':isDev?'#444':'#ff6a00')+';';
           statusBadge.textContent = isPub ? 'PUB' : isDev ? 'DEV' : '↗';
-          tRow.appendChild(statusBadge);
-
-          // Assets button for publish titles
+          // Assets button for publish titles — left of status
           if (isPub) {
             const assetsBtn = document.createElement('span');
             assetsBtn.textContent = 'Assets →';
@@ -1347,12 +1345,14 @@ function renderDev() {
             tRow.appendChild(assetsBtn);
           }
 
-          // Delete button — fixed width
+          tRow.appendChild(statusBadge);
+
+          // Delete button — black on white
           const delBtn = document.createElement('span');
           delBtn.textContent = '🗑';
-          delBtn.style.cssText = 'font-size:12px;cursor:pointer;flex-shrink:0;opacity:0.35;width:20px;text-align:center;';
-          delBtn.onmouseover = () => delBtn.style.opacity = '1';
-          delBtn.onmouseout  = () => delBtn.style.opacity = '0.35';
+          delBtn.style.cssText = 'font-size:11px;cursor:pointer;flex-shrink:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:#fff;color:#000;border-radius:4px;';
+          delBtn.onmouseover = () => delBtn.style.background = '#eee';
+          delBtn.onmouseout  = () => delBtn.style.background = '#fff';
           delBtn.onclick = async e => {
             e.preventDefault(); e.stopPropagation();
             if (!confirm('Delete "' + t.title + '"?')) return;
