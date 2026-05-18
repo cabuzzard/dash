@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning the big one   again  agin aign ------------------------------------------------
+<head>winning weird stufffffffffffffffffffffffagain  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -58,6 +58,8 @@
   .tabs {
     display: flex; gap: 0; border-bottom: 1px solid var(--border);
     margin: 0 -16px 20px; padding: 0 16px;
+    position: sticky; top: 48px; z-index: 90;
+    background: var(--bg);
   }
   .tab {
     font-size: 12px; font-weight: 600; letter-spacing: .06em;
@@ -71,9 +73,10 @@
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   /* ── TABLE ── */
-  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; position: relative; }
   .ov-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; min-width: 600px; }
   .ov-table thead th {
+    position: sticky; top: 88px; z-index: 80; background: var(--bg);
     text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .12em;
     text-transform: uppercase; color: var(--text); padding: 0 10px 8px;
     border-bottom: 1px solid var(--border);

@@ -235,6 +235,11 @@ export default {
           campTitles[campId].titles.push({ id, title, status, grouping: props.Grouping?.rich_text?.map(x => x.plain_text).join("") || "" });
         });
 
+        // Add all campaigns — even those with no titles
+        Object.entries(campById).forEach(([campId, camp]) => {
+          if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, titles: [] };
+        });
+
         const campaigns = Object.entries(campTitles).map(([campId, camp]) => {
           const devCount  = camp.titles.filter(t => t.status === "Development").length;
           const pubCount  = camp.titles.filter(t => t.status === "Publish").length;
