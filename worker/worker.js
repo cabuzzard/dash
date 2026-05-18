@@ -96,13 +96,19 @@ async function getCampaigns() {
     });
   });
 
-  // Count publish titles per campaign id
+  // Count publish titles per campaign id and store title IDs + their asset IDs
   const pubCount = {};
+  const pubTitleMap = {}; // campId -> [{id, title, assetIds}]
   titleRows.forEach(t => {
     if (t.properties.Status?.select?.name !== "Publish") return;
+    const titleId = t.id.replace(/-/g, "");
+    const titleName = t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled";
+    const assetIds = (t.properties.Assets?.relation || []).map(r => r.id.replace(/-/g, ""));
     (t.properties.Campaign?.relation || []).forEach(r => {
       const id = r.id.replace(/-/g, "");
       pubCount[id] = (pubCount[id] || 0) + 1;
+      if (!pubTitleMap[id]) pubTitleMap[id] = [];
+      pubTitleMap[id].push({ id: titleId, title: titleName, assetIds });
     });
   });
 
@@ -146,6 +152,8 @@ async function getCampaigns() {
       campaignLogins:   campaignToLogins[id] || [],
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
+      pubTitleData: pubTitleMap[id] || [],
+      pubTitleIds: pubTitleIds[id] || [],
       products:   prodCount[id] || 0,
     };
   });
@@ -438,57 +446,30 @@ export default {
       }
 
       if (body.action === "getAssetsByCampaign") {
-        const { campaignName } = body;
-        if (!campaignName) return json({ error: "campaignName required" }, 400);
+        const { pubTitleData } = body;
+        if (!pubTitleData || !pubTitleData.length) return json({ titles: [] });
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         try {
-          // Get all publish titles
-          const titlesData = await notionQuery(CONTENT_STRATEGY_DB, {
-            filter: { property: "Status", select: { equals: "Publish" } },
-            page_size: 100
-          });
-          if (titlesData.message) return json({ error: titlesData.message, titles: [] });
-
-          // Get campaign IDs that match the name
-          const campRows = await notionQuery(CAMPAIGNS_DB, {
-            filter: { property: "Name", title: { equals: campaignName } }
-          });
-          const matchingCampIds = new Set((campRows.results || []).map(c => c.id.replace(/-/g,"")));
-
-          // Filter titles whose Campaign relation matches
-          const titleObjs = (titlesData.results || []).filter(p => {
-            const campRels = p.properties.Campaign?.relation || [];
-            return campRels.some(r => matchingCampIds.has(r.id.replace(/-/g,"")));
-          }).map(p => ({
-            id: p.id.replace(/-/g,""),
-            title: p.properties.Title?.title?.map(t=>t.plain_text).join("") || "Untitled",
-          }));
-
-          const assets = [];
-          await Promise.all(titleObjs.map(async title => {
-            try {
-              const ad = await notionQuery(ASSETS_DB, {
-                filter: { property: "Content Strategy", relation: { contains: dash(title.id) } },
-                page_size: 100
-              });
-              (ad.results || []).forEach(a => {
-                const p = a.properties;
-                assets.push({
-                  id: a.id.replace(/-/g,""),
-                  assetTitle: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
-                  titleName: title.title,
-                  titleId: title.id,
+          const titles = await Promise.all(pubTitleData.map(async t => {
+            const assets = await Promise.all((t.assetIds || []).map(async assetId => {
+              try {
+                const resp = await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
+                  headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+                });
+                const a = await resp.json();
+                const p = a.properties || {};
+                return {
+                  id: assetId,
+                  assetTitle: p["Asset Title"]?.title?.map(x=>x.plain_text).join("") || "Untitled",
                   platform: p["Platform Name"]?.select?.name || "",
                   type: p["Asset Type"]?.select?.name || "",
                   status: p["Asset Status"]?.select?.name || "",
-                });
-              });
-            } catch(e) { /* skip */ }
+                };
+              } catch(e) { return null; }
+            }));
+            return { title: t.title, assets: assets.filter(Boolean) };
           }));
-          const grouped = {};
-          titleObjs.forEach(t => { grouped[t.id] = { title: t.title, assets: [] }; });
-          assets.forEach(a => { if (grouped[a.titleId]) grouped[a.titleId].assets.push(a); });
-          return json({ titles: Object.values(grouped) });
+          return json({ titles });
         } catch(e) {
           return json({ error: e.message, titles: [] });
         }

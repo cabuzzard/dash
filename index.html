@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>88 99 11 winning again  agin aign ------------------------------------------------
+<head>winning again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -574,7 +574,7 @@ let prodLoaded = false;
 let devLoaded  = false;
 let tdTabLoaded = false;
 
-async function showCampaignAssets(campId, campName) {
+async function showCampaignAssets(campId, campName, campPubTitleData) {
   if (!campName) return;
   const overlay = document.getElementById('assetOverlay');
   const title = document.getElementById('assetOverlayTitle');
@@ -584,7 +584,7 @@ async function showCampaignAssets(campId, campName) {
   overlay.style.display = 'flex';
   overlay.classList.add('visible');
   try {
-    const data = await call('getAssetsByCampaign', { campaignName: campName });
+    const data = await call('getAssetsByCampaign', { pubTitleData: campPubTitleData });
     body.innerHTML = '';
     const titles = data.titles || [];
     if (!titles.length) { body.innerHTML = '<div class="empty">No publish assets found.</div>'; return; }
@@ -1029,7 +1029,7 @@ function renderTable() {
     const pubTd = tr.querySelector('td.pub-cell:not(.zero)');
     if (pubTd) {
       pubTd.style.cursor = 'pointer';
-      pubTd.onclick = () => showCampaignAssets(c.id, c.name);
+      pubTd.onclick = () => showCampaignAssets(c.id, c.name, c.pubTitleData || []);
     }
     if (isThisWeek) {
       tr.style.background = '#ffffff';
