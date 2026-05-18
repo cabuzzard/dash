@@ -6,6 +6,7 @@ const PRODUCTS_DB        = "e92fcfce75fc4f54b553df0b7672ff48";
 const MAIN_TD_DB         = "3471f7d3a4bb80de87c1d9e850f4a426";
 const METHODS_DB         = "285ed0b668be4dad89dfd090350096bc";
 const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
+const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const PIN                = "1246";
 
 const CORS = {
@@ -433,6 +434,45 @@ export default {
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
         return json({ success: true });
+      }
+
+      if (body.action === "getAssetsByCampaign") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const titlesData = await notionPost(`/databases/${CONTENT_STRATEGY_DB}/query`, {
+          filter: { and: [
+            { property: "Campaign", relation: { contains: campaignId } },
+            { property: "Status", select: { equals: "Publish" } }
+          ]},
+          page_size: 100
+        });
+        const titles = (titlesData.results || []).map(p => ({
+          id: p.id.replace(/-/g,""),
+          title: p.properties.Title?.title?.map(t=>t.plain_text).join("") || "Untitled",
+        }));
+        const assets = [];
+        await Promise.all(titles.map(async title => {
+          const ad = await notionPost(`/databases/${ASSETS_DB}/query`, {
+            filter: { property: "Title", relation: { contains: title.id } },
+            page_size: 100
+          });
+          (ad.results || []).forEach(a => {
+            const p = a.properties;
+            assets.push({
+              id: a.id.replace(/-/g,""),
+              assetTitle: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
+              titleName: title.title,
+              titleId: title.id,
+              platform: p["Platform Name"]?.select?.name || "",
+              type: p["Asset Type"]?.select?.name || "",
+              status: p["Asset Status"]?.select?.name || "",
+            });
+          });
+        }));
+        const grouped = {};
+        titles.forEach(t => { grouped[t.id] = { title: t.title, assets: [] }; });
+        assets.forEach(a => { if (grouped[a.titleId]) grouped[a.titleId].assets.push(a); });
+        return json({ titles: Object.values(grouped) });
       }
 
       if (body.action === "searchLogins") {

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning again  agin aign hot ffffffffffffffffffffffff8888     yay  ------------------------------------------------
+<head>winning again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -457,6 +457,17 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Asset Overlay -->
+<div class="modal-overlay" id="assetOverlay">
+  <div class="modal" style="max-height:80vh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div class="modal-title" id="assetOverlayTitle" style="margin:0;"></div>
+      <span onclick="closeAssetOverlay()" style="cursor:pointer;color:var(--text3);font-size:18px;">✕</span>
+    </div>
+    <div id="assetOverlayBody" style="overflow-y:auto;flex:1;"></div>
+  </div>
+</div>
+
 <!-- Add Title Modal -->
 <div class="modal-bg" id="titleModal" onclick="if(event.target===this)closeTitleModal()">
   <div class="modal">
@@ -562,6 +573,48 @@ async function call(action, extra = {}) {
 let prodLoaded = false;
 let devLoaded  = false;
 let tdTabLoaded = false;
+
+async function showCampaignAssets(campId, campName) {
+  const overlay = document.getElementById('assetOverlay');
+  const title = document.getElementById('assetOverlayTitle');
+  const body = document.getElementById('assetOverlayBody');
+  title.textContent = campName + ' — Publish Assets';
+  body.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  overlay.classList.add('visible');
+  try {
+    const data = await call('getAssetsByCampaign', { campaignId: campId });
+    body.innerHTML = '';
+    const titles = data.titles || [];
+    if (!titles.length) { body.innerHTML = '<div class="empty">No publish assets found.</div>'; return; }
+    titles.forEach(t => {
+      if (!t.assets.length) return;
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);margin:16px 0 8px;';
+      hdr.textContent = t.title;
+      body.appendChild(hdr);
+      t.assets.forEach(a => {
+        const row = document.createElement('a');
+        row.href = 'https://www.notion.so/' + a.id;
+        row.target = '_blank';
+        row.className = 'row';
+        row.style.marginBottom = '6px';
+        const isPublished = a.status === 'Published';
+        row.style.opacity = isPublished ? '0.5' : '1';
+        row.innerHTML =
+          '<div class="row-body">' +
+            '<div class="row-name">' + esc(a.assetTitle) + '</div>' +
+            '<div class="row-meta">' + esc(a.platform) + (a.type ? ' · ' + esc(a.type) : '') + '</div>' +
+          '</div>' +
+          '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:' + (isPublished ? 'var(--surface2)' : '#0a1a00') + ';color:' + (isPublished ? 'var(--text3)' : '#44ff44') + ';border:1px solid ' + (isPublished ? 'var(--border2)' : '#1a4400') + ';">' + esc(a.status) + '</span>';
+        body.appendChild(row);
+      });
+    });
+  } catch(e) { body.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; }
+}
+
+function closeAssetOverlay() {
+  document.getElementById('assetOverlay').classList.remove('visible');
+}
 
 function jumpToDev(campId) {
   switchTab('development');
@@ -905,7 +958,7 @@ function renderTable() {
 
     tr.insertAdjacentHTML('beforeend',
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '" style="cursor:' + (c.devTitles > 0 ? 'pointer' : 'default') + ';" onclick="' + (c.devTitles > 0 ? 'jumpToDev(\'' + c.id + '\')' : '') + '">' + c.devTitles + '</td>' +
-      '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '">' + c.pubTitles + '</td>'
+      '<td class="num' + (c.pubTitles === 0 ? ' zero' : '') + '" style="cursor:' + (c.pubTitles > 0 ? 'pointer' : 'default') + ';" onclick="' + (c.pubTitles > 0 ? 'showCampaignAssets(\'' + c.id + '\',\'' + esc(c.name) + '\')' : '') + '">' + c.pubTitles + '</td>'
     );
 
     // ★ this-week highlight toggle
