@@ -154,6 +154,7 @@ async function getCampaigns() {
 export default {
   async fetch(request) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-18-01" });
     if (request.method !== "POST")    return json({ error: "POST only" }, 405);
 
     let body;
@@ -439,9 +440,10 @@ export default {
       if (body.action === "getAssetsByCampaign") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashedCampId = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const titlesData = await notionPost(`/databases/${CONTENT_STRATEGY_DB}/query`, {
           filter: { and: [
-            { property: "Campaign", relation: { contains: campaignId } },
+            { property: "Campaign", relation: { contains: dashedCampId } },
             { property: "Status", select: { equals: "Publish" } }
           ]},
           page_size: 100
@@ -452,8 +454,9 @@ export default {
         }));
         const assets = [];
         await Promise.all(titles.map(async title => {
+          const dashedId = title.id.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
           const ad = await notionPost(`/databases/${ASSETS_DB}/query`, {
-            filter: { property: "Title", relation: { contains: title.id } },
+            filter: { property: "Content Strategy", relation: { contains: dashedId } },
             page_size: 100
           });
           (ad.results || []).forEach(a => {

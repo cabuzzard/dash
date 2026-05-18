@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>wwwwwwwwwwwwwwwwwinning again  agin aign wwwwwwwwwwwwwwwwwwww------------------------------------------------
+<head>winning again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -621,7 +621,8 @@ function closeAssetOverlay() {
 
 function jumpToDev(campId) {
   switchTab('development');
-  setTimeout(() => {
+  const doJump = () => {
+    setTimeout(() => {
     const rows = document.querySelectorAll('#devContent [data-campid]');
     // Try exact match first, then partial
     let found = null;
