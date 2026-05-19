@@ -39,7 +39,7 @@ async function notionQuery(dbId, body) {
 }
 
 async function getCampaigns() {
-  const [campRows, titleRows, productRows, todoRows, methodRows, loginRows, platformRows, campSchema] = await Promise.all([
+  const [campRows, titleRows, productRows, todoRows, methodRows, loginRows, platformRows] = await Promise.all([
     notionQuery(CAMPAIGNS_DB, {
       filter: {
         and: [
@@ -56,18 +56,7 @@ async function getCampaigns() {
     notionQuery(METHODS_DB, {}),
     notionQuery(LOGINS_DB, {}),
     notionQuery(PLATFORMS_DB, {}),
-    fetch(`https://api.notion.com/v1/databases/${CAMPAIGNS_DB}`, {
-      headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
-    }).then(r => r.json()),
   ]);
-
-  // Discover the relation property that points to PLATFORMS_DB so we don't hardcode the name
-  let platformPropName = "Platforms";
-  Object.entries(campSchema.properties || {}).forEach(([name, prop]) => {
-    if (prop.type === "relation" && (prop.relation?.database_id || "").replace(/-/g, "") === PLATFORMS_DB) {
-      platformPropName = name;
-    }
-  });
 
   // Build lookups by id
   const todoById = {};
@@ -168,7 +157,7 @@ async function getCampaigns() {
         name: methodById[r.id.replace(/-/g,"")] || "Untitled",
       })),
       campaignLogins:   campaignToLogins[id] || [],
-      platforms: (c.properties[platformPropName]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "Untitled" })),
+      platforms: Object.values(c.properties).filter(p => p.type === "relation").flatMap(p => (p.relation || []).map(r => r.id.replace(/-/g,""))).filter(id => platformById[id]).map(id => ({ id, name: platformById[id] })),
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       pubTitleData: pubTitleMap[id] || [],
