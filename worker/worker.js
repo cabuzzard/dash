@@ -157,7 +157,7 @@ async function getCampaigns() {
         name: methodById[r.id.replace(/-/g,"")] || "Untitled",
       })),
       campaignLogins:   campaignToLogins[id] || [],
-      platforms: (c.properties["Platforms"]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "Untitled" })),
+      platforms: (c.properties["Platform Links"]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "Untitled" })),
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       pubTitleData: pubTitleMap[id] || [],
@@ -473,7 +473,7 @@ export default {
 
       if (body.action === "getPlatforms") {
         const data = await notionQuery(PLATFORMS_DB, { sorts: [{ property: "Name", direction: "ascending" }], page_size: 100 });
-        return json({ platforms: (data.results || []).map(p => ({ id: p.id.replace(/-/g,""), name: p.properties.Name?.title?.map(t=>t.plain_text).join("") || "" })), debug: { total: data.results?.length, error: data.message, dbId: PLATFORMS_DB } });
+        return json({ platforms: data.map(p => ({ id: p.id.replace(/-/g,""), name: p.properties.Name?.title?.map(t=>t.plain_text).join("") || "" })) });
       }
 
       if (body.action === "updateCampaignPlatforms") {

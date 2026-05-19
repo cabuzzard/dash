@@ -1811,7 +1811,7 @@ async function openRelModal(type, campaign, renderCb) {
   relRenderCb = renderCb;
   relLinked   = [...(type === 'products' ? (campaign.campaignProducts||[]) : type === 'logins' ? (campaign.campaignLogins||[]) : type === 'platforms' ? (campaign.platforms||[]) : (campaign.campaignMethods||[]))];
 
-  const label = type === 'products' ? 'Products' : type === 'logins' ? 'Logins' : 'Methods';
+  const label = type === 'products' ? 'Products' : type === 'logins' ? 'Logins' : type === 'platforms' ? 'Platforms' : 'Methods';
   document.getElementById('relModalTitle').textContent = label + ' — ' + campaign.name;
   document.getElementById('relModalLabel').textContent = 'Search ' + label.toLowerCase() + '...';
   document.getElementById('relSearchInput').placeholder = 'Search ' + label.toLowerCase() + '...';
