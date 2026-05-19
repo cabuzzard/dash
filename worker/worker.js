@@ -39,7 +39,7 @@ async function notionQuery(dbId, body) {
 }
 
 async function getCampaigns() {
-  const [campRows, titleRows, productRows, todoRows, methodRows, loginRows, platformRows] = await Promise.all([
+  const [campRows, titleRows, productRows, todoRows, methodRows, loginRows, platformRows, campSchema] = await Promise.all([
     notionQuery(CAMPAIGNS_DB, {
       filter: {
         and: [
@@ -56,7 +56,18 @@ async function getCampaigns() {
     notionQuery(METHODS_DB, {}),
     notionQuery(LOGINS_DB, {}),
     notionQuery(PLATFORMS_DB, {}),
+    fetch(`https://api.notion.com/v1/databases/${CAMPAIGNS_DB}`, {
+      headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+    }).then(r => r.json()),
   ]);
+
+  // Discover the relation property that points to PLATFORMS_DB so we don't hardcode the name
+  let platformPropName = "Platforms";
+  Object.entries(campSchema.properties || {}).forEach(([name, prop]) => {
+    if (prop.type === "relation" && (prop.relation?.database_id || "").replace(/-/g, "") === PLATFORMS_DB) {
+      platformPropName = name;
+    }
+  });
 
   // Build lookups by id
   const todoById = {};
@@ -157,7 +168,7 @@ async function getCampaigns() {
         name: methodById[r.id.replace(/-/g,"")] || "Untitled",
       })),
       campaignLogins:   campaignToLogins[id] || [],
-      platforms: (c.properties["Platforms"]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "Untitled" })),
+      platforms: (c.properties[platformPropName]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "Untitled" })),
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       pubTitleData: pubTitleMap[id] || [],
@@ -480,14 +491,27 @@ export default {
         const { campaignId, platformIds } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+
+        // Discover the correct property name from the DB schema
+        const schemaResp = await fetch(`https://api.notion.com/v1/databases/${CAMPAIGNS_DB}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const schema = await schemaResp.json();
+        let platformPropName = "Platforms";
+        Object.entries(schema.properties || {}).forEach(([name, prop]) => {
+          if (prop.type === "relation" && (prop.relation?.database_id || "").replace(/-/g, "") === PLATFORMS_DB) {
+            platformPropName = name;
+          }
+        });
+
         const resp = await fetch("https://api.notion.com/v1/pages/" + dash(campaignId), {
           method: "PATCH",
           headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Platforms": { relation: (platformIds || []).map(id => ({ id: dash(id) })) } } })
+          body: JSON.stringify({ properties: { [platformPropName]: { relation: (platformIds || []).map(id => ({ id: dash(id) })) } } })
         });
         const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
-        return json({ success: true });
+        if (!resp.ok) return json({ error: result.message || "Update failed", propUsed: platformPropName }, resp.status);
+        return json({ success: true, propUsed: platformPropName });
       }
 
       if (body.action === "getTitleAssets") {
