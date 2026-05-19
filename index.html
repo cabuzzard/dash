@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning deat death   again  agin aign ------------------------------------------------
+<head>winning again  royal    agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1809,7 +1809,7 @@ async function openRelModal(type, campaign, renderCb) {
   relType     = type;
   relCampaign = campaign;
   relRenderCb = renderCb;
-  relLinked   = [...(type === 'products' ? (campaign.campaignProducts||[]) : type === 'logins' ? (campaign.campaignLogins||[]) : (campaign.campaignMethods||[]))];
+  relLinked   = [...(type === 'products' ? (campaign.campaignProducts||[]) : type === 'logins' ? (campaign.campaignLogins||[]) : type === 'platforms' ? (campaign.platforms||[]) : (campaign.campaignMethods||[]))];
 
   const label = type === 'products' ? 'Products' : type === 'logins' ? 'Logins' : 'Methods';
   document.getElementById('relModalTitle').textContent = label + ' — ' + campaign.name;
@@ -1829,17 +1829,9 @@ async function openRelModal(type, campaign, renderCb) {
         const data = await call('getProducts');
         relAllItems = (data.products || []).map(p => ({ id: p.id, name: p.name }));
       } else if (type === 'platforms') {
-      relLinked = (campaign.platforms || []).map(p => typeof p === 'object' ? p : { id: p, name: p });
-      if (!relLinked.length && campaign.platformIds?.length) relLinked = campaign.platformIds.map(id => ({ id, name: id }));
-      loadFn = async () => {
         const data = await call('getPlatforms');
-        return data.platforms || [];
-      };
-      saveFn = async (items) => {
-        await call('updateCampaignPlatforms', { campaignId: campaign.id, platformIds: items.map(i => i.id) });
-        campaign.platforms = items;
-      };
-    } else if (type === 'logins') {
+        relAllItems = (data.platforms || []).map(p => ({ id: p.id, name: p.name }));
+      } else if (type === 'logins') {
         const data = await call('searchLogins', { query: '' });
         relAllItems = data.logins || [];
       } else {

@@ -39,7 +39,7 @@ async function notionQuery(dbId, body) {
 }
 
 async function getCampaigns() {
-  const [campRows, titleRows, productRows, todoRows, methodRows, loginRows] = await Promise.all([
+  const [campRows, titleRows, productRows, todoRows, methodRows, loginRows, platformRows] = await Promise.all([
     notionQuery(CAMPAIGNS_DB, {
       filter: {
         and: [
@@ -55,6 +55,7 @@ async function getCampaigns() {
     notionQuery(MAIN_TD_DB, {}),
     notionQuery(METHODS_DB, {}),
     notionQuery(LOGINS_DB, {}),
+    notionQuery(PLATFORMS_DB, {}),
   ]);
 
   // Build lookups by id
@@ -68,9 +69,8 @@ async function getCampaigns() {
     productById[p.id.replace(/-/g,"")] = p.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
   });
 
-  const platformRows2 = await notionQuery(PLATFORMS_DB, { page_size: 100 });
   const platformById = {};
-  (platformRows2.results || []).forEach(p => {
+  platformRows.forEach(p => {
     platformById[p.id.replace(/-/g,"")] = p.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
   });
 
@@ -164,6 +164,8 @@ async function getCampaigns() {
       products:   prodCount[id] || 0,
     };
   });
+
+  return campaigns;
 }
 
 export default {
