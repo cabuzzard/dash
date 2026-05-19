@@ -1936,7 +1936,8 @@ async function saveRel() {
       await call('updateCampaignLogins', { campaignId: relCampaign.id, loginIds: ids });
       relCampaign.campaignLogins = [...relLinked];
     } else if (relType === 'platforms') {
-      await call('updateCampaignPlatforms', { campaignId: relCampaign.id, platformIds: ids });
+      const platResult = await call('updateCampaignPlatforms', { campaignId: relCampaign.id, platformIds: ids });
+      console.log('Platform save debug:', platResult);
       relCampaign.platforms = [...relLinked];
     } else {
       await call('updateCampaignMethods', { campaignId: relCampaign.id, methodIds: ids });

@@ -499,8 +499,9 @@ export default {
           body: JSON.stringify({ properties: { [platformPropName]: { relation: (platformIds || []).map(id => ({ id: dash(id) })) } } })
         });
         const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || "Update failed", propUsed: platformPropName }, resp.status);
-        return json({ success: true, propUsed: platformPropName });
+        const relProps = Object.entries(schema.properties || {}).filter(([,p]) => p.type === 'relation').map(([n, p]) => ({ name: n, dbId: (p.relation?.database_id || '').replace(/-/g,'') }));
+        if (!resp.ok) return json({ error: result.message || "Update failed", propUsed: platformPropName, relProps }, resp.status);
+        return json({ success: true, propUsed: platformPropName, relProps });
       }
 
       if (body.action === "getTitleAssets") {
