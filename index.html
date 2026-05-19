@@ -1937,7 +1937,7 @@ async function saveRel() {
       relCampaign.campaignLogins = [...relLinked];
     } else if (relType === 'platforms') {
       const platResult = await call('updateCampaignPlatforms', { campaignId: relCampaign.id, platformIds: ids });
-      console.log('propUsed:', platResult.propUsed, '| relProps:', JSON.stringify(platResult.relProps));
+      console.log('notionStatus:', platResult.notionStatus, '| platformsWritten:', JSON.stringify(platResult.notionResult?.platformsWritten));
       relCampaign.platforms = [...relLinked];
     } else {
       await call('updateCampaignMethods', { campaignId: relCampaign.id, methodIds: ids });
