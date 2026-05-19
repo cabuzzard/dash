@@ -421,6 +421,22 @@ export default {
         return json({ success: true, id: result.id.replace(/-/g,""), name: title });
       }
 
+      if (body.action === "createPlatform") {
+        const { title } = body;
+        if (!title) return json({ error: "title required" }, 400);
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: PLATFORMS_DB },
+            properties: { Name: { title: [{ type: "text", text: { content: title } }] } }
+          }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,""), name: title });
+      }
+
       if (body.action === "searchMethods") {
         const { query } = body;
         const rows = await notionQuery(METHODS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });

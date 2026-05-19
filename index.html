@@ -1897,7 +1897,7 @@ function filterRel() {
     div.onmousedown = async () => {
       div.textContent = 'Creating...';
       try {
-        const action = relType === 'products' ? 'createProduct' : relType === 'logins' ? 'createLogin' : 'createMethod';
+        const action = relType === 'products' ? 'createProduct' : relType === 'logins' ? 'createLogin' : relType === 'platforms' ? 'createPlatform' : 'createMethod';
         const res = await call(action, { title: query, status: 'Active' });
         const newItem = { id: res.id, name: query };
         relAllItems.push(newItem);
