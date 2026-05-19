@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning the k    oihknlh   again  agin aign ------------------------------------------------
+<head>winning 7 am    the k    oihknlh   again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1935,6 +1935,9 @@ async function saveRel() {
     } else if (relType === 'logins') {
       await call('updateCampaignLogins', { campaignId: relCampaign.id, loginIds: ids });
       relCampaign.campaignLogins = [...relLinked];
+    } else if (relType === 'platforms') {
+      await call('updateCampaignPlatforms', { campaignId: relCampaign.id, platformIds: ids });
+      relCampaign.platforms = [...relLinked];
     } else {
       await call('updateCampaignMethods', { campaignId: relCampaign.id, methodIds: ids });
       relCampaign.campaignMethods = [...relLinked];
