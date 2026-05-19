@@ -324,4 +324,29 @@ footer { padding: 32px 48px; border-top: 1px solid var(--border); display: flex;
 </footer>
 <script>
 const CAMPAIGN_ID = "3611f7d3a4bb81fe9ebcfe01813d9ac2";
+const CORRECT_PIN = '1246';
+let pinEntry = '';
+function pinPress(d) {
+  if (pinEntry.length >= 4) return;
+  pinEntry += d;
+  document.getElementById('d' + (pinEntry.length - 1)).classList.add('filled');
+  if (pinEntry.length === 4) {
+    if (pinEntry === CORRECT_PIN) {
+      document.getElementById('pinScreen').classList.add('hidden');
+    } else {
+      document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
+      document.getElementById('pinError').textContent = 'incorrect code';
+      setTimeout(() => {
+        document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('error'); });
+        document.getElementById('pinError').textContent = '';
+        pinEntry = '';
+      }, 800);
+    }
+  }
+}
+function pinDel() {
+  if (!pinEntry.length) return;
+  document.getElementById('d' + (pinEntry.length - 1)).classList.remove('filled');
+  pinEntry = pinEntry.slice(0, -1);
+}
 const WORKER
