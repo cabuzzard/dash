@@ -157,7 +157,7 @@ async function getCampaigns() {
         name: methodById[r.id.replace(/-/g,"")] || "Untitled",
       })),
       campaignLogins:   campaignToLogins[id] || [],
-      platforms: (c.properties["Platform Links"]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "Untitled" })),
+      platforms: (c.properties["Platforms"]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "Untitled" })),
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       pubTitleData: pubTitleMap[id] || [],
@@ -480,11 +480,13 @@ export default {
         const { campaignId, platformIds } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-        await fetch("https://api.notion.com/v1/pages/" + dash(campaignId), {
+        const resp = await fetch("https://api.notion.com/v1/pages/" + dash(campaignId), {
           method: "PATCH",
           headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Platform Links": { relation: (platformIds || []).map(id => ({ id: dash(id) })) } } })
+          body: JSON.stringify({ properties: { "Platforms": { relation: (platformIds || []).map(id => ({ id: dash(id) })) } } })
         });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
         return json({ success: true });
       }
 
