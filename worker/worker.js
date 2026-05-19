@@ -157,7 +157,7 @@ async function getCampaigns() {
         name: methodById[r.id.replace(/-/g,"")] || "Untitled",
       })),
       campaignLogins:   campaignToLogins[id] || [],
-      platforms: Object.values(c.properties).filter(p => p.type === "relation").flatMap(p => (p.relation || []).map(r => r.id.replace(/-/g,""))).filter(id => platformById[id]).map(id => ({ id, name: platformById[id] })),
+      platforms: (c.properties["Platforms"]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "Untitled" })),
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       pubTitleData: pubTitleMap[id] || [],
@@ -499,9 +499,8 @@ export default {
           body: JSON.stringify({ properties: { [platformPropName]: { relation: (platformIds || []).map(id => ({ id: dash(id) })) } } })
         });
         const result = await resp.json();
-        const relProps = Object.entries(schema.properties || {}).filter(([,p]) => p.type === 'relation').map(([n, p]) => ({ name: n, dbId: (p.relation?.database_id || '').replace(/-/g,'') }));
-        if (!resp.ok) return json({ error: result.message || "Update failed", propUsed: platformPropName, relProps, notionStatus: resp.status, notionResult: result }, resp.status);
-        return json({ success: true, propUsed: platformPropName, relProps, notionStatus: resp.status, notionResult: { id: result.id, object: result.object, platformsWritten: result.properties?.Platforms?.relation } });
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
       }
 
       if (body.action === "getTitleAssets") {
