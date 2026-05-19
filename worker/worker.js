@@ -40,7 +40,7 @@ async function notionQuery(dbId, body) {
 }
 
 async function getCampaigns() {
-  const [campRows, titleRows, productRows, todoRows, methodRows, loginRows, platformRows, researchRows] = await Promise.all([
+  const [campRows, titleRows, productRows, todoRows, methodRows, loginRows, platformRows, researchRows, micrositeRows] = await Promise.all([
     notionQuery(CAMPAIGNS_DB, {
       filter: {
         and: [
@@ -58,6 +58,12 @@ async function getCampaigns() {
     notionQuery(LOGINS_DB, {}),
     notionQuery(PLATFORMS_DB, {}),
     notionQuery(RESEARCH_DB, {}),
+    notionQuery(ASSETS_DB, {
+      filter: { and: [
+        { property: "Asset Type", select: { equals: "Microsite" } },
+        { property: "Asset Status", select: { equals: "Published" } },
+      ]}
+    }),
   ]);
 
   // Build research record lookup by campaign id
@@ -69,6 +75,17 @@ async function getCampaigns() {
     (r.properties.Campaign?.relation || []).forEach(c => {
       const cid = c.id.replace(/-/g,"");
       campaignToResearch[cid] = { id: rid, name: rname, notes: rnotes };
+    });
+  });
+
+  // Build siteUrl lookup by campaign id (from deployed microsite assets)
+  const campaignToSiteUrl = {};
+  micrositeRows.forEach(a => {
+    const url = a.properties["Content URL"]?.url || "";
+    if (!url) return;
+    (a.properties.Campaign?.relation || []).forEach(r => {
+      const cid = r.id.replace(/-/g,"");
+      campaignToSiteUrl[cid] = url;
     });
   });
 
@@ -160,6 +177,7 @@ async function getCampaigns() {
       grouping:         (c.properties["Grouping"]?.multi_select || []).map(g => g.name),
       keyMessage:       c.properties["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
       research:         campaignToResearch[id] || null,
+      siteUrl:          campaignToSiteUrl[id] || null,
       mainTd:           (c.properties["Associated To Do"]?.relation || []).map(r => ({
         id:   r.id.replace(/-/g,""),
         name: todoById[r.id.replace(/-/g,"")] || "Untitled",
