@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning some pot     ------------------------------------------------
+<head>typo typo typo  ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -935,7 +935,7 @@ function renderTable() {
     { label: 'Campaign',    key: 'name',             type: 'str' },
     { label: 'Grouping',    key: 'grouping',         type: 'rel' },
     { label: 'Key Message', key: 'keyMessage',       type: 'str' },
-    { label: 'Main TD',     key: 'mainTd',           type: 'rel' },
+    { label: 'ROI Notes',    key: 'research',         type: 'rel' },
     { label: 'Products',    key: 'campaignProducts', type: 'rel' },
     { label: 'Methods',     key: 'campaignMethods',  type: 'rel' },
     { label: 'Platforms',   key: 'platforms',        type: 'rel' },
@@ -999,18 +999,21 @@ function renderTable() {
     const notionUrl = 'https://www.notion.so/' + c.id;
     const tr = document.createElement('tr');
 
-    // Main TD cell — shows linked todo names, click to edit
+    // Research notes cell — links directly to the Research record in Notion
     const tdCell = document.createElement('td');
-    tdCell.style.cssText = 'cursor:pointer;max-width:180px;';
-    tdCell.title = 'Click to edit';
-    const renderTdCell = () => {
-      const todos = c.mainTd || [];
-      tdCell.innerHTML = todos.length
-        ? todos.map(t => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(t.name) + '</span>').join('')
-        : '<span style="font-size:11px;color:var(--text3);">—</span>';
-    };
-    renderTdCell();
-    tdCell.onclick = () => openTdModal(c, renderTdCell);
+    tdCell.style.cssText = 'max-width:180px;';
+    if (c.research) {
+      const a = document.createElement('a');
+      a.href = 'https://www.notion.so/' + c.research.id;
+      a.target = '_blank';
+      a.style.cssText = 'display:inline-block;font-size:10px;font-weight:600;padding:2px 9px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);white-space:nowrap;text-decoration:none;transition:all .15s;';
+      a.textContent = '📋 ROI Notes';
+      a.onmouseover = () => { a.style.borderColor = 'var(--text)'; a.style.color = 'var(--text)'; };
+      a.onmouseout  = () => { a.style.borderColor = 'var(--border2)'; a.style.color = 'var(--text2)'; };
+      tdCell.appendChild(a);
+    } else {
+      tdCell.innerHTML = '<span style="font-size:11px;color:var(--text3);">—</span>';
+    }
 
     // Key message cell — clickable to edit
     const kmCell = document.createElement('td');
@@ -1073,8 +1076,8 @@ function renderTable() {
     };
     renderCmCell();
     cmCell.onclick = () => openRelModal('methods', c, renderCmCell);
-    // Highlight row if Status is Active
-    const isThisWeek = c.status === 'Active';
+    // Highlight row if "this week" in grouping
+    const isThisWeek = (c.grouping || []).includes('this week');
 
     tr.appendChild(cmCell);
 
@@ -1110,10 +1113,12 @@ function renderTable() {
     hlBtn.onclick = async () => {
       hlBtn.disabled = true;
       const newState = !thisWeekState;
-      const newStatus = newState ? 'Active' : 'Planning';
+      const newGrouping = newState
+        ? [...(c.grouping || []).filter(g => g !== 'this week'), 'this week']
+        : (c.grouping || []).filter(g => g !== 'this week');
       try {
-        await call('updateCampaignStatus', { campaignId: c.id, status: newStatus });
-        c.status = newStatus;
+        await call('updateGrouping', { campaignId: c.id, grouping: newGrouping });
+        c.grouping = newGrouping;
         thisWeekState = newState;
         hlBtn.textContent = newState ? '★' : '☆';
         hlBtn.style.color = newState ? '#ffcc00' : 'var(--text3)';

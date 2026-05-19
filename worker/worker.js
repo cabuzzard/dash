@@ -8,6 +8,7 @@ const METHODS_DB         = "285ed0b668be4dad89dfd090350096bc";
 const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
 const PLATFORMS_DB       = "edc19791957542f2a6637127756720e8";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
+const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
 const PIN                = "1246";
 
 const CORS = {
@@ -39,7 +40,7 @@ async function notionQuery(dbId, body) {
 }
 
 async function getCampaigns() {
-  const [campRows, titleRows, productRows, todoRows, methodRows, loginRows, platformRows] = await Promise.all([
+  const [campRows, titleRows, productRows, todoRows, methodRows, loginRows, platformRows, researchRows] = await Promise.all([
     notionQuery(CAMPAIGNS_DB, {
       filter: {
         and: [
@@ -56,7 +57,20 @@ async function getCampaigns() {
     notionQuery(METHODS_DB, {}),
     notionQuery(LOGINS_DB, {}),
     notionQuery(PLATFORMS_DB, {}),
+    notionQuery(RESEARCH_DB, {}),
   ]);
+
+  // Build research record lookup by campaign id
+  const campaignToResearch = {};
+  researchRows.forEach(r => {
+    const rid = r.id.replace(/-/g,"");
+    const rname = r.properties.Name?.title?.map(x => x.plain_text).join("") || "Research";
+    const rnotes = r.properties.Notes?.rich_text?.map(x => x.plain_text).join("") || "";
+    (r.properties.Campaign?.relation || []).forEach(c => {
+      const cid = c.id.replace(/-/g,"");
+      campaignToResearch[cid] = { id: rid, name: rname, notes: rnotes };
+    });
+  });
 
   // Build lookups by id
   const todoById = {};
@@ -145,6 +159,7 @@ async function getCampaigns() {
       status:           c.properties.Status?.select?.name || "",
       grouping:         (c.properties["Grouping"]?.multi_select || []).map(g => g.name),
       keyMessage:       c.properties["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
+      research:         campaignToResearch[id] || null,
       mainTd:           (c.properties["Associated To Do"]?.relation || []).map(r => ({
         id:   r.id.replace(/-/g,""),
         name: todoById[r.id.replace(/-/g,"")] || "Untitled",
@@ -640,20 +655,6 @@ export default {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "Grouping": { multi_select: (grouping || []).map(name => ({ name })) } } }),
-        });
-        const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
-        return json({ success: true });
-      }
-
-      if (body.action === "updateCampaignStatus") {
-        const { campaignId, status } = body;
-        if (!campaignId || !status) return json({ error: "campaignId and status required" }, 400);
-        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
-        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Status": { select: { name: status } } } }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
