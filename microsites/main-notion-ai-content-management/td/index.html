@@ -349,4 +349,90 @@ function pinDel() {
   document.getElementById('d' + (pinEntry.length - 1)).classList.remove('filled');
   pinEntry = pinEntry.slice(0, -1);
 }
-const WORKER
+const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+
+// ── CURSOR ──
+const cursorEl = document.getElementById('cursor');
+document.addEventListener('mousemove', e => {
+  cursorEl.style.left = e.clientX + 'px';
+  cursorEl.style.top  = e.clientY + 'px';
+});
+document.querySelectorAll('a, button').forEach(el => {
+  el.addEventListener('mouseenter', () => cursorEl.classList.add('hover'));
+  el.addEventListener('mouseleave', () => cursorEl.classList.remove('hover'));
+});
+
+// ── TICKER ──
+const TICKER_ITEMS = ['AI Content Systems','Notion AI','Content OS','Business Growth','Multi-Platform','LinkedIn','Automation','Webguy'];
+const ticker = document.getElementById('ticker');
+const tickerHTML = [...TICKER_ITEMS, ...TICKER_ITEMS].map(t => `<span class="ticker-item">${t} <span class="ticker-dot">·</span></span>`).join('');
+ticker.innerHTML = tickerHTML;
+
+// ── REVEAL ON SCROLL ──
+const revealObs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); } });
+}, { threshold: 0.1 });
+document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+
+// ── INTELLIGENCE FEED ──
+const STATIC_FEED = [
+  { num: '01', text: '<strong>Notion developer platform May 2026</strong> — Workers, External Agents API, Custom Agents for automated multistep workflows. 1M agents built since February.' },
+  { num: '02', text: '<strong>Notion 3.2 Jan 2026</strong> — mobile AI agents have full desktop capability. Voice dictate on a walk, agent executes by the time you\'re home.' },
+  { num: '03', text: '<strong>April 2026 Notion AI</strong> releases moved from content generation toward workflow infrastructure — expanded context, cross-page AI blocks, voice input.' },
+  { num: '04', text: '<strong>Notion Custom Agents began using credits May 4 2026</strong> — monetization maturity signal. Usage is now metered.' },
+  { num: '05', text: '<strong>Notion\'s competitive bet:</strong> keep agent workflows inside its workspace vs separate tools — validates Webguy \'one system not five tools\' positioning.' },
+  { num: '06', text: '<strong>\'7 best AI tools for Notion 2026\'</strong> roundups circulating — confirms buyer search intent for AI-Notion integrations. Exact Webguy audience.' },
+  { num: '07', text: '<strong>Notion AI Agent 2026:</strong> content calendars, database structuring, onboarding automation, meeting notes all agent-executable inside Notion.' },
+  { num: '08', text: '<strong>TikTok Ads MCP Server at TikTok World 2026</strong> — AI agents can manage TikTok campaigns without manual Ads Manager. Agentic ad buying going mainstream.' },
+  { num: '09', text: '<strong>TikTok 2026 algorithm:</strong> follower-first distribution live — videos shown to followers as test panel before wider push. Consistency is the new ranking signal.' },
+  { num: '10', text: '<strong>83% of marketers</strong> say generative AI helps create more content in less time — HubSpot 2026. Validates core Webguy content machine pitch.' },
+  { num: '11', text: '<strong>TikTok Symphony:</strong> Image to Video, Text to Video, Digital Avatars, multilingual lip-sync — lowers AI short-form production barrier.' },
+  { num: '12', text: '<strong>TikTok hashtags up 114% YoY</strong> — 1-5 specific hashtags get 5% more views and 10% more interactions. Hashtags relevant again.' },
+  { num: '13', text: '<strong>Automation flagging risk:</strong> 25% increase in TikTok flags for simple replication tactics post-2025. Humanized creative required.' },
+  { num: '14', text: '<strong>LinkedIn 360Brew AI</strong> rewards topic authority over frequency — consistent niche content beats volume. Validates \'content OS not content calendar\'.' },
+  { num: '15', text: '<strong>TikTok Next 2026:</strong> users in full discovery mode, passive consumption era over. Human insight plus AI tools required.' }
+];
+
+async function loadFeed() {
+  const grid = document.getElementById('feedGrid');
+  let items = STATIC_FEED;
+  try {
+    const res  = await fetch(WORKER_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getResearch', campaignId: CAMPAIGN_ID })
+    });
+    const data = await res.json();
+    const raw  = data.items || data.newsFeed || [];
+    if (raw.length) items = raw.map((t, i) => ({ num: String(i + 1).padStart(2, '0'), text: t }));
+  } catch {}
+  grid.innerHTML = items.map(item =>
+    `<div class="feed-item" data-num="${item.num}"><div class="feed-text">${item.text}</div></div>`
+  ).join('');
+}
+
+// ── PUBLISHED CONTENT ──
+async function loadContent() {
+  const grid = document.getElementById('contentGrid');
+  try {
+    const res    = await fetch(WORKER_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getPublishedTitles', campaignId: CAMPAIGN_ID })
+    });
+    const data   = await res.json();
+    const titles = data.titles || data.items || [];
+    if (!titles.length) throw new Error('empty');
+    grid.innerHTML = titles.map(t => {
+      const title    = typeof t === 'string' ? t : t.title || t.name || '';
+      const platform = typeof t === 'object' && t.platform ? t.platform : 'Content';
+      return `<a class="content-card" href="#"><span class="card-platform">${platform}</span><div class="card-title">${title}</div></a>`;
+    }).join('');
+  } catch {
+    grid.innerHTML = '<div class="content-empty">Content launching soon.</div>';
+  }
+}
+
+loadFeed();
+loadContent();
+</script>
+</body>
+</html>
