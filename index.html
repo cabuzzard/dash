@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning 6666   777777   99999 7777777777 am   is the best   the k    oihknlh   again  agin aign ------------------------------------------------
+<head>winning some pot     ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1073,8 +1073,8 @@ function renderTable() {
     };
     renderCmCell();
     cmCell.onclick = () => openRelModal('methods', c, renderCmCell);
-    // Highlight row if "this week" in grouping
-    const isThisWeek = (c.grouping || []).includes('this week');
+    // Highlight row if Status is Active
+    const isThisWeek = c.status === 'Active';
 
     tr.appendChild(cmCell);
 
@@ -1110,12 +1110,10 @@ function renderTable() {
     hlBtn.onclick = async () => {
       hlBtn.disabled = true;
       const newState = !thisWeekState;
-      const newGrouping = newState
-        ? [...(c.grouping || []).filter(g => g !== 'this week'), 'this week']
-        : (c.grouping || []).filter(g => g !== 'this week');
+      const newStatus = newState ? 'Active' : 'Planning';
       try {
-        await call('updateGrouping', { campaignId: c.id, grouping: newGrouping });
-        c.grouping = newGrouping;
+        await call('updateCampaignStatus', { campaignId: c.id, status: newStatus });
+        c.status = newStatus;
         thisWeekState = newState;
         hlBtn.textContent = newState ? '★' : '☆';
         hlBtn.style.color = newState ? '#ffcc00' : 'var(--text3)';

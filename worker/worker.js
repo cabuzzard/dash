@@ -142,6 +142,7 @@ async function getCampaigns() {
       id,
       name:             c.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
       site:             c.properties.site?.select?.name || "Other",
+      status:           c.properties.Status?.select?.name || "",
       grouping:         (c.properties["Grouping"]?.multi_select || []).map(g => g.name),
       keyMessage:       c.properties["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
       mainTd:           (c.properties["Associated To Do"]?.relation || []).map(r => ({
@@ -639,6 +640,20 @@ export default {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "Grouping": { multi_select: (grouping || []).map(name => ({ name })) } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "updateCampaignStatus") {
+        const { campaignId, status } = body;
+        if (!campaignId || !status) return json({ error: "campaignId and status required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Status": { select: { name: status } } } }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
