@@ -68,6 +68,12 @@ async function getCampaigns() {
     productById[p.id.replace(/-/g,"")] = p.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
   });
 
+  const platformRows2 = await notionQuery(PLATFORMS_DB, { page_size: 100 });
+  const platformById = {};
+  (platformRows2.results || []).forEach(p => {
+    platformById[p.id.replace(/-/g,"")] = p.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
+  });
+
   const methodById = {};
   methodRows.forEach(m => {
     methodById[m.id.replace(/-/g,"")] = m.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
@@ -151,7 +157,7 @@ async function getCampaigns() {
         name: methodById[r.id.replace(/-/g,"")] || "Untitled",
       })),
       campaignLogins:   campaignToLogins[id] || [],
-      platformIds: (c.properties["Platform Links"]?.relation || []).map(r => r.id.replace(/-/g,"")),
+      platforms: (c.properties["Platforms"]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "Untitled" })),
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       pubTitleData: pubTitleMap[id] || [],

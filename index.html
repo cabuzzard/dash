@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>winning again plthoptkjdoijtrtpoelelplelkepolelkeplek agin aign ------------------------------------------------
+<head>winning deat death   again  agin aign ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -868,15 +868,6 @@ async function loadOverview() {
     const data = await call('getCampaigns');
     ovData = data.campaigns || [];
     renderTable();
-    // Resolve platform names
-    call('getPlatforms').then(pd => {
-      const platById = {};
-      (pd.platforms || []).forEach(p => { platById[p.id] = p; });
-      ovData.forEach(camp => {
-        camp.platforms = (camp.platformIds || []).map(id => platById[id] || { id, name: id });
-      });
-      renderTable();
-    }).catch(() => {});
   } catch (e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
