@@ -500,8 +500,8 @@ export default {
         });
         const result = await resp.json();
         const relProps = Object.entries(schema.properties || {}).filter(([,p]) => p.type === 'relation').map(([n, p]) => ({ name: n, dbId: (p.relation?.database_id || '').replace(/-/g,'') }));
-        if (!resp.ok) return json({ error: result.message || "Update failed", propUsed: platformPropName, relProps }, resp.status);
-        return json({ success: true, propUsed: platformPropName, relProps });
+        if (!resp.ok) return json({ error: result.message || "Update failed", propUsed: platformPropName, relProps, notionStatus: resp.status, notionResult: result }, resp.status);
+        return json({ success: true, propUsed: platformPropName, relProps, notionStatus: resp.status, notionResult: { id: result.id, object: result.object, platformsWritten: result.properties?.Platforms?.relation } });
       }
 
       if (body.action === "getTitleAssets") {
