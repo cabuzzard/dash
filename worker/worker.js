@@ -73,13 +73,6 @@ async function getCampaigns() {
     methodById[m.id.replace(/-/g,"")] = m.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled";
   });
 
-  // Build platform name lookup
-  const platformRows = await notionQuery(PLATFORMS_DB, { page_size: 100 });
-  const platformById = {};
-  (platformRows.results || []).forEach(p => {
-    platformById[p.id.replace(/-/g,"")] = p.properties.Name?.title?.map(t=>t.plain_text).join("") || "";
-  });
-
   const loginById = {};
   const campaignToLogins = {};
   loginRows.forEach(l => {
@@ -158,7 +151,7 @@ async function getCampaigns() {
         name: methodById[r.id.replace(/-/g,"")] || "Untitled",
       })),
       campaignLogins:   campaignToLogins[id] || [],
-      platforms: (c.properties["Platforms"]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "" })),
+      platformIds: (c.properties["Platform Links"]?.relation || []).map(r => r.id.replace(/-/g,"")),
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       pubTitleData: pubTitleMap[id] || [],
@@ -472,11 +465,7 @@ export default {
 
       if (body.action === "getPlatforms") {
         const data = await notionQuery(PLATFORMS_DB, { sorts: [{ property: "Name", direction: "ascending" }], page_size: 100 });
-        const platforms = (data.results || []).map(p => ({
-          id: p.id.replace(/-/g,""),
-          name: p.properties.Name?.title?.map(t=>t.plain_text).join("") || "",
-        }));
-        return json({ platforms });
+        return json({ platforms: (data.results || []).map(p => ({ id: p.id.replace(/-/g,""), name: p.properties.Name?.title?.map(t=>t.plain_text).join("") || "" })), debug: { total: data.results?.length, error: data.message, dbId: PLATFORMS_DB } });
       }
 
       if (body.action === "updateCampaignPlatforms") {
@@ -486,7 +475,7 @@ export default {
         await fetch("https://api.notion.com/v1/pages/" + dash(campaignId), {
           method: "PATCH",
           headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { Platforms: { relation: (platformIds || []).map(id => ({ id: dash(id) })) } } })
+          body: JSON.stringify({ properties: { "Platform Links": { relation: (platformIds || []).map(id => ({ id: dash(id) })) } } })
         });
         return json({ success: true });
       }
