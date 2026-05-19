@@ -81,7 +81,7 @@ async function getCampaigns() {
   // Build siteUrl lookup by campaign id (from deployed microsite assets)
   const campaignToSiteUrl = {};
   micrositeRows.forEach(a => {
-    const url = a.properties["Content URL"]?.url || "";
+    const url = a.properties["Site URL"]?.url || "";
     if (!url) return;
     (a.properties.Campaign?.relation || []).forEach(r => {
       const cid = r.id.replace(/-/g,"");

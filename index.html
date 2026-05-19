@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>asss    beat    2 typo typo typo  ------------------------------------------------
+<head>best3    mjmjmjmjmj   typo typo typo  ------------------------------------------------
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hermes</title>
@@ -1083,6 +1083,39 @@ function renderTable() {
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '" style="cursor:' + (c.devTitles > 0 ? 'pointer' : 'default') + ';" onclick="' + (c.devTitles > 0 ? 'jumpToDev(\'' + c.id + '\')' : '') + '">' + c.devTitles + '</td>' +
       '<td class="num pub-cell' + (c.pubTitles === 0 ? ' zero' : '') + '" data-cid="' + c.id + '">' + c.pubTitles + '</td>'
     );
+
+    // ★ Active/Planning highlight toggle
+    const hlTd = document.createElement('td');
+    hlTd.style.cssText = 'text-align:center;width:28px;';
+    const hlBtn = document.createElement('button');
+    let activeState = isThisWeek;
+    hlBtn.textContent = activeState ? '★' : '☆';
+    hlBtn.title = activeState ? 'Set to Planning' : 'Set to Active';
+    hlBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:15px;color:' + (activeState ? '#ffcc00' : 'var(--text3)') + ';transition:color .15s;padding:0;';
+    hlBtn.onmouseover = () => hlBtn.style.color = '#ffcc00';
+    hlBtn.onmouseout  = () => hlBtn.style.color = activeState ? '#ffcc00' : 'var(--text3)';
+    hlBtn.onclick = async () => {
+      hlBtn.disabled = true;
+      const newState = !activeState;
+      const newStatus = newState ? 'Active' : 'Planning';
+      try {
+        await call('updateCampaignStatus', { campaignId: c.id, status: newStatus });
+        c.status = newStatus;
+        activeState = newState;
+        hlBtn.textContent = newState ? '★' : '☆';
+        hlBtn.style.color = newState ? '#ffcc00' : 'var(--text3)';
+        hlBtn.title = newState ? 'Set to Planning' : 'Set to Active';
+        tr.style.background = newState ? '#ffffff' : '';
+        tr.querySelectorAll('td').forEach(td => td.style.color = newState ? '#000' : '');
+        hlBtn.style.color = newState ? '#ffcc00' : 'var(--text3)';
+        showToast(newState ? 'Set to Active ✓' : 'Set to Planning ✓', 'success');
+      } catch(e) {
+        showToast('Failed: ' + e.message, 'error');
+      }
+      hlBtn.disabled = false;
+    };
+    hlTd.appendChild(hlBtn);
+    tr.appendChild(hlTd);
 
     tr.insertAdjacentHTML('beforeend',
       '<td class="link"><a href="' + notionUrl + '" target="_blank" title="Notion DB">↗</a></td>' +
