@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>class warfare  4444 
+<head>solar street lights
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Campaign Admin</title>
@@ -271,6 +271,25 @@ h2.editable:hover::after { opacity: 1; }
   </div>
 </div>
 
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="modalTitle">Edit</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="modalHint"></div>
+      <textarea class="modal-ta" id="modalTa" rows="8"></textarea>
+      <div class="modal-status" id="modalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+      <button class="modal-btn save" id="modalSave" onclick="saveModal()">Save to Notion</button>
+    </div>
+  </div>
+</div>
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "3611f7d3a4bb81fe9ebcfe01813d9ac2";
@@ -504,10 +523,8 @@ function closeModal() {
   activeField = null;
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('editModal').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
-  });
+document.getElementById('editModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
 });
 
 async function saveModal() {
@@ -530,13 +547,11 @@ async function saveModal() {
       // For platforms/methods — need to combine back into one field
       if (activeField === 'platforms') {
         RAW.rawPlatforms = val;
-        const combined = 'ACTIVE PLATFORMS: ' + val + (RAW.rawMethods ? '
-ACTIVE METHODS: ' + RAW.rawMethods : '');
+        const combined = 'ACTIVE PLATFORMS: ' + val + (RAW.rawMethods ? '\nACTIVE METHODS: ' + RAW.rawMethods : '');
         await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: 'platforms', value: combined });
       } else if (activeField === 'methods') {
         RAW.rawMethods = val;
-        const combined = 'ACTIVE PLATFORMS: ' + (RAW.rawPlatforms || '') + '
-ACTIVE METHODS: ' + val;
+        const combined = 'ACTIVE PLATFORMS: ' + (RAW.rawPlatforms || '') + '\nACTIVE METHODS: ' + val;
         await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: 'platforms', value: combined });
       } else {
         await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
@@ -568,23 +583,5 @@ function init() {
   loadTitles();
 }
 </script>
-<!-- EDIT MODAL -->
-<div class="modal-overlay" id="editModal">
-  <div class="modal">
-    <div class="modal-head">
-      <div class="modal-title" id="modalTitle">Edit</div>
-      <button class="modal-close" onclick="closeModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="modal-hint" id="modalHint"></div>
-      <textarea class="modal-ta" id="modalTa" rows="8"></textarea>
-      <div class="modal-status" id="modalStatus"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
-      <button class="modal-btn save" id="modalSave" onclick="saveModal()">Save to Notion</button>
-    </div>
-  </div>
-</div>
 </body>
 </html>
