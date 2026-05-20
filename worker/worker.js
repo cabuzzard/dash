@@ -203,7 +203,7 @@ async function getCampaigns() {
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
     if (request.method === "GET")      return json({ status: "ok", version: "2026-05-18-01" });
     if (request.method !== "POST")    return json({ error: "POST only" }, 405);
@@ -1058,6 +1058,45 @@ Rules:
         const data = await resp.json();
         const out = data.content?.[0]?.text || '';
         return json({ text: out });
+      }
+
+      // ── CAMPAIGN ADMIN: updateResearch ──
+      if (body.action === "updateResearch") {
+        const { researchId, field, value } = body;
+        if (!researchId || !field) return json({ error: "researchId and field required" }, 400);
+        const fieldMap = {
+          productIdeas: "Product Ideas",
+          notes:        "Notes",
+          platforms:    "Platforms & Methods",
+          tiktokTrends: "TikTok Trends",
+          newsFeed:     "News Feed",
+        };
+        const notionField = fieldMap[field];
+        if (!notionField) return json({ error: "Unknown field: " + field }, 400);
+        const dashed = researchId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { [notionField]: { rich_text: [{ type: "text", text: { content: value || "" } }] } } })
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── CAMPAIGN ADMIN: updateCampaignKeywords ──
+      if (body.action === "updateCampaignKeywords") {
+        const { campaignId, value } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Keywords: { rich_text: [{ type: "text", text: { content: value || "" } }] } } })
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
       }
 
       return json({ error: "Unknown action" }, 400);

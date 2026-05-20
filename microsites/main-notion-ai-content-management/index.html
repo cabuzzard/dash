@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>local law   fire 
+<head>no bad ideas   
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Campaign Admin</title>
@@ -114,6 +114,34 @@ h2 {
 .pin-btn.del { font-size: 11px; color: #444; }
 .pin-btn.empty { background: transparent; border: none; pointer-events: none; }
 .pin-error { font-size: 10px; color: #ff4444; margin-top: 20px; min-height: 14px; letter-spacing: .1em; }
+
+/* EDIT MODAL */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; z-index: 500; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+.modal { background: #111; border: 1px solid #2a2a2a; width: 90%; max-width: 560px; display: flex; flex-direction: column; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid #1e1e1e; }
+.modal-title { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: #555; }
+.modal-close { font-size: 16px; color: #444; cursor: pointer; background: none; border: none; font-family: inherit; line-height: 1; padding: 2px 6px; }
+.modal-close:hover { color: #e8ff47; }
+.modal-body { padding: 14px 16px; }
+.modal-hint { font-size: 10px; color: #333; margin-bottom: 8px; letter-spacing: .04em; }
+.modal-ta { width: 100%; min-height: 160px; background: #080808; border: 1px solid #222; color: #ccc; font-family: 'Syne', sans-serif; font-size: 13px; line-height: 1.6; padding: 10px 12px; resize: vertical; outline: none; }
+.modal-ta:focus { border-color: #444; }
+.modal-foot { display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid #1e1e1e; }
+.modal-btn { flex: 1; height: 36px; font-family: 'Syne', sans-serif; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; border: 1px solid; transition: all .15s; }
+.modal-btn.save { background: #e8ff47; color: #080808; border-color: #e8ff47; font-weight: 700; }
+.modal-btn.save:hover { background: #fff; border-color: #fff; }
+.modal-btn.save:disabled { background: #2a2a2a; color: #444; border-color: #2a2a2a; cursor: default; }
+.modal-btn.cancel { background: transparent; color: #444; border-color: #1e1e1e; }
+.modal-btn.cancel:hover { color: #777; border-color: #333; }
+.modal-status { font-size: 10px; letter-spacing: .08em; padding: 4px 0; min-height: 18px; }
+.modal-status.ok  { color: #44ff88; }
+.modal-status.err { color: #ff4444; }
+
+/* editable h2 */
+h2.editable { cursor: pointer; }
+h2.editable::after { content: ' ✎'; font-size: 12px; opacity: 0; transition: opacity .15s; vertical-align: middle; }
+h2.editable:hover::after { opacity: 1; }
 </style>
 </head>
 <body>
@@ -166,7 +194,7 @@ h2 {
 <!-- SEC 2: two col — keywords / main problem -->
 <div class="two-col">
   <div class="col">
-    <h2>Keywords</h2>
+    <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
     <div class="content">
       <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -182,13 +210,13 @@ h2 {
 <!-- SEC 3: two col — product ideas / recommended actions -->
 <div class="two-col">
   <div class="col">
-    <h2>Product Ideas</h2>
+    <h2 class="editable" onclick="openModal('productIdeas')">Product Ideas</h2>
     <div class="content">
       <div class="body-text" id="r-products"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
-    <h2>Recommended Actions</h2>
+    <h2 class="editable" onclick="openModal('actions')">Recommended Actions</h2>
     <div class="content">
       <div class="body-text" id="r-actions"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -198,13 +226,13 @@ h2 {
 <!-- SEC 4: two col — platforms / methods -->
 <div class="two-col">
   <div class="col">
-    <h2>Platforms</h2>
+    <h2 class="editable" onclick="openModal('platforms')">Platforms</h2>
     <div class="content">
       <div class="body-text" id="r-platforms"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
-    <h2>Methods</h2>
+    <h2 class="editable" onclick="openModal('methods')">Methods</h2>
     <div class="content">
       <div class="body-text" id="r-methods"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -347,6 +375,17 @@ async function loadResearch() {
     statusEl.innerHTML = `<span class="badge ${sc}">${r.status || '—'}</span>`;
     document.getElementById('r-date').textContent = r.lastUpdated || '—';
 
+    // Store raw values for editing
+    RESEARCH_ID_LIVE = r.id || '';
+    const pmSplitRaw = (r.platforms || '').replace(/<br\s*\/?>/gi,'\n').split(/ACTIVE METHODS:/i);
+    RAW = {
+      keywords:     r.keywords || '',
+      productIdeas: r.productIdeas || '',
+      notes:        r.notes || '',
+      rawPlatforms: pmSplitRaw[0].replace(/ACTIVE PLATFORMS:\s*/i,'').replace(/<br\s*\/?>/gi,'\n').trim(),
+      rawMethods:   pmSplitRaw.length > 1 ? pmSplitRaw[1].replace(/<br\s*\/?>/gi,'\n').trim() : '',
+    };
+
     // SEC 2 — keywords as pills
     const kwEl = document.getElementById('r-keywords');
     if (r.keywords) {
@@ -422,10 +461,128 @@ async function loadTitles() {
   }
 }
 
+// Raw research values for editing
+let RAW = {};
+let RESEARCH_ID_LIVE = '';
+
+// Modal config per field
+const MODAL_CFG = {
+  keywords:     { title: 'Keywords',            hint: 'Comma-separated keywords for this campaign', target: 'campaign' },
+  productIdeas: { title: 'Product Ideas',        hint: 'Describe product ideas, offers, and pipeline', target: 'research', field: 'productIdeas' },
+  actions:      { title: 'Recommended Actions',  hint: 'ROI-ranked actions and next steps', target: 'research', field: 'notes' },
+  platforms:    { title: 'Platforms',            hint: 'Active and planned platforms for this campaign', target: 'research', field: 'platforms', combined: true },
+  methods:      { title: 'Methods',              hint: 'Active and planned methods for this campaign', target: 'research', field: 'platforms', combined: true },
+};
+
+let activeField = null;
+
+function openModal(field) {
+  const cfg = MODAL_CFG[field];
+  if (!cfg) return;
+  activeField = field;
+  document.getElementById('modalTitle').textContent = cfg.title;
+  document.getElementById('modalHint').textContent = cfg.hint;
+  document.getElementById('modalStatus').textContent = '';
+  document.getElementById('modalStatus').className = 'modal-status';
+  document.getElementById('modalSave').disabled = false;
+
+  // Pre-fill with raw value
+  let val = '';
+  if (field === 'keywords')     val = RAW.keywords || '';
+  if (field === 'productIdeas') val = RAW.productIdeas || '';
+  if (field === 'actions')      val = RAW.notes || '';
+  if (field === 'platforms')    val = RAW.rawPlatforms || '';
+  if (field === 'methods')      val = RAW.rawMethods || '';
+  document.getElementById('modalTa').value = val;
+
+  document.getElementById('editModal').classList.add('open');
+  setTimeout(() => document.getElementById('modalTa').focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById('editModal').classList.remove('open');
+  activeField = null;
+}
+
+document.getElementById('editModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+async function saveModal() {
+  const val = document.getElementById('modalTa').value.trim();
+  const btn = document.getElementById('modalSave');
+  const status = document.getElementById('modalStatus');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  status.textContent = '';
+
+  const cfg = MODAL_CFG[activeField];
+  try {
+    if (cfg.target === 'campaign') {
+      await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, value: val });
+      RAW.keywords = val;
+      // Re-render keywords pills
+      const kwEl = document.getElementById('r-keywords');
+      kwEl.innerHTML = val ? val.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('') : '<span class="empty">—</span>';
+    } else {
+      // For platforms/methods — need to combine back into one field
+      if (activeField === 'platforms') {
+        RAW.rawPlatforms = val;
+        const combined = 'ACTIVE PLATFORMS: ' + val + (RAW.rawMethods ? '
+ACTIVE METHODS: ' + RAW.rawMethods : '');
+        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: 'platforms', value: combined });
+      } else if (activeField === 'methods') {
+        RAW.rawMethods = val;
+        const combined = 'ACTIVE PLATFORMS: ' + (RAW.rawPlatforms || '') + '
+ACTIVE METHODS: ' + val;
+        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: 'platforms', value: combined });
+      } else {
+        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
+        RAW[cfg.field] = val;
+      }
+      // Re-condense the display
+      status.textContent = 'Saved. Updating display…';
+      const displayId = { productIdeas:'r-products', actions:'r-actions', platforms:'r-platforms', methods:'r-methods' }[activeField];
+      const label = { productIdeas:'Product Ideas', actions:'Recommended Actions — prioritised by ROI', platforms:'Platforms', methods:'Methods' }[activeField];
+      if (displayId) {
+        document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
+        const html = await condense(label, val);
+        document.getElementById(displayId).innerHTML = html;
+      }
+    }
+    status.textContent = 'Saved ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeModal, 900);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Save to Notion';
+}
+
 function init() {
   loadResearch();
   loadTitles();
 }
 </script>
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="modalTitle">Edit</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="modalHint"></div>
+      <textarea class="modal-ta" id="modalTa" rows="8"></textarea>
+      <div class="modal-status" id="modalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+      <button class="modal-btn save" id="modalSave" onclick="saveModal()">Save to Notion</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
