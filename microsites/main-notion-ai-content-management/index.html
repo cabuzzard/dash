@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>I am a real american   
+<head>ye mn  
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Campaign Admin</title>
@@ -49,8 +49,13 @@ h2 {
 
 /* CONTENT AREAS */
 .content { padding: 14px 20px 18px; }
-.body-text { font-size: 13px; color: #777; line-height: 1.7; white-space: pre-wrap; }
-.body-text strong { color: #bbb; font-weight: 600; }
+.body-text { font-size: 13px; color: #777; line-height: 1.7; }
+.body-text h3 { font-size: 13px; font-weight: 700; color: #fff; margin: 14px 0 3px; letter-spacing: .01em; }
+.body-text h3:first-child { margin-top: 0; }
+.body-text p { margin-bottom: 6px; }
+.body-text a { color: #e8ff47; text-decoration: none; border-bottom: 1px solid rgba(232,255,71,.3); }
+.body-text a:hover { border-bottom-color: #e8ff47; }
+.body-text strong { color: #fff; font-weight: 700; }
 
 /* FIELD */
 .field { display: flex; align-items: flex-start; gap: 0; margin-bottom: 2px; }
@@ -67,7 +72,13 @@ h2 {
 
 /* KEYWORDS */
 .kw-list { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px 0; }
-.kw { font-size: 11px; color: #555; padding: 3px 10px; border: 1px solid #1a1a1a; background: #0d0d0d; }
+.kw {
+    font-size: 18px;
+    color: #555;
+    padding: 3px 10px;
+    border: 1px solid #1a1a1a;
+    background: #0d0d0d;
+}
 
 /* TITLES */
 .title-list { display: flex; flex-direction: column; }
@@ -278,9 +289,28 @@ async function w(action, extra = {}) {
   return d;
 }
 
-// format <br> tags into newlines for display
-function fmt(text) {
-  return text ? text.replace(/<br\s*\/?>/gi, '\n') : '';
+// Convert Notion rich text to HTML with h3 headings for bold lines
+function fmt(raw) {
+  if (!raw) return '';
+  // Split on <br> tags
+  const lines = raw.split(/<br\s*\/?>/gi);
+  let html = '';
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    // If the line starts with a bold tag or is entirely bold, make it an h3
+    const boldHeading = trimmed.match(/^<strong>(.*?)<\/strong>(.*)$/i) ||
+                        trimmed.match(/^\*\*(.*?)\*\*(.*)$/);
+    if (boldHeading) {
+      const heading = boldHeading[1];
+      const rest = boldHeading[2].replace(/^\s*[—–-]\s*/, '').trim();
+      html += '<h3>' + heading + '</h3>';
+      if (rest) html += '<p>' + rest + '</p>';
+    } else {
+      html += '<p>' + trimmed + '</p>';
+    }
+  });
+  return html;
 }
 
 async function loadResearch() {
@@ -303,26 +333,26 @@ async function loadResearch() {
     } else {
       kwEl.innerHTML = '<span class="empty">—</span>';
     }
-    document.getElementById('r-notes').textContent = fmt(r.notes) || '—';
+    document.getElementById('r-notes').innerHTML = fmt(r.notes) || '<p>—</p>';
 
     // SEC 3
-    document.getElementById('r-products').textContent = fmt(r.productIdeas) || '—';
+    document.getElementById('r-products').innerHTML = fmt(r.productIdeas) || '<p>—</p>';
 
     // SEC 4 — split platforms & methods field
     const pm = fmt(r.platforms) || '';
     // Field contains both platforms and methods — split on ACTIVE METHODS: if present
     const methodsSplit = pm.split(/ACTIVE METHODS:/i);
     if (methodsSplit.length > 1) {
-      document.getElementById('r-platforms').textContent = methodsSplit[0].replace(/ACTIVE PLATFORMS:\s*/i, '').trim();
-      document.getElementById('r-methods').textContent = methodsSplit[1].trim();
+      document.getElementById('r-platforms').innerHTML = fmt(methodsSplit[0].replace(/ACTIVE PLATFORMS:\s*/i, '').trim());
+      document.getElementById('r-methods').innerHTML = fmt(methodsSplit[1].trim());
     } else {
-      document.getElementById('r-platforms').textContent = pm;
-      document.getElementById('r-methods').textContent = '—';
+      document.getElementById('r-platforms').innerHTML = fmt(pm);
+      document.getElementById('r-methods').innerHTML = '<p>—</p>';
     }
 
     // SEC 5
-    document.getElementById('r-news').textContent = fmt(r.newsFeed) || '—';
-    document.getElementById('r-tiktok').textContent = fmt(r.tiktokTrends) || '—';
+    document.getElementById('r-news').innerHTML = fmt(r.newsFeed) || '<p>—</p>';
+    document.getElementById('r-tiktok').innerHTML = fmt(r.tiktokTrends) || '<p>—</p>';
 
   } catch(e) {
     document.getElementById('r-name').textContent = 'Error: ' + e.message;
