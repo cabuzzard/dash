@@ -35,7 +35,7 @@
   </div>
 </div>
 
-<!-- SEC 1: two col — campaign name / date researched -->
+<!-- SEC 1: two col — campaign meta / main TD -->
 <div class="two-col">
   <div class="col">
     <h2>Campaign</h2>
@@ -43,18 +43,23 @@
       <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
       <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3491f7d3a4bb8181b9a2cd5dc7bdf21a" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb814f9938efa3470e2e89" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
     </div>
   </div>
   <div class="col">
-    <h2>Date Researched</h2>
+    <h2>Main TD</h2>
     <div class="content">
-      <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
+      <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div class="td-add">
+        <input class="td-input" id="td-input" type="text" placeholder="Add task…" />
+        <button class="td-add-btn" onclick="addTodo()">+ Add</button>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- SEC 2: two col — keywords / key message -->
-<div class="two-col">
+<!-- SEC 2: three col — keywords / key message / main problem -->
+<div class="three-col">
   <div class="col">
     <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
     <div class="content">
@@ -67,13 +72,11 @@
       <div class="body-text" id="r-keymessage"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
-</div>
-
-<!-- SEC 2b: one col — main problem -->
-<div class="one-col">
-  <h2>Main Problem</h2>
-  <div class="content">
-    <div class="body-text" id="r-problem"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+  <div class="col">
+    <h2>Main Problem</h2>
+    <div class="content">
+      <div class="body-text" id="r-problem"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
   </div>
 </div>
 
@@ -460,9 +463,69 @@ async function saveModal() {
   btn.textContent = 'Save to Notion';
 }
 
+// ── MAIN TD ──────────────────────────────────────────────────────────
+let TD_ITEMS = [];
+
+function renderTd() {
+  const el = document.getElementById('td-list');
+  el.innerHTML = '';
+  if (!TD_ITEMS.length) { el.innerHTML = '<div class="empty">No tasks.</div>'; return; }
+  TD_ITEMS.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'td-row';
+    row.innerHTML = `<span class="td-name">${t.name}</span><button class="td-del" onclick="deleteTodo('${t.id}', this)" title="Remove">✕</button>`;
+    el.appendChild(row);
+  });
+}
+
+async function loadTodos() {
+  const el = document.getElementById('td-list');
+  try {
+    const data = await w('getCampaignTodos', { campaignId: CAMPAIGN_ID });
+    TD_ITEMS = data.todos || [];
+    renderTd();
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
+  }
+}
+
+async function addTodo() {
+  const input = document.getElementById('td-input');
+  const name = input.value.trim();
+  if (!name) return;
+  input.value = '';
+  input.disabled = true;
+  try {
+    const data = await w('createTodo', { name, campaignId: CAMPAIGN_ID });
+    TD_ITEMS.push({ id: data.id, name });
+    renderTd();
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+  input.disabled = false;
+  input.focus();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement === document.getElementById('td-input')) addTodo();
+});
+
+async function deleteTodo(id, btn) {
+  btn.disabled = true;
+  try {
+    await w('unlinkTodoFromCampaign', { campaignId: CAMPAIGN_ID, todoId: id });
+    TD_ITEMS = TD_ITEMS.filter(t => t.id !== id);
+    renderTd();
+  } catch(e) {
+    btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+}
+
 function init() {
   loadResearch();
   loadTitles();
+  loadTodos();
 }
 </script>
 </body>
