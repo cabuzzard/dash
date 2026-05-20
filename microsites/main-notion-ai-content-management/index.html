@@ -3,225 +3,203 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Webguy — AI Content Systems</title>
+<title>Webguy — Command</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #080808;
-  --surface: #0f0f0f;
-  --surface2: #161616;
-  --border: rgba(255,255,255,.07);
-  --border2: rgba(255,255,255,.12);
-  --text: #f0ede8;
-  --text2: #888580;
-  --text3: #444;
-  --accent: #e8ff47;
-  --accent2: #ff6b35;
-  --white: #ffffff;
+  --bg:    #080808;
+  --s1:    #0d0d0d;
+  --s2:    #131313;
+  --s3:    #1a1a1a;
+  --b1:    rgba(255,255,255,.06);
+  --b2:    rgba(255,255,255,.11);
+  --b3:    rgba(255,255,255,.18);
+  --txt:   #e8e5e0;
+  --txt2:  #7a7670;
+  --txt3:  #3e3c38;
+  --acc:   #e8ff47;
+  --acc2:  #ff6b35;
+  --green: #3ddc84;
+  --blue:  #4da6ff;
+  --mono:  'IBM Plex Mono', monospace;
+  --sans:  'IBM Plex Sans', sans-serif;
+  --nav-w: 52px;
+  --row-h: 44px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
-body {
-  font-family: 'Syne', sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  overflow-x: hidden;
-  cursor: none;
-}
-.cursor {
-  width: 8px; height: 8px;
-  background: var(--accent);
-  border-radius: 50%;
-  position: fixed; top: 0; left: 0;
-  pointer-events: none; z-index: 9999;
-  transition: transform .1s, width .2s, height .2s;
-  mix-blend-mode: difference;
-}
-.cursor.hover { width: 40px; height: 40px; transform: translate(-16px,-16px); }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: var(--sans); background: var(--bg); color: var(--txt); display: flex; }
+
+/* PIN */
 .pin-screen {
-  position: fixed; inset: 0;
-  background: var(--bg);
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  z-index: 900; padding: 40px;
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 999;
 }
 .pin-screen.hidden { display: none; }
-.pin-wordmark {
-  font-family: 'Syne', sans-serif;
-  font-size: 11px; letter-spacing: .3em;
-  text-transform: uppercase; color: var(--text3);
-  margin-bottom: 60px;
+.pin-mark { font-family: var(--mono); font-size: 10px; letter-spacing: .3em; text-transform: uppercase; color: var(--txt3); margin-bottom: 48px; }
+.pin-label { font-family: var(--mono); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--txt2); margin-bottom: 24px; }
+.pin-dots { display: flex; gap: 12px; margin-bottom: 36px; }
+.pin-dot { width: 5px; height: 5px; border-radius: 50%; border: 1px solid var(--txt3); background: transparent; transition: all .12s; }
+.pin-dot.filled { background: var(--acc); border-color: var(--acc); }
+.pin-dot.error  { background: var(--acc2); border-color: var(--acc2); }
+.pin-pad { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; width: 180px; }
+.pin-btn { height: 44px; background: var(--s1); border: 1px solid var(--b1); font-size: 16px; color: var(--txt); cursor: pointer; font-family: var(--mono); transition: all .1s; }
+.pin-btn:hover { background: var(--s2); border-color: var(--b2); }
+.pin-btn:active { transform: scale(.96); }
+.pin-btn.del { font-size: 11px; color: var(--txt2); }
+.pin-btn.empty { background: transparent; border: none; pointer-events: none; }
+.pin-error { font-family: var(--mono); font-size: 10px; color: var(--acc2); margin-top: 16px; min-height: 14px; letter-spacing: .1em; }
+
+/* SIDEBAR */
+.sidebar {
+  width: var(--nav-w); flex-shrink: 0; height: 100vh;
+  background: var(--s1); border-right: 1px solid var(--b1);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 12px 0; gap: 2px;
 }
-.pin-label {
-  font-size: 11px; letter-spacing: .2em;
-  text-transform: uppercase; color: var(--text2);
-  margin-bottom: 32px;
-}
-.pin-dots { display: flex; gap: 16px; margin-bottom: 48px; }
-.pin-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  border: 1px solid var(--text3);
-  background: transparent; transition: all .15s;
-}
-.pin-dot.filled { background: var(--accent); border-color: var(--accent); }
-.pin-dot.error  { background: var(--accent2); border-color: var(--accent2); }
-.pin-pad {
-  display: grid; grid-template-columns: repeat(3,1fr);
-  gap: 6px; width: 100%; max-width: 210px;
-}
-.pin-btn {
-  height: 52px; background: var(--surface);
-  border: 1px solid var(--border);
-  font-size: 18px; color: var(--text);
-  cursor: none; font-family: 'Syne', sans-serif;
-  transition: all .1s; letter-spacing: .05em;
-}
-.pin-btn:hover { background: var(--surface2); border-color: var(--border2); }
-.pin-btn:active { background: var(--surface2); transform: scale(.96); }
-.pin-btn.del { font-size: 13px; color: var(--text2); font-family: 'Syne', sans-serif; }
-.pin-btn.empty { background: transparent; border: none; cursor: none; }
-.pin-error { font-size: 11px; color: var(--accent2); margin-top: 24px; min-height: 14px; letter-spacing: .1em; }
-nav {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 20px 48px; border-bottom: 1px solid var(--border);
-  background: rgba(8,8,8,.9); backdrop-filter: blur(12px);
-}
-.nav-logo {
-  font-family: 'Syne', sans-serif; font-size: 12px; letter-spacing: .2em;
-  text-transform: uppercase; color: var(--text2); text-decoration: none;
-}
-.nav-logo span { color: var(--accent); }
-.nav-links { display: flex; gap: 32px; align-items: center; }
-.nav-links a {
-  font-size: 12px; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--text2); text-decoration: none; transition: color .15s;
-}
-.nav-links a:hover { color: var(--text); }
-.nav-cta { background: var(--accent) !important; color: var(--bg) !important; padding: 10px 20px; font-weight: 700; transition: all .15s !important; }
-.nav-cta:hover { background: var(--white) !important; }
-.hero {
-  min-height: 100vh; display: flex; flex-direction: column;
-  justify-content: flex-end; padding: 100px 48px;
-  position: relative; overflow: hidden;
-}
-.hero-grid {
-  position: absolute; inset: 0;
-  background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
-  background-size: 60px 60px; opacity: .4;
-}
-.hero-glow {
-  position: absolute; top: -200px; right: -200px; width: 600px; height: 600px;
-  background: radial-gradient(circle, rgba(232,255,71,.06) 0%, transparent 70%);
-  pointer-events: none;
-}
-.hero-tag {
-  font-family: 'Syne', sans-serif; font-size: 11px; letter-spacing: .25em;
-  text-transform: uppercase; color: var(--accent); margin-bottom: 32px;
-  display: flex; align-items: center; gap: 12px;
-}
-.hero-tag::before { content: ''; display: block; width: 32px; height: 1px; background: var(--accent); }
-.hero-headline { font-size: clamp(52px, 8vw, 120px); font-weight: 800; line-height: .95; letter-spacing: -.03em; max-width: 900px; margin-bottom: 48px; }
-.hero-headline em { font-style: italic; font-weight: 300; letter-spacing: -.02em; color: var(--accent); }
-.hero-bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 48px; flex-wrap: wrap; }
-.hero-body { font-size: 16px; line-height: 1.7; color: var(--text2); max-width: 440px; }
-.hero-actions { display: flex; gap: 12px; flex-shrink: 0; }
-.btn { display: inline-flex; align-items: center; gap: 8px; font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; padding: 16px 32px; transition: all .2s; cursor: none; }
-.btn-primary { background: var(--accent); color: var(--bg); }
-.btn-primary:hover { background: var(--white); }
-.btn-outline { border: 1px solid var(--border2); color: var(--text); background: transparent; }
-.btn-outline:hover { border-color: var(--text); background: var(--surface); }
-.ticker-wrap { background: var(--accent); overflow: hidden; padding: 12px 0; white-space: nowrap; }
-.ticker { display: inline-flex; gap: 0; animation: ticker 30s linear infinite; }
-.ticker-item { font-family: 'Syne', sans-serif; font-size: 11px; letter-spacing: .15em; text-transform: uppercase; color: var(--bg); padding: 0 32px; }
-.ticker-dot { color: var(--bg); opacity: .4; }
-@keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-section { padding: 100px 48px; }
-.section-inner { max-width: 1200px; margin: 0 auto; }
-.section-label { font-family: 'Syne', sans-serif; font-size: 10px; letter-spacing: .3em; text-transform: uppercase; color: var(--text3); margin-bottom: 48px; display: flex; align-items: center; gap: 16px; }
-.section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-.problem { background: var(--surface); }
-.problem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); margin-bottom: 64px; }
-.problem-item { background: var(--surface); padding: 40px; transition: background .2s; }
-.problem-item:hover { background: var(--surface2); }
-.problem-num { font-family: 'Syne', sans-serif; font-size: 48px; font-weight: 400; color: var(--border2); line-height: 1; margin-bottom: 16px; display: block; }
-.problem-text { font-size: 16px; line-height: 1.6; color: var(--text2); }
-.problem-text strong { color: var(--text); }
-.problem-headline { font-size: clamp(28px, 4vw, 48px); font-weight: 800; line-height: 1.1; letter-spacing: -.02em; max-width: 600px; }
-.problem-headline em { font-style: italic; font-weight: 300; letter-spacing: -.02em; color: var(--accent2); }
-.system-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: start; }
-.system-title { font-size: clamp(32px, 4vw, 52px); font-weight: 800; line-height: 1.05; letter-spacing: -.02em; margin-bottom: 24px; }
-.system-title em { font-style: italic; font-weight: 300; letter-spacing: -.02em; color: var(--accent); }
-.system-body { font-size: 16px; line-height: 1.75; color: var(--text2); margin-bottom: 40px; }
-.system-steps { display: flex; flex-direction: column; gap: 0; }
-.system-step { display: flex; gap: 24px; align-items: flex-start; padding: 24px 0; border-bottom: 1px solid var(--border); }
-.system-step:first-child { border-top: 1px solid var(--border); }
-.step-num { font-family: 'Syne', sans-serif; font-size: 11px; color: var(--accent); letter-spacing: .1em; padding-top: 2px; flex-shrink: 0; width: 32px; }
-.step-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-.step-desc { font-size: 13px; color: var(--text2); line-height: 1.5; }
-.system-visual { background: var(--surface); border: 1px solid var(--border); padding: 40px; position: relative; }
-.sys-row { display: flex; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.sb-logo { font-family: var(--mono); font-size: 9px; letter-spacing: .2em; text-transform: uppercase; color: var(--acc); writing-mode: vertical-rl; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--b1); width: 100%; text-align: center; }
+.sb-btn { width: 36px; height: 36px; border-radius: 3px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; color: var(--txt3); transition: all .15s; border: 1px solid transparent; position: relative; }
+.sb-btn:hover { background: var(--s3); color: var(--txt2); border-color: var(--b1); }
+.sb-btn.active { background: var(--s3); color: var(--acc); border-color: var(--b2); }
+.sb-btn[title]:hover::after { content: attr(title); position: absolute; left: calc(100% + 8px); background: var(--s3); border: 1px solid var(--b2); color: var(--txt); font-family: var(--mono); font-size: 9px; letter-spacing: .08em; padding: 4px 8px; white-space: nowrap; pointer-events: none; z-index: 200; }
+.sb-spacer { flex: 1; }
+
+/* MAIN */
+.main { flex: 1; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* TOP BAR */
+.topbar { height: var(--row-h); flex-shrink: 0; display: flex; align-items: center; border-bottom: 1px solid var(--b1); background: var(--s1); padding: 0 16px; }
+.topbar-section { display: flex; align-items: center; gap: 8px; padding: 0 14px; height: 100%; border-right: 1px solid var(--b1); }
+.topbar-section:first-child { padding-left: 0; }
+.tb-label { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; text-transform: uppercase; color: var(--txt3); }
+.tb-val { font-family: var(--mono); font-size: 11px; font-weight: 500; }
+.tb-val.green { color: var(--green); }
+.tb-val.acc   { color: var(--acc); }
+.tb-val.orange{ color: var(--acc2); }
+.tb-val.blue  { color: var(--blue); }
+.pulse { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: pulse 2s ease-in-out infinite; flex-shrink: 0; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.25} }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.tb-time { font-family: var(--mono); font-size: 10px; color: var(--txt3); }
+
+/* GRID */
+.grid { flex: 1; display: grid; overflow: hidden; grid-template-columns: 280px 1fr 280px; grid-template-rows: 1fr 1fr; gap: 1px; background: var(--b1); }
+.panel { background: var(--bg); overflow: hidden; display: flex; flex-direction: column; }
+.panel.col2-full { grid-row: 1 / 3; }
+
+/* PANEL HEADER */
+.ph { height: 30px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--b1); background: var(--s1); }
+.ph-title { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; text-transform: uppercase; color: var(--txt3); flex: 1; }
+.ph-badge { font-family: var(--mono); font-size: 9px; padding: 1px 6px; border-radius: 2px; letter-spacing: .05em; }
+.ph-badge.green  { background: rgba(61,220,132,.1);  color: var(--green); border: 1px solid rgba(61,220,132,.2); }
+.ph-badge.acc    { background: rgba(232,255,71,.08); color: var(--acc);   border: 1px solid rgba(232,255,71,.2); }
+.ph-badge.orange { background: rgba(255,107,53,.1);  color: var(--acc2);  border: 1px solid rgba(255,107,53,.2); }
+.ph-badge.blue   { background: rgba(77,166,255,.1);  color: var(--blue);  border: 1px solid rgba(77,166,255,.2); }
+.ph-badge.dim    { background: var(--s3); color: var(--txt3); border: 1px solid var(--b1); }
+.ph-action { font-family: var(--mono); font-size: 9px; color: var(--txt3); cursor: pointer; padding: 2px 4px; border-radius: 2px; transition: all .15s; }
+.ph-action:hover { color: var(--txt2); background: var(--s3); }
+
+/* PANEL BODY */
+.pb { flex: 1; overflow-y: auto; }
+.pb::-webkit-scrollbar { width: 3px; }
+.pb::-webkit-scrollbar-thumb { background: var(--b2); }
+
+/* STATS ROW */
+.stats-row { display: grid; grid-template-columns: repeat(4,1fr); background: var(--b1); gap: 1px; flex-shrink: 0; }
+.stat { background: var(--bg); padding: 8px 10px; }
+.stat-num { font-family: var(--mono); font-size: 18px; font-weight: 600; line-height: 1; margin-bottom: 2px; }
+.stat-num.acc    { color: var(--acc); }
+.stat-num.green  { color: var(--green); }
+.stat-num.orange { color: var(--acc2); }
+.stat-num.blue   { color: var(--blue); }
+.stat-label { font-family: var(--mono); font-size: 8px; letter-spacing: .1em; text-transform: uppercase; color: var(--txt3); }
+
+/* PIPELINE */
+.pipe-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--b1); transition: background .1s; }
+.pipe-item:hover { background: var(--s1); }
+.pipe-item:last-child { border-bottom: none; }
+.pipe-stage { font-family: var(--mono); font-size: 8px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 5px; border-radius: 2px; flex-shrink: 0; min-width: 52px; text-align: center; }
+.ps-write   { background: rgba(77,166,255,.1);  color: var(--blue);  border: 1px solid rgba(77,166,255,.2); }
+.ps-review  { background: rgba(255,107,53,.1);  color: var(--acc2);  border: 1px solid rgba(255,107,53,.2); }
+.ps-pub     { background: rgba(232,255,71,.08); color: var(--acc);   border: 1px solid rgba(232,255,71,.2); }
+.ps-done    { background: rgba(61,220,132,.08); color: var(--green); border: 1px solid rgba(61,220,132,.2); }
+.ps-explode { background: rgba(180,100,255,.1); color: #c084fc;      border: 1px solid rgba(180,100,255,.2); }
+.pipe-title { font-size: 12px; color: var(--txt); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pipe-group { font-family: var(--mono); font-size: 8px; color: var(--txt3); flex-shrink: 0; max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* FEED */
+.feed-item { padding: 8px 12px; border-bottom: 1px solid var(--b1); transition: background .1s; }
+.feed-item:hover { background: var(--s1); }
+.feed-item:last-child { border-bottom: none; }
+.feed-num { font-family: var(--mono); font-size: 9px; color: var(--txt3); margin-bottom: 3px; }
+.feed-text { font-size: 12px; line-height: 1.55; color: var(--txt2); }
+.feed-text strong { color: var(--txt); font-weight: 500; }
+
+/* CONTENT */
+.content-item { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--b1); transition: background .1s; cursor: pointer; text-decoration: none; }
+.content-item:hover { background: var(--s1); }
+.content-item:last-child { border-bottom: none; }
+.ci-platform { font-family: var(--mono); font-size: 8px; letter-spacing: .06em; text-transform: uppercase; color: var(--blue); flex-shrink: 0; min-width: 60px; }
+.ci-title { font-size: 12px; color: var(--txt); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* SYSTEM STATUS */
+.sys-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--b1); }
 .sys-row:last-child { border-bottom: none; }
-.sys-icon { width: 36px; height: 36px; background: var(--surface2); border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
-.sys-label { font-size: 13px; font-weight: 600; }
-.sys-sub { font-size: 11px; color: var(--text2); margin-top: 2px; }
-.sys-status { margin-left: auto; font-family: 'Syne', sans-serif; font-size: 10px; letter-spacing: .1em; color: var(--accent); background: rgba(232,255,71,.08); padding: 4px 10px; border: 1px solid rgba(232,255,71,.2); }
-.feed { background: var(--surface); }
-.feed-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); }
-.feed-item { background: var(--surface); padding: 28px 24px; transition: background .15s; position: relative; }
-.feed-item:hover { background: var(--surface2); }
-.feed-item::before { content: attr(data-num); font-family: 'Syne', sans-serif; font-size: 10px; color: var(--text3); display: block; margin-bottom: 12px; letter-spacing: .1em; }
-.feed-text { font-size: 13px; line-height: 1.65; color: var(--text2); }
-.feed-text strong { color: var(--text); font-weight: 600; }
-.content-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
-.content-card { background: var(--bg); padding: 32px 28px; text-decoration: none; display: block; transition: background .15s; position: relative; overflow: hidden; }
-.content-card::after { content: ''; position: absolute; left: 0; bottom: 0; right: 0; height: 1px; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform .3s; }
-.content-card:hover { background: var(--surface); }
-.content-card:hover::after { transform: scaleX(1); }
-.card-platform { font-family: 'Syne', sans-serif; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--accent); margin-bottom: 16px; display: block; }
-.card-title { font-size: 16px; font-weight: 700; line-height: 1.35; color: var(--text); }
-.content-empty { padding: 60px 48px; font-size: 14px; color: var(--text3); font-style: italic; }
-.cta-section { background: var(--accent); padding: 100px 48px; }
-.cta-inner { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 60px; flex-wrap: wrap; }
-.cta-headline { font-size: clamp(32px, 5vw, 64px); font-weight: 800; line-height: 1.0; letter-spacing: -.03em; color: var(--bg); max-width: 700px; }
-.cta-headline em { font-style: italic; font-weight: 300; letter-spacing: -.02em; }
-.btn-dark { background: var(--bg); color: var(--accent); font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; padding: 20px 48px; display: inline-block; white-space: nowrap; transition: all .2s; cursor: none; }
-.btn-dark:hover { background: var(--white); color: var(--bg); }
-footer { padding: 32px 48px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-.footer-logo { font-family: 'Syne', sans-serif; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--text3); }
-.footer-logo span { color: var(--accent); }
-.footer-note { font-size: 12px; color: var(--text3); }
-.reveal { opacity: 0; transform: translateY(32px); transition: opacity .7s ease, transform .7s ease; }
-.reveal.visible { opacity: 1; transform: translateY(0); }
-@media (max-width: 768px) {
-  nav { padding: 16px 20px; }
-  .nav-links { display: flex; }
-  .hero { padding: 80px 20px; }
-  section { padding: 80px 20px; }
-  .hero-bottom { flex-direction: column; align-items: flex-start; }
-  .problem-grid { grid-template-columns: 1fr; }
-  .system-layout { grid-template-columns: 1fr; gap: 48px; }
-  .feed-grid { grid-template-columns: 1fr; }
-  .cta-section { padding: 80px 20px; }
-  .cta-inner { flex-direction: column; }
-  footer { padding: 24px 20px; flex-direction: column; gap: 8px; text-align: center; }
-  body { cursor: auto; }
-  .cursor { display: none; }
-}
+.sys-icon { font-size: 12px; flex-shrink: 0; width: 18px; text-align: center; }
+.sys-info { flex: 1; min-width: 0; }
+.sys-name { font-size: 12px; color: var(--txt); font-weight: 500; }
+.sys-sub  { font-family: var(--mono); font-size: 9px; color: var(--txt3); margin-top: 1px; }
+.sys-status { font-family: var(--mono); font-size: 8px; letter-spacing: .1em; text-transform: uppercase; padding: 2px 6px; border-radius: 2px; flex-shrink: 0; }
+
+/* SECTION DIVIDER */
+.sdiv { padding: 3px 12px; background: var(--s2); font-family: var(--mono); font-size: 8px; letter-spacing: .15em; text-transform: uppercase; color: var(--txt3); border-bottom: 1px solid var(--b1); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+
+/* TODOS */
+.todo-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--b1); cursor: pointer; transition: background .1s; }
+.todo-item:hover { background: var(--s1); }
+.todo-item:last-child { border-bottom: none; }
+.todo-cat { font-family: var(--mono); font-size: 8px; letter-spacing: .04em; text-transform: uppercase; padding: 2px 4px; border-radius: 2px; flex-shrink: 0; min-width: 48px; text-align: center; margin-top: 1px; }
+.tc-content { background: rgba(232,255,71,.06); color: var(--acc);  border: 1px solid rgba(232,255,71,.15); }
+.tc-house   { background: rgba(61,220,132,.06); color: var(--green); border: 1px solid rgba(61,220,132,.15); }
+.tc-get     { background: rgba(255,107,53,.06); color: var(--acc2); border: 1px solid rgba(255,107,53,.15); }
+.tc-high    { background: rgba(255,80,80,.1);   color: #ff5050;     border: 1px solid rgba(255,80,80,.2); }
+.todo-body { flex: 1; min-width: 0; }
+.todo-name { font-size: 12px; color: var(--txt); line-height: 1.4; }
+.todo-sub  { font-family: var(--mono); font-size: 9px; color: var(--txt3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* EXPLODE */
+.explode-item { padding: 7px 12px; border-bottom: 1px solid var(--b1); }
+.explode-item:last-child { border-bottom: none; }
+.explode-title { font-size: 12px; color: var(--txt); margin-bottom: 2px; line-height: 1.4; }
+.explode-campaign { font-family: var(--mono); font-size: 9px; color: var(--txt3); margin-bottom: 5px; }
+.explode-actions { display: flex; gap: 4px; }
+.ex-btn { font-family: var(--mono); font-size: 8px; padding: 2px 7px; border-radius: 2px; cursor: pointer; border: none; letter-spacing: .04em; transition: all .15s; line-height: 18px; display: inline-flex; align-items: center; }
+.ex-copy { background: rgba(61,220,132,.1); color: var(--green); border: 1px solid rgba(61,220,132,.2); }
+.ex-copy:hover { background: rgba(61,220,132,.2); }
+.ex-open { background: var(--s3); color: var(--txt2); border: 1px solid var(--b2); text-decoration: none; }
+.ex-open:hover { color: var(--txt); }
+
+/* UTIL */
+.row-empty { padding: 10px 12px; font-family: var(--mono); font-size: 10px; color: var(--txt3); font-style: italic; }
+.row-loading { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-family: var(--mono); font-size: 10px; color: var(--txt3); }
+.spinner { width: 10px; height: 10px; border: 1px solid var(--b2); border-top-color: var(--acc); border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+* { scrollbar-width: thin; scrollbar-color: var(--b2) transparent; }
+*::-webkit-scrollbar { width: 3px; height: 3px; }
+*::-webkit-scrollbar-thumb { background: var(--b2); }
 </style>
 </head>
 <body>
-<div class="cursor" id="cursor"></div>
+
+<!-- PIN -->
 <div class="pin-screen" id="pinScreen">
-  <div class="pin-wordmark">Webguy <span style="color:var(--accent)">·</span> Planning</div>
-  <div class="pin-label">Enter access code</div>
+  <div class="pin-mark">Webguy <span style="color:var(--acc)">·</span> Command</div>
+  <div class="pin-label">Access code</div>
   <div class="pin-dots">
-    <div class="pin-dot" id="d0"></div>
-    <div class="pin-dot" id="d1"></div>
-    <div class="pin-dot" id="d2"></div>
-    <div class="pin-dot" id="d3"></div>
+    <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
+    <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
   </div>
   <div class="pin-pad">
     <button class="pin-btn" onclick="pinPress('1')">1</button>
@@ -239,89 +217,151 @@ footer { padding: 32px 48px; border-top: 1px solid var(--border); display: flex;
   </div>
   <div class="pin-error" id="pinError"></div>
 </div>
-<nav>
-  <a href="#" class="nav-logo">Web<span>guy</span></a>
-  <div class="nav-links">
-    <a href="td/" class="nav-td" style="font-family:'Syne',sans-serif;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--text3);text-decoration:none;padding:6px 10px;border:1px solid var(--border);transition:all .15s;" onmouseover="this.style.color='var(--accent)';this.style.borderColor='var(--accent)'" onmouseout="this.style.color='var(--text3)';this.style.borderColor='var(--border)'">TD ↗</a>
-  </div>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sb-logo">WG</div>
+  <div class="sb-btn active" title="OVERVIEW">⊞</div>
+  <div class="sb-btn" title="PIPELINE">⬡</div>
+  <div class="sb-btn" title="INTELLIGENCE">◎</div>
+  <div class="sb-btn" title="CONTENT">▤</div>
+  <div class="sb-btn" title="TODOS">✓</div>
+  <div class="sb-spacer"></div>
+  <div class="sb-btn" title="LOCK" onclick="lockApp()">⏻</div>
 </nav>
-<section class="hero" id="home">
-  <div class="hero-grid"></div>
-  <div class="hero-glow"></div>
-  <div class="hero-tag">AI Content Systems · Webguy Business Services</div>
-  <h1 class="hero-headline reveal">Your business<br>needs a <em>machine,</em><br>not a marketer.</h1>
-  <div class="hero-bottom reveal">
-    <p class="hero-body">Solopreneurs and small teams posting manually, ideas scattered across five tools, no system to delegate to. We build the content OS that runs without you.</p>
-    <div class="hero-actions">
-      <a href="#audit" class="btn btn-primary">Book Free Audit →</a>
-      <a href="#system" class="btn btn-outline">See the System</a>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="topbar-section">
+      <div class="pulse"></div>
+      <span class="tb-label">System</span>
+      <span class="tb-val green">LIVE</span>
+    </div>
+    <div class="topbar-section">
+      <span class="tb-label">Pipeline</span>
+      <span class="tb-val acc" id="tb-pipeline">—</span>
+    </div>
+    <div class="topbar-section">
+      <span class="tb-label">Publish Queue</span>
+      <span class="tb-val orange" id="tb-publish">—</span>
+    </div>
+    <div class="topbar-section">
+      <span class="tb-label">Explode Queue</span>
+      <span class="tb-val blue" id="tb-explode">—</span>
+    </div>
+    <div class="topbar-section">
+      <span class="tb-label">Campaign</span>
+      <span class="tb-val" style="color:var(--txt2);font-size:10px;">Webguy · AI Content Systems</span>
+    </div>
+    <div class="topbar-right">
+      <a href="td/" style="font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--txt3);text-decoration:none;border:1px solid var(--b1);padding:3px 8px;border-radius:2px;transition:all .15s;" onmouseover="this.style.color='var(--acc)';this.style.borderColor='rgba(232,255,71,.3)'" onmouseout="this.style.color='var(--txt3)';this.style.borderColor='var(--b1)'">TD ↗</a>
+      <div class="tb-time" id="clock">—</div>
     </div>
   </div>
-</section>
-<div class="ticker-wrap"><div class="ticker" id="ticker"></div></div>
-<section class="problem" id="problem">
-  <div class="section-inner">
-    <div class="section-label">The Problem</div>
-    <div class="problem-grid reveal">
-      <div class="problem-item"><span class="problem-num">01</span><div class="problem-text"><strong>Ideas die in your notes app.</strong> Voice memos, DMs, Google Docs — they never become content.</div></div>
-      <div class="problem-item"><span class="problem-num">02</span><div class="problem-text"><strong>You're using 5–7 disconnected tools</strong> and still dropping the ball every week.</div></div>
-      <div class="problem-item"><span class="problem-num">03</span><div class="problem-text"><strong>3+ hours per post.</strong> No system. No delegation. No consistency.</div></div>
-      <div class="problem-item"><span class="problem-num">04</span><div class="problem-text"><strong>AI tools exist but you have no workflow</strong> to use them. So they sit unused.</div></div>
+
+  <!-- GRID -->
+  <div class="grid">
+
+    <!-- COL 1 ROW 1: PIPELINE -->
+    <div class="panel">
+      <div class="ph">
+        <span class="ph-title">Content Pipeline</span>
+        <span class="ph-badge acc" id="ph-pipeline-count">…</span>
+        <span class="ph-action" onclick="loadPipeline()">↻</span>
+      </div>
+      <div class="stats-row">
+        <div class="stat"><div class="stat-num blue"   id="s-writing">—</div><div class="stat-label">Writing</div></div>
+        <div class="stat"><div class="stat-num orange" id="s-review">—</div><div class="stat-label">Review</div></div>
+        <div class="stat"><div class="stat-num acc"    id="s-publish">—</div><div class="stat-label">Publish</div></div>
+        <div class="stat"><div class="stat-num green"  id="s-done">—</div><div class="stat-label">Done</div></div>
+      </div>
+      <div class="pb" id="pipelineList">
+        <div class="row-loading"><div class="spinner"></div>Loading pipeline…</div>
+      </div>
     </div>
-    <h2 class="problem-headline reveal">Content chaos isn't a<br><em>discipline problem.</em><br>It's a systems problem.</h2>
-  </div>
-</section>
-<section id="system">
-  <div class="section-inner">
-    <div class="section-label">The System</div>
-    <div class="system-layout">
-      <div>
-        <h2 class="system-title reveal">One <em>machine.</em><br>Everything connected.</h2>
-        <p class="system-body reveal">We build a Notion AI content OS custom-configured for your business. Research, ideas, writing, scheduling, and publishing — all in one system that runs while you're doing everything else.</p>
-        <div class="system-steps reveal">
-          <div class="system-step"><span class="step-num">→ 01</span><div><div class="step-name">Research</div><div class="step-desc">AI monitors your market, competitors, and trends. Intelligence feeds directly into your content pipeline.</div></div></div>
-          <div class="system-step"><span class="step-num">→ 02</span><div><div class="step-name">Ideas</div><div class="step-desc">Voice notes, captured thoughts, and research become organized titles ready to write.</div></div></div>
-          <div class="system-step"><span class="step-num">→ 03</span><div><div class="step-name">Content</div><div class="step-desc">AI drafts from your voice and frameworks. You review and approve. Never write from scratch again.</div></div></div>
-          <div class="system-step"><span class="step-num">→ 04</span><div><div class="step-name">Deployment</div><div class="step-desc">Platform-specific assets generated and scheduled. LinkedIn, Reddit, Substack — one source, everywhere.</div></div></div>
-          <div class="system-step"><span class="step-num">→ 05</span><div><div class="step-name">Sales</div><div class="step-desc">Every piece of content ends at a conversion point. Awareness becomes audit calls. Calls become clients.</div></div></div>
+
+    <!-- COL 2 ROWS 1+2: INTELLIGENCE FEED -->
+    <div class="panel col2-full">
+      <div class="ph">
+        <span class="ph-title">Intelligence Feed</span>
+        <span class="ph-badge dim" id="ph-feed-count">…</span>
+        <span class="ph-action" onclick="loadFeed()">↻</span>
+      </div>
+      <div class="pb" id="feedList">
+        <div class="row-loading"><div class="spinner"></div>Loading feed…</div>
+      </div>
+    </div>
+
+    <!-- COL 3 ROW 1: SYSTEM STATUS -->
+    <div class="panel">
+      <div class="ph">
+        <span class="ph-title">System Status</span>
+        <span class="ph-badge green">ALL LIVE</span>
+      </div>
+      <div class="pb">
+        <div class="sys-row">
+          <div class="sys-icon">⚙</div>
+          <div class="sys-info"><div class="sys-name">Notion AI Content OS</div><div class="sys-sub">Custom-built for Webguy</div></div>
+          <span class="sys-status" style="background:rgba(61,220,132,.08);color:var(--green);border:1px solid rgba(61,220,132,.2)">LIVE</span>
+        </div>
+        <div class="sys-row">
+          <div class="sys-icon">🔍</div>
+          <div class="sys-info"><div class="sys-name">Market Intelligence</div><div class="sys-sub">AI-monitored signals</div></div>
+          <span class="sys-status" style="background:rgba(61,220,132,.08);color:var(--green);border:1px solid rgba(61,220,132,.2)">ACTIVE</span>
+        </div>
+        <div class="sys-row">
+          <div class="sys-icon">✍</div>
+          <div class="sys-info"><div class="sys-name">Content Pipeline</div><div class="sys-sub">Development → Publish</div></div>
+          <span class="sys-status" style="background:rgba(232,255,71,.06);color:var(--acc);border:1px solid rgba(232,255,71,.18)">RUNNING</span>
+        </div>
+        <div class="sys-row">
+          <div class="sys-icon">📡</div>
+          <div class="sys-info"><div class="sys-name">Multi-Platform Dist.</div><div class="sys-sub">LinkedIn · Reddit · Substack</div></div>
+          <span class="sys-status" style="background:rgba(77,166,255,.08);color:var(--blue);border:1px solid rgba(77,166,255,.2)">SCHED</span>
+        </div>
+        <div class="sys-row">
+          <div class="sys-icon">💰</div>
+          <div class="sys-info"><div class="sys-name">Revenue Endpoints</div><div class="sys-sub">Audit CTA on every asset</div></div>
+          <span class="sys-status" style="background:rgba(61,220,132,.08);color:var(--green);border:1px solid rgba(61,220,132,.2)">ON</span>
         </div>
       </div>
-      <div class="system-visual reveal">
-        <div class="sys-row"><div class="sys-icon">⚙</div><div><div class="sys-label">Notion AI Content OS</div><div class="sys-sub">Custom built for your business</div></div><span class="sys-status">LIVE</span></div>
-        <div class="sys-row"><div class="sys-icon">🔍</div><div><div class="sys-label">Market Intelligence</div><div class="sys-sub">AI-monitored keyword signals</div></div><span class="sys-status">ACTIVE</span></div>
-        <div class="sys-row"><div class="sys-icon">✍</div><div><div class="sys-label">Content Pipeline</div><div class="sys-sub">Development → Publish</div></div><span class="sys-status">RUNNING</span></div>
-        <div class="sys-row"><div class="sys-icon">📡</div><div><div class="sys-label">Multi-Platform Distribution</div><div class="sys-sub">LinkedIn · Reddit · Substack</div></div><span class="sys-status">SCHEDULED</span></div>
-        <div class="sys-row"><div class="sys-icon">💰</div><div><div class="sys-label">Revenue Endpoints</div><div class="sys-sub">Audit CTA on every asset</div></div><span class="sys-status">CONVERTING</span></div>
+    </div>
+
+    <!-- COL 1 ROW 2: TODOS + EXPLODE -->
+    <div class="panel">
+      <div class="ph">
+        <span class="ph-title">Todo · Explode Queue</span>
+        <span class="ph-action" onclick="loadTodoExplode()">↻</span>
+      </div>
+      <div class="pb" id="todoExplodeList">
+        <div class="row-loading"><div class="spinner"></div>Loading…</div>
       </div>
     </div>
+
+    <!-- COL 3 ROW 2: PUBLISHED CONTENT -->
+    <div class="panel">
+      <div class="ph">
+        <span class="ph-title">Published Content</span>
+        <span class="ph-badge green" id="ph-content-count">…</span>
+        <span class="ph-action" onclick="loadContent()">↻</span>
+      </div>
+      <div class="pb" id="contentList">
+        <div class="row-loading"><div class="spinner"></div>Loading…</div>
+      </div>
+    </div>
+
   </div>
-</section>
-<section class="feed" id="intelligence">
-  <div class="section-inner">
-    <div class="section-label">Intelligence Feed</div>
-    <div id="feedGrid" class="feed-grid"><div style="padding:48px;color:var(--text3);font-size:13px;grid-column:1/-1;">Loading intelligence...</div></div>
-  </div>
-</section>
-<section id="content">
-  <div class="section-inner">
-    <div class="section-label">Published Content</div>
-    <div id="contentGrid" class="content-grid"><div class="content-empty">Content launching soon.</div></div>
-  </div>
-</section>
-<section class="cta-section" id="audit">
-  <div class="cta-inner">
-    <h2 class="cta-headline">Book a free 20-min<br><em>Content OS Audit.</em></h2>
-    <a href="https://calendly.com/flipoclock/15min" target="_blank" class="btn-dark">Book Now →</a>
-  </div>
-</section>
-<footer>
-  <div class="footer-logo">Web<span>guy</span> Business Services</div>
-  <div class="footer-note">AI systems · Content operations · Business growth</div>
-</footer>
+</div>
+
 <script>
+const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "3611f7d3a4bb81fe9ebcfe01813d9ac2";
 const CORRECT_PIN = '1246';
 let pinEntry = '';
+
 function pinPress(d) {
   if (pinEntry.length >= 4) return;
   pinEntry += d;
@@ -329,11 +369,12 @@ function pinPress(d) {
   if (pinEntry.length === 4) {
     if (pinEntry === CORRECT_PIN) {
       document.getElementById('pinScreen').classList.add('hidden');
+      initDashboard();
     } else {
       document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
       document.getElementById('pinError').textContent = 'incorrect code';
       setTimeout(() => {
-        document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('error'); });
+        document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error'));
         document.getElementById('pinError').textContent = '';
         pinEntry = '';
       }, 800);
@@ -345,90 +386,184 @@ function pinDel() {
   document.getElementById('d' + (pinEntry.length - 1)).classList.remove('filled');
   pinEntry = pinEntry.slice(0, -1);
 }
-const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-
-// ── CURSOR ──
-const cursorEl = document.getElementById('cursor');
-document.addEventListener('mousemove', e => {
-  cursorEl.style.left = e.clientX + 'px';
-  cursorEl.style.top  = e.clientY + 'px';
-});
-document.querySelectorAll('a, button').forEach(el => {
-  el.addEventListener('mouseenter', () => cursorEl.classList.add('hover'));
-  el.addEventListener('mouseleave', () => cursorEl.classList.remove('hover'));
-});
-
-// ── TICKER ──
-const TICKER_ITEMS = ['AI Content Systems','Notion AI','Content OS','Business Growth','Multi-Platform','LinkedIn','Automation','Webguy'];
-const ticker = document.getElementById('ticker');
-const tickerHTML = [...TICKER_ITEMS, ...TICKER_ITEMS].map(t => `<span class="ticker-item">${t} <span class="ticker-dot">·</span></span>`).join('');
-ticker.innerHTML = tickerHTML;
-
-// ── REVEAL ON SCROLL ──
-const revealObs = new IntersectionObserver(entries => {
-  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); } });
-}, { threshold: 0.1 });
-document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
-
-// ── INTELLIGENCE FEED ──
-const STATIC_FEED = [
-  { num: '01', text: '<strong>Notion developer platform May 2026</strong> — Workers, External Agents API, Custom Agents for automated multistep workflows. 1M agents built since February.' },
-  { num: '02', text: '<strong>Notion 3.2 Jan 2026</strong> — mobile AI agents have full desktop capability. Voice dictate on a walk, agent executes by the time you\'re home.' },
-  { num: '03', text: '<strong>April 2026 Notion AI</strong> releases moved from content generation toward workflow infrastructure — expanded context, cross-page AI blocks, voice input.' },
-  { num: '04', text: '<strong>Notion Custom Agents began using credits May 4 2026</strong> — monetization maturity signal. Usage is now metered.' },
-  { num: '05', text: '<strong>Notion\'s competitive bet:</strong> keep agent workflows inside its workspace vs separate tools — validates Webguy \'one system not five tools\' positioning.' },
-  { num: '06', text: '<strong>\'7 best AI tools for Notion 2026\'</strong> roundups circulating — confirms buyer search intent for AI-Notion integrations. Exact Webguy audience.' },
-  { num: '07', text: '<strong>Notion AI Agent 2026:</strong> content calendars, database structuring, onboarding automation, meeting notes all agent-executable inside Notion.' },
-  { num: '08', text: '<strong>TikTok Ads MCP Server at TikTok World 2026</strong> — AI agents can manage TikTok campaigns without manual Ads Manager. Agentic ad buying going mainstream.' },
-  { num: '09', text: '<strong>TikTok 2026 algorithm:</strong> follower-first distribution live — videos shown to followers as test panel before wider push. Consistency is the new ranking signal.' },
-  { num: '10', text: '<strong>83% of marketers</strong> say generative AI helps create more content in less time — HubSpot 2026. Validates core Webguy content machine pitch.' },
-  { num: '11', text: '<strong>TikTok Symphony:</strong> Image to Video, Text to Video, Digital Avatars, multilingual lip-sync — lowers AI short-form production barrier.' },
-  { num: '12', text: '<strong>TikTok hashtags up 114% YoY</strong> — 1-5 specific hashtags get 5% more views and 10% more interactions. Hashtags relevant again.' },
-  { num: '13', text: '<strong>Automation flagging risk:</strong> 25% increase in TikTok flags for simple replication tactics post-2025. Humanized creative required.' },
-  { num: '14', text: '<strong>LinkedIn 360Brew AI</strong> rewards topic authority over frequency — consistent niche content beats volume. Validates \'content OS not content calendar\'.' },
-  { num: '15', text: '<strong>TikTok Next 2026:</strong> users in full discovery mode, passive consumption era over. Human insight plus AI tools required.' }
-];
-
-async function loadFeed() {
-  const grid = document.getElementById('feedGrid');
-  let items = STATIC_FEED;
-  try {
-    const res  = await fetch(WORKER_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'getResearch', campaignId: CAMPAIGN_ID })
-    });
-    const data = await res.json();
-    const raw  = data.items || data.newsFeed || [];
-    if (raw.length) items = raw.map((t, i) => ({ num: String(i + 1).padStart(2, '0'), text: t }));
-  } catch {}
-  grid.innerHTML = items.map(item =>
-    `<div class="feed-item" data-num="${item.num}"><div class="feed-text">${item.text}</div></div>`
-  ).join('');
+function lockApp() {
+  pinEntry = '';
+  document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error'));
+  document.getElementById('pinError').textContent = '';
+  document.getElementById('pinScreen').classList.remove('hidden');
 }
 
-// ── PUBLISHED CONTENT ──
-async function loadContent() {
-  const grid = document.getElementById('contentGrid');
+function updateClock() {
+  const n = new Date();
+  document.getElementById('clock').textContent =
+    String(n.getHours()).padStart(2,'0') + ':' +
+    String(n.getMinutes()).padStart(2,'0') + ':' +
+    String(n.getSeconds()).padStart(2,'0');
+}
+setInterval(updateClock, 1000); updateClock();
+
+async function wCall(action, extra = {}) {
+  const r = await fetch(WORKER_URL, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ action, pin: CORRECT_PIN, ...extra })
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
+async function loadPipeline() {
+  const el = document.getElementById('pipelineList');
+  el.innerHTML = '<div class="row-loading"><div class="spinner"></div>Loading…</div>';
   try {
-    const res    = await fetch(WORKER_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'getPublishedTitles', campaignId: CAMPAIGN_ID })
+    const data = await wCall('getTitles', { stages: ['Writing','Review','Approved','Publish','Explode','Done'] });
+    const titles = data.titles || [];
+    const cnt = { Writing:0, Review:0, Approved:0, Publish:0, Explode:0, Done:0 };
+    titles.forEach(t => { if (cnt[t.stage] !== undefined) cnt[t.stage]++; });
+    document.getElementById('s-writing').textContent = cnt.Writing;
+    document.getElementById('s-review').textContent  = cnt.Review + cnt.Approved;
+    document.getElementById('s-publish').textContent = cnt.Publish;
+    document.getElementById('s-done').textContent    = cnt.Done;
+    document.getElementById('ph-pipeline-count').textContent = titles.length;
+    document.getElementById('tb-pipeline').textContent = titles.length;
+    document.getElementById('tb-publish').textContent  = cnt.Publish;
+    document.getElementById('tb-explode').textContent  = cnt.Explode;
+    el.innerHTML = '';
+    if (!titles.length) { el.innerHTML = '<div class="row-empty">No titles found.</div>'; return; }
+    const sc = { Writing:'ps-write', Review:'ps-review', Approved:'ps-review', Publish:'ps-pub', Done:'ps-done', Explode:'ps-explode' };
+    titles.forEach(t => {
+      const div = document.createElement('div');
+      div.className = 'pipe-item';
+      div.innerHTML = `<span class="pipe-stage ${sc[t.stage]||'ps-write'}">${t.stage}</span><span class="pipe-title">${t.title}</span><span class="pipe-group">${t.cohort||''}</span>`;
+      el.appendChild(div);
     });
-    const data   = await res.json();
-    const titles = data.titles || data.items || [];
-    if (!titles.length) throw new Error('empty');
-    grid.innerHTML = titles.map(t => {
-      const title    = typeof t === 'string' ? t : t.title || t.name || '';
-      const platform = typeof t === 'object' && t.platform ? t.platform : 'Content';
-      return `<a class="content-card" href="#"><span class="card-platform">${platform}</span><div class="card-title">${title}</div></a>`;
-    }).join('');
-  } catch {
-    grid.innerHTML = '<div class="content-empty">Content launching soon.</div>';
+  } catch(e) {
+    el.innerHTML = `<div class="row-empty" style="color:var(--acc2)">Error: ${e.message}</div>`;
   }
 }
 
-loadFeed();
-loadContent();
+const STATIC_FEED = [
+  { num:'01', text:'<strong>Notion developer platform May 2026</strong> — Workers, External Agents API, Custom Agents for automated multistep workflows. 1M agents built since February.' },
+  { num:'02', text:'<strong>Notion 3.2 Jan 2026</strong> — mobile AI agents have full desktop capability. Voice dictate on a walk, agent executes by the time you\'re home.' },
+  { num:'03', text:'<strong>April 2026 Notion AI</strong> releases moved from content generation toward workflow infrastructure — expanded context, cross-page AI blocks, voice input.' },
+  { num:'04', text:'<strong>Notion Custom Agents began using credits May 4 2026</strong> — monetization maturity signal. Usage is now metered.' },
+  { num:'05', text:'<strong>Notion\'s competitive bet:</strong> keep agent workflows inside its workspace vs separate tools — validates Webguy \'one system not five tools\' positioning.' },
+  { num:'06', text:'<strong>\'7 best AI tools for Notion 2026\'</strong> roundups circulating — confirms buyer search intent for AI-Notion integrations. Exact Webguy audience.' },
+  { num:'07', text:'<strong>Notion AI Agent 2026:</strong> content calendars, database structuring, onboarding automation, meeting notes all agent-executable inside Notion.' },
+  { num:'08', text:'<strong>TikTok Ads MCP Server at TikTok World 2026</strong> — AI agents can manage TikTok campaigns without manual Ads Manager. Agentic ad buying going mainstream.' },
+  { num:'09', text:'<strong>TikTok 2026 algorithm:</strong> follower-first distribution live — videos shown to followers as test panel before wider push. Consistency is the new ranking signal.' },
+  { num:'10', text:'<strong>83% of marketers</strong> say generative AI helps create more content in less time — HubSpot 2026. Validates core Webguy content machine pitch.' },
+  { num:'11', text:'<strong>TikTok Symphony:</strong> Image to Video, Text to Video, Digital Avatars, multilingual lip-sync — lowers AI short-form production barrier.' },
+  { num:'12', text:'<strong>TikTok hashtags up 114% YoY</strong> — 1-5 specific hashtags get 5% more views and 10% more interactions. Hashtags relevant again.' },
+  { num:'13', text:'<strong>Automation flagging risk:</strong> 25% increase in TikTok flags for simple replication tactics post-2025. Humanized creative required.' },
+  { num:'14', text:'<strong>LinkedIn 360Brew AI</strong> rewards topic authority over frequency — consistent niche content beats volume. Validates \'content OS not content calendar\'.' },
+  { num:'15', text:'<strong>TikTok Next 2026:</strong> users in full discovery mode, passive consumption era over. Human insight plus AI tools required.' }
+];
+
+async function loadFeed() {
+  const el = document.getElementById('feedList');
+  el.innerHTML = '<div class="row-loading"><div class="spinner"></div>Loading…</div>';
+  let items = STATIC_FEED;
+  try {
+    const data = await wCall('getResearch', { campaignId: CAMPAIGN_ID });
+    const raw = data.items || data.newsFeed || [];
+    if (raw.length) items = raw.map((t, i) => ({ num: String(i+1).padStart(2,'0'), text: t }));
+  } catch {}
+  document.getElementById('ph-feed-count').textContent = items.length;
+  el.innerHTML = items.map(it =>
+    `<div class="feed-item"><div class="feed-num">${it.num}</div><div class="feed-text">${it.text}</div></div>`
+  ).join('');
+}
+
+async function loadContent() {
+  const el = document.getElementById('contentList');
+  el.innerHTML = '<div class="row-loading"><div class="spinner"></div>Loading…</div>';
+  try {
+    const data = await wCall('getPublishedTitles', { campaignId: CAMPAIGN_ID });
+    const titles = data.titles || data.items || [];
+    document.getElementById('ph-content-count').textContent = titles.length || '0';
+    if (!titles.length) { el.innerHTML = '<div class="row-empty">Content launching soon.</div>'; return; }
+    el.innerHTML = '';
+    titles.forEach(t => {
+      const title    = typeof t === 'string' ? t : t.title || t.name || '';
+      const platform = typeof t === 'object' && t.platform ? t.platform : 'Content';
+      const a = document.createElement('a');
+      a.className = 'content-item'; a.href = '#';
+      a.innerHTML = `<span class="ci-platform">${platform}</span><span class="ci-title">${title}</span>`;
+      el.appendChild(a);
+    });
+  } catch {
+    document.getElementById('ph-content-count').textContent = '0';
+    el.innerHTML = '<div class="row-empty">Content launching soon.</div>';
+  }
+}
+
+async function loadTodoExplode() {
+  const el = document.getElementById('todoExplodeList');
+  el.innerHTML = '<div class="row-loading"><div class="spinner"></div>Loading…</div>';
+  let todos = [], explodes = [];
+  try { const d = await wCall('getTodos'); todos = d.todos || []; } catch {}
+  try { const d = await wCall('getExplodeQueue'); explodes = d.titles || []; } catch {}
+  el.innerHTML = '';
+
+  if (explodes.length) {
+    el.insertAdjacentHTML('beforeend', `<div class="sdiv"><span>⚡ Explode Queue</span><span>${explodes.length}</span></div>`);
+    explodes.forEach(t => {
+      const div = document.createElement('div');
+      div.className = 'explode-item';
+      const safeTitle    = (t.titleName   || '').replace(/'/g,"\\'");
+      const safeCampaign = (t.campaignName|| '').replace(/'/g,"\\'");
+      div.innerHTML = `
+        <div class="explode-title">${t.titleName}</div>
+        <div class="explode-campaign">↳ ${t.campaignName||''}</div>
+        <div class="explode-actions">
+          <button class="ex-btn ex-copy" onclick="copyPrompt(this,'${safeTitle}','${safeCampaign}')">📋 Copy Prompt</button>
+          <a class="ex-btn ex-open" href="https://claude.ai" target="_blank">↗ Claude</a>
+          <a class="ex-btn ex-open" href="https://www.notion.so/${t.titleId}" target="_blank">↗ Notion</a>
+        </div>`;
+      el.appendChild(div);
+    });
+  }
+
+  if (todos.length) {
+    el.insertAdjacentHTML('beforeend', `<div class="sdiv"><span>Main Todos</span><span>${todos.length}</span></div>`);
+    const catMap = { 'daily content':'tc-content', 'daily household':'tc-house', 'get':'tc-get', 'high':'tc-high' };
+    const catLbl = { 'daily content':'CONTENT', 'daily household':'HOUSE', 'get':'GET', 'high':'HIGH' };
+    todos.forEach(todo => {
+      const div = document.createElement('div');
+      div.className = 'todo-item';
+      div.onclick = () => window.open('https://www.notion.so/' + todo.id, '_blank');
+      const cc = catMap[todo.category] || 'tc-high';
+      const cl = catLbl[todo.category] || 'HIGH';
+      div.innerHTML = `
+        <span class="todo-cat ${cc}">${cl}</span>
+        <div class="todo-body">
+          <div class="todo-name">${todo.name}</div>
+          ${todo.campaign ? `<div class="todo-sub">↳ ${todo.campaign}</div>` : ''}
+        </div>`;
+      el.appendChild(div);
+    });
+  }
+
+  if (!todos.length && !explodes.length) {
+    el.innerHTML = '<div class="row-empty">Nothing queued.</div>';
+  }
+}
+
+async function copyPrompt(btn, title, campaign) {
+  try {
+    await navigator.clipboard.writeText(`explode ${title} — ${campaign}`);
+    btn.textContent = '✓ Copied'; btn.style.color = 'var(--green)';
+    setTimeout(() => { btn.textContent = '📋 Copy Prompt'; btn.style.color = ''; }, 2000);
+  } catch { btn.textContent = '✗ Failed'; setTimeout(() => { btn.textContent = '📋 Copy Prompt'; }, 2000); }
+}
+
+function initDashboard() {
+  loadPipeline();
+  loadFeed();
+  loadContent();
+  loadTodoExplode();
+}
 </script>
 </body>
 </html>
