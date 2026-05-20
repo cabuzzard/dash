@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>ye mn totes     
+<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Campaign Admin</title>
@@ -72,13 +72,7 @@ h2 {
 
 /* KEYWORDS */
 .kw-list { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px 0; }
-.kw {
-    font-size: 18px;
-    color: #555;
-    padding: 3px 10px;
-    border: 1px solid #1a1a1a;
-    background: #0d0d0d;
-}
+.kw { font-size: 11px; color: #555; padding: 3px 10px; border: 1px solid #1a1a1a; background: #0d0d0d; }
 
 /* TITLES */
 .title-list { display: flex; flex-direction: column; }
@@ -289,28 +283,50 @@ async function w(action, extra = {}) {
   return d;
 }
 
-// Convert Notion rich text to HTML with h3 headings for bold lines
-function fmt(raw) {
-  if (!raw) return '';
-  // Split on <br> tags
-  const lines = raw.split(/<br\s*\/?>/gi);
+// Strip HTML tags to plain text
+function stripHtml(raw) {
+  return raw ? raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : '';
+}
+
+// Render bullet list as HTML
+function bulletsToHtml(text) {
+  if (!text) return '<p>—</p>';
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   let html = '';
   lines.forEach(line => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    // If the line starts with a bold tag or is entirely bold, make it an h3
-    const boldHeading = trimmed.match(/^<strong>(.*?)<\/strong>(.*)$/i) ||
-                        trimmed.match(/^\*\*(.*?)\*\*(.*)$/);
-    if (boldHeading) {
-      const heading = boldHeading[1];
-      const rest = boldHeading[2].replace(/^\s*[—–-]\s*/, '').trim();
-      html += '<h3>' + heading + '</h3>';
-      if (rest) html += '<p>' + rest + '</p>';
+    // h3 for lines that are ALL CAPS or end with : or start with a number+dot
+    if (/^[A-Z][A-Z\s\/&]+:/.test(line) || /^\d+\.\s/.test(line)) {
+      html += '<h3>' + line.replace(/:$/, '') + '</h3>';
     } else {
-      html += '<p>' + trimmed + '</p>';
+      // strip leading bullet chars
+      const clean = line.replace(/^[-•·*]\s*/, '');
+      html += '<p>' + clean + '</p>';
     }
   });
   return html;
+}
+
+// Call Claude API to condense a field into tight actionable bullets
+async function condense(label, raw) {
+  if (!raw) return '<p>—</p>';
+  const plain = stripHtml(raw);
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 400,
+        system: 'You are a content ops assistant. Condense the input into 3-6 tight actionable bullet points. Each bullet max 12 words. No preamble. No markdown. Output plain text only, one bullet per line, starting with a dash. Group with a short ALL-CAPS heading if there are natural categories.',
+        messages: [{ role: 'user', content: label + ':\n' + plain }]
+      })
+    });
+    const data = await resp.json();
+    const text = data.content?.[0]?.text || '';
+    return bulletsToHtml(text);
+  } catch(e) {
+    return bulletsToHtml(plain);
+  }
 }
 
 async function loadResearch() {
@@ -333,26 +349,33 @@ async function loadResearch() {
     } else {
       kwEl.innerHTML = '<span class="empty">—</span>';
     }
-    document.getElementById('r-notes').innerHTML = fmt(r.notes) || '<p>—</p>';
+    // Condense all fields in parallel via Claude
+    const loading = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
+    ['r-notes','r-products','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+      document.getElementById(id).innerHTML = loading;
+    });
 
-    // SEC 3
-    document.getElementById('r-products').innerHTML = fmt(r.productIdeas) || '<p>—</p>';
+    // Split platforms & methods from the combined field
+    const rawPm = stripHtml(r.platforms) || '';
+    const pmSplit = rawPm.split(/ACTIVE METHODS:/i);
+    const rawPlatforms = pmSplit[0].replace(/ACTIVE PLATFORMS:\s*/i, '').trim();
+    const rawMethods   = pmSplit.length > 1 ? pmSplit[1].trim() : '';
 
-    // SEC 4 — split platforms & methods field
-    const pm = fmt(r.platforms) || '';
-    // Field contains both platforms and methods — split on ACTIVE METHODS: if present
-    const methodsSplit = pm.split(/ACTIVE METHODS:/i);
-    if (methodsSplit.length > 1) {
-      document.getElementById('r-platforms').innerHTML = fmt(methodsSplit[0].replace(/ACTIVE PLATFORMS:\s*/i, '').trim());
-      document.getElementById('r-methods').innerHTML = fmt(methodsSplit[1].trim());
-    } else {
-      document.getElementById('r-platforms').innerHTML = fmt(pm);
-      document.getElementById('r-methods').innerHTML = '<p>—</p>';
-    }
+    const [notes, products, platforms, methods, news, tiktok] = await Promise.all([
+      condense('Campaign Notes & ROI', r.notes),
+      condense('Product Ideas', r.productIdeas),
+      condense('Platforms', rawPlatforms),
+      condense('Methods', rawMethods),
+      condense('News Feed', r.newsFeed),
+      condense('TikTok Trends', r.tiktokTrends),
+    ]);
 
-    // SEC 5
-    document.getElementById('r-news').innerHTML = fmt(r.newsFeed) || '<p>—</p>';
-    document.getElementById('r-tiktok').innerHTML = fmt(r.tiktokTrends) || '<p>—</p>';
+    document.getElementById('r-notes').innerHTML     = notes;
+    document.getElementById('r-products').innerHTML  = products;
+    document.getElementById('r-platforms').innerHTML = platforms;
+    document.getElementById('r-methods').innerHTML   = methods;
+    document.getElementById('r-news').innerHTML      = news;
+    document.getElementById('r-tiktok').innerHTML    = tiktok;
 
   } catch(e) {
     document.getElementById('r-name').textContent = 'Error: ' + e.message;
