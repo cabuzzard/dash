@@ -72,7 +72,9 @@ async function getCampaigns() {
     const rid = r.id.replace(/-/g,"");
     const rname = r.properties.Name?.title?.map(x => x.plain_text).join("") || "Research";
     const rnotes = r.properties.Notes?.rich_text?.map(x => x.plain_text).join("") || "";
-    (r.properties.Campaign?.relation || []).forEach(c => {
+    // Try both relation property names — Notion API may return "Campaign" or "Campaign 1"
+    const campRel = (r.properties.Campaign?.relation || []).concat(r.properties["Campaign 1"]?.relation || []);
+    campRel.forEach(c => {
       const cid = c.id.replace(/-/g,"");
       campaignToResearch[cid] = { id: rid, name: rname, notes: rnotes };
     });
@@ -1035,7 +1037,8 @@ export default {
             tiktokTrends: props["TikTok Trends"]?.rich_text?.map(t => t.plain_text).join("") || "",
             webPageUrl: props["Web Page URL"]?.url || "",
             campaignGoal: cp["Campaign Goal"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            painPoints: cp["Pain Points"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            painPoints:   cp["Pain Points"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            keyMessage:   cp["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
           }
         });
       }
