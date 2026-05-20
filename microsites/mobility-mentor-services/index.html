@@ -47,13 +47,9 @@
     </div>
   </div>
   <div class="col">
-    <h2>Main TD</h2>
+    <h2>Main TD <button class="td-add-btn-inline" onclick="openTdModal()" title="Add task">+</button></h2>
     <div class="content">
       <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-      <div class="td-add">
-        <input class="td-input" id="td-input" type="text" placeholder="Add task…" />
-        <button class="td-add-btn" onclick="addTodo()">+ Add</button>
-      </div>
     </div>
   </div>
 </div>
@@ -144,6 +140,25 @@
   </div>
 </div>
 
+
+<!-- TD ADD MODAL -->
+<div class="modal-overlay" id="tdModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Task</div>
+      <button class="modal-close" onclick="closeTdModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Task will be created in Main TD and linked to this campaign</div>
+      <input class="modal-ta" id="td-modal-input" type="text" placeholder="Task name…" style="height:44px;padding:10px 14px;resize:none;" />
+      <div class="modal-status" id="tdModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeTdModal()">Cancel</button>
+      <button class="modal-btn save" id="tdModalSave" onclick="addTodoFromModal()">Add Task</button>
+    </div>
+  </div>
+</div>
 
 <!-- EDIT MODAL -->
 <div class="modal-overlay" id="editModal">
@@ -489,26 +504,49 @@ async function loadTodos() {
   }
 }
 
-async function addTodo() {
-  const input = document.getElementById('td-input');
+function openTdModal() {
+  document.getElementById('td-modal-input').value = '';
+  document.getElementById('tdModalStatus').textContent = '';
+  document.getElementById('tdModalSave').disabled = false;
+  document.getElementById('tdModalSave').textContent = 'Add Task';
+  document.getElementById('tdModal').classList.add('open');
+  setTimeout(() => document.getElementById('td-modal-input').focus(), 100);
+}
+
+function closeTdModal() {
+  document.getElementById('tdModal').classList.remove('open');
+}
+
+document.getElementById('tdModal').addEventListener('click', function(e) {
+  if (e.target === this) closeTdModal();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement === document.getElementById('td-modal-input')) addTodoFromModal();
+});
+
+async function addTodoFromModal() {
+  const input = document.getElementById('td-modal-input');
   const name = input.value.trim();
   if (!name) return;
-  input.value = '';
-  input.disabled = true;
+  const btn = document.getElementById('tdModalSave');
+  const status = document.getElementById('tdModalStatus');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
   try {
     const data = await w('createTodo', { name, campaignId: CAMPAIGN_ID });
     TD_ITEMS.push({ id: data.id, name });
     renderTd();
+    status.textContent = 'Added ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeTdModal, 700);
   } catch(e) {
-    alert('Error: ' + e.message);
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Add Task';
   }
-  input.disabled = false;
-  input.focus();
 }
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && document.activeElement === document.getElementById('td-input')) addTodo();
-});
 
 async function deleteTodo(id, btn) {
   btn.disabled = true;
