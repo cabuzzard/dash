@@ -72,9 +72,7 @@ async function getCampaigns() {
     const rid = r.id.replace(/-/g,"");
     const rname = r.properties.Name?.title?.map(x => x.plain_text).join("") || "Research";
     const rnotes = r.properties.Notes?.rich_text?.map(x => x.plain_text).join("") || "";
-    // Try both relation property names — Notion API may return "Campaign" or "Campaign 1"
-    const campRel = (r.properties.Campaign?.relation || []).concat(r.properties["Campaign 1"]?.relation || []);
-    campRel.forEach(c => {
+    (r.properties.Campaign?.relation || []).forEach(c => {
       const cid = c.id.replace(/-/g,"");
       campaignToResearch[cid] = { id: rid, name: rname, notes: rnotes };
     });
@@ -763,6 +761,51 @@ export default {
         if (!resp.ok) return json({ error: data.message || "Notion error" }, resp.status);
         const options = (data.properties?.Status?.select?.options || []).map(o => o.name);
         return json({ statuses: options });
+      }
+
+      // ── CAMPAIGN ADMIN: unlinkTodoFromCampaign ──
+      if (body.action === "unlinkTodoFromCampaign") {
+        const { campaignId, todoId } = body;
+        if (!campaignId || !todoId) return json({ error: "campaignId and todoId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const campPage = await campResp.json();
+        const existing = (campPage.properties?.["Associated To Do"]?.relation || []).map(r => ({ id: r.id }));
+        const updated = existing.filter(r => r.id.replace(/-/g,"") !== todoId);
+        await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Associated To Do": { relation: updated } } }),
+        });
+        return json({ success: true });
+      }
+
+      // ── CAMPAIGN ADMIN: getCampaignTodos ──
+      if (body.action === "getCampaignTodos") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        // Fetch the campaign to get its Associated To Do relation IDs
+        const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const campPage = await campResp.json();
+        const todoIds = (campPage.properties?.["Associated To Do"]?.relation || []).map(r => r.id.replace(/-/g,""));
+        if (!todoIds.length) return json({ todos: [] });
+        // Fetch each todo page
+        const todos = await Promise.all(todoIds.map(async id => {
+          try {
+            const r = await fetch(`https://api.notion.com/v1/pages/${dashId(id)}`, {
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+            });
+            const p = await r.json();
+            const name = p.properties?.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
+            return { id, name };
+          } catch { return null; }
+        }));
+        return json({ todos: todos.filter(Boolean) });
       }
 
       if (body.action === "getCampaigns") {

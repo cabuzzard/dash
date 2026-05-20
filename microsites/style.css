@@ -41,6 +41,19 @@ h2 {
   border-right: none;
 }
 
+/* THREE COL SECTION */
+.three-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  border-bottom: 1px solid #161616;
+}
+.three-col .col {
+  border-right: 1px solid #161616;
+}
+.three-col .col:last-child {
+  border-right: none;
+}
+
 /* ONE COL SECTION */
 .one-col {
   border-bottom: 1px solid #161616;
@@ -119,6 +132,19 @@ h2 {
 .pin-btn.del { font-size: 11px; color: #444; }
 .pin-btn.empty { background: transparent; border: none; pointer-events: none; }
 .pin-error { font-size: 10px; color: #ff4444; margin-top: 20px; min-height: 14px; letter-spacing: .1em; }
+
+/* TD LIST */
+.td-list { display: flex; flex-direction: column; max-height: 280px; overflow-y: auto; }
+.td-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid #121212; }
+.td-row:last-child { border-bottom: none; }
+.td-name { font-size: 13px; color: #ccc; flex: 1; }
+.td-del { font-size: 11px; color: #2a2a2a; background: none; border: none; cursor: pointer; padding: 2px 6px; transition: color .15s; font-family: inherit; }
+.td-del:hover { color: #ff4444; }
+.td-add { display: flex; gap: 6px; margin-top: 10px; }
+.td-input { flex: 1; background: #0d0d0d; border: 1px solid #1a1a1a; color: #ccc; font-size: 12px; padding: 6px 10px; font-family: inherit; outline: none; }
+.td-input:focus { border-color: #333; }
+.td-add-btn { background: #1a1a1a; border: 1px solid #222; color: #888; font-size: 11px; letter-spacing: .1em; padding: 6px 12px; cursor: pointer; font-family: inherit; transition: all .15s; }
+.td-add-btn:hover { color: #e8ff47; border-color: #e8ff47; }
 
 /* EDIT MODAL */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; z-index: 500; opacity: 0; pointer-events: none; transition: opacity .2s; }
