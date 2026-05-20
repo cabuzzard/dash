@@ -996,11 +996,17 @@ export default {
       if (body.action === "getResearch") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
-        const results = await notionQuery(RESEARCH_DB, {
-          filter: { property: "Campaign", relation: { contains: campaignId } },
-        });
+        const [results, campResp] = await Promise.all([
+          notionQuery(RESEARCH_DB, {
+            filter: { property: "Campaign", relation: { contains: campaignId } },
+          }),
+          fetch(`https://api.notion.com/v1/pages/${campaignId}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+          }).then(r => r.json()).catch(() => null),
+        ]);
         if (!results.length) return json({ research: null });
         const props = results[0].properties;
+        const cp = campResp?.properties || {};
         return json({
           research: {
             id: results[0].id.replace(/-/g, ""),
@@ -1014,6 +1020,8 @@ export default {
             productIdeas: props["Product Ideas"]?.rich_text?.map(t => t.plain_text).join("") || "",
             tiktokTrends: props["TikTok Trends"]?.rich_text?.map(t => t.plain_text).join("") || "",
             webPageUrl: props["Web Page URL"]?.url || "",
+            campaignGoal: cp["Campaign Goal"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            painPoints: cp["Pain Points"]?.rich_text?.map(t => t.plain_text).join("") || "",
           }
         });
       }

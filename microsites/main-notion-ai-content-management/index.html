@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>petty reveneg  
+<head>lock the door  
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Campaign Admin</title>
@@ -49,10 +49,10 @@ h2 {
 
 /* CONTENT AREAS */
 .content { padding: 14px 20px 18px; }
-.body-text { font-size: 13px; color: #777; line-height: 1.7; }
+.body-text { font-size: 13px; color: #777; line-height: 1.7; font-weight: 400; }
 .body-text h3 { font-size: 13px; font-weight: 700; color: #fff; margin: 14px 0 3px; letter-spacing: .01em; }
 .body-text h3:first-child { margin-top: 0; }
-.body-text p { margin-bottom: 6px; }
+.body-text p { margin-bottom: 4px; color: #777; font-weight: 400; }
 .body-text a { color: #e8ff47; text-decoration: none; border-bottom: 1px solid rgba(232,255,71,.3); }
 .body-text a:hover { border-bottom-color: #e8ff47; }
 .body-text strong { color: #fff; font-weight: 700; }
@@ -163,7 +163,7 @@ h2 {
   </div>
 </div>
 
-<!-- SEC 2: two col — keywords / notes -->
+<!-- SEC 2: two col — keywords / main problem -->
 <div class="two-col">
   <div class="col">
     <h2>Keywords</h2>
@@ -172,18 +172,26 @@ h2 {
     </div>
   </div>
   <div class="col">
-    <h2>Notes</h2>
+    <h2>Main Problem</h2>
     <div class="content">
-      <div class="body-text" id="r-notes"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div class="body-text" id="r-problem"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
 
-<!-- SEC 3: one col — product ideas -->
-<div class="one-col">
-  <h2>Product Ideas</h2>
-  <div class="content">
-    <div class="body-text" id="r-products"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+<!-- SEC 3: two col — product ideas / recommended actions -->
+<div class="two-col">
+  <div class="col">
+    <h2>Product Ideas</h2>
+    <div class="content">
+      <div class="body-text" id="r-products"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Recommended Actions</h2>
+    <div class="content">
+      <div class="body-text" id="r-actions"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
   </div>
 </div>
 
@@ -317,7 +325,7 @@ async function condense(label, raw) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 400,
-        system: 'You are a content ops assistant. Condense the input into 3-6 tight actionable bullet points. Each bullet max 12 words. No preamble. No markdown. Output plain text only, one bullet per line, starting with a dash. Group with a short ALL-CAPS heading if there are natural categories.',
+        system: 'You are a content ops assistant. Condense the input into tight actionable bullet points. Rules: each ALL-CAPS heading section must be 45 words or less total. Each bullet max 12 words. No preamble. No markdown. Plain text only, one bullet per line starting with a dash. Use ALL-CAPS headings to group categories.',
         messages: [{ role: 'user', content: label + ':\n' + plain }]
       })
     });
@@ -351,7 +359,7 @@ async function loadResearch() {
     }
     // Condense all fields in parallel via Claude
     const loading = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-    ['r-notes','r-products','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+    ['r-problem','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
       document.getElementById(id).innerHTML = loading;
     });
 
@@ -361,17 +369,24 @@ async function loadResearch() {
     const rawPlatforms = pmSplit[0].replace(/ACTIVE PLATFORMS:\s*/i, '').trim();
     const rawMethods   = pmSplit.length > 1 ? pmSplit[1].trim() : '';
 
-    const [notes, products, platforms, methods, news, tiktok] = await Promise.all([
-      condense('Campaign Notes & ROI', r.notes),
+    // Split notes into problem statement + recommended actions
+    const rawNotes = stripHtml(r.notes) || '';
+    const problemInput = (r.campaignGoal || '') + '\n' + (r.painPoints || '') + '\n' + rawNotes.split(/ROI-RANKED|RECOMMENDED|BOTTOM LINE/i)[0];
+    const actionsInput = rawNotes;
+
+    const [problem, products, actions, platforms, methods, news, tiktok] = await Promise.all([
+      condense('This campaign does X for customer Y — state the core problem this campaign solves in one sentence then list pain points', problemInput),
       condense('Product Ideas', r.productIdeas),
+      condense('Recommended Actions — prioritised by ROI, what to do next', actionsInput),
       condense('Platforms', rawPlatforms),
       condense('Methods', rawMethods),
       condense('News Feed', r.newsFeed),
       condense('TikTok Trends', r.tiktokTrends),
     ]);
 
-    document.getElementById('r-notes').innerHTML     = notes;
-    document.getElementById('r-products').innerHTML  = products;
+    document.getElementById('r-problem').innerHTML  = problem;
+    document.getElementById('r-products').innerHTML = products;
+    document.getElementById('r-actions').innerHTML  = actions;
     document.getElementById('r-platforms').innerHTML = platforms;
     document.getElementById('r-methods').innerHTML   = methods;
     document.getElementById('r-news').innerHTML      = news;
