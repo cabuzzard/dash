@@ -71,7 +71,13 @@ h2 {
 
 /* KEYWORDS */
 .kw-list { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px 0; }
-.kw { font-size: 11px; color: #555; padding: 3px 10px; border: 1px solid #1a1a1a; background: #0d0d0d; }
+.kw {
+    font-size: 14px;
+    color: #999;
+    padding: 3px 10px;
+    border: 1px solid #1a1a1a;
+    background: #0d0d0d;
+}
 
 /* TITLES */
 .title-list { display: flex; flex-direction: column; }
