@@ -1,148 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>solar street lights    homeless
+<head>
 <meta charset="UTF-8">
+<link rel="stylesheet" href="../style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Campaign Admin</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Syne', sans-serif; background: #080808; color: #e8e5e0; line-height: 1.5; }
-
-h2 {
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: .25em;
-  text-transform: uppercase;
-  color: #462;
-  padding: 8px 20px;
-  border-top: 1px solid #161616;
-  background: #0a0a0a;
-}
-
-/* TOPBAR */
-.topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid #161616; background: #080808; position: sticky; top: 0; z-index: 20; height: 40px; }
-.topbar-left { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: #333; }
-.topbar-left span { color: #e8ff47; }
-.topbar-right { display: flex; align-items: center; gap: 16px; }
-.topbar-clock { font-size: 10px; color: #2a2a2a; letter-spacing: .06em; }
-.topbar-lock  { font-size: 9px; letter-spacing: .15em; text-transform: uppercase; color: #2a2a2a; cursor: pointer; }
-.topbar-lock:hover { color: #555; }
-
-/* TWO COL SECTION */
-.two-col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border-bottom: 1px solid #161616;
-}
-.two-col .col {
-  border-right: 1px solid #161616;
-}
-.two-col .col:last-child {
-  border-right: none;
-}
-
-/* ONE COL SECTION */
-.one-col {
-  border-bottom: 1px solid #161616;
-}
-
-/* CONTENT AREAS */
-.content { padding: 14px 20px 18px; }
-.body-text { font-size: 13px; color: #777; line-height: 1.7; font-weight: 400; }
-.body-text h3 { font-size: 13px; font-weight: 700; color: #fff; margin: 14px 0 3px; letter-spacing: .01em; }
-.body-text h3:first-child { margin-top: 0; }
-.body-text p { margin-bottom: 4px; color: #777; font-weight: 400; }
-.body-text a { color: #e8ff47; text-decoration: none; border-bottom: 1px solid rgba(232,255,71,.3); }
-.body-text a:hover { border-bottom-color: #e8ff47; }
-.body-text strong { color: #fff; font-weight: 700; }
-
-/* FIELD */
-.field { display: flex; align-items: flex-start; gap: 0; margin-bottom: 2px; }
-.field-label { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: #3a3a3a; width: 130px; flex-shrink: 0; padding-top: 9px; }
-.field-value { font-size: 13px; color: #bbb; padding: 7px 0; flex: 1; }
-.field-value.empty { color: #2a2a2a; font-style: italic; }
-
-/* BADGE */
-.badge { display: inline-block; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; padding: 2px 8px; border: 1px solid; }
-.badge.active  { color: #44ff88; border-color: rgba(68,255,136,.3); background: rgba(68,255,136,.04); }
-.badge.current { color: #44ff88; border-color: rgba(68,255,136,.3); background: rgba(68,255,136,.04); }
-.badge.stale   { color: #ffcc44; border-color: rgba(255,204,68,.3);  background: rgba(255,204,68,.04); }
-.badge.draft   { color: #666;    border-color: #222; }
-
-/* KEYWORDS */
-.kw-list { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px 0; }
-.kw { font-size: 11px; color: #555; padding: 3px 10px; border: 1px solid #1a1a1a; background: #0d0d0d; }
-
-/* TITLES */
-.title-list { display: flex; flex-direction: column; }
-.title-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #121212; }
-.title-row:last-child { border-bottom: none; }
-.title-stage { font-size: 8px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border: 1px solid; flex-shrink: 0; min-width: 52px; text-align: center; }
-.ts-write   { color: #4da6ff; border-color: rgba(77,166,255,.3);  background: rgba(77,166,255,.05); }
-.ts-review  { color: #ff9944; border-color: rgba(255,153,68,.3);  background: rgba(255,153,68,.05); }
-.ts-appr    { color: #ff9944; border-color: rgba(255,153,68,.3);  background: rgba(255,153,68,.05); }
-.ts-pub     { color: #e8ff47; border-color: rgba(232,255,71,.3);  background: rgba(232,255,71,.05); }
-.ts-done    { color: #44ff88; border-color: rgba(68,255,136,.3);  background: rgba(68,255,136,.05); }
-.ts-explode { color: #cc88ff; border-color: rgba(204,136,255,.3); background: rgba(204,136,255,.05); }
-.title-name  { font-size: 13px; color: #ccc; flex: 1; }
-.title-group { font-size: 10px; color: #3a3a3a; flex-shrink: 0; }
-.title-link  { font-size: 9px; color: #2a2a2a; text-decoration: none; border: 1px solid #1a1a1a; padding: 1px 5px; flex-shrink: 0; }
-.title-link:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
-
-/* UTIL */
-.notion-link { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: #2a2a2a; text-decoration: none; border: 1px solid #1a1a1a; padding: 2px 7px; transition: all .15s; }
-.notion-link:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
-.loading { font-size: 11px; color: #2a2a2a; display: flex; align-items: center; gap: 8px; padding: 8px 0; }
-.spinner { width: 10px; height: 10px; border: 1px solid #1e1e1e; border-top-color: #e8ff47; border-radius: 50%; animation: spin .7s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.empty { font-size: 12px; color: #2a2a2a; font-style: italic; }
-
-/* PIN */
-.pin-screen { position: fixed; inset: 0; background: #080808; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; }
-.pin-screen.hidden { display: none; }
-.pin-mark  { font-size: 10px; letter-spacing: .3em; text-transform: uppercase; color: #2a2a2a; margin-bottom: 48px; }
-.pin-label { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: #444; margin-bottom: 24px; }
-.pin-dots  { display: flex; gap: 12px; margin-bottom: 36px; }
-.pin-dot   { width: 6px; height: 6px; border-radius: 50%; border: 1px solid #222; background: transparent; transition: all .12s; }
-.pin-dot.filled { background: #e8ff47; border-color: #e8ff47; }
-.pin-dot.error  { background: #ff4444; border-color: #ff4444; }
-.pin-pad { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; width: 180px; }
-.pin-btn { height: 50px; background: #0f0f0f; border: 1px solid #1a1a1a; font-size: 18px; color: #e8e5e0; cursor: pointer; font-family: 'Syne', sans-serif; transition: all .1s; }
-.pin-btn:hover { background: #141414; }
-.pin-btn:active { transform: scale(.96); }
-.pin-btn.del { font-size: 11px; color: #444; }
-.pin-btn.empty { background: transparent; border: none; pointer-events: none; }
-.pin-error { font-size: 10px; color: #ff4444; margin-top: 20px; min-height: 14px; letter-spacing: .1em; }
-
-/* EDIT MODAL */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; z-index: 500; opacity: 0; pointer-events: none; transition: opacity .2s; }
-.modal-overlay.open { opacity: 1; pointer-events: all; }
-.modal { background: #111; border: 1px solid #2a2a2a; width: 90%; max-width: 560px; display: flex; flex-direction: column; }
-.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid #1e1e1e; }
-.modal-title { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: #555; }
-.modal-close { font-size: 16px; color: #444; cursor: pointer; background: none; border: none; font-family: inherit; line-height: 1; padding: 2px 6px; }
-.modal-close:hover { color: #e8ff47; }
-.modal-body { padding: 14px 16px; }
-.modal-hint { font-size: 10px; color: #333; margin-bottom: 8px; letter-spacing: .04em; }
-.modal-ta { width: 100%; min-height: 160px; background: #080808; border: 1px solid #222; color: #ccc; font-family: 'Syne', sans-serif; font-size: 13px; line-height: 1.6; padding: 10px 12px; resize: vertical; outline: none; }
-.modal-ta:focus { border-color: #444; }
-.modal-foot { display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid #1e1e1e; }
-.modal-btn { flex: 1; height: 36px; font-family: 'Syne', sans-serif; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; border: 1px solid; transition: all .15s; }
-.modal-btn.save { background: #e8ff47; color: #080808; border-color: #e8ff47; font-weight: 700; }
-.modal-btn.save:hover { background: #fff; border-color: #fff; }
-.modal-btn.save:disabled { background: #2a2a2a; color: #444; border-color: #2a2a2a; cursor: default; }
-.modal-btn.cancel { background: transparent; color: #444; border-color: #1e1e1e; }
-.modal-btn.cancel:hover { color: #777; border-color: #333; }
-.modal-status { font-size: 10px; letter-spacing: .08em; padding: 4px 0; min-height: 18px; }
-.modal-status.ok  { color: #44ff88; }
-.modal-status.err { color: #ff4444; }
-
-/* editable h2 */
-h2.editable { cursor: pointer; }
-h2.editable::after { content: ' ✎'; font-size: 12px; opacity: 0; transition: opacity .15s; vertical-align: middle; }
-h2.editable:hover::after { opacity: 1; }
-</style>
+<title>Webguy — AI Content Management</title>
 </head>
 <body>
 
@@ -292,8 +154,10 @@ h2.editable:hover::after { opacity: 1; }
 </div>
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-const CAMPAIGN_ID = "3611f7d3a4bb81fe9ebcfe01813d9ac2";
-const RESEARCH_ID = "3651f7d3a4bb81a48701ea1dc65cc117";
+const CAMPAIGN_ID = "3611f7d3a4bb81fe9ebcfe01813d9ac2"; // main-notion-ai-content-management
+const RESEARCH_ID = "3651f7d3a4bb81a48701ea1dc65cc117"; // research
+const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/main-notion-ai-content-management/";
+const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/mobility-mentor-services/";
 const CORRECT_PIN = '1246';
 let pin = '';
 
@@ -385,7 +249,16 @@ async function loadResearch() {
   try {
     const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
     const r = data.research;
-    if (!r) { document.getElementById('r-name').textContent = 'No research record found.'; return; }
+    if (!r) {
+      document.getElementById('r-name').textContent = 'No research record — add one in Notion to populate this page.';
+      ['r-problem','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
+      });
+      const kwEl = document.getElementById('r-keywords');
+      if (kwEl) kwEl.innerHTML = '<span class="empty">—</span>';
+      return;
+    }
 
     // SEC 1
     document.getElementById('r-name').textContent = r.name;
