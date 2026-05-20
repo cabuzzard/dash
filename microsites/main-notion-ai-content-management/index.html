@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>banning lotta lotaa loatttt  abnnaondlkjnflkj totttt
+<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Campaign Admin</title>
@@ -10,40 +10,66 @@
 body { font-family: 'Syne', sans-serif; background: #080808; color: #e8e5e0; line-height: 1.5; }
 
 h2 {
-     font-size: 22px;
-    font-weight: 900;
-    letter-spacing: .25em;
-    text-transform: uppercase;
-    color: #462;
-    padding: 8px 20px;
-    border-top: 1px solid #161616;
-    background: #0a0a0a;
-    position: sticky;
-    top: 40px;
-    z-index: 10;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: .25em;
+  text-transform: uppercase;
+  color: #462;
+  padding: 8px 20px;
+  border-top: 1px solid #161616;
+  background: #0a0a0a;
 }
 
-.section { border-bottom: 1px solid #161616; }
-.content { padding: 12px 20px 16px; }
+/* TOPBAR */
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid #161616; background: #080808; position: sticky; top: 0; z-index: 20; height: 40px; }
+.topbar-left { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: #333; }
+.topbar-left span { color: #e8ff47; }
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.topbar-clock { font-size: 10px; color: #2a2a2a; letter-spacing: .06em; }
+.topbar-lock  { font-size: 9px; letter-spacing: .15em; text-transform: uppercase; color: #2a2a2a; cursor: pointer; }
+.topbar-lock:hover { color: #555; }
 
-.field { display: flex; gap: 0; margin-bottom: 1px; align-items: flex-start; }
-.field-label {
-  font-size: 9px; letter-spacing: .12em; text-transform: uppercase;
-  color: #3a3a3a; width: 150px; flex-shrink: 0; padding-top: 9px;
+/* TWO COL SECTION */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid #161616;
 }
+.two-col .col {
+  border-right: 1px solid #161616;
+}
+.two-col .col:last-child {
+  border-right: none;
+}
+
+/* ONE COL SECTION */
+.one-col {
+  border-bottom: 1px solid #161616;
+}
+
+/* CONTENT AREAS */
+.content { padding: 14px 20px 18px; }
+.body-text { font-size: 13px; color: #777; line-height: 1.7; white-space: pre-wrap; }
+.body-text strong { color: #bbb; font-weight: 600; }
+
+/* FIELD */
+.field { display: flex; align-items: flex-start; gap: 0; margin-bottom: 2px; }
+.field-label { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: #3a3a3a; width: 130px; flex-shrink: 0; padding-top: 9px; }
 .field-value { font-size: 13px; color: #bbb; padding: 7px 0; flex: 1; }
-.field-value.body { color: #777; line-height: 1.65; }
 .field-value.empty { color: #2a2a2a; font-style: italic; }
 
+/* BADGE */
 .badge { display: inline-block; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; padding: 2px 8px; border: 1px solid; }
-.badge.active { color: #44ff88; border-color: rgba(68,255,136,.3); background: rgba(68,255,136,.04); }
-.badge.paused { color: #ffcc44; border-color: rgba(255,204,68,.3); background: rgba(255,204,68,.04); }
-.badge.plan   { color: #666; border-color: #222; }
-.badge.done   { color: #4da6ff; border-color: rgba(77,166,255,.3); background: rgba(77,166,255,.04); }
+.badge.active  { color: #44ff88; border-color: rgba(68,255,136,.3); background: rgba(68,255,136,.04); }
+.badge.current { color: #44ff88; border-color: rgba(68,255,136,.3); background: rgba(68,255,136,.04); }
+.badge.stale   { color: #ffcc44; border-color: rgba(255,204,68,.3);  background: rgba(255,204,68,.04); }
+.badge.draft   { color: #666;    border-color: #222; }
 
-.tags { display: flex; flex-wrap: wrap; gap: 4px; padding: 7px 0; }
-.tag { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border: 1px solid #1e1e1e; color: #555; background: #0d0d0d; }
+/* KEYWORDS */
+.kw-list { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px 0; }
+.kw { font-size: 11px; color: #555; padding: 3px 10px; border: 1px solid #1a1a1a; background: #0d0d0d; }
 
+/* TITLES */
 .title-list { display: flex; flex-direction: column; }
 .title-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #121212; }
 .title-row:last-child { border-bottom: none; }
@@ -59,51 +85,13 @@ h2 {
 .title-link  { font-size: 9px; color: #2a2a2a; text-decoration: none; border: 1px solid #1a1a1a; padding: 1px 5px; flex-shrink: 0; }
 .title-link:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
 
-.asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1px; background: #111; border: 1px solid #111; }
-.asset-platform { background: #080808; padding: 10px 14px; }
-.asset-platform-name { font-size: 9px; letter-spacing: .15em; text-transform: uppercase; color: #444; margin-bottom: 8px; }
-.asset-item { font-size: 11px; color: #555; padding: 3px 0; border-bottom: 1px solid #111; display: flex; align-items: center; gap: 7px; }
-.asset-item:last-child { border-bottom: none; }
-.asset-dot { width: 4px; height: 4px; border-radius: 50%; background: #222; flex-shrink: 0; }
-.asset-dot.on { background: #44ff88; }
-
-.news-list { display: flex; flex-direction: column; }
-.news-item { padding: 9px 0; border-bottom: 1px solid #121212; font-size: 13px; color: #777; line-height: 1.65; display: flex; gap: 12px; }
-.news-item:last-child { border-bottom: none; }
-.news-num { font-size: 9px; color: #2a2a2a; flex-shrink: 0; padding-top: 3px; min-width: 18px; }
-.news-text strong { color: #bbb; font-weight: 600; }
-
-.kw-list { display: flex; flex-wrap: wrap; gap: 5px; padding: 7px 0; }
-.kw { font-size: 11px; color: #555; padding: 3px 10px; border: 1px solid #1a1a1a; background: #0d0d0d; }
-
-.sched-row { display: flex; gap: 4px; padding: 7px 0; }
-.sched-day { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; padding: 4px 8px; border: 1px solid #1a1a1a; color: #2a2a2a; }
-.sched-day.on { color: #e8ff47; border-color: rgba(232,255,71,.25); background: rgba(232,255,71,.03); }
-
-.todo-row { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-bottom: 1px solid #121212; cursor: pointer; }
-.todo-row:hover { opacity: .8; }
-.todo-row:last-child { border-bottom: none; }
-.todo-cat { font-size: 8px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 6px; border: 1px solid; flex-shrink: 0; margin-top: 1px; }
-.tc-content { color: #e8ff47; border-color: rgba(232,255,71,.25); background: rgba(232,255,71,.04); }
-.tc-house   { color: #44ff88; border-color: rgba(68,255,136,.25); background: rgba(68,255,136,.04); }
-.tc-get     { color: #ff9944; border-color: rgba(255,153,68,.25); background: rgba(255,153,68,.04); }
-.tc-high    { color: #ff5050; border-color: rgba(255,80,80,.25);  background: rgba(255,80,80,.04); }
-.todo-name { font-size: 13px; color: #ccc; flex: 1; line-height: 1.4; }
-.todo-sub  { font-size: 10px; color: #3a3a3a; margin-top: 2px; }
-
-.platform-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #121212; }
-.platform-row:last-child { border-bottom: none; }
-.platform-name { font-size: 13px; color: #ccc; flex: 1; }
-.platform-link { font-size: 9px; color: #2a2a2a; text-decoration: none; border: 1px solid #1a1a1a; padding: 1px 5px; }
-.platform-link:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
-
-.loading { font-size: 11px; color: #2a2a2a; letter-spacing: .06em; display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+/* UTIL */
+.notion-link { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: #2a2a2a; text-decoration: none; border: 1px solid #1a1a1a; padding: 2px 7px; transition: all .15s; }
+.notion-link:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
+.loading { font-size: 11px; color: #2a2a2a; display: flex; align-items: center; gap: 8px; padding: 8px 0; }
 .spinner { width: 10px; height: 10px; border: 1px solid #1e1e1e; border-top-color: #e8ff47; border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .empty { font-size: 12px; color: #2a2a2a; font-style: italic; }
-
-.notion-link { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: #2a2a2a; text-decoration: none; border: 1px solid #1a1a1a; padding: 2px 7px; transition: all .15s; }
-.notion-link:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
 
 /* PIN */
 .pin-screen { position: fixed; inset: 0; background: #080808; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; }
@@ -121,19 +109,11 @@ h2 {
 .pin-btn.del { font-size: 11px; color: #444; }
 .pin-btn.empty { background: transparent; border: none; pointer-events: none; }
 .pin-error { font-size: 10px; color: #ff4444; margin-top: 20px; min-height: 14px; letter-spacing: .1em; }
-
-/* TOPBAR */
-.topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid #161616; background: #080808; position: sticky; top: 0; z-index: 20; height: 40px; }
-.topbar-left { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: #333; }
-.topbar-left span { color: #e8ff47; }
-.topbar-right { display: flex; align-items: center; gap: 16px; }
-.topbar-clock { font-size: 10px; color: #2a2a2a; letter-spacing: .06em; }
-.topbar-lock  { font-size: 9px; letter-spacing: .15em; text-transform: uppercase; color: #2a2a2a; cursor: pointer; }
-.topbar-lock:hover { color: #555; }
 </style>
 </head>
 <body>
 
+<!-- PIN -->
 <div class="pin-screen" id="pinScreen">
   <div class="pin-mark">Webguy <span style="color:#e8ff47">·</span> Admin</div>
   <div class="pin-label">Access code</div>
@@ -150,6 +130,7 @@ h2 {
   <div class="pin-error" id="pinError"></div>
 </div>
 
+<!-- TOPBAR -->
 <div class="topbar">
   <div class="topbar-left">Web<span>guy</span> — Campaign Admin</div>
   <div class="topbar-right">
@@ -159,252 +140,100 @@ h2 {
   </div>
 </div>
 
-<!-- IDENTITY -->
-<div class="section">
-  <h2>Identity</h2>
-  <div class="content">
-    <div class="field"><div class="field-label">Name</div><div class="field-value">📱 MAIN notion ai content management</div></div>
-    <div class="field"><div class="field-label">Site</div><div class="field-value">Webguy Business Services</div></div>
-    <div class="field"><div class="field-label">Status</div><div class="field-value"><span class="badge active">Active</span></div></div>
-    <div class="field"><div class="field-label">Start Date</div><div class="field-value">2026-05-15</div></div>
-    <div class="field"><div class="field-label">End Date</div><div class="field-value empty">—</div></div>
-    <div class="field">
-      <div class="field-label">Grouping</div>
-      <div class="field-value"><div class="tags"><span class="tag">content machine</span><span class="tag">leadgen</span><span class="tag">this week</span></div></div>
+<!-- SEC 1: two col — campaign name / date researched -->
+<div class="two-col">
+  <div class="col">
+    <h2>Campaign</h2>
+    <div class="content">
+      <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
+      <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
+      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3611f7d3a4bb81fe9ebcfe01813d9ac2" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3651f7d3a4bb81a48701ea1dc65cc117" target="_blank" class="notion-link">↗ Research</a></div></div>
     </div>
-    <div class="field"><div class="field-label">Notes</div><div class="field-value body">Master LinkedIn content campaign. Niche-agnostic posts serve as warm-up content for all targeted campaigns. Targeted outreach runs separately and benefits from this brand presence.</div></div>
-    <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3611f7d3a4bb81fe9ebcfe01813d9ac2" target="_blank" class="notion-link">↗ Open in Notion</a></div></div>
   </div>
-</div>
-
-<!-- CAMPAIGN GOAL -->
-<div class="section">
-  <h2>Campaign Goal</h2>
-  <div class="content">
-    <div class="field-value body">Maintain a consistent, high-value LinkedIn presence that builds authority and trust for the Webguy brand across all niches — serving as the top-of-funnel content engine that feeds and amplifies every targeted campaign.</div>
-  </div>
-</div>
-
-<!-- KEY MESSAGE -->
-<div class="section">
-  <h2>Key Message</h2>
-  <div class="content">
-    <div class="field-value body">AI implementations. Content systems, content automation. Notion AI content systems. We help businesses grow using smart systems, AI, and online strategy — whoever you are, we probably have something useful to say.</div>
-  </div>
-</div>
-
-<!-- TARGET AUDIENCE -->
-<div class="section">
-  <h2>Target Audience</h2>
-  <div class="content">
-    <div class="field-value body">Business owners, operators, decision-makers, and professionals who follow Webguy across any niche — small business, corporate, construction, coaching, and beyond.</div>
-  </div>
-</div>
-
-<!-- PAIN POINTS -->
-<div class="section">
-  <h2>Pain Points</h2>
-  <div class="content">
-    <div class="field-value body">Inconsistent posting, no clear brand voice, content that only speaks to one audience, no warm audience when targeted outreach launches.</div>
-  </div>
-</div>
-
-<!-- CTA -->
-<div class="section">
-  <h2>CTA</h2>
-  <div class="content">
-    <div class="field-value">Follow for weekly insights on AI, systems, and business growth.</div>
-  </div>
-</div>
-
-<!-- METHODS -->
-<div class="section">
-  <h2>Methods</h2>
-  <div class="content">
-    <div class="tags"><span class="tag">Blog</span><span class="tag">SM Post</span></div>
-  </div>
-</div>
-
-<!-- PRODUCTS -->
-<div class="section">
-  <h2>Products</h2>
-  <div class="content">
-    <div class="tags"><span class="tag">jbz</span><span class="tag">online collabs</span><span class="tag">consulting</span></div>
-  </div>
-</div>
-
-<!-- SCHEDULE -->
-<div class="section">
-  <h2>Schedule</h2>
-  <div class="content">
-    <div class="field"><div class="field-label">Days</div>
-      <div class="field-value">
-        <div class="sched-row">
-          <span class="sched-day">Mon</span><span class="sched-day">Tue</span><span class="sched-day">Wed</span>
-          <span class="sched-day">Thu</span><span class="sched-day">Fri</span><span class="sched-day">Sat</span><span class="sched-day">Sun</span>
-        </div>
-      </div>
-    </div>
-    <div class="field"><div class="field-label">Time</div><div class="field-value empty">—</div></div>
-  </div>
-</div>
-
-<!-- PLATFORMS -->
-<div class="section">
-  <h2>Platforms</h2>
-  <div class="content" id="platformsContent">
-    <div class="loading"><div class="spinner"></div>Loading platforms…</div>
-  </div>
-</div>
-
-<!-- KEYWORDS -->
-<div class="section">
-  <h2>Keywords</h2>
-  <div class="content">
-    <div class="kw-list">
-      <span class="kw">AI tools</span><span class="kw">business growth</span><span class="kw">systems</span>
-      <span class="kw">automation</span><span class="kw">online strategy</span><span class="kw">lead generation</span>
-      <span class="kw">productivity</span><span class="kw">Notion</span><span class="kw">content operations</span><span class="kw">web guy</span>
+  <div class="col">
+    <h2>Date Researched</h2>
+    <div class="content">
+      <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
     </div>
   </div>
 </div>
 
-<!-- LINKEDIN JOB TITLES -->
-<div class="section">
-  <h2>LinkedIn Job Titles</h2>
-  <div class="content">
-    <div class="field-value empty">Not set</div>
+<!-- SEC 2: two col — keywords / notes -->
+<div class="two-col">
+  <div class="col">
+    <h2>Keywords</h2>
+    <div class="content">
+      <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
   </div>
-</div>
-
-<!-- DEVELOPMENT TITLES -->
-<div class="section">
-  <h2>Development Titles</h2>
-  <div class="content">
-    <div class="title-list" id="devTitles">
-      <div class="loading"><div class="spinner"></div>Loading…</div>
+  <div class="col">
+    <h2>Notes</h2>
+    <div class="content">
+      <div class="body-text" id="r-notes"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
 
-<!-- PUBLISH TITLES -->
-<div class="section">
-  <h2>Publish Titles</h2>
+<!-- SEC 3: one col — product ideas -->
+<div class="one-col">
+  <h2>Product Ideas</h2>
   <div class="content">
-    <div class="title-list" id="pubTitles">
-      <div class="loading"><div class="spinner"></div>Loading…</div>
+    <div class="body-text" id="r-products"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+  </div>
+</div>
+
+<!-- SEC 4: two col — platforms / methods -->
+<div class="two-col">
+  <div class="col">
+    <h2>Platforms</h2>
+    <div class="content">
+      <div class="body-text" id="r-platforms"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Methods</h2>
+    <div class="content">
+      <div class="body-text" id="r-methods"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
 
-<!-- PLATFORM ASSET CHECKLIST -->
-<div class="section">
-  <h2>Platform Asset Checklist</h2>
-  <div class="content">
-    <div class="asset-grid">
-      <div class="asset-platform">
-        <div class="asset-platform-name">LinkedIn</div>
-        <div class="asset-item"><span class="asset-dot on"></span>Headline</div>
-        <div class="asset-item"><span class="asset-dot on"></span>Body</div>
-        <div class="asset-item"><span class="asset-dot on"></span>CTA Button</div>
-        <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
-      </div>
-      <div class="asset-platform">
-        <div class="asset-platform-name">Reddit</div>
-        <div class="asset-item"><span class="asset-dot"></span>Title</div>
-        <div class="asset-item"><span class="asset-dot"></span>Body</div>
-        <div class="asset-item"><span class="asset-dot"></span>Subreddit</div>
-        <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
-      </div>
-      <div class="asset-platform">
-        <div class="asset-platform-name">Newsletter</div>
-        <div class="asset-item"><span class="asset-dot"></span>Subject</div>
-        <div class="asset-item"><span class="asset-dot"></span>Teaser</div>
-        <div class="asset-item"><span class="asset-dot"></span>Main Content</div>
-        <div class="asset-item"><span class="asset-dot"></span>CTA Text</div>
-        <div class="asset-item"><span class="asset-dot"></span>CTA URL</div>
-      </div>
-      <div class="asset-platform">
-        <div class="asset-platform-name">Substack</div>
-        <div class="asset-item"><span class="asset-dot"></span>Subject Line</div>
-        <div class="asset-item"><span class="asset-dot"></span>Preview</div>
-        <div class="asset-item"><span class="asset-dot"></span>Body</div>
-        <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
-      </div>
-      <div class="asset-platform">
-        <div class="asset-platform-name">Twitter / X</div>
-        <div class="asset-item"><span class="asset-dot"></span>Tweet 1</div>
-        <div class="asset-item"><span class="asset-dot"></span>Tweet 2</div>
-        <div class="asset-item"><span class="asset-dot"></span>Tweet 3</div>
-        <div class="asset-item"><span class="asset-dot"></span>Hashtags</div>
-        <div class="asset-item"><span class="asset-dot"></span>Thread Format</div>
-        <div class="asset-item"><span class="asset-dot"></span>First Comment</div>
-      </div>
-      <div class="asset-platform">
-        <div class="asset-platform-name">TikTok</div>
-        <div class="asset-item"><span class="asset-dot"></span>Caption</div>
-        <div class="asset-item"><span class="asset-dot"></span>Hook</div>
-        <div class="asset-item"><span class="asset-dot"></span>Video Length</div>
-      </div>
-      <div class="asset-platform">
-        <div class="asset-platform-name">YouTube</div>
-        <div class="asset-item"><span class="asset-dot"></span>Title</div>
-        <div class="asset-item"><span class="asset-dot"></span>Description</div>
-        <div class="asset-item"><span class="asset-dot"></span>Tags</div>
-        <div class="asset-item"><span class="asset-dot"></span>Video Duration</div>
-      </div>
-      <div class="asset-platform">
-        <div class="asset-platform-name">Instagram</div>
-        <div class="asset-item"><span class="asset-dot"></span>Caption</div>
-        <div class="asset-item"><span class="asset-dot"></span>Story Text</div>
-        <div class="asset-item"><span class="asset-dot"></span>Image Alt Text</div>
-        <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
-        <div class="asset-item"><span class="asset-dot"></span>Aspect Ratio</div>
-      </div>
+<!-- SEC 5: two col — news feed / tiktok trends -->
+<div class="two-col">
+  <div class="col">
+    <h2>News Feed</h2>
+    <div class="content">
+      <div class="body-text" id="r-news"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>TikTok Trends</h2>
+    <div class="content">
+      <div class="body-text" id="r-tiktok"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
 
-<!-- INTELLIGENCE FEED -->
-<div class="section">
-  <h2>Intelligence Feed</h2>
-  <div class="content">
-    <div class="news-list" id="newsList">
-      <div class="loading"><div class="spinner"></div>Loading…</div>
+<!-- SEC 6: two col — development titles / publish titles -->
+<div class="two-col">
+  <div class="col">
+    <h2>Development Titles</h2>
+    <div class="content">
+      <div class="title-list" id="devTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
-</div>
-
-<!-- ASSOCIATED TODOS -->
-<div class="section">
-  <h2>Associated Todos</h2>
-  <div class="content">
-    <div class="title-list" id="todoList">
-      <div class="loading"><div class="spinner"></div>Loading…</div>
+  <div class="col">
+    <h2>Publish Titles</h2>
+    <div class="content">
+      <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
-  </div>
-</div>
-
-<!-- ASSOCIATED CAMPAIGNS -->
-<div class="section">
-  <h2>Associated Campaigns</h2>
-  <div class="content">
-    <div class="field-value empty" id="assocCampaigns">—</div>
-  </div>
-</div>
-
-<!-- RESEARCH DB LINK -->
-<div class="section">
-  <h2>Research</h2>
-  <div class="content">
-    <div class="field"><div class="field-label">Research DB</div><div class="field-value"><a href="https://www.notion.so/7b09bfb6437441ddbbd5ab0f3086380ea" target="_blank" class="notion-link">↗ Open in Notion</a></div></div>
-    <div class="field"><div class="field-label">Protocol</div><div class="field-value"><a href="https://www.notion.so/3591f7d3a4bb81b8b868f5a1f03354bb" target="_blank" class="notion-link">↗ Universal Research Protocol</a></div></div>
   </div>
 </div>
 
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "3611f7d3a4bb81fe9ebcfe01813d9ac2";
+const RESEARCH_ID = "3651f7d3a4bb81a48701ea1dc65cc117";
 const CORRECT_PIN = '1246';
 let pin = '';
 
@@ -445,8 +274,59 @@ setInterval(tick, 1000); tick();
 async function w(action, extra = {}) {
   const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, pin: CORRECT_PIN, ...extra }) });
   const d = await r.json();
-  if (d.error) throw new Error(d.error + ' (action: ' + action + ')');
+  if (d.error) throw new Error(d.error);
   return d;
+}
+
+// format <br> tags into newlines for display
+function fmt(text) {
+  return text ? text.replace(/<br\s*\/?>/gi, '\n') : '';
+}
+
+async function loadResearch() {
+  try {
+    const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
+    const r = data.research;
+    if (!r) { document.getElementById('r-name').textContent = 'No research record found.'; return; }
+
+    // SEC 1
+    document.getElementById('r-name').textContent = r.name;
+    const statusEl = document.getElementById('r-status');
+    const sc = r.status ? r.status.toLowerCase() : 'draft';
+    statusEl.innerHTML = `<span class="badge ${sc}">${r.status || '—'}</span>`;
+    document.getElementById('r-date').textContent = r.lastUpdated || '—';
+
+    // SEC 2 — keywords as pills
+    const kwEl = document.getElementById('r-keywords');
+    if (r.keywords) {
+      kwEl.innerHTML = r.keywords.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('');
+    } else {
+      kwEl.innerHTML = '<span class="empty">—</span>';
+    }
+    document.getElementById('r-notes').textContent = fmt(r.notes) || '—';
+
+    // SEC 3
+    document.getElementById('r-products').textContent = fmt(r.productIdeas) || '—';
+
+    // SEC 4 — split platforms & methods field
+    const pm = fmt(r.platforms) || '';
+    // Field contains both platforms and methods — split on ACTIVE METHODS: if present
+    const methodsSplit = pm.split(/ACTIVE METHODS:/i);
+    if (methodsSplit.length > 1) {
+      document.getElementById('r-platforms').textContent = methodsSplit[0].replace(/ACTIVE PLATFORMS:\s*/i, '').trim();
+      document.getElementById('r-methods').textContent = methodsSplit[1].trim();
+    } else {
+      document.getElementById('r-platforms').textContent = pm;
+      document.getElementById('r-methods').textContent = '—';
+    }
+
+    // SEC 5
+    document.getElementById('r-news').textContent = fmt(r.newsFeed) || '—';
+    document.getElementById('r-tiktok').textContent = fmt(r.tiktokTrends) || '—';
+
+  } catch(e) {
+    document.getElementById('r-name').textContent = 'Error: ' + e.message;
+  }
 }
 
 const SC = { Writing:'ts-write', Review:'ts-review', Approved:'ts-appr', Publish:'ts-pub', Done:'ts-done', Explode:'ts-explode' };
@@ -477,92 +357,9 @@ async function loadTitles() {
   }
 }
 
-async function loadFeed() {
-  const el = document.getElementById('newsList');
-  const STATIC = [
-    { n:'01', t:'<strong>Notion developer platform May 2026</strong> — Workers, External Agents API, Custom Agents for automated multistep workflows. 1M agents built since February.' },
-    { n:'02', t:'<strong>Notion 3.2 Jan 2026</strong> — mobile AI agents have full desktop capability. Voice dictate on a walk, agent executes by the time you\'re home.' },
-    { n:'03', t:'<strong>April 2026 Notion AI</strong> — releases moved from content generation toward workflow infrastructure. Expanded context, cross-page AI blocks, voice input.' },
-    { n:'04', t:'<strong>Notion Custom Agents began using credits May 4 2026</strong> — monetization maturity signal. Usage is now metered.' },
-    { n:'05', t:'<strong>Notion\'s competitive bet:</strong> keep agent workflows inside its workspace vs separate tools — validates Webguy \'one system not five tools\' positioning.' },
-    { n:'06', t:'<strong>\'7 best AI tools for Notion 2026\'</strong> roundups circulating — confirms buyer search intent for AI-Notion integrations. Exact Webguy audience.' },
-    { n:'07', t:'<strong>Notion AI Agent 2026:</strong> content calendars, database structuring, onboarding automation, meeting notes all agent-executable inside Notion.' },
-    { n:'08', t:'<strong>TikTok Ads MCP Server at TikTok World 2026</strong> — AI agents can manage TikTok campaigns without manual Ads Manager. Agentic ad buying going mainstream.' },
-    { n:'09', t:'<strong>TikTok 2026 algorithm:</strong> follower-first distribution live. Consistency is the new ranking signal.' },
-    { n:'10', t:'<strong>83% of marketers</strong> say generative AI helps create more content in less time — HubSpot 2026. Validates the Webguy content machine pitch.' },
-    { n:'11', t:'<strong>LinkedIn 360Brew AI</strong> rewards topic authority over frequency — consistent niche content beats volume. Validates \'content OS not content calendar\'.' },
-    { n:'12', t:'<strong>TikTok hashtags up 114% YoY</strong> — 1–5 specific hashtags get 5% more views and 10% more interactions. Hashtags relevant again.' },
-    { n:'13', t:'<strong>Automation flagging risk:</strong> 25% increase in TikTok flags for simple replication tactics post-2025. Humanized creative required.' },
-    { n:'14', t:'<strong>TikTok Symphony:</strong> Image to Video, Text to Video, Digital Avatars, multilingual lip-sync — lowers AI short-form production barrier.' },
-    { n:'15', t:'<strong>TikTok Next 2026:</strong> users in full discovery mode, passive consumption era over. Human insight plus AI tools required.' }
-  ];
-  let items = STATIC;
-  try {
-    const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
-    const raw = data.items || data.newsFeed || [];
-    if (raw.length) items = raw.map((t,i) => ({ n: String(i+1).padStart(2,'0'), t }));
-  } catch {}
-  el.innerHTML = items.map(it => `<div class="news-item"><div class="news-num">${it.n}</div><div class="news-text">${it.t}</div></div>`).join('');
-}
-
-async function loadTodos() {
-  const el = document.getElementById('todoList');
-  try {
-    const data = await w('getTodos');
-    const todos = data.todos || [];
-    el.innerHTML = '';
-    if (!todos.length) { el.innerHTML = '<div class="empty">No todos.</div>'; return; }
-    const cm = { 'daily content':'tc-content', 'daily household':'tc-house', 'get':'tc-get', 'high':'tc-high' };
-    const cl = { 'daily content':'Content', 'daily household':'House', 'get':'Get', 'high':'High' };
-    todos.forEach(todo => {
-      const div = document.createElement('div');
-      div.className = 'todo-row';
-      div.onclick = () => window.open('https://www.notion.so/' + todo.id, '_blank');
-      const cc = cm[todo.category] || 'tc-high';
-      const lb = cl[todo.category] || 'High';
-      div.innerHTML = `<span class="todo-cat ${cc}">${lb}</span><div><div class="todo-name">${todo.name}</div>${todo.campaign ? `<div class="todo-sub">↳ ${todo.campaign}</div>` : ''}</div>`;
-      el.appendChild(div);
-    });
-  } catch(e) {
-    el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
-  }
-}
-
-async function loadPlatforms() {
-  const el = document.getElementById('platformsContent');
-  const PLATFORM_URLS = {
-    'LinkedIn':'https://www.linkedin.com','Beehiiv':'https://app.beehiiv.com',
-    'WordPress':'https://wordpress.com/posts','Blog':'https://wordpress.com/posts',
-    'Fiverr':'https://www.fiverr.com/seller_dashboard','Upwork':'https://www.upwork.com/freelancers/settings/profile',
-    'Reddit':'https://www.reddit.com','Email':'https://mail.proton.me'
-  };
-  const PLATFORM_IDS = [
-    '3651f7d3a4bb819886f9c3a0f0e47876','3651f7d3a4bb8103929dfbd10258ef02',
-    '3651f7d3a4bb81fbb113c200ef28ef76','3651f7d3a4bb8017b24ddbfc7882a941',
-    '3651f7d3a4bb81a0b91bed11e87bc8fc','3651f7d3a4bb81cbba0eea9d489a4958',
-    '3651f7d3a4bb80ad9347ef27929652cd','3651f7d3a4bb8177bd91eeec2453c80b'
-  ];
-  try {
-    const results = await Promise.all(PLATFORM_IDS.map(id => w('getChildren', { pageId: id }).catch(() => ({ pages: [] }))));
-    el.innerHTML = '';
-    const names = ['LinkedIn','Beehiiv','WordPress','Reddit','Fiverr','Upwork','Email','Blog'];
-    names.forEach((name, i) => {
-      const url = PLATFORM_URLS[name] || '#';
-      const div = document.createElement('div');
-      div.className = 'platform-row';
-      div.innerHTML = `<span class="platform-name">${name}</span><a class="platform-link" href="${url}" target="_blank">↗ Open</a><a class="platform-link" href="https://www.notion.so/${PLATFORM_IDS[i]}" target="_blank">↗ Notion</a>`;
-      el.appendChild(div);
-    });
-  } catch(e) {
-    el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
-  }
-}
-
 function init() {
+  loadResearch();
   loadTitles();
-  loadFeed();
-  loadTodos();
-  loadPlatforms();
 }
 </script>
 </body>

@@ -992,6 +992,32 @@ export default {
         return json({ pages });
       }
 
+      // ── CAMPAIGN ADMIN: getResearch ──
+      if (body.action === "getResearch") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const results = await notionQuery(RESEARCH_DB, {
+          filter: { property: "Campaign", relation: { contains: campaignId } },
+        });
+        if (!results.length) return json({ research: null });
+        const props = results[0].properties;
+        return json({
+          research: {
+            id: results[0].id.replace(/-/g, ""),
+            name: props.Name?.title?.map(t => t.plain_text).join("") || "",
+            status: props.Status?.select?.name || "",
+            lastUpdated: props["date:Last Updated:start"]?.date?.start || "",
+            keywords: props.Keywords?.rich_text?.map(t => t.plain_text).join("") || "",
+            newsFeed: props["News Feed"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            notes: props.Notes?.rich_text?.map(t => t.plain_text).join("") || "",
+            platforms: props["Platforms & Methods"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            productIdeas: props["Product Ideas"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            tiktokTrends: props["TikTok Trends"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            webPageUrl: props["Web Page URL"]?.url || "",
+          }
+        });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);
