@@ -884,6 +884,114 @@ export default {
         return json({ success: true });
       }
 
+      // ── CAMPAIGN ADMIN: getTitles ──
+      if (body.action === "getTitles") {
+        const { stages, campaignId } = body;
+        const stageFilters = (stages || ["Review", "Publish"]).map(s => ({
+          property: "Status",
+          select: { equals: s }
+        }));
+        const filter = campaignId
+          ? { and: [
+              { or: stageFilters },
+              { property: "Campaign", relation: { contains: campaignId } }
+            ]}
+          : { or: stageFilters };
+        const results = await notionQuery(CONTENT_STRATEGY_DB, {
+          filter,
+          sorts: [{ property: "Sequence Order", direction: "ascending" }],
+        });
+        return json({
+          titles: results.map(page => {
+            const props = page.properties;
+            return {
+              id: page.id.replace(/-/g, ""),
+              title: props.Title?.title?.map(t => t.plain_text).join("") || "Untitled",
+              stage: props.Status?.select?.name || "",
+              cohort: props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "Uncategorized",
+              sequence: props["Sequence Order"]?.number || 999,
+              scheduled: props["Scheduled Date"]?.date?.start || "",
+            };
+          })
+        });
+      }
+
+      // ── CAMPAIGN ADMIN: getTodos ──
+      if (body.action === "getTodos") {
+        const results = await notionQuery(MAIN_TD_DB, {
+          filter: {
+            or: [
+              { property: "priority", multi_select: { contains: "daily content" } },
+              { property: "priority", multi_select: { contains: "daily household" } },
+              { property: "priority", multi_select: { contains: "get" } },
+              { property: "priority", multi_select: { contains: "high" } },
+            ]
+          },
+          sorts: [{ property: "Due Date", direction: "ascending" }],
+        });
+        const todos = await Promise.all(results.map(async page => {
+          const props = page.properties;
+          const name = props.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
+          const priorities = props.priority?.multi_select?.map(s => s.name) || [];
+          const campaignRefs = props.campaign?.relation || [];
+          let campaignName = "";
+          if (campaignRefs.length > 0) {
+            try {
+              const cp = await fetch(`https://api.notion.com/v1/pages/${campaignRefs[0].id}`, {
+                headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+              });
+              const cpd = await cp.json();
+              campaignName = cpd.properties?.Name?.title?.map(t => t.plain_text).join("") || "";
+            } catch {}
+          }
+          const category = priorities.includes("daily content") ? "daily content"
+            : priorities.includes("daily household") ? "daily household"
+            : priorities.includes("get") ? "get"
+            : "high";
+          return { id: page.id.replace(/-/g, ""), name, campaign: campaignName, priority: priorities.join(", "), category };
+        }));
+        return json({ todos });
+      }
+
+      // ── CAMPAIGN ADMIN: getExplodeQueue ──
+      if (body.action === "getExplodeQueue") {
+        const results = await notionQuery(CONTENT_STRATEGY_DB, {
+          filter: {
+            or: [
+              { property: "Status", select: { equals: "Writing" } },
+              { property: "Status", select: { equals: "Done" } },
+              { property: "Status", select: { equals: "Approved" } },
+            ]
+          },
+          sorts: [{ property: "Sequence Order", direction: "ascending" }],
+        });
+        return json({
+          titles: results.map(page => {
+            const props = page.properties;
+            return {
+              titleId: page.id.replace(/-/g, ""),
+              titleName: props.Title?.title?.map(t => t.plain_text).join("") || "Untitled",
+              campaignName: props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "",
+              stage: props.Status?.select?.name || "",
+            };
+          })
+        });
+      }
+
+      // ── CAMPAIGN ADMIN: getChildren (Notion page children) ──
+      if (body.action === "getChildren") {
+        const { pageId } = body;
+        if (!pageId) return json({ error: "pageId required" }, 400);
+        const resp = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+        });
+        const data = await resp.json();
+        const pages = (data.results || [])
+          .filter(b => b.type === "child_page")
+          .map(b => ({ id: b.id.replace(/-/g, ""), name: b.child_page?.title || "Untitled", icon: "" }));
+        return json({ pages });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>banning abnnaondlkjnflkj totttt   croisssant
+<head>banning lotta lotaa loatttt  abnnaondlkjnflkj totttt
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Campaign Admin</title>
@@ -445,7 +445,7 @@ setInterval(tick, 1000); tick();
 async function w(action, extra = {}) {
   const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, pin: CORRECT_PIN, ...extra }) });
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
+  if (d.error) throw new Error(d.error + ' (action: ' + action + ')');
   return d;
 }
 
@@ -455,7 +455,7 @@ async function loadTitles() {
   const devEl = document.getElementById('devTitles');
   const pubEl = document.getElementById('pubTitles');
   try {
-    const data = await w('getTitles', { stages: ['Writing','Review','Approved','Publish','Explode','Done'] });
+    const data = await w('getTitles', { stages: ['Writing','Review','Approved','Publish','Explode','Done'], campaignId: CAMPAIGN_ID });
     const titles = data.titles || [];
     const dev = titles.filter(t => ['Writing','Review','Approved','Explode'].includes(t.stage));
     const pub = titles.filter(t => ['Publish','Done'].includes(t.stage));
