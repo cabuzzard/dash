@@ -293,7 +293,7 @@ h2.editable:hover::after { opacity: 1; }
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "34b1f7d3a4bb81b6a8a8fee04df94807"; // mobility-mentor-fundraising
-const RESEARCH_ID = ""; // no research record yet
+const RESEARCH_ID = "3661f7d3a4bb81adaaadc2ce80784112"; // mm-fundraising research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/mobility-mentor-fundraising/";
 const CORRECT_PIN = '1246';
 let pin = '';
@@ -386,7 +386,16 @@ async function loadResearch() {
   try {
     const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
     const r = data.research;
-    if (!r) { document.getElementById('r-name').textContent = 'No research record found.'; return; }
+    if (!r) {
+      document.getElementById('r-name').textContent = 'No research record — add one in Notion to populate this page.';
+      ['r-problem','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
+      });
+      const kwEl = document.getElementById('r-keywords');
+      if (kwEl) kwEl.innerHTML = '<span class="empty">—</span>';
+      return;
+    }
 
     // SEC 1
     document.getElementById('r-name').textContent = r.name;
