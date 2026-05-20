@@ -1,289 +1,406 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>totally dude
+<head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Webguy — Admin</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Campaign Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-:root {
-  --bg:      #080808;
-  --surface: #111111;
-  --border:  #1e1e1e;
-  --border2: #2a2a2a;
-  --text:    #f0ede8;
-  --text2:   #666666;
-  --text3:   #333333;
-  --accent:  #e8ff47;
-  --red:     #ff4444;
-  --green:   #44ff88;
-  --blue:    #4da6ff;
-}
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+body { font-family: 'Syne', sans-serif; background: #080808; color: #e8e5e0; line-height: 1.5; }
+
+h2 {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .25em;
+  text-transform: uppercase;
+  color: #444;
+  padding: 8px 20px;
+  border-top: 1px solid #161616;
+  background: #0a0a0a;
+  position: sticky;
+  top: 40px;
+  z-index: 10;
+}
+
+.section { border-bottom: 1px solid #161616; }
+.content { padding: 12px 20px 16px; }
+
+.field { display: flex; gap: 0; margin-bottom: 1px; align-items: flex-start; }
+.field-label {
+  font-size: 9px; letter-spacing: .12em; text-transform: uppercase;
+  color: #3a3a3a; width: 150px; flex-shrink: 0; padding-top: 9px;
+}
+.field-value { font-size: 13px; color: #bbb; padding: 7px 0; flex: 1; }
+.field-value.body { color: #777; line-height: 1.65; }
+.field-value.empty { color: #2a2a2a; font-style: italic; }
+
+.badge { display: inline-block; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; padding: 2px 8px; border: 1px solid; }
+.badge.active { color: #44ff88; border-color: rgba(68,255,136,.3); background: rgba(68,255,136,.04); }
+.badge.paused { color: #ffcc44; border-color: rgba(255,204,68,.3); background: rgba(255,204,68,.04); }
+.badge.plan   { color: #666; border-color: #222; }
+.badge.done   { color: #4da6ff; border-color: rgba(77,166,255,.3); background: rgba(77,166,255,.04); }
+
+.tags { display: flex; flex-wrap: wrap; gap: 4px; padding: 7px 0; }
+.tag { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border: 1px solid #1e1e1e; color: #555; background: #0d0d0d; }
+
+.title-list { display: flex; flex-direction: column; }
+.title-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #121212; }
+.title-row:last-child { border-bottom: none; }
+.title-stage { font-size: 8px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border: 1px solid; flex-shrink: 0; min-width: 52px; text-align: center; }
+.ts-write   { color: #4da6ff; border-color: rgba(77,166,255,.3);  background: rgba(77,166,255,.05); }
+.ts-review  { color: #ff9944; border-color: rgba(255,153,68,.3);  background: rgba(255,153,68,.05); }
+.ts-appr    { color: #ff9944; border-color: rgba(255,153,68,.3);  background: rgba(255,153,68,.05); }
+.ts-pub     { color: #e8ff47; border-color: rgba(232,255,71,.3);  background: rgba(232,255,71,.05); }
+.ts-done    { color: #44ff88; border-color: rgba(68,255,136,.3);  background: rgba(68,255,136,.05); }
+.ts-explode { color: #cc88ff; border-color: rgba(204,136,255,.3); background: rgba(204,136,255,.05); }
+.title-name  { font-size: 13px; color: #ccc; flex: 1; }
+.title-group { font-size: 10px; color: #3a3a3a; flex-shrink: 0; }
+.title-link  { font-size: 9px; color: #2a2a2a; text-decoration: none; border: 1px solid #1a1a1a; padding: 1px 5px; flex-shrink: 0; }
+.title-link:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
+
+.asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1px; background: #111; border: 1px solid #111; }
+.asset-platform { background: #080808; padding: 10px 14px; }
+.asset-platform-name { font-size: 9px; letter-spacing: .15em; text-transform: uppercase; color: #444; margin-bottom: 8px; }
+.asset-item { font-size: 11px; color: #555; padding: 3px 0; border-bottom: 1px solid #111; display: flex; align-items: center; gap: 7px; }
+.asset-item:last-child { border-bottom: none; }
+.asset-dot { width: 4px; height: 4px; border-radius: 50%; background: #222; flex-shrink: 0; }
+.asset-dot.on { background: #44ff88; }
+
+.news-list { display: flex; flex-direction: column; }
+.news-item { padding: 9px 0; border-bottom: 1px solid #121212; font-size: 13px; color: #777; line-height: 1.65; display: flex; gap: 12px; }
+.news-item:last-child { border-bottom: none; }
+.news-num { font-size: 9px; color: #2a2a2a; flex-shrink: 0; padding-top: 3px; min-width: 18px; }
+.news-text strong { color: #bbb; font-weight: 600; }
+
+.kw-list { display: flex; flex-wrap: wrap; gap: 5px; padding: 7px 0; }
+.kw { font-size: 11px; color: #555; padding: 3px 10px; border: 1px solid #1a1a1a; background: #0d0d0d; }
+
+.sched-row { display: flex; gap: 4px; padding: 7px 0; }
+.sched-day { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; padding: 4px 8px; border: 1px solid #1a1a1a; color: #2a2a2a; }
+.sched-day.on { color: #e8ff47; border-color: rgba(232,255,71,.25); background: rgba(232,255,71,.03); }
+
+.todo-row { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-bottom: 1px solid #121212; cursor: pointer; }
+.todo-row:hover { opacity: .8; }
+.todo-row:last-child { border-bottom: none; }
+.todo-cat { font-size: 8px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 6px; border: 1px solid; flex-shrink: 0; margin-top: 1px; }
+.tc-content { color: #e8ff47; border-color: rgba(232,255,71,.25); background: rgba(232,255,71,.04); }
+.tc-house   { color: #44ff88; border-color: rgba(68,255,136,.25); background: rgba(68,255,136,.04); }
+.tc-get     { color: #ff9944; border-color: rgba(255,153,68,.25); background: rgba(255,153,68,.04); }
+.tc-high    { color: #ff5050; border-color: rgba(255,80,80,.25);  background: rgba(255,80,80,.04); }
+.todo-name { font-size: 13px; color: #ccc; flex: 1; line-height: 1.4; }
+.todo-sub  { font-size: 10px; color: #3a3a3a; margin-top: 2px; }
+
+.platform-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #121212; }
+.platform-row:last-child { border-bottom: none; }
+.platform-name { font-size: 13px; color: #ccc; flex: 1; }
+.platform-link { font-size: 9px; color: #2a2a2a; text-decoration: none; border: 1px solid #1a1a1a; padding: 1px 5px; }
+.platform-link:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
+
+.loading { font-size: 11px; color: #2a2a2a; letter-spacing: .06em; display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+.spinner { width: 10px; height: 10px; border: 1px solid #1e1e1e; border-top-color: #e8ff47; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty { font-size: 12px; color: #2a2a2a; font-style: italic; }
+
+.notion-link { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: #2a2a2a; text-decoration: none; border: 1px solid #1a1a1a; padding: 2px 7px; transition: all .15s; }
+.notion-link:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
 
 /* PIN */
-.pin-screen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; }
+.pin-screen { position: fixed; inset: 0; background: #080808; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; }
 .pin-screen.hidden { display: none; }
-.pin-wordmark { font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--text3); margin-bottom: 48px; }
-.pin-label { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--text2); margin-bottom: 24px; }
-.pin-dots { display: flex; gap: 12px; margin-bottom: 36px; }
-.pin-dot { width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--text3); background: transparent; transition: all .15s; }
-.pin-dot.filled { background: var(--accent); border-color: var(--accent); }
-.pin-dot.error  { background: var(--red); border-color: var(--red); }
+.pin-mark  { font-size: 10px; letter-spacing: .3em; text-transform: uppercase; color: #2a2a2a; margin-bottom: 48px; }
+.pin-label { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: #444; margin-bottom: 24px; }
+.pin-dots  { display: flex; gap: 12px; margin-bottom: 36px; }
+.pin-dot   { width: 6px; height: 6px; border-radius: 50%; border: 1px solid #222; background: transparent; transition: all .12s; }
+.pin-dot.filled { background: #e8ff47; border-color: #e8ff47; }
+.pin-dot.error  { background: #ff4444; border-color: #ff4444; }
 .pin-pad { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; width: 180px; }
-.pin-btn { height: 52px; background: var(--surface); border: 1px solid var(--border2); font-size: 18px; color: var(--text); cursor: pointer; font-family: 'Syne', sans-serif; transition: all .1s; }
-.pin-btn:hover { background: #1a1a1a; }
+.pin-btn { height: 50px; background: #0f0f0f; border: 1px solid #1a1a1a; font-size: 18px; color: #e8e5e0; cursor: pointer; font-family: 'Syne', sans-serif; transition: all .1s; }
+.pin-btn:hover { background: #141414; }
 .pin-btn:active { transform: scale(.96); }
-.pin-btn.del { font-size: 12px; color: var(--text2); }
+.pin-btn.del { font-size: 11px; color: #444; }
 .pin-btn.empty { background: transparent; border: none; pointer-events: none; }
-.pin-error { font-size: 11px; color: var(--red); margin-top: 20px; min-height: 14px; letter-spacing: .1em; }
+.pin-error { font-size: 10px; color: #ff4444; margin-top: 20px; min-height: 14px; letter-spacing: .1em; }
 
-/* HEADER */
-.header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); }
-.header-logo { font-size: 11px; letter-spacing: .25em; text-transform: uppercase; color: var(--text2); }
-.header-logo span { color: var(--accent); }
-.header-right { display: flex; align-items: center; gap: 20px; }
-.header-time { font-size: 11px; color: var(--text3); letter-spacing: .08em; }
-.header-status { display: flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--green); }
-.status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: pulse 2s ease-in-out infinite; }
-@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.3} }
-.lock-btn { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text3); cursor: pointer; transition: color .15s; }
-.lock-btn:hover { color: var(--text2); }
-
-/* PAGE */
-.page { padding: 24px; }
-
-/* SECTION */
-.section { margin-bottom: 24px; }
-.section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.section-title { font-size: 10px; letter-spacing: .25em; text-transform: uppercase; color: var(--text3); }
-.section-count { font-size: 10px; letter-spacing: .1em; color: var(--text3); }
-.section-refresh { font-size: 11px; color: var(--text3); cursor: pointer; transition: color .15s; }
-.section-refresh:hover { color: var(--text2); }
-
-/* STAT ROW */
-.stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); margin-bottom: 1px; }
-.stat-box { background: var(--bg); padding: 16px 20px; }
-.stat-num { font-size: 28px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
-.stat-num.acc   { color: var(--accent); }
-.stat-num.green { color: var(--green); }
-.stat-num.red   { color: var(--red); }
-.stat-num.blue  { color: var(--blue); }
-.stat-label { font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--text3); }
-
-/* GRID */
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); }
-.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); }
-
-/* CARD */
-.card { background: var(--bg); padding: 0; }
-
-/* LIST */
-.list-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); cursor: default; transition: background .1s; }
-.list-item:last-child { border-bottom: none; }
-.list-item:hover { background: var(--surface); }
-.li-stage { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border: 1px solid; flex-shrink: 0; min-width: 52px; text-align: center; }
-.ls-write  { color: var(--blue);   border-color: rgba(77,166,255,.3);  background: rgba(77,166,255,.06); }
-.ls-review { color: #ff9944;       border-color: rgba(255,153,68,.3);  background: rgba(255,153,68,.06); }
-.ls-pub    { color: var(--accent); border-color: rgba(232,255,71,.3);  background: rgba(232,255,71,.06); }
-.ls-done   { color: var(--green);  border-color: rgba(68,255,136,.3);  background: rgba(68,255,136,.06); }
-.ls-explode{ color: #cc88ff;       border-color: rgba(204,136,255,.3); background: rgba(204,136,255,.06); }
-.li-title { font-size: 13px; flex: 1; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.li-meta  { font-size: 10px; color: var(--text3); flex-shrink: 0; letter-spacing: .04em; }
-
-/* FEED */
-.feed-item { padding: 12px 16px; border-bottom: 1px solid var(--border); transition: background .1s; }
-.feed-item:hover { background: var(--surface); }
-.feed-item:last-child { border-bottom: none; }
-.feed-num { font-size: 9px; color: var(--text3); letter-spacing: .1em; margin-bottom: 4px; }
-.feed-text { font-size: 12px; line-height: 1.6; color: var(--text2); }
-.feed-text strong { color: var(--text); font-weight: 600; }
-
-/* SYSTEM */
-.sys-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
-.sys-item:last-child { border-bottom: none; }
-.sys-icon { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
-.sys-info { flex: 1; }
-.sys-name { font-size: 13px; color: var(--text); font-weight: 600; margin-bottom: 2px; }
-.sys-sub  { font-size: 10px; color: var(--text3); letter-spacing: .04em; }
-.sys-badge { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; padding: 2px 7px; border: 1px solid; flex-shrink: 0; }
-
-/* EXPLODE */
-.explode-item { padding: 10px 16px; border-bottom: 1px solid var(--border); }
-.explode-item:last-child { border-bottom: none; }
-.explode-title { font-size: 13px; color: var(--text); margin-bottom: 2px; }
-.explode-campaign { font-size: 10px; color: var(--text3); margin-bottom: 6px; }
-.explode-btns { display: flex; gap: 6px; }
-.ex-btn { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border: 1px solid; cursor: pointer; background: transparent; font-family: 'Syne', sans-serif; transition: all .15s; text-decoration: none; display: inline-block; }
-.ex-copy { color: var(--green); border-color: rgba(68,255,136,.3); }
-.ex-copy:hover { background: rgba(68,255,136,.08); }
-.ex-open { color: var(--text3); border-color: var(--border2); }
-.ex-open:hover { color: var(--text2); }
-
-/* TODO */
-.todo-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; }
-.todo-item:hover { background: var(--surface); }
-.todo-item:last-child { border-bottom: none; }
-.todo-cat { font-size: 9px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 6px; border: 1px solid; flex-shrink: 0; margin-top: 1px; }
-.tc-content { color: var(--accent); border-color: rgba(232,255,71,.3); background: rgba(232,255,71,.05); }
-.tc-house   { color: var(--green);  border-color: rgba(68,255,136,.3); background: rgba(68,255,136,.05); }
-.tc-get     { color: #ff9944;       border-color: rgba(255,153,68,.3); background: rgba(255,153,68,.05); }
-.tc-high    { color: var(--red);    border-color: rgba(255,68,68,.3);  background: rgba(255,68,68,.05); }
-.todo-name { font-size: 13px; color: var(--text); flex: 1; line-height: 1.4; }
-.todo-sub  { font-size: 10px; color: var(--text3); margin-top: 2px; }
-
-/* CONTENT */
-.content-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); text-decoration: none; transition: background .1s; }
-.content-item:hover { background: var(--surface); }
-.content-item:last-child { border-bottom: none; }
-.ci-platform { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--blue); flex-shrink: 0; min-width: 60px; }
-.ci-title { font-size: 13px; color: var(--text); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* SECTION LABEL */
-.sub-label { padding: 6px 16px; font-size: 9px; letter-spacing: .2em; text-transform: uppercase; color: var(--text3); background: var(--surface); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
-
-/* UTIL */
-.loading { padding: 16px; font-size: 11px; color: var(--text3); letter-spacing: .08em; display: flex; align-items: center; gap: 8px; }
-.spinner { width: 10px; height: 10px; border: 1px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.empty { padding: 14px 16px; font-size: 11px; color: var(--text3); font-style: italic; }
-
-/* TD LINK */
-.td-link { font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--text3); text-decoration: none; border: 1px solid var(--border2); padding: 4px 10px; transition: all .15s; }
-.td-link:hover { color: var(--accent); border-color: rgba(232,255,71,.4); }
+/* TOPBAR */
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid #161616; background: #080808; position: sticky; top: 0; z-index: 20; height: 40px; }
+.topbar-left { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: #333; }
+.topbar-left span { color: #e8ff47; }
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.topbar-clock { font-size: 10px; color: #2a2a2a; letter-spacing: .06em; }
+.topbar-lock  { font-size: 9px; letter-spacing: .15em; text-transform: uppercase; color: #2a2a2a; cursor: pointer; }
+.topbar-lock:hover { color: #555; }
 </style>
 </head>
 <body>
 
-<!-- PIN -->
 <div class="pin-screen" id="pinScreen">
-  <div class="pin-wordmark">Webguy <span style="color:var(--accent)">·</span> Command</div>
+  <div class="pin-mark">Webguy <span style="color:#e8ff47">·</span> Admin</div>
   <div class="pin-label">Access code</div>
   <div class="pin-dots">
     <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
     <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
   </div>
   <div class="pin-pad">
-    <button class="pin-btn" onclick="pp('1')">1</button>
-    <button class="pin-btn" onclick="pp('2')">2</button>
-    <button class="pin-btn" onclick="pp('3')">3</button>
-    <button class="pin-btn" onclick="pp('4')">4</button>
-    <button class="pin-btn" onclick="pp('5')">5</button>
-    <button class="pin-btn" onclick="pp('6')">6</button>
-    <button class="pin-btn" onclick="pp('7')">7</button>
-    <button class="pin-btn" onclick="pp('8')">8</button>
-    <button class="pin-btn" onclick="pp('9')">9</button>
-    <button class="pin-btn empty"></button>
-    <button class="pin-btn" onclick="pp('0')">0</button>
-    <button class="pin-btn del" onclick="pd()">DEL</button>
+    <button class="pin-btn" onclick="pp('1')">1</button><button class="pin-btn" onclick="pp('2')">2</button><button class="pin-btn" onclick="pp('3')">3</button>
+    <button class="pin-btn" onclick="pp('4')">4</button><button class="pin-btn" onclick="pp('5')">5</button><button class="pin-btn" onclick="pp('6')">6</button>
+    <button class="pin-btn" onclick="pp('7')">7</button><button class="pin-btn" onclick="pp('8')">8</button><button class="pin-btn" onclick="pp('9')">9</button>
+    <button class="pin-btn empty"></button><button class="pin-btn" onclick="pp('0')">0</button><button class="pin-btn del" onclick="pd()">DEL</button>
   </div>
   <div class="pin-error" id="pinError"></div>
 </div>
 
-<!-- HEADER -->
-<div class="header">
-  <div class="header-logo">Web<span>guy</span> — Admin</div>
-  <div class="header-right">
-    <div class="header-status"><div class="status-dot"></div>Live</div>
-    <div class="header-time" id="clock">—</div>
-    <a href="td/" class="td-link">TD ↗</a>
-    <div class="lock-btn" onclick="lockApp()">Lock</div>
+<div class="topbar">
+  <div class="topbar-left">Web<span>guy</span> — Campaign Admin</div>
+  <div class="topbar-right">
+    <a href="td/" class="notion-link">TD ↗</a>
+    <div class="topbar-clock" id="clock">—</div>
+    <div class="topbar-lock" onclick="lockApp()">Lock</div>
   </div>
 </div>
 
-<!-- PAGE -->
-<div class="page">
-
-  <!-- STATS -->
-  <div class="section">
-    <div class="section-head">
-      <div class="section-title">Pipeline Overview</div>
+<!-- IDENTITY -->
+<div class="section">
+  <h2>Identity</h2>
+  <div class="content">
+    <div class="field"><div class="field-label">Name</div><div class="field-value">📱 MAIN notion ai content management</div></div>
+    <div class="field"><div class="field-label">Site</div><div class="field-value">Webguy Business Services</div></div>
+    <div class="field"><div class="field-label">Status</div><div class="field-value"><span class="badge active">Active</span></div></div>
+    <div class="field"><div class="field-label">Start Date</div><div class="field-value">2026-05-15</div></div>
+    <div class="field"><div class="field-label">End Date</div><div class="field-value empty">—</div></div>
+    <div class="field">
+      <div class="field-label">Grouping</div>
+      <div class="field-value"><div class="tags"><span class="tag">content machine</span><span class="tag">leadgen</span><span class="tag">this week</span></div></div>
     </div>
-    <div class="stat-row" id="statRow">
-      <div class="stat-box"><div class="stat-num blue"  id="s-writing">—</div><div class="stat-label">Writing</div></div>
-      <div class="stat-box"><div class="stat-num acc"   id="s-review">—</div><div class="stat-label">Review</div></div>
-      <div class="stat-box"><div class="stat-num green" id="s-publish">—</div><div class="stat-label">Publish</div></div>
-      <div class="stat-box"><div class="stat-num"       id="s-done" style="color:var(--text2)">—</div><div class="stat-label">Done</div></div>
+    <div class="field"><div class="field-label">Notes</div><div class="field-value body">Master LinkedIn content campaign. Niche-agnostic posts serve as warm-up content for all targeted campaigns. Targeted outreach runs separately and benefits from this brand presence.</div></div>
+    <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3611f7d3a4bb81fe9ebcfe01813d9ac2" target="_blank" class="notion-link">↗ Open in Notion</a></div></div>
+  </div>
+</div>
+
+<!-- CAMPAIGN GOAL -->
+<div class="section">
+  <h2>Campaign Goal</h2>
+  <div class="content">
+    <div class="field-value body">Maintain a consistent, high-value LinkedIn presence that builds authority and trust for the Webguy brand across all niches — serving as the top-of-funnel content engine that feeds and amplifies every targeted campaign.</div>
+  </div>
+</div>
+
+<!-- KEY MESSAGE -->
+<div class="section">
+  <h2>Key Message</h2>
+  <div class="content">
+    <div class="field-value body">AI implementations. Content systems, content automation. Notion AI content systems. We help businesses grow using smart systems, AI, and online strategy — whoever you are, we probably have something useful to say.</div>
+  </div>
+</div>
+
+<!-- TARGET AUDIENCE -->
+<div class="section">
+  <h2>Target Audience</h2>
+  <div class="content">
+    <div class="field-value body">Business owners, operators, decision-makers, and professionals who follow Webguy across any niche — small business, corporate, construction, coaching, and beyond.</div>
+  </div>
+</div>
+
+<!-- PAIN POINTS -->
+<div class="section">
+  <h2>Pain Points</h2>
+  <div class="content">
+    <div class="field-value body">Inconsistent posting, no clear brand voice, content that only speaks to one audience, no warm audience when targeted outreach launches.</div>
+  </div>
+</div>
+
+<!-- CTA -->
+<div class="section">
+  <h2>CTA</h2>
+  <div class="content">
+    <div class="field-value">Follow for weekly insights on AI, systems, and business growth.</div>
+  </div>
+</div>
+
+<!-- METHODS -->
+<div class="section">
+  <h2>Methods</h2>
+  <div class="content">
+    <div class="tags"><span class="tag">Blog</span><span class="tag">SM Post</span></div>
+  </div>
+</div>
+
+<!-- PRODUCTS -->
+<div class="section">
+  <h2>Products</h2>
+  <div class="content">
+    <div class="tags"><span class="tag">jbz</span><span class="tag">online collabs</span><span class="tag">consulting</span></div>
+  </div>
+</div>
+
+<!-- SCHEDULE -->
+<div class="section">
+  <h2>Schedule</h2>
+  <div class="content">
+    <div class="field"><div class="field-label">Days</div>
+      <div class="field-value">
+        <div class="sched-row">
+          <span class="sched-day">Mon</span><span class="sched-day">Tue</span><span class="sched-day">Wed</span>
+          <span class="sched-day">Thu</span><span class="sched-day">Fri</span><span class="sched-day">Sat</span><span class="sched-day">Sun</span>
+        </div>
+      </div>
+    </div>
+    <div class="field"><div class="field-label">Time</div><div class="field-value empty">—</div></div>
+  </div>
+</div>
+
+<!-- PLATFORMS -->
+<div class="section">
+  <h2>Platforms</h2>
+  <div class="content" id="platformsContent">
+    <div class="loading"><div class="spinner"></div>Loading platforms…</div>
+  </div>
+</div>
+
+<!-- KEYWORDS -->
+<div class="section">
+  <h2>Keywords</h2>
+  <div class="content">
+    <div class="kw-list">
+      <span class="kw">AI tools</span><span class="kw">business growth</span><span class="kw">systems</span>
+      <span class="kw">automation</span><span class="kw">online strategy</span><span class="kw">lead generation</span>
+      <span class="kw">productivity</span><span class="kw">Notion</span><span class="kw">content operations</span><span class="kw">web guy</span>
     </div>
   </div>
+</div>
 
-  <!-- PIPELINE + SYSTEM -->
-  <div class="section">
-    <div class="section-head">
-      <div class="section-title">Content Pipeline</div>
-      <div style="display:flex;gap:12px;align-items:center">
-        <div class="section-count" id="pipeline-count"></div>
-        <div class="section-refresh" onclick="loadPipeline()">↻</div>
-      </div>
+<!-- LINKEDIN JOB TITLES -->
+<div class="section">
+  <h2>LinkedIn Job Titles</h2>
+  <div class="content">
+    <div class="field-value empty">Not set</div>
+  </div>
+</div>
+
+<!-- DEVELOPMENT TITLES -->
+<div class="section">
+  <h2>Development Titles</h2>
+  <div class="content">
+    <div class="title-list" id="devTitles">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
     </div>
-    <div class="grid-2">
-      <div class="card" id="pipelineList">
-        <div class="loading"><div class="spinner"></div>Loading…</div>
+  </div>
+</div>
+
+<!-- PUBLISH TITLES -->
+<div class="section">
+  <h2>Publish Titles</h2>
+  <div class="content">
+    <div class="title-list" id="pubTitles">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- PLATFORM ASSET CHECKLIST -->
+<div class="section">
+  <h2>Platform Asset Checklist</h2>
+  <div class="content">
+    <div class="asset-grid">
+      <div class="asset-platform">
+        <div class="asset-platform-name">LinkedIn</div>
+        <div class="asset-item"><span class="asset-dot on"></span>Headline</div>
+        <div class="asset-item"><span class="asset-dot on"></span>Body</div>
+        <div class="asset-item"><span class="asset-dot on"></span>CTA Button</div>
+        <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
       </div>
-      <div class="card">
-        <div class="sys-item">
-          <div class="sys-icon">⚙</div>
-          <div class="sys-info"><div class="sys-name">Notion AI Content OS</div><div class="sys-sub">Custom-built for Webguy</div></div>
-          <span class="sys-badge" style="color:var(--green);border-color:rgba(68,255,136,.3)">Live</span>
-        </div>
-        <div class="sys-item">
-          <div class="sys-icon">🔍</div>
-          <div class="sys-info"><div class="sys-name">Market Intelligence</div><div class="sys-sub">AI-monitored keyword signals</div></div>
-          <span class="sys-badge" style="color:var(--green);border-color:rgba(68,255,136,.3)">Active</span>
-        </div>
-        <div class="sys-item">
-          <div class="sys-icon">✍</div>
-          <div class="sys-info"><div class="sys-name">Content Pipeline</div><div class="sys-sub">Development → Publish</div></div>
-          <span class="sys-badge" style="color:var(--accent);border-color:rgba(232,255,71,.3)">Running</span>
-        </div>
-        <div class="sys-item">
-          <div class="sys-icon">📡</div>
-          <div class="sys-info"><div class="sys-name">Multi-Platform Dist.</div><div class="sys-sub">LinkedIn · Reddit · Substack</div></div>
-          <span class="sys-badge" style="color:var(--blue);border-color:rgba(77,166,255,.3)">Scheduled</span>
-        </div>
-        <div class="sys-item">
-          <div class="sys-icon">💰</div>
-          <div class="sys-info"><div class="sys-name">Revenue Endpoints</div><div class="sys-sub">Audit CTA on every asset</div></div>
-          <span class="sys-badge" style="color:var(--green);border-color:rgba(68,255,136,.3)">On</span>
-        </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">Reddit</div>
+        <div class="asset-item"><span class="asset-dot"></span>Title</div>
+        <div class="asset-item"><span class="asset-dot"></span>Body</div>
+        <div class="asset-item"><span class="asset-dot"></span>Subreddit</div>
+        <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">Newsletter</div>
+        <div class="asset-item"><span class="asset-dot"></span>Subject</div>
+        <div class="asset-item"><span class="asset-dot"></span>Teaser</div>
+        <div class="asset-item"><span class="asset-dot"></span>Main Content</div>
+        <div class="asset-item"><span class="asset-dot"></span>CTA Text</div>
+        <div class="asset-item"><span class="asset-dot"></span>CTA URL</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">Substack</div>
+        <div class="asset-item"><span class="asset-dot"></span>Subject Line</div>
+        <div class="asset-item"><span class="asset-dot"></span>Preview</div>
+        <div class="asset-item"><span class="asset-dot"></span>Body</div>
+        <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">Twitter / X</div>
+        <div class="asset-item"><span class="asset-dot"></span>Tweet 1</div>
+        <div class="asset-item"><span class="asset-dot"></span>Tweet 2</div>
+        <div class="asset-item"><span class="asset-dot"></span>Tweet 3</div>
+        <div class="asset-item"><span class="asset-dot"></span>Hashtags</div>
+        <div class="asset-item"><span class="asset-dot"></span>Thread Format</div>
+        <div class="asset-item"><span class="asset-dot"></span>First Comment</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">TikTok</div>
+        <div class="asset-item"><span class="asset-dot"></span>Caption</div>
+        <div class="asset-item"><span class="asset-dot"></span>Hook</div>
+        <div class="asset-item"><span class="asset-dot"></span>Video Length</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">YouTube</div>
+        <div class="asset-item"><span class="asset-dot"></span>Title</div>
+        <div class="asset-item"><span class="asset-dot"></span>Description</div>
+        <div class="asset-item"><span class="asset-dot"></span>Tags</div>
+        <div class="asset-item"><span class="asset-dot"></span>Video Duration</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">Instagram</div>
+        <div class="asset-item"><span class="asset-dot"></span>Caption</div>
+        <div class="asset-item"><span class="asset-dot"></span>Story Text</div>
+        <div class="asset-item"><span class="asset-dot"></span>Image Alt Text</div>
+        <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
+        <div class="asset-item"><span class="asset-dot"></span>Aspect Ratio</div>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- INTELLIGENCE + TODOS + CONTENT -->
-  <div class="section">
-    <div class="section-head">
-      <div class="section-title">Intelligence · Todos · Published</div>
-      <div class="section-refresh" onclick="loadFeed();loadTodoExplode();loadContent()">↻ All</div>
-    </div>
-    <div class="grid-3">
-
-      <!-- FEED -->
-      <div class="card" id="feedCard">
-        <div class="sub-label"><span>Intelligence Feed</span><span id="feed-count"></span></div>
-        <div id="feedList"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-      </div>
-
-      <!-- TODOS + EXPLODE -->
-      <div class="card">
-        <div class="sub-label"><span>Explode Queue</span><span id="explode-count"></span></div>
-        <div id="explodeList"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-        <div class="sub-label" style="margin-top:0"><span>Todos</span><span id="todo-count"></span></div>
-        <div id="todoList"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-      </div>
-
-      <!-- PUBLISHED CONTENT -->
-      <div class="card">
-        <div class="sub-label"><span>Published Content</span><span id="content-count"></span></div>
-        <div id="contentList"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-      </div>
-
+<!-- INTELLIGENCE FEED -->
+<div class="section">
+  <h2>Intelligence Feed</h2>
+  <div class="content">
+    <div class="news-list" id="newsList">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
     </div>
   </div>
+</div>
 
-</div><!-- /page -->
+<!-- ASSOCIATED TODOS -->
+<div class="section">
+  <h2>Associated Todos</h2>
+  <div class="content">
+    <div class="title-list" id="todoList">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ASSOCIATED CAMPAIGNS -->
+<div class="section">
+  <h2>Associated Campaigns</h2>
+  <div class="content">
+    <div class="field-value empty" id="assocCampaigns">—</div>
+  </div>
+</div>
+
+<!-- RESEARCH DB LINK -->
+<div class="section">
+  <h2>Research</h2>
+  <div class="content">
+    <div class="field"><div class="field-label">Research DB</div><div class="field-value"><a href="https://www.notion.so/7b09bfb6437441ddbbd5ab0f3086380ea" target="_blank" class="notion-link">↗ Open in Notion</a></div></div>
+    <div class="field"><div class="field-label">Protocol</div><div class="field-value"><a href="https://www.notion.so/3591f7d3a4bb81b8b868f5a1f03354bb" target="_blank" class="notion-link">↗ Universal Research Protocol</a></div></div>
+  </div>
+</div>
 
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -318,7 +435,6 @@ function lockApp() {
   document.getElementById('pinScreen').classList.remove('hidden');
 }
 
-// Clock
 function tick() {
   const n = new Date();
   document.getElementById('clock').textContent =
@@ -333,137 +449,120 @@ async function w(action, extra = {}) {
   return d;
 }
 
-// PIPELINE
-async function loadPipeline() {
-  const el = document.getElementById('pipelineList');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+const SC = { Writing:'ts-write', Review:'ts-review', Approved:'ts-appr', Publish:'ts-pub', Done:'ts-done', Explode:'ts-explode' };
+
+async function loadTitles() {
+  const devEl = document.getElementById('devTitles');
+  const pubEl = document.getElementById('pubTitles');
   try {
     const data = await w('getTitles', { stages: ['Writing','Review','Approved','Publish','Explode','Done'] });
     const titles = data.titles || [];
-    const cnt = { Writing:0, Review:0, Approved:0, Publish:0, Explode:0, Done:0 };
-    titles.forEach(t => { if (cnt[t.stage] !== undefined) cnt[t.stage]++; });
-    document.getElementById('s-writing').textContent = cnt.Writing;
-    document.getElementById('s-review').textContent  = cnt.Review + cnt.Approved;
-    document.getElementById('s-publish').textContent = cnt.Publish;
-    document.getElementById('s-done').textContent    = cnt.Done;
-    document.getElementById('pipeline-count').textContent = titles.length + ' titles';
-    el.innerHTML = '';
-    if (!titles.length) { el.innerHTML = '<div class="empty">No titles.</div>'; return; }
-    const sc = { Writing:'ls-write', Review:'ls-review', Approved:'ls-review', Publish:'ls-pub', Done:'ls-done', Explode:'ls-explode' };
-    titles.forEach(t => {
-      const div = document.createElement('div');
-      div.className = 'list-item';
-      div.innerHTML = `<span class="li-stage ${sc[t.stage]||'ls-write'}">${t.stage}</span><span class="li-title">${t.title}</span><span class="li-meta">${t.cohort||''}</span>`;
-      el.appendChild(div);
-    });
-  } catch(e) { el.innerHTML = `<div class="empty" style="color:var(--red)">${e.message}</div>`; }
+    const dev = titles.filter(t => ['Writing','Review','Approved','Explode'].includes(t.stage));
+    const pub = titles.filter(t => ['Publish','Done'].includes(t.stage));
+    function render(arr, el) {
+      el.innerHTML = '';
+      if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
+      arr.forEach(t => {
+        const div = document.createElement('div');
+        div.className = 'title-row';
+        div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><span class="title-group">${t.cohort||''}</span><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+        el.appendChild(div);
+      });
+    }
+    render(dev, devEl);
+    render(pub, pubEl);
+  } catch(e) {
+    devEl.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
+    pubEl.innerHTML = '<div class="empty">—</div>';
+  }
 }
 
-// FEED
-const SF = [
-  { n:'01', t:'<strong>Notion developer platform May 2026</strong> — Workers, External Agents API, Custom Agents for automated multistep workflows. 1M agents built since February.' },
-  { n:'02', t:'<strong>Notion 3.2 Jan 2026</strong> — mobile AI agents have full desktop capability. Voice dictate on a walk, agent executes by the time you\'re home.' },
-  { n:'03', t:'<strong>April 2026 Notion AI</strong> releases moved from content generation toward workflow infrastructure — expanded context, cross-page AI blocks, voice input.' },
-  { n:'04', t:'<strong>Notion Custom Agents began using credits May 4 2026</strong> — monetization maturity signal. Usage is now metered.' },
-  { n:'05', t:'<strong>Notion\'s competitive bet:</strong> keep agent workflows inside its workspace vs separate tools — validates Webguy \'one system not five tools\' positioning.' },
-  { n:'06', t:'<strong>\'7 best AI tools for Notion 2026\'</strong> roundups circulating — confirms buyer search intent. Exact Webguy audience.' },
-  { n:'07', t:'<strong>Notion AI Agent 2026:</strong> content calendars, database structuring, onboarding automation, meeting notes all agent-executable inside Notion.' },
-  { n:'08', t:'<strong>TikTok Ads MCP Server at TikTok World 2026</strong> — AI agents can manage TikTok campaigns without manual Ads Manager. Agentic ad buying going mainstream.' },
-  { n:'09', t:'<strong>TikTok 2026 algorithm:</strong> follower-first distribution live — consistency is the new ranking signal.' },
-  { n:'10', t:'<strong>83% of marketers</strong> say generative AI helps create more content in less time — HubSpot 2026. Validates the Webguy content machine pitch.' },
-  { n:'11', t:'<strong>TikTok Symphony:</strong> Image to Video, Text to Video, Digital Avatars, multilingual lip-sync — lowers AI short-form production barrier.' },
-  { n:'12', t:'<strong>TikTok hashtags up 114% YoY</strong> — 1-5 specific hashtags get 5% more views and 10% more interactions.' },
-  { n:'13', t:'<strong>Automation flagging risk:</strong> 25% increase in TikTok flags for simple replication tactics post-2025. Humanized creative required.' },
-  { n:'14', t:'<strong>LinkedIn 360Brew AI</strong> rewards topic authority over frequency — validates \'content OS not content calendar\'.' },
-  { n:'15', t:'<strong>TikTok Next 2026:</strong> users in full discovery mode, passive consumption era over. Human insight plus AI tools required.' }
-];
 async function loadFeed() {
-  const el = document.getElementById('feedList');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
-  let items = SF;
+  const el = document.getElementById('newsList');
+  const STATIC = [
+    { n:'01', t:'<strong>Notion developer platform May 2026</strong> — Workers, External Agents API, Custom Agents for automated multistep workflows. 1M agents built since February.' },
+    { n:'02', t:'<strong>Notion 3.2 Jan 2026</strong> — mobile AI agents have full desktop capability. Voice dictate on a walk, agent executes by the time you\'re home.' },
+    { n:'03', t:'<strong>April 2026 Notion AI</strong> — releases moved from content generation toward workflow infrastructure. Expanded context, cross-page AI blocks, voice input.' },
+    { n:'04', t:'<strong>Notion Custom Agents began using credits May 4 2026</strong> — monetization maturity signal. Usage is now metered.' },
+    { n:'05', t:'<strong>Notion\'s competitive bet:</strong> keep agent workflows inside its workspace vs separate tools — validates Webguy \'one system not five tools\' positioning.' },
+    { n:'06', t:'<strong>\'7 best AI tools for Notion 2026\'</strong> roundups circulating — confirms buyer search intent for AI-Notion integrations. Exact Webguy audience.' },
+    { n:'07', t:'<strong>Notion AI Agent 2026:</strong> content calendars, database structuring, onboarding automation, meeting notes all agent-executable inside Notion.' },
+    { n:'08', t:'<strong>TikTok Ads MCP Server at TikTok World 2026</strong> — AI agents can manage TikTok campaigns without manual Ads Manager. Agentic ad buying going mainstream.' },
+    { n:'09', t:'<strong>TikTok 2026 algorithm:</strong> follower-first distribution live. Consistency is the new ranking signal.' },
+    { n:'10', t:'<strong>83% of marketers</strong> say generative AI helps create more content in less time — HubSpot 2026. Validates the Webguy content machine pitch.' },
+    { n:'11', t:'<strong>LinkedIn 360Brew AI</strong> rewards topic authority over frequency — consistent niche content beats volume. Validates \'content OS not content calendar\'.' },
+    { n:'12', t:'<strong>TikTok hashtags up 114% YoY</strong> — 1–5 specific hashtags get 5% more views and 10% more interactions. Hashtags relevant again.' },
+    { n:'13', t:'<strong>Automation flagging risk:</strong> 25% increase in TikTok flags for simple replication tactics post-2025. Humanized creative required.' },
+    { n:'14', t:'<strong>TikTok Symphony:</strong> Image to Video, Text to Video, Digital Avatars, multilingual lip-sync — lowers AI short-form production barrier.' },
+    { n:'15', t:'<strong>TikTok Next 2026:</strong> users in full discovery mode, passive consumption era over. Human insight plus AI tools required.' }
+  ];
+  let items = STATIC;
   try {
     const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
     const raw = data.items || data.newsFeed || [];
     if (raw.length) items = raw.map((t,i) => ({ n: String(i+1).padStart(2,'0'), t }));
   } catch {}
-  document.getElementById('feed-count').textContent = items.length;
-  el.innerHTML = items.map(it => `<div class="feed-item"><div class="feed-num">${it.n}</div><div class="feed-text">${it.t}</div></div>`).join('');
+  el.innerHTML = items.map(it => `<div class="news-item"><div class="news-num">${it.n}</div><div class="news-text">${it.t}</div></div>`).join('');
 }
 
-// CONTENT
-async function loadContent() {
-  const el = document.getElementById('contentList');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+async function loadTodos() {
+  const el = document.getElementById('todoList');
   try {
-    const data = await w('getPublishedTitles', { campaignId: CAMPAIGN_ID });
-    const titles = data.titles || data.items || [];
-    document.getElementById('content-count').textContent = titles.length;
-    if (!titles.length) { el.innerHTML = '<div class="empty">Content launching soon.</div>'; return; }
+    const data = await w('getTodos');
+    const todos = data.todos || [];
     el.innerHTML = '';
-    titles.forEach(t => {
-      const title    = typeof t === 'string' ? t : t.title || t.name || '';
-      const platform = typeof t === 'object' && t.platform ? t.platform : 'Content';
-      const a = document.createElement('a');
-      a.className = 'content-item'; a.href = '#';
-      a.innerHTML = `<span class="ci-platform">${platform}</span><span class="ci-title">${title}</span>`;
-      el.appendChild(a);
-    });
-  } catch { document.getElementById('content-count').textContent = '0'; el.innerHTML = '<div class="empty">Content launching soon.</div>'; }
-}
-
-// TODOS + EXPLODE
-async function loadTodoExplode() {
-  const elE = document.getElementById('explodeList');
-  const elT = document.getElementById('todoList');
-  elE.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
-  elT.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
-  let todos = [], explodes = [];
-  try { const d = await w('getTodos'); todos = d.todos || []; } catch {}
-  try { const d = await w('getExplodeQueue'); explodes = d.titles || []; } catch {}
-
-  document.getElementById('explode-count').textContent = explodes.length;
-  elE.innerHTML = '';
-  if (!explodes.length) { elE.innerHTML = '<div class="empty">Queue empty.</div>'; }
-  else explodes.forEach(t => {
-    const div = document.createElement('div');
-    div.className = 'explode-item';
-    const st = (t.titleName||'').replace(/'/g,"\\'");
-    const sc = (t.campaignName||'').replace(/'/g,"\\'");
-    div.innerHTML = `<div class="explode-title">${t.titleName}</div><div class="explode-campaign">↳ ${t.campaignName||''}</div><div class="explode-btns"><button class="ex-btn ex-copy" onclick="copyP(this,'${st}','${sc}')">📋 Copy Prompt</button><a class="ex-btn ex-open" href="https://claude.ai" target="_blank">↗ Claude</a><a class="ex-btn ex-open" href="https://www.notion.so/${t.titleId}" target="_blank">↗ Notion</a></div>`;
-    elE.appendChild(div);
-  });
-
-  document.getElementById('todo-count').textContent = todos.length;
-  elT.innerHTML = '';
-  if (!todos.length) { elT.innerHTML = '<div class="empty">No todos.</div>'; }
-  else {
+    if (!todos.length) { el.innerHTML = '<div class="empty">No todos.</div>'; return; }
     const cm = { 'daily content':'tc-content', 'daily household':'tc-house', 'get':'tc-get', 'high':'tc-high' };
     const cl = { 'daily content':'Content', 'daily household':'House', 'get':'Get', 'high':'High' };
     todos.forEach(todo => {
       const div = document.createElement('div');
-      div.className = 'todo-item';
+      div.className = 'todo-row';
       div.onclick = () => window.open('https://www.notion.so/' + todo.id, '_blank');
       const cc = cm[todo.category] || 'tc-high';
       const lb = cl[todo.category] || 'High';
       div.innerHTML = `<span class="todo-cat ${cc}">${lb}</span><div><div class="todo-name">${todo.name}</div>${todo.campaign ? `<div class="todo-sub">↳ ${todo.campaign}</div>` : ''}</div>`;
-      elT.appendChild(div);
+      el.appendChild(div);
     });
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
   }
 }
 
-async function copyP(btn, title, campaign) {
+async function loadPlatforms() {
+  const el = document.getElementById('platformsContent');
+  const PLATFORM_URLS = {
+    'LinkedIn':'https://www.linkedin.com','Beehiiv':'https://app.beehiiv.com',
+    'WordPress':'https://wordpress.com/posts','Blog':'https://wordpress.com/posts',
+    'Fiverr':'https://www.fiverr.com/seller_dashboard','Upwork':'https://www.upwork.com/freelancers/settings/profile',
+    'Reddit':'https://www.reddit.com','Email':'https://mail.proton.me'
+  };
+  const PLATFORM_IDS = [
+    '3651f7d3a4bb819886f9c3a0f0e47876','3651f7d3a4bb8103929dfbd10258ef02',
+    '3651f7d3a4bb81fbb113c200ef28ef76','3651f7d3a4bb8017b24ddbfc7882a941',
+    '3651f7d3a4bb81a0b91bed11e87bc8fc','3651f7d3a4bb81cbba0eea9d489a4958',
+    '3651f7d3a4bb80ad9347ef27929652cd','3651f7d3a4bb8177bd91eeec2453c80b'
+  ];
   try {
-    await navigator.clipboard.writeText(`explode ${title} — ${campaign}`);
-    btn.textContent = '✓ Copied';
-    setTimeout(() => { btn.textContent = '📋 Copy Prompt'; }, 2000);
-  } catch { btn.textContent = '✗'; setTimeout(() => { btn.textContent = '📋 Copy Prompt'; }, 2000); }
+    const results = await Promise.all(PLATFORM_IDS.map(id => w('getChildren', { pageId: id }).catch(() => ({ pages: [] }))));
+    el.innerHTML = '';
+    const names = ['LinkedIn','Beehiiv','WordPress','Reddit','Fiverr','Upwork','Email','Blog'];
+    names.forEach((name, i) => {
+      const url = PLATFORM_URLS[name] || '#';
+      const div = document.createElement('div');
+      div.className = 'platform-row';
+      div.innerHTML = `<span class="platform-name">${name}</span><a class="platform-link" href="${url}" target="_blank">↗ Open</a><a class="platform-link" href="https://www.notion.so/${PLATFORM_IDS[i]}" target="_blank">↗ Notion</a>`;
+      el.appendChild(div);
+    });
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
+  }
 }
 
 function init() {
-  loadPipeline();
+  loadTitles();
   loadFeed();
-  loadContent();
-  loadTodoExplode();
+  loadTodos();
+  loadPlatforms();
 }
 </script>
 </body>
