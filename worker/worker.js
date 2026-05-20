@@ -1026,6 +1026,40 @@ export default {
         });
       }
 
+      // ── CAMPAIGN ADMIN: condense via Claude ──
+      if (body.action === "condense") {
+        const { label, text } = body;
+        if (!text) return json({ html: '<p>—</p>' });
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': env.ANTHROPIC_API_KEY || '',
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 500,
+            system: `You are a content ops assistant. Rewrite the input as structured entries.
+
+FORMAT — each entry on its own line:
+HEADING: body text
+
+Rules:
+- HEADING is 2-4 words, ALL CAPS
+- Body text is the actionable insight, max 20 words
+- Total words per entry must not exceed 30
+- No bullets, no dashes, no markdown, no preamble
+- 3 to 6 entries total
+- Output only the entries, nothing else`,
+            messages: [{ role: 'user', content: (label || '') + ':\n' + text }]
+          })
+        });
+        const data = await resp.json();
+        const out = data.content?.[0]?.text || '';
+        return json({ text: out });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);

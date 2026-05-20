@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>george strait   33  yes or no   5
+<head>local law
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Campaign Admin</title>
@@ -315,36 +315,20 @@ function parseToHtml(text) {
   return html || '<p>—</p>';
 }
 
-// Call Claude API — strict HEADING: body format, 30 words max per entry
+// Call Claude via worker — strict HEADING: body format, 30 words max per entry
 async function condense(label, raw) {
   if (!raw) return '<p>—</p>';
   const plain = stripHtml(raw);
+  if (!plain) return '<p>—</p>';
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await fetch(WORKER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
-        system: `You are a content ops assistant. Rewrite the input as a series of structured entries.
-
-STRICT FORMAT — each entry must be exactly two parts on one line:
-HEADING: body text
-
-Rules:
-- HEADING is 2-4 words, ALL CAPS
-- Body text is the actionable insight, max 20 words
-- Total words per entry (heading + body) must not exceed 30 words
-- No bullet points, no dashes, no markdown, no preamble
-- One entry per line
-- 3 to 6 entries total
-- Output nothing except the entries`,
-        messages: [{ role: 'user', content: label + ':\n' + plain }]
-      })
+      body: JSON.stringify({ action: 'condense', pin: CORRECT_PIN, label, text: plain })
     });
     const data = await resp.json();
-    const text = data.content?.[0]?.text || '';
-    return parseToHtml(text);
+    if (data.error) throw new Error(data.error);
+    return parseToHtml(data.text || '');
   } catch(e) {
     return '<p>—</p>';
   }
