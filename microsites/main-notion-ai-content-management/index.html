@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Webguy — AI Content Systems</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@300;400;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg: #080808;
@@ -104,7 +104,7 @@ nav {
 .nav-cta:hover { background: var(--white) !important; }
 .hero {
   min-height: 100vh; display: flex; flex-direction: column;
-  justify-content: flex-end; padding: 120px 48px 80px;
+  justify-content: flex-end; padding: 100px 48px;
   position: relative; overflow: hidden;
 }
 .hero-grid {
@@ -124,7 +124,7 @@ nav {
 }
 .hero-tag::before { content: ''; display: block; width: 32px; height: 1px; background: var(--accent); }
 .hero-headline { font-size: clamp(52px, 8vw, 120px); font-weight: 800; line-height: .95; letter-spacing: -.03em; max-width: 900px; margin-bottom: 48px; }
-.hero-headline em { font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400; color: var(--accent); }
+.hero-headline em { font-style: italic; font-weight: 300; letter-spacing: -.02em; color: var(--accent); }
 .hero-bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 48px; flex-wrap: wrap; }
 .hero-body { font-size: 16px; line-height: 1.7; color: var(--text2); max-width: 440px; }
 .hero-actions { display: flex; gap: 12px; flex-shrink: 0; }
@@ -150,10 +150,10 @@ section { padding: 100px 48px; }
 .problem-text { font-size: 16px; line-height: 1.6; color: var(--text2); }
 .problem-text strong { color: var(--text); }
 .problem-headline { font-size: clamp(28px, 4vw, 48px); font-weight: 800; line-height: 1.1; letter-spacing: -.02em; max-width: 600px; }
-.problem-headline em { font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400; color: var(--accent2); }
+.problem-headline em { font-style: italic; font-weight: 300; letter-spacing: -.02em; color: var(--accent2); }
 .system-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: start; }
 .system-title { font-size: clamp(32px, 4vw, 52px); font-weight: 800; line-height: 1.05; letter-spacing: -.02em; margin-bottom: 24px; }
-.system-title em { font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400; color: var(--accent); }
+.system-title em { font-style: italic; font-weight: 300; letter-spacing: -.02em; color: var(--accent); }
 .system-body { font-size: 16px; line-height: 1.75; color: var(--text2); margin-bottom: 40px; }
 .system-steps { display: flex; flex-direction: column; gap: 0; }
 .system-step { display: flex; gap: 24px; align-items: flex-start; padding: 24px 0; border-bottom: 1px solid var(--border); }
@@ -186,7 +186,7 @@ section { padding: 100px 48px; }
 .cta-section { background: var(--accent); padding: 100px 48px; }
 .cta-inner { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 60px; flex-wrap: wrap; }
 .cta-headline { font-size: clamp(32px, 5vw, 64px); font-weight: 800; line-height: 1.0; letter-spacing: -.03em; color: var(--bg); max-width: 700px; }
-.cta-headline em { font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400; }
+.cta-headline em { font-style: italic; font-weight: 300; letter-spacing: -.02em; }
 .btn-dark { background: var(--bg); color: var(--accent); font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; padding: 20px 48px; display: inline-block; white-space: nowrap; transition: all .2s; cursor: none; }
 .btn-dark:hover { background: var(--white); color: var(--bg); }
 footer { padding: 32px 48px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
@@ -198,13 +198,13 @@ footer { padding: 32px 48px; border-top: 1px solid var(--border); display: flex;
 @media (max-width: 768px) {
   nav { padding: 16px 20px; }
   .nav-links { display: flex; }
-  .hero { padding: 100px 20px 60px; }
-  section { padding: 60px 20px; }
+  .hero { padding: 80px 20px; }
+  section { padding: 80px 20px; }
   .hero-bottom { flex-direction: column; align-items: flex-start; }
   .problem-grid { grid-template-columns: 1fr; }
   .system-layout { grid-template-columns: 1fr; gap: 48px; }
   .feed-grid { grid-template-columns: 1fr; }
-  .cta-section { padding: 60px 20px; }
+  .cta-section { padding: 80px 20px; }
   .cta-inner { flex-direction: column; }
   footer { padding: 24px 20px; flex-direction: column; gap: 8px; text-align: center; }
   body { cursor: auto; }
