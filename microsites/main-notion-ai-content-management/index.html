@@ -1,422 +1,344 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>dude  whatever
+<head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Webguy — Command</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Webguy — Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg:    #080808;
-  --s1:    #0d0d0d;
-  --s2:    #131313;
-  --s3:    #1a1a1a;
-  --b1:    rgba(255,255,255,.06);
-  --b2:    rgba(255,255,255,.11);
-  --b3:    rgba(255,255,255,.18);
-  --txt:   #e8e5e0;
-  --txt2:  #7a7670;
-  --txt3:  #3e3c38;
-  --acc:   #e8ff47;
-  --acc2:  #ff6b35;
-  --green: #3ddc84;
-  --blue:  #4da6ff;
-  --mono:  'IBM Plex Mono', monospace;
-  --sans:  'IBM Plex Sans', sans-serif;
-  --nav-w: 52px;
-  --row-h: 44px;
+  --bg:      #080808;
+  --surface: #111111;
+  --border:  #1e1e1e;
+  --border2: #2a2a2a;
+  --text:    #f0ede8;
+  --text2:   #666666;
+  --text3:   #333333;
+  --accent:  #e8ff47;
+  --red:     #ff4444;
+  --green:   #44ff88;
+  --blue:    #4da6ff;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; }
-body { font-family: var(--sans); background: var(--bg); color: var(--txt); display: flex; }
+body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
 /* PIN */
-.pin-screen {
-  position: fixed; inset: 0; background: var(--bg);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  z-index: 999;
-}
+.pin-screen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; }
 .pin-screen.hidden { display: none; }
-.pin-mark { font-family: var(--mono); font-size: 10px; letter-spacing: .3em; text-transform: uppercase; color: var(--txt3); margin-bottom: 48px; }
-.pin-label { font-family: var(--mono); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--txt2); margin-bottom: 24px; }
+.pin-wordmark { font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--text3); margin-bottom: 48px; }
+.pin-label { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--text2); margin-bottom: 24px; }
 .pin-dots { display: flex; gap: 12px; margin-bottom: 36px; }
-.pin-dot { width: 5px; height: 5px; border-radius: 50%; border: 1px solid var(--txt3); background: transparent; transition: all .12s; }
-.pin-dot.filled { background: var(--acc); border-color: var(--acc); }
-.pin-dot.error  { background: var(--acc2); border-color: var(--acc2); }
+.pin-dot { width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--text3); background: transparent; transition: all .15s; }
+.pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+.pin-dot.error  { background: var(--red); border-color: var(--red); }
 .pin-pad { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; width: 180px; }
-.pin-btn { height: 44px; background: var(--s1); border: 1px solid var(--b1); font-size: 16px; color: var(--txt); cursor: pointer; font-family: var(--mono); transition: all .1s; }
-.pin-btn:hover { background: var(--s2); border-color: var(--b2); }
+.pin-btn { height: 52px; background: var(--surface); border: 1px solid var(--border2); font-size: 18px; color: var(--text); cursor: pointer; font-family: 'Syne', sans-serif; transition: all .1s; }
+.pin-btn:hover { background: #1a1a1a; }
 .pin-btn:active { transform: scale(.96); }
-.pin-btn.del { font-size: 11px; color: var(--txt2); }
+.pin-btn.del { font-size: 12px; color: var(--text2); }
 .pin-btn.empty { background: transparent; border: none; pointer-events: none; }
-.pin-error { font-family: var(--mono); font-size: 10px; color: var(--acc2); margin-top: 16px; min-height: 14px; letter-spacing: .1em; }
+.pin-error { font-size: 11px; color: var(--red); margin-top: 20px; min-height: 14px; letter-spacing: .1em; }
 
-/* SIDEBAR */
-.sidebar {
-  width: var(--nav-w); flex-shrink: 0; height: 100vh;
-  background: var(--s1); border-right: 1px solid var(--b1);
-  display: flex; flex-direction: column; align-items: center;
-  padding: 12px 0; gap: 2px;
-}
-.sb-logo { font-family: var(--mono); font-size: 9px; letter-spacing: .2em; text-transform: uppercase; color: var(--acc); writing-mode: vertical-rl; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--b1); width: 100%; text-align: center; }
-.sb-btn { width: 36px; height: 36px; border-radius: 3px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; color: var(--txt3); transition: all .15s; border: 1px solid transparent; position: relative; }
-.sb-btn:hover { background: var(--s3); color: var(--txt2); border-color: var(--b1); }
-.sb-btn.active { background: var(--s3); color: var(--acc); border-color: var(--b2); }
-.sb-btn[title]:hover::after { content: attr(title); position: absolute; left: calc(100% + 8px); background: var(--s3); border: 1px solid var(--b2); color: var(--txt); font-family: var(--mono); font-size: 9px; letter-spacing: .08em; padding: 4px 8px; white-space: nowrap; pointer-events: none; z-index: 200; }
-.sb-spacer { flex: 1; }
+/* HEADER */
+.header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); }
+.header-logo { font-size: 11px; letter-spacing: .25em; text-transform: uppercase; color: var(--text2); }
+.header-logo span { color: var(--accent); }
+.header-right { display: flex; align-items: center; gap: 20px; }
+.header-time { font-size: 11px; color: var(--text3); letter-spacing: .08em; }
+.header-status { display: flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--green); }
+.status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.3} }
+.lock-btn { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text3); cursor: pointer; transition: color .15s; }
+.lock-btn:hover { color: var(--text2); }
 
-/* MAIN */
-.main { flex: 1; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+/* PAGE */
+.page { padding: 24px; }
 
-/* TOP BAR */
-.topbar { height: var(--row-h); flex-shrink: 0; display: flex; align-items: center; border-bottom: 1px solid var(--b1); background: var(--s1); padding: 0 16px; }
-.topbar-section { display: flex; align-items: center; gap: 8px; padding: 0 14px; height: 100%; border-right: 1px solid var(--b1); }
-.topbar-section:first-child { padding-left: 0; }
-.tb-label { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; text-transform: uppercase; color: var(--txt3); }
-.tb-val { font-family: var(--mono); font-size: 11px; font-weight: 500; }
-.tb-val.green { color: var(--green); }
-.tb-val.acc   { color: var(--acc); }
-.tb-val.orange{ color: var(--acc2); }
-.tb-val.blue  { color: var(--blue); }
-.pulse { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: pulse 2s ease-in-out infinite; flex-shrink: 0; }
-@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.25} }
-.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-.tb-time { font-family: var(--mono); font-size: 10px; color: var(--txt3); }
+/* SECTION */
+.section { margin-bottom: 24px; }
+.section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.section-title { font-size: 10px; letter-spacing: .25em; text-transform: uppercase; color: var(--text3); }
+.section-count { font-size: 10px; letter-spacing: .1em; color: var(--text3); }
+.section-refresh { font-size: 11px; color: var(--text3); cursor: pointer; transition: color .15s; }
+.section-refresh:hover { color: var(--text2); }
+
+/* STAT ROW */
+.stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); margin-bottom: 1px; }
+.stat-box { background: var(--bg); padding: 16px 20px; }
+.stat-num { font-size: 28px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+.stat-num.acc   { color: var(--accent); }
+.stat-num.green { color: var(--green); }
+.stat-num.red   { color: var(--red); }
+.stat-num.blue  { color: var(--blue); }
+.stat-label { font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--text3); }
 
 /* GRID */
-.grid { flex: 1; display: grid; overflow: hidden; grid-template-columns: 280px 1fr 280px; grid-template-rows: 1fr 1fr; gap: 1px; background: var(--b1); }
-.panel { background: var(--bg); overflow: hidden; display: flex; flex-direction: column; }
-.panel.col2-full { grid-row: 1 / 3; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); }
 
-/* PANEL HEADER */
-.ph { height: 30px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--b1); background: var(--s1); }
-.ph-title { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; text-transform: uppercase; color: var(--txt3); flex: 1; }
-.ph-badge { font-family: var(--mono); font-size: 9px; padding: 1px 6px; border-radius: 2px; letter-spacing: .05em; }
-.ph-badge.green  { background: rgba(61,220,132,.1);  color: var(--green); border: 1px solid rgba(61,220,132,.2); }
-.ph-badge.acc    { background: rgba(232,255,71,.08); color: var(--acc);   border: 1px solid rgba(232,255,71,.2); }
-.ph-badge.orange { background: rgba(255,107,53,.1);  color: var(--acc2);  border: 1px solid rgba(255,107,53,.2); }
-.ph-badge.blue   { background: rgba(77,166,255,.1);  color: var(--blue);  border: 1px solid rgba(77,166,255,.2); }
-.ph-badge.dim    { background: var(--s3); color: var(--txt3); border: 1px solid var(--b1); }
-.ph-action { font-family: var(--mono); font-size: 9px; color: var(--txt3); cursor: pointer; padding: 2px 4px; border-radius: 2px; transition: all .15s; }
-.ph-action:hover { color: var(--txt2); background: var(--s3); }
+/* CARD */
+.card { background: var(--bg); padding: 0; }
 
-/* PANEL BODY */
-.pb { flex: 1; overflow-y: auto; }
-.pb::-webkit-scrollbar { width: 3px; }
-.pb::-webkit-scrollbar-thumb { background: var(--b2); }
-
-/* STATS ROW */
-.stats-row { display: grid; grid-template-columns: repeat(4,1fr); background: var(--b1); gap: 1px; flex-shrink: 0; }
-.stat { background: var(--bg); padding: 8px 10px; }
-.stat-num { font-family: var(--mono); font-size: 18px; font-weight: 600; line-height: 1; margin-bottom: 2px; }
-.stat-num.acc    { color: var(--acc); }
-.stat-num.green  { color: var(--green); }
-.stat-num.orange { color: var(--acc2); }
-.stat-num.blue   { color: var(--blue); }
-.stat-label { font-family: var(--mono); font-size: 8px; letter-spacing: .1em; text-transform: uppercase; color: var(--txt3); }
-
-/* PIPELINE */
-.pipe-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--b1); transition: background .1s; }
-.pipe-item:hover { background: var(--s1); }
-.pipe-item:last-child { border-bottom: none; }
-.pipe-stage { font-family: var(--mono); font-size: 8px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 5px; border-radius: 2px; flex-shrink: 0; min-width: 52px; text-align: center; }
-.ps-write   { background: rgba(77,166,255,.1);  color: var(--blue);  border: 1px solid rgba(77,166,255,.2); }
-.ps-review  { background: rgba(255,107,53,.1);  color: var(--acc2);  border: 1px solid rgba(255,107,53,.2); }
-.ps-pub     { background: rgba(232,255,71,.08); color: var(--acc);   border: 1px solid rgba(232,255,71,.2); }
-.ps-done    { background: rgba(61,220,132,.08); color: var(--green); border: 1px solid rgba(61,220,132,.2); }
-.ps-explode { background: rgba(180,100,255,.1); color: #c084fc;      border: 1px solid rgba(180,100,255,.2); }
-.pipe-title { font-size: 12px; color: var(--txt); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.pipe-group { font-family: var(--mono); font-size: 8px; color: var(--txt3); flex-shrink: 0; max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* LIST */
+.list-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); cursor: default; transition: background .1s; }
+.list-item:last-child { border-bottom: none; }
+.list-item:hover { background: var(--surface); }
+.li-stage { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border: 1px solid; flex-shrink: 0; min-width: 52px; text-align: center; }
+.ls-write  { color: var(--blue);   border-color: rgba(77,166,255,.3);  background: rgba(77,166,255,.06); }
+.ls-review { color: #ff9944;       border-color: rgba(255,153,68,.3);  background: rgba(255,153,68,.06); }
+.ls-pub    { color: var(--accent); border-color: rgba(232,255,71,.3);  background: rgba(232,255,71,.06); }
+.ls-done   { color: var(--green);  border-color: rgba(68,255,136,.3);  background: rgba(68,255,136,.06); }
+.ls-explode{ color: #cc88ff;       border-color: rgba(204,136,255,.3); background: rgba(204,136,255,.06); }
+.li-title { font-size: 13px; flex: 1; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.li-meta  { font-size: 10px; color: var(--text3); flex-shrink: 0; letter-spacing: .04em; }
 
 /* FEED */
-.feed-item { padding: 8px 12px; border-bottom: 1px solid var(--b1); transition: background .1s; }
-.feed-item:hover { background: var(--s1); }
+.feed-item { padding: 12px 16px; border-bottom: 1px solid var(--border); transition: background .1s; }
+.feed-item:hover { background: var(--surface); }
 .feed-item:last-child { border-bottom: none; }
-.feed-num { font-family: var(--mono); font-size: 9px; color: var(--txt3); margin-bottom: 3px; }
-.feed-text { font-size: 12px; line-height: 1.55; color: var(--txt2); }
-.feed-text strong { color: var(--txt); font-weight: 500; }
+.feed-num { font-size: 9px; color: var(--text3); letter-spacing: .1em; margin-bottom: 4px; }
+.feed-text { font-size: 12px; line-height: 1.6; color: var(--text2); }
+.feed-text strong { color: var(--text); font-weight: 600; }
 
-/* CONTENT */
-.content-item { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--b1); transition: background .1s; cursor: pointer; text-decoration: none; }
-.content-item:hover { background: var(--s1); }
-.content-item:last-child { border-bottom: none; }
-.ci-platform { font-family: var(--mono); font-size: 8px; letter-spacing: .06em; text-transform: uppercase; color: var(--blue); flex-shrink: 0; min-width: 60px; }
-.ci-title { font-size: 12px; color: var(--txt); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* SYSTEM STATUS */
-.sys-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--b1); }
-.sys-row:last-child { border-bottom: none; }
-.sys-icon { font-size: 12px; flex-shrink: 0; width: 18px; text-align: center; }
-.sys-info { flex: 1; min-width: 0; }
-.sys-name { font-size: 12px; color: var(--txt); font-weight: 500; }
-.sys-sub  { font-family: var(--mono); font-size: 9px; color: var(--txt3); margin-top: 1px; }
-.sys-status { font-family: var(--mono); font-size: 8px; letter-spacing: .1em; text-transform: uppercase; padding: 2px 6px; border-radius: 2px; flex-shrink: 0; }
-
-/* SECTION DIVIDER */
-.sdiv { padding: 3px 12px; background: var(--s2); font-family: var(--mono); font-size: 8px; letter-spacing: .15em; text-transform: uppercase; color: var(--txt3); border-bottom: 1px solid var(--b1); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-
-/* TODOS */
-.todo-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--b1); cursor: pointer; transition: background .1s; }
-.todo-item:hover { background: var(--s1); }
-.todo-item:last-child { border-bottom: none; }
-.todo-cat { font-family: var(--mono); font-size: 8px; letter-spacing: .04em; text-transform: uppercase; padding: 2px 4px; border-radius: 2px; flex-shrink: 0; min-width: 48px; text-align: center; margin-top: 1px; }
-.tc-content { background: rgba(232,255,71,.06); color: var(--acc);  border: 1px solid rgba(232,255,71,.15); }
-.tc-house   { background: rgba(61,220,132,.06); color: var(--green); border: 1px solid rgba(61,220,132,.15); }
-.tc-get     { background: rgba(255,107,53,.06); color: var(--acc2); border: 1px solid rgba(255,107,53,.15); }
-.tc-high    { background: rgba(255,80,80,.1);   color: #ff5050;     border: 1px solid rgba(255,80,80,.2); }
-.todo-body { flex: 1; min-width: 0; }
-.todo-name { font-size: 12px; color: var(--txt); line-height: 1.4; }
-.todo-sub  { font-family: var(--mono); font-size: 9px; color: var(--txt3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* SYSTEM */
+.sys-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.sys-item:last-child { border-bottom: none; }
+.sys-icon { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
+.sys-info { flex: 1; }
+.sys-name { font-size: 13px; color: var(--text); font-weight: 600; margin-bottom: 2px; }
+.sys-sub  { font-size: 10px; color: var(--text3); letter-spacing: .04em; }
+.sys-badge { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; padding: 2px 7px; border: 1px solid; flex-shrink: 0; }
 
 /* EXPLODE */
-.explode-item { padding: 7px 12px; border-bottom: 1px solid var(--b1); }
+.explode-item { padding: 10px 16px; border-bottom: 1px solid var(--border); }
 .explode-item:last-child { border-bottom: none; }
-.explode-title { font-size: 12px; color: var(--txt); margin-bottom: 2px; line-height: 1.4; }
-.explode-campaign { font-family: var(--mono); font-size: 9px; color: var(--txt3); margin-bottom: 5px; }
-.explode-actions { display: flex; gap: 4px; }
-.ex-btn { font-family: var(--mono); font-size: 8px; padding: 2px 7px; border-radius: 2px; cursor: pointer; border: none; letter-spacing: .04em; transition: all .15s; line-height: 18px; display: inline-flex; align-items: center; }
-.ex-copy { background: rgba(61,220,132,.1); color: var(--green); border: 1px solid rgba(61,220,132,.2); }
-.ex-copy:hover { background: rgba(61,220,132,.2); }
-.ex-open { background: var(--s3); color: var(--txt2); border: 1px solid var(--b2); text-decoration: none; }
-.ex-open:hover { color: var(--txt); }
+.explode-title { font-size: 13px; color: var(--text); margin-bottom: 2px; }
+.explode-campaign { font-size: 10px; color: var(--text3); margin-bottom: 6px; }
+.explode-btns { display: flex; gap: 6px; }
+.ex-btn { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border: 1px solid; cursor: pointer; background: transparent; font-family: 'Syne', sans-serif; transition: all .15s; text-decoration: none; display: inline-block; }
+.ex-copy { color: var(--green); border-color: rgba(68,255,136,.3); }
+.ex-copy:hover { background: rgba(68,255,136,.08); }
+.ex-open { color: var(--text3); border-color: var(--border2); }
+.ex-open:hover { color: var(--text2); }
+
+/* TODO */
+.todo-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; }
+.todo-item:hover { background: var(--surface); }
+.todo-item:last-child { border-bottom: none; }
+.todo-cat { font-size: 9px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 6px; border: 1px solid; flex-shrink: 0; margin-top: 1px; }
+.tc-content { color: var(--accent); border-color: rgba(232,255,71,.3); background: rgba(232,255,71,.05); }
+.tc-house   { color: var(--green);  border-color: rgba(68,255,136,.3); background: rgba(68,255,136,.05); }
+.tc-get     { color: #ff9944;       border-color: rgba(255,153,68,.3); background: rgba(255,153,68,.05); }
+.tc-high    { color: var(--red);    border-color: rgba(255,68,68,.3);  background: rgba(255,68,68,.05); }
+.todo-name { font-size: 13px; color: var(--text); flex: 1; line-height: 1.4; }
+.todo-sub  { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+/* CONTENT */
+.content-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); text-decoration: none; transition: background .1s; }
+.content-item:hover { background: var(--surface); }
+.content-item:last-child { border-bottom: none; }
+.ci-platform { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--blue); flex-shrink: 0; min-width: 60px; }
+.ci-title { font-size: 13px; color: var(--text); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* SECTION LABEL */
+.sub-label { padding: 6px 16px; font-size: 9px; letter-spacing: .2em; text-transform: uppercase; color: var(--text3); background: var(--surface); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
 
 /* UTIL */
-.row-empty { padding: 10px 12px; font-family: var(--mono); font-size: 10px; color: var(--txt3); font-style: italic; }
-.row-loading { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-family: var(--mono); font-size: 10px; color: var(--txt3); }
-.spinner { width: 10px; height: 10px; border: 1px solid var(--b2); border-top-color: var(--acc); border-radius: 50%; animation: spin .6s linear infinite; }
+.loading { padding: 16px; font-size: 11px; color: var(--text3); letter-spacing: .08em; display: flex; align-items: center; gap: 8px; }
+.spinner { width: 10px; height: 10px; border: 1px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-* { scrollbar-width: thin; scrollbar-color: var(--b2) transparent; }
-*::-webkit-scrollbar { width: 3px; height: 3px; }
-*::-webkit-scrollbar-thumb { background: var(--b2); }
+.empty { padding: 14px 16px; font-size: 11px; color: var(--text3); font-style: italic; }
+
+/* TD LINK */
+.td-link { font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--text3); text-decoration: none; border: 1px solid var(--border2); padding: 4px 10px; transition: all .15s; }
+.td-link:hover { color: var(--accent); border-color: rgba(232,255,71,.4); }
 </style>
 </head>
 <body>
 
 <!-- PIN -->
 <div class="pin-screen" id="pinScreen">
-  <div class="pin-mark">Webguy <span style="color:var(--acc)">·</span> Command</div>
+  <div class="pin-wordmark">Webguy <span style="color:var(--accent)">·</span> Command</div>
   <div class="pin-label">Access code</div>
   <div class="pin-dots">
     <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
     <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
   </div>
   <div class="pin-pad">
-    <button class="pin-btn" onclick="pinPress('1')">1</button>
-    <button class="pin-btn" onclick="pinPress('2')">2</button>
-    <button class="pin-btn" onclick="pinPress('3')">3</button>
-    <button class="pin-btn" onclick="pinPress('4')">4</button>
-    <button class="pin-btn" onclick="pinPress('5')">5</button>
-    <button class="pin-btn" onclick="pinPress('6')">6</button>
-    <button class="pin-btn" onclick="pinPress('7')">7</button>
-    <button class="pin-btn" onclick="pinPress('8')">8</button>
-    <button class="pin-btn" onclick="pinPress('9')">9</button>
+    <button class="pin-btn" onclick="pp('1')">1</button>
+    <button class="pin-btn" onclick="pp('2')">2</button>
+    <button class="pin-btn" onclick="pp('3')">3</button>
+    <button class="pin-btn" onclick="pp('4')">4</button>
+    <button class="pin-btn" onclick="pp('5')">5</button>
+    <button class="pin-btn" onclick="pp('6')">6</button>
+    <button class="pin-btn" onclick="pp('7')">7</button>
+    <button class="pin-btn" onclick="pp('8')">8</button>
+    <button class="pin-btn" onclick="pp('9')">9</button>
     <button class="pin-btn empty"></button>
-    <button class="pin-btn" onclick="pinPress('0')">0</button>
-    <button class="pin-btn del" onclick="pinDel()">DEL</button>
+    <button class="pin-btn" onclick="pp('0')">0</button>
+    <button class="pin-btn del" onclick="pd()">DEL</button>
   </div>
   <div class="pin-error" id="pinError"></div>
 </div>
 
-<!-- SIDEBAR -->
-<nav class="sidebar">
-  <div class="sb-logo">WG</div>
-  <div class="sb-btn active" title="OVERVIEW">⊞</div>
-  <div class="sb-btn" title="PIPELINE">⬡</div>
-  <div class="sb-btn" title="INTELLIGENCE">◎</div>
-  <div class="sb-btn" title="CONTENT">▤</div>
-  <div class="sb-btn" title="TODOS">✓</div>
-  <div class="sb-spacer"></div>
-  <div class="sb-btn" title="LOCK" onclick="lockApp()">⏻</div>
-</nav>
-
-<!-- MAIN -->
-<div class="main">
-
-  <!-- TOP BAR -->
-  <div class="topbar">
-    <div class="topbar-section">
-      <div class="pulse"></div>
-      <span class="tb-label">System</span>
-      <span class="tb-val green">LIVE</span>
-    </div>
-    <div class="topbar-section">
-      <span class="tb-label">Pipeline</span>
-      <span class="tb-val acc" id="tb-pipeline">—</span>
-    </div>
-    <div class="topbar-section">
-      <span class="tb-label">Publish Queue</span>
-      <span class="tb-val orange" id="tb-publish">—</span>
-    </div>
-    <div class="topbar-section">
-      <span class="tb-label">Explode Queue</span>
-      <span class="tb-val blue" id="tb-explode">—</span>
-    </div>
-    <div class="topbar-section">
-      <span class="tb-label">Campaign</span>
-      <span class="tb-val" style="color:var(--txt2);font-size:10px;">Webguy · AI Content Systems</span>
-    </div>
-    <div class="topbar-right">
-      <a href="td/" style="font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--txt3);text-decoration:none;border:1px solid var(--b1);padding:3px 8px;border-radius:2px;transition:all .15s;" onmouseover="this.style.color='var(--acc)';this.style.borderColor='rgba(232,255,71,.3)'" onmouseout="this.style.color='var(--txt3)';this.style.borderColor='var(--b1)'">TD ↗</a>
-      <div class="tb-time" id="clock">—</div>
-    </div>
-  </div>
-
-  <!-- GRID -->
-  <div class="grid">
-
-    <!-- COL 1 ROW 1: PIPELINE -->
-    <div class="panel">
-      <div class="ph">
-        <span class="ph-title">Content Pipeline</span>
-        <span class="ph-badge acc" id="ph-pipeline-count">…</span>
-        <span class="ph-action" onclick="loadPipeline()">↻</span>
-      </div>
-      <div class="stats-row">
-        <div class="stat"><div class="stat-num blue"   id="s-writing">—</div><div class="stat-label">Writing</div></div>
-        <div class="stat"><div class="stat-num orange" id="s-review">—</div><div class="stat-label">Review</div></div>
-        <div class="stat"><div class="stat-num acc"    id="s-publish">—</div><div class="stat-label">Publish</div></div>
-        <div class="stat"><div class="stat-num green"  id="s-done">—</div><div class="stat-label">Done</div></div>
-      </div>
-      <div class="pb" id="pipelineList">
-        <div class="row-loading"><div class="spinner"></div>Loading pipeline…</div>
-      </div>
-    </div>
-
-    <!-- COL 2 ROWS 1+2: INTELLIGENCE FEED -->
-    <div class="panel col2-full">
-      <div class="ph">
-        <span class="ph-title">Intelligence Feed</span>
-        <span class="ph-badge dim" id="ph-feed-count">…</span>
-        <span class="ph-action" onclick="loadFeed()">↻</span>
-      </div>
-      <div class="pb" id="feedList">
-        <div class="row-loading"><div class="spinner"></div>Loading feed…</div>
-      </div>
-    </div>
-
-    <!-- COL 3 ROW 1: SYSTEM STATUS -->
-    <div class="panel">
-      <div class="ph">
-        <span class="ph-title">System Status</span>
-        <span class="ph-badge green">ALL LIVE</span>
-      </div>
-      <div class="pb">
-        <div class="sys-row">
-          <div class="sys-icon">⚙</div>
-          <div class="sys-info"><div class="sys-name">Notion AI Content OS</div><div class="sys-sub">Custom-built for Webguy</div></div>
-          <span class="sys-status" style="background:rgba(61,220,132,.08);color:var(--green);border:1px solid rgba(61,220,132,.2)">LIVE</span>
-        </div>
-        <div class="sys-row">
-          <div class="sys-icon">🔍</div>
-          <div class="sys-info"><div class="sys-name">Market Intelligence</div><div class="sys-sub">AI-monitored signals</div></div>
-          <span class="sys-status" style="background:rgba(61,220,132,.08);color:var(--green);border:1px solid rgba(61,220,132,.2)">ACTIVE</span>
-        </div>
-        <div class="sys-row">
-          <div class="sys-icon">✍</div>
-          <div class="sys-info"><div class="sys-name">Content Pipeline</div><div class="sys-sub">Development → Publish</div></div>
-          <span class="sys-status" style="background:rgba(232,255,71,.06);color:var(--acc);border:1px solid rgba(232,255,71,.18)">RUNNING</span>
-        </div>
-        <div class="sys-row">
-          <div class="sys-icon">📡</div>
-          <div class="sys-info"><div class="sys-name">Multi-Platform Dist.</div><div class="sys-sub">LinkedIn · Reddit · Substack</div></div>
-          <span class="sys-status" style="background:rgba(77,166,255,.08);color:var(--blue);border:1px solid rgba(77,166,255,.2)">SCHED</span>
-        </div>
-        <div class="sys-row">
-          <div class="sys-icon">💰</div>
-          <div class="sys-info"><div class="sys-name">Revenue Endpoints</div><div class="sys-sub">Audit CTA on every asset</div></div>
-          <span class="sys-status" style="background:rgba(61,220,132,.08);color:var(--green);border:1px solid rgba(61,220,132,.2)">ON</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- COL 1 ROW 2: TODOS + EXPLODE -->
-    <div class="panel">
-      <div class="ph">
-        <span class="ph-title">Todo · Explode Queue</span>
-        <span class="ph-action" onclick="loadTodoExplode()">↻</span>
-      </div>
-      <div class="pb" id="todoExplodeList">
-        <div class="row-loading"><div class="spinner"></div>Loading…</div>
-      </div>
-    </div>
-
-    <!-- COL 3 ROW 2: PUBLISHED CONTENT -->
-    <div class="panel">
-      <div class="ph">
-        <span class="ph-title">Published Content</span>
-        <span class="ph-badge green" id="ph-content-count">…</span>
-        <span class="ph-action" onclick="loadContent()">↻</span>
-      </div>
-      <div class="pb" id="contentList">
-        <div class="row-loading"><div class="spinner"></div>Loading…</div>
-      </div>
-    </div>
-
+<!-- HEADER -->
+<div class="header">
+  <div class="header-logo">Web<span>guy</span> — Admin</div>
+  <div class="header-right">
+    <div class="header-status"><div class="status-dot"></div>Live</div>
+    <div class="header-time" id="clock">—</div>
+    <a href="td/" class="td-link">TD ↗</a>
+    <div class="lock-btn" onclick="lockApp()">Lock</div>
   </div>
 </div>
+
+<!-- PAGE -->
+<div class="page">
+
+  <!-- STATS -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">Pipeline Overview</div>
+    </div>
+    <div class="stat-row" id="statRow">
+      <div class="stat-box"><div class="stat-num blue"  id="s-writing">—</div><div class="stat-label">Writing</div></div>
+      <div class="stat-box"><div class="stat-num acc"   id="s-review">—</div><div class="stat-label">Review</div></div>
+      <div class="stat-box"><div class="stat-num green" id="s-publish">—</div><div class="stat-label">Publish</div></div>
+      <div class="stat-box"><div class="stat-num"       id="s-done" style="color:var(--text2)">—</div><div class="stat-label">Done</div></div>
+    </div>
+  </div>
+
+  <!-- PIPELINE + SYSTEM -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">Content Pipeline</div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <div class="section-count" id="pipeline-count"></div>
+        <div class="section-refresh" onclick="loadPipeline()">↻</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card" id="pipelineList">
+        <div class="loading"><div class="spinner"></div>Loading…</div>
+      </div>
+      <div class="card">
+        <div class="sys-item">
+          <div class="sys-icon">⚙</div>
+          <div class="sys-info"><div class="sys-name">Notion AI Content OS</div><div class="sys-sub">Custom-built for Webguy</div></div>
+          <span class="sys-badge" style="color:var(--green);border-color:rgba(68,255,136,.3)">Live</span>
+        </div>
+        <div class="sys-item">
+          <div class="sys-icon">🔍</div>
+          <div class="sys-info"><div class="sys-name">Market Intelligence</div><div class="sys-sub">AI-monitored keyword signals</div></div>
+          <span class="sys-badge" style="color:var(--green);border-color:rgba(68,255,136,.3)">Active</span>
+        </div>
+        <div class="sys-item">
+          <div class="sys-icon">✍</div>
+          <div class="sys-info"><div class="sys-name">Content Pipeline</div><div class="sys-sub">Development → Publish</div></div>
+          <span class="sys-badge" style="color:var(--accent);border-color:rgba(232,255,71,.3)">Running</span>
+        </div>
+        <div class="sys-item">
+          <div class="sys-icon">📡</div>
+          <div class="sys-info"><div class="sys-name">Multi-Platform Dist.</div><div class="sys-sub">LinkedIn · Reddit · Substack</div></div>
+          <span class="sys-badge" style="color:var(--blue);border-color:rgba(77,166,255,.3)">Scheduled</span>
+        </div>
+        <div class="sys-item">
+          <div class="sys-icon">💰</div>
+          <div class="sys-info"><div class="sys-name">Revenue Endpoints</div><div class="sys-sub">Audit CTA on every asset</div></div>
+          <span class="sys-badge" style="color:var(--green);border-color:rgba(68,255,136,.3)">On</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INTELLIGENCE + TODOS + CONTENT -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">Intelligence · Todos · Published</div>
+      <div class="section-refresh" onclick="loadFeed();loadTodoExplode();loadContent()">↻ All</div>
+    </div>
+    <div class="grid-3">
+
+      <!-- FEED -->
+      <div class="card" id="feedCard">
+        <div class="sub-label"><span>Intelligence Feed</span><span id="feed-count"></span></div>
+        <div id="feedList"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      </div>
+
+      <!-- TODOS + EXPLODE -->
+      <div class="card">
+        <div class="sub-label"><span>Explode Queue</span><span id="explode-count"></span></div>
+        <div id="explodeList"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+        <div class="sub-label" style="margin-top:0"><span>Todos</span><span id="todo-count"></span></div>
+        <div id="todoList"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      </div>
+
+      <!-- PUBLISHED CONTENT -->
+      <div class="card">
+        <div class="sub-label"><span>Published Content</span><span id="content-count"></span></div>
+        <div id="contentList"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- /page -->
 
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "3611f7d3a4bb81fe9ebcfe01813d9ac2";
 const CORRECT_PIN = '1246';
-let pinEntry = '';
+let pin = '';
 
-function pinPress(d) {
-  if (pinEntry.length >= 4) return;
-  pinEntry += d;
-  document.getElementById('d' + (pinEntry.length - 1)).classList.add('filled');
-  if (pinEntry.length === 4) {
-    if (pinEntry === CORRECT_PIN) {
+function pp(d) {
+  if (pin.length >= 4) return;
+  pin += d;
+  document.getElementById('d' + (pin.length-1)).classList.add('filled');
+  if (pin.length === 4) {
+    if (pin === CORRECT_PIN) {
       document.getElementById('pinScreen').classList.add('hidden');
-      initDashboard();
+      init();
     } else {
       document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
       document.getElementById('pinError').textContent = 'incorrect code';
-      setTimeout(() => {
-        document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error'));
-        document.getElementById('pinError').textContent = '';
-        pinEntry = '';
-      }, 800);
+      setTimeout(() => { document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; pin = ''; }, 800);
     }
   }
 }
-function pinDel() {
-  if (!pinEntry.length) return;
-  document.getElementById('d' + (pinEntry.length - 1)).classList.remove('filled');
-  pinEntry = pinEntry.slice(0, -1);
+function pd() {
+  if (!pin.length) return;
+  document.getElementById('d' + (pin.length-1)).classList.remove('filled');
+  pin = pin.slice(0,-1);
 }
 function lockApp() {
-  pinEntry = '';
+  pin = '';
   document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error'));
   document.getElementById('pinError').textContent = '';
   document.getElementById('pinScreen').classList.remove('hidden');
 }
 
-function updateClock() {
+// Clock
+function tick() {
   const n = new Date();
   document.getElementById('clock').textContent =
-    String(n.getHours()).padStart(2,'0') + ':' +
-    String(n.getMinutes()).padStart(2,'0') + ':' +
-    String(n.getSeconds()).padStart(2,'0');
+    String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0') + ':' + String(n.getSeconds()).padStart(2,'0');
 }
-setInterval(updateClock, 1000); updateClock();
+setInterval(tick, 1000); tick();
 
-async function wCall(action, extra = {}) {
-  const r = await fetch(WORKER_URL, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ action, pin: CORRECT_PIN, ...extra })
-  });
+async function w(action, extra = {}) {
+  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, pin: CORRECT_PIN, ...extra }) });
   const d = await r.json();
   if (d.error) throw new Error(d.error);
   return d;
 }
 
+// PIPELINE
 async function loadPipeline() {
   const el = document.getElementById('pipelineList');
-  el.innerHTML = '<div class="row-loading"><div class="spinner"></div>Loading…</div>';
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   try {
-    const data = await wCall('getTitles', { stages: ['Writing','Review','Approved','Publish','Explode','Done'] });
+    const data = await w('getTitles', { stages: ['Writing','Review','Approved','Publish','Explode','Done'] });
     const titles = data.titles || [];
     const cnt = { Writing:0, Review:0, Approved:0, Publish:0, Explode:0, Done:0 };
     titles.forEach(t => { if (cnt[t.stage] !== undefined) cnt[t.stage]++; });
@@ -424,65 +346,59 @@ async function loadPipeline() {
     document.getElementById('s-review').textContent  = cnt.Review + cnt.Approved;
     document.getElementById('s-publish').textContent = cnt.Publish;
     document.getElementById('s-done').textContent    = cnt.Done;
-    document.getElementById('ph-pipeline-count').textContent = titles.length;
-    document.getElementById('tb-pipeline').textContent = titles.length;
-    document.getElementById('tb-publish').textContent  = cnt.Publish;
-    document.getElementById('tb-explode').textContent  = cnt.Explode;
+    document.getElementById('pipeline-count').textContent = titles.length + ' titles';
     el.innerHTML = '';
-    if (!titles.length) { el.innerHTML = '<div class="row-empty">No titles found.</div>'; return; }
-    const sc = { Writing:'ps-write', Review:'ps-review', Approved:'ps-review', Publish:'ps-pub', Done:'ps-done', Explode:'ps-explode' };
+    if (!titles.length) { el.innerHTML = '<div class="empty">No titles.</div>'; return; }
+    const sc = { Writing:'ls-write', Review:'ls-review', Approved:'ls-review', Publish:'ls-pub', Done:'ls-done', Explode:'ls-explode' };
     titles.forEach(t => {
       const div = document.createElement('div');
-      div.className = 'pipe-item';
-      div.innerHTML = `<span class="pipe-stage ${sc[t.stage]||'ps-write'}">${t.stage}</span><span class="pipe-title">${t.title}</span><span class="pipe-group">${t.cohort||''}</span>`;
+      div.className = 'list-item';
+      div.innerHTML = `<span class="li-stage ${sc[t.stage]||'ls-write'}">${t.stage}</span><span class="li-title">${t.title}</span><span class="li-meta">${t.cohort||''}</span>`;
       el.appendChild(div);
     });
-  } catch(e) {
-    el.innerHTML = `<div class="row-empty" style="color:var(--acc2)">Error: ${e.message}</div>`;
-  }
+  } catch(e) { el.innerHTML = `<div class="empty" style="color:var(--red)">${e.message}</div>`; }
 }
 
-const STATIC_FEED = [
-  { num:'01', text:'<strong>Notion developer platform May 2026</strong> — Workers, External Agents API, Custom Agents for automated multistep workflows. 1M agents built since February.' },
-  { num:'02', text:'<strong>Notion 3.2 Jan 2026</strong> — mobile AI agents have full desktop capability. Voice dictate on a walk, agent executes by the time you\'re home.' },
-  { num:'03', text:'<strong>April 2026 Notion AI</strong> releases moved from content generation toward workflow infrastructure — expanded context, cross-page AI blocks, voice input.' },
-  { num:'04', text:'<strong>Notion Custom Agents began using credits May 4 2026</strong> — monetization maturity signal. Usage is now metered.' },
-  { num:'05', text:'<strong>Notion\'s competitive bet:</strong> keep agent workflows inside its workspace vs separate tools — validates Webguy \'one system not five tools\' positioning.' },
-  { num:'06', text:'<strong>\'7 best AI tools for Notion 2026\'</strong> roundups circulating — confirms buyer search intent for AI-Notion integrations. Exact Webguy audience.' },
-  { num:'07', text:'<strong>Notion AI Agent 2026:</strong> content calendars, database structuring, onboarding automation, meeting notes all agent-executable inside Notion.' },
-  { num:'08', text:'<strong>TikTok Ads MCP Server at TikTok World 2026</strong> — AI agents can manage TikTok campaigns without manual Ads Manager. Agentic ad buying going mainstream.' },
-  { num:'09', text:'<strong>TikTok 2026 algorithm:</strong> follower-first distribution live — videos shown to followers as test panel before wider push. Consistency is the new ranking signal.' },
-  { num:'10', text:'<strong>83% of marketers</strong> say generative AI helps create more content in less time — HubSpot 2026. Validates core Webguy content machine pitch.' },
-  { num:'11', text:'<strong>TikTok Symphony:</strong> Image to Video, Text to Video, Digital Avatars, multilingual lip-sync — lowers AI short-form production barrier.' },
-  { num:'12', text:'<strong>TikTok hashtags up 114% YoY</strong> — 1-5 specific hashtags get 5% more views and 10% more interactions. Hashtags relevant again.' },
-  { num:'13', text:'<strong>Automation flagging risk:</strong> 25% increase in TikTok flags for simple replication tactics post-2025. Humanized creative required.' },
-  { num:'14', text:'<strong>LinkedIn 360Brew AI</strong> rewards topic authority over frequency — consistent niche content beats volume. Validates \'content OS not content calendar\'.' },
-  { num:'15', text:'<strong>TikTok Next 2026:</strong> users in full discovery mode, passive consumption era over. Human insight plus AI tools required.' }
+// FEED
+const SF = [
+  { n:'01', t:'<strong>Notion developer platform May 2026</strong> — Workers, External Agents API, Custom Agents for automated multistep workflows. 1M agents built since February.' },
+  { n:'02', t:'<strong>Notion 3.2 Jan 2026</strong> — mobile AI agents have full desktop capability. Voice dictate on a walk, agent executes by the time you\'re home.' },
+  { n:'03', t:'<strong>April 2026 Notion AI</strong> releases moved from content generation toward workflow infrastructure — expanded context, cross-page AI blocks, voice input.' },
+  { n:'04', t:'<strong>Notion Custom Agents began using credits May 4 2026</strong> — monetization maturity signal. Usage is now metered.' },
+  { n:'05', t:'<strong>Notion\'s competitive bet:</strong> keep agent workflows inside its workspace vs separate tools — validates Webguy \'one system not five tools\' positioning.' },
+  { n:'06', t:'<strong>\'7 best AI tools for Notion 2026\'</strong> roundups circulating — confirms buyer search intent. Exact Webguy audience.' },
+  { n:'07', t:'<strong>Notion AI Agent 2026:</strong> content calendars, database structuring, onboarding automation, meeting notes all agent-executable inside Notion.' },
+  { n:'08', t:'<strong>TikTok Ads MCP Server at TikTok World 2026</strong> — AI agents can manage TikTok campaigns without manual Ads Manager. Agentic ad buying going mainstream.' },
+  { n:'09', t:'<strong>TikTok 2026 algorithm:</strong> follower-first distribution live — consistency is the new ranking signal.' },
+  { n:'10', t:'<strong>83% of marketers</strong> say generative AI helps create more content in less time — HubSpot 2026. Validates the Webguy content machine pitch.' },
+  { n:'11', t:'<strong>TikTok Symphony:</strong> Image to Video, Text to Video, Digital Avatars, multilingual lip-sync — lowers AI short-form production barrier.' },
+  { n:'12', t:'<strong>TikTok hashtags up 114% YoY</strong> — 1-5 specific hashtags get 5% more views and 10% more interactions.' },
+  { n:'13', t:'<strong>Automation flagging risk:</strong> 25% increase in TikTok flags for simple replication tactics post-2025. Humanized creative required.' },
+  { n:'14', t:'<strong>LinkedIn 360Brew AI</strong> rewards topic authority over frequency — validates \'content OS not content calendar\'.' },
+  { n:'15', t:'<strong>TikTok Next 2026:</strong> users in full discovery mode, passive consumption era over. Human insight plus AI tools required.' }
 ];
-
 async function loadFeed() {
   const el = document.getElementById('feedList');
-  el.innerHTML = '<div class="row-loading"><div class="spinner"></div>Loading…</div>';
-  let items = STATIC_FEED;
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  let items = SF;
   try {
-    const data = await wCall('getResearch', { campaignId: CAMPAIGN_ID });
+    const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
     const raw = data.items || data.newsFeed || [];
-    if (raw.length) items = raw.map((t, i) => ({ num: String(i+1).padStart(2,'0'), text: t }));
+    if (raw.length) items = raw.map((t,i) => ({ n: String(i+1).padStart(2,'0'), t }));
   } catch {}
-  document.getElementById('ph-feed-count').textContent = items.length;
-  el.innerHTML = items.map(it =>
-    `<div class="feed-item"><div class="feed-num">${it.num}</div><div class="feed-text">${it.text}</div></div>`
-  ).join('');
+  document.getElementById('feed-count').textContent = items.length;
+  el.innerHTML = items.map(it => `<div class="feed-item"><div class="feed-num">${it.n}</div><div class="feed-text">${it.t}</div></div>`).join('');
 }
 
+// CONTENT
 async function loadContent() {
   const el = document.getElementById('contentList');
-  el.innerHTML = '<div class="row-loading"><div class="spinner"></div>Loading…</div>';
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   try {
-    const data = await wCall('getPublishedTitles', { campaignId: CAMPAIGN_ID });
+    const data = await w('getPublishedTitles', { campaignId: CAMPAIGN_ID });
     const titles = data.titles || data.items || [];
-    document.getElementById('ph-content-count').textContent = titles.length || '0';
-    if (!titles.length) { el.innerHTML = '<div class="row-empty">Content launching soon.</div>'; return; }
+    document.getElementById('content-count').textContent = titles.length;
+    if (!titles.length) { el.innerHTML = '<div class="empty">Content launching soon.</div>'; return; }
     el.innerHTML = '';
     titles.forEach(t => {
       const title    = typeof t === 'string' ? t : t.title || t.name || '';
@@ -492,73 +408,58 @@ async function loadContent() {
       a.innerHTML = `<span class="ci-platform">${platform}</span><span class="ci-title">${title}</span>`;
       el.appendChild(a);
     });
-  } catch {
-    document.getElementById('ph-content-count').textContent = '0';
-    el.innerHTML = '<div class="row-empty">Content launching soon.</div>';
-  }
+  } catch { document.getElementById('content-count').textContent = '0'; el.innerHTML = '<div class="empty">Content launching soon.</div>'; }
 }
 
+// TODOS + EXPLODE
 async function loadTodoExplode() {
-  const el = document.getElementById('todoExplodeList');
-  el.innerHTML = '<div class="row-loading"><div class="spinner"></div>Loading…</div>';
+  const elE = document.getElementById('explodeList');
+  const elT = document.getElementById('todoList');
+  elE.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  elT.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   let todos = [], explodes = [];
-  try { const d = await wCall('getTodos'); todos = d.todos || []; } catch {}
-  try { const d = await wCall('getExplodeQueue'); explodes = d.titles || []; } catch {}
-  el.innerHTML = '';
+  try { const d = await w('getTodos'); todos = d.todos || []; } catch {}
+  try { const d = await w('getExplodeQueue'); explodes = d.titles || []; } catch {}
 
-  if (explodes.length) {
-    el.insertAdjacentHTML('beforeend', `<div class="sdiv"><span>⚡ Explode Queue</span><span>${explodes.length}</span></div>`);
-    explodes.forEach(t => {
-      const div = document.createElement('div');
-      div.className = 'explode-item';
-      const safeTitle    = (t.titleName   || '').replace(/'/g,"\\'");
-      const safeCampaign = (t.campaignName|| '').replace(/'/g,"\\'");
-      div.innerHTML = `
-        <div class="explode-title">${t.titleName}</div>
-        <div class="explode-campaign">↳ ${t.campaignName||''}</div>
-        <div class="explode-actions">
-          <button class="ex-btn ex-copy" onclick="copyPrompt(this,'${safeTitle}','${safeCampaign}')">📋 Copy Prompt</button>
-          <a class="ex-btn ex-open" href="https://claude.ai" target="_blank">↗ Claude</a>
-          <a class="ex-btn ex-open" href="https://www.notion.so/${t.titleId}" target="_blank">↗ Notion</a>
-        </div>`;
-      el.appendChild(div);
-    });
-  }
+  document.getElementById('explode-count').textContent = explodes.length;
+  elE.innerHTML = '';
+  if (!explodes.length) { elE.innerHTML = '<div class="empty">Queue empty.</div>'; }
+  else explodes.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'explode-item';
+    const st = (t.titleName||'').replace(/'/g,"\\'");
+    const sc = (t.campaignName||'').replace(/'/g,"\\'");
+    div.innerHTML = `<div class="explode-title">${t.titleName}</div><div class="explode-campaign">↳ ${t.campaignName||''}</div><div class="explode-btns"><button class="ex-btn ex-copy" onclick="copyP(this,'${st}','${sc}')">📋 Copy Prompt</button><a class="ex-btn ex-open" href="https://claude.ai" target="_blank">↗ Claude</a><a class="ex-btn ex-open" href="https://www.notion.so/${t.titleId}" target="_blank">↗ Notion</a></div>`;
+    elE.appendChild(div);
+  });
 
-  if (todos.length) {
-    el.insertAdjacentHTML('beforeend', `<div class="sdiv"><span>Main Todos</span><span>${todos.length}</span></div>`);
-    const catMap = { 'daily content':'tc-content', 'daily household':'tc-house', 'get':'tc-get', 'high':'tc-high' };
-    const catLbl = { 'daily content':'CONTENT', 'daily household':'HOUSE', 'get':'GET', 'high':'HIGH' };
+  document.getElementById('todo-count').textContent = todos.length;
+  elT.innerHTML = '';
+  if (!todos.length) { elT.innerHTML = '<div class="empty">No todos.</div>'; }
+  else {
+    const cm = { 'daily content':'tc-content', 'daily household':'tc-house', 'get':'tc-get', 'high':'tc-high' };
+    const cl = { 'daily content':'Content', 'daily household':'House', 'get':'Get', 'high':'High' };
     todos.forEach(todo => {
       const div = document.createElement('div');
       div.className = 'todo-item';
       div.onclick = () => window.open('https://www.notion.so/' + todo.id, '_blank');
-      const cc = catMap[todo.category] || 'tc-high';
-      const cl = catLbl[todo.category] || 'HIGH';
-      div.innerHTML = `
-        <span class="todo-cat ${cc}">${cl}</span>
-        <div class="todo-body">
-          <div class="todo-name">${todo.name}</div>
-          ${todo.campaign ? `<div class="todo-sub">↳ ${todo.campaign}</div>` : ''}
-        </div>`;
-      el.appendChild(div);
+      const cc = cm[todo.category] || 'tc-high';
+      const lb = cl[todo.category] || 'High';
+      div.innerHTML = `<span class="todo-cat ${cc}">${lb}</span><div><div class="todo-name">${todo.name}</div>${todo.campaign ? `<div class="todo-sub">↳ ${todo.campaign}</div>` : ''}</div>`;
+      elT.appendChild(div);
     });
   }
-
-  if (!todos.length && !explodes.length) {
-    el.innerHTML = '<div class="row-empty">Nothing queued.</div>';
-  }
 }
 
-async function copyPrompt(btn, title, campaign) {
+async function copyP(btn, title, campaign) {
   try {
     await navigator.clipboard.writeText(`explode ${title} — ${campaign}`);
-    btn.textContent = '✓ Copied'; btn.style.color = 'var(--green)';
-    setTimeout(() => { btn.textContent = '📋 Copy Prompt'; btn.style.color = ''; }, 2000);
-  } catch { btn.textContent = '✗ Failed'; setTimeout(() => { btn.textContent = '📋 Copy Prompt'; }, 2000); }
+    btn.textContent = '✓ Copied';
+    setTimeout(() => { btn.textContent = '📋 Copy Prompt'; }, 2000);
+  } catch { btn.textContent = '✗'; setTimeout(() => { btn.textContent = '📋 Copy Prompt'; }, 2000); }
 }
 
-function initDashboard() {
+function init() {
   loadPipeline();
   loadFeed();
   loadContent();
