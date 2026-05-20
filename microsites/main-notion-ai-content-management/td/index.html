@@ -53,7 +53,7 @@
   </div>
 </div>
 
-<!-- SEC 2: two col — keywords / main problem -->
+<!-- SEC 2: two col — keywords / key message -->
 <div class="two-col">
   <div class="col">
     <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
@@ -62,10 +62,18 @@
     </div>
   </div>
   <div class="col">
-    <h2>Main Problem</h2>
+    <h2>Key Message</h2>
     <div class="content">
-      <div class="body-text" id="r-problem"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div class="body-text" id="r-keymessage"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
+  </div>
+</div>
+
+<!-- SEC 2b: one col — main problem -->
+<div class="one-col">
+  <h2>Main Problem</h2>
+  <div class="content">
+    <div class="body-text" id="r-problem"><div class="loading"><div class="spinner"></div>Loading…</div></div>
   </div>
 </div>
 
@@ -157,7 +165,6 @@ const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "3611f7d3a4bb81fe9ebcfe01813d9ac2"; // main-notion-ai-content-management
 const RESEARCH_ID = "3651f7d3a4bb81a48701ea1dc65cc117"; // research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/main-notion-ai-content-management/";
-const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/mobility-mentor-services/";
 const CORRECT_PIN = '1246';
 let pin = '';
 
@@ -251,7 +258,7 @@ async function loadResearch() {
     const r = data.research;
     if (!r) {
       document.getElementById('r-name').textContent = 'No research record — add one in Notion to populate this page.';
-      ['r-problem','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+      ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
       });
@@ -287,7 +294,7 @@ async function loadResearch() {
     }
     // Condense all fields in parallel via Claude
     const loading = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-    ['r-problem','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+    ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
       document.getElementById(id).innerHTML = loading;
     });
 
@@ -302,8 +309,9 @@ async function loadResearch() {
     const problemInput = (r.campaignGoal || '') + '\n' + (r.painPoints || '') + '\n' + rawNotes.split(/ROI-RANKED|RECOMMENDED|BOTTOM LINE/i)[0];
     const actionsInput = rawNotes;
 
-    const [problem, products, actions, platforms, methods, news, tiktok] = await Promise.all([
+    const [problem, keymessage, products, actions, platforms, methods, news, tiktok] = await Promise.all([
       condense('This campaign does X for customer Y — state the core problem this campaign solves in one sentence then list pain points', problemInput),
+      condense('Key Message', r.keyMessage),
       condense('Product Ideas', r.productIdeas),
       condense('Recommended Actions — prioritised by ROI, what to do next', actionsInput),
       condense('Platforms', rawPlatforms),
@@ -312,8 +320,9 @@ async function loadResearch() {
       condense('TikTok Trends', r.tiktokTrends),
     ]);
 
-    document.getElementById('r-problem').innerHTML  = problem;
-    document.getElementById('r-products').innerHTML = products;
+    document.getElementById('r-problem').innerHTML    = problem;
+    document.getElementById('r-keymessage').innerHTML = keymessage;
+    document.getElementById('r-products').innerHTML   = products;
     document.getElementById('r-actions').innerHTML  = actions;
     document.getElementById('r-platforms').innerHTML = platforms;
     document.getElementById('r-methods').innerHTML   = methods;
