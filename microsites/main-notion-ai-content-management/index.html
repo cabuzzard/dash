@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>lock the door  2
+<head>george strait   33 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Campaign Admin</title>
@@ -296,25 +296,26 @@ function stripHtml(raw) {
   return raw ? raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : '';
 }
 
-// Render bullet list as HTML
-function bulletsToHtml(text) {
+// Parse Claude output: HEADING: body text pairs, one per line
+function parseToHtml(text) {
   if (!text) return '<p>—</p>';
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   let html = '';
   lines.forEach(line => {
-    // h3 for lines that are ALL CAPS or end with : or start with a number+dot
-    if (/^[A-Z][A-Z\s\/&]+:/.test(line) || /^\d+\.\s/.test(line)) {
-      html += '<h3>' + line.replace(/:$/, '') + '</h3>';
+    // Match "HEADING: body text" pattern
+    const match = line.match(/^([A-Z][A-Z0-9\s\/&,'-]+):\s*(.+)$/);
+    if (match) {
+      html += '<h3>' + match[1].trim() + '</h3><p>' + match[2].trim() + '</p>';
     } else {
-      // strip leading bullet chars
-      const clean = line.replace(/^[-•·*]\s*/, '');
-      html += '<p>' + clean + '</p>';
+      // Plain line — strip leading dash/bullet
+      const clean = line.replace(/^[-•·*\d+\.\s]+/, '').trim();
+      if (clean) html += '<p>' + clean + '</p>';
     }
   });
-  return html;
+  return html || '<p>—</p>';
 }
 
-// Call Claude API to condense a field into tight actionable bullets
+// Call Claude API — strict HEADING: body format, 30 words max per entry
 async function condense(label, raw) {
   if (!raw) return '<p>—</p>';
   const plain = stripHtml(raw);
@@ -324,16 +325,28 @@ async function condense(label, raw) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 400,
-        system: 'You are a content ops assistant. Condense the input into tight actionable bullet points. Rules: each ALL-CAPS heading section must be 45 words or less total. Each bullet max 12 words. No preamble. No markdown. Plain text only, one bullet per line starting with a dash. Use ALL-CAPS headings to group categories.',
+        max_tokens: 500,
+        system: `You are a content ops assistant. Rewrite the input as a series of structured entries.
+
+STRICT FORMAT — each entry must be exactly two parts on one line:
+HEADING: body text
+
+Rules:
+- HEADING is 2-4 words, ALL CAPS
+- Body text is the actionable insight, max 20 words
+- Total words per entry (heading + body) must not exceed 30 words
+- No bullet points, no dashes, no markdown, no preamble
+- One entry per line
+- 3 to 6 entries total
+- Output nothing except the entries`,
         messages: [{ role: 'user', content: label + ':\n' + plain }]
       })
     });
     const data = await resp.json();
     const text = data.content?.[0]?.text || '';
-    return bulletsToHtml(text);
+    return parseToHtml(text);
   } catch(e) {
-    return bulletsToHtml(plain);
+    return '<p>—</p>';
   }
 }
 
