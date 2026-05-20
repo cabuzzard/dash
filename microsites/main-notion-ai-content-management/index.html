@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+<head>I am a real american   
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Campaign Admin</title>
@@ -329,16 +329,16 @@ async function loadResearch() {
   }
 }
 
-const SC = { Writing:'ts-write', Review:'ts-review', Approved:'ts-appr', Publish:'ts-pub', Done:'ts-done', Explode:'ts-explode' };
+const SC = { Development:'ts-write', Writing:'ts-write', Review:'ts-review', Approved:'ts-appr', Publish:'ts-pub', Published:'ts-done', Done:'ts-done', Explode:'ts-explode' };
 
 async function loadTitles() {
   const devEl = document.getElementById('devTitles');
   const pubEl = document.getElementById('pubTitles');
   try {
-    const data = await w('getTitles', { stages: ['Writing','Review','Approved','Publish','Explode','Done'], campaignId: CAMPAIGN_ID });
+    const data = await w('getTitles', { stages: ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'], campaignId: CAMPAIGN_ID });
     const titles = data.titles || [];
-    const dev = titles.filter(t => ['Writing','Review','Approved','Explode'].includes(t.stage));
-    const pub = titles.filter(t => ['Publish','Done'].includes(t.stage));
+    const dev = titles.filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage));
+    const pub = titles.filter(t => ['Publish','Published','Done'].includes(t.stage));
     function render(arr, el) {
       el.innerHTML = '';
       if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
