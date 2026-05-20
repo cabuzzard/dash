@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+<head>banning abnnaondlkjnflkj totttt   croisssant
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Campaign Admin</title>
@@ -10,21 +10,27 @@
 body { font-family: 'Syne', sans-serif; background: #080808; color: #e8e5e0; line-height: 1.5; }
 
 h2 {
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: .25em;
-  text-transform: uppercase;
-  color: #462;
-  padding: 8px 20px;
-  border-top: 1px solid #161616;
-  background: #0a0a0a;
+     font-size: 22px;
+    font-weight: 900;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    color: #462;
+    padding: 8px 20px;
+    border-top: 1px solid #161616;
+    background: #0a0a0a;
+    position: sticky;
+    top: 40px;
+    z-index: 10;
 }
 
-.section { border-bottom: 1px solid #161616; break-inside: avoid; }
+.section { border-bottom: 1px solid #161616; }
 .content { padding: 12px 20px 16px; }
 
 .field { display: flex; gap: 0; margin-bottom: 1px; align-items: flex-start; }
-.field-label { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: #3a3a3a; width: 150px; flex-shrink: 0; padding-top: 9px; }
+.field-label {
+  font-size: 9px; letter-spacing: .12em; text-transform: uppercase;
+  color: #3a3a3a; width: 150px; flex-shrink: 0; padding-top: 9px;
+}
 .field-value { font-size: 13px; color: #bbb; padding: 7px 0; flex: 1; }
 .field-value.body { color: #777; line-height: 1.65; }
 .field-value.empty { color: #2a2a2a; font-style: italic; }
@@ -53,7 +59,7 @@ h2 {
 .title-link  { font-size: 9px; color: #2a2a2a; text-decoration: none; border: 1px solid #1a1a1a; padding: 1px 5px; flex-shrink: 0; }
 .title-link:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
 
-.asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 1px; background: #111; border: 1px solid #111; }
+.asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1px; background: #111; border: 1px solid #111; }
 .asset-platform { background: #080808; padding: 10px 14px; }
 .asset-platform-name { font-size: 9px; letter-spacing: .15em; text-transform: uppercase; color: #444; margin-bottom: 8px; }
 .asset-item { font-size: 11px; color: #555; padding: 3px 0; border-bottom: 1px solid #111; display: flex; align-items: center; gap: 7px; }
@@ -70,7 +76,7 @@ h2 {
 .kw-list { display: flex; flex-wrap: wrap; gap: 5px; padding: 7px 0; }
 .kw { font-size: 11px; color: #555; padding: 3px 10px; border: 1px solid #1a1a1a; background: #0d0d0d; }
 
-.sched-row { display: flex; gap: 4px; padding: 7px 0; flex-wrap: wrap; }
+.sched-row { display: flex; gap: 4px; padding: 7px 0; }
 .sched-day { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; padding: 4px 8px; border: 1px solid #1a1a1a; color: #2a2a2a; }
 .sched-day.on { color: #e8ff47; border-color: rgba(232,255,71,.25); background: rgba(232,255,71,.03); }
 
@@ -124,20 +130,6 @@ h2 {
 .topbar-clock { font-size: 10px; color: #2a2a2a; letter-spacing: .06em; }
 .topbar-lock  { font-size: 9px; letter-spacing: .15em; text-transform: uppercase; color: #2a2a2a; cursor: pointer; }
 .topbar-lock:hover { color: #555; }
-
-/* TWO COLUMN LAYOUT */
-.two-col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: start;
-  border-left: 1px solid #161616;
-}
-.col {
-  border-right: 1px solid #161616;
-}
-.col .section {
-  border-bottom: 1px solid #161616;
-}
 </style>
 </head>
 <body>
@@ -167,243 +159,248 @@ h2 {
   </div>
 </div>
 
-<div class="two-col">
-
-  <!-- LEFT COLUMN -->
-  <div class="col">
-
-    <div class="section">
-      <h2>Identity</h2>
-      <div class="content">
-        <div class="field"><div class="field-label">Name</div><div class="field-value">📱 MAIN notion ai content management</div></div>
-        <div class="field"><div class="field-label">Site</div><div class="field-value">Webguy Business Services</div></div>
-        <div class="field"><div class="field-label">Status</div><div class="field-value"><span class="badge active">Active</span></div></div>
-        <div class="field"><div class="field-label">Start Date</div><div class="field-value">2026-05-15</div></div>
-        <div class="field"><div class="field-label">End Date</div><div class="field-value empty">—</div></div>
-        <div class="field">
-          <div class="field-label">Grouping</div>
-          <div class="field-value"><div class="tags"><span class="tag">content machine</span><span class="tag">leadgen</span><span class="tag">this week</span></div></div>
-        </div>
-        <div class="field"><div class="field-label">Notes</div><div class="field-value body">Master LinkedIn content campaign. Niche-agnostic posts serve as warm-up content for all targeted campaigns. Targeted outreach runs separately and benefits from this brand presence.</div></div>
-        <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3611f7d3a4bb81fe9ebcfe01813d9ac2" target="_blank" class="notion-link">↗ Open in Notion</a></div></div>
-      </div>
+<!-- IDENTITY -->
+<div class="section">
+  <h2>Identity</h2>
+  <div class="content">
+    <div class="field"><div class="field-label">Name</div><div class="field-value">📱 MAIN notion ai content management</div></div>
+    <div class="field"><div class="field-label">Site</div><div class="field-value">Webguy Business Services</div></div>
+    <div class="field"><div class="field-label">Status</div><div class="field-value"><span class="badge active">Active</span></div></div>
+    <div class="field"><div class="field-label">Start Date</div><div class="field-value">2026-05-15</div></div>
+    <div class="field"><div class="field-label">End Date</div><div class="field-value empty">—</div></div>
+    <div class="field">
+      <div class="field-label">Grouping</div>
+      <div class="field-value"><div class="tags"><span class="tag">content machine</span><span class="tag">leadgen</span><span class="tag">this week</span></div></div>
     </div>
+    <div class="field"><div class="field-label">Notes</div><div class="field-value body">Master LinkedIn content campaign. Niche-agnostic posts serve as warm-up content for all targeted campaigns. Targeted outreach runs separately and benefits from this brand presence.</div></div>
+    <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3611f7d3a4bb81fe9ebcfe01813d9ac2" target="_blank" class="notion-link">↗ Open in Notion</a></div></div>
+  </div>
+</div>
 
-    <div class="section">
-      <h2>Campaign Goal</h2>
-      <div class="content">
-        <div class="field-value body">Maintain a consistent, high-value LinkedIn presence that builds authority and trust for the Webguy brand across all niches — serving as the top-of-funnel content engine that feeds and amplifies every targeted campaign.</div>
-      </div>
-    </div>
+<!-- CAMPAIGN GOAL -->
+<div class="section">
+  <h2>Campaign Goal</h2>
+  <div class="content">
+    <div class="field-value body">Maintain a consistent, high-value LinkedIn presence that builds authority and trust for the Webguy brand across all niches — serving as the top-of-funnel content engine that feeds and amplifies every targeted campaign.</div>
+  </div>
+</div>
 
-    <div class="section">
-      <h2>Key Message</h2>
-      <div class="content">
-        <div class="field-value body">AI implementations. Content systems, content automation. Notion AI content systems. We help businesses grow using smart systems, AI, and online strategy — whoever you are, we probably have something useful to say.</div>
-      </div>
-    </div>
+<!-- KEY MESSAGE -->
+<div class="section">
+  <h2>Key Message</h2>
+  <div class="content">
+    <div class="field-value body">AI implementations. Content systems, content automation. Notion AI content systems. We help businesses grow using smart systems, AI, and online strategy — whoever you are, we probably have something useful to say.</div>
+  </div>
+</div>
 
-    <div class="section">
-      <h2>Target Audience</h2>
-      <div class="content">
-        <div class="field-value body">Business owners, operators, decision-makers, and professionals who follow Webguy across any niche — small business, corporate, construction, coaching, and beyond.</div>
-      </div>
-    </div>
+<!-- TARGET AUDIENCE -->
+<div class="section">
+  <h2>Target Audience</h2>
+  <div class="content">
+    <div class="field-value body">Business owners, operators, decision-makers, and professionals who follow Webguy across any niche — small business, corporate, construction, coaching, and beyond.</div>
+  </div>
+</div>
 
-    <div class="section">
-      <h2>Pain Points</h2>
-      <div class="content">
-        <div class="field-value body">Inconsistent posting, no clear brand voice, content that only speaks to one audience, no warm audience when targeted outreach launches.</div>
-      </div>
-    </div>
+<!-- PAIN POINTS -->
+<div class="section">
+  <h2>Pain Points</h2>
+  <div class="content">
+    <div class="field-value body">Inconsistent posting, no clear brand voice, content that only speaks to one audience, no warm audience when targeted outreach launches.</div>
+  </div>
+</div>
 
-    <div class="section">
-      <h2>CTA</h2>
-      <div class="content">
-        <div class="field-value">Follow for weekly insights on AI, systems, and business growth.</div>
-      </div>
-    </div>
+<!-- CTA -->
+<div class="section">
+  <h2>CTA</h2>
+  <div class="content">
+    <div class="field-value">Follow for weekly insights on AI, systems, and business growth.</div>
+  </div>
+</div>
 
-    <div class="section">
-      <h2>Methods</h2>
-      <div class="content">
-        <div class="tags"><span class="tag">Blog</span><span class="tag">SM Post</span></div>
-      </div>
-    </div>
+<!-- METHODS -->
+<div class="section">
+  <h2>Methods</h2>
+  <div class="content">
+    <div class="tags"><span class="tag">Blog</span><span class="tag">SM Post</span></div>
+  </div>
+</div>
 
-    <div class="section">
-      <h2>Products</h2>
-      <div class="content">
-        <div class="tags"><span class="tag">jbz</span><span class="tag">online collabs</span><span class="tag">consulting</span></div>
-      </div>
-    </div>
+<!-- PRODUCTS -->
+<div class="section">
+  <h2>Products</h2>
+  <div class="content">
+    <div class="tags"><span class="tag">jbz</span><span class="tag">online collabs</span><span class="tag">consulting</span></div>
+  </div>
+</div>
 
-    <div class="section">
-      <h2>Schedule</h2>
-      <div class="content">
-        <div class="field"><div class="field-label">Days</div>
-          <div class="field-value">
-            <div class="sched-row">
-              <span class="sched-day">Mon</span><span class="sched-day">Tue</span><span class="sched-day">Wed</span>
-              <span class="sched-day">Thu</span><span class="sched-day">Fri</span><span class="sched-day">Sat</span><span class="sched-day">Sun</span>
-            </div>
-          </div>
-        </div>
-        <div class="field"><div class="field-label">Time</div><div class="field-value empty">—</div></div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Keywords</h2>
-      <div class="content">
-        <div class="kw-list">
-          <span class="kw">AI tools</span><span class="kw">business growth</span><span class="kw">systems</span>
-          <span class="kw">automation</span><span class="kw">online strategy</span><span class="kw">lead generation</span>
-          <span class="kw">productivity</span><span class="kw">Notion</span><span class="kw">content operations</span><span class="kw">web guy</span>
+<!-- SCHEDULE -->
+<div class="section">
+  <h2>Schedule</h2>
+  <div class="content">
+    <div class="field"><div class="field-label">Days</div>
+      <div class="field-value">
+        <div class="sched-row">
+          <span class="sched-day">Mon</span><span class="sched-day">Tue</span><span class="sched-day">Wed</span>
+          <span class="sched-day">Thu</span><span class="sched-day">Fri</span><span class="sched-day">Sat</span><span class="sched-day">Sun</span>
         </div>
       </div>
     </div>
+    <div class="field"><div class="field-label">Time</div><div class="field-value empty">—</div></div>
+  </div>
+</div>
 
-    <div class="section">
-      <h2>LinkedIn Job Titles</h2>
-      <div class="content">
-        <div class="field-value empty">Not set</div>
+<!-- PLATFORMS -->
+<div class="section">
+  <h2>Platforms</h2>
+  <div class="content" id="platformsContent">
+    <div class="loading"><div class="spinner"></div>Loading platforms…</div>
+  </div>
+</div>
+
+<!-- KEYWORDS -->
+<div class="section">
+  <h2>Keywords</h2>
+  <div class="content">
+    <div class="kw-list">
+      <span class="kw">AI tools</span><span class="kw">business growth</span><span class="kw">systems</span>
+      <span class="kw">automation</span><span class="kw">online strategy</span><span class="kw">lead generation</span>
+      <span class="kw">productivity</span><span class="kw">Notion</span><span class="kw">content operations</span><span class="kw">web guy</span>
+    </div>
+  </div>
+</div>
+
+<!-- LINKEDIN JOB TITLES -->
+<div class="section">
+  <h2>LinkedIn Job Titles</h2>
+  <div class="content">
+    <div class="field-value empty">Not set</div>
+  </div>
+</div>
+
+<!-- DEVELOPMENT TITLES -->
+<div class="section">
+  <h2>Development Titles</h2>
+  <div class="content">
+    <div class="title-list" id="devTitles">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- PUBLISH TITLES -->
+<div class="section">
+  <h2>Publish Titles</h2>
+  <div class="content">
+    <div class="title-list" id="pubTitles">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- PLATFORM ASSET CHECKLIST -->
+<div class="section">
+  <h2>Platform Asset Checklist</h2>
+  <div class="content">
+    <div class="asset-grid">
+      <div class="asset-platform">
+        <div class="asset-platform-name">LinkedIn</div>
+        <div class="asset-item"><span class="asset-dot on"></span>Headline</div>
+        <div class="asset-item"><span class="asset-dot on"></span>Body</div>
+        <div class="asset-item"><span class="asset-dot on"></span>CTA Button</div>
+        <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">Reddit</div>
+        <div class="asset-item"><span class="asset-dot"></span>Title</div>
+        <div class="asset-item"><span class="asset-dot"></span>Body</div>
+        <div class="asset-item"><span class="asset-dot"></span>Subreddit</div>
+        <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">Newsletter</div>
+        <div class="asset-item"><span class="asset-dot"></span>Subject</div>
+        <div class="asset-item"><span class="asset-dot"></span>Teaser</div>
+        <div class="asset-item"><span class="asset-dot"></span>Main Content</div>
+        <div class="asset-item"><span class="asset-dot"></span>CTA Text</div>
+        <div class="asset-item"><span class="asset-dot"></span>CTA URL</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">Substack</div>
+        <div class="asset-item"><span class="asset-dot"></span>Subject Line</div>
+        <div class="asset-item"><span class="asset-dot"></span>Preview</div>
+        <div class="asset-item"><span class="asset-dot"></span>Body</div>
+        <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">Twitter / X</div>
+        <div class="asset-item"><span class="asset-dot"></span>Tweet 1</div>
+        <div class="asset-item"><span class="asset-dot"></span>Tweet 2</div>
+        <div class="asset-item"><span class="asset-dot"></span>Tweet 3</div>
+        <div class="asset-item"><span class="asset-dot"></span>Hashtags</div>
+        <div class="asset-item"><span class="asset-dot"></span>Thread Format</div>
+        <div class="asset-item"><span class="asset-dot"></span>First Comment</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">TikTok</div>
+        <div class="asset-item"><span class="asset-dot"></span>Caption</div>
+        <div class="asset-item"><span class="asset-dot"></span>Hook</div>
+        <div class="asset-item"><span class="asset-dot"></span>Video Length</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">YouTube</div>
+        <div class="asset-item"><span class="asset-dot"></span>Title</div>
+        <div class="asset-item"><span class="asset-dot"></span>Description</div>
+        <div class="asset-item"><span class="asset-dot"></span>Tags</div>
+        <div class="asset-item"><span class="asset-dot"></span>Video Duration</div>
+      </div>
+      <div class="asset-platform">
+        <div class="asset-platform-name">Instagram</div>
+        <div class="asset-item"><span class="asset-dot"></span>Caption</div>
+        <div class="asset-item"><span class="asset-dot"></span>Story Text</div>
+        <div class="asset-item"><span class="asset-dot"></span>Image Alt Text</div>
+        <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
+        <div class="asset-item"><span class="asset-dot"></span>Aspect Ratio</div>
       </div>
     </div>
+  </div>
+</div>
 
-    <div class="section">
-      <h2>Platforms</h2>
-      <div class="content" id="platformsContent">
-        <div class="loading"><div class="spinner"></div>Loading platforms…</div>
-      </div>
+<!-- INTELLIGENCE FEED -->
+<div class="section">
+  <h2>Intelligence Feed</h2>
+  <div class="content">
+    <div class="news-list" id="newsList">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
     </div>
+  </div>
+</div>
 
-    <div class="section">
-      <h2>Associated Campaigns</h2>
-      <div class="content">
-        <div class="field-value empty" id="assocCampaigns">—</div>
-      </div>
+<!-- ASSOCIATED TODOS -->
+<div class="section">
+  <h2>Associated Todos</h2>
+  <div class="content">
+    <div class="title-list" id="todoList">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
     </div>
+  </div>
+</div>
 
-    <div class="section">
-      <h2>Research</h2>
-      <div class="content">
-        <div class="field"><div class="field-label">Research DB</div><div class="field-value"><a href="https://www.notion.so/7b09bfb6437441ddbbd5ab0f3086380ea" target="_blank" class="notion-link">↗ Open in Notion</a></div></div>
-        <div class="field"><div class="field-label">Protocol</div><div class="field-value"><a href="https://www.notion.so/3591f7d3a4bb81b8b868f5a1f03354bb" target="_blank" class="notion-link">↗ Universal Research Protocol</a></div></div>
-      </div>
-    </div>
+<!-- ASSOCIATED CAMPAIGNS -->
+<div class="section">
+  <h2>Associated Campaigns</h2>
+  <div class="content">
+    <div class="field-value empty" id="assocCampaigns">—</div>
+  </div>
+</div>
 
-  </div><!-- /col left -->
-
-  <!-- RIGHT COLUMN -->
-  <div class="col">
-
-    <div class="section">
-      <h2>Development Titles</h2>
-      <div class="content">
-        <div class="title-list" id="devTitles">
-          <div class="loading"><div class="spinner"></div>Loading…</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Publish Titles</h2>
-      <div class="content">
-        <div class="title-list" id="pubTitles">
-          <div class="loading"><div class="spinner"></div>Loading…</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Platform Asset Checklist</h2>
-      <div class="content">
-        <div class="asset-grid">
-          <div class="asset-platform">
-            <div class="asset-platform-name">LinkedIn</div>
-            <div class="asset-item"><span class="asset-dot on"></span>Headline</div>
-            <div class="asset-item"><span class="asset-dot on"></span>Body</div>
-            <div class="asset-item"><span class="asset-dot on"></span>CTA Button</div>
-            <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
-          </div>
-          <div class="asset-platform">
-            <div class="asset-platform-name">Reddit</div>
-            <div class="asset-item"><span class="asset-dot"></span>Title</div>
-            <div class="asset-item"><span class="asset-dot"></span>Body</div>
-            <div class="asset-item"><span class="asset-dot"></span>Subreddit</div>
-            <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
-          </div>
-          <div class="asset-platform">
-            <div class="asset-platform-name">Newsletter</div>
-            <div class="asset-item"><span class="asset-dot"></span>Subject</div>
-            <div class="asset-item"><span class="asset-dot"></span>Teaser</div>
-            <div class="asset-item"><span class="asset-dot"></span>Main Content</div>
-            <div class="asset-item"><span class="asset-dot"></span>CTA Text</div>
-            <div class="asset-item"><span class="asset-dot"></span>CTA URL</div>
-          </div>
-          <div class="asset-platform">
-            <div class="asset-platform-name">Substack</div>
-            <div class="asset-item"><span class="asset-dot"></span>Subject Line</div>
-            <div class="asset-item"><span class="asset-dot"></span>Preview</div>
-            <div class="asset-item"><span class="asset-dot"></span>Body</div>
-            <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
-          </div>
-          <div class="asset-platform">
-            <div class="asset-platform-name">Twitter / X</div>
-            <div class="asset-item"><span class="asset-dot"></span>Tweet 1</div>
-            <div class="asset-item"><span class="asset-dot"></span>Tweet 2</div>
-            <div class="asset-item"><span class="asset-dot"></span>Tweet 3</div>
-            <div class="asset-item"><span class="asset-dot"></span>Hashtags</div>
-            <div class="asset-item"><span class="asset-dot"></span>Thread Format</div>
-            <div class="asset-item"><span class="asset-dot"></span>First Comment</div>
-          </div>
-          <div class="asset-platform">
-            <div class="asset-platform-name">TikTok</div>
-            <div class="asset-item"><span class="asset-dot"></span>Caption</div>
-            <div class="asset-item"><span class="asset-dot"></span>Hook</div>
-            <div class="asset-item"><span class="asset-dot"></span>Video Length</div>
-          </div>
-          <div class="asset-platform">
-            <div class="asset-platform-name">YouTube</div>
-            <div class="asset-item"><span class="asset-dot"></span>Title</div>
-            <div class="asset-item"><span class="asset-dot"></span>Description</div>
-            <div class="asset-item"><span class="asset-dot"></span>Tags</div>
-            <div class="asset-item"><span class="asset-dot"></span>Video Duration</div>
-          </div>
-          <div class="asset-platform">
-            <div class="asset-platform-name">Instagram</div>
-            <div class="asset-item"><span class="asset-dot"></span>Caption</div>
-            <div class="asset-item"><span class="asset-dot"></span>Story Text</div>
-            <div class="asset-item"><span class="asset-dot"></span>Image Alt Text</div>
-            <div class="asset-item"><span class="asset-dot"></span>Post Type</div>
-            <div class="asset-item"><span class="asset-dot"></span>Aspect Ratio</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Intelligence Feed</h2>
-      <div class="content">
-        <div class="news-list" id="newsList">
-          <div class="loading"><div class="spinner"></div>Loading…</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Associated Todos</h2>
-      <div class="content">
-        <div class="title-list" id="todoList">
-          <div class="loading"><div class="spinner"></div>Loading…</div>
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /col right -->
-
-</div><!-- /two-col -->
+<!-- RESEARCH DB LINK -->
+<div class="section">
+  <h2>Research</h2>
+  <div class="content">
+    <div class="field"><div class="field-label">Research DB</div><div class="field-value"><a href="https://www.notion.so/7b09bfb6437441ddbbd5ab0f3086380ea" target="_blank" class="notion-link">↗ Open in Notion</a></div></div>
+    <div class="field"><div class="field-label">Protocol</div><div class="field-value"><a href="https://www.notion.so/3591f7d3a4bb81b8b868f5a1f03354bb" target="_blank" class="notion-link">↗ Universal Research Protocol</a></div></div>
+  </div>
+</div>
 
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -546,6 +543,7 @@ async function loadPlatforms() {
     '3651f7d3a4bb80ad9347ef27929652cd','3651f7d3a4bb8177bd91eeec2453c80b'
   ];
   try {
+    const results = await Promise.all(PLATFORM_IDS.map(id => w('getChildren', { pageId: id }).catch(() => ({ pages: [] }))));
     el.innerHTML = '';
     const names = ['LinkedIn','Beehiiv','WordPress','Reddit','Fiverr','Upwork','Email','Blog'];
     names.forEach((name, i) => {
