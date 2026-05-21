@@ -986,7 +986,7 @@ function renderTable() {
     hrow.appendChild(th);
   });
   // Link headers — not sortable
-  ['HL','DB','STE','ROI'].forEach(label => {
+  ['HL','DB','STE','LVE','ROI'].forEach(label => {
     const th = document.createElement('th');
     th.textContent = label;
     th.style.cssText = 'text-align:center;cursor:default;width:36px;';
@@ -1124,6 +1124,7 @@ function renderTable() {
     tr.insertAdjacentHTML('beforeend',
       '<td class="link"><a href="' + notionUrl + '" target="_blank" title="Notion DB">↗</a></td>' +
       '<td class="link"><a href="' + (c.siteUrl || '#') + '" target="_blank" title="Live Site" style="' + (c.siteUrl ? '' : 'opacity:.25;pointer-events:none;') + '">↗</a></td>' +
+      '<td class="link"><a href="' + (c.campaignPage || '#') + '" target="_blank" title="Campaign Page" style="' + (c.campaignPage ? '' : 'opacity:.25;pointer-events:none;') + '">↗</a></td>' +
       '<td class="link"><a href="' + (c.research ? 'https://www.notion.so/' + c.research.id : '#') + '" target="_blank" title="ROI Notes" style="' + (c.research ? '' : 'opacity:.25;pointer-events:none;') + '">↗</a></td>'
     );
     tbody.appendChild(tr);
