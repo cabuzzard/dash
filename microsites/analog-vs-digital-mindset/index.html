@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webguy — Analog vs. Digital Mindset</title>
+</head>
+<body>
+
+<!-- PIN -->
+<div class="pin-screen" id="pinScreen">
+  <div class="pin-mark">Webguy <span style="color:#e8ff47">·</span> Admin</div>
+  <div class="pin-label">Access code</div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
+    <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
+  </div>
+  <div class="pin-pad">
+    <button class="pin-btn" onclick="pp('1')">1</button><button class="pin-btn" onclick="pp('2')">2</button><button class="pin-btn" onclick="pp('3')">3</button>
+    <button class="pin-btn" onclick="pp('4')">4</button><button class="pin-btn" onclick="pp('5')">5</button><button class="pin-btn" onclick="pp('6')">6</button>
+    <button class="pin-btn" onclick="pp('7')">7</button><button class="pin-btn" onclick="pp('8')">8</button><button class="pin-btn" onclick="pp('9')">9</button>
+    <button class="pin-btn empty"></button><button class="pin-btn" onclick="pp('0')">0</button><button class="pin-btn del" onclick="pd()">DEL</button>
+  </div>
+  <div class="pin-error" id="pinError"></div>
+</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-left">Web<span>guy</span> — Campaign Admin</div>
+  <div class="topbar-right">
+    <a href="td/" class="notion-link">TD ↗</a>
+    <div class="topbar-clock" id="clock">—</div>
+    <div class="topbar-lock" onclick="lockApp()">Lock</div>
+  </div>
+</div>
+
+<!-- SEC 1: two col — campaign meta / main TD -->
+<div class="two-col">
+  <div class="col">
+    <h2>Campaign</h2>
+    <div class="content">
+      <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
+      <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
+      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3671f7d3a4bb815280ccdbdb76166f2a" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3671f7d3a4bb813fa601c8518bc44c94" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Main TD <button class="td-add-btn-inline" onclick="openTdModal()" title="Add task">+</button></h2>
+    <div class="content">
+      <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 2: three col — keywords / key message / main problem -->
+<div class="three-col">
+  <div class="col">
+    <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
+    <div class="content">
+      <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Key Message</h2>
+    <div class="content">
+      <div class="body-text" id="r-keymessage"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Main Problem</h2>
+    <div class="content">
+      <div class="body-text" id="r-problem"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 3: two col — product ideas / recommended actions -->
+<div class="two-col">
+  <div class="col">
+    <h2 class="editable" onclick="openModal('productIdeas')">Product Ideas</h2>
+    <div class="content">
+      <div class="body-text" id="r-products"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 class="editable" onclick="openModal('actions')">Recommended Actions</h2>
+    <div class="content">
+      <div class="body-text" id="r-actions"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 4: two col — platforms / methods -->
+<div class="two-col">
+  <div class="col">
+    <h2 class="editable" onclick="openModal('platforms')">Platforms</h2>
+    <div class="content">
+      <div class="body-text" id="r-platforms"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 class="editable" onclick="openModal('methods')">Methods</h2>
+    <div class="content">
+      <div class="body-text" id="r-methods"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 5: two col — news feed / tiktok trends -->
+<div class="two-col">
+  <div class="col">
+    <h2>News Feed</h2>
+    <div class="content">
+      <div class="body-text" id="r-news"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>TikTok Trends</h2>
+    <div class="content">
+      <div class="body-text" id="r-tiktok"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 6: two col — development titles / publish titles -->
+<div class="two-col">
+  <div class="col">
+    <h2>Development Titles</h2>
+    <div class="content">
+      <div class="title-list" id="devTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Publish Titles</h2>
+    <div class="content">
+      <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- TD ADD MODAL -->
+<div class="modal-overlay" id="tdModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Task</div>
+      <button class="modal-close" onclick="closeTdModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Task will be created in Main TD and linked to this campaign</div>
+      <input class="modal-ta" id="td-modal-input" type="text" placeholder="Task name…" style="height:44px;padding:10px 14px;resize:none;" />
+      <div class="modal-status" id="tdModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeTdModal()">Cancel</button>
+      <button class="modal-btn save" id="tdModalSave" onclick="addTodoFromModal()">Add Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="modalTitle">Edit</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="modalHint"></div>
+      <textarea class="modal-ta" id="modalTa" rows="8"></textarea>
+      <div class="modal-status" id="modalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+      <button class="modal-btn save" id="modalSave" onclick="saveModal()">Save to Notion</button>
+    </div>
+  </div>
+</div>
+<script>
+const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+const CAMPAIGN_ID = "3671f7d3a4bb815280ccdbdb76166f2a"; // analog-vs-digital-mindset
+const RESEARCH_ID = "3671f7d3a4bb813fa601c8518bc44c94"; // research
+const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/analog-vs-digital-mindset/";
+const CORRECT_PIN = '1246';
+let pin = '';
+
+function pp(d) {
+  if (pin.length >= 4) return;
+  pin += d;
+  document.getElementById('d' + (pin.length-1)).classList.add('filled');
+  if (pin.length === 4) {
+    if (pin === CORRECT_PIN) {
+      document.getElementById('pinScreen').classList.add('hidden');
+      init();
+    } else {
+      document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
+      document.getElementById('pinError').textContent = 'incorrect code';
+      setTimeout(() => { document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; pin = ''; }, 800);
+    }
+  }
+}
+function pd() {
+  if (!pin.length) return;
+  document.getElementById('d' + (pin.length-1)).classList.remove('filled');
+  pin = pin.slice(0,-1);
+}
+function lockApp() {
+  pin = '';
+  document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error'));
+  document.getElementById('pinError').textContent = '';
+  document.getElementById('pinScreen').classList.remove('hidden');
+}
+
+function tick() {
+  const n = new Date();
+  document.getElementById('clock').textContent =
+    String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0') + ':' + String(n.getSeconds()).padStart(2,'0');
+}
+setInterval(tick, 1000); tick();
+
+async function w(action, extra = {}) {
+  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, pin: CORRECT_PIN, ...extra }) });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
+// Strip HTML tags to plain text
+function stripHtml(raw) {
+  return raw ? raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : '';
+}
+
+// Parse Claude output: HEADING: body text pairs, one per line
+function parseToHtml(text) {
+  if (!text) return '<p>—</p>';
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let html = '';
+  lines.forEach(line => {
+    // Match "HEADING: body text" pattern
+    const match = line.match(/^([A-Z][A-Z0-9\s\/&,'-]+):\s*(.+)$/);
+    if (match) {
+      html += '<h3>' + match[1].trim() + '</h3><p>' + match[2].trim() + '</p>';
+    } else {
+      // Plain line — strip leading dash/bullet
+      const clean = line.replace(/^[-•·*\d+\.\s]+/, '').trim();
+      if (clean) html += '<p>' + clean + '</p>';
+    }
+  });
+  return html || '<p>—</p>';
+}
+
+// Call Claude via worker — strict HEADING: body format, 30 words max per entry
+async function condense(label, raw) {
+  if (!raw) return '<p>—</p>';
+  const plain = stripHtml(raw);
+  if (!plain) return '<p>—</p>';
+  try {
+    const resp = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'condense', pin: CORRECT_PIN, label, text: plain })
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    return parseToHtml(data.text || '');
+  } catch(e) {
+    return '<p>—</p>';
+  }
+}
+
+async function loadResearch() {
+  try {
+    const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
+    const r = data.research;
+    if (!r) {
+      document.getElementById('r-name').textContent = 'No research record — add one in Notion to populate this page.';
+      ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
+      });
+      const kwEl = document.getElementById('r-keywords');
+      if (kwEl) kwEl.innerHTML = '<span class="empty">—</span>';
+      return;
+    }
+
+    // SEC 1
+    document.getElementById('r-name').textContent = r.name;
+    const statusEl = document.getElementById('r-status');
+    const sc = r.status ? r.status.toLowerCase() : 'draft';
+    statusEl.innerHTML = `<span class="badge ${sc}">${r.status || '—'}</span>`;
+    document.getElementById('r-date').textContent = r.lastUpdated || '—';
+
+    // Store raw values for editing
+    RESEARCH_ID_LIVE = r.id || '';
+    const pmSplitRaw = (r.platforms || '').replace(/<br\s*\/?>/gi,'\n').split(/ACTIVE METHODS:/i);
+    RAW = {
+      keywords:     r.keywords || '',
+      productIdeas: r.productIdeas || '',
+      notes:        r.notes || '',
+      rawPlatforms: pmSplitRaw[0].replace(/ACTIVE PLATFORMS:\s*/i,'').replace(/<br\s*\/?>/gi,'\n').trim(),
+      rawMethods:   pmSplitRaw.length > 1 ? pmSplitRaw[1].replace(/<br\s*\/?>/gi,'\n').trim() : '',
+    };
+
+    // SEC 2 — keywords as pills
+    const kwEl = document.getElementById('r-keywords');
+    if (r.keywords) {
+      kwEl.innerHTML = r.keywords.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('');
+    } else {
+      kwEl.innerHTML = '<span class="empty">—</span>';
+    }
+    // Condense all fields in parallel via Claude
+    const loading = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
+    ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+      document.getElementById(id).innerHTML = loading;
+    });
+
+    // Split platforms & methods from the combined field
+    const rawPm = stripHtml(r.platforms) || '';
+    const pmSplit = rawPm.split(/ACTIVE METHODS:/i);
+    const rawPlatforms = pmSplit[0].replace(/ACTIVE PLATFORMS:\s*/i, '').trim();
+    const rawMethods   = pmSplit.length > 1 ? pmSplit[1].trim() : '';
+
+    // Split notes into problem statement + recommended actions
+    const rawNotes = stripHtml(r.notes) || '';
+    const problemInput = (r.campaignGoal || '') + '\n' + (r.painPoints || '') + '\n' + rawNotes.split(/ROI-RANKED|RECOMMENDED|BOTTOM LINE/i)[0];
+    const actionsInput = rawNotes;
+
+    const [problem, keymessage, products, actions, platforms, methods, news, tiktok] = await Promise.all([
+      condense('This campaign does X for customer Y — state the core problem this campaign solves in one sentence then list pain points', problemInput),
+      condense('Key Message', r.keyMessage),
+      condense('Product Ideas', r.productIdeas),
+      condense('Recommended Actions — prioritised by ROI, what to do next', actionsInput),
+      condense('Platforms', rawPlatforms),
+      condense('Methods', rawMethods),
+      condense('News Feed', r.newsFeed),
+      condense('TikTok Trends', r.tiktokTrends),
+    ]);
+
+    document.getElementById('r-problem').innerHTML    = problem;
+    document.getElementById('r-keymessage').innerHTML = keymessage;
+    document.getElementById('r-products').innerHTML   = products;
+    document.getElementById('r-actions').innerHTML  = actions;
+    document.getElementById('r-platforms').innerHTML = platforms;
+    document.getElementById('r-methods').innerHTML   = methods;
+    document.getElementById('r-news').innerHTML      = news;
+    document.getElementById('r-tiktok').innerHTML    = tiktok;
+
+  } catch(e) {
+    document.getElementById('r-name').textContent = 'Error: ' + e.message;
+  }
+}
+
+const SC = { Development:'ts-write', Writing:'ts-write', Review:'ts-review', Approved:'ts-appr', Publish:'ts-pub', Published:'ts-done', Done:'ts-done', Explode:'ts-explode' };
+
+async function loadTitles() {
+  const devEl = document.getElementById('devTitles');
+  const pubEl = document.getElementById('pubTitles');
+  try {
+    const data = await w('getTitles', { stages: ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'], campaignId: CAMPAIGN_ID });
+    const titles = data.titles || [];
+    const dev = titles.filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage));
+    const pub = titles.filter(t => ['Publish','Published','Done'].includes(t.stage));
+    function render(arr, el) {
+      el.innerHTML = '';
+      if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
+      arr.forEach(t => {
+        const div = document.createElement('div');
+        div.className = 'title-row';
+        div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><span class="title-group">${t.cohort||''}</span><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+        el.appendChild(div);
+      });
+    }
+    render(dev, devEl);
+    render(pub, pubEl);
+  } catch(e) {
+    devEl.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
+    pubEl.innerHTML = '<div class="empty">—</div>';
+  }
+}
+
+// Raw research values for editing
+let RAW = {};
+let RESEARCH_ID_LIVE = '';
+
+// Modal config per field
+const MODAL_CFG = {
+  keywords:     { title: 'Keywords',            hint: 'Comma-separated keywords for this campaign', target: 'campaign' },
+  productIdeas: { title: 'Product Ideas',        hint: 'Describe product ideas, offers, and pipeline', target: 'research', field: 'productIdeas' },
+  actions:      { title: 'Recommended Actions',  hint: 'ROI-ranked actions and next steps', target: 'research', field: 'notes' },
+  platforms:    { title: 'Platforms',            hint: 'Active and planned platforms for this campaign', target: 'research', field: 'platforms', combined: true },
+  methods:      { title: 'Methods',              hint: 'Active and planned methods for this campaign', target: 'research', field: 'platforms', combined: true },
+};
+
+let activeField = null;
+
+function openModal(field) {
+  const cfg = MODAL_CFG[field];
+  if (!cfg) return;
+  activeField = field;
+  document.getElementById('modalTitle').textContent = cfg.title;
+  document.getElementById('modalHint').textContent = cfg.hint;
+  document.getElementById('modalStatus').textContent = '';
+  document.getElementById('modalStatus').className = 'modal-status';
+  document.getElementById('modalSave').disabled = false;
+
+  // Pre-fill with raw value
+  let val = '';
+  if (field === 'keywords')     val = RAW.keywords || '';
+  if (field === 'productIdeas') val = RAW.productIdeas || '';
+  if (field === 'actions')      val = RAW.notes || '';
+  if (field === 'platforms')    val = RAW.rawPlatforms || '';
+  if (field === 'methods')      val = RAW.rawMethods || '';
+  document.getElementById('modalTa').value = val;
+
+  document.getElementById('editModal').classList.add('open');
+  setTimeout(() => document.getElementById('modalTa').focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById('editModal').classList.remove('open');
+  activeField = null;
+}
+
+document.getElementById('editModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+async function saveModal() {
+  const val = document.getElementById('modalTa').value.trim();
+  const btn = document.getElementById('modalSave');
+  const status = document.getElementById('modalStatus');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  status.textContent = '';
+
+  const cfg = MODAL_CFG[activeField];
+  try {
+    if (cfg.target === 'campaign') {
+      await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, value: val });
+      RAW.keywords = val;
+      // Re-render keywords pills
+      const kwEl = document.getElementById('r-keywords');
+      kwEl.innerHTML = val ? val.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('') : '<span class="empty">—</span>';
+    } else {
+      // For platforms/methods — need to combine back into one field
+      if (activeField === 'platforms') {
+        RAW.rawPlatforms = val;
+        const combined = 'ACTIVE PLATFORMS: ' + val + (RAW.rawMethods ? '\nACTIVE METHODS: ' + RAW.rawMethods : '');
+        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: 'platforms', value: combined });
+      } else if (activeField === 'methods') {
+        RAW.rawMethods = val;
+        const combined = 'ACTIVE PLATFORMS: ' + (RAW.rawPlatforms || '') + '\nACTIVE METHODS: ' + val;
+        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: 'platforms', value: combined });
+      } else {
+        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
+        RAW[cfg.field] = val;
+      }
+      // Re-condense the display
+      status.textContent = 'Saved. Updating display…';
+      const displayId = { productIdeas:'r-products', actions:'r-actions', platforms:'r-platforms', methods:'r-methods' }[activeField];
+      const label = { productIdeas:'Product Ideas', actions:'Recommended Actions — prioritised by ROI', platforms:'Platforms', methods:'Methods' }[activeField];
+      if (displayId) {
+        document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
+        const html = await condense(label, val);
+        document.getElementById(displayId).innerHTML = html;
+      }
+    }
+    status.textContent = 'Saved ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeModal, 900);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Save to Notion';
+}
+
+// ── MAIN TD ──────────────────────────────────────────────────────────
+let TD_ITEMS = [];
+
+function renderTd() {
+  const el = document.getElementById('td-list');
+  el.innerHTML = '';
+  if (!TD_ITEMS.length) { el.innerHTML = '<div class="empty">No tasks.</div>'; return; }
+  TD_ITEMS.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'td-row';
+    row.innerHTML = `<span class="td-name">${t.name}</span><button class="td-del" onclick="deleteTodo('${t.id}', this)" title="Remove">✕</button>`;
+    el.appendChild(row);
+  });
+}
+
+async function loadTodos() {
+  const el = document.getElementById('td-list');
+  try {
+    const data = await w('getCampaignTodos', { campaignId: CAMPAIGN_ID });
+    TD_ITEMS = data.todos || [];
+    renderTd();
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
+  }
+}
+
+function openTdModal() {
+  document.getElementById('td-modal-input').value = '';
+  document.getElementById('tdModalStatus').textContent = '';
+  document.getElementById('tdModalSave').disabled = false;
+  document.getElementById('tdModalSave').textContent = 'Add Task';
+  document.getElementById('tdModal').classList.add('open');
+  setTimeout(() => document.getElementById('td-modal-input').focus(), 100);
+}
+
+function closeTdModal() {
+  document.getElementById('tdModal').classList.remove('open');
+}
+
+document.getElementById('tdModal').addEventListener('click', function(e) {
+  if (e.target === this) closeTdModal();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement === document.getElementById('td-modal-input')) addTodoFromModal();
+});
+
+async function addTodoFromModal() {
+  const input = document.getElementById('td-modal-input');
+  const name = input.value.trim();
+  if (!name) return;
+  const btn = document.getElementById('tdModalSave');
+  const status = document.getElementById('tdModalStatus');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  try {
+    const data = await w('createTodo', { name, campaignId: CAMPAIGN_ID });
+    TD_ITEMS.push({ id: data.id, name });
+    renderTd();
+    status.textContent = 'Added ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeTdModal, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Add Task';
+  }
+}
+
+async function deleteTodo(id, btn) {
+  btn.disabled = true;
+  try {
+    await w('unlinkTodoFromCampaign', { campaignId: CAMPAIGN_ID, todoId: id });
+    TD_ITEMS = TD_ITEMS.filter(t => t.id !== id);
+    renderTd();
+  } catch(e) {
+    btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+}
+
+function init() {
+  loadResearch();
+  loadTitles();
+  loadTodos();
+}
+</script>
+</body>
+</html>
