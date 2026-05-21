@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Mobility Mentor</title>
+<title>Mobility Mentor — The Care Gap Initiative</title>
 <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -409,8 +409,8 @@ footer p{font-size:.78rem;color:rgba(246,242,235,.35);margin-top:6px}
     Mobility<span>Mentor</span>
   </div>
   <div class="nav-links">
-    <a id="nav-services" class="active" onclick="showPage('services')">Services</a>
-    <a id="nav-fundraising" onclick="showPage('fundraising')">Fundraising</a>
+    <a id="nav-services" onclick="showPage('services')">Services</a>
+    <a id="nav-fundraising" class="active" onclick="showPage('fundraising')">Fundraising</a>
     <a class="nav-cta" href="https://calendly.com/flipoclock/15min" target="_blank">Book a Call →</a>
   </div>
 </nav>
@@ -419,7 +419,7 @@ footer p{font-size:.78rem;color:rgba(246,242,235,.35);margin-top:6px}
 <!-- ══════════════════════════════════
      SERVICES PAGE
 ══════════════════════════════════ -->
-<div class="page active" id="page-services">
+<div class="page" id="page-services">
 
   <!-- HERO -->
   <section class="s-hero">
@@ -582,7 +582,7 @@ footer p{font-size:.78rem;color:rgba(246,242,235,.35);margin-top:6px}
 <!-- ══════════════════════════════════
      FUNDRAISING PAGE
 ══════════════════════════════════ -->
-<div class="page" id="page-fundraising">
+<div class="page active" id="page-fundraising">
 
   <!-- HERO -->
   <section class="f-hero">
@@ -940,10 +940,10 @@ function esc(str) {
 }
 
 // ══════════════════════════════════════════════════════════
-//  INIT — load Services page data on first paint
+//  INIT — Fundraising is default page, load its data immediately
 // ══════════════════════════════════════════════════════════
-servicesLoaded = true;
-loadServicesData();
+fundraisingLoaded = true;
+loadFundraisingData();
 </script>
 </body>
 </html>
