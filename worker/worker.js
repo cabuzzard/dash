@@ -1034,6 +1034,7 @@ export default {
             platforms: props["Platforms & Methods"]?.rich_text?.map(t => t.plain_text).join("") || "",
             productIdeas: props["Product Ideas"]?.rich_text?.map(t => t.plain_text).join("") || "",
             tiktokTrends: props["TikTok Trends"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            keyMessage: props["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
             webPageUrl: props["Web Page URL"]?.url || "",
             campaignGoal: cp["Campaign Goal"]?.rich_text?.map(t => t.plain_text).join("") || "",
             painPoints: cp["Pain Points"]?.rich_text?.map(t => t.plain_text).join("") || "",
@@ -1085,6 +1086,7 @@ Rules:
           platforms:    "Platforms & Methods",
           tiktokTrends: "TikTok Trends",
           newsFeed:     "News Feed",
+          keyMessage:   "Key Message",
         };
         const notionField = fieldMap[field];
         if (!notionField) return json({ error: "Unknown field: " + field }, 400);
