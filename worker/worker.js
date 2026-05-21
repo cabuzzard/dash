@@ -1177,6 +1177,23 @@ Rules:
         return json({ success: true });
       }
 
+      // ── MICROSITE: updateTitleStage ──
+      if (body.action === "updateTitleStage") {
+        const { titleId, stage } = body;
+        if (!titleId || !stage) return json({ error: "titleId and stage required" }, 400);
+        const validStages = ["Development","Writing","Review","Approved","Publish","Published","Explode","Done"];
+        if (!validStages.includes(stage)) return json({ error: "Invalid stage: " + stage }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Status: { select: { name: stage } } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);

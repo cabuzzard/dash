@@ -5,6 +5,21 @@
 <link rel="stylesheet" href="../style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Webguy — AI Content Management</title>
+<style>
+/* STATUS CHANGE BUTTON */
+.title-status-btn {
+  font-size: 11px; color: #2a2a2a; background: none; border: 1px solid #1a1a1a;
+  padding: 1px 6px; cursor: pointer; font-family: 'Syne', sans-serif;
+  flex-shrink: 0; transition: all .15s; line-height: 1.4;
+}
+.title-status-btn:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
+/* STATUS OPTION GRID */
+.status-option-grid { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 4px; }
+.status-opt-btn { background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; transition: opacity .15s, transform .1s; }
+.status-opt-btn:hover:not(:disabled) { transform: scale(1.05); }
+.status-opt-btn.active { opacity: .35; cursor: default; }
+.status-opt-btn:disabled { cursor: default; }
+</style>
 </head>
 <body>
 
@@ -42,7 +57,7 @@
     <div class="content">
       <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
-      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3581f7d3a4bb80c9b25efceb41a079b4" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81b588e2d75db09b9d0b" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/34b1f7d3a4bb81b6a8a8fee04df94807" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
     </div>
   </div>
@@ -141,6 +156,24 @@
 </div>
 
 
+<!-- STATUS CHANGE MODAL -->
+<div class="modal-overlay" id="statusModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="statusModalTitle">Change Status</div>
+      <button class="modal-close" onclick="closeStatusModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="statusModalHint"></div>
+      <div class="status-option-grid" id="statusOptions"></div>
+      <div class="modal-status" id="statusModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeStatusModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- TD ADD MODAL -->
 <div class="modal-overlay" id="tdModal">
   <div class="modal">
@@ -181,7 +214,7 @@
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "3581f7d3a4bb80c9b25efceb41a079b4"; // taoist-wanderings
-const RESEARCH_ID = "3661f7d3a4bb81b588e2d75db09b9d0b"; // research
+const RESEARCH_ID = "3661f7d3a4bb81adaaadc2ce80784112"; // research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/taoist-wanderings/";
 const CORRECT_PIN = '1246';
 let pin = '';
@@ -362,7 +395,10 @@ async function loadTitles() {
   try {
     const data = await w('getTitles', { stages: ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'], campaignId: CAMPAIGN_ID });
     const titles = data.titles || [];
-    const dev = titles.filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage));
+    const DEV_ORDER = { Explode:0, Approved:1, Review:2, Writing:3, Development:4 };
+    const dev = titles
+      .filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage))
+      .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
     const pub = titles.filter(t => ['Publish','Published','Done'].includes(t.stage));
     function render(arr, el) {
       el.innerHTML = '';
@@ -370,7 +406,7 @@ async function loadTitles() {
       arr.forEach(t => {
         const div = document.createElement('div');
         div.className = 'title-row';
-        div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><span class="title-group">${t.cohort||''}</span><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+        div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><span class="title-group">${t.cohort||''}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
         el.appendChild(div);
       });
     }
@@ -575,6 +611,55 @@ async function deleteTodo(id, btn) {
   } catch(e) {
     btn.disabled = false;
     alert('Error: ' + e.message);
+  }
+}
+
+// ── STATUS CHANGE MODAL ───────────────────────────────────────
+const ALL_STAGES = ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'];
+let statusModalTitleId = null;
+
+function openStatusModal(id, title, currentStage) {
+  statusModalTitleId = id;
+  document.getElementById('statusModalTitle').textContent = 'Change Status';
+  document.getElementById('statusModalHint').textContent = title;
+  document.getElementById('statusModalStatus').textContent = '';
+  document.getElementById('statusModalStatus').className = 'modal-status';
+  const grid = document.getElementById('statusOptions');
+  grid.innerHTML = '';
+  ALL_STAGES.forEach(stage => {
+    const btn = document.createElement('button');
+    btn.className = 'status-opt-btn' + (stage === currentStage ? ' active' : '');
+    btn.innerHTML = `<span class="title-stage ${SC[stage]||'ts-write'}" style="pointer-events:none">${stage}</span>`;
+    if (stage !== currentStage) btn.onclick = () => applyStatusChange(id, stage);
+    else btn.disabled = true;
+    grid.appendChild(btn);
+  });
+  document.getElementById('statusModal').classList.add('open');
+}
+
+function closeStatusModal() {
+  document.getElementById('statusModal').classList.remove('open');
+  statusModalTitleId = null;
+}
+
+document.getElementById('statusModal').addEventListener('click', function(e) {
+  if (e.target === this) closeStatusModal();
+});
+
+async function applyStatusChange(titleId, newStage) {
+  const status = document.getElementById('statusModalStatus');
+  document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = true);
+  status.textContent = 'Updating…';
+  status.className = 'modal-status';
+  try {
+    await w('updateTitleStage', { titleId, stage: newStage });
+    status.textContent = 'Updated ✓';
+    status.className = 'modal-status ok';
+    setTimeout(async () => { closeStatusModal(); await loadTitles(); }, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = false);
   }
 }
 
