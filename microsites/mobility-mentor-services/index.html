@@ -395,7 +395,7 @@ async function loadTitles() {
   try {
     const data = await w('getTitles', { stages: ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'], campaignId: CAMPAIGN_ID });
     const titles = data.titles || [];
-    const DEV_ORDER = { Development:0, Writing:1, Review:2, Approved:3, Explode:4 };
+    const DEV_ORDER = { Explode:0, Approved:1, Review:2, Writing:3, Development:4 };
     const dev = titles
       .filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage))
       .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
@@ -425,7 +425,7 @@ let RESEARCH_ID_LIVE = '';
 // Modal config per field
 const MODAL_CFG = {
   keywords:     { title: 'Keywords',            hint: 'Comma-separated keywords for this campaign', target: 'campaign' },
-  keyMessage:   { title: 'Key Message',         hint: 'Core positioning statement for this campaign', target: 'campaignField', field: 'keyMessage' },
+  keyMessage:   { title: 'Key Message',         hint: 'Core positioning statement for this campaign', target: 'research', field: 'keyMessage' },
   mainProblem:  { title: 'Main Problem',        hint: 'Pain points this campaign addresses', target: 'campaignField', field: 'painPoints' },
   productIdeas: { title: 'Product Ideas',        hint: 'Describe product ideas, offers, and pipeline', target: 'research', field: 'productIdeas' },
   actions:      { title: 'Recommended Actions',  hint: 'ROI-ranked actions and next steps', target: 'research', field: 'notes' },
@@ -490,8 +490,8 @@ async function saveModal() {
       RAW[cfg.field] = val;
       // Re-condense display
       status.textContent = 'Saved. Updating display…';
-      const displayId = { keyMessage: 'r-keymessage', painPoints: 'r-problem' }[cfg.field];
-      const label = { keyMessage: 'Key Message', painPoints: 'Main Problem' }[cfg.field];
+      const displayId = { painPoints: 'r-problem' }[cfg.field];
+      const label = { painPoints: 'Main Problem' }[cfg.field];
       if (displayId) {
         document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
         const html = await condense(label, val);
@@ -513,8 +513,8 @@ async function saveModal() {
       }
       // Re-condense the display
       status.textContent = 'Saved. Updating display…';
-      const displayId = { productIdeas:'r-products', actions:'r-actions', platforms:'r-platforms', methods:'r-methods' }[activeField];
-      const label = { productIdeas:'Product Ideas', actions:'Recommended Actions — prioritised by ROI', platforms:'Platforms', methods:'Methods' }[activeField];
+      const displayId = { keyMessage:'r-keymessage', productIdeas:'r-products', actions:'r-actions', platforms:'r-platforms', methods:'r-methods' }[activeField];
+      const label = { keyMessage:'Key Message', productIdeas:'Product Ideas', actions:'Recommended Actions — prioritised by ROI', platforms:'Platforms', methods:'Methods' }[activeField];
       if (displayId) {
         document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
         const html = await condense(label, val);
