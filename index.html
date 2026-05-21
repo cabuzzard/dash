@@ -982,7 +982,7 @@ function renderTable() {
     hrow.appendChild(th);
   });
   // Link headers — not sortable
-  ['DB','STE','ROI'].forEach(label => {
+  ['HL','DB','STE','ROI'].forEach(label => {
     const th = document.createElement('th');
     th.textContent = label;
     th.style.cssText = 'text-align:center;cursor:default;width:36px;';
@@ -1118,9 +1118,9 @@ function renderTable() {
     tr.appendChild(hlTd);
 
     tr.insertAdjacentHTML('beforeend',
-      '<td class="link"><a href="' + notionUrl + '" target="_blank" title="Campaign">↗</a></td>' +
-      (c.siteUrl ? '<td class="link"><a href="' + c.siteUrl + '" target="_blank" title="Live Site">↗</a></td>' : '<td class="link" style="opacity:.15;">—</td>') +
-      '<td class="link"><a href="' + (c.research ? 'https://www.notion.so/' + c.research.id : notionUrl) + '" target="_blank" title="Research Notes" style="' + (c.research ? '' : 'opacity:.25;') + '">↗</a></td>'
+      '<td class="link"><a href="' + notionUrl + '" target="_blank">↗</a></td>' +
+      '<td class="link" style="' + (c.siteUrl ? '' : 'opacity:.2;pointer-events:none;') + '"><a href="' + (c.siteUrl || '#') + '" target="_blank">↗</a></td>' +
+      '<td class="link" style="' + (c.research ? '' : 'opacity:.2;pointer-events:none;') + '"><a href="' + (c.research ? 'https://www.notion.so/' + c.research.id : '#') + '" target="_blank">↗</a></td>'
     );
     tbody.appendChild(tr);
     // Make pub cell clickable
