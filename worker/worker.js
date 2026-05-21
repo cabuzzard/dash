@@ -1194,6 +1194,73 @@ Rules:
         return json({ success: true });
       }
 
+      // ── PUBLIC SITE: getPublishedPosts ──────────────────────────────────────
+      // Fetches Publish/Published titles for a campaign, then reads each page's
+      // block children to extract a real excerpt for blog cards.
+      // Used by: dash/web/mobility-mentor-*/index.html
+      if (body.action === "getPublishedPosts") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+
+        const dash = id =>
+          id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+
+        // Query Content Strategy DB for Publish/Published titles linked to this campaign
+        const titleRows = await notionQuery(CONTENT_STRATEGY_DB, {
+          filter: {
+            and: [
+              { or: [
+                { property: "Status", select: { equals: "Publish" } },
+                { property: "Status", select: { equals: "Published" } },
+              ]},
+              { property: "Campaign", relation: { contains: dash(campaignId) } },
+            ]
+          },
+          sorts: [{ property: "Sequence Order", direction: "ascending" }],
+        });
+
+        // For each title, fetch first 10 blocks to extract paragraph text as excerpt
+        const posts = await Promise.all(titleRows.map(async page => {
+          const id        = page.id.replace(/-/g, "");
+          const props     = page.properties;
+          const title     = props.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
+          const stage     = props.Status?.select?.name || "";
+          const cohort    = props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "";
+          const scheduled = props["Scheduled Date"]?.date?.start || "";
+
+          let excerpt = "";
+          try {
+            const blockResp = await fetch(
+              `https://api.notion.com/v1/blocks/${dash(id)}/children?page_size=10`,
+              { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }
+            );
+            const blockData = await blockResp.json();
+            const textParts = [];
+            for (const block of (blockData.results || [])) {
+              let richText = [];
+              if      (block.type === "paragraph")            richText = block.paragraph?.rich_text || [];
+              else if (block.type === "heading_1")            richText = block.heading_1?.rich_text || [];
+              else if (block.type === "heading_2")            richText = block.heading_2?.rich_text || [];
+              else if (block.type === "heading_3")            richText = block.heading_3?.rich_text || [];
+              else if (block.type === "bulleted_list_item")   richText = block.bulleted_list_item?.rich_text || [];
+              else if (block.type === "numbered_list_item")   richText = block.numbered_list_item?.rich_text || [];
+              else if (block.type === "quote")                richText = block.quote?.rich_text || [];
+              const text = richText.map(r => r.plain_text).join("").trim();
+              if (text) textParts.push(text);
+              if (textParts.join(" ").length > 300) break;
+            }
+            excerpt = textParts.join(" ").slice(0, 280).trim();
+            if (textParts.join(" ").length > 280) excerpt += "…";
+          } catch {
+            // excerpt stays empty — front-end shows fallback text
+          }
+
+          return { id, title, stage, cohort, scheduled, excerpt };
+        }));
+
+        return json({ posts });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);
