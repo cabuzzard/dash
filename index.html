@@ -795,7 +795,7 @@ function renderProducts() {
     hrow.appendChild(th);
   });
   const dbTh = document.createElement('th');
-  dbTh.textContent = 'DB';
+  dbTh.textContent = 'HL';
   dbTh.style.cssText = 'text-align:center;cursor:default;';
   hrow.appendChild(dbTh);
   thead.appendChild(hrow);
@@ -891,7 +891,7 @@ function syncStickyThead(cols, sortState, rerender) {
     stickyRow.appendChild(th);
   });
   const dbTh = document.createElement('th');
-  dbTh.textContent = 'DB';
+  dbTh.textContent = 'HL';
   dbTh.style.cssText = 'text-align:center;';
   stickyRow.appendChild(dbTh);
 
@@ -982,7 +982,7 @@ function renderTable() {
     hrow.appendChild(th);
   });
   // Link headers — not sortable
-  ['DB','STE','ROI'].forEach(label => {
+  ['HL','STE','ROI'].forEach(label => {
     const th = document.createElement('th');
     th.textContent = label;
     th.style.cssText = 'text-align:center;cursor:default;width:36px;';
