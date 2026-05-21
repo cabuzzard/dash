@@ -19,6 +19,11 @@
 .status-opt-btn:hover:not(:disabled) { transform: scale(1.05); }
 .status-opt-btn.active { opacity: .35; cursor: default; }
 .status-opt-btn:disabled { cursor: default; }
+/* LOGIN LIST */
+.login-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+.login-name { flex: 1; font-size: 13px; color: #ccc; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls-planning { font-size: 11px; padding: 2px 7px; color: #c9a800; border: 1px solid #6b5a00; font-family: 'Syne', sans-serif; flex-shrink: 0; }
+.ls-launched { font-size: 11px; padding: 2px 7px; color: #5ec95e; border: 1px solid #1e5c1e; font-family: 'Syne', sans-serif; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -110,9 +115,9 @@
 <!-- SEC 4: two col — platforms / methods -->
 <div class="two-col">
   <div class="col">
-    <h2 class="editable" onclick="openModal('platforms')">Platforms</h2>
+    <h2>Platforms <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
     <div class="content">
-      <div class="body-text" id="r-platforms"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
@@ -170,6 +175,25 @@
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeStatusModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN ADD MODAL -->
+<div class="modal-overlay" id="loginModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Login</div>
+      <button class="modal-close" onclick="closeLoginModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Creates a login in Notion linked to this campaign — status set to Planning</div>
+      <input class="modal-ta" id="login-modal-input" type="text" placeholder="Platform name…" style="height:44px;padding:10px 14px;resize:none;" />
+      <div class="modal-status" id="loginModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeLoginModal()">Cancel</button>
+      <button class="modal-btn save" id="loginModalSave" onclick="addLoginFromModal()">Add Login</button>
     </div>
   </div>
 </div>
@@ -309,7 +333,7 @@ async function loadResearch() {
     const r = data.research;
     if (!r) {
       document.getElementById('r-name').textContent = 'No research record — add one in Notion to populate this page.';
-      ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+      ['r-problem','r-keymessage','r-products','r-actions','r-methods','r-news','r-tiktok'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
       });
@@ -347,7 +371,7 @@ async function loadResearch() {
     }
     // Condense all fields in parallel via Claude
     const loading = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-    ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+    ['r-problem','r-keymessage','r-products','r-actions','r-methods','r-news','r-tiktok'].forEach(id => {
       document.getElementById(id).innerHTML = loading;
     });
 
@@ -362,12 +386,11 @@ async function loadResearch() {
     const problemInput = (r.campaignGoal || '') + '\n' + (r.painPoints || '') + '\n' + rawNotes.split(/ROI-RANKED|RECOMMENDED|BOTTOM LINE/i)[0];
     const actionsInput = rawNotes;
 
-    const [problem, keymessage, products, actions, platforms, methods, news, tiktok] = await Promise.all([
+    const [problem, keymessage, products, actions, methods, news, tiktok] = await Promise.all([
       condense('This campaign does X for customer Y — state the core problem this campaign solves in one sentence then list pain points', problemInput),
       condense('Key Message', r.keyMessage),
       condense('Product Ideas', r.productIdeas),
       condense('Recommended Actions — prioritised by ROI, what to do next', actionsInput),
-      condense('Platforms', rawPlatforms),
       condense('Methods', rawMethods),
       condense('News Feed', r.newsFeed),
       condense('TikTok Trends', r.tiktokTrends),
@@ -377,7 +400,6 @@ async function loadResearch() {
     document.getElementById('r-keymessage').innerHTML = keymessage;
     document.getElementById('r-products').innerHTML   = products;
     document.getElementById('r-actions').innerHTML  = actions;
-    document.getElementById('r-platforms').innerHTML = platforms;
     document.getElementById('r-methods').innerHTML   = methods;
     document.getElementById('r-news').innerHTML      = news;
     document.getElementById('r-tiktok').innerHTML    = tiktok;
@@ -513,8 +535,8 @@ async function saveModal() {
       }
       // Re-condense the display
       status.textContent = 'Saved. Updating display…';
-      const displayId = { keyMessage:'r-keymessage', productIdeas:'r-products', actions:'r-actions', platforms:'r-platforms', methods:'r-methods' }[activeField];
-      const label = { keyMessage:'Key Message', productIdeas:'Product Ideas', actions:'Recommended Actions — prioritised by ROI', platforms:'Platforms', methods:'Methods' }[activeField];
+      const displayId = { keyMessage:'r-keymessage', productIdeas:'r-products', actions:'r-actions', methods:'r-methods' }[activeField];
+      const label = { keyMessage:'Key Message', productIdeas:'Product Ideas', actions:'Recommended Actions — prioritised by ROI', methods:'Methods' }[activeField];
       if (displayId) {
         document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
         const html = await condense(label, val);
@@ -577,6 +599,7 @@ document.getElementById('tdModal').addEventListener('click', function(e) {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.activeElement === document.getElementById('td-modal-input')) addTodoFromModal();
+  if (e.key === 'Enter' && document.activeElement === document.getElementById('login-modal-input')) addLoginFromModal();
 });
 
 async function addTodoFromModal() {
@@ -611,6 +634,110 @@ async function deleteTodo(id, btn) {
   } catch(e) {
     btn.disabled = false;
     alert('Error: ' + e.message);
+  }
+}
+
+// ── PLATFORM LOGINS ──────────────────────────────────────────────────
+let LOGIN_ITEMS = [];
+const LOGIN_STATUSES = ['Planning', 'Launched'];
+const LS = { Planning: 'ls-planning', Launched: 'ls-launched' };
+
+function renderLogins() {
+  const el = document.getElementById('login-list');
+  el.innerHTML = '';
+  if (!LOGIN_ITEMS.length) { el.innerHTML = '<div class="empty">No logins yet.</div>'; return; }
+  LOGIN_ITEMS.forEach(l => {
+    const div = document.createElement('div');
+    div.className = 'login-row';
+    const sc = LS[l.status] || 'ls-planning';
+    div.innerHTML = `<span class="${sc}">${l.status||'Planning'}</span><span class="login-name">${l.name}</span><button class="title-status-btn" onclick="openLoginStatusModal('${l.id}','${l.name.replace(/'/g,"\\'")}','${l.status||'Planning'}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${l.id}" target="_blank">↗</a>`;
+    el.appendChild(div);
+  });
+}
+
+async function loadLogins() {
+  const el = document.getElementById('login-list');
+  try {
+    const data = await w('getCampaignLogins', { campaignId: CAMPAIGN_ID });
+    LOGIN_ITEMS = data.logins || [];
+    renderLogins();
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
+  }
+}
+
+function openLoginModal() {
+  document.getElementById('login-modal-input').value = '';
+  document.getElementById('loginModalStatus').textContent = '';
+  document.getElementById('loginModalSave').disabled = false;
+  document.getElementById('loginModalSave').textContent = 'Add Login';
+  document.getElementById('loginModal').classList.add('open');
+  setTimeout(() => document.getElementById('login-modal-input').focus(), 100);
+}
+
+function closeLoginModal() {
+  document.getElementById('loginModal').classList.remove('open');
+}
+
+document.getElementById('loginModal').addEventListener('click', function(e) {
+  if (e.target === this) closeLoginModal();
+});
+
+async function addLoginFromModal() {
+  const input = document.getElementById('login-modal-input');
+  const name = input.value.trim();
+  if (!name) return;
+  const btn = document.getElementById('loginModalSave');
+  const status = document.getElementById('loginModalStatus');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  try {
+    const data = await w('createCampaignLogin', { campaignId: CAMPAIGN_ID, name });
+    LOGIN_ITEMS.push({ id: data.id, name: data.name, status: 'Planning' });
+    renderLogins();
+    status.textContent = 'Added ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeLoginModal, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Add Login';
+  }
+}
+
+function openLoginStatusModal(id, name, currentStatus) {
+  document.getElementById('statusModalTitle').textContent = 'Change Status';
+  document.getElementById('statusModalHint').textContent = name;
+  document.getElementById('statusModalStatus').textContent = '';
+  document.getElementById('statusModalStatus').className = 'modal-status';
+  const grid = document.getElementById('statusOptions');
+  grid.innerHTML = '';
+  LOGIN_STATUSES.forEach(status => {
+    const btn = document.createElement('button');
+    btn.className = 'status-opt-btn' + (status === currentStatus ? ' active' : '');
+    btn.innerHTML = `<span class="${LS[status]||'ls-planning'}" style="pointer-events:none">${status}</span>`;
+    if (status !== currentStatus) btn.onclick = () => applyLoginStatusChange(id, status);
+    else btn.disabled = true;
+    grid.appendChild(btn);
+  });
+  document.getElementById('statusModal').classList.add('open');
+}
+
+async function applyLoginStatusChange(loginId, newStatus) {
+  const status = document.getElementById('statusModalStatus');
+  document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = true);
+  status.textContent = 'Updating…';
+  status.className = 'modal-status';
+  try {
+    await w('updateLoginStatus', { loginId, status: newStatus });
+    status.textContent = 'Updated ✓';
+    status.className = 'modal-status ok';
+    setTimeout(async () => { closeStatusModal(); await loadLogins(); }, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = false);
   }
 }
 
@@ -667,6 +794,7 @@ function init() {
   loadResearch();
   loadTitles();
   loadTodos();
+  loadLogins();
 }
 </script>
 </body>
