@@ -395,7 +395,7 @@ async function loadTitles() {
   try {
     const data = await w('getTitles', { stages: ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'], campaignId: CAMPAIGN_ID });
     const titles = data.titles || [];
-    const DEV_ORDER = { Explode:0, Approved:1, Review:2, Writing:3, Development:4 };
+    const DEV_ORDER = { Development:0, Writing:1, Review:2, Approved:3, Explode:4 };
     const dev = titles
       .filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage))
       .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
