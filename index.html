@@ -724,15 +724,7 @@ let ovLoaded     = false;
 let pinBuffer    = '';
 let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
 
-// Auto-restore session if a valid token exists from this browser session
-if (SESSION_TOKEN) {
-  session.authed = true;
-  document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('pinScreen').classList.add('hidden');
-    if (!ovLoaded) { ovLoaded = true; loadOverview(); }
-    call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
-  });
-}
+// Auto-restore is handled after all functions are defined — see bottom of script
 
 // ── PIN ──────────────────────────────────────────────────────────────
 function pinPress(d) {
@@ -2913,6 +2905,15 @@ function showToast(msg, type) {
   t.textContent = msg;
   t.className = 'toast show ' + (type || '');
   setTimeout(() => { t.className = 'toast'; }, 2500);
+}
+
+// ── AUTO-RESTORE SESSION ─────────────────────────────────────────────
+// All functions are defined above — safe to call them now
+if (SESSION_TOKEN) {
+  session.authed = true;
+  document.getElementById('pinScreen').classList.add('hidden');
+  if (!ovLoaded) { ovLoaded = true; loadOverview(); }
+  call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
 }
 </script>
 </body>

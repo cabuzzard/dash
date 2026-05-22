@@ -237,11 +237,12 @@ async function getCampaigns() {
 
 export default {
   async fetch(request, env) {
-    // Load secrets from environment on every request
-    NOTION_TOKEN = env.NOTION_TOKEN || "";
-    const PIN_VAL        = env.PIN            || "";
-    const HMAC_SECRET    = env.HMAC_SECRET    || "";
-    const TS_SECRET      = env.TURNSTILE_SECRET || "1x0000000000000000000000000000000AA";
+    // Load secrets from environment on every request (.trim() guards against
+    // trailing newlines that piped input (e.g. PowerShell) can introduce)
+    NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+    const PIN_VAL        = (env.PIN             || "").trim();
+    const HMAC_SECRET    = (env.HMAC_SECRET     || "").trim();
+    const TS_SECRET      = (env.TURNSTILE_SECRET|| "1x0000000000000000000000000000000AA").trim();
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
     if (request.method === "GET")      return json({ status: "ok", version: "2026-05-22-02" });
