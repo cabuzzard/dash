@@ -614,6 +614,12 @@
       <input class="modal-input" id="leName" type="text" />
     </div>
     <div class="modal-field">
+      <label class="modal-label">Platform</label>
+      <select class="modal-select" id="lePlatform">
+        <option value="">— no platform —</option>
+      </select>
+    </div>
+    <div class="modal-field">
       <label class="modal-label">Category</label>
       <select class="modal-select" id="leCategory">
         <option value="">— select —</option>
@@ -969,6 +975,11 @@ async function loadPlatformMatrix() {
       });
     });
 
+    // Hide columns with no logins (auto-clean empty platform columns)
+    platPlatforms = platPlatforms.filter(p =>
+      Object.values(platLoginIndex).some(campObj => (campObj[p.id] || []).length > 0)
+    );
+
     renderPlatformMatrix();
   } catch(e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
@@ -1255,6 +1266,16 @@ function openLoginEditModal(login) {
   leLoginData = login;
   document.getElementById('loginEditTitle').textContent = login.name;
   document.getElementById('leName').value     = login.name || '';
+  // Populate platform dropdown
+  const lePlatSel = document.getElementById('lePlatform');
+  lePlatSel.innerHTML = '<option value="">— no platform —</option>';
+  platPlatforms.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    if (p.id === (login.platformIds || [])[0]) opt.selected = true;
+    lePlatSel.appendChild(opt);
+  });
   document.getElementById('leCategory').value = login.category || '';
   document.getElementById('leStatus').value   = login.status || 'Planning';
   document.getElementById('leUsr').value      = login.usr || '';
@@ -1274,8 +1295,10 @@ async function saveLoginEdit() {
   const btn = document.getElementById('leSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving...';
   try {
+    const platformId = document.getElementById('lePlatform').value || undefined;
     const updated = {
       name:       document.getElementById('leName').value.trim(),
+      platformId,
       category:   document.getElementById('leCategory').value,
       status:     document.getElementById('leStatus').value,
       usr:        document.getElementById('leUsr').value.trim(),
@@ -1284,16 +1307,9 @@ async function saveLoginEdit() {
       bio:        document.getElementById('leBio').value.trim(),
     };
     await call('updateLoginFull', { loginId: leLoginId, ...updated });
-    // Update index in place
-    Object.values(platLoginIndex).forEach(platObj => {
-      Object.values(platObj).forEach(arr => {
-        const idx = arr.findIndex(l => l.id === leLoginId);
-        if (idx !== -1) arr[idx] = { ...arr[idx], ...updated };
-      });
-    });
     closeLoginEditModal();
-    renderPlatformMatrix();
     showToast('Saved ✓', 'success');
+    loadPlatformMatrix(); // full reload rebuilds index + filters empty columns
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
@@ -1304,15 +1320,9 @@ async function deleteLoginCell() {
   if (!confirm('Delete this login record?')) return;
   try {
     await call('deleteLogin', { loginId: leLoginId });
-    // Remove from index
-    Object.values(platLoginIndex).forEach(platObj => {
-      Object.keys(platObj).forEach(pid => {
-        platObj[pid] = platObj[pid].filter(l => l.id !== leLoginId);
-      });
-    });
     closeLoginEditModal();
-    renderPlatformMatrix();
     showToast('Deleted ✓', 'success');
+    loadPlatformMatrix(); // full reload rebuilds index + filters empty columns
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
   }
