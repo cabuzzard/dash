@@ -870,6 +870,8 @@ function filterLmPlatforms() {
     div.textContent = '+ Create "' + query + '"';
     div.onmousedown = async () => {
       div.textContent = 'Creating…';
+      const saveBtn = document.getElementById('lm-save');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Creating platform…'; }
       try {
         const res = await w('createPlatform', { title: query, status: 'Publish' });
         const newP = { id: res.id, name: query, status: 'Publish' };
@@ -877,6 +879,8 @@ function filterLmPlatforms() {
         selectLmPlatform(res.id, query);
       } catch(e) {
         div.textContent = 'Error: ' + e.message;
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Add Login'; }
       }
     };
     dd.appendChild(div);
@@ -929,6 +933,8 @@ function filterLePlatforms() {
     div.textContent = '+ Create "' + query + '"';
     div.onmousedown = async () => {
       div.textContent = 'Creating…';
+      const saveBtn = document.getElementById('le-save');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Creating platform…'; }
       try {
         const res = await w('createPlatform', { title: query, status: 'Publish' });
         const newP = { id: res.id, name: query, status: 'Publish' };
@@ -936,6 +942,8 @@ function filterLePlatforms() {
         selectLePlatform(res.id, query);
       } catch(e) {
         div.textContent = 'Error: ' + e.message;
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
       }
     };
     dd.appendChild(div);
