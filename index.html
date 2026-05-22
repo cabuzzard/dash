@@ -921,7 +921,7 @@ function switchTab(name) {
   if (name === 'products'    && !prodLoaded)      { prodLoaded      = true; loadProducts(); }
   if (name === 'development' && !devLoaded)       { devLoaded       = true; loadDev(); }
   if (name === 'td'          && !tdTabLoaded)     { tdTabLoaded     = true; loadTdTab(); }
-  if (name === 'platforms'   && !platMatrixLoaded){ platMatrixLoaded = true; loadPlatformMatrix(); }
+  if (name === 'platforms') { loadPlatformMatrix(); }
 }
 
 // ── PLATFORM MATRIX ───────────────────────────────────────────────────
