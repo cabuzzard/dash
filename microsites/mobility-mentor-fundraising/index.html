@@ -216,16 +216,16 @@ select.modal-ta { height: 32px !important; padding: 0 8px !important; }
     <div class="modal-body">
       <div class="modal-hint">Creates a login in Notion linked to this campaign — appears in Hermes platform matrix at campaign × platform</div>
       <label class="lm-label">Name</label>
-      <input class="modal-ta" id="lm-name" type="text" placeholder="Login name…" style="height:40px;padding:10px 14px;margin-bottom:12px;" autocomplete="off" />
+      <input class="modal-ta" id="lm-name" type="text" placeholder="Login name…" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
       <label class="lm-label">Platform <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— type to search, or type a new name to create</span></label>
       <div style="position:relative;margin-bottom:12px;" id="lm-plat-wrap">
-        <input class="modal-ta" id="lm-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:40px;padding:10px 14px;" autocomplete="off"
+        <input class="modal-ta" id="lm-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:32px;padding:5px 10px;" autocomplete="off"
           oninput="filterLmPlatforms()" onfocus="filterLmPlatforms()" />
         <input type="hidden" id="lm-plat-id" value="" />
         <div id="lm-plat-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
       </div>
       <label class="lm-label">Category <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
-      <select class="modal-ta" id="lm-category" style="height:40px;padding:0 10px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
+      <select class="modal-ta" id="lm-category" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
         <option value="">— Category —</option>
         <option value="Personal">Personal</option>
         <option value="Company Page">Company Page</option>
@@ -234,16 +234,16 @@ select.modal-ta { height: 32px !important; padding: 0 8px !important; }
         <option value="Affiliate">Affiliate</option>
       </select>
       <label class="lm-label">Status</label>
-      <select class="modal-ta" id="lm-login-status" style="height:40px;padding:0 10px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
+      <select class="modal-ta" id="lm-login-status" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
         <option value="Planning">Planning</option>
         <option value="Active">Active</option>
         <option value="Paused">Paused</option>
         <option value="Inactive">Inactive</option>
       </select>
       <label class="lm-label">Username / handle</label>
-      <input class="modal-ta" id="lm-usr" type="text" placeholder="@handle or email…" style="height:40px;padding:10px 14px;margin-bottom:12px;" autocomplete="off" />
+      <input class="modal-ta" id="lm-usr" type="text" placeholder="@handle or email…" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
       <label class="lm-label">Account URL</label>
-      <input class="modal-ta" id="lm-url" type="text" placeholder="https://…" style="height:40px;padding:10px 14px;margin-bottom:4px;" autocomplete="off" />
+      <input class="modal-ta" id="lm-url" type="text" placeholder="https://…" style="height:32px;padding:5px 10px;margin-bottom:4px;" autocomplete="off" />
       <div class="modal-status" id="lm-status-msg"></div>
     </div>
     <div class="modal-foot">
@@ -262,16 +262,16 @@ select.modal-ta { height: 32px !important; padding: 0 8px !important; }
     </div>
     <div class="modal-body">
       <label class="lm-label">Name</label>
-      <input class="modal-ta" id="le-name" type="text" style="height:40px;padding:10px 14px;margin-bottom:12px;" autocomplete="off" />
+      <input class="modal-ta" id="le-name" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
       <label class="lm-label">Platform <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— type to search, or create new</span></label>
       <div style="position:relative;margin-bottom:12px;" id="le-plat-wrap">
-        <input class="modal-ta" id="le-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:40px;padding:10px 14px;" autocomplete="off"
+        <input class="modal-ta" id="le-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:32px;padding:5px 10px;" autocomplete="off"
           oninput="filterLePlatforms()" onfocus="filterLePlatforms()" />
         <input type="hidden" id="le-plat-id" value="" />
         <div id="le-plat-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
       </div>
       <label class="lm-label">Category <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
-      <select class="modal-ta" id="le-category" style="height:40px;padding:0 10px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
+      <select class="modal-ta" id="le-category" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
         <option value="">— Category —</option>
         <option value="Personal">Personal</option>
         <option value="Company Page">Company Page</option>
@@ -280,16 +280,16 @@ select.modal-ta { height: 32px !important; padding: 0 8px !important; }
         <option value="Affiliate">Affiliate</option>
       </select>
       <label class="lm-label">Status</label>
-      <select class="modal-ta" id="le-status" style="height:40px;padding:0 10px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
+      <select class="modal-ta" id="le-status" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
         <option value="Planning">Planning</option>
         <option value="Active">Active</option>
         <option value="Paused">Paused</option>
         <option value="Inactive">Inactive</option>
       </select>
       <label class="lm-label">Username / handle</label>
-      <input class="modal-ta" id="le-usr" type="text" style="height:40px;padding:10px 14px;margin-bottom:12px;" autocomplete="off" />
+      <input class="modal-ta" id="le-usr" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
       <label class="lm-label">Account URL</label>
-      <input class="modal-ta" id="le-url" type="text" style="height:40px;padding:10px 14px;margin-bottom:12px;" autocomplete="off" />
+      <input class="modal-ta" id="le-url" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
       <div style="font-size:11px;color:#555;margin-bottom:4px;">To change platform or campaign relations, open the full record in Notion:</div>
       <a id="le-notion-link" href="#" target="_blank" class="notion-link" style="font-size:12px;">↗ Open in Notion</a>
       <div class="modal-status" id="le-status-msg"></div>
@@ -310,7 +310,7 @@ select.modal-ta { height: 32px !important; padding: 0 8px !important; }
     </div>
     <div class="modal-body">
       <div class="modal-hint">Task will be created in Main TD and linked to this campaign</div>
-      <input class="modal-ta" id="td-modal-input" type="text" placeholder="Task name…" style="height:44px;padding:10px 14px;resize:none;" />
+      <input class="modal-ta" id="td-modal-input" type="text" placeholder="Task name…" style="height:32px;padding:5px 10px;resize:none;" />
       <div class="modal-status" id="tdModalStatus"></div>
     </div>
     <div class="modal-foot">
