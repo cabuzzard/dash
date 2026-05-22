@@ -91,6 +91,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
       <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/34b1f7d3a4bb81b6a8a8fee04df94807" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
+      <div class="field"><div class="field-label">Live Site</div><div class="field-value" id="r-livesite"></div></div>
     </div>
   </div>
   <div class="col">
@@ -348,7 +349,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "3491f7d3a4bb8181b9a2cd5dc7bdf21a"; // mobility-mentor-fundraising
 const RESEARCH_ID = "3661f7d3a4bb81adaaadc2ce80784112"; // research
-const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/mobility-mentor-fundraising/";
+const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/trail-notes/";
 const CORRECT_PIN = '1246';
 let pin = '';
 
@@ -1152,6 +1153,13 @@ async function applyStatusChange(titleId, newStage) {
 }
 
 function init() {
+  const liveSiteEl = document.getElementById('r-livesite');
+  if (liveSiteEl) {
+    if (typeof SITE_URL !== 'undefined' && SITE_URL) {
+      const display = SITE_URL.replace('https://cabuzzard.github.io/dash/','').replace(/\/$/,'');
+      liveSiteEl.innerHTML = '<a href="' + SITE_URL + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + display + '</a>';
+    } else { liveSiteEl.innerHTML = '<span class="empty">—</span>'; }
+  }
   loadResearch();
   loadTitles();
   loadTodos();

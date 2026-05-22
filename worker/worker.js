@@ -9,6 +9,7 @@ const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
 const PLATFORMS_DB       = "8248b700ebb7428aa28d8b5246509898";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
+const LEADS_DB           = "e4518a459f004eb0b9646e48d8718705";
 const PIN                = "1246";
 
 const CORS = {
@@ -212,6 +213,34 @@ export default {
     let body;
     try { body = await request.json(); }
     catch { return json({ error: "Invalid JSON" }, 400); }
+
+    // ── submitLead — public, no PIN required ──────────────────────────
+    if (body.action === "submitLead") {
+      const { campaign, email, phone, fraudType, note } = body;
+      if (!email || !phone || !fraudType) return json({ error: "email, phone, and fraudType required" }, 400);
+      const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+      const now = new Date().toISOString();
+      const name = "Lead — " + (campaign || "unknown") + " — " + now.slice(0,16).replace("T"," ");
+      const resp = await fetch("https://api.notion.com/v1/pages", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          parent: { database_id: LEADS_DB },
+          properties: {
+            Name:          { title:        [{ type: "text", text: { content: name } }] },
+            Campaign:      { rich_text:    [{ type: "text", text: { content: campaign || "" } }] },
+            Email:         { email:        email },
+            Phone:         { phone_number: phone },
+            "Fraud Type":  { select:       { name: fraudType } },
+            Note:          { rich_text:    [{ type: "text", text: { content: (note || "").slice(0,600) } }] },
+            Status:        { select:       { name: "New" } },
+          }
+        }),
+      });
+      const result = await resp.json();
+      if (!resp.ok) return json({ error: result.message || "Lead submission failed" }, resp.status);
+      return json({ success: true });
+    }
 
     if (body.pin !== PIN) return json({ error: "Unauthorized" }, 401);
 
