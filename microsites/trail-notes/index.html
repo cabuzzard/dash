@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <link rel="stylesheet" href="../style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Webguy — AI Content Management</title>
+<title>Webguy — Trail Notes</title>
 <style>
 /* STATUS CHANGE BUTTON */
 .title-status-btn {
@@ -20,10 +20,23 @@
 .status-opt-btn.active { opacity: .35; cursor: default; }
 .status-opt-btn:disabled { cursor: default; }
 /* LOGIN LIST */
-.login-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
-.login-name { flex: 1; font-size: 13px; color: #ccc; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ls-planning { font-size: 11px; padding: 2px 7px; color: #c9a800; border: 1px solid #6b5a00; font-family: 'Syne', sans-serif; flex-shrink: 0; }
-.ls-launched { font-size: 11px; padding: 2px 7px; color: #5ec95e; border: 1px solid #1e5c1e; font-family: 'Syne', sans-serif; flex-shrink: 0; }
+.login-platform-group { margin-bottom: 14px; }
+.login-platform-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #555; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; margin-bottom: 6px; }
+.login-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.login-row:last-child { border-bottom: none; }
+.login-meta { flex: 1; min-width: 0; }
+.login-name { font-size: 13px; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.login-sub  { font-size: 11px; color: #555; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.login-cat  { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; letter-spacing: .04em; }
+.cat-personal     { color: #378ADD; border: 1px solid #378ADD44; background: #378ADD11; }
+.cat-company-page { color: #1D9E75; border: 1px solid #1D9E7544; background: #1D9E7511; }
+.cat-client       { color: #7F77DD; border: 1px solid #7F77DD44; background: #7F77DD11; }
+.cat-shared       { color: #BA7517; border: 1px solid #BA751744; background: #BA751711; }
+.cat-affiliate    { color: #D85A30; border: 1px solid #D85A3044; background: #D85A3011; }
+.ls-active   { font-size: 10px; padding: 2px 6px; color: #5ec95e; border: 1px solid #1e5c1e; flex-shrink: 0; }
+.ls-planning { font-size: 10px; padding: 2px 6px; color: #c9a800; border: 1px solid #6b5a00; flex-shrink: 0; }
+.ls-paused   { font-size: 10px; padding: 2px 6px; color: #888;    border: 1px solid #444;    flex-shrink: 0; }
+.ls-inactive { font-size: 10px; padding: 2px 6px; color: #555;    border: 1px solid #333;    flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -62,7 +75,7 @@
     <div class="content">
       <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
-      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/34b1f7d3a4bb81b6a8a8fee04df94807" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3491f7d3a4bb8181b9a2cd5dc7bdf21a" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
     </div>
   </div>
@@ -187,8 +200,21 @@
       <button class="modal-close" onclick="closeLoginModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="modal-hint">Creates a login in Notion linked to this campaign — status set to Planning</div>
-      <input class="modal-ta" id="login-modal-input" type="text" placeholder="Platform name…" style="height:44px;padding:10px 14px;resize:none;" />
+      <div class="modal-hint">Creates a login in Notion linked to this campaign and platform</div>
+      <input class="modal-ta" id="login-modal-name" type="text" placeholder="Login name…" style="height:44px;padding:10px 14px;resize:none;margin-bottom:8px;" />
+      <select class="modal-ta" id="login-modal-platform" style="height:40px;padding:0 10px;margin-bottom:8px;background:#111;color:#fff;border:1px solid #2a2a2a;">
+        <option value="">— Platform —</option>
+      </select>
+      <select class="modal-ta" id="login-modal-category" style="height:40px;padding:0 10px;margin-bottom:8px;background:#111;color:#fff;border:1px solid #2a2a2a;">
+        <option value="">— Category —</option>
+        <option value="Personal">Personal</option>
+        <option value="Company Page">Company Page</option>
+        <option value="Client">Client</option>
+        <option value="Shared">Shared</option>
+        <option value="Affiliate">Affiliate</option>
+      </select>
+      <input class="modal-ta" id="login-modal-usr" type="text" placeholder="Username / handle…" style="height:40px;padding:10px 14px;resize:none;margin-bottom:8px;" />
+      <input class="modal-ta" id="login-modal-url" type="text" placeholder="Account URL…" style="height:40px;padding:10px 14px;resize:none;" />
       <div class="modal-status" id="loginModalStatus"></div>
     </div>
     <div class="modal-foot">
@@ -638,41 +664,130 @@ async function deleteTodo(id, btn) {
 }
 
 // ── PLATFORM LOGINS ──────────────────────────────────────────────────
-let LOGIN_ITEMS = [];
-const LOGIN_STATUSES = ['Planning', 'Launched'];
-const LS = { Planning: 'ls-planning', Launched: 'ls-launched' };
+let LOGIN_ITEMS  = [];
+let ALL_PLATFORMS = [];
+
+const CAT_CLASS = {
+  'Personal':     'cat-personal',
+  'Company Page': 'cat-company-page',
+  'Client':       'cat-client',
+  'Shared':       'cat-shared',
+  'Affiliate':    'cat-affiliate',
+};
+const LS_CLASS = {
+  'Active':   'ls-active',
+  'Planning': 'ls-planning',
+  'Paused':   'ls-paused',
+  'Inactive': 'ls-inactive',
+  'development': 'ls-paused',
+};
 
 function renderLogins() {
   const el = document.getElementById('login-list');
   el.innerHTML = '';
   if (!LOGIN_ITEMS.length) { el.innerHTML = '<div class="empty">No logins yet.</div>'; return; }
+
+  // Build platform name lookup
+  const platName = {};
+  ALL_PLATFORMS.forEach(p => { platName[p.id] = p.name; });
+
+  // Group by first platformId
+  const grouped = {};
+  const ungrouped = [];
   LOGIN_ITEMS.forEach(l => {
+    const pid = (l.platformIds || [])[0];
+    if (pid) {
+      if (!grouped[pid]) grouped[pid] = [];
+      grouped[pid].push(l);
+    } else {
+      ungrouped.push(l);
+    }
+  });
+
+  const renderRow = (l) => {
     const div = document.createElement('div');
     div.className = 'login-row';
-    const sc = LS[l.status] || 'ls-planning';
-    div.innerHTML = `<span class="${sc}">${l.status||'Planning'}</span><span class="login-name">${l.name}</span><button class="title-status-btn" onclick="openLoginStatusModal('${l.id}','${l.name.replace(/'/g,"\\'")}','${l.status||'Planning'}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${l.id}" target="_blank">↗</a>`;
-    el.appendChild(div);
+    const cat = l.category || '';
+    const catCls = CAT_CLASS[cat] || '';
+    const stCls  = LS_CLASS[l.status] || 'ls-planning';
+    const sub = [l.usr, l.accountUrl].filter(Boolean).join(' · ');
+    div.innerHTML =
+      (cat ? `<span class="login-cat ${catCls}">${cat}</span>` : '') +
+      `<div class="login-meta">
+        <div class="login-name">${l.name}</div>
+        ${sub ? `<div class="login-sub">${sub}</div>` : ''}
+      </div>` +
+      `<span class="${stCls}">${l.status || 'Planning'}</span>` +
+      `<button class="title-status-btn" onclick="openLoginStatusModal('${l.id}','${(l.name||'').replace(/'/g,"\\'")}','${l.status||'Planning'}')" title="Change status">⇄</button>` +
+      `<a class="title-link" href="https://www.notion.so/${l.id}" target="_blank">↗</a>`;
+    return div;
+  };
+
+  // Render grouped by platform
+  const sortedPlatIds = Object.keys(grouped).sort((a,b) => (platName[a]||'').localeCompare(platName[b]||''));
+  sortedPlatIds.forEach(pid => {
+    const grp = document.createElement('div');
+    grp.className = 'login-platform-group';
+    const lbl = document.createElement('div');
+    lbl.className = 'login-platform-label';
+    lbl.textContent = platName[pid] || 'Unknown Platform';
+    grp.appendChild(lbl);
+    grouped[pid].forEach(l => grp.appendChild(renderRow(l)));
+    el.appendChild(grp);
   });
+
+  // Ungrouped at bottom
+  if (ungrouped.length) {
+    const grp = document.createElement('div');
+    grp.className = 'login-platform-group';
+    const lbl = document.createElement('div');
+    lbl.className = 'login-platform-label';
+    lbl.textContent = 'No Platform';
+    grp.appendChild(lbl);
+    ungrouped.forEach(l => grp.appendChild(renderRow(l)));
+    el.appendChild(grp);
+  }
 }
 
 async function loadLogins() {
   const el = document.getElementById('login-list');
   try {
-    const data = await w('getCampaignLogins', { campaignId: CAMPAIGN_ID });
-    LOGIN_ITEMS = data.logins || [];
+    const [loginData, platData] = await Promise.all([
+      w('getLogins'),
+      w('getPlatforms'),
+    ]);
+    ALL_PLATFORMS = platData.platforms || [];
+    // Filter to logins for this campaign
+    LOGIN_ITEMS = (loginData.logins || []).filter(l =>
+      (l.campaignIds || []).includes(CAMPAIGN_ID)
+    );
     renderLogins();
+    // Populate platform dropdown in add modal
+    const sel = document.getElementById('login-modal-platform');
+    if (sel) {
+      sel.innerHTML = '<option value="">— Platform —</option>';
+      ALL_PLATFORMS.filter(p => p.status === 'Publish').forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id; opt.textContent = p.name;
+        sel.appendChild(opt);
+      });
+    }
   } catch(e) {
     el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
   }
 }
 
 function openLoginModal() {
-  document.getElementById('login-modal-input').value = '';
+  document.getElementById('login-modal-name').value = '';
+  document.getElementById('login-modal-platform').value = '';
+  document.getElementById('login-modal-category').value = '';
+  document.getElementById('login-modal-usr').value = '';
+  document.getElementById('login-modal-url').value = '';
   document.getElementById('loginModalStatus').textContent = '';
   document.getElementById('loginModalSave').disabled = false;
   document.getElementById('loginModalSave').textContent = 'Add Login';
   document.getElementById('loginModal').classList.add('open');
-  setTimeout(() => document.getElementById('login-modal-input').focus(), 100);
+  setTimeout(() => document.getElementById('login-modal-name').focus(), 100);
 }
 
 function closeLoginModal() {
@@ -684,16 +799,22 @@ document.getElementById('loginModal').addEventListener('click', function(e) {
 });
 
 async function addLoginFromModal() {
-  const input = document.getElementById('login-modal-input');
-  const name = input.value.trim();
+  const name = document.getElementById('login-modal-name').value.trim();
   if (!name) return;
-  const btn = document.getElementById('loginModalSave');
+  const btn    = document.getElementById('loginModalSave');
   const status = document.getElementById('loginModalStatus');
   btn.disabled = true;
   btn.textContent = 'Adding…';
   try {
-    const data = await w('createCampaignLogin', { campaignId: CAMPAIGN_ID, name });
-    LOGIN_ITEMS.push({ id: data.id, name: data.name, status: 'Planning' });
+    const res = await w('createLoginFull', {
+      name,
+      campaignId: CAMPAIGN_ID,
+      platformId: document.getElementById('login-modal-platform').value || undefined,
+      category:   document.getElementById('login-modal-category').value || undefined,
+      usr:        document.getElementById('login-modal-usr').value.trim() || undefined,
+      accountUrl: document.getElementById('login-modal-url').value.trim() || undefined,
+    });
+    LOGIN_ITEMS.push(res.login);
     renderLogins();
     status.textContent = 'Added ✓';
     status.className = 'modal-status ok';
@@ -713,10 +834,10 @@ function openLoginStatusModal(id, name, currentStatus) {
   document.getElementById('statusModalStatus').className = 'modal-status';
   const grid = document.getElementById('statusOptions');
   grid.innerHTML = '';
-  LOGIN_STATUSES.forEach(status => {
+  ['Planning','Active','Paused','Inactive'].forEach(status => {
     const btn = document.createElement('button');
     btn.className = 'status-opt-btn' + (status === currentStatus ? ' active' : '');
-    btn.innerHTML = `<span class="${LS[status]||'ls-planning'}" style="pointer-events:none">${status}</span>`;
+    btn.innerHTML = `<span class="${LS_CLASS[status]||'ls-planning'}" style="pointer-events:none">${status}</span>`;
     if (status !== currentStatus) btn.onclick = () => applyLoginStatusChange(id, status);
     else btn.disabled = true;
     grid.appendChild(btn);
@@ -730,10 +851,12 @@ async function applyLoginStatusChange(loginId, newStatus) {
   status.textContent = 'Updating…';
   status.className = 'modal-status';
   try {
-    await w('updateLoginStatus', { loginId, status: newStatus });
+    await w('updateLoginFull', { loginId, status: newStatus });
+    const l = LOGIN_ITEMS.find(x => x.id === loginId);
+    if (l) l.status = newStatus;
     status.textContent = 'Updated ✓';
     status.className = 'modal-status ok';
-    setTimeout(async () => { closeStatusModal(); await loadLogins(); }, 700);
+    setTimeout(() => { closeStatusModal(); renderLogins(); }, 500);
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.className = 'modal-status err';

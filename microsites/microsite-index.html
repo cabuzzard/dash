@@ -5,6 +5,39 @@
 <link rel="stylesheet" href="../style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Webguy — AI Content Management</title>
+<style>
+/* STATUS CHANGE BUTTON */
+.title-status-btn {
+  font-size: 11px; color: #2a2a2a; background: none; border: 1px solid #1a1a1a;
+  padding: 1px 6px; cursor: pointer; font-family: 'Syne', sans-serif;
+  flex-shrink: 0; transition: all .15s; line-height: 1.4;
+}
+.title-status-btn:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
+/* STATUS OPTION GRID */
+.status-option-grid { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 4px; }
+.status-opt-btn { background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; transition: opacity .15s, transform .1s; }
+.status-opt-btn:hover:not(:disabled) { transform: scale(1.05); }
+.status-opt-btn.active { opacity: .35; cursor: default; }
+.status-opt-btn:disabled { cursor: default; }
+/* LOGIN LIST */
+.login-platform-group { margin-bottom: 14px; }
+.login-platform-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #555; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; margin-bottom: 6px; }
+.login-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.login-row:last-child { border-bottom: none; }
+.login-meta { flex: 1; min-width: 0; }
+.login-name { font-size: 13px; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.login-sub  { font-size: 11px; color: #555; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.login-cat  { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; letter-spacing: .04em; }
+.cat-personal     { color: #378ADD; border: 1px solid #378ADD44; background: #378ADD11; }
+.cat-company-page { color: #1D9E75; border: 1px solid #1D9E7544; background: #1D9E7511; }
+.cat-client       { color: #7F77DD; border: 1px solid #7F77DD44; background: #7F77DD11; }
+.cat-shared       { color: #BA7517; border: 1px solid #BA751744; background: #BA751711; }
+.cat-affiliate    { color: #D85A30; border: 1px solid #D85A3044; background: #D85A3011; }
+.ls-active   { font-size: 10px; padding: 2px 6px; color: #5ec95e; border: 1px solid #1e5c1e; flex-shrink: 0; }
+.ls-planning { font-size: 10px; padding: 2px 6px; color: #c9a800; border: 1px solid #6b5a00; flex-shrink: 0; }
+.ls-paused   { font-size: 10px; padding: 2px 6px; color: #888;    border: 1px solid #444;    flex-shrink: 0; }
+.ls-inactive { font-size: 10px; padding: 2px 6px; color: #555;    border: 1px solid #333;    flex-shrink: 0; }
+</style>
 </head>
 <body>
 
@@ -42,7 +75,7 @@
     <div class="content">
       <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
-      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3611f7d3a4bb81fe9ebcfe01813d9ac2" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3651f7d3a4bb81a48701ea1dc65cc117" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/34b1f7d3a4bb81b6a8a8fee04df94807" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
     </div>
   </div>
@@ -63,13 +96,13 @@
     </div>
   </div>
   <div class="col">
-    <h2>Key Message</h2>
+    <h2 class="editable" onclick="openModal('keyMessage')">Key Message</h2>
     <div class="content">
       <div class="body-text" id="r-keymessage"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
-    <h2>Main Problem</h2>
+    <h2 class="editable" onclick="openModal('mainProblem')">Main Problem</h2>
     <div class="content">
       <div class="body-text" id="r-problem"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -95,9 +128,9 @@
 <!-- SEC 4: two col — platforms / methods -->
 <div class="two-col">
   <div class="col">
-    <h2 class="editable" onclick="openModal('platforms')">Platforms</h2>
+    <h2>Platforms <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
     <div class="content">
-      <div class="body-text" id="r-platforms"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
@@ -141,6 +174,56 @@
 </div>
 
 
+<!-- STATUS CHANGE MODAL -->
+<div class="modal-overlay" id="statusModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="statusModalTitle">Change Status</div>
+      <button class="modal-close" onclick="closeStatusModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="statusModalHint"></div>
+      <div class="status-option-grid" id="statusOptions"></div>
+      <div class="modal-status" id="statusModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeStatusModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN ADD MODAL -->
+<div class="modal-overlay" id="loginModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Login</div>
+      <button class="modal-close" onclick="closeLoginModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Creates a login in Notion linked to this campaign and platform</div>
+      <input class="modal-ta" id="login-modal-name" type="text" placeholder="Login name…" style="height:44px;padding:10px 14px;resize:none;margin-bottom:8px;" />
+      <select class="modal-ta" id="login-modal-platform" style="height:40px;padding:0 10px;margin-bottom:8px;background:#111;color:#fff;border:1px solid #2a2a2a;">
+        <option value="">— Platform —</option>
+      </select>
+      <select class="modal-ta" id="login-modal-category" style="height:40px;padding:0 10px;margin-bottom:8px;background:#111;color:#fff;border:1px solid #2a2a2a;">
+        <option value="">— Category —</option>
+        <option value="Personal">Personal</option>
+        <option value="Company Page">Company Page</option>
+        <option value="Client">Client</option>
+        <option value="Shared">Shared</option>
+        <option value="Affiliate">Affiliate</option>
+      </select>
+      <input class="modal-ta" id="login-modal-usr" type="text" placeholder="Username / handle…" style="height:40px;padding:10px 14px;resize:none;margin-bottom:8px;" />
+      <input class="modal-ta" id="login-modal-url" type="text" placeholder="Account URL…" style="height:40px;padding:10px 14px;resize:none;" />
+      <div class="modal-status" id="loginModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeLoginModal()">Cancel</button>
+      <button class="modal-btn save" id="loginModalSave" onclick="addLoginFromModal()">Add Login</button>
+    </div>
+  </div>
+</div>
+
 <!-- TD ADD MODAL -->
 <div class="modal-overlay" id="tdModal">
   <div class="modal">
@@ -180,9 +263,9 @@
 </div>
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-const CAMPAIGN_ID = "3611f7d3a4bb81fe9ebcfe01813d9ac2"; // main-notion-ai-content-management
-const RESEARCH_ID = "3651f7d3a4bb81a48701ea1dc65cc117"; // research
-const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/main-notion-ai-content-management/";
+const CAMPAIGN_ID = "34b1f7d3a4bb81b6a8a8fee04df94807"; // mobility-mentor-fundraising
+const RESEARCH_ID = "3661f7d3a4bb81adaaadc2ce80784112"; // research
+const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/mobility-mentor-fundraising/";
 const CORRECT_PIN = '1246';
 let pin = '';
 
@@ -276,7 +359,7 @@ async function loadResearch() {
     const r = data.research;
     if (!r) {
       document.getElementById('r-name').textContent = 'No research record — add one in Notion to populate this page.';
-      ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+      ['r-problem','r-keymessage','r-products','r-actions','r-methods','r-news','r-tiktok'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
       });
@@ -299,6 +382,8 @@ async function loadResearch() {
       keywords:     r.keywords || '',
       productIdeas: r.productIdeas || '',
       notes:        r.notes || '',
+      keyMessage:   r.keyMessage || '',
+      painPoints:   r.painPoints || '',
       rawPlatforms: pmSplitRaw[0].replace(/ACTIVE PLATFORMS:\s*/i,'').replace(/<br\s*\/?>/gi,'\n').trim(),
       rawMethods:   pmSplitRaw.length > 1 ? pmSplitRaw[1].replace(/<br\s*\/?>/gi,'\n').trim() : '',
     };
@@ -312,7 +397,7 @@ async function loadResearch() {
     }
     // Condense all fields in parallel via Claude
     const loading = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-    ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+    ['r-problem','r-keymessage','r-products','r-actions','r-methods','r-news','r-tiktok'].forEach(id => {
       document.getElementById(id).innerHTML = loading;
     });
 
@@ -327,12 +412,11 @@ async function loadResearch() {
     const problemInput = (r.campaignGoal || '') + '\n' + (r.painPoints || '') + '\n' + rawNotes.split(/ROI-RANKED|RECOMMENDED|BOTTOM LINE/i)[0];
     const actionsInput = rawNotes;
 
-    const [problem, keymessage, products, actions, platforms, methods, news, tiktok] = await Promise.all([
+    const [problem, keymessage, products, actions, methods, news, tiktok] = await Promise.all([
       condense('This campaign does X for customer Y — state the core problem this campaign solves in one sentence then list pain points', problemInput),
       condense('Key Message', r.keyMessage),
       condense('Product Ideas', r.productIdeas),
       condense('Recommended Actions — prioritised by ROI, what to do next', actionsInput),
-      condense('Platforms', rawPlatforms),
       condense('Methods', rawMethods),
       condense('News Feed', r.newsFeed),
       condense('TikTok Trends', r.tiktokTrends),
@@ -342,7 +426,6 @@ async function loadResearch() {
     document.getElementById('r-keymessage').innerHTML = keymessage;
     document.getElementById('r-products').innerHTML   = products;
     document.getElementById('r-actions').innerHTML  = actions;
-    document.getElementById('r-platforms').innerHTML = platforms;
     document.getElementById('r-methods').innerHTML   = methods;
     document.getElementById('r-news').innerHTML      = news;
     document.getElementById('r-tiktok').innerHTML    = tiktok;
@@ -360,7 +443,10 @@ async function loadTitles() {
   try {
     const data = await w('getTitles', { stages: ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'], campaignId: CAMPAIGN_ID });
     const titles = data.titles || [];
-    const dev = titles.filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage));
+    const DEV_ORDER = { Explode:0, Approved:1, Review:2, Writing:3, Development:4 };
+    const dev = titles
+      .filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage))
+      .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
     const pub = titles.filter(t => ['Publish','Published','Done'].includes(t.stage));
     function render(arr, el) {
       el.innerHTML = '';
@@ -368,7 +454,7 @@ async function loadTitles() {
       arr.forEach(t => {
         const div = document.createElement('div');
         div.className = 'title-row';
-        div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><span class="title-group">${t.cohort||''}</span><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+        div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><span class="title-group">${t.cohort||''}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
         el.appendChild(div);
       });
     }
@@ -387,6 +473,8 @@ let RESEARCH_ID_LIVE = '';
 // Modal config per field
 const MODAL_CFG = {
   keywords:     { title: 'Keywords',            hint: 'Comma-separated keywords for this campaign', target: 'campaign' },
+  keyMessage:   { title: 'Key Message',         hint: 'Core positioning statement for this campaign', target: 'research', field: 'keyMessage' },
+  mainProblem:  { title: 'Main Problem',        hint: 'Pain points this campaign addresses', target: 'campaignField', field: 'painPoints' },
   productIdeas: { title: 'Product Ideas',        hint: 'Describe product ideas, offers, and pipeline', target: 'research', field: 'productIdeas' },
   actions:      { title: 'Recommended Actions',  hint: 'ROI-ranked actions and next steps', target: 'research', field: 'notes' },
   platforms:    { title: 'Platforms',            hint: 'Active and planned platforms for this campaign', target: 'research', field: 'platforms', combined: true },
@@ -408,6 +496,8 @@ function openModal(field) {
   // Pre-fill with raw value
   let val = '';
   if (field === 'keywords')     val = RAW.keywords || '';
+  if (field === 'keyMessage')   val = RAW.keyMessage || '';
+  if (field === 'mainProblem')  val = RAW.painPoints || '';
   if (field === 'productIdeas') val = RAW.productIdeas || '';
   if (field === 'actions')      val = RAW.notes || '';
   if (field === 'platforms')    val = RAW.rawPlatforms || '';
@@ -443,6 +533,18 @@ async function saveModal() {
       // Re-render keywords pills
       const kwEl = document.getElementById('r-keywords');
       kwEl.innerHTML = val ? val.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('') : '<span class="empty">—</span>';
+    } else if (cfg.target === 'campaignField') {
+      await w('updateCampaignField', { campaignId: CAMPAIGN_ID, field: cfg.field, value: val });
+      RAW[cfg.field] = val;
+      // Re-condense display
+      status.textContent = 'Saved. Updating display…';
+      const displayId = { painPoints: 'r-problem' }[cfg.field];
+      const label = { painPoints: 'Main Problem' }[cfg.field];
+      if (displayId) {
+        document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
+        const html = await condense(label, val);
+        document.getElementById(displayId).innerHTML = html;
+      }
     } else {
       // For platforms/methods — need to combine back into one field
       if (activeField === 'platforms') {
@@ -459,8 +561,8 @@ async function saveModal() {
       }
       // Re-condense the display
       status.textContent = 'Saved. Updating display…';
-      const displayId = { productIdeas:'r-products', actions:'r-actions', platforms:'r-platforms', methods:'r-methods' }[activeField];
-      const label = { productIdeas:'Product Ideas', actions:'Recommended Actions — prioritised by ROI', platforms:'Platforms', methods:'Methods' }[activeField];
+      const displayId = { keyMessage:'r-keymessage', productIdeas:'r-products', actions:'r-actions', methods:'r-methods' }[activeField];
+      const label = { keyMessage:'Key Message', productIdeas:'Product Ideas', actions:'Recommended Actions — prioritised by ROI', methods:'Methods' }[activeField];
       if (displayId) {
         document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
         const html = await condense(label, val);
@@ -523,6 +625,7 @@ document.getElementById('tdModal').addEventListener('click', function(e) {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.activeElement === document.getElementById('td-modal-input')) addTodoFromModal();
+  if (e.key === 'Enter' && document.activeElement === document.getElementById('login-modal-input')) addLoginFromModal();
 });
 
 async function addTodoFromModal() {
@@ -560,10 +663,261 @@ async function deleteTodo(id, btn) {
   }
 }
 
+// ── PLATFORM LOGINS ──────────────────────────────────────────────────
+let LOGIN_ITEMS  = [];
+let ALL_PLATFORMS = [];
+
+const CAT_CLASS = {
+  'Personal':     'cat-personal',
+  'Company Page': 'cat-company-page',
+  'Client':       'cat-client',
+  'Shared':       'cat-shared',
+  'Affiliate':    'cat-affiliate',
+};
+const LS_CLASS = {
+  'Active':   'ls-active',
+  'Planning': 'ls-planning',
+  'Paused':   'ls-paused',
+  'Inactive': 'ls-inactive',
+  'development': 'ls-paused',
+};
+
+function renderLogins() {
+  const el = document.getElementById('login-list');
+  el.innerHTML = '';
+  if (!LOGIN_ITEMS.length) { el.innerHTML = '<div class="empty">No logins yet.</div>'; return; }
+
+  // Build platform name lookup
+  const platName = {};
+  ALL_PLATFORMS.forEach(p => { platName[p.id] = p.name; });
+
+  // Group by first platformId
+  const grouped = {};
+  const ungrouped = [];
+  LOGIN_ITEMS.forEach(l => {
+    const pid = (l.platformIds || [])[0];
+    if (pid) {
+      if (!grouped[pid]) grouped[pid] = [];
+      grouped[pid].push(l);
+    } else {
+      ungrouped.push(l);
+    }
+  });
+
+  const renderRow = (l) => {
+    const div = document.createElement('div');
+    div.className = 'login-row';
+    const cat = l.category || '';
+    const catCls = CAT_CLASS[cat] || '';
+    const stCls  = LS_CLASS[l.status] || 'ls-planning';
+    const sub = [l.usr, l.accountUrl].filter(Boolean).join(' · ');
+    div.innerHTML =
+      (cat ? `<span class="login-cat ${catCls}">${cat}</span>` : '') +
+      `<div class="login-meta">
+        <div class="login-name">${l.name}</div>
+        ${sub ? `<div class="login-sub">${sub}</div>` : ''}
+      </div>` +
+      `<span class="${stCls}">${l.status || 'Planning'}</span>` +
+      `<button class="title-status-btn" onclick="openLoginStatusModal('${l.id}','${(l.name||'').replace(/'/g,"\\'")}','${l.status||'Planning'}')" title="Change status">⇄</button>` +
+      `<a class="title-link" href="https://www.notion.so/${l.id}" target="_blank">↗</a>`;
+    return div;
+  };
+
+  // Render grouped by platform
+  const sortedPlatIds = Object.keys(grouped).sort((a,b) => (platName[a]||'').localeCompare(platName[b]||''));
+  sortedPlatIds.forEach(pid => {
+    const grp = document.createElement('div');
+    grp.className = 'login-platform-group';
+    const lbl = document.createElement('div');
+    lbl.className = 'login-platform-label';
+    lbl.textContent = platName[pid] || 'Unknown Platform';
+    grp.appendChild(lbl);
+    grouped[pid].forEach(l => grp.appendChild(renderRow(l)));
+    el.appendChild(grp);
+  });
+
+  // Ungrouped at bottom
+  if (ungrouped.length) {
+    const grp = document.createElement('div');
+    grp.className = 'login-platform-group';
+    const lbl = document.createElement('div');
+    lbl.className = 'login-platform-label';
+    lbl.textContent = 'No Platform';
+    grp.appendChild(lbl);
+    ungrouped.forEach(l => grp.appendChild(renderRow(l)));
+    el.appendChild(grp);
+  }
+}
+
+async function loadLogins() {
+  const el = document.getElementById('login-list');
+  try {
+    const [loginData, platData] = await Promise.all([
+      w('getLogins'),
+      w('getPlatforms'),
+    ]);
+    ALL_PLATFORMS = platData.platforms || [];
+    // Filter to logins for this campaign
+    LOGIN_ITEMS = (loginData.logins || []).filter(l =>
+      (l.campaignIds || []).includes(CAMPAIGN_ID)
+    );
+    renderLogins();
+    // Populate platform dropdown in add modal
+    const sel = document.getElementById('login-modal-platform');
+    if (sel) {
+      sel.innerHTML = '<option value="">— Platform —</option>';
+      ALL_PLATFORMS.filter(p => p.status === 'Publish').forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id; opt.textContent = p.name;
+        sel.appendChild(opt);
+      });
+    }
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
+  }
+}
+
+function openLoginModal() {
+  document.getElementById('login-modal-name').value = '';
+  document.getElementById('login-modal-platform').value = '';
+  document.getElementById('login-modal-category').value = '';
+  document.getElementById('login-modal-usr').value = '';
+  document.getElementById('login-modal-url').value = '';
+  document.getElementById('loginModalStatus').textContent = '';
+  document.getElementById('loginModalSave').disabled = false;
+  document.getElementById('loginModalSave').textContent = 'Add Login';
+  document.getElementById('loginModal').classList.add('open');
+  setTimeout(() => document.getElementById('login-modal-name').focus(), 100);
+}
+
+function closeLoginModal() {
+  document.getElementById('loginModal').classList.remove('open');
+}
+
+document.getElementById('loginModal').addEventListener('click', function(e) {
+  if (e.target === this) closeLoginModal();
+});
+
+async function addLoginFromModal() {
+  const name = document.getElementById('login-modal-name').value.trim();
+  if (!name) return;
+  const btn    = document.getElementById('loginModalSave');
+  const status = document.getElementById('loginModalStatus');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  try {
+    const res = await w('createLoginFull', {
+      name,
+      campaignId: CAMPAIGN_ID,
+      platformId: document.getElementById('login-modal-platform').value || undefined,
+      category:   document.getElementById('login-modal-category').value || undefined,
+      usr:        document.getElementById('login-modal-usr').value.trim() || undefined,
+      accountUrl: document.getElementById('login-modal-url').value.trim() || undefined,
+    });
+    LOGIN_ITEMS.push(res.login);
+    renderLogins();
+    status.textContent = 'Added ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeLoginModal, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Add Login';
+  }
+}
+
+function openLoginStatusModal(id, name, currentStatus) {
+  document.getElementById('statusModalTitle').textContent = 'Change Status';
+  document.getElementById('statusModalHint').textContent = name;
+  document.getElementById('statusModalStatus').textContent = '';
+  document.getElementById('statusModalStatus').className = 'modal-status';
+  const grid = document.getElementById('statusOptions');
+  grid.innerHTML = '';
+  ['Planning','Active','Paused','Inactive'].forEach(status => {
+    const btn = document.createElement('button');
+    btn.className = 'status-opt-btn' + (status === currentStatus ? ' active' : '');
+    btn.innerHTML = `<span class="${LS_CLASS[status]||'ls-planning'}" style="pointer-events:none">${status}</span>`;
+    if (status !== currentStatus) btn.onclick = () => applyLoginStatusChange(id, status);
+    else btn.disabled = true;
+    grid.appendChild(btn);
+  });
+  document.getElementById('statusModal').classList.add('open');
+}
+
+async function applyLoginStatusChange(loginId, newStatus) {
+  const status = document.getElementById('statusModalStatus');
+  document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = true);
+  status.textContent = 'Updating…';
+  status.className = 'modal-status';
+  try {
+    await w('updateLoginFull', { loginId, status: newStatus });
+    const l = LOGIN_ITEMS.find(x => x.id === loginId);
+    if (l) l.status = newStatus;
+    status.textContent = 'Updated ✓';
+    status.className = 'modal-status ok';
+    setTimeout(() => { closeStatusModal(); renderLogins(); }, 500);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = false);
+  }
+}
+
+// ── STATUS CHANGE MODAL ───────────────────────────────────────
+const ALL_STAGES = ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'];
+let statusModalTitleId = null;
+
+function openStatusModal(id, title, currentStage) {
+  statusModalTitleId = id;
+  document.getElementById('statusModalTitle').textContent = 'Change Status';
+  document.getElementById('statusModalHint').textContent = title;
+  document.getElementById('statusModalStatus').textContent = '';
+  document.getElementById('statusModalStatus').className = 'modal-status';
+  const grid = document.getElementById('statusOptions');
+  grid.innerHTML = '';
+  ALL_STAGES.forEach(stage => {
+    const btn = document.createElement('button');
+    btn.className = 'status-opt-btn' + (stage === currentStage ? ' active' : '');
+    btn.innerHTML = `<span class="title-stage ${SC[stage]||'ts-write'}" style="pointer-events:none">${stage}</span>`;
+    if (stage !== currentStage) btn.onclick = () => applyStatusChange(id, stage);
+    else btn.disabled = true;
+    grid.appendChild(btn);
+  });
+  document.getElementById('statusModal').classList.add('open');
+}
+
+function closeStatusModal() {
+  document.getElementById('statusModal').classList.remove('open');
+  statusModalTitleId = null;
+}
+
+document.getElementById('statusModal').addEventListener('click', function(e) {
+  if (e.target === this) closeStatusModal();
+});
+
+async function applyStatusChange(titleId, newStage) {
+  const status = document.getElementById('statusModalStatus');
+  document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = true);
+  status.textContent = 'Updating…';
+  status.className = 'modal-status';
+  try {
+    await w('updateTitleStage', { titleId, stage: newStage });
+    status.textContent = 'Updated ✓';
+    status.className = 'modal-status ok';
+    setTimeout(async () => { closeStatusModal(); await loadTitles(); }, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = false);
+  }
+}
+
 function init() {
   loadResearch();
   loadTitles();
   loadTodos();
+  loadLogins();
 }
 </script>
 </body>
