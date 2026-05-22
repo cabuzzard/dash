@@ -96,7 +96,7 @@ select.modal-ta { height: 32px !important; padding: 0 8px !important; }
   <div class="col">
     <h2 class="editable" onclick="openModal('notes')">Notes</h2>
     <div class="content">
-      <div class="body-text" id="r-notes" style="white-space:pre-wrap;min-height:40px;"></div>
+      <div class="body-text" id="r-thoughts" style="white-space:pre-wrap;min-height:40px;"></div>
     </div>
   </div>
   <div class="col">
@@ -457,8 +457,8 @@ async function loadResearch() {
     const sc = r.status ? r.status.toLowerCase() : 'draft';
     statusEl.innerHTML = `<span class="badge ${sc}">${r.status || '—'}</span>`;
     document.getElementById('r-date').textContent = r.lastUpdated || '—';
-    const notesDisplayEl = document.getElementById('r-notes');
-    if (notesDisplayEl) notesDisplayEl.textContent = r.notes || '';
+    const notesDisplayEl = document.getElementById('r-thoughts');
+    if (notesDisplayEl) notesDisplayEl.textContent = r.thoughts || '';
 
     // Store raw values for editing
     RESEARCH_ID_LIVE = r.id || '';
@@ -467,6 +467,7 @@ async function loadResearch() {
       keywords:     r.keywords || '',
       productIdeas: r.productIdeas || '',
       notes:        r.notes || '',
+      thoughts:     r.thoughts || '',
       keyMessage:   r.keyMessage || '',
       painPoints:   r.painPoints || '',
       rawPlatforms: pmSplitRaw[0].replace(/ACTIVE PLATFORMS:\s*/i,'').replace(/<br\s*\/?>/gi,'\n').trim(),
@@ -561,7 +562,7 @@ const MODAL_CFG = {
   keyMessage:   { title: 'Key Message',         hint: 'Core positioning statement for this campaign', target: 'research', field: 'keyMessage' },
   mainProblem:  { title: 'Main Problem',        hint: 'Pain points this campaign addresses', target: 'campaignField', field: 'painPoints' },
   productIdeas: { title: 'Product Ideas',        hint: 'Describe product ideas, offers, and pipeline', target: 'research', field: 'productIdeas' },
-  notes:        { title: 'Notes',                hint: 'Internal notes for this campaign', target: 'research', field: 'notes' },
+  thoughts:     { title: 'Thoughts',             hint: 'Personal notes and thoughts on this campaign', target: 'research', field: 'thoughts' },
   actions:      { title: 'Recommended Actions',  hint: 'ROI-ranked actions and next steps', target: 'research', field: 'notes' },
   platforms:    { title: 'Platforms',            hint: 'Active and planned platforms for this campaign', target: 'research', field: 'platforms', combined: true },
   methods:      { title: 'Methods',              hint: 'Active and planned methods for this campaign', target: 'research', field: 'platforms', combined: true },
@@ -588,7 +589,7 @@ function openModal(field) {
   if (field === 'actions')      val = RAW.notes || '';
   if (field === 'platforms')    val = RAW.rawPlatforms || '';
   if (field === 'methods')      val = RAW.rawMethods || '';
-  if (field === 'notes')        val = RAW.notes || '';
+  if (field === 'thoughts')     val = RAW.thoughts || '';
   document.getElementById('modalTa').value = val;
 
   document.getElementById('editModal').classList.add('open');
@@ -646,8 +647,8 @@ async function saveModal() {
         await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
         RAW[cfg.field] = val;
         // If editing the notes column directly, update its display without condensing
-        if (activeField === 'notes') {
-          const nd = document.getElementById('r-notes');
+        if (activeField === 'thoughts') {
+          const nd = document.getElementById('r-thoughts');
           if (nd) nd.textContent = val;
         }
       }

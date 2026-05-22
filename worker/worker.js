@@ -1039,6 +1039,7 @@ export default {
             keywords: props.Keywords?.rich_text?.map(t => t.plain_text).join("") || "",
             newsFeed: props["News Feed"]?.rich_text?.map(t => t.plain_text).join("") || "",
             notes: props.Notes?.rich_text?.map(t => t.plain_text).join("") || "",
+            thoughts: props.Thoughts?.rich_text?.map(t => t.plain_text).join("") || "",
             platforms: props["Platforms & Methods"]?.rich_text?.map(t => t.plain_text).join("") || "",
             productIdeas: props["Product Ideas"]?.rich_text?.map(t => t.plain_text).join("") || "",
             tiktokTrends: props["TikTok Trends"]?.rich_text?.map(t => t.plain_text).join("") || "",
@@ -1095,6 +1096,7 @@ Rules:
           tiktokTrends: "TikTok Trends",
           newsFeed:     "News Feed",
           keyMessage:   "Key Message",
+          thoughts:     "Thoughts",
         };
         const notionField = fieldMap[field];
         if (!notionField) return json({ error: "Unknown field: " + field }, 400);
