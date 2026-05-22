@@ -41,9 +41,9 @@
 .modal-overlay { background: rgba(0,0,0,0.35) !important; }
 .modal { background: #3a3a3a !important; max-height: 90vh; display: flex; flex-direction: column; }
 .modal-body { overflow-y: auto; flex: 1; }
-/* Thin fields */
-.modal-ta { height: 32px !important; padding: 5px 10px !important; font-size: 13px !important; }
-select.modal-ta { height: 32px !important; padding: 0 8px !important; }
+/* Thin fields — must override min-height:160px set in style.css */
+input.modal-ta  { height: 32px !important; min-height: 0 !important; padding: 4px 10px !important; font-size: 13px !important; box-sizing: border-box; }
+select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 8px !important;   font-size: 13px !important; box-sizing: border-box; }
 /* Field labels inside modals */
 .lm-label { display: block; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #666; margin: 0 0 4px; }
 /* Platform autocomplete dropdown */
