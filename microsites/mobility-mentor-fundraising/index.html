@@ -37,6 +37,17 @@
 .ls-planning { font-size: 10px; padding: 2px 6px; color: #c9a800; border: 1px solid #6b5a00; flex-shrink: 0; }
 .ls-paused   { font-size: 10px; padding: 2px 6px; color: #888;    border: 1px solid #444;    flex-shrink: 0; }
 .ls-inactive { font-size: 10px; padding: 2px 6px; color: #555;    border: 1px solid #333;    flex-shrink: 0; }
+/* MODAL — lighter background, scrollable body */
+.modal-overlay { background: rgba(0,0,0,0.45) !important; }
+.modal { background: #2e2e2e !important; max-height: 90vh; display: flex; flex-direction: column; }
+.modal-body { overflow-y: auto; flex: 1; }
+/* Field labels inside modals */
+.lm-label { display: block; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #666; margin: 0 0 4px; }
+/* Platform autocomplete dropdown */
+.plat-dd-item { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #ccc; border-bottom: 1px solid #1e1e1e; }
+.plat-dd-item:hover { background: #393939; }
+.plat-dd-create { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #e8ff47; border-bottom: 1px solid #1e1e1e; font-style: italic; }
+.plat-dd-create:hover { background: #393939; }
 </style>
 </head>
 <body>
@@ -200,12 +211,18 @@
       <button class="modal-close" onclick="closeLoginModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="modal-hint">Creates a login in Notion linked to this campaign and platform</div>
-      <input class="modal-ta" id="login-modal-name" type="text" placeholder="Login name…" style="height:44px;padding:10px 14px;resize:none;margin-bottom:8px;" />
-      <select class="modal-ta" id="login-modal-platform" style="height:40px;padding:0 10px;margin-bottom:8px;background:#111;color:#fff;border:1px solid #2a2a2a;">
-        <option value="">— Platform —</option>
-      </select>
-      <select class="modal-ta" id="login-modal-category" style="height:40px;padding:0 10px;margin-bottom:8px;background:#111;color:#fff;border:1px solid #2a2a2a;">
+      <div class="modal-hint">Creates a login in Notion linked to this campaign — appears in Hermes platform matrix at campaign × platform</div>
+      <label class="lm-label">Name</label>
+      <input class="modal-ta" id="lm-name" type="text" placeholder="Login name…" style="height:40px;padding:10px 14px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Platform <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— type to search, or type a new name to create</span></label>
+      <div style="position:relative;margin-bottom:12px;" id="lm-plat-wrap">
+        <input class="modal-ta" id="lm-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:40px;padding:10px 14px;" autocomplete="off"
+          oninput="filterLmPlatforms()" onfocus="filterLmPlatforms()" />
+        <input type="hidden" id="lm-plat-id" value="" />
+        <div id="lm-plat-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
+      </div>
+      <label class="lm-label">Category <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
+      <select class="modal-ta" id="lm-category" style="height:40px;padding:0 10px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
         <option value="">— Category —</option>
         <option value="Personal">Personal</option>
         <option value="Company Page">Company Page</option>
@@ -213,13 +230,63 @@
         <option value="Shared">Shared</option>
         <option value="Affiliate">Affiliate</option>
       </select>
-      <input class="modal-ta" id="login-modal-usr" type="text" placeholder="Username / handle…" style="height:40px;padding:10px 14px;resize:none;margin-bottom:8px;" />
-      <input class="modal-ta" id="login-modal-url" type="text" placeholder="Account URL…" style="height:40px;padding:10px 14px;resize:none;" />
-      <div class="modal-status" id="loginModalStatus"></div>
+      <label class="lm-label">Status</label>
+      <select class="modal-ta" id="lm-login-status" style="height:40px;padding:0 10px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
+        <option value="Planning">Planning</option>
+        <option value="Active">Active</option>
+        <option value="Paused">Paused</option>
+        <option value="Inactive">Inactive</option>
+      </select>
+      <label class="lm-label">Username / handle</label>
+      <input class="modal-ta" id="lm-usr" type="text" placeholder="@handle or email…" style="height:40px;padding:10px 14px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Account URL</label>
+      <input class="modal-ta" id="lm-url" type="text" placeholder="https://…" style="height:40px;padding:10px 14px;margin-bottom:4px;" autocomplete="off" />
+      <div class="modal-status" id="lm-status-msg"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeLoginModal()">Cancel</button>
-      <button class="modal-btn save" id="loginModalSave" onclick="addLoginFromModal()">Add Login</button>
+      <button class="modal-btn save" id="lm-save" onclick="addLoginFromModal()">Add Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN EDIT MODAL -->
+<div class="modal-overlay" id="loginEditModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="le-modal-title">Edit Login</div>
+      <button class="modal-close" onclick="closeLoginEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label">Name</label>
+      <input class="modal-ta" id="le-name" type="text" style="height:40px;padding:10px 14px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Category <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
+      <select class="modal-ta" id="le-category" style="height:40px;padding:0 10px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
+        <option value="">— Category —</option>
+        <option value="Personal">Personal</option>
+        <option value="Company Page">Company Page</option>
+        <option value="Client">Client</option>
+        <option value="Shared">Shared</option>
+        <option value="Affiliate">Affiliate</option>
+      </select>
+      <label class="lm-label">Status</label>
+      <select class="modal-ta" id="le-status" style="height:40px;padding:0 10px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
+        <option value="Planning">Planning</option>
+        <option value="Active">Active</option>
+        <option value="Paused">Paused</option>
+        <option value="Inactive">Inactive</option>
+      </select>
+      <label class="lm-label">Username / handle</label>
+      <input class="modal-ta" id="le-usr" type="text" style="height:40px;padding:10px 14px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Account URL</label>
+      <input class="modal-ta" id="le-url" type="text" style="height:40px;padding:10px 14px;margin-bottom:12px;" autocomplete="off" />
+      <div style="font-size:11px;color:#555;margin-bottom:4px;">To change platform or campaign relations, open the full record in Notion:</div>
+      <a id="le-notion-link" href="#" target="_blank" class="notion-link" style="font-size:12px;">↗ Open in Notion</a>
+      <div class="modal-status" id="le-status-msg"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeLoginEditModal()">Cancel</button>
+      <button class="modal-btn save" id="le-save" onclick="saveLoginEdit()">Save</button>
     </div>
   </div>
 </div>
@@ -707,19 +774,21 @@ function renderLogins() {
   const renderRow = (l) => {
     const div = document.createElement('div');
     div.className = 'login-row';
+    div.style.cursor = 'pointer';
     const cat = l.category || '';
     const catCls = CAT_CLASS[cat] || '';
     const stCls  = LS_CLASS[l.status] || 'ls-planning';
     const sub = [l.usr, l.accountUrl].filter(Boolean).join(' · ');
     div.innerHTML =
-      (cat ? `<span class="login-cat ${catCls}">${cat}</span>` : '') +
+      (cat ? `<span class="login-cat ${catCls}">${cat}</span>` : '<span class="login-cat" style="opacity:.3;border:1px solid #333;color:#555;">—</span>') +
       `<div class="login-meta">
         <div class="login-name">${l.name}</div>
         ${sub ? `<div class="login-sub">${sub}</div>` : ''}
       </div>` +
       `<span class="${stCls}">${l.status || 'Planning'}</span>` +
-      `<button class="title-status-btn" onclick="openLoginStatusModal('${l.id}','${(l.name||'').replace(/'/g,"\\'")}','${l.status||'Planning'}')" title="Change status">⇄</button>` +
-      `<a class="title-link" href="https://www.notion.so/${l.id}" target="_blank">↗</a>`;
+      `<a class="title-link" href="https://www.notion.so/${l.id}" target="_blank" onclick="event.stopPropagation()">↗</a>`;
+    // Click row → open edit modal
+    div.onclick = () => openLoginEditModal(l);
     return div;
   };
 
@@ -757,37 +826,88 @@ async function loadLogins() {
       w('getPlatforms'),
     ]);
     ALL_PLATFORMS = platData.platforms || [];
-    // Filter to logins for this campaign
+    // Filter to logins whose campaign relation includes this campaign
     LOGIN_ITEMS = (loginData.logins || []).filter(l =>
       (l.campaignIds || []).includes(CAMPAIGN_ID)
     );
     renderLogins();
-    // Populate platform dropdown in add modal
-    const sel = document.getElementById('login-modal-platform');
-    if (sel) {
-      sel.innerHTML = '<option value="">— Platform —</option>';
-      ALL_PLATFORMS.filter(p => p.status === 'Publish').forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id; opt.textContent = p.name;
-        sel.appendChild(opt);
-      });
-    }
   } catch(e) {
     el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
   }
 }
 
+// ── PLATFORM AUTOCOMPLETE ─────────────────────────────────────────────
+function filterLmPlatforms() {
+  const query  = (document.getElementById('lm-plat-input').value || '').trim();
+  const queryL = query.toLowerCase();
+  const dd = document.getElementById('lm-plat-dd');
+  dd.innerHTML = '';
+
+  const matches = ALL_PLATFORMS.filter(p =>
+    !query || p.name.toLowerCase().includes(queryL)
+  ).slice(0, 12);
+
+  matches.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-item';
+    div.textContent = p.name;
+    div.onmousedown = () => selectLmPlatform(p.id, p.name);
+    dd.appendChild(div);
+  });
+
+  // "+ Create" row if typed something that doesn't exactly exist
+  const exact = ALL_PLATFORMS.some(p => p.name.toLowerCase() === queryL);
+  if (query && !exact) {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-create';
+    div.textContent = '+ Create "' + query + '"';
+    div.onmousedown = async () => {
+      div.textContent = 'Creating…';
+      try {
+        const res = await w('createPlatform', { title: query, status: 'Publish' });
+        const newP = { id: res.id, name: query, status: 'Publish' };
+        ALL_PLATFORMS.push(newP);
+        selectLmPlatform(res.id, query);
+      } catch(e) {
+        div.textContent = 'Error: ' + e.message;
+      }
+    };
+    dd.appendChild(div);
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+function selectLmPlatform(id, name) {
+  document.getElementById('lm-plat-input').value = name;
+  document.getElementById('lm-plat-id').value   = id;
+  document.getElementById('lm-plat-dd').style.display = 'none';
+}
+
+// Close platform picker when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('#lm-plat-wrap')) {
+    const dd = document.getElementById('lm-plat-dd');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+// ── ADD LOGIN ─────────────────────────────────────────────────────────
 function openLoginModal() {
-  document.getElementById('login-modal-name').value = '';
-  document.getElementById('login-modal-platform').value = '';
-  document.getElementById('login-modal-category').value = '';
-  document.getElementById('login-modal-usr').value = '';
-  document.getElementById('login-modal-url').value = '';
-  document.getElementById('loginModalStatus').textContent = '';
-  document.getElementById('loginModalSave').disabled = false;
-  document.getElementById('loginModalSave').textContent = 'Add Login';
+  document.getElementById('lm-name').value          = '';
+  document.getElementById('lm-plat-input').value    = '';
+  document.getElementById('lm-plat-id').value       = '';
+  document.getElementById('lm-plat-dd').style.display = 'none';
+  document.getElementById('lm-category').value      = '';
+  document.getElementById('lm-login-status').value  = 'Planning';
+  document.getElementById('lm-usr').value           = '';
+  document.getElementById('lm-url').value           = '';
+  document.getElementById('lm-status-msg').textContent = '';
+  document.getElementById('lm-status-msg').className   = 'modal-status';
+  document.getElementById('lm-save').disabled       = false;
+  document.getElementById('lm-save').textContent    = 'Add Login';
   document.getElementById('loginModal').classList.add('open');
-  setTimeout(() => document.getElementById('login-modal-name').focus(), 100);
+  setTimeout(() => document.getElementById('lm-name').focus(), 100);
 }
 
 function closeLoginModal() {
@@ -799,70 +919,95 @@ document.getElementById('loginModal').addEventListener('click', function(e) {
 });
 
 async function addLoginFromModal() {
-  const name = document.getElementById('login-modal-name').value.trim();
-  if (!name) return;
-  const btn    = document.getElementById('loginModalSave');
-  const status = document.getElementById('loginModalStatus');
+  const name = document.getElementById('lm-name').value.trim();
+  if (!name) { document.getElementById('lm-name').focus(); return; }
+  const btn = document.getElementById('lm-save');
+  const msg = document.getElementById('lm-status-msg');
   btn.disabled = true;
   btn.textContent = 'Adding…';
+  msg.textContent = '';
   try {
     const res = await w('createLoginFull', {
       name,
       campaignId: CAMPAIGN_ID,
-      platformId: document.getElementById('login-modal-platform').value || undefined,
-      category:   document.getElementById('login-modal-category').value || undefined,
-      usr:        document.getElementById('login-modal-usr').value.trim() || undefined,
-      accountUrl: document.getElementById('login-modal-url').value.trim() || undefined,
+      platformId: document.getElementById('lm-plat-id').value   || undefined,
+      category:   document.getElementById('lm-category').value  || undefined,
+      status:     document.getElementById('lm-login-status').value || 'Planning',
+      usr:        document.getElementById('lm-usr').value.trim() || undefined,
+      accountUrl: document.getElementById('lm-url').value.trim() || undefined,
     });
     LOGIN_ITEMS.push(res.login);
     renderLogins();
-    status.textContent = 'Added ✓';
-    status.className = 'modal-status ok';
+    msg.textContent = 'Added ✓';
+    msg.className = 'modal-status ok';
     setTimeout(closeLoginModal, 700);
   } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-    status.className = 'modal-status err';
+    msg.textContent = 'Error: ' + e.message;
+    msg.className = 'modal-status err';
     btn.disabled = false;
     btn.textContent = 'Add Login';
   }
 }
 
-function openLoginStatusModal(id, name, currentStatus) {
-  document.getElementById('statusModalTitle').textContent = 'Change Status';
-  document.getElementById('statusModalHint').textContent = name;
-  document.getElementById('statusModalStatus').textContent = '';
-  document.getElementById('statusModalStatus').className = 'modal-status';
-  const grid = document.getElementById('statusOptions');
-  grid.innerHTML = '';
-  ['Planning','Active','Paused','Inactive'].forEach(status => {
-    const btn = document.createElement('button');
-    btn.className = 'status-opt-btn' + (status === currentStatus ? ' active' : '');
-    btn.innerHTML = `<span class="${LS_CLASS[status]||'ls-planning'}" style="pointer-events:none">${status}</span>`;
-    if (status !== currentStatus) btn.onclick = () => applyLoginStatusChange(id, status);
-    else btn.disabled = true;
-    grid.appendChild(btn);
-  });
-  document.getElementById('statusModal').classList.add('open');
+// ── EDIT LOGIN ────────────────────────────────────────────────────────
+let LE_LOGIN_ID = '';
+
+function openLoginEditModal(login) {
+  LE_LOGIN_ID = login.id;
+  document.getElementById('le-modal-title').textContent = login.name || 'Edit Login';
+  document.getElementById('le-name').value     = login.name     || '';
+  document.getElementById('le-category').value = login.category || '';
+  document.getElementById('le-status').value   = login.status   || 'Planning';
+  document.getElementById('le-usr').value      = login.usr      || '';
+  document.getElementById('le-url').value      = login.accountUrl || '';
+  document.getElementById('le-notion-link').href = 'https://www.notion.so/' + login.id;
+  document.getElementById('le-status-msg').textContent = '';
+  document.getElementById('le-status-msg').className   = 'modal-status';
+  document.getElementById('le-save').disabled   = false;
+  document.getElementById('le-save').textContent = 'Save';
+  document.getElementById('loginEditModal').classList.add('open');
+  setTimeout(() => document.getElementById('le-name').focus(), 100);
 }
 
-async function applyLoginStatusChange(loginId, newStatus) {
-  const status = document.getElementById('statusModalStatus');
-  document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = true);
-  status.textContent = 'Updating…';
-  status.className = 'modal-status';
+function closeLoginEditModal() {
+  document.getElementById('loginEditModal').classList.remove('open');
+}
+
+document.getElementById('loginEditModal').addEventListener('click', function(e) {
+  if (e.target === this) closeLoginEditModal();
+});
+
+async function saveLoginEdit() {
+  const btn = document.getElementById('le-save');
+  const msg = document.getElementById('le-status-msg');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  msg.textContent = '';
   try {
-    await w('updateLoginFull', { loginId, status: newStatus });
-    const l = LOGIN_ITEMS.find(x => x.id === loginId);
-    if (l) l.status = newStatus;
-    status.textContent = 'Updated ✓';
-    status.className = 'modal-status ok';
-    setTimeout(() => { closeStatusModal(); renderLogins(); }, 500);
+    const updated = {
+      name:       document.getElementById('le-name').value.trim(),
+      category:   document.getElementById('le-category').value || undefined,
+      status:     document.getElementById('le-status').value   || undefined,
+      usr:        document.getElementById('le-usr').value.trim() || undefined,
+      accountUrl: document.getElementById('le-url').value.trim() || undefined,
+    };
+    await w('updateLoginFull', { loginId: LE_LOGIN_ID, ...updated });
+    // Update local cache
+    const idx = LOGIN_ITEMS.findIndex(l => l.id === LE_LOGIN_ID);
+    if (idx !== -1) LOGIN_ITEMS[idx] = { ...LOGIN_ITEMS[idx], ...updated };
+    renderLogins();
+    msg.textContent = 'Saved ✓';
+    msg.className = 'modal-status ok';
+    setTimeout(closeLoginEditModal, 700);
   } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-    status.className = 'modal-status err';
-    document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = false);
+    msg.textContent = 'Error: ' + e.message;
+    msg.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Save';
   }
 }
+
+// Login status changes are now handled via the edit modal (openLoginEditModal)
 
 // ── STATUS CHANGE MODAL ───────────────────────────────────────
 const ALL_STAGES = ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'];
