@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="X-Frame-Options" content="DENY">
 <title>Hermes</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -716,11 +718,21 @@
 
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-const PIN        = "1246";
 
-let session  = { authed: false };
-let ovLoaded = false;
-let pinBuffer = '';
+let session      = { authed: false };
+let ovLoaded     = false;
+let pinBuffer    = '';
+let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
+
+// Auto-restore session if a valid token exists from this browser session
+if (SESSION_TOKEN) {
+  session.authed = true;
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('pinScreen').classList.add('hidden');
+    if (!ovLoaded) { ovLoaded = true; loadOverview(); }
+    call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
+  });
+}
 
 // ── PIN ──────────────────────────────────────────────────────────────
 function pinPress(d) {
@@ -745,19 +757,34 @@ function updateDots() {
 let prodStatuses = [];
 let allTodos = [];
 
-function checkPin() {
-  if (pinBuffer === PIN) {
-    session.authed = true;
-    document.getElementById('pinScreen').classList.add('hidden');
-    if (!ovLoaded) { ovLoaded = true; loadOverview(); }
-    call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
-  } else {
-    document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
-    document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
-    setTimeout(() => { pinBuffer = ''; updateDots(); document.getElementById('pinError').textContent = ''; }, 900);
+async function checkPin() {
+  try {
+    const data = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'auth', pin: pinBuffer })
+    }).then(r => r.json());
+
+    if (data.token) {
+      SESSION_TOKEN = data.token;
+      sessionStorage.setItem('hermes_token', SESSION_TOKEN);
+      session.authed = true;
+      document.getElementById('pinScreen').classList.add('hidden');
+      if (!ovLoaded) { ovLoaded = true; loadOverview(); }
+      call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
+    } else {
+      document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
+      document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
+      setTimeout(() => { pinBuffer = ''; updateDots(); document.getElementById('pinError').textContent = ''; }, 900);
+    }
+  } catch(e) {
+    document.getElementById('pinError').textContent = 'Connection error — try again';
+    setTimeout(() => { pinBuffer = ''; updateDots(); document.getElementById('pinError').textContent = ''; }, 1500);
   }
 }
 function lockApp() {
+  SESSION_TOKEN = null;
+  sessionStorage.removeItem('hermes_token');
   pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false; devLoaded = false; tdTabLoaded = false;
   updateDots();
   document.getElementById('pinScreen').classList.remove('hidden');
@@ -772,9 +799,17 @@ async function call(action, extra = {}) {
   const resp = await fetch(WORKER_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, pin: PIN, ...extra })
+    body: JSON.stringify({ action, token: SESSION_TOKEN, ...extra })
   });
   const data = await resp.json();
+  if (resp.status === 401) {
+    // Session expired — force re-auth
+    SESSION_TOKEN = null;
+    sessionStorage.removeItem('hermes_token');
+    session.authed = false;
+    document.getElementById('pinScreen').classList.remove('hidden');
+    throw new Error('Session expired — please re-enter your PIN');
+  }
   if (!resp.ok || data.error) throw new Error(data.error || 'Error ' + resp.status);
   return data;
 }

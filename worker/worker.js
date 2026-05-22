@@ -1,4 +1,6 @@
-const NOTION_TOKEN       = "ntn_i84528099155pTq2P4dwUSpqmZYBpTSsL0qFB9GsQP6bc4";
+// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET are set as Cloudflare Worker secrets (env vars).
+// They are loaded from env at the start of each request — never hardcoded here.
+let NOTION_TOKEN = ""; // set per-request from env.NOTION_TOKEN
 const NOTION_VERSION     = "2022-06-28";
 const CAMPAIGNS_DB       = "087b1163b4e64975bc7a4b686ff801de";
 const CONTENT_STRATEGY_DB = "9fa5f42f010b47e7a82032607e07d6a1";
@@ -10,12 +12,13 @@ const PLATFORMS_DB       = "8248b700ebb7428aa28d8b5246509898";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
 const LEADS_DB           = "e4518a459f004eb0b9646e48d8718705";
-const PIN                = "1246";
-
 const CORS = {
-  "Access-Control-Allow-Origin":  "*",
+  "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
+  "X-Content-Type-Options":       "nosniff",
+  "X-Frame-Options":              "DENY",
+  "Referrer-Policy":              "strict-origin-when-cross-origin",
 };
 
 function json(data, status = 200) {
@@ -38,6 +41,34 @@ async function notionQuery(dbId, body) {
   const data = await resp.json();
   if (!resp.ok) throw new Error(data.message || "Notion error");
   return data.results || [];
+}
+
+// ── SESSION TOKEN HELPERS ─────────────────────────────────────────────
+async function signToken(secret) {
+  const payload  = { exp: Date.now() + 8 * 3600 * 1000, v: 1 };
+  const payloadB64 = btoa(JSON.stringify(payload));
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payloadB64));
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
+  return payloadB64 + "." + sigB64;
+}
+
+async function verifyToken(token, secret) {
+  try {
+    const [payloadB64, sigB64] = (token || "").split(".");
+    if (!payloadB64 || !sigB64) return false;
+    const payload = JSON.parse(atob(payloadB64));
+    if (!payload.exp || payload.exp < Date.now()) return false;
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]
+    );
+    const sig = Uint8Array.from(atob(sigB64), c => c.charCodeAt(0));
+    return await crypto.subtle.verify("HMAC", key, sig, enc.encode(payloadB64));
+  } catch { return false; }
 }
 
 async function getCampaigns() {
@@ -206,18 +237,52 @@ async function getCampaigns() {
 
 export default {
   async fetch(request, env) {
+    // Load secrets from environment on every request
+    NOTION_TOKEN = env.NOTION_TOKEN || "";
+    const PIN_VAL        = env.PIN            || "";
+    const HMAC_SECRET    = env.HMAC_SECRET    || "";
+    const TS_SECRET      = env.TURNSTILE_SECRET || "1x0000000000000000000000000000000AA";
+
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
-    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-18-01" });
+    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-22-02" });
     if (request.method !== "POST")    return json({ error: "POST only" }, 405);
 
     let body;
     try { body = await request.json(); }
     catch { return json({ error: "Invalid JSON" }, 400); }
 
-    // ── submitLead — public, no PIN required ──────────────────────────
+    // ── auth — exchange PIN for a session token (public, no token required) ──
+    if (body.action === "auth") {
+      if (!PIN_VAL || !HMAC_SECRET) return json({ error: "Server not configured" }, 500);
+      // Small delay to slow brute force attempts
+      await new Promise(r => setTimeout(r, 250));
+      if (body.pin !== PIN_VAL) return json({ error: "Unauthorized" }, 401);
+      const token = await signToken(HMAC_SECRET);
+      return json({ token });
+    }
+
+    // ── submitLead — public, no token required ────────────────────────
     if (body.action === "submitLead") {
-      const { campaign, email, phone, fraudType, note } = body;
-      if (!email || !phone || !fraudType) return json({ error: "email, phone, and fraudType required" }, 400);
+      const { campaign, email, phone, fraudType, note, tsToken } = body;
+
+      // --- Turnstile verification ---
+      if (tsToken) {
+        const tsResp = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `secret=${encodeURIComponent(TS_SECRET)}&response=${encodeURIComponent(tsToken)}`,
+        });
+        const tsData = await tsResp.json();
+        if (!tsData.success) return json({ error: "CAPTCHA verification failed — please try again" }, 403);
+      }
+
+      // --- Input validation ---
+      if (!email || !phone || !fraudType) return json({ error: "email, phone, and fraudType are required" }, 400);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "Invalid email address" }, 400);
+      if (!/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) return json({ error: "Invalid phone number" }, 400);
+      const validFraudTypes = ["Robo-Signing","Chain of Title Fraud","Loan Modification Fraud","Improper Procedures","Illegal Fees","MERS / Void Assignment","Other"];
+      if (!validFraudTypes.includes(fraudType)) return json({ error: "Invalid fraud type" }, 400);
+
       const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
       const now = new Date().toISOString();
       const name = "Lead — " + (campaign || "unknown") + " — " + now.slice(0,16).replace("T"," ");
@@ -238,11 +303,14 @@ export default {
         }),
       });
       const result = await resp.json();
-      if (!resp.ok) return json({ error: result.message || "Lead submission failed" }, resp.status);
+      if (!resp.ok) return json({ error: "Submission failed — please try again" }, resp.status);
       return json({ success: true });
     }
 
-    if (body.pin !== PIN) return json({ error: "Unauthorized" }, 401);
+    // ── All other actions require a valid session token ───────────────
+    if (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET))) {
+      return json({ error: "Unauthorized" }, 401);
+    }
 
     try {
       if (body.action === "getDevTitles") {

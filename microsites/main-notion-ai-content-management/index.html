@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="X-Frame-Options" content="DENY">
 <link rel="stylesheet" href="../style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Webguy — AI Content Management</title>
@@ -350,21 +352,41 @@ const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "3611f7d3a4bb81fe9ebcfe01813d9ac2"; // mobility-mentor-fundraising
 const RESEARCH_ID = "3661f7d3a4bb81adaaadc2ce80784112"; // research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/main-notion-ai-content-management/";
-const CORRECT_PIN = '1246';
+let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
 let pin = '';
 
-function pp(d) {
+// Auto-restore session if a valid token exists from this browser session
+if (SESSION_TOKEN) {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('pinScreen').classList.add('hidden');
+    init();
+  });
+}
+
+async function pp(d) {
   if (pin.length >= 4) return;
   pin += d;
   document.getElementById('d' + (pin.length-1)).classList.add('filled');
   if (pin.length === 4) {
-    if (pin === CORRECT_PIN) {
-      document.getElementById('pinScreen').classList.add('hidden');
-      init();
-    } else {
-      document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
-      document.getElementById('pinError').textContent = 'incorrect code';
-      setTimeout(() => { document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; pin = ''; }, 800);
+    try {
+      const data = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'auth', pin })
+      }).then(r => r.json());
+      if (data.token) {
+        SESSION_TOKEN = data.token;
+        sessionStorage.setItem('hermes_token', SESSION_TOKEN);
+        document.getElementById('pinScreen').classList.add('hidden');
+        init();
+      } else {
+        document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
+        document.getElementById('pinError').textContent = 'incorrect code';
+        setTimeout(() => { document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; pin = ''; }, 800);
+      }
+    } catch(e) {
+      document.getElementById('pinError').textContent = 'connection error';
+      setTimeout(() => { pin = ''; document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error')); document.getElementById('pinError').textContent = ''; }, 1500);
     }
   }
 }
@@ -374,6 +396,8 @@ function pd() {
   pin = pin.slice(0,-1);
 }
 function lockApp() {
+  SESSION_TOKEN = null;
+  sessionStorage.removeItem('hermes_token');
   pin = '';
   document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error'));
   document.getElementById('pinError').textContent = '';
@@ -388,8 +412,14 @@ function tick() {
 setInterval(tick, 1000); tick();
 
 async function w(action, extra = {}) {
-  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, pin: CORRECT_PIN, ...extra }) });
+  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, token: SESSION_TOKEN, ...extra }) });
   const d = await r.json();
+  if (r.status === 401) {
+    SESSION_TOKEN = null;
+    sessionStorage.removeItem('hermes_token');
+    document.getElementById('pinScreen').classList.remove('hidden');
+    throw new Error('Session expired');
+  }
   if (d.error) throw new Error(d.error);
   return d;
 }
@@ -427,7 +457,7 @@ async function condense(label, raw) {
     const resp = await fetch(WORKER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'condense', pin: CORRECT_PIN, label, text: plain })
+      body: JSON.stringify({ action: 'condense', token: SESSION_TOKEN, label, text: plain })
     });
     const data = await resp.json();
     if (data.error) throw new Error(data.error);

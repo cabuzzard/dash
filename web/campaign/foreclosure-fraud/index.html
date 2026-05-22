@@ -7,6 +7,7 @@
   <meta name="description" content="If you lost your home to robo-signing, chain of title fraud, or improper bank procedures, you may still have legal rights. Get a free confidential case review.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700;900&family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
@@ -258,12 +259,12 @@
         <label for="f-fraud-type">Type of Foreclosure Fraud *</label>
         <select id="f-fraud-type" name="fraudType" required>
           <option value="">— Select the type that best applies —</option>
-          <option value="Robo-signing">Robo-signing (fraudulent document signing)</option>
-          <option value="Chain of title fraud">Chain of title / ownership fraud</option>
-          <option value="Loan modification fraud">Loan modification fraud or dual tracking</option>
-          <option value="Improper procedures">Improper notice or foreclosure procedures</option>
-          <option value="Mortgage servicing fraud">Mortgage servicing abuse / illegal fees</option>
-          <option value="MERS assignment void">MERS or assignment void issues</option>
+          <option value="Robo-Signing">Robo-Signing (fraudulent document signing)</option>
+          <option value="Chain of Title Fraud">Chain of Title / ownership fraud</option>
+          <option value="Loan Modification Fraud">Loan Modification fraud or dual tracking</option>
+          <option value="Improper Procedures">Improper notice or foreclosure procedures</option>
+          <option value="Illegal Fees">Mortgage servicing abuse / illegal fees</option>
+          <option value="MERS / Void Assignment">MERS or assignment void issues</option>
           <option value="Other">Other / Not sure</option>
         </select>
       </div>
@@ -273,6 +274,9 @@
         <textarea id="f-note" name="note" placeholder="Briefly describe your situation — when it happened, what state, what the bank did..." maxlength="600"></textarea>
         <div class="char-counter" id="charCounter">0 / 600 characters</div>
       </div>
+
+      <!-- Cloudflare Turnstile CAPTCHA -->
+      <div class="cf-turnstile" data-sitekey="1x00000000000000000000AA" data-theme="light" style="margin:8px 0 4px;"></div>
 
       <button type="submit" class="submit-btn" id="submitBtn">Get My Free Case Review →</button>
       <p class="privacy-note">🔒 Your information is 100% confidential. We will never sell or share your data with third parties. By submitting, you consent to be contacted by a licensed foreclosure fraud attorney regarding your situation.</p>
@@ -313,7 +317,7 @@ document.getElementById('leadForm').addEventListener('submit', async (e) => {
   const fraudType = document.getElementById('f-fraud-type').value;
   const note      = document.getElementById('f-note').value.trim();
 
-  // Basic validation
+  // Validation
   if (!email || !phone || !fraudType) {
     msg.textContent = 'Please fill in all required fields marked with *.';
     msg.className = 'form-msg error';
@@ -326,6 +330,15 @@ document.getElementById('leadForm').addEventListener('submit', async (e) => {
     msg.style.display = 'block';
     return;
   }
+  if (!/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) {
+    msg.textContent = 'Please enter a valid phone number (digits, spaces, dashes, and parentheses only).';
+    msg.className = 'form-msg error';
+    msg.style.display = 'block';
+    return;
+  }
+
+  // Collect Turnstile token
+  const tsToken = document.querySelector('[name="cf-turnstile-response"]')?.value || '';
 
   btn.disabled = true;
   btn.textContent = 'Submitting…';
@@ -335,7 +348,7 @@ document.getElementById('leadForm').addEventListener('submit', async (e) => {
     const res = await fetch(WORKER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'submitLead', campaign: 'foreclosure-fraud', email, phone, fraudType, note })
+      body: JSON.stringify({ action: 'submitLead', campaign: 'foreclosure-fraud', email, phone, fraudType, note, tsToken })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
