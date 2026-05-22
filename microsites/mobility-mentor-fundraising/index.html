@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <link rel="stylesheet" href="../style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Webguy — Mobility Mentor Fundraising</title>
+<title>Mobility Mentor — Fundraising</title>
 <style>
 /* STATUS CHANGE BUTTON */
 .title-status-btn {
@@ -260,6 +260,13 @@
     <div class="modal-body">
       <label class="lm-label">Name</label>
       <input class="modal-ta" id="le-name" type="text" style="height:40px;padding:10px 14px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Platform <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— type to search, or create new</span></label>
+      <div style="position:relative;margin-bottom:12px;" id="le-plat-wrap">
+        <input class="modal-ta" id="le-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:40px;padding:10px 14px;" autocomplete="off"
+          oninput="filterLePlatforms()" onfocus="filterLePlatforms()" />
+        <input type="hidden" id="le-plat-id" value="" />
+        <div id="le-plat-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
+      </div>
       <label class="lm-label">Category <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
       <select class="modal-ta" id="le-category" style="height:40px;padding:0 10px;margin-bottom:12px;background:#1e1e1e;color:#ddd;border:1px solid #333;">
         <option value="">— Category —</option>
@@ -331,7 +338,7 @@
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "34b1f7d3a4bb81b6a8a8fee04df94807"; // mobility-mentor-fundraising
-const RESEARCH_ID = "3661f7d3a4bb81adaaadc2ce80784112"; // research
+const RESEARCH_ID = "34b1f7d3a4bb8109a2e8ea8d82a4a8d3"; // research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/mobility-mentor-fundraising/";
 const CORRECT_PIN = '1246';
 let pin = '';
@@ -890,7 +897,58 @@ document.addEventListener('click', e => {
     const dd = document.getElementById('lm-plat-dd');
     if (dd) dd.style.display = 'none';
   }
+  if (!e.target.closest('#le-plat-wrap')) {
+    const dd = document.getElementById('le-plat-dd');
+    if (dd) dd.style.display = 'none';
+  }
 });
+
+// ── PLATFORM AUTOCOMPLETE (EDIT MODAL) ────────────────────────────────
+function filterLePlatforms() {
+  const query  = (document.getElementById('le-plat-input').value || '').trim();
+  const queryL = query.toLowerCase();
+  const dd = document.getElementById('le-plat-dd');
+  dd.innerHTML = '';
+
+  const matches = ALL_PLATFORMS.filter(p =>
+    !query || p.name.toLowerCase().includes(queryL)
+  ).slice(0, 12);
+
+  matches.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-item';
+    div.textContent = p.name;
+    div.onmousedown = () => selectLePlatform(p.id, p.name);
+    dd.appendChild(div);
+  });
+
+  const exact = ALL_PLATFORMS.some(p => p.name.toLowerCase() === queryL);
+  if (query && !exact) {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-create';
+    div.textContent = '+ Create "' + query + '"';
+    div.onmousedown = async () => {
+      div.textContent = 'Creating…';
+      try {
+        const res = await w('createPlatform', { title: query, status: 'Publish' });
+        const newP = { id: res.id, name: query, status: 'Publish' };
+        ALL_PLATFORMS.push(newP);
+        selectLePlatform(res.id, query);
+      } catch(e) {
+        div.textContent = 'Error: ' + e.message;
+      }
+    };
+    dd.appendChild(div);
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+function selectLePlatform(id, name) {
+  document.getElementById('le-plat-input').value = name;
+  document.getElementById('le-plat-id').value   = id;
+  document.getElementById('le-plat-dd').style.display = 'none';
+}
 
 // ── ADD LOGIN ─────────────────────────────────────────────────────────
 function openLoginModal() {
@@ -956,6 +1014,12 @@ function openLoginEditModal(login) {
   LE_LOGIN_ID = login.id;
   document.getElementById('le-modal-title').textContent = login.name || 'Edit Login';
   document.getElementById('le-name').value     = login.name     || '';
+  // Populate platform field
+  const platId = (login.platformIds || [])[0] || '';
+  const platObj = ALL_PLATFORMS.find(p => p.id === platId);
+  document.getElementById('le-plat-id').value    = platId;
+  document.getElementById('le-plat-input').value = platObj ? platObj.name : '';
+  document.getElementById('le-plat-dd').style.display = 'none';
   document.getElementById('le-category').value = login.category || '';
   document.getElementById('le-status').value   = login.status   || 'Planning';
   document.getElementById('le-usr').value      = login.usr      || '';
@@ -984,8 +1048,10 @@ async function saveLoginEdit() {
   btn.textContent = 'Saving…';
   msg.textContent = '';
   try {
+    const platId = document.getElementById('le-plat-id').value || undefined;
     const updated = {
       name:       document.getElementById('le-name').value.trim(),
+      platformId: platId,
       category:   document.getElementById('le-category').value || undefined,
       status:     document.getElementById('le-status').value   || undefined,
       usr:        document.getElementById('le-usr').value.trim() || undefined,
@@ -994,7 +1060,7 @@ async function saveLoginEdit() {
     await w('updateLoginFull', { loginId: LE_LOGIN_ID, ...updated });
     // Update local cache
     const idx = LOGIN_ITEMS.findIndex(l => l.id === LE_LOGIN_ID);
-    if (idx !== -1) LOGIN_ITEMS[idx] = { ...LOGIN_ITEMS[idx], ...updated };
+    if (idx !== -1) LOGIN_ITEMS[idx] = { ...LOGIN_ITEMS[idx], ...updated, platformIds: platId ? [platId] : [] };
     renderLogins();
     msg.textContent = 'Saved ✓';
     msg.className = 'modal-status ok';

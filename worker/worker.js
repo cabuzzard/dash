@@ -1380,7 +1380,7 @@ Rules:
 
       // ── updateLoginFull — update login fields ──
       if (body.action === "updateLoginFull") {
-        const { loginId, name, category, status, usr, accountUrl, headline, bio } = body;
+        const { loginId, name, category, status, usr, accountUrl, headline, bio, platformId } = body;
         if (!loginId) return json({ error: "loginId required" }, 400);
         const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const props = {};
@@ -1391,6 +1391,7 @@ Rules:
         if (accountUrl !== undefined) props["Account URL"] = accountUrl ? { url: accountUrl } : { url: null };
         if (headline !== undefined) props.Headline = { rich_text: headline ? [{ type:"text", text:{ content: headline } }] : [] };
         if (bio !== undefined)      props.Bio      = { rich_text: bio ? [{ type:"text", text:{ content: bio } }] : [] };
+        if (platformId !== undefined) props.Platform = platformId ? { relation: [{ id: dash(platformId) }] } : { relation: [] };
 
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, {
           method: "PATCH",
