@@ -82,8 +82,8 @@ select.modal-ta { height: 32px !important; padding: 0 8px !important; }
   </div>
 </div>
 
-<!-- SEC 1: two col — campaign meta / main TD -->
-<div class="two-col">
+<!-- SEC 1: three col — campaign meta / notes / main TD -->
+<div class="three-col">
   <div class="col">
     <h2>Campaign</h2>
     <div class="content">
@@ -91,6 +91,12 @@ select.modal-ta { height: 32px !important; padding: 0 8px !important; }
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
       <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/34b1f7d3a4bb81b6a8a8fee04df94807" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 class="editable" onclick="openModal('notes')">Notes</h2>
+    <div class="content">
+      <div class="body-text" id="r-notes" style="white-space:pre-wrap;min-height:40px;"></div>
     </div>
   </div>
   <div class="col">
@@ -451,6 +457,8 @@ async function loadResearch() {
     const sc = r.status ? r.status.toLowerCase() : 'draft';
     statusEl.innerHTML = `<span class="badge ${sc}">${r.status || '—'}</span>`;
     document.getElementById('r-date').textContent = r.lastUpdated || '—';
+    const notesDisplayEl = document.getElementById('r-notes');
+    if (notesDisplayEl) notesDisplayEl.textContent = r.notes || '';
 
     // Store raw values for editing
     RESEARCH_ID_LIVE = r.id || '';
@@ -553,6 +561,7 @@ const MODAL_CFG = {
   keyMessage:   { title: 'Key Message',         hint: 'Core positioning statement for this campaign', target: 'research', field: 'keyMessage' },
   mainProblem:  { title: 'Main Problem',        hint: 'Pain points this campaign addresses', target: 'campaignField', field: 'painPoints' },
   productIdeas: { title: 'Product Ideas',        hint: 'Describe product ideas, offers, and pipeline', target: 'research', field: 'productIdeas' },
+  notes:        { title: 'Notes',                hint: 'Internal notes for this campaign', target: 'research', field: 'notes' },
   actions:      { title: 'Recommended Actions',  hint: 'ROI-ranked actions and next steps', target: 'research', field: 'notes' },
   platforms:    { title: 'Platforms',            hint: 'Active and planned platforms for this campaign', target: 'research', field: 'platforms', combined: true },
   methods:      { title: 'Methods',              hint: 'Active and planned methods for this campaign', target: 'research', field: 'platforms', combined: true },
@@ -579,6 +588,7 @@ function openModal(field) {
   if (field === 'actions')      val = RAW.notes || '';
   if (field === 'platforms')    val = RAW.rawPlatforms || '';
   if (field === 'methods')      val = RAW.rawMethods || '';
+  if (field === 'notes')        val = RAW.notes || '';
   document.getElementById('modalTa').value = val;
 
   document.getElementById('editModal').classList.add('open');
@@ -635,6 +645,11 @@ async function saveModal() {
       } else {
         await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
         RAW[cfg.field] = val;
+        // If editing the notes column directly, update its display without condensing
+        if (activeField === 'notes') {
+          const nd = document.getElementById('r-notes');
+          if (nd) nd.textContent = val;
+        }
       }
       // Re-condense the display
       status.textContent = 'Saved. Updating display…';

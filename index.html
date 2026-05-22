@@ -1076,8 +1076,12 @@ function renderPlatformMatrix() {
       // Campaign name cell (sticky)
       const nameTd = document.createElement('td');
       nameTd.style.cssText = 'padding:8px 12px 8px 0;font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;position:sticky;left:0;background:inherit;z-index:1;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-right:1px solid #444;';
-      nameTd.textContent = c.name;
       nameTd.title = c.name;
+      if (c.siteUrl) {
+        nameTd.innerHTML = esc(c.name) + ' <a href="' + c.siteUrl + '" target="_blank" onclick="event.stopPropagation()" title="Open microsite" style="font-size:10px;color:var(--text3);text-decoration:none;vertical-align:middle;opacity:.7;flex-shrink:0;">↗</a>';
+      } else {
+        nameTd.textContent = c.name;
+      }
       tr.appendChild(nameTd);
 
       // Platform cells
