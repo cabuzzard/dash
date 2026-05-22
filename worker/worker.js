@@ -524,7 +524,11 @@ export default {
 
       if (body.action === "getPlatforms") {
         const data = await notionQuery(PLATFORMS_DB, { sorts: [{ property: "Name", direction: "ascending" }], page_size: 100 });
-        return json({ platforms: data.map(p => ({ id: p.id.replace(/-/g,""), name: p.properties.Name?.title?.map(t=>t.plain_text).join("") || "" })) });
+        return json({ platforms: data.map(p => ({
+          id:     p.id.replace(/-/g,""),
+          name:   p.properties.Name?.title?.map(t=>t.plain_text).join("") || "",
+          status: p.properties.Status?.select?.name || "",
+        })) });
       }
 
       if (body.action === "updateCampaignPlatforms") {
@@ -1194,6 +1198,62 @@ Rules:
         return json({ success: true });
       }
 
+      // ── MICROSITE: getCampaignLogins ──
+      if (body.action === "getCampaignLogins") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const rows = await notionQuery(LOGINS_DB, {
+          filter: { property: "Campaign", relation: { contains: dashId(campaignId) } },
+          sorts: [{ property: "Name", direction: "ascending" }],
+        });
+        const logins = rows.map(l => ({
+          id:     l.id.replace(/-/g,""),
+          name:   l.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+          status: l.properties.Status?.select?.name || "Planning",
+        }));
+        return json({ logins });
+      }
+
+      // ── MICROSITE: createCampaignLogin ──
+      if (body.action === "createCampaignLogin") {
+        const { campaignId, name } = body;
+        if (!campaignId || !name) return json({ error: "campaignId and name required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: LOGINS_DB },
+            properties: {
+              Name:     { title:    [{ type: "text", text: { content: name } }] },
+              Status:   { select:   { name: "Planning" } },
+              Campaign: { relation: [{ id: dashId(campaignId) }] },
+            }
+          }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,""), name, status: "Planning" });
+      }
+
+      // ── MICROSITE: updateLoginStatus ──
+      if (body.action === "updateLoginStatus") {
+        const { loginId, status } = body;
+        if (!loginId || !status) return json({ error: "loginId and status required" }, 400);
+        const valid = ["Planning", "Launched"];
+        if (!valid.includes(status)) return json({ error: "Invalid status: " + status }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(loginId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Status: { select: { name: status } } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
       // ── PUBLIC SITE: getPublishedPosts ──────────────────────────────────────
       // Fetches Publish/Published titles for a campaign, then reads each page's
       // block children to extract a real excerpt for blog cards.
@@ -1259,6 +1319,112 @@ Rules:
         }));
 
         return json({ posts });
+      }
+
+      // ── getLogins — full login records with campaignIds and platformIds ──
+      if (body.action === "getLogins") {
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const rows = await notionQuery(LOGINS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
+        const logins = rows.map(l => {
+          const p = l.properties;
+          return {
+            id:          l.id.replace(/-/g,""),
+            name:        p.Name?.title?.map(t=>t.plain_text).join("") || "Untitled",
+            status:      p.Status?.select?.name || "",
+            category:    p.Category?.select?.name || "",
+            usr:         p.Usr?.rich_text?.map(t=>t.plain_text).join("") || "",
+            accountUrl:  p["Account URL"]?.url || "",
+            headline:    p.Headline?.rich_text?.map(t=>t.plain_text).join("") || "",
+            bio:         p.Bio?.rich_text?.map(t=>t.plain_text).join("") || "",
+            campaignIds: (p.Campaign?.relation || []).map(r=>r.id.replace(/-/g,"")),
+            platformIds: (p.Platform?.relation || []).map(r=>r.id.replace(/-/g,"")),
+          };
+        });
+        return json({ logins });
+      }
+
+      // ── createLoginFull — create login linked to campaign + platform ──
+      if (body.action === "createLoginFull") {
+        const { name, campaignId, platformId, category, status, usr, accountUrl } = body;
+        if (!name) return json({ error: "name required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const props = {
+          Name:   { title: [{ type: "text", text: { content: name } }] },
+          Status: { select: { name: status || "Planning" } },
+        };
+        if (category)   props.Category   = { select: { name: category } };
+        if (usr)        props.Usr        = { rich_text: [{ type:"text", text:{ content: usr } }] };
+        if (accountUrl) props["Account URL"] = { url: accountUrl };
+        if (campaignId) props.Campaign   = { relation: [{ id: dash(campaignId) }] };
+        if (platformId) props.Platform   = { relation: [{ id: dash(platformId) }] };
+
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: LOGINS_DB }, properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        const newId = result.id.replace(/-/g,"");
+        return json({ success: true, login: {
+          id: newId, name, status: status||"Planning", category: category||"",
+          usr: usr||"", accountUrl: accountUrl||"", headline:"", bio:"",
+          campaignIds: campaignId ? [campaignId] : [],
+          platformIds: platformId ? [platformId] : [],
+        }});
+      }
+
+      // ── updateLoginFull — update login fields ──
+      if (body.action === "updateLoginFull") {
+        const { loginId, name, category, status, usr, accountUrl, headline, bio } = body;
+        if (!loginId) return json({ error: "loginId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const props = {};
+        if (name)       props.Name        = { title: [{ type:"text", text:{ content: name } }] };
+        if (status)     props.Status      = { select: { name: status } };
+        if (category !== undefined) props.Category = category ? { select: { name: category } } : { select: null };
+        if (usr !== undefined)      props.Usr      = { rich_text: usr ? [{ type:"text", text:{ content: usr } }] : [] };
+        if (accountUrl !== undefined) props["Account URL"] = accountUrl ? { url: accountUrl } : { url: null };
+        if (headline !== undefined) props.Headline = { rich_text: headline ? [{ type:"text", text:{ content: headline } }] : [] };
+        if (bio !== undefined)      props.Bio      = { rich_text: bio ? [{ type:"text", text:{ content: bio } }] : [] };
+
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── deleteLogin — archive login record ──
+      if (body.action === "deleteLogin") {
+        const { loginId } = body;
+        if (!loginId) return json({ error: "loginId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Delete failed" }, resp.status); }
+        return json({ success: true });
+      }
+
+      // ── updatePlatformStatus — set platform Status field ──
+      if (body.action === "updatePlatformStatus") {
+        const { platformId, status } = body;
+        if (!platformId || !status) return json({ error: "platformId and status required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(platformId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Status: { select: { name: status } } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
       }
 
       return json({ error: "Unknown action" }, 400);

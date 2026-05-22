@@ -256,6 +256,7 @@
     <div class="tab"        onclick="switchTab('development')">Development</div>
     <div class="tab"        onclick="switchTab('td')">TD</div>
     <div class="tab" id="tabBtnPublishing" onclick="switchTab('publishing')">Publishing</div>
+    <div class="tab" onclick="switchTab('platforms')">Platforms</div>
     <div class="tab" onclick="switchTab('skills')">Skills</div>
   </div>
 
@@ -289,6 +290,12 @@
   <div class="tab-panel" id="tabTd">
     <a class="add-link" onclick="openAddTdModal()">+ Add to do item</a>
     <div id="tdTabContent">
+      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabPlatforms">
+    <div id="platformsContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
   </div>
@@ -786,9 +793,404 @@ function switchTab(name) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   event.currentTarget.classList.add('active');
   document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
-  if (name === 'products'    && !prodLoaded)   { prodLoaded   = true; loadProducts(); }
-  if (name === 'development' && !devLoaded)    { devLoaded    = true; loadDev(); }
-  if (name === 'td'          && !tdTabLoaded)  { tdTabLoaded  = true; loadTdTab(); }
+  if (name === 'products'    && !prodLoaded)      { prodLoaded      = true; loadProducts(); }
+  if (name === 'development' && !devLoaded)       { devLoaded       = true; loadDev(); }
+  if (name === 'td'          && !tdTabLoaded)     { tdTabLoaded     = true; loadTdTab(); }
+  if (name === 'platforms'   && !platMatrixLoaded){ platMatrixLoaded = true; loadPlatformMatrix(); }
+}
+
+// ── PLATFORM MATRIX ───────────────────────────────────────────────────
+let platMatrixLoaded = false;
+let platCampaigns    = [];   // full campaign list from getCampaigns
+let platPlatforms    = [];   // Publish-status platforms only
+let platLoginIndex   = {};   // [campId][platId] -> login obj | null
+let lcCampId = null, lcPlatId = null;
+let leLoginId = null, leLoginData = null;
+
+const CAT_COLOR = {
+  'Personal':     '#378ADD',
+  'Company Page': '#1D9E75',
+  'Client':       '#7F77DD',
+  'Shared':       '#BA7517',
+  'Affiliate':    '#D85A30',
+};
+const STATUS_DOT = { 'Active':'#44cc88', 'Planning':'#888', 'Paused':'#ffaa00', 'Inactive':'#555', 'development':'#888' };
+
+async function loadPlatformMatrix() {
+  const el = document.getElementById('platformsContent');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const [campData, platData, loginData] = await Promise.all([
+      call('getCampaigns'),
+      call('getPlatforms'),
+      call('getLogins'),
+    ]);
+
+    platCampaigns = campData.campaigns || [];
+    // Only platforms with Status === 'Publish'
+    platPlatforms = (platData.platforms || []).filter(p => p.status === 'Publish');
+
+    // Build login index [campId][platId] -> login
+    platLoginIndex = {};
+    (loginData.logins || []).forEach(l => {
+      const cids = l.campaignIds || [];
+      const pids = l.platformIds || [];
+      cids.forEach(cid => {
+        if (!platLoginIndex[cid]) platLoginIndex[cid] = {};
+        pids.forEach(pid => {
+          if (!platLoginIndex[cid][pid]) platLoginIndex[cid][pid] = [];
+          platLoginIndex[cid][pid].push(l);
+        });
+      });
+    });
+
+    renderPlatformMatrix();
+  } catch(e) {
+    el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderPlatformMatrix() {
+  const el = document.getElementById('platformsContent');
+  el.innerHTML = '';
+
+  const SITE_ICONS = {
+    'Mountainwize Coaching':'⛰️','Webguy Business Services':'🖥️',
+    'Mobility Mentor':'♿','Affiliates':'💰','Main Business':'🏠',
+    'Hermes':'🤖','creative flow guitar':'🎸','Other':'📁'
+  };
+
+  // Group campaigns by site, filter to those with titles or logins
+  const siteMap = {};
+  platCampaigns.forEach(c => {
+    if (!c.name) return;
+    const site = c.site || 'Other';
+    if (!siteMap[site]) siteMap[site] = [];
+    siteMap[site].push(c);
+  });
+
+  // Wrap in horizontal scroll container
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:24px;';
+
+  const table = document.createElement('table');
+  table.style.cssText = 'border-collapse:collapse;font-size:12px;min-width:100%;';
+
+  // THEAD
+  const thead = document.createElement('thead');
+  const hrow  = document.createElement('tr');
+
+  // Campaign col header
+  const thCamp = document.createElement('th');
+  thCamp.textContent = 'Campaign';
+  thCamp.style.cssText = 'text-align:left;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:8px 12px 8px 0;white-space:nowrap;position:sticky;left:0;background:var(--bg);z-index:2;border-bottom:1px solid var(--border2);min-width:160px;';
+  hrow.appendChild(thCamp);
+
+  // Platform col headers
+  platPlatforms.forEach(p => {
+    const th = document.createElement('th');
+    th.style.cssText = 'text-align:center;font-size:11px;font-weight:600;color:var(--text);padding:8px 10px;white-space:nowrap;border-bottom:1px solid var(--border2);min-width:90px;position:relative;';
+    th.innerHTML =
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">' +
+        '<span>' + esc(p.name) + '</span>' +
+        '<span onclick="removePlatformColumn(\'' + p.id + '\',\'' + esc(p.name) + '\')" title="Remove column" style="font-size:9px;color:var(--text3);cursor:pointer;padding:1px 5px;border:1px solid var(--border);border-radius:4px;letter-spacing:.04em;margin-top:1px;">✕ remove</span>' +
+      '</div>';
+    hrow.appendChild(th);
+  });
+
+  // + Add platform column header
+  const thAdd = document.createElement('th');
+  thAdd.style.cssText = 'text-align:center;padding:8px 10px;border-bottom:1px solid var(--border2);min-width:80px;';
+  const addBtn = document.createElement('button');
+  addBtn.textContent = '+ Platform';
+  addBtn.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.06em;background:none;border:1px solid var(--border2);border-radius:6px;color:var(--text3);padding:4px 8px;cursor:pointer;white-space:nowrap;';
+  addBtn.onmouseover = () => { addBtn.style.borderColor = 'var(--accent)'; addBtn.style.color = 'var(--accent)'; };
+  addBtn.onmouseout  = () => { addBtn.style.borderColor = 'var(--border2)'; addBtn.style.color = 'var(--text3)'; };
+  addBtn.onclick = openNewPlatformModal;
+  thAdd.appendChild(addBtn);
+  hrow.appendChild(thAdd);
+
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+
+  // TBODY — grouped by site
+  const tbody = document.createElement('tbody');
+  const siteOrder = ['Mountainwize Coaching','Webguy Business Services','Mobility Mentor','Affiliates','creative flow guitar','Main Business','Hermes','Other'];
+  const orderedSites = [...siteOrder.filter(s => siteMap[s]), ...Object.keys(siteMap).filter(s => !siteOrder.includes(s))];
+
+  orderedSites.forEach(site => {
+    const camps = siteMap[site] || [];
+    if (!camps.length) return;
+
+    // Site group header row
+    const siteRow = document.createElement('tr');
+    const siteTd  = document.createElement('td');
+    siteTd.colSpan = platPlatforms.length + 2;
+    siteTd.style.cssText = 'padding:10px 0 4px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);';
+    siteTd.textContent = (SITE_ICONS[site] || '📁') + ' ' + site;
+    siteRow.appendChild(siteTd);
+    tbody.appendChild(siteRow);
+
+    camps.forEach(c => {
+      const tr = document.createElement('tr');
+      tr.style.cssText = 'border-bottom:1px solid var(--border);';
+      tr.onmouseover = () => tr.style.background = 'var(--surface)';
+      tr.onmouseout  = () => tr.style.background = '';
+
+      // Campaign name cell (sticky)
+      const nameTd = document.createElement('td');
+      nameTd.style.cssText = 'padding:8px 12px 8px 0;font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;position:sticky;left:0;background:inherit;z-index:1;max-width:200px;overflow:hidden;text-overflow:ellipsis;';
+      nameTd.textContent = c.name;
+      nameTd.title = c.name;
+      tr.appendChild(nameTd);
+
+      // Platform cells
+      platPlatforms.forEach(p => {
+        const td = document.createElement('td');
+        td.style.cssText = 'text-align:center;padding:6px 8px;vertical-align:middle;cursor:pointer;';
+        td.title = 'Click to manage login';
+
+        const logins = (platLoginIndex[c.id] && platLoginIndex[c.id][p.id]) || [];
+
+        if (logins.length) {
+          logins.forEach(l => {
+            const pill = document.createElement('div');
+            const cat  = l.category || '';
+            const col  = CAT_COLOR[cat] || '#888';
+            const dot  = STATUS_DOT[l.status] || '#888';
+            pill.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:20px;border:1px solid ' + col + '33;background:' + col + '18;margin:2px;max-width:100px;overflow:hidden;';
+            pill.innerHTML =
+              '<span style="width:5px;height:5px;border-radius:50%;background:' + dot + ';flex-shrink:0;"></span>' +
+              '<span style="font-size:10px;font-weight:600;color:' + col + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(l.name || cat || '—') + '</span>';
+            td.appendChild(pill);
+          });
+        } else {
+          td.innerHTML = '<span style="font-size:16px;color:var(--border2);">+</span>';
+        }
+
+        td.onclick = () => openLoginCellModal(c, p, logins);
+        tr.appendChild(td);
+      });
+
+      // Empty add-platform spacer cell
+      const spaceTd = document.createElement('td');
+      tr.appendChild(spaceTd);
+      tbody.appendChild(tr);
+    });
+  });
+
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  el.appendChild(wrap);
+}
+
+// ── PLATFORM COLUMN REMOVE ────────────────────────────────────────────
+async function removePlatformColumn(platId, platName) {
+  if (!confirm('Remove "' + platName + '" from the matrix? This sets the platform status to Inactive and does not delete any logins.')) return;
+  try {
+    await call('updatePlatformStatus', { platformId: platId, status: 'Inactive' });
+    platPlatforms = platPlatforms.filter(p => p.id !== platId);
+    renderPlatformMatrix();
+    showToast(platName + ' removed ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+// ── NEW PLATFORM MODAL ────────────────────────────────────────────────
+function openNewPlatformModal() {
+  document.getElementById('newPlatformName').value = '';
+  document.getElementById('newPlatformSubmitBtn').disabled = false;
+  document.getElementById('newPlatformSubmitBtn').textContent = 'Create';
+  document.getElementById('newPlatformModal').classList.add('open');
+  setTimeout(() => document.getElementById('newPlatformName').focus(), 280);
+}
+
+function closeNewPlatformModal() {
+  document.getElementById('newPlatformModal').classList.remove('open');
+}
+
+async function submitNewPlatform() {
+  const name = document.getElementById('newPlatformName').value.trim();
+  if (!name) { document.getElementById('newPlatformName').focus(); return; }
+  const btn = document.getElementById('newPlatformSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    const res = await call('createPlatform', { title: name });
+    // Immediately set to Publish
+    await call('updatePlatformStatus', { platformId: res.id, status: 'Publish' });
+    platPlatforms.push({ id: res.id, name, status: 'Publish' });
+    platPlatforms.sort((a, b) => a.name.localeCompare(b.name));
+    renderPlatformMatrix();
+    closeNewPlatformModal();
+    showToast(name + ' added ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Create';
+  }
+}
+
+// ── LOGIN CELL MODAL ──────────────────────────────────────────────────
+function openLoginCellModal(campaign, platform, logins) {
+  lcCampId = campaign.id;
+  lcPlatId = platform.id;
+  document.getElementById('loginCellTitle').textContent = campaign.name;
+  document.getElementById('loginCellSub').textContent   = platform.name;
+  hideLoginCellForm();
+  renderLoginCellList(logins);
+  document.getElementById('loginCellModal').classList.add('open');
+}
+
+function closeLoginCellModal() {
+  document.getElementById('loginCellModal').classList.remove('open');
+}
+
+function renderLoginCellList(logins) {
+  const el = document.getElementById('loginCellList');
+  if (!logins.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);margin-bottom:8px;">No logins yet for this campaign + platform.</div>';
+    return;
+  }
+  el.innerHTML = '';
+  logins.forEach(l => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;';
+    row.onmouseover = () => row.style.borderColor = 'var(--border2)';
+    row.onmouseout  = () => row.style.borderColor = 'var(--border)';
+
+    const cat = l.category || '';
+    const col = CAT_COLOR[cat] || '#888';
+    const dot = STATUS_DOT[l.status] || '#888';
+
+    row.innerHTML =
+      '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">' +
+        '<span style="width:7px;height:7px;border-radius:50%;background:' + dot + ';flex-shrink:0;"></span>' +
+        '<div style="min-width:0;">' +
+          '<div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(l.name) + '</div>' +
+          (cat ? '<div style="font-size:10px;font-weight:600;color:' + col + ';margin-top:1px;">' + esc(cat) + '</div>' : '') +
+          (l.usr ? '<div style="font-size:11px;color:var(--text3);margin-top:1px;">' + esc(l.usr) + '</div>' : '') +
+        '</div>' +
+      '</div>' +
+      '<span style="font-size:13px;color:var(--text3);flex-shrink:0;padding-left:8px;">›</span>';
+
+    row.onclick = () => { closeLoginCellModal(); openLoginEditModal(l); };
+    el.appendChild(row);
+  });
+}
+
+function showLoginCellForm() {
+  document.getElementById('loginCellForm').style.display = 'block';
+  document.getElementById('loginCellAddBtn').style.display = 'none';
+  document.getElementById('lcName').value = '';
+  document.getElementById('lcCategory').value = '';
+  document.getElementById('lcStatus').value = 'Planning';
+  document.getElementById('lcUsr').value = '';
+  document.getElementById('lcUrl').value = '';
+  document.getElementById('lcSaveBtn').disabled = false;
+  document.getElementById('lcSaveBtn').textContent = 'Create';
+  setTimeout(() => document.getElementById('lcName').focus(), 50);
+}
+
+function hideLoginCellForm() {
+  document.getElementById('loginCellForm').style.display = 'none';
+  document.getElementById('loginCellAddBtn').style.display = 'block';
+}
+
+async function saveLoginCell() {
+  const name = document.getElementById('lcName').value.trim();
+  if (!name) { document.getElementById('lcName').focus(); return; }
+  const btn = document.getElementById('lcSaveBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    const res = await call('createLoginFull', {
+      name,
+      campaignId: lcCampId,
+      platformId: lcPlatId,
+      category:   document.getElementById('lcCategory').value,
+      status:     document.getElementById('lcStatus').value,
+      usr:        document.getElementById('lcUsr').value.trim(),
+      accountUrl: document.getElementById('lcUrl').value.trim(),
+    });
+    // Update index
+    if (!platLoginIndex[lcCampId]) platLoginIndex[lcCampId] = {};
+    if (!platLoginIndex[lcCampId][lcPlatId]) platLoginIndex[lcCampId][lcPlatId] = [];
+    platLoginIndex[lcCampId][lcPlatId].push(res.login);
+    closeLoginCellModal();
+    renderPlatformMatrix();
+    showToast('Login created ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Create';
+  }
+}
+
+// ── LOGIN EDIT MODAL ──────────────────────────────────────────────────
+function openLoginEditModal(login) {
+  leLoginId   = login.id;
+  leLoginData = login;
+  document.getElementById('loginEditTitle').textContent = login.name;
+  document.getElementById('leName').value     = login.name || '';
+  document.getElementById('leCategory').value = login.category || '';
+  document.getElementById('leStatus').value   = login.status || 'Planning';
+  document.getElementById('leUsr').value      = login.usr || '';
+  document.getElementById('leUrl').value      = login.accountUrl || '';
+  document.getElementById('leHeadline').value = login.headline || '';
+  document.getElementById('leBio').value      = login.bio || '';
+  document.getElementById('leSaveBtn').disabled = false;
+  document.getElementById('leSaveBtn').textContent = 'Save';
+  document.getElementById('loginEditModal').classList.add('open');
+}
+
+function closeLoginEditModal() {
+  document.getElementById('loginEditModal').classList.remove('open');
+}
+
+async function saveLoginEdit() {
+  const btn = document.getElementById('leSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    const updated = {
+      name:       document.getElementById('leName').value.trim(),
+      category:   document.getElementById('leCategory').value,
+      status:     document.getElementById('leStatus').value,
+      usr:        document.getElementById('leUsr').value.trim(),
+      accountUrl: document.getElementById('leUrl').value.trim(),
+      headline:   document.getElementById('leHeadline').value.trim(),
+      bio:        document.getElementById('leBio').value.trim(),
+    };
+    await call('updateLoginFull', { loginId: leLoginId, ...updated });
+    // Update index in place
+    Object.values(platLoginIndex).forEach(platObj => {
+      Object.values(platObj).forEach(arr => {
+        const idx = arr.findIndex(l => l.id === leLoginId);
+        if (idx !== -1) arr[idx] = { ...arr[idx], ...updated };
+      });
+    });
+    closeLoginEditModal();
+    renderPlatformMatrix();
+    showToast('Saved ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+async function deleteLoginCell() {
+  if (!confirm('Delete this login record?')) return;
+  try {
+    await call('deleteLogin', { loginId: leLoginId });
+    // Remove from index
+    Object.values(platLoginIndex).forEach(platObj => {
+      Object.keys(platObj).forEach(pid => {
+        platObj[pid] = platObj[pid].filter(l => l.id !== leLoginId);
+      });
+    });
+    closeLoginEditModal();
+    renderPlatformMatrix();
+    showToast('Deleted ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
 }
 
 // ── PRODUCTS ─────────────────────────────────────────────────────────
