@@ -1490,14 +1490,12 @@ function syncStickyThead(cols, sortState, rerender) {
     };
     stickyRow.appendChild(th);
   });
-  const hlTh = document.createElement('th');
-  hlTh.textContent = 'HL';
-  hlTh.style.cssText = 'text-align:center;';
-  stickyRow.appendChild(hlTh);
-  const dbTh = document.createElement('th');
-  dbTh.textContent = 'DB';
-  dbTh.style.cssText = 'text-align:center;';
-  stickyRow.appendChild(dbTh);
+  ['HL','DB','STE','LVE','ROI'].forEach(label => {
+    const th = document.createElement('th');
+    th.textContent = label;
+    th.style.cssText = 'text-align:center;cursor:default;width:36px;';
+    stickyRow.appendChild(th);
+  });
 
   // Position and width matching
   const updateStickyPos = () => {
