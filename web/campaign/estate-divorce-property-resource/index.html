@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What Happens to the House? — Estate &amp; Divorce Property Help</title>
+  <meta name="description" content="Going through a divorce, probate, or estate dispute? We connect you with a probate specialist realtor and a property attorney — at the same time. Free consultation.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700;900&family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', sans-serif; background: #fff; color: #1c1a2e; line-height: 1.6; }
+    h1, h2, h3 { font-family: 'Merriweather', serif; font-weight: 700; line-height: 1.2; }
+
+    /* NAV */
+    .nav { background: #1c1a2e; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 58px; position: sticky; top: 0; z-index: 50; }
+    .nav-logo { font-family: 'Merriweather', serif; font-size: 14px; color: #fff; font-weight: 700; letter-spacing: .01em; }
+    .nav-logo em { color: #d4a84b; font-style: normal; }
+    .nav-cta { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #1c1a2e; background: #d4a84b; padding: 8px 18px; text-decoration: none; transition: background .15s; white-space: nowrap; }
+    .nav-cta:hover { background: #e8c06a; }
+
+    /* HERO */
+    .hero { background: linear-gradient(150deg, #1c1a2e 0%, #2d2847 55%, #3d3560 100%); padding: 80px 24px 88px; text-align: center; }
+    .hero-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: #d4a84b; margin-bottom: 22px; }
+    .hero h1 { font-size: clamp(26px, 5vw, 54px); color: #fff; max-width: 820px; margin: 0 auto 26px; }
+    .hero h1 em { color: #d4a84b; font-style: normal; }
+    .hero-sub { font-size: clamp(15px, 2vw, 18px); color: #a89ec4; max-width: 660px; margin: 0 auto 40px; line-height: 1.8; }
+    .hero-cta { display: inline-block; background: #9b5de5; color: #fff; font-size: 15px; font-weight: 700; letter-spacing: .04em; padding: 16px 40px; text-decoration: none; transition: background .15s; }
+    .hero-cta:hover { background: #b47af0; }
+    .hero-note { font-size: 12px; color: #6a5e8a; margin-top: 14px; }
+
+    /* TRUST PILLS */
+    .trust-pills { background: #2d2847; padding: 20px 24px; }
+    .trust-pills-inner { max-width: 960px; margin: 0 auto; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 24px; }
+    .trust-pill { font-size: 13px; color: #c8bfe8; display: flex; align-items: center; gap: 8px; font-weight: 500; }
+    .trust-pill::before { content: '✓'; color: #d4a84b; font-weight: 700; font-size: 14px; }
+
+    /* SITUATIONS */
+    .section-wrap { max-width: 960px; margin: 0 auto; padding: 64px 24px; }
+    .section-label { font-size: 11px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: #9b5de5; margin-bottom: 12px; }
+    .section-wrap h2 { font-size: clamp(22px, 3vw, 36px); color: #1c1a2e; margin-bottom: 18px; }
+    .section-lead { font-size: 17px; color: #4a4060; line-height: 1.85; max-width: 720px; }
+
+    .situation-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 36px; }
+    .situation-card { border: 1px solid #e0d8f0; padding: 26px 22px; background: #faf8ff; transition: border-color .15s, box-shadow .15s; }
+    .situation-card:hover { border-color: #9b5de5; box-shadow: 0 2px 12px rgba(155,93,229,.1); }
+    .sit-icon { font-size: 26px; margin-bottom: 14px; }
+    .situation-card h3 { font-family: 'Merriweather', serif; font-size: 15px; color: #1c1a2e; margin-bottom: 8px; }
+    .situation-card p { font-size: 13px; color: #5a5070; line-height: 1.65; }
+
+    /* HOW IT WORKS */
+    .how-section { background: #f8f6ff; padding: 64px 24px; }
+    .how-inner { max-width: 820px; margin: 0 auto; }
+    .how-inner h2 { font-size: clamp(22px, 3vw, 34px); color: #1c1a2e; margin-bottom: 36px; }
+    .steps { display: flex; flex-direction: column; gap: 0; }
+    .step { display: flex; gap: 20px; padding: 24px 0; border-bottom: 1px solid #e8e0f8; }
+    .step:last-child { border-bottom: none; }
+    .step-num { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; background: #9b5de5; color: #fff; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
+    .step-body h3 { font-family: 'Merriweather', serif; font-size: 16px; color: #1c1a2e; margin-bottom: 6px; }
+    .step-body p { font-size: 14px; color: #5a5070; line-height: 1.7; }
+
+    /* HIGHLIGHT BOX */
+    .highlight-box { background: #fff8e6; border-left: 4px solid #d4a84b; padding: 20px 24px; margin: 40px 0 0; }
+    .highlight-box p { font-size: 14px; color: #5a3c00; line-height: 1.75; }
+    .highlight-box strong { color: #2a1a00; }
+
+    /* DIVIDER */
+    .divider { border: none; border-top: 1px solid #e8e0f8; }
+
+    /* FORM SECTION */
+    .form-section { background: #f0ecff; padding: 72px 24px; }
+    .form-inner { max-width: 580px; margin: 0 auto; }
+    .form-inner h2 { font-size: clamp(22px, 3vw, 34px); color: #1c1a2e; margin-bottom: 10px; }
+    .form-sub { font-size: 16px; color: #4a4060; margin-bottom: 36px; line-height: 1.7; }
+
+    .form-group { margin-bottom: 18px; }
+    label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: #5a5070; margin-bottom: 6px; }
+    input[type=text], input[type=email], input[type=tel], select, textarea {
+      width: 100%; padding: 12px 14px;
+      font-family: 'Inter', sans-serif; font-size: 15px;
+      border: 1px solid #c8bfe8; background: #fff; color: #1c1a2e;
+      outline: none; transition: border-color .15s; border-radius: 0;
+      -webkit-appearance: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: #9b5de5; box-shadow: 0 0 0 3px rgba(155,93,229,.1); }
+    textarea { resize: vertical; min-height: 128px; }
+    .char-counter { font-size: 11px; color: #8a8aa0; text-align: right; margin-top: 4px; }
+    .char-counter.near { color: #b87a00; }
+    .char-counter.full { color: #c0392b; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
+
+    .submit-btn {
+      width: 100%; padding: 16px 24px; margin-top: 8px;
+      background: #9b5de5; color: #fff;
+      font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 700; letter-spacing: .04em;
+      border: none; cursor: pointer; transition: background .15s;
+    }
+    .submit-btn:hover:not(:disabled) { background: #b47af0; }
+    .submit-btn:disabled { background: #8a8aa0; cursor: not-allowed; }
+
+    .privacy-note { font-size: 12px; color: #8a8aa0; text-align: center; margin-top: 16px; line-height: 1.6; }
+    .form-msg { padding: 16px 20px; margin-top: 20px; font-size: 14px; display: none; line-height: 1.6; }
+    .form-msg.success { background: #edfaf2; color: #0f5c2e; border: 1px solid #a8d8bc; }
+    .form-msg.error   { background: #fde8e8; color: #8b0000; border: 1px solid #f0b8b8; }
+
+    /* FOOTER */
+    footer { background: #1c1a2e; padding: 44px 24px; text-align: center; }
+    footer p { font-size: 12px; color: #3a3458; line-height: 1.9; max-width: 720px; margin: 0 auto; }
+    footer a { color: #5a5080; text-decoration: none; }
+    footer a:hover { color: #9b8abf; }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-logo">Estate<em>&amp;Divorce</em>Property.com</div>
+  <a href="#connect" class="nav-cta">Free Consultation ↓</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-eyebrow">Divorce · Probate · Estate Sales</div>
+  <h1>What Happens to <em>the House?</em></h1>
+  <p class="hero-sub">When life forces a property decision, you need the right lawyer and the right realtor at the same time. We connect you to both — at no cost to you.</p>
+  <a href="#connect" class="hero-cta">Connect with a Specialist Today →</a>
+  <p class="hero-note">Free consultation &nbsp;·&nbsp; 100% confidential &nbsp;·&nbsp; Takes 2 minutes</p>
+</section>
+
+<!-- TRUST PILLS -->
+<div class="trust-pills">
+  <div class="trust-pills-inner">
+    <div class="trust-pill">No upfront cost</div>
+    <div class="trust-pill">Probate specialist realtors</div>
+    <div class="trust-pill">Property attorneys in your state</div>
+    <div class="trust-pill">Cases handled nationwide</div>
+  </div>
+</div>
+
+<!-- SITUATIONS -->
+<section>
+  <div class="section-wrap">
+    <p class="section-label">Who We Help</p>
+    <h2>Your Situation Is More Common Than You Think</h2>
+    <p class="section-lead">Divorce, death, and family disputes force millions of Americans to make major property decisions every year — often under enormous emotional and financial pressure. Having the right professionals in your corner makes all the difference.</p>
+
+    <div class="situation-grid">
+      <div class="situation-card">
+        <div class="sit-icon">💔</div>
+        <h3>Divorce — Who Gets the House?</h3>
+        <p>Deciding whether to sell, buy out your spouse, or refinance the marital home is one of the most consequential decisions in a divorce. A property attorney and specialist realtor need to work together from day one.</p>
+      </div>
+      <div class="situation-card">
+        <div class="sit-icon">📋</div>
+        <h3>Probate &amp; Estate Sales</h3>
+        <p>Inherited a property? Probate sales have strict legal timelines and court requirements. A probate specialist realtor knows how to price and market estate properties — and close without triggering legal complications.</p>
+      </div>
+      <div class="situation-card">
+        <div class="sit-icon">⚖️</div>
+        <h3>Will Disputes &amp; Contested Inheritance</h3>
+        <p>When heirs disagree about a property — or someone contests the will — you need a property attorney to protect your interest before the asset is sold or transferred out from under you.</p>
+      </div>
+      <div class="situation-card">
+        <div class="sit-icon">🏛️</div>
+        <h3>Executor &amp; Trustee Conflicts</h3>
+        <p>If you're an executor navigating real estate duties, or a beneficiary concerned about mismanagement, we connect you with attorneys who specialize in fiduciary disputes and estate real estate law.</p>
+      </div>
+    </div>
+
+    <div class="highlight-box">
+      <p><strong>Why both a lawyer and a realtor?</strong> Most people contact one without the other. A realtor without legal guidance can expose you to liability. An attorney without a specialist realtor may cost you tens of thousands in missed market value. Our service bridges that gap — connecting you to both in a single step.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- HOW IT WORKS -->
+<section class="how-section">
+  <div class="how-inner">
+    <p class="section-label" style="margin-bottom:12px;">The Process</p>
+    <h2>How It Works</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <h3>Tell us your situation</h3>
+          <p>Complete the short form below. It takes about 2 minutes. We just need to understand your situation — divorce, probate, will dispute, or executor issue — and your location.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <h3>We match you with vetted specialists</h3>
+          <p>Within 1 business day, we connect you with a probate-certified realtor and a property attorney who are licensed in your state and have specific experience with your type of situation.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <h3>Free consultation — no obligation</h3>
+          <p>You speak with both specialists at no cost. They assess your situation, answer your questions, and help you understand all your options before you make any decisions about the property.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <h3>Proceed on your own terms</h3>
+          <p>If you decide to move forward — whether that's selling, buying out a co-owner, or contesting an estate — you have the right team already in place. No pressure, no rush.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FORM -->
+<section class="form-section" id="connect">
+  <div class="form-inner">
+    <p class="section-label">Free &amp; Confidential</p>
+    <h2>Connect with a Property Specialist</h2>
+    <p class="form-sub">Tell us your situation and we'll connect you with a probate specialist realtor and property attorney in your area — at no cost to you.</p>
+
+    <form id="leadForm" novalidate>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-email">Email Address *</label>
+          <input type="email" id="f-email" name="email" required placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label for="f-phone">Phone Number *</label>
+          <input type="tel" id="f-phone" name="phone" required placeholder="(555) 000-0000" autocomplete="tel" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="f-situation">Your Situation *</label>
+        <select id="f-situation" name="situationType" required>
+          <option value="">— Select the option that best describes your situation —</option>
+          <option value="Divorce - property dispute">Divorce — dispute or decision about the marital home</option>
+          <option value="Probate - estate sale">Probate or estate sale — inherited property</option>
+          <option value="Will contest">Will dispute or contested inheritance</option>
+          <option value="Executor dispute">Executor or trustee conflict over property</option>
+          <option value="Other">Other / Not sure yet</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="f-state">State *</label>
+        <select id="f-state" name="state" required>
+          <option value="">— Select your state —</option>
+          <option>Alabama</option><option>Alaska</option><option>Arizona</option><option>Arkansas</option>
+          <option>California</option><option>Colorado</option><option>Connecticut</option><option>Delaware</option>
+          <option>Florida</option><option>Georgia</option><option>Hawaii</option><option>Idaho</option>
+          <option>Illinois</option><option>Indiana</option><option>Iowa</option><option>Kansas</option>
+          <option>Kentucky</option><option>Louisiana</option><option>Maine</option><option>Maryland</option>
+          <option>Massachusetts</option><option>Michigan</option><option>Minnesota</option><option>Mississippi</option>
+          <option>Missouri</option><option>Montana</option><option>Nebraska</option><option>Nevada</option>
+          <option>New Hampshire</option><option>New Jersey</option><option>New Mexico</option><option>New York</option>
+          <option>North Carolina</option><option>North Dakota</option><option>Ohio</option><option>Oklahoma</option>
+          <option>Oregon</option><option>Pennsylvania</option><option>Rhode Island</option><option>South Carolina</option>
+          <option>South Dakota</option><option>Tennessee</option><option>Texas</option><option>Utah</option>
+          <option>Vermont</option><option>Virginia</option><option>Washington</option><option>West Virginia</option>
+          <option>Wisconsin</option><option>Wyoming</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="f-note">Anything else we should know? <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#8a8aa0;">(optional — helps us match you faster)</span></label>
+        <textarea id="f-note" name="note" placeholder="Brief overview of your situation — timeline, property type, any disputes already in progress…" maxlength="600"></textarea>
+        <div class="char-counter" id="charCounter">0 / 600 characters</div>
+      </div>
+
+      <!-- Cloudflare Turnstile CAPTCHA -->
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-theme="light" style="margin:8px 0 4px;"></div>
+
+      <button type="submit" class="submit-btn" id="submitBtn">Connect Me with a Specialist →</button>
+      <p class="privacy-note">🔒 Your information is 100% confidential. We will never sell or share your data. By submitting, you consent to be contacted by a licensed real estate attorney and probate specialist realtor regarding your situation.</p>
+    </form>
+
+    <div class="form-msg" id="formMsg"></div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <p>
+    This website is for informational purposes only and does not constitute legal advice. Submission of this form does not create an attorney-client relationship. Results in prior cases do not guarantee future outcomes. Attorney advertising.<br><br>
+    <a href="#">Privacy Policy</a> &nbsp;·&nbsp; <a href="#">Terms of Use</a> &nbsp;·&nbsp; <a href="#">Legal Disclaimer</a>
+  </p>
+</footer>
+
+<script>
+const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+
+// Character counter
+const noteEl    = document.getElementById('f-note');
+const counterEl = document.getElementById('charCounter');
+noteEl.addEventListener('input', () => {
+  const len = noteEl.value.length;
+  counterEl.textContent = len + ' / 600 characters';
+  counterEl.className = 'char-counter' + (len >= 600 ? ' full' : len >= 500 ? ' near' : '');
+});
+
+// Form submit
+document.getElementById('leadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn  = document.getElementById('submitBtn');
+  const msg  = document.getElementById('formMsg');
+
+  const email        = document.getElementById('f-email').value.trim();
+  const phone        = document.getElementById('f-phone').value.trim();
+  const situationType = document.getElementById('f-situation').value;
+  const state        = document.getElementById('f-state').value;
+  const note         = document.getElementById('f-note').value.trim();
+
+  // Validation
+  if (!email || !phone || !situationType || !state) {
+    msg.textContent = 'Please fill in all required fields marked with *.';
+    msg.className = 'form-msg error';
+    msg.style.display = 'block';
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    msg.textContent = 'Please enter a valid email address.';
+    msg.className = 'form-msg error';
+    msg.style.display = 'block';
+    return;
+  }
+  if (!/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) {
+    msg.textContent = 'Please enter a valid phone number (digits, spaces, dashes, and parentheses only).';
+    msg.className = 'form-msg error';
+    msg.style.display = 'block';
+    return;
+  }
+
+  // Collect Turnstile token
+  const tsToken = document.querySelector('[name="cf-turnstile-response"]')?.value || '';
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  msg.style.display = 'none';
+
+  try {
+    const res = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'submitLead',
+        campaign: 'estate-divorce-property-resource',
+        email,
+        phone,
+        fraudType: situationType,
+        note: (state ? 'State: ' + state + (note ? '\n' + note : '') : note),
+        tsToken
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    // Success — hide form, show message
+    document.getElementById('leadForm').style.display = 'none';
+    msg.innerHTML = '<strong>Thank you — your request has been received.</strong><br><br>We will match you with a probate specialist realtor and a property attorney in your area within 1 business day. Please check your email for a confirmation.';
+    msg.className = 'form-msg success';
+    msg.style.display = 'block';
+
+  } catch(err) {
+    msg.textContent = 'Something went wrong. Please try again, or contact us directly.';
+    msg.className = 'form-msg error';
+    msg.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Connect Me with a Specialist →';
+  }
+});
+</script>
+</body>
+</html>

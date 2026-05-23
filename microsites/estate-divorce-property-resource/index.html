@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<link rel="stylesheet" href="../style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estate &amp; Divorce Property Resource — Admin</title>
+<style>
+/* STATUS CHANGE BUTTON */
+.title-status-btn {
+  font-size: 11px; color: #2a2a2a; background: none; border: 1px solid #1a1a1a;
+  padding: 1px 6px; cursor: pointer; font-family: 'Syne', sans-serif;
+  flex-shrink: 0; transition: all .15s; line-height: 1.4;
+}
+.title-status-btn:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
+/* STATUS OPTION GRID */
+.status-option-grid { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 4px; }
+.status-opt-btn { background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; transition: opacity .15s, transform .1s; }
+.status-opt-btn:hover:not(:disabled) { transform: scale(1.05); }
+.status-opt-btn.active { opacity: .35; cursor: default; }
+.status-opt-btn:disabled { cursor: default; }
+/* LOGIN LIST */
+.login-platform-group { margin-bottom: 14px; }
+.login-platform-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #555; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; margin-bottom: 6px; }
+.login-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.login-row:last-child { border-bottom: none; }
+.login-meta { flex: 1; min-width: 0; }
+.login-name { font-size: 13px; color: #c9c9c9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.login-sub  { font-size: 11px; color: #555; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.login-cat  { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; letter-spacing: .04em; }
+.cat-personal     { color: #378ADD; border: 1px solid #378ADD44; background: #378ADD11; }
+.cat-company-page { color: #1D9E75; border: 1px solid #1D9E7544; background: #1D9E7511; }
+.cat-client       { color: #7F77DD; border: 1px solid #7F77DD44; background: #7F77DD11; }
+.cat-shared       { color: #BA7517; border: 1px solid #BA751744; background: #BA751711; }
+.cat-affiliate    { color: #D85A30; border: 1px solid #D85A3044; background: #D85A3011; }
+.ls-active   { font-size: 10px; padding: 2px 6px; color: #5ec95e; border: 1px solid #1e5c1e; flex-shrink: 0; }
+.ls-planning { font-size: 10px; padding: 2px 6px; color: #c9a800; border: 1px solid #6b5a00; flex-shrink: 0; }
+.ls-paused   { font-size: 10px; padding: 2px 6px; color: #888;    border: 1px solid #444;    flex-shrink: 0; }
+.ls-inactive { font-size: 10px; padding: 2px 6px; color: #555;    border: 1px solid #333;    flex-shrink: 0; }
+/* MODAL — lighter background, scrollable body */
+.modal-overlay { background: rgba(0,0,0,0.35) !important; }
+.modal { background: #3a3a3a !important; max-height: 90vh; display: flex; flex-direction: column; }
+.modal-body { overflow-y: auto; flex: 1; }
+/* Thin fields — must override min-height:160px set in style.css */
+input.modal-ta  { height: 32px !important; min-height: 0 !important; padding: 4px 10px !important; font-size: 13px !important; box-sizing: border-box; }
+select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 8px !important;   font-size: 13px !important; box-sizing: border-box; }
+/* Field labels inside modals */
+.lm-label { display: block; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #666; margin: 0 0 4px; }
+/* Platform autocomplete dropdown */
+.plat-dd-item { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #c9c9c9; border-bottom: 1px solid #1e1e1e; }
+.plat-dd-item:hover { background: #393939; }
+.plat-dd-create { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #e8ff47; border-bottom: 1px solid #1e1e1e; font-style: italic; }
+.plat-dd-create:hover { background: #393939; }
+</style>
+</head>
+<body>
+
+<!-- PIN -->
+<div class="pin-screen" id="pinScreen">
+  <div class="pin-mark">Webguy <span style="color:#e8ff47">·</span> Admin</div>
+  <div class="pin-label">Access code</div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
+    <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
+  </div>
+  <div class="pin-pad">
+    <button class="pin-btn" onclick="pp('1')">1</button><button class="pin-btn" onclick="pp('2')">2</button><button class="pin-btn" onclick="pp('3')">3</button>
+    <button class="pin-btn" onclick="pp('4')">4</button><button class="pin-btn" onclick="pp('5')">5</button><button class="pin-btn" onclick="pp('6')">6</button>
+    <button class="pin-btn" onclick="pp('7')">7</button><button class="pin-btn" onclick="pp('8')">8</button><button class="pin-btn" onclick="pp('9')">9</button>
+    <button class="pin-btn empty"></button><button class="pin-btn" onclick="pp('0')">0</button><button class="pin-btn del" onclick="pd()">DEL</button>
+  </div>
+  <div class="pin-error" id="pinError"></div>
+</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-left">Web<span>guy</span> — Campaign Admin</div>
+  <div class="topbar-right">
+    <a href="td/" class="notion-link">TD ↗</a>
+    <div class="topbar-clock" id="clock">—</div>
+    <div class="topbar-lock" onclick="lockApp()">Lock</div>
+  </div>
+</div>
+
+<!-- SEC 1: three col — campaign meta / notes / main TD -->
+<div class="three-col">
+  <div class="col">
+    <h2>Campaign</h2>
+    <div class="content">
+      <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
+      <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
+      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3691f7d3a4bb81de93d9fa2f0607deb7" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3691f7d3a4bb8150b543f42f77c7ce3a" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
+      <div class="field"><div class="field-label">Live Site</div><div class="field-value" id="r-livesite"></div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 class="editable" onclick="openModal('thoughts')">Thoughts</h2>
+    <div class="content">
+      <div class="body-text" id="r-thoughts" style="white-space:pre-wrap;min-height:40px;"></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Main TD <button class="td-add-btn-inline" onclick="openTdModal()" title="Add task">+</button></h2>
+    <div class="content">
+      <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 2: three col — keywords / key message / main problem -->
+<div class="three-col">
+  <div class="col">
+    <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
+    <div class="content">
+      <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 class="editable" onclick="openModal('keyMessage')">Key Message</h2>
+    <div class="content">
+      <div class="body-text" id="r-keymessage"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 class="editable" onclick="openModal('mainProblem')">Main Problem</h2>
+    <div class="content">
+      <div class="body-text" id="r-problem"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 3: two col — product ideas / recommended actions -->
+<div class="two-col">
+  <div class="col">
+    <h2 class="editable" onclick="openModal('productIdeas')">Product Ideas</h2>
+    <div class="content">
+      <div class="body-text" id="r-products"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 class="editable" onclick="openModal('actions')">Recommended Actions</h2>
+    <div class="content">
+      <div class="body-text" id="r-actions"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 4: two col — platforms / methods -->
+<div class="two-col">
+  <div class="col">
+    <h2>Platforms <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
+    <div class="content">
+      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 class="editable" onclick="openModal('methods')">Methods</h2>
+    <div class="content">
+      <div class="body-text" id="r-methods"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 5: two col — news feed / tiktok trends -->
+<div class="two-col">
+  <div class="col">
+    <h2>News Feed</h2>
+    <div class="content">
+      <div class="body-text" id="r-news"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>TikTok Trends</h2>
+    <div class="content">
+      <div class="body-text" id="r-tiktok"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 6: two col — development titles / publish titles -->
+<div class="two-col">
+  <div class="col">
+    <h2>Development Titles</h2>
+    <div class="content">
+      <div class="title-list" id="devTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Publish Titles</h2>
+    <div class="content">
+      <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- STATUS CHANGE MODAL -->
+<div class="modal-overlay" id="statusModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="statusModalTitle">Change Status</div>
+      <button class="modal-close" onclick="closeStatusModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="statusModalHint"></div>
+      <div class="status-option-grid" id="statusOptions"></div>
+      <div class="modal-status" id="statusModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeStatusModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN ADD MODAL -->
+<div class="modal-overlay" id="loginModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Login</div>
+      <button class="modal-close" onclick="closeLoginModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Creates a login in Notion linked to this campaign — appears in Hermes platform matrix at campaign × platform</div>
+      <label class="lm-label">Name</label>
+      <input class="modal-ta" id="lm-name" type="text" placeholder="Login name…" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Platform <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— type to search, or type a new name to create</span></label>
+      <div style="position:relative;margin-bottom:12px;" id="lm-plat-wrap">
+        <input class="modal-ta" id="lm-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:32px;padding:5px 10px;" autocomplete="off"
+          oninput="filterLmPlatforms()" onfocus="filterLmPlatforms()" />
+        <input type="hidden" id="lm-plat-id" value="" />
+        <div id="lm-plat-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
+      </div>
+      <label class="lm-label">Category <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
+      <select class="modal-ta" id="lm-category" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+        <option value="">— Category —</option>
+        <option value="Personal">Personal</option>
+        <option value="Company Page">Company Page</option>
+        <option value="Client">Client</option>
+        <option value="Shared">Shared</option>
+        <option value="Affiliate">Affiliate</option>
+      </select>
+      <label class="lm-label">Status</label>
+      <select class="modal-ta" id="lm-login-status" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+        <option value="Planning">Planning</option>
+        <option value="Active">Active</option>
+        <option value="Paused">Paused</option>
+        <option value="Inactive">Inactive</option>
+      </select>
+      <label class="lm-label">Username / handle</label>
+      <input class="modal-ta" id="lm-usr" type="text" placeholder="@handle or email…" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Account URL</label>
+      <input class="modal-ta" id="lm-url" type="text" placeholder="https://…" style="height:32px;padding:5px 10px;margin-bottom:4px;" autocomplete="off" />
+      <div class="modal-status" id="lm-status-msg"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeLoginModal()">Cancel</button>
+      <button class="modal-btn save" id="lm-save" onclick="addLoginFromModal()">Add Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN EDIT MODAL -->
+<div class="modal-overlay" id="loginEditModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="le-modal-title">Edit Login</div>
+      <button class="modal-close" onclick="closeLoginEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label">Name</label>
+      <input class="modal-ta" id="le-name" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Platform <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— type to search, or create new</span></label>
+      <div style="position:relative;margin-bottom:12px;" id="le-plat-wrap">
+        <input class="modal-ta" id="le-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:32px;padding:5px 10px;" autocomplete="off"
+          oninput="filterLePlatforms()" onfocus="filterLePlatforms()" />
+        <input type="hidden" id="le-plat-id" value="" />
+        <div id="le-plat-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
+      </div>
+      <label class="lm-label">Category <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
+      <select class="modal-ta" id="le-category" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+        <option value="">— Category —</option>
+        <option value="Personal">Personal</option>
+        <option value="Company Page">Company Page</option>
+        <option value="Client">Client</option>
+        <option value="Shared">Shared</option>
+        <option value="Affiliate">Affiliate</option>
+      </select>
+      <label class="lm-label">Status</label>
+      <select class="modal-ta" id="le-status" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+        <option value="Planning">Planning</option>
+        <option value="Active">Active</option>
+        <option value="Paused">Paused</option>
+        <option value="Inactive">Inactive</option>
+      </select>
+      <label class="lm-label">Username / handle</label>
+      <input class="modal-ta" id="le-usr" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Account URL</label>
+      <input class="modal-ta" id="le-url" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <div style="font-size:11px;color:#555;margin-bottom:4px;">To change platform or campaign relations, open the full record in Notion:</div>
+      <a id="le-notion-link" href="#" target="_blank" class="notion-link" style="font-size:12px;">↗ Open in Notion</a>
+      <div class="modal-status" id="le-status-msg"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeLoginEditModal()">Cancel</button>
+      <button class="modal-btn save" id="le-save" onclick="saveLoginEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- TD ADD MODAL -->
+<div class="modal-overlay" id="tdModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Task</div>
+      <button class="modal-close" onclick="closeTdModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Task will be created in Main TD and linked to this campaign</div>
+      <input class="modal-ta" id="td-modal-input" type="text" placeholder="Task name…" style="height:32px;padding:5px 10px;resize:none;" />
+      <div class="modal-status" id="tdModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeTdModal()">Cancel</button>
+      <button class="modal-btn save" id="tdModalSave" onclick="addTodoFromModal()">Add Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="modalTitle">Edit</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="modalHint"></div>
+      <textarea class="modal-ta" id="modalTa" rows="8"></textarea>
+      <div class="modal-status" id="modalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+      <button class="modal-btn save" id="modalSave" onclick="saveModal()">Save to Notion</button>
+    </div>
+  </div>
+</div>
+<script>
+const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+const CAMPAIGN_ID = "3691f7d3a4bb81de93d9fa2f0607deb7"; // estate-divorce-property-resource
+const RESEARCH_ID = "3691f7d3a4bb8150b543f42f77c7ce3a"; // research
+const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/estate-divorce-property-resource/";
+let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
+let pin = '';
+
+// Auto-restore session if a valid token exists from this browser session
+if (SESSION_TOKEN) {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('pinScreen').classList.add('hidden');
+    init();
+  });
+}
+
+async function pp(d) {
+  if (pin.length >= 4) return;
+  pin += d;
+  document.getElementById('d' + (pin.length-1)).classList.add('filled');
+  if (pin.length === 4) {
+    try {
+      const data = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'auth', pin })
+      }).then(r => r.json());
+      if (data.token) {
+        SESSION_TOKEN = data.token;
+        sessionStorage.setItem('hermes_token', SESSION_TOKEN);
+        document.getElementById('pinScreen').classList.add('hidden');
+        init();
+      } else {
+        document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
+        document.getElementById('pinError').textContent = 'incorrect code';
+        setTimeout(() => { document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; pin = ''; }, 800);
+      }
+    } catch(e) {
+      document.getElementById('pinError').textContent = 'connection error';
+      setTimeout(() => { pin = ''; document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error')); document.getElementById('pinError').textContent = ''; }, 1500);
+    }
+  }
+}
+function pd() {
+  if (!pin.length) return;
+  document.getElementById('d' + (pin.length-1)).classList.remove('filled');
+  pin = pin.slice(0,-1);
+}
+function lockApp() {
+  SESSION_TOKEN = null;
+  sessionStorage.removeItem('hermes_token');
+  pin = '';
+  document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error'));
+  document.getElementById('pinError').textContent = '';
+  document.getElementById('pinScreen').classList.remove('hidden');
+}
+
+function tick() {
+  const n = new Date();
+  document.getElementById('clock').textContent =
+    String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0') + ':' + String(n.getSeconds()).padStart(2,'0');
+}
+setInterval(tick, 1000); tick();
+
+async function w(action, extra = {}) {
+  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, token: SESSION_TOKEN, ...extra }) });
+  const d = await r.json();
+  if (r.status === 401) {
+    SESSION_TOKEN = null;
+    sessionStorage.removeItem('hermes_token');
+    document.getElementById('pinScreen').classList.remove('hidden');
+    throw new Error('Session expired — please re-enter your code');
+  }
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
+// Strip HTML tags to plain text
+function stripHtml(raw) {
+  return raw ? raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : '';
+}
+
+// Parse Claude output: HEADING: body text pairs, one per line
+function parseToHtml(text) {
+  if (!text) return '<p>—</p>';
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let html = '';
+  lines.forEach(line => {
+    // Match "HEADING: body text" pattern
+    const match = line.match(/^([A-Z][A-Z0-9\s\/&,'-]+):\s*(.+)$/);
+    if (match) {
+      html += '<h3>' + match[1].trim() + '</h3><p>' + match[2].trim() + '</p>';
+    } else {
+      // Plain line — strip leading dash/bullet
+      const clean = line.replace(/^[-•·*\d+\.\s]+/, '').trim();
+      if (clean) html += '<p>' + clean + '</p>';
+    }
+  });
+  return html || '<p>—</p>';
+}
+
+// Call Claude via worker — strict HEADING: body format, 30 words max per entry
+async function condense(label, raw) {
+  if (!raw) return '<p>—</p>';
+  const plain = stripHtml(raw);
+  if (!plain) return '<p>—</p>';
+  try {
+    const resp = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'condense', pin: CORRECT_PIN, label, text: plain })
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    return parseToHtml(data.text || '');
+  } catch(e) {
+    return '<p>—</p>';
+  }
+}
+
+async function loadResearch() {
+  try {
+    const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
+    const r = data.research;
+    if (!r) {
+      document.getElementById('r-name').textContent = 'No research record — add one in Notion to populate this page.';
+      ['r-problem','r-keymessage','r-products','r-actions','r-methods','r-news','r-tiktok'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
+      });
+      const kwEl = document.getElementById('r-keywords');
+      if (kwEl) kwEl.innerHTML = '<span class="empty">—</span>';
+      return;
+    }
+
+    // SEC 1
+    document.getElementById('r-name').textContent = r.name;
+    const statusEl = document.getElementById('r-status');
+    const sc = r.status ? r.status.toLowerCase() : 'draft';
+    statusEl.innerHTML = `<span class="badge ${sc}">${r.status || '—'}</span>`;
+    document.getElementById('r-date').textContent = r.lastUpdated || '—';
+    const notesDisplayEl = document.getElementById('r-thoughts');
+    if (notesDisplayEl) notesDisplayEl.textContent = r.thoughts || '';
+
+    // Store raw values for editing
+    RESEARCH_ID_LIVE = r.id || '';
+    const pmSplitRaw = (r.platforms || '').replace(/<br\s*\/?>/gi,'\n').split(/ACTIVE METHODS:/i);
+    RAW = {
+      keywords:     r.keywords || '',
+      productIdeas: r.productIdeas || '',
+      notes:        r.notes || '',
+      thoughts:     r.thoughts || '',
+      keyMessage:   r.keyMessage || '',
+      painPoints:   r.painPoints || '',
+      rawPlatforms: pmSplitRaw[0].replace(/ACTIVE PLATFORMS:\s*/i,'').replace(/<br\s*\/?>/gi,'\n').trim(),
+      rawMethods:   pmSplitRaw.length > 1 ? pmSplitRaw[1].replace(/<br\s*\/?>/gi,'\n').trim() : '',
+    };
+
+    // SEC 2 — keywords as pills
+    const kwEl = document.getElementById('r-keywords');
+    if (r.keywords) {
+      kwEl.innerHTML = r.keywords.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('');
+    } else {
+      kwEl.innerHTML = '<span class="empty">—</span>';
+    }
+    // Condense all fields in parallel via Claude
+    const loading = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
+    ['r-problem','r-keymessage','r-products','r-actions','r-methods','r-news','r-tiktok'].forEach(id => {
+      document.getElementById(id).innerHTML = loading;
+    });
+
+    // Split platforms & methods from the combined field
+    const rawPm = stripHtml(r.platforms) || '';
+    const pmSplit = rawPm.split(/ACTIVE METHODS:/i);
+    const rawPlatforms = pmSplit[0].replace(/ACTIVE PLATFORMS:\s*/i, '').trim();
+    const rawMethods   = pmSplit.length > 1 ? pmSplit[1].trim() : '';
+
+    // Split notes into problem statement + recommended actions
+    const rawNotes = stripHtml(r.notes) || '';
+    const problemInput = (r.campaignGoal || '') + '\n' + (r.painPoints || '') + '\n' + rawNotes.split(/ROI-RANKED|RECOMMENDED|BOTTOM LINE/i)[0];
+    const actionsInput = rawNotes;
+
+    const [problem, keymessage, products, actions, methods, news, tiktok] = await Promise.all([
+      condense('This campaign does X for customer Y — state the core problem this campaign solves in one sentence then list pain points', problemInput),
+      condense('Key Message', r.keyMessage),
+      condense('Product Ideas', r.productIdeas),
+      condense('Recommended Actions — prioritised by ROI, what to do next', actionsInput),
+      condense('Methods', rawMethods),
+      condense('News Feed', r.newsFeed),
+      condense('TikTok Trends', r.tiktokTrends),
+    ]);
+
+    document.getElementById('r-problem').innerHTML    = problem;
+    document.getElementById('r-keymessage').innerHTML = keymessage;
+    document.getElementById('r-products').innerHTML   = products;
+    document.getElementById('r-actions').innerHTML  = actions;
+    document.getElementById('r-methods').innerHTML   = methods;
+    document.getElementById('r-news').innerHTML      = news;
+    document.getElementById('r-tiktok').innerHTML    = tiktok;
+
+  } catch(e) {
+    document.getElementById('r-name').textContent = 'Error: ' + e.message;
+  }
+}
+
+const SC = { Development:'ts-write', Writing:'ts-write', Review:'ts-review', Approved:'ts-appr', Publish:'ts-pub', Published:'ts-done', Done:'ts-done', Explode:'ts-explode' };
+
+async function loadTitles() {
+  const devEl = document.getElementById('devTitles');
+  const pubEl = document.getElementById('pubTitles');
+  try {
+    const data = await w('getTitles', { stages: ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'], campaignId: CAMPAIGN_ID });
+    const titles = data.titles || [];
+    const DEV_ORDER = { Explode:0, Approved:1, Review:2, Writing:3, Development:4 };
+    const dev = titles
+      .filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage))
+      .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
+    const pub = titles.filter(t => ['Publish','Published','Done'].includes(t.stage));
+    function render(arr, el) {
+      el.innerHTML = '';
+      if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
+      arr.forEach(t => {
+        const div = document.createElement('div');
+        div.className = 'title-row';
+        div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><span class="title-group">${t.cohort||''}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+        el.appendChild(div);
+      });
+    }
+    render(dev, devEl);
+    render(pub, pubEl);
+  } catch(e) {
+    devEl.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
+    pubEl.innerHTML = '<div class="empty">—</div>';
+  }
+}
+
+// Raw research values for editing
+let RAW = {};
+let RESEARCH_ID_LIVE = '';
+
+// Modal config per field
+const MODAL_CFG = {
+  keywords:     { title: 'Keywords',            hint: 'Comma-separated keywords for this campaign', target: 'campaign' },
+  keyMessage:   { title: 'Key Message',         hint: 'Core positioning statement for this campaign', target: 'research', field: 'keyMessage' },
+  mainProblem:  { title: 'Main Problem',        hint: 'Pain points this campaign addresses', target: 'campaignField', field: 'painPoints' },
+  productIdeas: { title: 'Product Ideas',        hint: 'Describe product ideas, offers, and pipeline', target: 'research', field: 'productIdeas' },
+  thoughts:     { title: 'Thoughts',             hint: 'Personal notes and thoughts on this campaign', target: 'research', field: 'thoughts' },
+  actions:      { title: 'Recommended Actions',  hint: 'ROI-ranked actions and next steps', target: 'research', field: 'notes' },
+  platforms:    { title: 'Platforms',            hint: 'Active and planned platforms for this campaign', target: 'research', field: 'platforms', combined: true },
+  methods:      { title: 'Methods',              hint: 'Active and planned methods for this campaign', target: 'research', field: 'platforms', combined: true },
+};
+
+let activeField = null;
+
+function openModal(field) {
+  const cfg = MODAL_CFG[field];
+  if (!cfg) return;
+  activeField = field;
+  document.getElementById('modalTitle').textContent = cfg.title;
+  document.getElementById('modalHint').textContent = cfg.hint;
+  document.getElementById('modalStatus').textContent = '';
+  document.getElementById('modalStatus').className = 'modal-status';
+  document.getElementById('modalSave').disabled = false;
+
+  // Pre-fill with raw value
+  let val = '';
+  if (field === 'keywords')     val = RAW.keywords || '';
+  if (field === 'keyMessage')   val = RAW.keyMessage || '';
+  if (field === 'mainProblem')  val = RAW.painPoints || '';
+  if (field === 'productIdeas') val = RAW.productIdeas || '';
+  if (field === 'actions')      val = RAW.notes || '';
+  if (field === 'platforms')    val = RAW.rawPlatforms || '';
+  if (field === 'methods')      val = RAW.rawMethods || '';
+  if (field === 'thoughts')     val = RAW.thoughts || '';
+  document.getElementById('modalTa').value = val;
+
+  document.getElementById('editModal').classList.add('open');
+  setTimeout(() => document.getElementById('modalTa').focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById('editModal').classList.remove('open');
+  activeField = null;
+}
+
+document.getElementById('editModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+async function saveModal() {
+  const val = document.getElementById('modalTa').value.trim();
+  const btn = document.getElementById('modalSave');
+  const status = document.getElementById('modalStatus');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  status.textContent = '';
+
+  const cfg = MODAL_CFG[activeField];
+  try {
+    if (cfg.target === 'campaign') {
+      await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, value: val });
+      RAW.keywords = val;
+      // Re-render keywords pills
+      const kwEl = document.getElementById('r-keywords');
+      kwEl.innerHTML = val ? val.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('') : '<span class="empty">—</span>';
+    } else if (cfg.target === 'campaignField') {
+      await w('updateCampaignField', { campaignId: CAMPAIGN_ID, field: cfg.field, value: val });
+      RAW[cfg.field] = val;
+      // Re-condense display
+      status.textContent = 'Saved. Updating display…';
+      const displayId = { painPoints: 'r-problem' }[cfg.field];
+      const label = { painPoints: 'Main Problem' }[cfg.field];
+      if (displayId) {
+        document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
+        const html = await condense(label, val);
+        document.getElementById(displayId).innerHTML = html;
+      }
+    } else {
+      // For platforms/methods — need to combine back into one field
+      if (activeField === 'platforms') {
+        RAW.rawPlatforms = val;
+        const combined = 'ACTIVE PLATFORMS: ' + val + (RAW.rawMethods ? '\nACTIVE METHODS: ' + RAW.rawMethods : '');
+        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: 'platforms', value: combined });
+      } else if (activeField === 'methods') {
+        RAW.rawMethods = val;
+        const combined = 'ACTIVE PLATFORMS: ' + (RAW.rawPlatforms || '') + '\nACTIVE METHODS: ' + val;
+        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: 'platforms', value: combined });
+      } else {
+        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
+        RAW[cfg.field] = val;
+        // If editing the notes column directly, update its display without condensing
+        if (activeField === 'thoughts') {
+          const nd = document.getElementById('r-thoughts');
+          if (nd) nd.textContent = val;
+        }
+      }
+      // Re-condense the display
+      status.textContent = 'Saved. Updating display…';
+      const displayId = { keyMessage:'r-keymessage', productIdeas:'r-products', actions:'r-actions', methods:'r-methods' }[activeField];
+      const label = { keyMessage:'Key Message', productIdeas:'Product Ideas', actions:'Recommended Actions — prioritised by ROI', methods:'Methods' }[activeField];
+      if (displayId) {
+        document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
+        const html = await condense(label, val);
+        document.getElementById(displayId).innerHTML = html;
+      }
+    }
+    status.textContent = 'Saved ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeModal, 900);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Save to Notion';
+}
+
+// ── MAIN TD ──────────────────────────────────────────────────────────
+let TD_ITEMS = [];
+
+function renderTd() {
+  const el = document.getElementById('td-list');
+  el.innerHTML = '';
+  if (!TD_ITEMS.length) { el.innerHTML = '<div class="empty">No tasks.</div>'; return; }
+  TD_ITEMS.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'td-row';
+    row.innerHTML = `<span class="td-name">${t.name}</span><button class="td-del" onclick="deleteTodo('${t.id}', this)" title="Remove">✕</button>`;
+    el.appendChild(row);
+  });
+}
+
+async function loadTodos() {
+  const el = document.getElementById('td-list');
+  try {
+    const data = await w('getCampaignTodos', { campaignId: CAMPAIGN_ID });
+    TD_ITEMS = data.todos || [];
+    renderTd();
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
+  }
+}
+
+function openTdModal() {
+  document.getElementById('td-modal-input').value = '';
+  document.getElementById('tdModalStatus').textContent = '';
+  document.getElementById('tdModalSave').disabled = false;
+  document.getElementById('tdModalSave').textContent = 'Add Task';
+  document.getElementById('tdModal').classList.add('open');
+  setTimeout(() => document.getElementById('td-modal-input').focus(), 100);
+}
+
+function closeTdModal() {
+  document.getElementById('tdModal').classList.remove('open');
+}
+
+document.getElementById('tdModal').addEventListener('click', function(e) {
+  if (e.target === this) closeTdModal();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement === document.getElementById('td-modal-input')) addTodoFromModal();
+  if (e.key === 'Enter' && document.activeElement === document.getElementById('login-modal-input')) addLoginFromModal();
+});
+
+async function addTodoFromModal() {
+  const input = document.getElementById('td-modal-input');
+  const name = input.value.trim();
+  if (!name) return;
+  const btn = document.getElementById('tdModalSave');
+  const status = document.getElementById('tdModalStatus');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  try {
+    const data = await w('createTodo', { name, campaignId: CAMPAIGN_ID });
+    TD_ITEMS.push({ id: data.id, name });
+    renderTd();
+    status.textContent = 'Added ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeTdModal, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Add Task';
+  }
+}
+
+async function deleteTodo(id, btn) {
+  btn.disabled = true;
+  try {
+    await w('unlinkTodoFromCampaign', { campaignId: CAMPAIGN_ID, todoId: id });
+    TD_ITEMS = TD_ITEMS.filter(t => t.id !== id);
+    renderTd();
+  } catch(e) {
+    btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+}
+
+// ── PLATFORM LOGINS ──────────────────────────────────────────────────
+let LOGIN_ITEMS  = [];
+let ALL_PLATFORMS = [];
+
+const CAT_CLASS = {
+  'Personal':     'cat-personal',
+  'Company Page': 'cat-company-page',
+  'Client':       'cat-client',
+  'Shared':       'cat-shared',
+  'Affiliate':    'cat-affiliate',
+};
+const LS_CLASS = {
+  'Active':   'ls-active',
+  'Planning': 'ls-planning',
+  'Paused':   'ls-paused',
+  'Inactive': 'ls-inactive',
+  'development': 'ls-paused',
+};
+
+function renderLogins() {
+  const el = document.getElementById('login-list');
+  el.innerHTML = '';
+  if (!LOGIN_ITEMS.length) { el.innerHTML = '<div class="empty">No logins yet.</div>'; return; }
+
+  // Build platform name lookup
+  const platName = {};
+  ALL_PLATFORMS.forEach(p => { platName[p.id] = p.name; });
+
+  // Group by first platformId
+  const grouped = {};
+  const ungrouped = [];
+  LOGIN_ITEMS.forEach(l => {
+    const pid = (l.platformIds || [])[0];
+    if (pid) {
+      if (!grouped[pid]) grouped[pid] = [];
+      grouped[pid].push(l);
+    } else {
+      ungrouped.push(l);
+    }
+  });
+
+  const renderRow = (l) => {
+    const div = document.createElement('div');
+    div.className = 'login-row';
+    div.style.cursor = 'pointer';
+    const cat = l.category || '';
+    const catCls = CAT_CLASS[cat] || '';
+    const stCls  = LS_CLASS[l.status] || 'ls-planning';
+    const sub = [l.usr, l.accountUrl].filter(Boolean).join(' · ');
+    div.innerHTML =
+      (cat ? `<span class="login-cat ${catCls}">${cat}</span>` : '<span class="login-cat" style="opacity:.3;border:1px solid #333;color:#555;">—</span>') +
+      `<div class="login-meta">
+        <div class="login-name">${l.name}</div>
+        ${sub ? `<div class="login-sub">${sub}</div>` : ''}
+      </div>` +
+      `<span class="${stCls}">${l.status || 'Planning'}</span>` +
+      `<a class="title-link" href="https://www.notion.so/${l.id}" target="_blank" onclick="event.stopPropagation()">↗</a>`;
+    // Click row → open edit modal
+    div.onclick = () => openLoginEditModal(l);
+    return div;
+  };
+
+  // Render grouped by platform
+  const sortedPlatIds = Object.keys(grouped).sort((a,b) => (platName[a]||'').localeCompare(platName[b]||''));
+  sortedPlatIds.forEach(pid => {
+    const grp = document.createElement('div');
+    grp.className = 'login-platform-group';
+    const lbl = document.createElement('div');
+    lbl.className = 'login-platform-label';
+    lbl.textContent = platName[pid] || 'Unknown Platform';
+    grp.appendChild(lbl);
+    grouped[pid].forEach(l => grp.appendChild(renderRow(l)));
+    el.appendChild(grp);
+  });
+
+  // Ungrouped at bottom
+  if (ungrouped.length) {
+    const grp = document.createElement('div');
+    grp.className = 'login-platform-group';
+    const lbl = document.createElement('div');
+    lbl.className = 'login-platform-label';
+    lbl.textContent = 'No Platform';
+    grp.appendChild(lbl);
+    ungrouped.forEach(l => grp.appendChild(renderRow(l)));
+    el.appendChild(grp);
+  }
+}
+
+async function loadLogins() {
+  const el = document.getElementById('login-list');
+  try {
+    const [loginData, platData] = await Promise.all([
+      w('getLogins'),
+      w('getPlatforms'),
+    ]);
+    ALL_PLATFORMS = platData.platforms || [];
+    // Filter to logins whose campaign relation includes this campaign
+    LOGIN_ITEMS = (loginData.logins || []).filter(l =>
+      (l.campaignIds || []).includes(CAMPAIGN_ID)
+    );
+    renderLogins();
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
+  }
+}
+
+// ── PLATFORM AUTOCOMPLETE ─────────────────────────────────────────────
+function filterLmPlatforms() {
+  const query  = (document.getElementById('lm-plat-input').value || '').trim();
+  const queryL = query.toLowerCase();
+  const dd = document.getElementById('lm-plat-dd');
+  dd.innerHTML = '';
+
+  const matches = ALL_PLATFORMS.filter(p =>
+    !query || p.name.toLowerCase().includes(queryL)
+  ).slice(0, 12);
+
+  matches.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-item';
+    div.textContent = p.name;
+    div.onmousedown = () => selectLmPlatform(p.id, p.name);
+    dd.appendChild(div);
+  });
+
+  // "+ Create" row if typed something that doesn't exactly exist
+  const exact = ALL_PLATFORMS.some(p => p.name.toLowerCase() === queryL);
+  if (query && !exact) {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-create';
+    div.textContent = '+ Create "' + query + '"';
+    div.onmousedown = async () => {
+      div.textContent = 'Creating…';
+      const saveBtn = document.getElementById('lm-save');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Creating platform…'; }
+      try {
+        const res = await w('createPlatform', { title: query, status: 'Publish' });
+        const newP = { id: res.id, name: query, status: 'Publish' };
+        ALL_PLATFORMS.push(newP);
+        selectLmPlatform(res.id, query);
+      } catch(e) {
+        div.textContent = 'Error: ' + e.message;
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Add Login'; }
+      }
+    };
+    dd.appendChild(div);
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+function selectLmPlatform(id, name) {
+  document.getElementById('lm-plat-input').value = name;
+  document.getElementById('lm-plat-id').value   = id;
+  document.getElementById('lm-plat-dd').style.display = 'none';
+}
+
+// Close platform picker when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('#lm-plat-wrap')) {
+    const dd = document.getElementById('lm-plat-dd');
+    if (dd) dd.style.display = 'none';
+  }
+  if (!e.target.closest('#le-plat-wrap')) {
+    const dd = document.getElementById('le-plat-dd');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+// ── PLATFORM AUTOCOMPLETE (EDIT MODAL) ────────────────────────────────
+function filterLePlatforms() {
+  const query  = (document.getElementById('le-plat-input').value || '').trim();
+  const queryL = query.toLowerCase();
+  const dd = document.getElementById('le-plat-dd');
+  dd.innerHTML = '';
+
+  const matches = ALL_PLATFORMS.filter(p =>
+    !query || p.name.toLowerCase().includes(queryL)
+  ).slice(0, 12);
+
+  matches.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-item';
+    div.textContent = p.name;
+    div.onmousedown = () => selectLePlatform(p.id, p.name);
+    dd.appendChild(div);
+  });
+
+  const exact = ALL_PLATFORMS.some(p => p.name.toLowerCase() === queryL);
+  if (query && !exact) {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-create';
+    div.textContent = '+ Create "' + query + '"';
+    div.onmousedown = async () => {
+      div.textContent = 'Creating…';
+      const saveBtn = document.getElementById('le-save');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Creating platform…'; }
+      try {
+        const res = await w('createPlatform', { title: query, status: 'Publish' });
+        const newP = { id: res.id, name: query, status: 'Publish' };
+        ALL_PLATFORMS.push(newP);
+        selectLePlatform(res.id, query);
+      } catch(e) {
+        div.textContent = 'Error: ' + e.message;
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+      }
+    };
+    dd.appendChild(div);
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+function selectLePlatform(id, name) {
+  document.getElementById('le-plat-input').value = name;
+  document.getElementById('le-plat-id').value   = id;
+  document.getElementById('le-plat-dd').style.display = 'none';
+}
+
+// ── ADD LOGIN ─────────────────────────────────────────────────────────
+function openLoginModal() {
+  document.getElementById('lm-name').value          = '';
+  document.getElementById('lm-plat-input').value    = '';
+  document.getElementById('lm-plat-id').value       = '';
+  document.getElementById('lm-plat-dd').style.display = 'none';
+  document.getElementById('lm-category').value      = '';
+  document.getElementById('lm-login-status').value  = 'Planning';
+  document.getElementById('lm-usr').value           = '';
+  document.getElementById('lm-url').value           = '';
+  document.getElementById('lm-status-msg').textContent = '';
+  document.getElementById('lm-status-msg').className   = 'modal-status';
+  document.getElementById('lm-save').disabled       = false;
+  document.getElementById('lm-save').textContent    = 'Add Login';
+  document.getElementById('loginModal').classList.add('open');
+  setTimeout(() => document.getElementById('lm-name').focus(), 100);
+}
+
+function closeLoginModal() {
+  document.getElementById('loginModal').classList.remove('open');
+}
+
+document.getElementById('loginModal').addEventListener('click', function(e) {
+  if (e.target === this) closeLoginModal();
+});
+
+async function addLoginFromModal() {
+  const name = document.getElementById('lm-name').value.trim();
+  if (!name) { document.getElementById('lm-name').focus(); return; }
+  const btn = document.getElementById('lm-save');
+  const msg = document.getElementById('lm-status-msg');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  msg.textContent = '';
+  try {
+    const res = await w('createLoginFull', {
+      name,
+      campaignId: CAMPAIGN_ID,
+      platformId: document.getElementById('lm-plat-id').value   || undefined,
+      category:   document.getElementById('lm-category').value  || undefined,
+      status:     document.getElementById('lm-login-status').value || 'Planning',
+      usr:        document.getElementById('lm-usr').value.trim() || undefined,
+      accountUrl: document.getElementById('lm-url').value.trim() || undefined,
+    });
+    LOGIN_ITEMS.push(res.login);
+    renderLogins();
+    msg.textContent = 'Added ✓';
+    msg.className = 'modal-status ok';
+    setTimeout(closeLoginModal, 700);
+  } catch(e) {
+    msg.textContent = 'Error: ' + e.message;
+    msg.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Add Login';
+  }
+}
+
+// ── EDIT LOGIN ────────────────────────────────────────────────────────
+let LE_LOGIN_ID = '';
+
+function openLoginEditModal(login) {
+  LE_LOGIN_ID = login.id;
+  document.getElementById('le-modal-title').textContent = login.name || 'Edit Login';
+  document.getElementById('le-name').value     = login.name     || '';
+  // Populate platform field
+  const platId = (login.platformIds || [])[0] || '';
+  const platObj = ALL_PLATFORMS.find(p => p.id === platId);
+  document.getElementById('le-plat-id').value    = platId;
+  document.getElementById('le-plat-input').value = platObj ? platObj.name : '';
+  document.getElementById('le-plat-dd').style.display = 'none';
+  document.getElementById('le-category').value = login.category || '';
+  document.getElementById('le-status').value   = login.status   || 'Planning';
+  document.getElementById('le-usr').value      = login.usr      || '';
+  document.getElementById('le-url').value      = login.accountUrl || '';
+  document.getElementById('le-notion-link').href = 'https://www.notion.so/' + login.id;
+  document.getElementById('le-status-msg').textContent = '';
+  document.getElementById('le-status-msg').className   = 'modal-status';
+  document.getElementById('le-save').disabled   = false;
+  document.getElementById('le-save').textContent = 'Save';
+  document.getElementById('loginEditModal').classList.add('open');
+  setTimeout(() => document.getElementById('le-name').focus(), 100);
+}
+
+function closeLoginEditModal() {
+  document.getElementById('loginEditModal').classList.remove('open');
+}
+
+document.getElementById('loginEditModal').addEventListener('click', function(e) {
+  if (e.target === this) closeLoginEditModal();
+});
+
+async function saveLoginEdit() {
+  const btn = document.getElementById('le-save');
+  const msg = document.getElementById('le-status-msg');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  msg.textContent = '';
+  try {
+    const platId = document.getElementById('le-plat-id').value || undefined;
+    const updated = {
+      name:       document.getElementById('le-name').value.trim(),
+      platformId: platId,
+      category:   document.getElementById('le-category').value || undefined,
+      status:     document.getElementById('le-status').value   || undefined,
+      usr:        document.getElementById('le-usr').value.trim() || undefined,
+      accountUrl: document.getElementById('le-url').value.trim() || undefined,
+    };
+    await w('updateLoginFull', { loginId: LE_LOGIN_ID, ...updated });
+    // Update local cache
+    const idx = LOGIN_ITEMS.findIndex(l => l.id === LE_LOGIN_ID);
+    if (idx !== -1) LOGIN_ITEMS[idx] = { ...LOGIN_ITEMS[idx], ...updated, platformIds: platId ? [platId] : [] };
+    renderLogins();
+    msg.textContent = 'Saved ✓';
+    msg.className = 'modal-status ok';
+    setTimeout(closeLoginEditModal, 700);
+  } catch(e) {
+    msg.textContent = 'Error: ' + e.message;
+    msg.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
+}
+
+// Login status changes are now handled via the edit modal (openLoginEditModal)
+
+// ── STATUS CHANGE MODAL ───────────────────────────────────────
+const ALL_STAGES = ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'];
+let statusModalTitleId = null;
+
+function openStatusModal(id, title, currentStage) {
+  statusModalTitleId = id;
+  document.getElementById('statusModalTitle').textContent = 'Change Status';
+  document.getElementById('statusModalHint').textContent = title;
+  document.getElementById('statusModalStatus').textContent = '';
+  document.getElementById('statusModalStatus').className = 'modal-status';
+  const grid = document.getElementById('statusOptions');
+  grid.innerHTML = '';
+  ALL_STAGES.forEach(stage => {
+    const btn = document.createElement('button');
+    btn.className = 'status-opt-btn' + (stage === currentStage ? ' active' : '');
+    btn.innerHTML = `<span class="title-stage ${SC[stage]||'ts-write'}" style="pointer-events:none">${stage}</span>`;
+    if (stage !== currentStage) btn.onclick = () => applyStatusChange(id, stage);
+    else btn.disabled = true;
+    grid.appendChild(btn);
+  });
+  document.getElementById('statusModal').classList.add('open');
+}
+
+function closeStatusModal() {
+  document.getElementById('statusModal').classList.remove('open');
+  statusModalTitleId = null;
+}
+
+document.getElementById('statusModal').addEventListener('click', function(e) {
+  if (e.target === this) closeStatusModal();
+});
+
+async function applyStatusChange(titleId, newStage) {
+  const status = document.getElementById('statusModalStatus');
+  document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = true);
+  status.textContent = 'Updating…';
+  status.className = 'modal-status';
+  try {
+    await w('updateTitleStage', { titleId, stage: newStage });
+    status.textContent = 'Updated ✓';
+    status.className = 'modal-status ok';
+    setTimeout(async () => { closeStatusModal(); await loadTitles(); }, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = false);
+  }
+}
+
+function init() {
+  const liveSiteEl = document.getElementById('r-livesite');
+  if (liveSiteEl) {
+    if (typeof SITE_URL !== 'undefined' && SITE_URL) {
+      const display = SITE_URL.replace('https://cabuzzard.github.io/dash/','').replace(/\/$/,'');
+      liveSiteEl.innerHTML = '<a href="' + SITE_URL + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + display + '</a>';
+    } else { liveSiteEl.innerHTML = '<span class="empty">—</span>'; }
+  }
+  loadResearch();
+  loadTitles();
+  loadTodos();
+  loadLogins();
+}
+</script>
+</body>
+</html>
