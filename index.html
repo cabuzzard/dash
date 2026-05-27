@@ -1063,7 +1063,7 @@ function renderPlatformMatrix() {
     th.style.cssText = 'text-align:center;font-size:11px;font-weight:600;color:var(--text);padding:8px 10px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:90px;position:relative;';
     th.innerHTML =
       '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">' +
-        '<span>' + esc(p.name) + '</span>' +
+        '<a href="https://www.notion.so/' + p.id + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;font-size:11px;font-weight:600;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + esc(p.name) + '</a>' +
         '<span onclick="removePlatformColumn(\'' + p.id + '\',\'' + esc(p.name) + '\')" title="Remove column" style="font-size:9px;color:var(--text3);cursor:pointer;padding:1px 5px;border:1px solid var(--border);border-radius:4px;letter-spacing:.04em;margin-top:1px;">✕ remove</span>' +
       '</div>';
     hrow.appendChild(th);
@@ -1120,12 +1120,19 @@ function renderPlatformMatrix() {
       tr.appendChild(nameTd);
 
       // Dev / Pub count cells
-      [c.devTitles || 0, c.pubTitles || 0].forEach(count => {
+      [[c.devTitles || 0, true], [c.pubTitles || 0, false]].forEach(([count, isDev]) => {
         const td = document.createElement('td');
         td.style.cssText = 'text-align:center;padding:6px 4px;border-left:1px solid #444;font-size:11px;font-weight:600;white-space:nowrap;width:36px;min-width:36px;';
         if (count > 0) {
           td.style.color = 'var(--text)';
           td.textContent = count;
+          if (isDev) {
+            td.style.cursor = 'pointer';
+            td.title = 'View development titles';
+            td.onclick = e => { e.stopPropagation(); jumpToDev(c.id); };
+            td.onmouseover = () => { td.style.color = 'var(--accent)'; td.style.textDecoration = 'underline'; };
+            td.onmouseout  = () => { td.style.color = 'var(--text)';   td.style.textDecoration = 'none'; };
+          }
         } else {
           td.style.color = 'var(--text3)';
           td.textContent = '—';
