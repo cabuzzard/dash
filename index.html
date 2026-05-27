@@ -579,7 +579,17 @@
     <div id="loginCellSub" style="font-size:11px;color:var(--text3);margin-bottom:16px;"></div>
     <div id="loginCellList" style="margin-bottom:12px;"></div>
     <div id="loginCellCreateWrap">
-      <button class="btn btn-secondary" id="loginCellAddBtn" onclick="showLoginCellForm()" style="width:100%;">+ Add login here</button>
+      <div style="display:flex;gap:8px;margin-bottom:0;">
+        <button class="btn btn-secondary" id="loginCellAddBtn" onclick="showLoginCellForm()" style="flex:1;">+ Create new</button>
+        <button class="btn btn-secondary" id="loginCellLinkBtn" onclick="showLinkLoginForm()" style="flex:1;">↗ Link existing</button>
+      </div>
+      <div id="loginCellLinkForm" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
+        <input class="modal-input" id="lcLinkSearch" type="text" placeholder="Search logins…" oninput="renderLinkLoginList(this.value)" style="margin-bottom:8px;" />
+        <div id="lcLinkList" style="max-height:220px;overflow-y:auto;"></div>
+        <div class="modal-actions" style="margin-top:12px;">
+          <button class="btn btn-secondary" onclick="hideLinkLoginForm()">Cancel</button>
+        </div>
+      </div>
       <div id="loginCellForm" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
         <div class="modal-field">
           <label class="modal-label">Name</label>
@@ -980,6 +990,7 @@ let platMatrixLoaded = false;
 let platCampaigns    = [];   // full campaign list from getCampaigns
 let platPlatforms    = [];   // Publish-status platforms only
 let platLoginIndex   = {};   // [campId][platId] -> login obj | null
+let platAllLogins     = [];   // full login list for "link existing" picker
 let platExpandedSites = new Set();
 let platNotesResearchId = null;
 let platNotesCallback   = null;
@@ -1037,6 +1048,7 @@ async function loadPlatformMatrix() {
     ]);
 
     platCampaigns = campData.campaigns || [];
+    platAllLogins = loginData.logins || [];
     // Only platforms with Status === 'Publish'
     platPlatforms = (platData.platforms || []).filter(p => p.status === 'Publish');
 
@@ -1389,8 +1401,10 @@ function renderLoginCellList(logins) {
 }
 
 function showLoginCellForm() {
+  document.getElementById('loginCellLinkForm').style.display = 'none';
   document.getElementById('loginCellForm').style.display = 'block';
   document.getElementById('loginCellAddBtn').style.display = 'none';
+  document.getElementById('loginCellLinkBtn').style.display = 'none';
   document.getElementById('lcName').value = '';
   document.getElementById('lcCategory').value = '';
   document.getElementById('lcStatus').value = 'Planning';
@@ -1403,7 +1417,70 @@ function showLoginCellForm() {
 
 function hideLoginCellForm() {
   document.getElementById('loginCellForm').style.display = 'none';
-  document.getElementById('loginCellAddBtn').style.display = 'block';
+  document.getElementById('loginCellLinkForm').style.display = 'none';
+  document.getElementById('loginCellAddBtn').style.display = '';
+  document.getElementById('loginCellLinkBtn').style.display = '';
+}
+
+function hideLinkLoginForm() {
+  hideLoginCellForm();
+}
+
+function showLinkLoginForm() {
+  document.getElementById('loginCellForm').style.display = 'none';
+  document.getElementById('loginCellLinkForm').style.display = 'block';
+  document.getElementById('loginCellAddBtn').style.display = 'none';
+  document.getElementById('loginCellLinkBtn').style.display = 'none';
+  document.getElementById('lcLinkSearch').value = '';
+  renderLinkLoginList('');
+  setTimeout(() => document.getElementById('lcLinkSearch').focus(), 50);
+}
+
+function renderLinkLoginList(filter) {
+  const el = document.getElementById('lcLinkList');
+  const q  = (filter || '').toLowerCase();
+  const currentIds = new Set(((platLoginIndex[lcCampId] || {})[lcPlatId] || []).map(l => l.id));
+  const filtered = platAllLogins.filter(l =>
+    !currentIds.has(l.id) && (!q || (l.name || '').toLowerCase().includes(q))
+  );
+  if (!filtered.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No matching logins</div>';
+    return;
+  }
+  el.innerHTML = '';
+  filtered.forEach(l => {
+    const cat = l.category || '';
+    const col = CAT_COLOR[cat] || '#888';
+    const dot = STATUS_DOT[l.status] || '#888';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:4px;cursor:pointer;';
+    row.onmouseover = () => row.style.borderColor = 'var(--accent)';
+    row.onmouseout  = () => row.style.borderColor = 'var(--border)';
+    row.innerHTML =
+      '<span style="width:6px;height:6px;border-radius:50%;background:' + dot + ';flex-shrink:0;"></span>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(l.name) + '</div>' +
+        (cat ? '<div style="font-size:10px;color:' + col + ';font-weight:600;">' + esc(cat) + '</div>' : '') +
+        (l.usr ? '<div style="font-size:11px;color:var(--text3);">' + esc(l.usr) + '</div>' : '') +
+      '</div>' +
+      '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">Link →</span>';
+    row.onclick = () => linkExistingLogin(l);
+    el.appendChild(row);
+  });
+}
+
+async function linkExistingLogin(login) {
+  try {
+    await call('linkLoginToCell', { loginId: login.id, campaignId: lcCampId, platformId: lcPlatId });
+    if (!platLoginIndex[lcCampId]) platLoginIndex[lcCampId] = {};
+    if (!platLoginIndex[lcCampId][lcPlatId]) platLoginIndex[lcCampId][lcPlatId] = [];
+    platLoginIndex[lcCampId][lcPlatId].push(login);
+    closeLoginCellModal();
+    renderPlatformMatrix();
+    showToast('Login linked ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
 }
 
 async function saveLoginCell() {

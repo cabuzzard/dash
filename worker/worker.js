@@ -1518,6 +1518,35 @@ Rules:
         return json({ success: true });
       }
 
+      // ── linkLoginToCell — append campaign + platform to existing login ──
+      if (body.action === "linkLoginToCell") {
+        const { loginId, campaignId, platformId } = body;
+        if (!loginId) return json({ error: "loginId required" }, 400);
+        const dash   = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const nodash = id => id.replace(/-/g,"");
+        const pageResp = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const page = await pageResp.json();
+        if (!pageResp.ok) return json({ error: page.message || "Fetch failed" }, pageResp.status);
+        const props   = page.properties || {};
+        const campIds = new Set((props.Campaign?.relation || []).map(r => nodash(r.id)));
+        const platIds = new Set((props.Platform?.relation  || []).map(r => nodash(r.id)));
+        if (campaignId) campIds.add(nodash(campaignId));
+        if (platformId) platIds.add(nodash(platformId));
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: {
+            Campaign: { relation: [...campIds].map(id => ({ id: dash(id) })) },
+            Platform: { relation: [...platIds].map(id => ({ id: dash(id) })) },
+          }}),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Link failed" }, resp.status);
+        return json({ success: true });
+      }
+
       // ── updatePlatformStatus — set platform Status field ──
       if (body.action === "updatePlatformStatus") {
         const { platformId, status } = body;
