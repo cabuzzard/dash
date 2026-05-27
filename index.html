@@ -1049,6 +1049,14 @@ function renderPlatformMatrix() {
   thCamp.style.cssText = 'text-align:left;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:8px 12px 8px 0;white-space:nowrap;position:sticky;left:0;background:var(--bg);z-index:2;border-bottom:2px solid #333;border-right:1px solid #444;min-width:160px;';
   hrow.appendChild(thCamp);
 
+  // Dev / Pub count col headers
+  ['Dev', 'Pub'].forEach(label => {
+    const th = document.createElement('th');
+    th.textContent = label;
+    th.style.cssText = 'text-align:center;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 6px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:36px;width:36px;';
+    hrow.appendChild(th);
+  });
+
   // Platform col headers
   platPlatforms.forEach(p => {
     const th = document.createElement('th');
@@ -1088,13 +1096,13 @@ function renderPlatformMatrix() {
     // Site group header row
     const siteRow = document.createElement('tr');
     const siteTd  = document.createElement('td');
-    siteTd.colSpan = platPlatforms.length + 2;
+    siteTd.colSpan = platPlatforms.length + 4;
     siteTd.style.cssText = 'padding:10px 0 4px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);border-top:1px solid #444;border-bottom:1px solid #444;';
     siteTd.textContent = (SITE_ICONS[site] || '📁') + ' ' + site;
     siteRow.appendChild(siteTd);
     tbody.appendChild(siteRow);
 
-    camps.forEach(c => {
+    [...camps].sort((a, b) => (b.devTitles || 0) - (a.devTitles || 0)).forEach(c => {
       const tr = document.createElement('tr');
       tr.style.cssText = 'border-bottom:1px solid #444;';
       tr.onmouseover = () => tr.style.background = 'var(--surface)';
@@ -1110,6 +1118,20 @@ function renderPlatformMatrix() {
         nameTd.textContent = c.name;
       }
       tr.appendChild(nameTd);
+
+      // Dev / Pub count cells
+      [c.devTitles || 0, c.pubTitles || 0].forEach(count => {
+        const td = document.createElement('td');
+        td.style.cssText = 'text-align:center;padding:6px 4px;border-left:1px solid #444;font-size:11px;font-weight:600;white-space:nowrap;width:36px;min-width:36px;';
+        if (count > 0) {
+          td.style.color = 'var(--text)';
+          td.textContent = count;
+        } else {
+          td.style.color = 'var(--text3)';
+          td.textContent = '—';
+        }
+        tr.appendChild(td);
+      });
 
       // Platform cells
       platPlatforms.forEach(p => {
