@@ -995,6 +995,22 @@ let platExpandedSites = new Set();
 let platNotesResearchId = null;
 let platNotesCallback   = null;
 
+function applyPlatColumnOrder() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('platColumnOrder') || '[]');
+    if (!saved.length) return;
+    const byId = {};
+    platPlatforms.forEach(p => { byId[p.id] = p; });
+    platPlatforms = [
+      ...saved.filter(id => byId[id]).map(id => byId[id]),
+      ...platPlatforms.filter(p => !saved.includes(p.id))
+    ];
+  } catch(e) {}
+}
+function savePlatColumnOrder() {
+  try { localStorage.setItem('platColumnOrder', JSON.stringify(platPlatforms.map(p => p.id))); } catch(e) {}
+}
+
 function openPlatNotesModal(campName, researchId, currentNotes, onSave) {
   platNotesResearchId = researchId;
   platNotesCallback   = onSave;
@@ -1071,6 +1087,9 @@ async function loadPlatformMatrix() {
       Object.values(platLoginIndex).some(campObj => (campObj[p.id] || []).length > 0)
     );
 
+    // Apply saved column order
+    applyPlatColumnOrder();
+
     // Fetch research (Thoughts) for campaigns where getCampaigns didn't populate it
     await Promise.all(platCampaigns.map(async c => {
       if (c.research) return;
@@ -1136,15 +1155,50 @@ function renderPlatformMatrix() {
   thNotes.style.cssText = 'text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 8px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:140px;';
   hrow.appendChild(thNotes);
 
-  // Platform col headers
-  platPlatforms.forEach(p => {
+  // Platform col headers — draggable to reorder
+  let platDragSrcIdx = null;
+  platPlatforms.forEach((p, idx) => {
     const th = document.createElement('th');
     th.style.cssText = 'text-align:center;font-size:11px;font-weight:600;color:var(--text);padding:8px 10px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:90px;position:relative;';
+    th.draggable = true;
     th.innerHTML =
-      '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">' +
-        '<a href="https://www.notion.so/' + p.id + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;font-size:11px;font-weight:600;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + esc(p.name) + '</a>' +
-        '<span onclick="removePlatformColumn(\'' + p.id + '\',\'' + esc(p.name) + '\')" title="Remove column" style="font-size:9px;color:var(--text3);cursor:pointer;padding:1px 5px;border:1px solid var(--border);border-radius:4px;letter-spacing:.04em;margin-top:1px;">✕ remove</span>' +
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:3px;">' +
+        '<span style="font-size:11px;color:var(--text3);letter-spacing:1px;cursor:grab;user-select:none;line-height:1;" title="Drag to reorder">⠿</span>' +
+        '<a href="https://www.notion.so/' + p.id + '" target="_blank" draggable="false" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;font-size:11px;font-weight:600;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + esc(p.name) + '</a>' +
+        '<span onclick="removePlatformColumn(\'' + p.id + '\',\'' + esc(p.name) + '\')" title="Remove column" style="font-size:9px;color:var(--text3);cursor:pointer;padding:1px 5px;border:1px solid var(--border);border-radius:4px;letter-spacing:.04em;">✕ remove</span>' +
       '</div>';
+
+    th.addEventListener('dragstart', e => {
+      platDragSrcIdx = idx;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(idx));
+      setTimeout(() => { th.style.opacity = '0.35'; }, 0);
+    });
+    th.addEventListener('dragend', () => {
+      th.style.opacity = '';
+      platDragSrcIdx = null;
+    });
+    th.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (platDragSrcIdx !== null && platDragSrcIdx !== idx) {
+        th.style.outline = '2px solid var(--accent)';
+        th.style.outlineOffset = '-2px';
+      }
+    });
+    th.addEventListener('dragleave', () => {
+      th.style.outline = '';
+    });
+    th.addEventListener('drop', e => {
+      e.preventDefault();
+      th.style.outline = '';
+      if (platDragSrcIdx === null || platDragSrcIdx === idx) return;
+      const moved = platPlatforms.splice(platDragSrcIdx, 1)[0];
+      const insertAt = platDragSrcIdx < idx ? idx - 1 : idx;
+      platPlatforms.splice(insertAt, 0, moved);
+      savePlatColumnOrder();
+      renderPlatformMatrix();
+    });
+
     hrow.appendChild(th);
   });
 
@@ -1342,6 +1396,7 @@ async function submitNewPlatform() {
     // Immediately set to Publish
     await call('updatePlatformStatus', { platformId: res.id, status: 'Publish' });
     platPlatforms.push({ id: res.id, name, status: 'Publish' });
+    savePlatColumnOrder();
     platPlatforms.sort((a, b) => a.name.localeCompare(b.name));
     renderPlatformMatrix();
     closeNewPlatformModal();
