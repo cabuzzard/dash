@@ -1059,6 +1059,15 @@ async function loadPlatformMatrix() {
       Object.values(platLoginIndex).some(campObj => (campObj[p.id] || []).length > 0)
     );
 
+    // Fetch research (Thoughts) for campaigns where getCampaigns didn't populate it
+    await Promise.all(platCampaigns.map(async c => {
+      if (c.research) return;
+      try {
+        const r = await call('getResearch', { campaignId: c.id });
+        if (r && r.research) c.research = r.research;
+      } catch(e) {}
+    }));
+
     renderPlatformMatrix();
   } catch(e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
