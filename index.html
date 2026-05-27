@@ -980,7 +980,7 @@ let platMatrixLoaded = false;
 let platCampaigns    = [];   // full campaign list from getCampaigns
 let platPlatforms    = [];   // Publish-status platforms only
 let platLoginIndex   = {};   // [campId][platId] -> login obj | null
-let platCollapsedSites = new Set();
+let platExpandedSites = new Set();
 let platNotesResearchId = null;
 let platNotesCallback   = null;
 
@@ -1152,7 +1152,7 @@ function renderPlatformMatrix() {
     if (!camps.length) return;
 
     // Site group header row — collapsible
-    const isCollapsed = platCollapsedSites.has(site);
+    const isCollapsed = !platExpandedSites.has(site);
     const siteRow = document.createElement('tr');
     siteRow.style.cssText = 'cursor:pointer;user-select:none;';
     const siteTd = document.createElement('td');
@@ -1268,14 +1268,14 @@ function renderPlatformMatrix() {
     });
 
     siteRow.onclick = () => {
-      if (platCollapsedSites.has(site)) {
-        platCollapsedSites.delete(site);
-        campRowEls.forEach(r => { r.style.display = ''; });
-        chev.textContent = '▼';
-      } else {
-        platCollapsedSites.add(site);
+      if (platExpandedSites.has(site)) {
+        platExpandedSites.delete(site);
         campRowEls.forEach(r => { r.style.display = 'none'; });
         chev.textContent = '▶';
+      } else {
+        platExpandedSites.add(site);
+        campRowEls.forEach(r => { r.style.display = ''; });
+        chev.textContent = '▼';
       }
     };
   });
