@@ -1005,7 +1005,7 @@ async function savePlatNotes() {
   const btn = document.getElementById('platNotesSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    await call('updateResearch', { researchId: platNotesResearchId, field: 'thoughts', value: val });
+    await call('updateResearch', { researchId: platNotesResearchId, field: 'notes', value: val });
     if (platNotesCallback) platNotesCallback(val);
     closePlatNotesModal();
     showToast('Notes saved ✓', 'success');
@@ -1227,12 +1227,12 @@ function renderPlatformMatrix() {
           notesTd.title = 'Click to add notes';
         }
       };
-      setNotesCell((c.research && c.research.thoughts) || '');
+      setNotesCell((c.research && c.research.notes) || '');
       if (c.research) {
         notesTd.onclick = e => {
           e.stopPropagation();
-          openPlatNotesModal(c.name, c.research.id, c.research.thoughts || '', newVal => {
-            c.research.thoughts = newVal;
+          openPlatNotesModal(c.name, c.research.id, c.research.notes || '', newVal => {
+            c.research.notes = newVal;
             setNotesCell(newVal);
           });
         };
