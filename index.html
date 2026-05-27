@@ -1267,10 +1267,10 @@ function renderPlatformMatrix() {
             const cat  = l.category || '';
             const col  = CAT_COLOR[cat] || '#888';
             const dot  = STATUS_DOT[l.status] || '#888';
-            pill.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:20px;border:1px solid ' + col + '33;background:' + col + '18;margin:2px;max-width:100px;overflow:hidden;';
+            pill.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:20px;border:1px solid var(--border);background:transparent;margin:2px;max-width:100px;overflow:hidden;';
             pill.innerHTML =
               '<span style="width:5px;height:5px;border-radius:50%;background:' + dot + ';flex-shrink:0;"></span>' +
-              '<span style="font-size:10px;font-weight:600;color:' + col + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(l.name || cat || '—') + '</span>';
+              '<span style="font-size:10px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(l.name || cat || '—') + '</span>';
             td.appendChild(pill);
           });
         } else {
