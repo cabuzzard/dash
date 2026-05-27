@@ -103,10 +103,11 @@ async function getCampaigns() {
   researchRows.forEach(r => {
     const rid = r.id.replace(/-/g,"");
     const rname = r.properties.Name?.title?.map(x => x.plain_text).join("") || "Research";
-    const rnotes = r.properties.Notes?.rich_text?.map(x => x.plain_text).join("") || "";
+    const rnotes    = r.properties.Notes?.rich_text?.map(x => x.plain_text).join("") || "";
+    const rthoughts = r.properties.Thoughts?.rich_text?.map(x => x.plain_text).join("") || "";
     (r.properties.Campaign?.relation || []).forEach(c => {
       const cid = c.id.replace(/-/g,"");
-      campaignToResearch[cid] = { id: rid, name: rname, notes: rnotes };
+      campaignToResearch[cid] = { id: rid, name: rname, notes: rnotes, thoughts: rthoughts };
     });
   });
 
