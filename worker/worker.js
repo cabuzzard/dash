@@ -247,7 +247,7 @@ export default {
     const TS_SECRET      = (env.TURNSTILE_SECRET|| "1x0000000000000000000000000000000AA").trim();
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
-    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-22-02" });
+    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-27-01" });
     if (request.method !== "POST")    return json({ error: "POST only" }, 405);
 
     let body;
@@ -1444,6 +1444,9 @@ Rules:
             bio:         p.Bio?.rich_text?.map(t=>t.plain_text).join("") || "",
             campaignIds: (p.Campaign?.relation || []).map(r=>r.id.replace(/-/g,"")),
             platformIds: (p.Platform?.relation || []).map(r=>r.id.replace(/-/g,"")),
+            smAccount:   p["SM Account"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            smAccountId: p["SM Account ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            loginType:   (p.type?.multi_select || []).map(s=>s.name),
           };
         });
         return json({ logins });
@@ -1451,18 +1454,20 @@ Rules:
 
       // ── createLoginFull — create login linked to campaign + platform ──
       if (body.action === "createLoginFull") {
-        const { name, campaignId, platformId, category, status, usr, accountUrl } = body;
+        const { name, campaignId, platformId, category, status, usr, accountUrl, smAccount, smAccountId } = body;
         if (!name) return json({ error: "name required" }, 400);
         const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const props = {
           Name:   { title: [{ type: "text", text: { content: name } }] },
           Status: { select: { name: status || "Planning" } },
         };
-        if (category)   props.Category   = { select: { name: category } };
-        if (usr)        props.Usr        = { rich_text: [{ type:"text", text:{ content: usr } }] };
-        if (accountUrl) props["Account URL"] = { url: accountUrl };
-        if (campaignId) props.Campaign   = { relation: [{ id: dash(campaignId) }] };
-        if (platformId) props.Platform   = { relation: [{ id: dash(platformId) }] };
+        if (category)    props.Category          = { select: { name: category } };
+        if (usr)         props.Usr               = { rich_text: [{ type:"text", text:{ content: usr } }] };
+        if (accountUrl)  props["Account URL"]    = { url: accountUrl };
+        if (campaignId)  props.Campaign          = { relation: [{ id: dash(campaignId) }] };
+        if (platformId)  props.Platform          = { relation: [{ id: dash(platformId) }] };
+        if (smAccount)   props["SM Account"]     = { rich_text: [{ type:"text", text:{ content: smAccount } }] };
+        if (smAccountId) props["SM Account ID"]  = { rich_text: [{ type:"text", text:{ content: smAccountId } }] };
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
@@ -1477,12 +1482,14 @@ Rules:
           usr: usr||"", accountUrl: accountUrl||"", headline:"", bio:"",
           campaignIds: campaignId ? [campaignId] : [],
           platformIds: platformId ? [platformId] : [],
+          smAccount: smAccount||"", smAccountId: smAccountId||"",
+          loginType: [],
         }});
       }
 
       // ── updateLoginFull — update login fields ──
       if (body.action === "updateLoginFull") {
-        const { loginId, name, category, status, usr, accountUrl, headline, bio, platformId } = body;
+        const { loginId, name, category, status, usr, accountUrl, headline, bio, platformId, smAccount, smAccountId } = body;
         if (!loginId) return json({ error: "loginId required" }, 400);
         const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const props = {};
@@ -1494,6 +1501,8 @@ Rules:
         if (headline !== undefined) props.Headline = { rich_text: headline ? [{ type:"text", text:{ content: headline } }] : [] };
         if (bio !== undefined)      props.Bio      = { rich_text: bio ? [{ type:"text", text:{ content: bio } }] : [] };
         if (platformId !== undefined) props.Platform = platformId ? { relation: [{ id: dash(platformId) }] } : { relation: [] };
+        if (smAccount !== undefined)   props["SM Account"]    = { rich_text: smAccount   ? [{ type:"text", text:{ content: smAccount } }]   : [] };
+        if (smAccountId !== undefined) props["SM Account ID"] = { rich_text: smAccountId ? [{ type:"text", text:{ content: smAccountId } }] : [] };
 
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, {
           method: "PATCH",
