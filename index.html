@@ -1431,7 +1431,7 @@ function renderLoginCellList(logins) {
   el.innerHTML = '';
   logins.forEach(l => {
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;';
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;gap:8px;';
     row.onmouseover = () => row.style.borderColor = 'var(--border2)';
     row.onmouseout  = () => row.style.borderColor = 'var(--border)';
 
@@ -1439,20 +1439,55 @@ function renderLoginCellList(logins) {
     const col = CAT_COLOR[cat] || '#888';
     const dot = STATUS_DOT[l.status] || '#888';
 
-    row.innerHTML =
-      '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">' +
-        '<span style="width:7px;height:7px;border-radius:50%;background:' + dot + ';flex-shrink:0;"></span>' +
-        '<div style="min-width:0;">' +
-          '<div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(l.name) + '</div>' +
-          (cat ? '<div style="font-size:10px;font-weight:600;color:' + col + ';margin-top:1px;">' + esc(cat) + '</div>' : '') +
-          (l.usr ? '<div style="font-size:11px;color:var(--text3);margin-top:1px;">' + esc(l.usr) + '</div>' : '') +
-        '</div>' +
-      '</div>' +
-      '<span style="font-size:13px;color:var(--text3);flex-shrink:0;padding-left:8px;">›</span>';
+    // Left: identity info
+    const left = document.createElement('div');
+    left.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;min-width:0;';
+    left.innerHTML =
+      '<span style="width:7px;height:7px;border-radius:50%;background:' + dot + ';flex-shrink:0;"></span>' +
+      '<div style="min-width:0;">' +
+        '<div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(l.name) + '</div>' +
+        (cat ? '<div style="font-size:10px;font-weight:600;color:' + col + ';margin-top:1px;">' + esc(cat) + '</div>' : '') +
+        (l.usr ? '<div style="font-size:11px;color:var(--text3);margin-top:1px;">' + esc(l.usr) + '</div>' : '') +
+      '</div>';
 
+    // Unlink button
+    const unlinkBtn = document.createElement('span');
+    unlinkBtn.textContent = 'unlink';
+    unlinkBtn.title = 'Remove from this campaign (login is not deleted)';
+    unlinkBtn.style.cssText = 'font-size:10px;color:var(--text3);cursor:pointer;padding:2px 7px;border:1px solid var(--border);border-radius:4px;flex-shrink:0;white-space:nowrap;';
+    unlinkBtn.onmouseover = () => { unlinkBtn.style.borderColor = '#e55'; unlinkBtn.style.color = '#e55'; };
+    unlinkBtn.onmouseout  = () => { unlinkBtn.style.borderColor = 'var(--border)'; unlinkBtn.style.color = 'var(--text3)'; };
+    unlinkBtn.onclick = e => { e.stopPropagation(); unlinkLoginFromCell(l); };
+
+    // Edit arrow
+    const arrow = document.createElement('span');
+    arrow.textContent = '›';
+    arrow.style.cssText = 'font-size:13px;color:var(--text3);flex-shrink:0;';
+
+    row.appendChild(left);
+    row.appendChild(unlinkBtn);
+    row.appendChild(arrow);
     row.onclick = () => { closeLoginCellModal(); openLoginEditModal(l); };
     el.appendChild(row);
   });
+}
+
+async function unlinkLoginFromCell(login) {
+  if (!confirm('Remove "' + login.name + '" from this campaign?\n\nThe login record is not deleted — it\'s just unlinked.')) return;
+  try {
+    await call('unlinkLoginFromCell', { loginId: login.id, campaignId: lcCampId });
+    // Remove from local index
+    if (platLoginIndex[lcCampId] && platLoginIndex[lcCampId][lcPlatId]) {
+      platLoginIndex[lcCampId][lcPlatId] = platLoginIndex[lcCampId][lcPlatId].filter(l => l.id !== login.id);
+    }
+    // Refresh the modal list
+    renderLoginCellList(platLoginIndex[lcCampId]?.[lcPlatId] || []);
+    // Refresh the matrix
+    renderPlatformMatrix();
+    showToast(login.name + ' unlinked ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
 }
 
 function showLoginCellForm() {
