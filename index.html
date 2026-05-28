@@ -1293,7 +1293,7 @@ function switchTab(name) {
   if (name === 'products'    && !prodLoaded)      { prodLoaded      = true; loadProducts(); }
   if (name === 'development' && !devLoaded)       { devLoaded       = true; loadDev(); }
   if (name === 'td'          && !tdTabLoaded)     { tdTabLoaded     = true; loadTdTab(); }
-  if (name === 'platforms') { loadPlatformMatrix(); }
+  if (name === 'platforms') { loadPlatformMatrix(); if (!smAccsLoaded) loadSmAccounts(); }
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); }
 }
 
@@ -2299,20 +2299,22 @@ function openLoginEditModal(login) {
   document.getElementById('leHeadline').value = login.headline || '';
   document.getElementById('leBio').value      = login.bio || '';
   document.getElementById('leNotionLink').href = 'https://www.notion.so/' + login.id;
-  // SM Accounts section
-  const leSmSec    = document.getElementById('leSmAccountSection');
-  const leSmChips  = document.getElementById('leSmAccountChips');
+  // SM Accounts section — use relation IDs (smAccountIds), fall back to text field (smAccountId)
+  const leSmSec   = document.getElementById('leSmAccountSection');
+  const leSmChips = document.getElementById('leSmAccountChips');
   leSmChips.innerHTML = '';
-  const smNames = (login.smAccount   || '').split(',').map(s => s.trim()).filter(Boolean);
-  const smIds   = (login.smAccountId || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (smNames.length) {
+  const smIds = (login.smAccountIds && login.smAccountIds.length)
+    ? login.smAccountIds
+    : (login.smAccountId || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (smIds.length) {
     leSmSec.style.display = '';
-    smNames.forEach((acctName, i) => {
-      const acctId = smIds[i] || '';
-      const isYT   = /youtube/i.test(acctName);
-      const isTT   = /tiktok/i.test(acctName);
-      const chip   = document.createElement('div');
-      chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:11px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:3px 8px;';
+    smIds.forEach(acctId => {
+      const acct    = smAccsData.find(a => a.id === acctId);
+      const acctName = acct?.name || acctId.slice(0, 8) + '…';
+      const isYT    = /youtube/i.test(acctName) || acct?.type === 'YouTube';
+      const isTT    = /tiktok/i.test(acctName)  || acct?.type === 'TikTok';
+      const chip    = document.createElement('div');
+      chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:11px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;';
       if (isYT || isTT) {
         const badge = document.createElement('span');
         badge.style.cssText = isYT
@@ -2325,26 +2327,22 @@ function openLoginEditModal(login) {
       nameEl.style.color = 'var(--text2)';
       nameEl.textContent = acctName;
       chip.appendChild(nameEl);
-      if (acctId) {
-        const notionA = document.createElement('a');
-        notionA.href = 'https://www.notion.so/' + acctId;
-        notionA.target = '_blank';
-        notionA.rel = 'noopener noreferrer';
-        notionA.title = 'Open in Notion';
-        notionA.style.cssText = 'font-size:10px;color:var(--text3);text-decoration:none;margin-left:2px;opacity:.7;';
-        notionA.textContent = '↗';
-        notionA.onmouseover = () => { notionA.style.opacity = '1'; };
-        notionA.onmouseout  = () => { notionA.style.opacity = '.7'; };
-        notionA.addEventListener('click', e => e.stopPropagation());
-        chip.appendChild(notionA);
-        chip.style.cursor = 'pointer';
-        chip.title = 'Click to edit in dashboard';
-        chip.addEventListener('click', () => {
-          const found = smAccsData.find(a => a.id === acctId);
-          if (found) { closeLoginEditModal(); openSmModal(acctId); }
-          else window.open('https://www.notion.so/' + acctId, '_blank');
-        });
-      }
+      const notionA = document.createElement('a');
+      notionA.href = 'https://www.notion.so/' + acctId;
+      notionA.target = '_blank';
+      notionA.rel = 'noopener noreferrer';
+      notionA.title = 'Open in Notion';
+      notionA.style.cssText = 'font-size:10px;color:var(--text3);text-decoration:none;margin-left:2px;opacity:.7;';
+      notionA.textContent = '↗';
+      notionA.onmouseover = () => { notionA.style.opacity = '1'; };
+      notionA.onmouseout  = () => { notionA.style.opacity = '.7'; };
+      notionA.addEventListener('click', e => e.stopPropagation());
+      chip.appendChild(notionA);
+      chip.title = acct ? 'Click to edit in dashboard' : 'Open in Notion';
+      chip.addEventListener('click', () => {
+        if (acct) { closeLoginEditModal(); openSmModal(acctId); }
+        else window.open('https://www.notion.so/' + acctId, '_blank');
+      });
       leSmChips.appendChild(chip);
     });
   } else {
