@@ -992,6 +992,10 @@
       <label class="modal-label">Bio</label>
       <textarea class="modal-input" id="leBio" rows="3" style="resize:vertical;line-height:1.5;" placeholder="Profile bio..."></textarea>
     </div>
+    <div class="modal-field" id="leSmAccountSection" style="display:none;">
+      <label class="modal-label">SM Accounts</label>
+      <div id="leSmAccountChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;"></div>
+    </div>
     <div class="modal-actions" style="justify-content:space-between;">
       <button class="btn btn-secondary" onclick="deleteLoginCell()" style="color:var(--danger);border-color:var(--danger);">Delete</button>
       <div style="display:flex;gap:8px;">
@@ -2295,6 +2299,57 @@ function openLoginEditModal(login) {
   document.getElementById('leHeadline').value = login.headline || '';
   document.getElementById('leBio').value      = login.bio || '';
   document.getElementById('leNotionLink').href = 'https://www.notion.so/' + login.id;
+  // SM Accounts section
+  const leSmSec    = document.getElementById('leSmAccountSection');
+  const leSmChips  = document.getElementById('leSmAccountChips');
+  leSmChips.innerHTML = '';
+  const smNames = (login.smAccount   || '').split(',').map(s => s.trim()).filter(Boolean);
+  const smIds   = (login.smAccountId || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (smNames.length) {
+    leSmSec.style.display = '';
+    smNames.forEach((acctName, i) => {
+      const acctId = smIds[i] || '';
+      const isYT   = /youtube/i.test(acctName);
+      const isTT   = /tiktok/i.test(acctName);
+      const chip   = document.createElement('div');
+      chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:11px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:3px 8px;';
+      if (isYT || isTT) {
+        const badge = document.createElement('span');
+        badge.style.cssText = isYT
+          ? 'font-size:9px;font-weight:700;color:#FF0000;background:rgba(255,0,0,.08);border-radius:2px;padding:1px 4px;'
+          : 'font-size:9px;font-weight:700;color:var(--text);background:var(--bg3,var(--bg2));border-radius:2px;padding:1px 4px;';
+        badge.textContent = isYT ? 'YT' : 'TT';
+        chip.appendChild(badge);
+      }
+      const nameEl = document.createElement('span');
+      nameEl.style.color = 'var(--text2)';
+      nameEl.textContent = acctName;
+      chip.appendChild(nameEl);
+      if (acctId) {
+        const notionA = document.createElement('a');
+        notionA.href = 'https://www.notion.so/' + acctId;
+        notionA.target = '_blank';
+        notionA.rel = 'noopener noreferrer';
+        notionA.title = 'Open in Notion';
+        notionA.style.cssText = 'font-size:10px;color:var(--text3);text-decoration:none;margin-left:2px;opacity:.7;';
+        notionA.textContent = '↗';
+        notionA.onmouseover = () => { notionA.style.opacity = '1'; };
+        notionA.onmouseout  = () => { notionA.style.opacity = '.7'; };
+        notionA.addEventListener('click', e => e.stopPropagation());
+        chip.appendChild(notionA);
+        chip.style.cursor = 'pointer';
+        chip.title = 'Click to edit in dashboard';
+        chip.addEventListener('click', () => {
+          const found = smAccsData.find(a => a.id === acctId);
+          if (found) { closeLoginEditModal(); openSmModal(acctId); }
+          else window.open('https://www.notion.so/' + acctId, '_blank');
+        });
+      }
+      leSmChips.appendChild(chip);
+    });
+  } else {
+    leSmSec.style.display = 'none';
+  }
   document.getElementById('leSaveBtn').disabled = false;
   document.getElementById('leSaveBtn').textContent = 'Save';
   document.getElementById('loginEditModal').classList.add('open');
