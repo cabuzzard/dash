@@ -109,6 +109,22 @@
   .dtable tr:last-child td { border-bottom:none; }
   .dtable tr:hover td { background:var(--surface2); }
   .dom-badge { font-size:10px; font-weight:600; padding:2px 7px; border-radius:4px; display:inline-block; }
+  /* Google accounts two-level */
+  .gacc-block { margin-bottom:8px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; }
+  .gacc-hdr   { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; user-select:none; }
+  .gacc-hdr:hover { background:rgba(255,255,255,.04); }
+  .gacc-icon  { width:22px; height:22px; border-radius:50%; background:#4285f4; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#fff; flex-shrink:0; font-style:normal; }
+  .gacc-name  { font-size:13px; font-weight:600; color:var(--text); }
+  .gacc-meta  { font-size:11px; color:var(--text3); }
+  .gacc-body  { display:none; border-top:1px solid var(--border); }
+  .gacc-body.open { display:block; }
+  .gacc-row   { display:flex; align-items:center; gap:10px; padding:8px 14px 8px 46px; border-bottom:1px solid var(--border); }
+  .gacc-row:last-child { border-bottom:none; }
+  .gacc-row:hover { background:rgba(255,255,255,.03); }
+  .gacc-ch-name { font-size:12px; color:var(--text2); flex:1; min-width:0; }
+  .gacc-handle  { font-size:11px; color:var(--text3); font-family:'DM Mono',monospace; flex-shrink:0; }
+  .gacc-subs    { font-size:11px; color:var(--text3); flex-shrink:0; min-width:52px; text-align:right; }
+  .gacc-zero    { opacity:.4; }
   /* ── TABLE ── */
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; position: relative; }
   .sticky-thead { position: fixed; z-index: 85; background: var(--bg); border-bottom: 1px solid var(--border2); display: none; overflow: hidden; pointer-events: none; }
@@ -379,6 +395,14 @@
           <div class="dom-stat-label">Domains</div>
           <div class="dom-stat-val">62</div>
         </div>
+        <div class="dom-stat">
+          <div class="dom-stat-label">Google Accs</div>
+          <div class="dom-stat-val">4</div>
+        </div>
+        <div class="dom-stat">
+          <div class="dom-stat-label">YT Channels</div>
+          <div class="dom-stat-val">17</div>
+        </div>
         <div class="dom-stat" id="domExpiryCard">
           <div class="dom-stat-label" id="domExpiryLabel">Expiring ≤60d</div>
           <div class="dom-stat-val" id="domExpiryVal">—</div>
@@ -429,6 +453,82 @@
             <thead><tr><th>Domain</th><th>Expires</th><th>Days</th><th>Host</th><th>Account</th></tr></thead>
             <tbody id="domsTableBody"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- GOOGLE ACCOUNTS -->
+      <div class="dom-collapse">
+        <div class="dom-col-hdr" onclick="domToggle('gAccsBody','gAccsArrow')">
+          <span class="dom-col-title">Google Accounts</span>
+          <span class="dom-col-count">4 accounts · 17 brand channels</span>
+          <span class="dom-col-arrow" id="gAccsArrow">▼</span>
+        </div>
+        <div class="dom-col-body open" id="gAccsBody" style="padding:12px 14px;display:block;">
+
+          <!-- flipoclock -->
+          <div class="gacc-block">
+            <div class="gacc-hdr" onclick="domToggle('gAcc0','gAcc0Arr')">
+              <span class="gacc-icon">G</span>
+              <span class="gacc-name">flipoclock</span>
+              <span class="gacc-meta">13 brand channels</span>
+              <span class="dom-col-arrow" id="gAcc0Arr" style="margin-left:auto;">▼</span>
+            </div>
+            <div class="gacc-body open" id="gAcc0">
+              <div class="gacc-row"><span class="gacc-ch-name">Evan Raymond Music &amp; Mindset</span><span class="gacc-handle">@evanraymondmusicandmindset2603</span><span class="gacc-subs">5 subs</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">10 Minute Practice</span><span class="gacc-handle">@10minutepactice27</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Assembly World Furniture</span><span class="gacc-handle">@AssemblyWorldFurniture-io6tz</span><span class="gacc-subs">11 subs</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Creative Flow Guitar</span><span class="gacc-handle">@creativeflowguitar1851</span><span class="gacc-subs">9 subs</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Web Guy</span><span class="gacc-handle">@webguy7975</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Eat Free Keto</span><span class="gacc-handle">@EatFreeKeto-re6tm</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Mountainwize Coaching</span><span class="gacc-handle">@mountainwizecoaching2693</span><span class="gacc-subs">5 subs</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Smart Modern Money</span><span class="gacc-handle">@smartmodernmoney1712</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">New Homes Investing</span><span class="gacc-handle">@newhomesinvesting2987</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Mobile Millionaires</span><span class="gacc-handle">@mobilemillionaires8029</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Derelict</span><span class="gacc-handle">@Derelict-kq8kw</span><span class="gacc-subs">1 sub</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Fluid Communication</span><span class="gacc-handle">@fluidcommunication789</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Trail Notes</span><span class="gacc-handle">@forestspells5201</span><span class="gacc-subs gacc-zero">—</span></div>
+            </div>
+          </div>
+
+          <!-- veeray -->
+          <div class="gacc-block">
+            <div class="gacc-hdr" onclick="domToggle('gAcc1','gAcc1Arr')">
+              <span class="gacc-icon">G</span>
+              <span class="gacc-name">veeray</span>
+              <span class="gacc-meta">1 brand channel</span>
+              <span class="dom-col-arrow" id="gAcc1Arr" style="margin-left:auto;">▼</span>
+            </div>
+            <div class="gacc-body open" id="gAcc1">
+              <div class="gacc-row"><span class="gacc-ch-name">Vee Ray</span><span class="gacc-handle">@evraymond</span><span class="gacc-subs">11 subs</span></div>
+            </div>
+          </div>
+
+          <!-- cabuzzard -->
+          <div class="gacc-block">
+            <div class="gacc-hdr" onclick="domToggle('gAcc2','gAcc2Arr')">
+              <span class="gacc-icon">G</span>
+              <span class="gacc-name">cabuzzard</span>
+              <span class="gacc-meta">1 brand channel</span>
+              <span class="dom-col-arrow" id="gAcc2Arr" style="margin-left:auto;">▼</span>
+            </div>
+            <div class="gacc-body open" id="gAcc2">
+              <div class="gacc-row"><span class="gacc-ch-name">ca buzzard</span><span class="gacc-handle">@cabuzzard</span><span class="gacc-subs">5 subs</span></div>
+            </div>
+          </div>
+
+          <!-- web guy -->
+          <div class="gacc-block">
+            <div class="gacc-hdr" onclick="domToggle('gAcc3','gAcc3Arr')">
+              <span class="gacc-icon">G</span>
+              <span class="gacc-name">web guy</span>
+              <span class="gacc-meta">1 brand channel</span>
+              <span class="dom-col-arrow" id="gAcc3Arr" style="margin-left:auto;">▼</span>
+            </div>
+            <div class="gacc-body open" id="gAcc3">
+              <div class="gacc-row"><span class="gacc-ch-name">Webguy</span><span class="gacc-handle">@Webguyleadgen</span><span class="gacc-subs">1 sub</span></div>
+            </div>
+          </div>
+
         </div>
       </div>
 
