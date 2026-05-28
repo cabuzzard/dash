@@ -89,6 +89,26 @@
   .skill-name { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
   .skill-desc { font-size: 12px; color: var(--text3); line-height: 1.5; }
   .skill-arrow { font-size: 14px; color: var(--text3); flex-shrink: 0; margin-top: 2px; }
+
+  /* ── DOMAINS TAB ── */
+  .dom-stat-bar { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
+  .dom-stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 18px; min-width:90px; }
+  .dom-stat-label { font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--text3); }
+  .dom-stat-val   { font-size:22px; font-weight:600; margin-top:3px; }
+  .dom-collapse   { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:12px; overflow:hidden; }
+  .dom-col-hdr    { display:flex; align-items:center; gap:8px; padding:13px 16px; cursor:pointer; user-select:none; }
+  .dom-col-hdr:hover { background:var(--surface2); }
+  .dom-col-title  { font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text2); }
+  .dom-col-count  { font-size:11px; color:var(--text3); }
+  .dom-col-arrow  { margin-left:auto; font-size:10px; color:var(--text3); transition:transform .2s; }
+  .dom-col-body   { display:none; border-top:1px solid var(--border); overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .dom-col-body.open { display:block; }
+  .dtable { width:100%; border-collapse:collapse; font-size:12px; min-width:400px; }
+  .dtable th { font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text3); padding:8px 14px; text-align:left; border-bottom:1px solid var(--border); }
+  .dtable td { padding:8px 14px; border-bottom:1px solid var(--border); color:var(--text2); vertical-align:middle; }
+  .dtable tr:last-child td { border-bottom:none; }
+  .dtable tr:hover td { background:var(--surface2); }
+  .dom-badge { font-size:10px; font-weight:600; padding:2px 7px; border-radius:4px; display:inline-block; }
   /* ── TABLE ── */
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; position: relative; }
   .sticky-thead { position: fixed; z-index: 85; background: var(--bg); border-bottom: 1px solid var(--border2); display: none; overflow: hidden; pointer-events: none; }
@@ -260,6 +280,7 @@
     <div class="tab" id="tabBtnPublishing" onclick="switchTab('publishing')">Publishing</div>
     <div class="tab" onclick="switchTab('platforms')">Platforms</div>
     <div class="tab" onclick="switchTab('skills')">Skills</div>
+    <div class="tab" onclick="switchTab('domains')">Domains</div>
   </div>
 
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
@@ -341,6 +362,75 @@
         </div>
         <div class="skill-arrow">↗</div>
       </a>
+
+    </div>
+  </div>
+
+  <!-- ── DOMAINS TAB ── -->
+  <div class="tab-panel" id="tabDomains">
+    <div style="padding:20px 4px 8px;">
+
+      <div class="dom-stat-bar">
+        <div class="dom-stat">
+          <div class="dom-stat-label">Emails</div>
+          <div class="dom-stat-val">16</div>
+        </div>
+        <div class="dom-stat">
+          <div class="dom-stat-label">Domains</div>
+          <div class="dom-stat-val">62</div>
+        </div>
+        <div class="dom-stat" id="domExpiryCard">
+          <div class="dom-stat-label" id="domExpiryLabel">Expiring ≤60d</div>
+          <div class="dom-stat-val" id="domExpiryVal">—</div>
+        </div>
+      </div>
+
+      <!-- EMAIL ACCOUNTS -->
+      <div class="dom-collapse">
+        <div class="dom-col-hdr" onclick="domToggle('emailsBody','emailsArrow')">
+          <span class="dom-col-title">Email Accounts</span>
+          <span class="dom-col-count">16</span>
+          <span class="dom-col-arrow" id="emailsArrow">▼</span>
+        </div>
+        <div class="dom-col-body open" id="emailsBody">
+          <table class="dtable">
+            <thead><tr><th>Email</th><th>Used</th><th>Limit</th><th>Host</th></tr></thead>
+            <tbody>
+              <tr><td>evan@evraymond.com</td><td>6.21 GB</td><td>∞</td><td>evraymond.com</td></tr>
+              <tr><td>info@evraymond.com</td><td>199.3 MB</td><td>∞</td><td>evraymond.com</td></tr>
+              <tr><td>job@evraymond.com</td><td>1.65 GB</td><td>∞</td><td>evraymond.com</td></tr>
+              <tr><td>jobs@evraymond.com</td><td>248.8 KB</td><td>∞</td><td>evraymond.com</td></tr>
+              <tr><td>mktg@evraymond.com</td><td>2.79 GB</td><td>∞</td><td>evraymond.com</td></tr>
+              <tr><td>evan@mountainwize.com</td><td>3.07 MB</td><td>∞</td><td>mountainwize.com</td></tr>
+              <tr><td>info@mountainwize.com</td><td>966 MB</td><td>∞</td><td>mountainwize.com</td></tr>
+              <tr><td>info@roi-systems.com</td><td>2.3 MB</td><td>∞</td><td>roi-systems.com</td></tr>
+              <tr><td>admin@webguyleadgeneration.com</td><td>9.05 MB</td><td>500 MB</td><td>webguyleadgeneration.com</td></tr>
+              <tr><td>info@webguyleadgeneration.com</td><td>6.77 MB</td><td>500 MB</td><td>webguyleadgeneration.com</td></tr>
+              <tr><td>info@creativeflowguitar.com</td><td>3.83 MB</td><td>500 MB</td><td>creativeflowguitar.com</td></tr>
+              <tr><td>info@foundationfuturesllc.com</td><td>58.5 KB</td><td>500 MB</td><td>foundationfuturesllc.com</td></tr>
+              <tr><td>info@maiandros-investments.com</td><td>1.48 MB</td><td>500 MB</td><td>maiandros-investments.com</td></tr>
+              <tr><td>info@modernactivehome.com</td><td>174.3 KB</td><td>500 MB</td><td>modernactivehome.com</td></tr>
+              <tr><td>info@naturalspirithealing.com</td><td>56.4 KB</td><td>500 MB</td><td>naturalspirithealing.com</td></tr>
+              <tr><td>info@releasestresstoday.com</td><td>55.6 KB</td><td>500 MB</td><td>releasestresstoday.com</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- DOMAINS -->
+      <div class="dom-collapse">
+        <div class="dom-col-hdr" onclick="domToggle('domsBody','domsArrow')">
+          <span class="dom-col-title">Domains</span>
+          <span class="dom-col-count">62</span>
+          <span class="dom-col-arrow" id="domsArrow">▼</span>
+        </div>
+        <div class="dom-col-body open" id="domsBody">
+          <table class="dtable">
+            <thead><tr><th>Domain</th><th>Expires</th><th>Days</th><th>Host</th><th>Account</th></tr></thead>
+            <tbody id="domsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
 
     </div>
   </div>
@@ -983,6 +1073,124 @@ function switchTab(name) {
   if (name === 'development' && !devLoaded)       { devLoaded       = true; loadDev(); }
   if (name === 'td'          && !tdTabLoaded)     { tdTabLoaded     = true; loadTdTab(); }
   if (name === 'platforms') { loadPlatformMatrix(); }
+  if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); }
+}
+
+// ── DOMAINS TAB ───────────────────────────────────────────────────────
+let domTabLoaded = false;
+
+function domToggle(bodyId, arrowId) {
+  const body  = document.getElementById(bodyId);
+  const arrow = document.getElementById(arrowId);
+  const open  = body.classList.toggle('open');
+  arrow.style.transform = open ? '' : 'rotate(-90deg)';
+}
+
+function initDomainsTab() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const domains = [
+    ['accessyourpassion.com','10/07/2026','Bluehost','Steven Richardson'],
+    ['barefoothike.com','10/12/2026','GreenGeeks','Evan Raymond'],
+    ['bayareaoriginalmusic.com','11/18/2026','Bluehost','Steven Richardson'],
+    ['bestoutdoorsandals.com','12/10/2026','Bluehost','Steven Richardson'],
+    ['bestrealestateliquidation.com','02/16/2027','Bluehost','Steven Richardson'],
+    ['blankslatebranding.site','09/06/2026','Bluehost','Steven Richardson'],
+    ['brandingminicourse.com','09/06/2026','Bluehost','Steven Richardson'],
+    ['buildtosuitinvestment.com','10/31/2026','Bluehost','Steven Richardson'],
+    ['buildtosuitinvestment.online','10/31/2026','Bluehost','Steven Richardson'],
+    ['cabuzzard.com','10/06/2026','Bluehost','Steven Richardson'],
+    ['cabuzzard.online','10/06/2026','Bluehost','Steven Richardson'],
+    ['creativeflowguitar.com','01/09/2027','Bluehost','Steven Richardson'],
+    ['energyfocuscoaching.com','10/06/2026','Bluehost','Steven Richardson'],
+    ['energyfocuscoaching.online','10/06/2026','Bluehost','Steven Richardson'],
+    ['facttracking.com','10/12/2026','GreenGeeks','Evan Raymond'],
+    ['focusingenergycoaching.com','10/13/2026','Bluehost','Steven Richardson'],
+    ['focusingenergycoaching.online','10/13/2026','Bluehost','Steven Richardson'],
+    ['foundationfuturesllc.com','10/31/2026','Bluehost','Steven Richardson'],
+    ['foundationfuturesllc.online','10/31/2026','Bluehost','Steven Richardson'],
+    ['generalservice2020.com','06/30/2026','Bluehost','Steven Richardson'],
+    ['generalservices2020.com','06/30/2026','Bluehost','Steven Richardson'],
+    ['growthcoachmindset.com','05/01/2027','Bluehost','Steven Richardson'],
+    ['growthcoachmindset.online','05/01/2027','Bluehost','Steven Richardson'],
+    ['homepondaquarium.com','05/17/2027','Bluehost','Steven Richardson'],
+    ['homepondaquarium.online','05/17/2027','Bluehost','Steven Richardson'],
+    ['homestructionconsulting.com','09/23/2026','Bluehost','Steven Richardson'],
+    ['homestructionconsulting.online','09/23/2026','Bluehost','Steven Richardson'],
+    ['intentionwarrior.com','11/19/2026','Bluehost','Steven Richardson'],
+    ['intentionwarrior.online','11/19/2026','Bluehost','Steven Richardson'],
+    ['introdatevert.com','04/28/2027','Bluehost','Steven Richardson'],
+    ['liketotallydude.com','07/26/2026','Bluehost','Steven Richardson'],
+    ['liketotallydude.online','07/26/2026','Bluehost','Steven Richardson'],
+    ['maiandros-investments.com','07/16/2026','Bluehost','Steven Richardson'],
+    ['modernactivehome.com','12/24/2026','Bluehost','Steven Richardson'],
+    ['mountainwize.com','08/27/2026','Bluehost','Steven Richardson'],
+    ['naturalanxietyrelief.info','06/15/2026','Bluehost','Evan Raymond'],
+    ['naturalspirithealing.com','04/04/2027','GreenGeeks','Evan Raymond'],
+    ['naturalspiritualscience.com','05/17/2027','Bluehost','Steven Richardson'],
+    ['naturebasedcoach.com','10/21/2026','Bluehost','Steven Richardson'],
+    ['naturebasedcoach.online','10/21/2026','Bluehost','Steven Richardson'],
+    ['naturewellnesscoach.com','10/21/2026','Bluehost','Steven Richardson'],
+    ['naturewellnesscoach.online','10/21/2026','Bluehost','Steven Richardson'],
+    ['online-personalcoach.com','05/08/2027','Bluehost','Steven Richardson'],
+    ['outsidesessions.com','02/08/2027','Bluehost','Steven Richardson'],
+    ['personalcoach-ca.com','05/08/2027','Bluehost','Steven Richardson'],
+    ['petrichorpodcast.com','12/27/2026','GreenGeeks','Evan Raymond'],
+    ['rad80schild.com','07/26/2026','Bluehost','Steven Richardson'],
+    ['rad80schild.online','07/26/2026','Bluehost','Steven Richardson'],
+    ['relievestressquick.com','04/21/2027','Bluehost','Steven Richardson'],
+    ['rockrgear.com','12/20/2026','GreenGeeks','Evan Raymond'],
+    ['roi-systems.com','11/13/2026','Bluehost','Steven Richardson'],
+    ['sellhousefastagent.com','02/16/2027','Bluehost','Steven Richardson'],
+    ['somaticspirit.com','10/16/2026','GreenGeeks','Evan Raymond'],
+    ['spiritual-energy-coach.com','05/17/2027','Bluehost','Steven Richardson'],
+    ['spiritual-energy-coach.online','05/17/2027','Bluehost','Steven Richardson'],
+    ['stablehomefoundation.com','09/12/2026','Bluehost','Steven Richardson'],
+    ['stablehomefoundation.online','09/12/2026','Bluehost','Steven Richardson'],
+    ['sustainableaquarium.com','01/31/2027','Bluehost','Steven Richardson'],
+    ['theuniversoulgame-exchange.com','04/03/2027','Bluehost','Steven Richardson'],
+    ['theuniversoulgame-exchange.online','04/03/2027','Bluehost','Steven Richardson'],
+    ['thirdpathcoaching.com','10/09/2026','Bluehost','Steven Richardson'],
+    ['webguyleadgeneration.com','12/11/2026','Bluehost','Steven Richardson'],
+  ];
+
+  // Sort by expiry date ascending
+  domains.sort((a,b) => new Date(a[1]) - new Date(b[1]));
+
+  let expiryCount = 0;
+  const tbody = document.getElementById('domsTableBody');
+  tbody.innerHTML = '';
+
+  domains.forEach(([domain, exp, host, acct]) => {
+    const expDate = new Date(exp);
+    const days    = Math.ceil((expDate - today) / 86400000);
+    let color = '';
+    let badge = '';
+    if (days <= 30)      { color = '#ff4444'; badge = '<span class="dom-badge" style="background:#2a0000;color:#ff4444;border:1px solid #5a0000;">URGENT</span> '; expiryCount++; }
+    else if (days <= 60) { color = '#f59e0b'; badge = '<span class="dom-badge" style="background:#2a1a00;color:#f59e0b;border:1px solid #5a3000;">SOON</span> '; expiryCount++; }
+    else if (days <= 90) { color = '#a3e635'; }
+
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><a href="https://' + domain + '" target="_blank" style="color:var(--text);text-decoration:none;" onmouseover="this.style.opacity=\'.7\'" onmouseout="this.style.opacity=\'1\'">' + domain + '</a></td>' +
+      '<td style="color:' + (color||'var(--text3)') + ';white-space:nowrap;">' + badge + exp + '</td>' +
+      '<td style="color:' + (color||'var(--text3)') + ';font-weight:' + (color?'700':'400') + ';white-space:nowrap;">' + days + 'd</td>' +
+      '<td style="color:var(--text3);">' + host + '</td>' +
+      '<td style="color:var(--text3);">' + acct + '</td>';
+    tbody.appendChild(tr);
+  });
+
+  // Update expiry stat card
+  const card  = document.getElementById('domExpiryCard');
+  const val   = document.getElementById('domExpiryVal');
+  const label = document.getElementById('domExpiryLabel');
+  val.textContent = expiryCount;
+  if (expiryCount > 0) {
+    card.style.borderColor  = '#ff4444';
+    val.style.color         = '#ff4444';
+    label.style.color       = '#ff4444';
+  } else {
+    card.style.borderColor  = 'var(--border)';
+  }
 }
 
 // ── PLATFORM MATRIX ───────────────────────────────────────────────────
