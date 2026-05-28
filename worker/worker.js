@@ -12,6 +12,7 @@ const PLATFORMS_DB       = "8248b700ebb7428aa28d8b5246509898";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
 const LEADS_DB           = "e4518a459f004eb0b9646e48d8718705";
+const SM_ACCOUNTS_DB     = "aa6a16f2a77245bfb5efd9a8eb314b07";
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -1585,6 +1586,94 @@ Rules:
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── getSmAccounts — fetch all SM Account records ──────────────────
+      if (body.action === "getSmAccounts") {
+        // SM_ACCOUNTS_DB defined at top of file
+        const rows = await notionQuery(SM_ACCOUNTS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
+        const accounts = rows.map(r => {
+          const p = r.properties;
+          const txt = prop => prop?.rich_text?.map(t=>t.plain_text).join("") || prop?.title?.map(t=>t.plain_text).join("") || "";
+          return {
+            id:          r.id.replace(/-/g,""),
+            name:        txt(p.Name),
+            login:       txt(p.Login),
+            loginId:     txt(p["Login ID"]),
+            platform:    txt(p.Platform),
+            platformId:  txt(p["Platform ID"]),
+            email:       txt(p.Email),
+            youtube:     txt(p.YouTube),
+            tiktok:      txt(p.TikTok),
+          };
+        });
+        return json({ accounts });
+      }
+
+      // ── createSmAccount — add a new SM Account record ─────────────────
+      if (body.action === "createSmAccount") {
+        // SM_ACCOUNTS_DB defined at top of file
+        const { name, login, loginId, platform, platformId, email, youtube, tiktok } = body;
+        if (!name) return json({ error: "name required" }, 400);
+        const rt = v => v ? [{ type:"text", text:{ content: v } }] : [];
+        const props = {
+          Name:          { title: [{ type:"text", text:{ content: name } }] },
+          Login:         { rich_text: rt(login) },
+          "Login ID":    { rich_text: rt(loginId) },
+          Platform:      { rich_text: rt(platform) },
+          "Platform ID": { rich_text: rt(platformId) },
+          Email:         { rich_text: rt(email) },
+          YouTube:       { rich_text: rt(youtube) },
+          TikTok:        { rich_text: rt(tiktok) },
+        };
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: SM_ACCOUNTS_DB }, properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, account: { id: result.id.replace(/-/g,""), name, login: login||"", loginId: loginId||"", platform: platform||"", platformId: platformId||"", email: email||"", youtube: youtube||"", tiktok: tiktok||"" } });
+      }
+
+      // ── updateSmAccount — update an SM Account record ─────────────────
+      if (body.action === "updateSmAccount") {
+        const { id, name, login, loginId, platform, platformId, email, youtube, tiktok } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const dash = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const rt = v => v != null ? [{ type:"text", text:{ content: v } }] : [];
+        const props = {};
+        if (name     != null) props.Name          = { title: [{ type:"text", text:{ content: name } }] };
+        if (login    != null) props.Login         = { rich_text: rt(login) };
+        if (loginId  != null) props["Login ID"]   = { rich_text: rt(loginId) };
+        if (platform != null) props.Platform      = { rich_text: rt(platform) };
+        if (platformId!=null) props["Platform ID"]= { rich_text: rt(platformId) };
+        if (email    != null) props.Email         = { rich_text: rt(email) };
+        if (youtube  != null) props.YouTube       = { rich_text: rt(youtube) };
+        if (tiktok   != null) props.TikTok        = { rich_text: rt(tiktok) };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── deleteSmAccount — trash an SM Account record ──────────────────
+      if (body.action === "deleteSmAccount") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const dash = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Delete failed" }, resp.status);
         return json({ success: true });
       }
 

@@ -532,9 +532,90 @@
         </div>
       </div>
 
+      <!-- SM ACCOUNTS -->
+      <div class="dom-collapse">
+        <div class="dom-col-hdr" onclick="smAccsToggle()">
+          <span class="dom-col-title">SM Accounts</span>
+          <span class="dom-col-count" id="smAccsCount">—</span>
+          <span class="dom-col-arrow" id="smAccsArrow">▼</span>
+        </div>
+        <div class="dom-col-body open" id="smAccsBody">
+          <div style="padding:10px 14px 8px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);">
+            <span style="font-size:11px;color:var(--text3);">Login credentials mapped to platform accounts</span>
+            <button onclick="openSmModal(null)" style="font-size:11px;padding:4px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text2);cursor:pointer;">+ Add Row</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="dtable" id="smAccsTable">
+              <thead>
+                <tr>
+                  <th>Login</th>
+                  <th>Platform</th>
+                  <th>Email</th>
+                  <th>YouTube</th>
+                  <th>TikTok</th>
+                  <th style="width:48px;"></th>
+                </tr>
+              </thead>
+              <tbody id="smAccsTbody">
+                <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
+</div>
+
+<!-- SM Account Modal -->
+<div class="modal-bg" id="smAccModal" onclick="if(event.target===this)closeSmModal()">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-title" id="smAccModalTitle">SM Account</div>
+    <input type="hidden" id="smAccId" />
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Login</label>
+      <input class="modal-input" id="smLoginInput" type="text" placeholder="Search logins or type new..." autocomplete="off"
+        oninput="smFilterLogins()" onfocus="smFilterLogins()" />
+      <input type="hidden" id="smLoginId" />
+      <div id="smLoginDrop" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Platform</label>
+      <input class="modal-input" id="smPlatInput" type="text" placeholder="Search platforms or type new..." autocomplete="off"
+        oninput="smFilterPlats()" onfocus="smFilterPlats()" />
+      <input type="hidden" id="smPlatId" />
+      <div id="smPlatDrop" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Email</label>
+      <input class="modal-input" id="smEmailInput" type="text" placeholder="Select or type email..." autocomplete="off"
+        oninput="smFilterEmails()" onfocus="smFilterEmails()" />
+      <div id="smEmailDrop" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">YouTube</label>
+      <input class="modal-input" id="smYtInput" type="text" placeholder="Select or type @handle..." autocomplete="off"
+        oninput="smFilterYt()" onfocus="smFilterYt()" />
+      <div id="smYtDrop" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">TikTok</label>
+      <input class="modal-input" id="smTikTokInput" type="text" placeholder="@handle or username..." />
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:4px;">
+      <button class="modal-btn" onclick="saveSmAccount()" style="flex:1;">Save</button>
+      <button class="modal-btn" onclick="closeSmModal()" style="background:transparent;border-color:var(--border2);color:var(--text3);">Cancel</button>
+    </div>
+    <div id="smAccErr" style="font-size:12px;color:var(--danger);margin-top:8px;min-height:16px;"></div>
+  </div>
 </div>
 
 <!-- Add Product Modal -->
@@ -1173,7 +1254,7 @@ function switchTab(name) {
   if (name === 'development' && !devLoaded)       { devLoaded       = true; loadDev(); }
   if (name === 'td'          && !tdTabLoaded)     { tdTabLoaded     = true; loadTdTab(); }
   if (name === 'platforms') { loadPlatformMatrix(); }
-  if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); }
+  if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); }
 }
 
 // ── DOMAINS TAB ───────────────────────────────────────────────────────
@@ -1292,6 +1373,215 @@ function initDomainsTab() {
     card.style.borderColor  = 'var(--border)';
   }
 }
+
+// ── SM ACCOUNTS ───────────────────────────────────────────────────────
+let smAccsData      = [];
+let smAccsLoaded    = false;
+let smAccsOpen      = true;
+let smEditId        = null;  // null = new, string = editing existing
+
+// Known emails for autocomplete
+const smKnownEmails = [
+  'evan@evraymond.com','info@evraymond.com','job@evraymond.com','jobs@evraymond.com','mktg@evraymond.com',
+  'evan@mountainwize.com','info@mountainwize.com','info@roi-systems.com',
+  'admin@webguyleadgeneration.com','info@webguyleadgeneration.com',
+  'info@creativeflowguitar.com','info@foundationfuturesllc.com','info@maiandros-investments.com',
+  'info@modernactivehome.com','info@naturalspirithealing.com','info@releasestresstoday.com',
+];
+// Known YouTube channels for autocomplete
+const smKnownYt = [
+  'Evan Raymond Music & Mindset (@evanraymondmusicandmindset2603)',
+  '10 Minute Practice (@10minutepactice27)',
+  'Assembly World Furniture (@AssemblyWorldFurniture-io6tz)',
+  'Creative Flow Guitar (@creativeflowguitar1851)',
+  'Web Guy (@webguy7975)',
+  'Eat Free Keto (@EatFreeKeto-re6tm)',
+  'Mountainwize Coaching (@mountainwizecoaching2693)',
+  'Smart Modern Money (@smartmodernmoney1712)',
+  'New Homes Investing (@newhomesinvesting2987)',
+  'Mobile Millionaires (@mobilemillionaires8029)',
+  'Derelict (@Derelict-kq8kw)',
+  'Fluid Communication (@fluidcommunication789)',
+  'Trail Notes (@forestspells5201)',
+  'Vee Ray (@evraymond)',
+  'ca buzzard (@cabuzzard)',
+  'Webguy (@Webguyleadgen)',
+];
+
+function smAccsToggle() {
+  smAccsOpen = !smAccsOpen;
+  const body  = document.getElementById('smAccsBody');
+  const arrow = document.getElementById('smAccsArrow');
+  body.classList.toggle('open', smAccsOpen);
+  arrow.style.transform = smAccsOpen ? '' : 'rotate(-90deg)';
+  if (smAccsOpen && !smAccsLoaded) loadSmAccounts();
+}
+
+async function loadSmAccounts() {
+  const tbody = document.getElementById('smAccsTbody');
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;">Loading...</td></tr>';
+  try {
+    const res = await call('getSmAccounts', {});
+    smAccsData = res.accounts || [];
+    smAccsLoaded = true;
+    renderSmAccounts();
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:20px;">Error: ' + esc(e.message) + '</td></tr>';
+  }
+}
+
+function renderSmAccounts() {
+  const tbody = document.getElementById('smAccsTbody');
+  document.getElementById('smAccsCount').textContent = smAccsData.length;
+  if (!smAccsData.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;font-style:italic;">No records yet — click + Add Row</td></tr>';
+    return;
+  }
+  tbody.innerHTML = '';
+  smAccsData.forEach(a => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + (a.login  ? '<a href="https://www.notion.so/'+esc(a.loginId)+'" target="_blank" style="color:var(--text);text-decoration:none;" onmouseover="this.style.opacity=\'.7\'" onmouseout="this.style.opacity=\'1\'">'+esc(a.login)+'</a>' : '<span style="color:var(--text3);font-style:italic;">—</span>') + '</td>' +
+      '<td>' + (a.platform ? esc(a.platform) : '<span style="color:var(--text3);">—</span>') + '</td>' +
+      '<td style="font-size:11px;">' + (a.email ? esc(a.email) : '<span style="color:var(--text3);">—</span>') + '</td>' +
+      '<td style="font-size:11px;">' + (a.youtube ? esc(a.youtube) : '<span style="color:var(--text3);">—</span>') + '</td>' +
+      '<td style="font-size:11px;">' + (a.tiktok ? esc(a.tiktok) : '<span style="color:var(--text3);">—</span>') + '</td>' +
+      '<td style="text-align:center;">' +
+        '<span onclick="openSmModal(\''+a.id+'\')" style="font-size:11px;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border);border-radius:4px;" title="Edit">✎</span> ' +
+        '<span onclick="deleteSmAccount(\''+a.id+'\',\''+esc(a.login||a.name)+'\')" style="font-size:11px;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border);border-radius:4px;" title="Delete">✕</span>' +
+      '</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+function openSmModal(id) {
+  smEditId = id;
+  document.getElementById('smAccModalTitle').textContent = id ? 'Edit SM Account' : 'New SM Account';
+  document.getElementById('smAccErr').textContent = '';
+  // Clear fields
+  ['smLoginInput','smLoginId','smPlatInput','smPlatId','smEmailInput','smYtInput','smTikTokInput'].forEach(f => {
+    const el = document.getElementById(f); if (el) el.value = '';
+  });
+  // If editing, populate fields
+  if (id) {
+    const a = smAccsData.find(x => x.id === id);
+    if (a) {
+      document.getElementById('smLoginInput').value  = a.login    || '';
+      document.getElementById('smLoginId').value     = a.loginId  || '';
+      document.getElementById('smPlatInput').value   = a.platform || '';
+      document.getElementById('smPlatId').value      = a.platformId || '';
+      document.getElementById('smEmailInput').value  = a.email    || '';
+      document.getElementById('smYtInput').value     = a.youtube  || '';
+      document.getElementById('smTikTokInput').value = a.tiktok   || '';
+    }
+  }
+  document.getElementById('smAccModal').classList.add('open');
+}
+
+function closeSmModal() {
+  document.getElementById('smAccModal').classList.remove('open');
+  ['smLoginDrop','smPlatDrop','smEmailDrop','smYtDrop'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = 'none';
+  });
+}
+
+async function saveSmAccount() {
+  const login    = document.getElementById('smLoginInput').value.trim();
+  const loginId  = document.getElementById('smLoginId').value.trim();
+  const platform = document.getElementById('smPlatInput').value.trim();
+  const platId   = document.getElementById('smPlatId').value.trim();
+  const email    = document.getElementById('smEmailInput').value.trim();
+  const youtube  = document.getElementById('smYtInput').value.trim();
+  const tiktok   = document.getElementById('smTikTokInput').value.trim();
+  const name     = login || platform || email || 'SM Account';
+  const errEl    = document.getElementById('smAccErr');
+  errEl.textContent = '';
+  try {
+    if (smEditId) {
+      await call('updateSmAccount', { id: smEditId, name, login, loginId, platform, platformId: platId, email, youtube, tiktok });
+      const idx = smAccsData.findIndex(x => x.id === smEditId);
+      if (idx >= 0) smAccsData[idx] = { ...smAccsData[idx], name, login, loginId, platform, platformId: platId, email, youtube, tiktok };
+    } else {
+      const res = await call('createSmAccount', { name, login, loginId, platform, platformId: platId, email, youtube, tiktok });
+      smAccsData.push(res.account);
+    }
+    renderSmAccounts();
+    closeSmModal();
+    showToast('Saved ✓', 'success');
+  } catch(e) { errEl.textContent = e.message; }
+}
+
+async function deleteSmAccount(id, label) {
+  if (!confirm('Delete "' + label + '"?\nThis cannot be undone.')) return;
+  try {
+    await call('deleteSmAccount', { id });
+    smAccsData = smAccsData.filter(x => x.id !== id);
+    renderSmAccounts();
+    showToast('Deleted', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── SM autocomplete helpers ────────────────────────────────────────────
+function smMakeDrop(dropId, items, onSelect) {
+  const drop = document.getElementById(dropId);
+  drop.innerHTML = '';
+  if (!items.length) { drop.style.display = 'none'; return; }
+  items.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'camp-item';
+    div.textContent = item.label;
+    div.onclick = () => { onSelect(item); drop.style.display = 'none'; };
+    drop.appendChild(div);
+  });
+  drop.style.display = 'block';
+}
+
+function smFilterLogins() {
+  const q = document.getElementById('smLoginInput').value.toLowerCase();
+  // Use platAllLogins if loaded, otherwise use smAccsData cached names
+  const pool = platAllLogins.length ? platAllLogins : [];
+  const matches = pool.filter(l => l.name.toLowerCase().includes(q)).slice(0, 10);
+  smMakeDrop('smLoginDrop', matches.map(l => ({ label: l.name, id: l.id })), item => {
+    document.getElementById('smLoginInput').value = item.label;
+    document.getElementById('smLoginId').value    = item.id;
+  });
+}
+
+function smFilterPlats() {
+  const q = document.getElementById('smPlatInput').value.toLowerCase();
+  const pool = platPlatforms.length ? platPlatforms : [];
+  const matches = pool.filter(p => p.name.toLowerCase().includes(q)).slice(0, 10);
+  smMakeDrop('smPlatDrop', matches.map(p => ({ label: p.name, id: p.id })), item => {
+    document.getElementById('smPlatInput').value = item.label;
+    document.getElementById('smPlatId').value    = item.id;
+  });
+}
+
+function smFilterEmails() {
+  const q = document.getElementById('smEmailInput').value.toLowerCase();
+  const matches = smKnownEmails.filter(e => e.includes(q)).slice(0, 8);
+  smMakeDrop('smEmailDrop', matches.map(e => ({ label: e })), item => {
+    document.getElementById('smEmailInput').value = item.label;
+  });
+}
+
+function smFilterYt() {
+  const q = document.getElementById('smYtInput').value.toLowerCase();
+  const matches = smKnownYt.filter(e => e.toLowerCase().includes(q)).slice(0, 8);
+  smMakeDrop('smYtDrop', matches.map(e => ({ label: e })), item => {
+    document.getElementById('smYtInput').value = item.label;
+  });
+}
+
+// Close SM dropdowns on outside click
+document.addEventListener('click', e => {
+  ['smLoginDrop','smPlatDrop','smEmailDrop','smYtDrop'].forEach(id => {
+    const drop = document.getElementById(id);
+    if (drop && !drop.contains(e.target) && e.target.id !== id.replace('Drop','Input')) {
+      drop.style.display = 'none';
+    }
+  });
+});
 
 // ── PLATFORM MATRIX ───────────────────────────────────────────────────
 let platMatrixLoaded = false;
