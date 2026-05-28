@@ -550,6 +550,7 @@
                 <tr>
                   <th>Login</th>
                   <th>Platform</th>
+                  <th>Campaign</th>
                   <th>Email</th>
                   <th>YouTube</th>
                   <th>TikTok</th>
@@ -557,7 +558,7 @@
                 </tr>
               </thead>
               <tbody id="smAccsTbody">
-                <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;">Loading...</td></tr>
+                <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px;">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -589,6 +590,14 @@
         oninput="smFilterPlats()" onfocus="smFilterPlats()" />
       <input type="hidden" id="smPlatId" />
       <div id="smPlatDrop" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Campaign</label>
+      <input class="modal-input" id="smCampInput" type="text" placeholder="Search campaigns..." autocomplete="off"
+        oninput="smFilterCampaigns()" onfocus="smFilterCampaigns()" />
+      <input type="hidden" id="smCampId" />
+      <div id="smCampDrop" class="camp-dropdown" style="display:none;"></div>
     </div>
 
     <div class="modal-field" style="position:relative;">
@@ -1434,7 +1443,7 @@ function renderSmAccounts() {
   const tbody = document.getElementById('smAccsTbody');
   document.getElementById('smAccsCount').textContent = smAccsData.length;
   if (!smAccsData.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;font-style:italic;">No records yet — click + Add Row</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px;font-style:italic;">No records yet — click + Add Row</td></tr>';
     return;
   }
   tbody.innerHTML = '';
@@ -1443,6 +1452,7 @@ function renderSmAccounts() {
     tr.innerHTML =
       '<td>' + (a.login  ? '<a href="https://www.notion.so/'+esc(a.loginId)+'" target="_blank" style="color:var(--text);text-decoration:none;" onmouseover="this.style.opacity=\'.7\'" onmouseout="this.style.opacity=\'1\'">'+esc(a.login)+'</a>' : '<span style="color:var(--text3);font-style:italic;">—</span>') + '</td>' +
       '<td>' + (a.platform ? esc(a.platform) : '<span style="color:var(--text3);">—</span>') + '</td>' +
+      '<td style="font-size:11px;">' + (a.campaign ? '<a href="https://www.notion.so/'+esc(a.campaignId)+'" target="_blank" style="color:var(--text2);text-decoration:none;" onmouseover="this.style.opacity=\'.7\'" onmouseout="this.style.opacity=\'1\'">'+esc(a.campaign)+'</a>' : '<span style="color:var(--text3);">—</span>') + '</td>' +
       '<td style="font-size:11px;">' + (a.email ? esc(a.email) : '<span style="color:var(--text3);">—</span>') + '</td>' +
       '<td style="font-size:11px;">' + (a.youtube ? esc(a.youtube) : '<span style="color:var(--text3);">—</span>') + '</td>' +
       '<td style="font-size:11px;">' + (a.tiktok ? esc(a.tiktok) : '<span style="color:var(--text3);">—</span>') + '</td>' +
@@ -1459,20 +1469,22 @@ function openSmModal(id) {
   document.getElementById('smAccModalTitle').textContent = id ? 'Edit SM Account' : 'New SM Account';
   document.getElementById('smAccErr').textContent = '';
   // Clear fields
-  ['smLoginInput','smLoginId','smPlatInput','smPlatId','smEmailInput','smYtInput','smTikTokInput'].forEach(f => {
+  ['smLoginInput','smLoginId','smPlatInput','smPlatId','smCampInput','smCampId','smEmailInput','smYtInput','smTikTokInput'].forEach(f => {
     const el = document.getElementById(f); if (el) el.value = '';
   });
   // If editing, populate fields
   if (id) {
     const a = smAccsData.find(x => x.id === id);
     if (a) {
-      document.getElementById('smLoginInput').value  = a.login    || '';
-      document.getElementById('smLoginId').value     = a.loginId  || '';
-      document.getElementById('smPlatInput').value   = a.platform || '';
+      document.getElementById('smLoginInput').value  = a.login      || '';
+      document.getElementById('smLoginId').value     = a.loginId    || '';
+      document.getElementById('smPlatInput').value   = a.platform   || '';
       document.getElementById('smPlatId').value      = a.platformId || '';
-      document.getElementById('smEmailInput').value  = a.email    || '';
-      document.getElementById('smYtInput').value     = a.youtube  || '';
-      document.getElementById('smTikTokInput').value = a.tiktok   || '';
+      document.getElementById('smCampInput').value   = a.campaign   || '';
+      document.getElementById('smCampId').value      = a.campaignId || '';
+      document.getElementById('smEmailInput').value  = a.email      || '';
+      document.getElementById('smYtInput').value     = a.youtube    || '';
+      document.getElementById('smTikTokInput').value = a.tiktok     || '';
     }
   }
   document.getElementById('smAccModal').classList.add('open');
@@ -1480,29 +1492,31 @@ function openSmModal(id) {
 
 function closeSmModal() {
   document.getElementById('smAccModal').classList.remove('open');
-  ['smLoginDrop','smPlatDrop','smEmailDrop','smYtDrop'].forEach(id => {
+  ['smLoginDrop','smPlatDrop','smCampDrop','smEmailDrop','smYtDrop'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = 'none';
   });
 }
 
 async function saveSmAccount() {
-  const login    = document.getElementById('smLoginInput').value.trim();
-  const loginId  = document.getElementById('smLoginId').value.trim();
-  const platform = document.getElementById('smPlatInput').value.trim();
-  const platId   = document.getElementById('smPlatId').value.trim();
-  const email    = document.getElementById('smEmailInput').value.trim();
-  const youtube  = document.getElementById('smYtInput').value.trim();
-  const tiktok   = document.getElementById('smTikTokInput').value.trim();
-  const name     = login || platform || email || 'SM Account';
-  const errEl    = document.getElementById('smAccErr');
+  const login      = document.getElementById('smLoginInput').value.trim();
+  const loginId    = document.getElementById('smLoginId').value.trim();
+  const platform   = document.getElementById('smPlatInput').value.trim();
+  const platId     = document.getElementById('smPlatId').value.trim();
+  const campaign   = document.getElementById('smCampInput').value.trim();
+  const campaignId = document.getElementById('smCampId').value.trim();
+  const email      = document.getElementById('smEmailInput').value.trim();
+  const youtube    = document.getElementById('smYtInput').value.trim();
+  const tiktok     = document.getElementById('smTikTokInput').value.trim();
+  const name       = login || platform || campaign || email || 'SM Account';
+  const errEl      = document.getElementById('smAccErr');
   errEl.textContent = '';
   try {
     if (smEditId) {
-      await call('updateSmAccount', { id: smEditId, name, login, loginId, platform, platformId: platId, email, youtube, tiktok });
+      await call('updateSmAccount', { id: smEditId, name, login, loginId, platform, platformId: platId, campaign, campaignId, email, youtube, tiktok });
       const idx = smAccsData.findIndex(x => x.id === smEditId);
-      if (idx >= 0) smAccsData[idx] = { ...smAccsData[idx], name, login, loginId, platform, platformId: platId, email, youtube, tiktok };
+      if (idx >= 0) smAccsData[idx] = { ...smAccsData[idx], name, login, loginId, platform, platformId: platId, campaign, campaignId, email, youtube, tiktok };
     } else {
-      const res = await call('createSmAccount', { name, login, loginId, platform, platformId: platId, email, youtube, tiktok });
+      const res = await call('createSmAccount', { name, login, loginId, platform, platformId: platId, campaign, campaignId, email, youtube, tiktok });
       smAccsData.push(res.account);
     }
     renderSmAccounts();
@@ -1557,6 +1571,17 @@ function smFilterPlats() {
   });
 }
 
+function smFilterCampaigns() {
+  const q = document.getElementById('smCampInput').value.toLowerCase();
+  // platCampaigns is loaded when Platforms tab is visited; fall back to empty if not yet loaded
+  const pool = (typeof platCampaigns !== 'undefined' && platCampaigns.length) ? platCampaigns : [];
+  const matches = pool.filter(c => (c.name||'').toLowerCase().includes(q)).slice(0, 12);
+  smMakeDrop('smCampDrop', matches.map(c => ({ label: c.name, id: c.id })), item => {
+    document.getElementById('smCampInput').value = item.label;
+    document.getElementById('smCampId').value    = item.id;
+  });
+}
+
 function smFilterEmails() {
   const q = document.getElementById('smEmailInput').value.toLowerCase();
   const matches = smKnownEmails.filter(e => e.includes(q)).slice(0, 8);
@@ -1575,7 +1600,7 @@ function smFilterYt() {
 
 // Close SM dropdowns on outside click
 document.addEventListener('click', e => {
-  ['smLoginDrop','smPlatDrop','smEmailDrop','smYtDrop'].forEach(id => {
+  ['smLoginDrop','smPlatDrop','smCampDrop','smEmailDrop','smYtDrop'].forEach(id => {
     const drop = document.getElementById(id);
     if (drop && !drop.contains(e.target) && e.target.id !== id.replace('Drop','Input')) {
       drop.style.display = 'none';

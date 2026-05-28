@@ -1606,6 +1606,8 @@ Rules:
             email:       txt(p.Email),
             youtube:     txt(p.YouTube),
             tiktok:      txt(p.TikTok),
+            campaign:    txt(p.Campaign),
+            campaignId:  txt(p["Campaign ID"]),
           };
         });
         return json({ accounts });
@@ -1614,18 +1616,20 @@ Rules:
       // ── createSmAccount — add a new SM Account record ─────────────────
       if (body.action === "createSmAccount") {
         // SM_ACCOUNTS_DB defined at top of file
-        const { name, login, loginId, platform, platformId, email, youtube, tiktok } = body;
+        const { name, login, loginId, platform, platformId, email, youtube, tiktok, campaign, campaignId } = body;
         if (!name) return json({ error: "name required" }, 400);
         const rt = v => v ? [{ type:"text", text:{ content: v } }] : [];
         const props = {
-          Name:          { title: [{ type:"text", text:{ content: name } }] },
-          Login:         { rich_text: rt(login) },
-          "Login ID":    { rich_text: rt(loginId) },
-          Platform:      { rich_text: rt(platform) },
-          "Platform ID": { rich_text: rt(platformId) },
-          Email:         { rich_text: rt(email) },
-          YouTube:       { rich_text: rt(youtube) },
-          TikTok:        { rich_text: rt(tiktok) },
+          Name:            { title: [{ type:"text", text:{ content: name } }] },
+          Login:           { rich_text: rt(login) },
+          "Login ID":      { rich_text: rt(loginId) },
+          Platform:        { rich_text: rt(platform) },
+          "Platform ID":   { rich_text: rt(platformId) },
+          Email:           { rich_text: rt(email) },
+          YouTube:         { rich_text: rt(youtube) },
+          TikTok:          { rich_text: rt(tiktok) },
+          Campaign:        { rich_text: rt(campaign) },
+          "Campaign ID":   { rich_text: rt(campaignId) },
         };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
@@ -1634,24 +1638,26 @@ Rules:
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
-        return json({ success: true, account: { id: result.id.replace(/-/g,""), name, login: login||"", loginId: loginId||"", platform: platform||"", platformId: platformId||"", email: email||"", youtube: youtube||"", tiktok: tiktok||"" } });
+        return json({ success: true, account: { id: result.id.replace(/-/g,""), name, login: login||"", loginId: loginId||"", platform: platform||"", platformId: platformId||"", email: email||"", youtube: youtube||"", tiktok: tiktok||"", campaign: campaign||"", campaignId: campaignId||"" } });
       }
 
       // ── updateSmAccount — update an SM Account record ─────────────────
       if (body.action === "updateSmAccount") {
-        const { id, name, login, loginId, platform, platformId, email, youtube, tiktok } = body;
+        const { id, name, login, loginId, platform, platformId, email, youtube, tiktok, campaign, campaignId } = body;
         if (!id) return json({ error: "id required" }, 400);
         const dash = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const rt = v => v != null ? [{ type:"text", text:{ content: v } }] : [];
         const props = {};
-        if (name     != null) props.Name          = { title: [{ type:"text", text:{ content: name } }] };
-        if (login    != null) props.Login         = { rich_text: rt(login) };
-        if (loginId  != null) props["Login ID"]   = { rich_text: rt(loginId) };
-        if (platform != null) props.Platform      = { rich_text: rt(platform) };
-        if (platformId!=null) props["Platform ID"]= { rich_text: rt(platformId) };
-        if (email    != null) props.Email         = { rich_text: rt(email) };
-        if (youtube  != null) props.YouTube       = { rich_text: rt(youtube) };
-        if (tiktok   != null) props.TikTok        = { rich_text: rt(tiktok) };
+        if (name       != null) props.Name            = { title: [{ type:"text", text:{ content: name } }] };
+        if (login      != null) props.Login           = { rich_text: rt(login) };
+        if (loginId    != null) props["Login ID"]     = { rich_text: rt(loginId) };
+        if (platform   != null) props.Platform        = { rich_text: rt(platform) };
+        if (platformId != null) props["Platform ID"]  = { rich_text: rt(platformId) };
+        if (email      != null) props.Email           = { rich_text: rt(email) };
+        if (youtube    != null) props.YouTube         = { rich_text: rt(youtube) };
+        if (tiktok     != null) props.TikTok          = { rich_text: rt(tiktok) };
+        if (campaign   != null) props.Campaign        = { rich_text: rt(campaign) };
+        if (campaignId != null) props["Campaign ID"]  = { rich_text: rt(campaignId) };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
