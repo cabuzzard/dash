@@ -548,17 +548,18 @@
             <table class="dtable" id="smAccsTable">
               <thead>
                 <tr>
+                  <th>SM Account</th>
+                  <th>Type</th>
                   <th>Login</th>
+                  <th>Username</th>
+                  <th>Email</th>
                   <th>Platform</th>
                   <th>Campaign</th>
-                  <th>Email</th>
-                  <th>YouTube</th>
-                  <th>TikTok</th>
-                  <th style="width:48px;"></th>
+                  <th style="width:56px;"></th>
                 </tr>
               </thead>
               <tbody id="smAccsTbody">
-                <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px;">Loading...</td></tr>
+                <tr><td colspan="8" style="text-align:center;color:var(--text3);padding:20px;">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -574,7 +575,27 @@
 <div class="modal-bg" id="smAccModal" onclick="if(event.target===this)closeSmModal()">
   <div class="modal" style="max-width:480px;">
     <div class="modal-title" id="smAccModalTitle">SM Account</div>
-    <input type="hidden" id="smAccId" />
+
+    <div class="modal-field">
+      <label class="modal-label">SM Account Name</label>
+      <input class="modal-input" id="smNameInput" type="text" placeholder="e.g. Mountainwize YouTube" />
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Type</label>
+      <select class="modal-input" id="smTypeInput" onchange="smOnTypeChange()">
+        <option value="">— select type —</option>
+        <option>YouTube</option>
+        <option>TikTok</option>
+        <option>Instagram</option>
+        <option>Facebook</option>
+        <option>LinkedIn</option>
+        <option>Pinterest</option>
+        <option>Twitter/X</option>
+        <option>Beehiiv</option>
+        <option>Substack</option>
+      </select>
+    </div>
 
     <div class="modal-field" style="position:relative;">
       <label class="modal-label">Login</label>
@@ -582,6 +603,25 @@
         oninput="smFilterLogins()" onfocus="smFilterLogins()" />
       <input type="hidden" id="smLoginId" />
       <div id="smLoginDrop" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Username</label>
+      <input class="modal-input" id="smUserInput" type="text" placeholder="@handle or username..." autocomplete="off"
+        oninput="smFilterUsername()" onfocus="smFilterUsername()" />
+      <div id="smUserDrop" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">PW <span style="color:var(--text3);font-weight:400;">(leave blank)</span></label>
+      <input class="modal-input" id="smPwInput" type="text" placeholder="leave blank for now" />
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Email</label>
+      <input class="modal-input" id="smEmailInput" type="text" placeholder="Select or type email..." autocomplete="off"
+        oninput="smFilterEmails()" onfocus="smFilterEmails()" />
+      <div id="smEmailDrop" class="camp-dropdown" style="display:none;"></div>
     </div>
 
     <div class="modal-field" style="position:relative;">
@@ -598,25 +638,6 @@
         oninput="smFilterCampaigns()" onfocus="smFilterCampaigns()" />
       <input type="hidden" id="smCampId" />
       <div id="smCampDrop" class="camp-dropdown" style="display:none;"></div>
-    </div>
-
-    <div class="modal-field" style="position:relative;">
-      <label class="modal-label">Email</label>
-      <input class="modal-input" id="smEmailInput" type="text" placeholder="Select or type email..." autocomplete="off"
-        oninput="smFilterEmails()" onfocus="smFilterEmails()" />
-      <div id="smEmailDrop" class="camp-dropdown" style="display:none;"></div>
-    </div>
-
-    <div class="modal-field" style="position:relative;">
-      <label class="modal-label">YouTube</label>
-      <input class="modal-input" id="smYtInput" type="text" placeholder="Select or type @handle..." autocomplete="off"
-        oninput="smFilterYt()" onfocus="smFilterYt()" />
-      <div id="smYtDrop" class="camp-dropdown" style="display:none;"></div>
-    </div>
-
-    <div class="modal-field">
-      <label class="modal-label">TikTok</label>
-      <input class="modal-input" id="smTikTokInput" type="text" placeholder="@handle or username..." />
     </div>
 
     <div style="display:flex;gap:10px;margin-top:4px;">
@@ -1384,12 +1405,11 @@ function initDomainsTab() {
 }
 
 // ── SM ACCOUNTS ───────────────────────────────────────────────────────
-let smAccsData      = [];
-let smAccsLoaded    = false;
-let smAccsOpen      = true;
-let smEditId        = null;  // null = new, string = editing existing
+let smAccsData   = [];
+let smAccsLoaded = false;
+let smAccsOpen   = true;
+let smEditId     = null;
 
-// Known emails for autocomplete
 const smKnownEmails = [
   'evan@evraymond.com','info@evraymond.com','job@evraymond.com','jobs@evraymond.com','mktg@evraymond.com',
   'evan@mountainwize.com','info@mountainwize.com','info@roi-systems.com',
@@ -1397,7 +1417,6 @@ const smKnownEmails = [
   'info@creativeflowguitar.com','info@foundationfuturesllc.com','info@maiandros-investments.com',
   'info@modernactivehome.com','info@naturalspirithealing.com','info@releasestresstoday.com',
 ];
-// Known YouTube channels for autocomplete
 const smKnownYt = [
   'Evan Raymond Music & Mindset (@evanraymondmusicandmindset2603)',
   '10 Minute Practice (@10minutepactice27)',
@@ -1416,6 +1435,11 @@ const smKnownYt = [
   'ca buzzard (@cabuzzard)',
   'Webguy (@Webguyleadgen)',
 ];
+const smTypeColors = {
+  'YouTube':'#ff4444','TikTok':'#a855f7','Instagram':'#ec4899',
+  'Facebook':'#3b82f6','LinkedIn':'#3b82f6','Pinterest':'#ef4444',
+  'Twitter/X':'#888','Beehiiv':'#22c55e','Substack':'#f97316',
+};
 
 function smAccsToggle() {
   smAccsOpen = !smAccsOpen;
@@ -1428,37 +1452,45 @@ function smAccsToggle() {
 
 async function loadSmAccounts() {
   const tbody = document.getElementById('smAccsTbody');
-  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;">Loading...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:20px;">Loading...</td></tr>';
   try {
     const res = await call('getSmAccounts', {});
-    smAccsData = res.accounts || [];
+    smAccsData   = res.accounts || [];
     smAccsLoaded = true;
     renderSmAccounts();
   } catch(e) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:20px;">Error: ' + esc(e.message) + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:20px;">Error: ' + esc(e.message) + '</td></tr>';
   }
+}
+
+function smTypeBadge(type) {
+  if (!type) return '<span style="color:var(--text3);">—</span>';
+  const c = smTypeColors[type] || 'var(--text3)';
+  return '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:'+c+'22;color:'+c+';border:1px solid '+c+'55;">'+esc(type)+'</span>';
 }
 
 function renderSmAccounts() {
   const tbody = document.getElementById('smAccsTbody');
   document.getElementById('smAccsCount').textContent = smAccsData.length;
   if (!smAccsData.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px;font-style:italic;">No records yet — click + Add Row</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:20px;font-style:italic;">No records yet — click + Add Row</td></tr>';
     return;
   }
   tbody.innerHTML = '';
   smAccsData.forEach(a => {
     const tr = document.createElement('tr');
+    const dash = s => s && s.length === 32 ? s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20) : s;
     tr.innerHTML =
-      '<td>' + (a.login  ? '<a href="https://www.notion.so/'+esc(a.loginId)+'" target="_blank" style="color:var(--text);text-decoration:none;" onmouseover="this.style.opacity=\'.7\'" onmouseout="this.style.opacity=\'1\'">'+esc(a.login)+'</a>' : '<span style="color:var(--text3);font-style:italic;">—</span>') + '</td>' +
-      '<td>' + (a.platform ? esc(a.platform) : '<span style="color:var(--text3);">—</span>') + '</td>' +
-      '<td style="font-size:11px;">' + (a.campaign ? '<a href="https://www.notion.so/'+esc(a.campaignId)+'" target="_blank" style="color:var(--text2);text-decoration:none;" onmouseover="this.style.opacity=\'.7\'" onmouseout="this.style.opacity=\'1\'">'+esc(a.campaign)+'</a>' : '<span style="color:var(--text3);">—</span>') + '</td>' +
+      '<td style="font-weight:500;">' + (a.name ? esc(a.name) : '<span style="color:var(--text3);">—</span>') + '</td>' +
+      '<td>' + smTypeBadge(a.type) + '</td>' +
+      '<td style="font-size:11px;">' + (a.login ? '<a href="https://www.notion.so/'+dash(esc(a.loginId))+'" target="_blank" style="color:var(--text2);text-decoration:none;" onmouseover="this.style.opacity=\'.7\'" onmouseout="this.style.opacity=\'1\'">'+esc(a.login)+'</a>' : '<span style="color:var(--text3);">—</span>') + '</td>' +
+      '<td style="font-size:11px;font-family:\'DM Mono\',monospace;">' + (a.username ? esc(a.username) : '<span style="color:var(--text3);">—</span>') + '</td>' +
       '<td style="font-size:11px;">' + (a.email ? esc(a.email) : '<span style="color:var(--text3);">—</span>') + '</td>' +
-      '<td style="font-size:11px;">' + (a.youtube ? esc(a.youtube) : '<span style="color:var(--text3);">—</span>') + '</td>' +
-      '<td style="font-size:11px;">' + (a.tiktok ? esc(a.tiktok) : '<span style="color:var(--text3);">—</span>') + '</td>' +
-      '<td style="text-align:center;">' +
+      '<td style="font-size:11px;">' + (a.platform ? esc(a.platform) : '<span style="color:var(--text3);">—</span>') + '</td>' +
+      '<td style="font-size:11px;">' + (a.campaign ? '<a href="https://www.notion.so/'+dash(esc(a.campaignId))+'" target="_blank" style="color:var(--text2);text-decoration:none;" onmouseover="this.style.opacity=\'.7\'" onmouseout="this.style.opacity=\'1\'">'+esc(a.campaign)+'</a>' : '<span style="color:var(--text3);">—</span>') + '</td>' +
+      '<td style="text-align:center;white-space:nowrap;">' +
         '<span onclick="openSmModal(\''+a.id+'\')" style="font-size:11px;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border);border-radius:4px;" title="Edit">✎</span> ' +
-        '<span onclick="deleteSmAccount(\''+a.id+'\',\''+esc(a.login||a.name)+'\')" style="font-size:11px;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border);border-radius:4px;" title="Delete">✕</span>' +
+        '<span onclick="deleteSmAccount(\''+a.id+'\',\''+esc(a.name||a.login)+'\')" style="font-size:11px;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border);border-radius:4px;" title="Delete">✕</span>' +
       '</td>';
     tbody.appendChild(tr);
   });
@@ -1468,55 +1500,65 @@ function openSmModal(id) {
   smEditId = id;
   document.getElementById('smAccModalTitle').textContent = id ? 'Edit SM Account' : 'New SM Account';
   document.getElementById('smAccErr').textContent = '';
-  // Clear fields
-  ['smLoginInput','smLoginId','smPlatInput','smPlatId','smCampInput','smCampId','smEmailInput','smYtInput','smTikTokInput'].forEach(f => {
+  ['smNameInput','smTypeInput','smLoginInput','smLoginId','smUserInput','smPwInput',
+   'smEmailInput','smPlatInput','smPlatId','smCampInput','smCampId'].forEach(f => {
     const el = document.getElementById(f); if (el) el.value = '';
   });
-  // If editing, populate fields
   if (id) {
     const a = smAccsData.find(x => x.id === id);
     if (a) {
-      document.getElementById('smLoginInput').value  = a.login      || '';
-      document.getElementById('smLoginId').value     = a.loginId    || '';
-      document.getElementById('smPlatInput').value   = a.platform   || '';
-      document.getElementById('smPlatId').value      = a.platformId || '';
-      document.getElementById('smCampInput').value   = a.campaign   || '';
-      document.getElementById('smCampId').value      = a.campaignId || '';
-      document.getElementById('smEmailInput').value  = a.email      || '';
-      document.getElementById('smYtInput').value     = a.youtube    || '';
-      document.getElementById('smTikTokInput').value = a.tiktok     || '';
+      document.getElementById('smNameInput').value  = a.name       || '';
+      document.getElementById('smTypeInput').value  = a.type       || '';
+      document.getElementById('smLoginInput').value = a.login      || '';
+      document.getElementById('smLoginId').value    = a.loginId    || '';
+      document.getElementById('smUserInput').value  = a.username   || '';
+      document.getElementById('smPwInput').value    = a.pw         || '';
+      document.getElementById('smEmailInput').value = a.email      || '';
+      document.getElementById('smPlatInput').value  = a.platform   || '';
+      document.getElementById('smPlatId').value     = a.platformId || '';
+      document.getElementById('smCampInput').value  = a.campaign   || '';
+      document.getElementById('smCampId').value     = a.campaignId || '';
     }
   }
   document.getElementById('smAccModal').classList.add('open');
 }
 
+function smOnTypeChange() {
+  // When type changes to YouTube, prime the username dropdown with known channels
+  const type = document.getElementById('smTypeInput').value;
+  const userInput = document.getElementById('smUserInput');
+  if (type === 'YouTube' && !userInput.value) smFilterUsername();
+}
+
 function closeSmModal() {
   document.getElementById('smAccModal').classList.remove('open');
-  ['smLoginDrop','smPlatDrop','smCampDrop','smEmailDrop','smYtDrop'].forEach(id => {
+  ['smLoginDrop','smUserDrop','smEmailDrop','smPlatDrop','smCampDrop'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = 'none';
   });
 }
 
 async function saveSmAccount() {
+  const name       = document.getElementById('smNameInput').value.trim();
+  const type       = document.getElementById('smTypeInput').value;
   const login      = document.getElementById('smLoginInput').value.trim();
   const loginId    = document.getElementById('smLoginId').value.trim();
+  const username   = document.getElementById('smUserInput').value.trim();
+  const pw         = document.getElementById('smPwInput').value.trim();
+  const email      = document.getElementById('smEmailInput').value.trim();
   const platform   = document.getElementById('smPlatInput').value.trim();
   const platId     = document.getElementById('smPlatId').value.trim();
   const campaign   = document.getElementById('smCampInput').value.trim();
   const campaignId = document.getElementById('smCampId').value.trim();
-  const email      = document.getElementById('smEmailInput').value.trim();
-  const youtube    = document.getElementById('smYtInput').value.trim();
-  const tiktok     = document.getElementById('smTikTokInput').value.trim();
-  const name       = login || platform || campaign || email || 'SM Account';
+  const finalName  = name || login || type || 'SM Account';
   const errEl      = document.getElementById('smAccErr');
   errEl.textContent = '';
   try {
     if (smEditId) {
-      await call('updateSmAccount', { id: smEditId, name, login, loginId, platform, platformId: platId, campaign, campaignId, email, youtube, tiktok });
+      await call('updateSmAccount', { id: smEditId, name: finalName, type, login, loginId, username, pw, email, platform, platformId: platId, campaign, campaignId });
       const idx = smAccsData.findIndex(x => x.id === smEditId);
-      if (idx >= 0) smAccsData[idx] = { ...smAccsData[idx], name, login, loginId, platform, platformId: platId, campaign, campaignId, email, youtube, tiktok };
+      if (idx >= 0) smAccsData[idx] = { ...smAccsData[idx], name: finalName, type, login, loginId, username, pw, email, platform, platformId: platId, campaign, campaignId };
     } else {
-      const res = await call('createSmAccount', { name, login, loginId, platform, platformId: platId, campaign, campaignId, email, youtube, tiktok });
+      const res = await call('createSmAccount', { name: finalName, type, login, loginId, username, pw, email, platform, platformId: platId, campaign, campaignId });
       smAccsData.push(res.account);
     }
     renderSmAccounts();
@@ -1552,12 +1594,30 @@ function smMakeDrop(dropId, items, onSelect) {
 
 function smFilterLogins() {
   const q = document.getElementById('smLoginInput').value.toLowerCase();
-  // Use platAllLogins if loaded, otherwise use smAccsData cached names
   const pool = platAllLogins.length ? platAllLogins : [];
   const matches = pool.filter(l => l.name.toLowerCase().includes(q)).slice(0, 10);
   smMakeDrop('smLoginDrop', matches.map(l => ({ label: l.name, id: l.id })), item => {
     document.getElementById('smLoginInput').value = item.label;
     document.getElementById('smLoginId').value    = item.id;
+  });
+}
+
+function smFilterUsername() {
+  const q    = document.getElementById('smUserInput').value.toLowerCase();
+  const type = document.getElementById('smTypeInput').value;
+  let pool = [];
+  if (type === 'YouTube') pool = smKnownYt;
+  const matches = pool.filter(e => e.toLowerCase().includes(q)).slice(0, 10);
+  smMakeDrop('smUserDrop', matches.map(e => ({ label: e })), item => {
+    document.getElementById('smUserInput').value = item.label;
+  });
+}
+
+function smFilterEmails() {
+  const q = document.getElementById('smEmailInput').value.toLowerCase();
+  const matches = smKnownEmails.filter(e => e.includes(q)).slice(0, 8);
+  smMakeDrop('smEmailDrop', matches.map(e => ({ label: e })), item => {
+    document.getElementById('smEmailInput').value = item.label;
   });
 }
 
@@ -1573,7 +1633,6 @@ function smFilterPlats() {
 
 function smFilterCampaigns() {
   const q = document.getElementById('smCampInput').value.toLowerCase();
-  // platCampaigns is loaded when Platforms tab is visited; fall back to empty if not yet loaded
   const pool = (typeof platCampaigns !== 'undefined' && platCampaigns.length) ? platCampaigns : [];
   const matches = pool.filter(c => (c.name||'').toLowerCase().includes(q)).slice(0, 12);
   smMakeDrop('smCampDrop', matches.map(c => ({ label: c.name, id: c.id })), item => {
@@ -1582,25 +1641,8 @@ function smFilterCampaigns() {
   });
 }
 
-function smFilterEmails() {
-  const q = document.getElementById('smEmailInput').value.toLowerCase();
-  const matches = smKnownEmails.filter(e => e.includes(q)).slice(0, 8);
-  smMakeDrop('smEmailDrop', matches.map(e => ({ label: e })), item => {
-    document.getElementById('smEmailInput').value = item.label;
-  });
-}
-
-function smFilterYt() {
-  const q = document.getElementById('smYtInput').value.toLowerCase();
-  const matches = smKnownYt.filter(e => e.toLowerCase().includes(q)).slice(0, 8);
-  smMakeDrop('smYtDrop', matches.map(e => ({ label: e })), item => {
-    document.getElementById('smYtInput').value = item.label;
-  });
-}
-
-// Close SM dropdowns on outside click
 document.addEventListener('click', e => {
-  ['smLoginDrop','smPlatDrop','smCampDrop','smEmailDrop','smYtDrop'].forEach(id => {
+  ['smLoginDrop','smUserDrop','smEmailDrop','smPlatDrop','smCampDrop'].forEach(id => {
     const drop = document.getElementById(id);
     if (drop && !drop.contains(e.target) && e.target.id !== id.replace('Drop','Input')) {
       drop.style.display = 'none';

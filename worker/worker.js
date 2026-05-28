@@ -1591,7 +1591,6 @@ Rules:
 
       // ── getSmAccounts — fetch all SM Account records ──────────────────
       if (body.action === "getSmAccounts") {
-        // SM_ACCOUNTS_DB defined at top of file
         const rows = await notionQuery(SM_ACCOUNTS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
         const accounts = rows.map(r => {
           const p = r.properties;
@@ -1599,13 +1598,14 @@ Rules:
           return {
             id:          r.id.replace(/-/g,""),
             name:        txt(p.Name),
+            type:        p.Type?.select?.name || "",
             login:       txt(p.Login),
             loginId:     txt(p["Login ID"]),
+            username:    txt(p.Username),
+            pw:          txt(p.PW),
+            email:       txt(p.Email),
             platform:    txt(p.Platform),
             platformId:  txt(p["Platform ID"]),
-            email:       txt(p.Email),
-            youtube:     txt(p.YouTube),
-            tiktok:      txt(p.TikTok),
             campaign:    txt(p.Campaign),
             campaignId:  txt(p["Campaign ID"]),
           };
@@ -1613,24 +1613,24 @@ Rules:
         return json({ accounts });
       }
 
-      // ── createSmAccount — add a new SM Account record ─────────────────
+      // ── createSmAccount ───────────────────────────────────────────────
       if (body.action === "createSmAccount") {
-        // SM_ACCOUNTS_DB defined at top of file
-        const { name, login, loginId, platform, platformId, email, youtube, tiktok, campaign, campaignId } = body;
+        const { name, type, login, loginId, username, pw, email, platform, platformId, campaign, campaignId } = body;
         if (!name) return json({ error: "name required" }, 400);
         const rt = v => v ? [{ type:"text", text:{ content: v } }] : [];
         const props = {
-          Name:            { title: [{ type:"text", text:{ content: name } }] },
-          Login:           { rich_text: rt(login) },
-          "Login ID":      { rich_text: rt(loginId) },
-          Platform:        { rich_text: rt(platform) },
-          "Platform ID":   { rich_text: rt(platformId) },
-          Email:           { rich_text: rt(email) },
-          YouTube:         { rich_text: rt(youtube) },
-          TikTok:          { rich_text: rt(tiktok) },
-          Campaign:        { rich_text: rt(campaign) },
-          "Campaign ID":   { rich_text: rt(campaignId) },
+          Name:          { title: [{ type:"text", text:{ content: name } }] },
+          Login:         { rich_text: rt(login) },
+          "Login ID":    { rich_text: rt(loginId) },
+          Username:      { rich_text: rt(username) },
+          PW:            { rich_text: rt(pw) },
+          Email:         { rich_text: rt(email) },
+          Platform:      { rich_text: rt(platform) },
+          "Platform ID": { rich_text: rt(platformId) },
+          Campaign:      { rich_text: rt(campaign) },
+          "Campaign ID": { rich_text: rt(campaignId) },
         };
+        if (type) props.Type = { select: { name: type } };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -1638,26 +1638,27 @@ Rules:
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
-        return json({ success: true, account: { id: result.id.replace(/-/g,""), name, login: login||"", loginId: loginId||"", platform: platform||"", platformId: platformId||"", email: email||"", youtube: youtube||"", tiktok: tiktok||"", campaign: campaign||"", campaignId: campaignId||"" } });
+        return json({ success: true, account: { id: result.id.replace(/-/g,""), name, type: type||"", login: login||"", loginId: loginId||"", username: username||"", pw: pw||"", email: email||"", platform: platform||"", platformId: platformId||"", campaign: campaign||"", campaignId: campaignId||"" } });
       }
 
-      // ── updateSmAccount — update an SM Account record ─────────────────
+      // ── updateSmAccount ───────────────────────────────────────────────
       if (body.action === "updateSmAccount") {
-        const { id, name, login, loginId, platform, platformId, email, youtube, tiktok, campaign, campaignId } = body;
+        const { id, name, type, login, loginId, username, pw, email, platform, platformId, campaign, campaignId } = body;
         if (!id) return json({ error: "id required" }, 400);
         const dash = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const rt = v => v != null ? [{ type:"text", text:{ content: v } }] : [];
         const props = {};
-        if (name       != null) props.Name            = { title: [{ type:"text", text:{ content: name } }] };
-        if (login      != null) props.Login           = { rich_text: rt(login) };
-        if (loginId    != null) props["Login ID"]     = { rich_text: rt(loginId) };
-        if (platform   != null) props.Platform        = { rich_text: rt(platform) };
-        if (platformId != null) props["Platform ID"]  = { rich_text: rt(platformId) };
-        if (email      != null) props.Email           = { rich_text: rt(email) };
-        if (youtube    != null) props.YouTube         = { rich_text: rt(youtube) };
-        if (tiktok     != null) props.TikTok          = { rich_text: rt(tiktok) };
-        if (campaign   != null) props.Campaign        = { rich_text: rt(campaign) };
-        if (campaignId != null) props["Campaign ID"]  = { rich_text: rt(campaignId) };
+        if (name       != null) props.Name           = { title: [{ type:"text", text:{ content: name } }] };
+        if (type       != null) props.Type           = type ? { select: { name: type } } : { select: null };
+        if (login      != null) props.Login          = { rich_text: rt(login) };
+        if (loginId    != null) props["Login ID"]    = { rich_text: rt(loginId) };
+        if (username   != null) props.Username       = { rich_text: rt(username) };
+        if (pw         != null) props.PW             = { rich_text: rt(pw) };
+        if (email      != null) props.Email          = { rich_text: rt(email) };
+        if (platform   != null) props.Platform       = { rich_text: rt(platform) };
+        if (platformId != null) props["Platform ID"] = { rich_text: rt(platformId) };
+        if (campaign   != null) props.Campaign       = { rich_text: rt(campaign) };
+        if (campaignId != null) props["Campaign ID"] = { rich_text: rt(campaignId) };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
