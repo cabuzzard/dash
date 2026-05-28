@@ -938,7 +938,13 @@
   <div class="modal" style="max-height:90vh;overflow-y:auto;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
       <div class="modal-title" id="loginEditTitle" style="margin:0;">Edit Login</div>
-      <span onclick="closeLoginEditModal()" style="cursor:pointer;color:var(--text3);font-size:18px;padding:4px;">✕</span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <a id="leNotionLink" href="#" target="_blank" rel="noopener noreferrer"
+           style="font-size:11px;font-weight:600;color:var(--text3);text-decoration:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;white-space:nowrap;transition:color .15s,border-color .15s;"
+           onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--border2)'"
+           onmouseout="this.style.color='var(--text3)';this.style.borderColor='var(--border)'">↗ Notion</a>
+        <span onclick="closeLoginEditModal()" style="cursor:pointer;color:var(--text3);font-size:18px;padding:4px;">✕</span>
+      </div>
     </div>
     <div class="modal-field">
       <label class="modal-label">Name</label>
@@ -2288,6 +2294,7 @@ function openLoginEditModal(login) {
   document.getElementById('leUrl').value      = login.accountUrl || '';
   document.getElementById('leHeadline').value = login.headline || '';
   document.getElementById('leBio').value      = login.bio || '';
+  document.getElementById('leNotionLink').href = 'https://www.notion.so/' + login.id;
   document.getElementById('leSaveBtn').disabled = false;
   document.getElementById('leSaveBtn').textContent = 'Save';
   document.getElementById('loginEditModal').classList.add('open');
