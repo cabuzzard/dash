@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webguy — AI Systems, Content Automation &amp; Business Growth</title>
+  <meta name="description" content="We build AI content systems, Notion business dashboards, and done-for-you automation for solopreneurs and founder-led businesses. Get your business growing on autopilot.">
+  <meta name="keywords" content="AI tools, business growth, content systems, automation, Notion AI, lead generation, content operations, AI content workflow, content OS, Notion done-for-you">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    :root {
+      --bg:       #080c14;
+      --surface:  #0e1420;
+      --card:     #111827;
+      --card-hov: #131d2e;
+      --blue:     #3b82f6;
+      --blue-lt:  #60a5fa;
+      --cyan:     #06b6d4;
+      --emerald:  #10b981;
+      --purple:   #8b5cf6;
+      --text:     #e2e8f0;
+      --text2:    #94a3b8;
+      --text3:    #475569;
+      --border:   rgba(59,130,246,.15);
+      --border2:  rgba(59,130,246,.35);
+    }
+
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); line-height: 1.65; overflow-x: hidden; }
+
+    /* ── PAGE ROUTING ── */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky; top: 0; z-index: 200;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 40px; height: 64px;
+      background: rgba(8,12,20,.96); backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo {
+      font-size: 1.1rem; font-weight: 800; color: var(--text);
+      display: flex; align-items: center; gap: 10px; cursor: pointer; text-decoration: none;
+    }
+    .nav-mark {
+      width: 34px; height: 34px; border-radius: 8px;
+      background: linear-gradient(135deg, var(--blue), var(--cyan));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem; flex-shrink: 0; font-weight: 800; color: #fff;
+    }
+    .nav-logo span { color: var(--blue); }
+    .nav-links { display: flex; align-items: center; gap: 4px; }
+    .nav-links a {
+      font-size: .83rem; font-weight: 500; color: var(--text2);
+      text-decoration: none; padding: 7px 14px; border-radius: 6px;
+      transition: all .15s; cursor: pointer; border: none; background: none;
+      white-space: nowrap;
+    }
+    .nav-links a:hover { color: var(--text); background: rgba(255,255,255,.05); }
+    .nav-links a.active { color: var(--blue); }
+    .nav-links .nav-cta {
+      background: var(--blue); color: #fff; padding: 8px 18px;
+      border-radius: 6px; font-weight: 600; margin-left: 8px;
+    }
+    .nav-links .nav-cta:hover { background: var(--blue-lt); color: #fff; }
+    .hamburger { display: none; background: none; border: none; color: var(--text2); font-size: 1.4rem; cursor: pointer; padding: 4px; }
+    @media (max-width: 720px) {
+      nav { padding: 0 20px; }
+      .nav-links a:not(.nav-cta) { display: none; }
+      .hamburger { display: block; }
+      .nav-links { gap: 0; }
+    }
+
+    /* ── HERO ── */
+    .hero {
+      position: relative; overflow: hidden;
+      padding: 100px 24px 112px; text-align: center;
+    }
+    .hero-bg {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(59,130,246,.18) 0%, transparent 70%),
+                  radial-gradient(ellipse 50% 50% at 80% 60%, rgba(6,182,212,.08) 0%, transparent 60%),
+                  var(--bg);
+    }
+    .hero-grid {
+      position: absolute; inset: 0; opacity: .04;
+      background-image: linear-gradient(var(--blue) 1px, transparent 1px),
+                        linear-gradient(90deg, var(--blue) 1px, transparent 1px);
+      background-size: 60px 60px;
+    }
+    .hero-inner { position: relative; max-width: 900px; margin: 0 auto; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: .72rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--cyan); border: 1px solid rgba(6,182,212,.3);
+      padding: 6px 16px; border-radius: 20px; margin-bottom: 28px;
+      background: rgba(6,182,212,.06);
+    }
+    .hero-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .hero h1 {
+      font-size: clamp(2.2rem, 5.5vw, 4.4rem);
+      font-weight: 800; line-height: 1.1;
+      color: var(--text); margin-bottom: 24px; letter-spacing: -.03em;
+    }
+    .hero h1 .blue { color: var(--blue); }
+    .hero h1 .cyan { color: var(--cyan); }
+    .hero-sub {
+      font-size: clamp(.95rem, 1.8vw, 1.15rem); color: var(--text2);
+      line-height: 1.8; max-width: 640px; margin: 0 auto 44px;
+    }
+    .hero-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 56px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; font-size: .88rem; font-weight: 600; letter-spacing: .02em; padding: 13px 28px; border-radius: 8px; text-decoration: none; transition: all .2s; cursor: pointer; border: none; }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:hover { background: var(--blue-lt); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(59,130,246,.35); }
+    .btn-outline { background: transparent; color: var(--text); border: 1px solid rgba(255,255,255,.15); }
+    .btn-outline:hover { border-color: var(--blue); color: var(--blue); }
+    .btn-emerald { background: var(--emerald); color: #fff; }
+    .btn-emerald:hover { background: #059669; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(16,185,129,.3); }
+    .btn-purple { background: var(--purple); color: #fff; }
+    .btn-purple:hover { background: #7c3aed; transform: translateY(-1px); }
+    .hero-stats {
+      display: flex; justify-content: center; gap: 48px; flex-wrap: wrap;
+      padding-top: 40px; border-top: 1px solid var(--border);
+    }
+    .hero-stat { text-align: center; }
+    .hero-stat-num { font-size: 1.8rem; font-weight: 800; color: var(--text); display: block; }
+    .hero-stat-num span { color: var(--blue); }
+    .hero-stat-label { font-size: .75rem; color: var(--text3); letter-spacing: .06em; text-transform: uppercase; margin-top: 4px; }
+
+    /* ── SECTION ── */
+    .section { padding: 80px 24px; }
+    .section-inner { max-width: 1040px; margin: 0 auto; }
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .68rem; letter-spacing: .2em; text-transform: uppercase;
+      color: var(--blue); margin-bottom: 14px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .section-label::before { content: '//'; color: var(--text3); }
+    .section-title { font-size: clamp(1.6rem, 3vw, 2.6rem); font-weight: 800; color: var(--text); margin-bottom: 16px; letter-spacing: -.02em; line-height: 1.15; }
+    .section-title .blue { color: var(--blue); }
+    .section-title .cyan { color: var(--cyan); }
+    .section-title .emerald { color: var(--emerald); }
+    .section-sub { font-size: 1rem; color: var(--text2); line-height: 1.8; max-width: 580px; margin-bottom: 52px; }
+
+    /* ── SURFACE SECTION ── */
+    .surface-section { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+    /* ── SPLIT CARDS (for-who) ── */
+    .split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .split-card {
+      padding: 36px 32px; border-radius: 12px; border: 1px solid var(--border);
+      background: var(--card); cursor: pointer; transition: all .2s; text-decoration: none;
+      display: flex; flex-direction: column;
+    }
+    .split-card:hover { border-color: var(--border2); background: var(--card-hov); transform: translateY(-2px); }
+    .split-card.b2c:hover { border-color: rgba(16,185,129,.4); }
+    .split-card.b2b:hover { border-color: rgba(139,92,246,.4); }
+    .sc-eyebrow { font-size: .7rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 14px; }
+    .sc-eyebrow.green { color: var(--emerald); }
+    .sc-eyebrow.purple { color: var(--purple); }
+    .sc-icon { font-size: 2.2rem; margin-bottom: 16px; }
+    .split-card h3 { font-size: 1.4rem; font-weight: 700; color: var(--text); margin-bottom: 10px; line-height: 1.2; }
+    .split-card p { font-size: .9rem; color: var(--text2); line-height: 1.75; flex: 1; }
+    .sc-arrow { margin-top: 24px; font-size: .85rem; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .sc-arrow.green { color: var(--emerald); }
+    .sc-arrow.purple { color: var(--purple); }
+    @media (max-width: 640px) { .split-grid { grid-template-columns: 1fr; } }
+
+    /* ── FEATURE GRID ── */
+    .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+    .feature-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 26px 24px; transition: all .2s;
+      position: relative; overflow: hidden;
+    }
+    .feature-card::after {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--blue), transparent); opacity: 0; transition: opacity .2s;
+    }
+    .feature-card:hover { border-color: var(--border2); background: var(--card-hov); }
+    .feature-card:hover::after { opacity: 1; }
+    .fc-icon { font-size: 1.6rem; margin-bottom: 14px; }
+    .feature-card h4 { font-size: 1rem; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+    .feature-card p { font-size: .88rem; color: var(--text2); line-height: 1.7; }
+    .fc-tag {
+      display: inline-block; margin-top: 12px;
+      font-family: 'JetBrains Mono', monospace; font-size: .66rem;
+      color: var(--blue); background: rgba(59,130,246,.08);
+      padding: 3px 10px; border-radius: 4px; letter-spacing: .08em;
+    }
+
+    /* ── KEYWORD TICKER ── */
+    .ticker-wrap { overflow: hidden; padding: 16px 0; background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .ticker-inner { display: flex; gap: 0; white-space: nowrap; animation: ticker 30s linear infinite; }
+    @keyframes ticker { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+    .ticker-item { font-family: 'JetBrains Mono', monospace; font-size: .74rem; color: var(--text3); padding: 0 28px; letter-spacing: .1em; text-transform: uppercase; border-right: 1px solid var(--border); }
+    .ticker-item span { color: var(--blue); }
+
+    /* ── HOW IT WORKS ── */
+    .steps { display: flex; flex-direction: column; gap: 0; }
+    .step { display: grid; grid-template-columns: 56px 1fr; gap: 24px; padding: 28px 0; border-bottom: 1px solid var(--border); align-items: start; }
+    .step:last-child { border-bottom: none; }
+    .step-num { font-family: 'JetBrains Mono', monospace; font-size: 1.4rem; font-weight: 500; color: var(--blue); opacity: .6; padding-top: 4px; }
+    .step h4 { font-size: 1.05rem; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .step p { font-size: .9rem; color: var(--text2); line-height: 1.75; }
+
+    /* ── PRICING ── */
+    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+    .price-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 32px 28px; display: flex; flex-direction: column;
+      transition: border-color .2s;
+    }
+    .price-card.featured { border-color: var(--blue); background: rgba(59,130,246,.05); position: relative; }
+    .price-card:not(.featured):hover { border-color: var(--border2); }
+    .featured-tag {
+      position: absolute; top: -1px; left: 24px;
+      background: var(--blue); color: #fff;
+      font-size: .63rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+      padding: 4px 12px; border-radius: 0 0 6px 6px;
+    }
+    .price-card h4 { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .price-eyebrow { font-size: .72rem; color: var(--text3); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 18px; }
+    .price-amount { font-size: 2.4rem; font-weight: 800; color: var(--text); line-height: 1; margin-bottom: 4px; }
+    .price-amount sup { font-size: 1.2rem; vertical-align: super; color: var(--blue); }
+    .price-cadence { font-size: .78rem; color: var(--text3); margin-bottom: 24px; }
+    .price-features { list-style: none; flex: 1; margin-bottom: 28px; }
+    .price-features li { font-size: .88rem; color: var(--text2); padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.05); display: flex; align-items: flex-start; gap: 10px; line-height: 1.5; }
+    .price-features li::before { content: '✓'; color: var(--emerald); font-weight: 700; flex-shrink: 0; }
+    .price-cta { display: block; text-align: center; padding: 13px 20px; border-radius: 7px; font-size: .85rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; text-decoration: none; transition: all .2s; border: none; }
+    .price-cta.primary { background: var(--blue); color: #fff; }
+    .price-cta.primary:hover { background: var(--blue-lt); }
+    .price-cta.outline { background: transparent; color: var(--blue); border: 1px solid var(--blue); }
+    .price-cta.outline:hover { background: rgba(59,130,246,.1); }
+    .price-cta.green { background: var(--emerald); color: #fff; }
+    .price-cta.green:hover { background: #059669; }
+    .price-cta.green-outline { background: transparent; color: var(--emerald); border: 1px solid var(--emerald); }
+    .price-cta.green-outline:hover { background: rgba(16,185,129,.1); }
+    .price-cta.purple { background: var(--purple); color: #fff; }
+    .price-cta.purple:hover { background: #7c3aed; }
+    .price-cta.purple-outline { background: transparent; color: var(--purple); border: 1px solid var(--purple); }
+    .price-cta.purple-outline:hover { background: rgba(139,92,246,.1); }
+
+    /* ── TESTIMONIAL / QUOTE BLOCK ── */
+    .quote-block {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 36px 32px; position: relative; overflow: hidden;
+    }
+    .quote-block::before { content: '"'; position: absolute; top: -10px; left: 24px; font-size: 8rem; color: var(--blue); opacity: .08; font-weight: 800; line-height: 1; }
+    .quote-text { font-size: 1.15rem; color: var(--text); line-height: 1.75; margin-bottom: 18px; position: relative; font-weight: 500; }
+    .quote-attr { font-size: .8rem; color: var(--text3); letter-spacing: .06em; text-transform: uppercase; }
+
+    /* ── FORM SECTION ── */
+    .form-section { background: var(--surface); border-top: 1px solid var(--border); padding: 88px 24px; }
+    .form-inner { max-width: 580px; margin: 0 auto; }
+    .form-title { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 800; color: var(--text); margin-bottom: 10px; letter-spacing: -.02em; }
+    .form-sub { font-size: .95rem; color: var(--text2); line-height: 1.75; margin-bottom: 40px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-grid .full { grid-column: 1 / -1; }
+    label { display: block; font-size: .7rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text3); margin-bottom: 7px; }
+    input, select, textarea {
+      width: 100%; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1);
+      border-radius: 6px; color: var(--text); font-family: 'Inter', sans-serif; font-size: .92rem;
+      padding: 11px 14px; outline: none; transition: border-color .15s;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--blue); background: rgba(255,255,255,.06); }
+    input::placeholder, textarea::placeholder { color: rgba(255,255,255,.2); }
+    select option { background: #0e1420; color: var(--text); }
+    textarea { resize: vertical; min-height: 100px; }
+    .cf-turnstile { margin-top: 18px; display: flex; justify-content: center; }
+    .form-submit { display: block; width: 100%; margin-top: 20px; padding: 14px 24px; font-size: .9rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .form-error { color: #f87171; font-size: .82rem; margin-top: 10px; text-align: center; }
+    .form-note { font-size: .74rem; color: var(--text3); text-align: center; margin-top: 12px; }
+    .form-success { display: none; text-align: center; padding: 48px 20px; }
+    .form-success h3 { font-size: 1.8rem; font-weight: 800; color: var(--blue); margin-bottom: 12px; }
+    .form-success p { color: var(--text2); }
+    @media (max-width: 520px) { .form-grid { grid-template-columns: 1fr; } }
+
+    /* ── FOOTER ── */
+    footer { background: #04060b; border-top: 1px solid var(--border); padding: 48px 24px 32px; }
+    .footer-inner { max-width: 1040px; margin: 0 auto; display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; flex-wrap: wrap; }
+    .footer-brand { max-width: 280px; }
+    .footer-logo { font-size: 1.1rem; font-weight: 800; color: var(--text); margin-bottom: 10px; }
+    .footer-logo span { color: var(--blue); }
+    .footer-brand p { font-size: .83rem; color: var(--text3); line-height: 1.7; }
+    .footer-col h5 { font-size: .75rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text3); margin-bottom: 14px; }
+    .footer-col a { display: block; font-size: .85rem; color: var(--text2); text-decoration: none; margin-bottom: 8px; cursor: pointer; }
+    .footer-col a:hover { color: var(--blue); }
+    .footer-bottom { max-width: 1040px; margin: 32px auto 0; padding-top: 20px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .footer-bottom p { font-size: .74rem; color: var(--text3); }
+
+    /* ── DIVIDER ── */
+    .rule { border: none; border-top: 1px solid var(--border); }
+
+    /* ── B2C / B2B accent overrides ── */
+    .b2c-accent { --accent: var(--emerald); }
+    .b2b-accent { --accent: var(--purple); }
+    .page-b2c .hero-badge { color: var(--emerald); border-color: rgba(16,185,129,.3); background: rgba(16,185,129,.06); }
+    .page-b2c .hero-badge .dot { background: var(--emerald); }
+    .page-b2c .section-label { color: var(--emerald); }
+    .page-b2c .feature-card::after { background: linear-gradient(90deg, var(--emerald), transparent); }
+    .page-b2b .hero-badge { color: var(--purple); border-color: rgba(139,92,246,.3); background: rgba(139,92,246,.06); }
+    .page-b2b .hero-badge .dot { background: var(--purple); }
+    .page-b2b .section-label { color: var(--purple); }
+    .page-b2b .feature-card::after { background: linear-gradient(90deg, var(--purple), transparent); }
+
+    /* ── UTIL ── */
+    .text-center { text-align: center; }
+    .mt-0 { margin-bottom: 0 !important; }
+    @media (max-width: 768px) { .hero { padding: 72px 20px 80px; } .section { padding: 60px 20px; } }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <a class="nav-logo" onclick="showPage('home')">
+      <span class="nav-mark">W</span>
+      Web<span>guy</span>
+    </a>
+    <div class="nav-links">
+      <a onclick="showPage('home')" id="nav-home" class="active">Home</a>
+      <a onclick="showPage('b2c')"  id="nav-b2c">For You</a>
+      <a onclick="showPage('b2b')"  id="nav-b2b">For Business</a>
+      <a onclick="scrollToForm()" class="nav-cta">Get Started →</a>
+    </div>
+    <button class="hamburger" onclick="scrollToForm()">☰</button>
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════ HOME PAGE -->
+  <div class="page active" id="page-home">
+
+    <section class="hero">
+      <div class="hero-bg"></div>
+      <div class="hero-grid"></div>
+      <div class="hero-inner">
+        <div class="hero-badge"><span class="dot"></span> AI Tools · Content Systems · Business Growth</div>
+        <h1>Your business, running<br>on <span class="blue">AI-powered</span> <span class="cyan">systems</span>.</h1>
+        <p class="hero-sub">We build content machines, Notion business dashboards, and done-for-you AI workflows — for solopreneurs, coaches, and founder-led businesses who are ready to stop doing everything manually.</p>
+        <div class="hero-btns">
+          <a class="btn btn-primary" onclick="scrollToForm()">Get Started Free →</a>
+          <a class="btn btn-outline" onclick="showPage('b2c')">For Individuals</a>
+          <a class="btn btn-outline" onclick="showPage('b2b')">For Business</a>
+        </div>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <span class="hero-stat-num">AI<span>+</span></span>
+            <div class="hero-stat-label">Powered workflows</div>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-num">100<span>%</span></span>
+            <div class="hero-stat-label">Done for you</div>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-num">1<span>wk</span></span>
+            <div class="hero-stat-label">Average delivery</div>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-num">0<span>x</span></span>
+            <div class="hero-stat-label">Duct tape needed</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- KEYWORD TICKER -->
+    <div class="ticker-wrap" aria-hidden="true">
+      <div class="ticker-inner">
+        <span class="ticker-item">AI Content Systems</span><span class="ticker-item">Notion AI Workflow</span><span class="ticker-item"><span>Content OS</span></span><span class="ticker-item">Lead Generation</span><span class="ticker-item">Content Automation</span><span class="ticker-item">Business Growth</span><span class="ticker-item"><span>AI Implementation</span></span><span class="ticker-item">Notion Done-For-You</span><span class="ticker-item">Content Operations</span><span class="ticker-item">AI Tools</span><span class="ticker-item"><span>Productivity Systems</span></span><span class="ticker-item">Content Pipeline</span>
+        <!-- duplicate for seamless loop -->
+        <span class="ticker-item">AI Content Systems</span><span class="ticker-item">Notion AI Workflow</span><span class="ticker-item"><span>Content OS</span></span><span class="ticker-item">Lead Generation</span><span class="ticker-item">Content Automation</span><span class="ticker-item">Business Growth</span><span class="ticker-item"><span>AI Implementation</span></span><span class="ticker-item">Notion Done-For-You</span><span class="ticker-item">Content Operations</span><span class="ticker-item">AI Tools</span><span class="ticker-item"><span>Productivity Systems</span></span><span class="ticker-item">Content Pipeline</span>
+      </div>
+    </div>
+
+    <!-- WHO IS THIS FOR -->
+    <section class="section">
+      <div class="section-inner">
+        <p class="section-label text-center" style="justify-content:center;">Who we help</p>
+        <h2 class="section-title text-center" style="margin-bottom:14px;">Pick your <span class="blue">path</span>.</h2>
+        <p class="section-sub text-center" style="margin:0 auto 44px;">Same core — AI systems and content automation. Different application depending on who you are and what you're building.</p>
+        <div class="split-grid">
+          <a class="split-card b2c" onclick="showPage('b2c')">
+            <p class="sc-eyebrow green">For You — B2C</p>
+            <span class="sc-icon">🧑‍💻</span>
+            <h3>Solopreneurs, coaches &amp; content creators</h3>
+            <p>You're posting manually, your ideas live in 14 different apps, and you have no repeatable system. We build you a Notion AI content OS that runs your whole content operation in one place — and hands the publishing back to you on autopilot.</p>
+            <span class="sc-arrow green">Explore B2C options →</span>
+          </a>
+          <a class="split-card b2b" onclick="showPage('b2b')">
+            <p class="sc-eyebrow purple">For Business — B2B</p>
+            <span class="sc-icon">🏢</span>
+            <h3>Founder-led businesses &amp; small teams</h3>
+            <p>You're using AI ad hoc, your content is inconsistent, and you have no machine. We install a working B2B content system inside your business — content OS, lead pipeline, and AI workflow — delivered and running in one week.</p>
+            <span class="sc-arrow purple">Explore B2B options →</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- WHAT WE DO -->
+    <section class="section surface-section">
+      <div class="section-inner">
+        <p class="section-label">What we build</p>
+        <h2 class="section-title">The <span class="blue">tools</span> exist.<br>What's missing is the <span class="cyan">machine</span>.</h2>
+        <p class="section-sub">AI tools are everywhere. What most businesses don't have is a connected system that takes content from idea to published — automatically, repeatedly, without them thinking about it.</p>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <span class="fc-icon">🤖</span>
+            <h4>AI Content Systems</h4>
+            <p>End-to-end content pipelines that capture ideas, draft, refine, schedule, and publish across platforms. You record a voice note. The machine does the rest.</p>
+            <span class="fc-tag">notion + AI</span>
+          </div>
+          <div class="feature-card">
+            <span class="fc-icon">📊</span>
+            <h4>Business Command Centers</h4>
+            <p>Custom Notion dashboards that replace HubSpot, Asana, Buffer, and Google Docs — in one connected workspace built for your specific workflow.</p>
+            <span class="fc-tag">notion done-for-you</span>
+          </div>
+          <div class="feature-card">
+            <span class="fc-icon">⚡</span>
+            <h4>Lead Generation Systems</h4>
+            <p>AI-powered outreach and content strategies that build your inbound pipeline — so leads come to you instead of you chasing them.</p>
+            <span class="fc-tag">lead gen + AI</span>
+          </div>
+          <div class="feature-card">
+            <span class="fc-icon">🔁</span>
+            <h4>Content Repurposing</h4>
+            <p>One piece of content becomes ten. We build the workflow that turns a single long-form post into LinkedIn, Reddit, Substack, and email — automatically.</p>
+            <span class="fc-tag">content automation</span>
+          </div>
+          <div class="feature-card">
+            <span class="fc-icon">🗃️</span>
+            <h4>Notion Workspace Setup</h4>
+            <p>From scratch or from chaos — we architect and build the Notion workspace your business actually needs, with automation baked in from day one.</p>
+            <span class="fc-tag">notion ai workspace</span>
+          </div>
+          <div class="feature-card">
+            <span class="fc-icon">📡</span>
+            <h4>Ongoing AI Operations</h4>
+            <p>Monthly retainer to keep your content machine running — new content, system updates, platform changes, and optimization as you grow.</p>
+            <span class="fc-tag">ai content ops</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="section">
+      <div class="section-inner" style="max-width:720px;">
+        <p class="section-label">How it works</p>
+        <h2 class="section-title">From chaos to <span class="cyan">machine</span><br>in one week.</h2>
+        <p class="section-sub mt-0"></p>
+        <div class="steps">
+          <div class="step">
+            <span class="step-num">01</span>
+            <div>
+              <h4>Discovery call (free)</h4>
+              <p>30 minutes. We map your current workflow, where the bottlenecks are, and what a working system actually looks like for your situation.</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-num">02</span>
+            <div>
+              <h4>System design</h4>
+              <p>We build the architecture — what tools connect to what, where AI handles it, where you stay in control. You see it before we build it.</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-num">03</span>
+            <div>
+              <h4>Build &amp; deliver</h4>
+              <p>We build your system in your existing tools (or set up new ones). Delivered in a working state — not a template, not a tutorial. A machine.</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-num">04</span>
+            <div>
+              <h4>Handoff + training</h4>
+              <p>A recorded walkthrough of your system. SOPs for every workflow. You know how to use it and how to update it when things change.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LEAD FORM -->
+    <div id="home-form"></div>
+    <section class="form-section">
+      <div class="form-inner">
+        <h2 class="form-title">Let's build your system.</h2>
+        <p class="form-sub">Tell me where you are. I'll follow up within one business day with a clear next step — no sales pressure, no pitch deck.</p>
+        <div id="homeFormWrap">
+          <form id="homeLeadForm" novalidate>
+            <div class="form-grid">
+              <div><label>First Name</label><input type="text" id="h-name" placeholder="Your name" required></div>
+              <div><label>Phone</label><input type="tel" id="h-phone" placeholder="(555) 000-0000" required></div>
+              <div class="full"><label>Email</label><input type="email" id="h-email" placeholder="you@example.com" required></div>
+              <div class="full">
+                <label>I'm looking for…</label>
+                <select id="h-type" required>
+                  <option value="">— select —</option>
+                  <option value="Webguy B2C - done-for-you system">Done-for-you Notion system (for me)</option>
+                  <option value="Webguy B2C - template">A template or self-serve tool</option>
+                  <option value="Webguy B2B - content machine">Content machine for my business</option>
+                  <option value="Webguy B2B - AI implementation">AI implementation / workflow build</option>
+                  <option value="Webguy B2B - retainer">Ongoing AI content ops retainer</option>
+                  <option value="Webguy - general inquiry">Not sure yet — just exploring</option>
+                </select>
+              </div>
+              <div class="full"><label>What are you working on? <span style="opacity:.5;font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></label><textarea id="h-note" placeholder="Tell me about your current setup and what you're trying to fix."></textarea></div>
+            </div>
+            <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-theme="dark"></div>
+            <p id="homeFormError" class="form-error" style="display:none;"></p>
+            <button type="submit" class="btn btn-primary form-submit" id="homeSubmitBtn">Send My Request →</button>
+            <p class="form-note">No spam. No pitch deck. Response within one business day.</p>
+          </form>
+        </div>
+        <div class="form-success" id="homeFormSuccess">
+          <h3>✓ Got it.</h3>
+          <p>Your request is in. I'll be in touch within one business day with a clear next step.</p>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /page-home -->
+
+
+  <!-- ═══════════════════════════════════════════════ B2C PAGE -->
+  <div class="page page-b2c" id="page-b2c">
+
+    <section class="hero">
+      <div class="hero-bg" style="background:radial-gradient(ellipse 80% 60% at 50% -10%, rgba(16,185,129,.15) 0%, transparent 70%), var(--bg);"></div>
+      <div class="hero-grid"></div>
+      <div class="hero-inner">
+        <div class="hero-badge"><span class="dot"></span> For Solopreneurs · Coaches · Creators</div>
+        <h1>Stop posting<br>from <span class="blue">scratch</span> every time.</h1>
+        <p class="hero-sub">You have ideas. You have the knowledge. What you don't have is a system that turns those ideas into a consistent, published content operation — without burning your Sundays. That's what we build.</p>
+        <div class="hero-btns">
+          <a class="btn btn-emerald" onclick="document.getElementById('b2c-form').scrollIntoView({behavior:'smooth'})">Get My System →</a>
+          <a class="btn btn-outline" href="#b2c-pricing" onclick="document.getElementById('b2c-pricing').scrollIntoView({behavior:'smooth'});return false;">See Pricing</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- THE PROBLEM -->
+    <section class="section surface-section">
+      <div class="section-inner" style="max-width:780px;">
+        <p class="section-label">The problem</p>
+        <h2 class="section-title">Your ideas are scattered.<br>Your content is <span class="cyan">inconsistent</span>.</h2>
+        <p class="section-sub">You're posting when you remember. Your content strategy lives in a Google doc you opened once. Your ideas are spread across voice memos, DMs, and a notes app. And you're still manually copying between Canva, Buffer, and LinkedIn like it's 2018.</p>
+        <div class="feature-grid" style="margin-top:8px;">
+          <div class="feature-card"><span class="fc-icon">😤</span><h4>No repeatable system</h4><p>Every piece of content starts from zero. There's no pipeline, no queue, no automation — just you, a blank page, and a deadline you made up.</p></div>
+          <div class="feature-card"><span class="fc-icon">📱</span><h4>Too many disconnected tools</h4><p>Notion, Buffer, Canva, Google Docs, voice memos, email drafts — none of them talk to each other, and nothing is where you expect it.</p></div>
+          <div class="feature-card"><span class="fc-icon">⏰</span><h4>Content takes all weekend</h4><p>The output doesn't match the hours you put in. You spend hours creating content and it still doesn't feel consistent or on-brand.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WHAT WE BUILD -->
+    <section class="section">
+      <div class="section-inner">
+        <p class="section-label">The solution</p>
+        <h2 class="section-title">A <span class="cyan">Notion AI Content OS</span><br>built for how you actually work.</h2>
+        <p class="section-sub">One workspace. All your content. AI handling the heavy lifting. You just show up, add your ideas, and hit publish.</p>
+        <div class="feature-grid">
+          <div class="feature-card"><span class="fc-icon">🧠</span><h4>AI Idea Capture</h4><p>Voice notes, rough drafts, shower thoughts — all captured and organized automatically. Your best ideas stop getting lost.</p><span class="fc-tag">voice → notion → published</span></div>
+          <div class="feature-card"><span class="fc-icon">📅</span><h4>Content Calendar</h4><p>See your whole content pipeline in one view. Know exactly what's scheduled, what needs work, and what's ready to go live.</p><span class="fc-tag">content calendar</span></div>
+          <div class="feature-card"><span class="fc-icon">✍️</span><h4>AI Writing Workflow</h4><p>AI drafts. You refine. We set up the prompts, the templates, and the workflow so drafts feel like you — not like a robot.</p><span class="fc-tag">AI writing workflow</span></div>
+          <div class="feature-card"><span class="fc-icon">♻️</span><h4>Repurposing Engine</h4><p>One long-form post automatically broken into LinkedIn, Reddit, Substack, and email formats — without you doing it manually each time.</p><span class="fc-tag">content repurposing system</span></div>
+          <div class="feature-card"><span class="fc-icon">📊</span><h4>Platform Dashboard</h4><p>All your platforms, logins, bios, and content specs in one place. No more hunting for your LinkedIn headline or forgetting what subreddit you post in.</p><span class="fc-tag">content management</span></div>
+          <div class="feature-card"><span class="fc-icon">🎯</span><h4>Strategy Layer</h4><p>Your content pillars, target audience, and key messages baked into the system — so every piece of content you publish actually moves toward a goal.</p><span class="fc-tag">content strategy</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRICING -->
+    <section class="section surface-section" id="b2c-pricing">
+      <div class="section-inner">
+        <p class="section-label">Pricing</p>
+        <h2 class="section-title">Start where <span class="cyan">you are</span>.</h2>
+        <p class="section-sub">Pick up a template and run it yourself, or let us build the whole thing for you. Either way, you end up with a system.</p>
+        <div class="pricing-grid">
+          <div class="price-card">
+            <h4>Starter Template</h4>
+            <p class="price-eyebrow">Self-serve · Digital download</p>
+            <div class="price-amount"><sup>$</sup>97</div>
+            <p class="price-cadence">One-time · Instant delivery</p>
+            <ul class="price-features">
+              <li>Notion AI Content OS template</li>
+              <li>Setup walkthrough video</li>
+              <li>Content calendar + pillars</li>
+              <li>AI prompt library (30+ prompts)</li>
+              <li>Repurposing workflow templates</li>
+            </ul>
+            <a class="price-cta green-outline" onclick="document.getElementById('b2c-form').scrollIntoView({behavior:'smooth'})">Get the Template →</a>
+          </div>
+          <div class="price-card featured">
+            <div class="featured-tag">Most Popular</div>
+            <h4>Done-For-You Build</h4>
+            <p class="price-eyebrow">Custom build · Delivered in 5–7 days</p>
+            <div class="price-amount"><sup>$</sup>497</div>
+            <p class="price-cadence">One-time · Your workspace, your workflow</p>
+            <ul class="price-features">
+              <li>Full custom Notion AI Content OS</li>
+              <li>Built inside your existing Notion</li>
+              <li>AI prompts calibrated to your voice</li>
+              <li>All platforms + repurposing set up</li>
+              <li>1-hour handoff walkthrough call</li>
+              <li>30 days of async support</li>
+            </ul>
+            <a class="price-cta green" onclick="document.getElementById('b2c-form').scrollIntoView({behavior:'smooth'})">Get My System Built →</a>
+          </div>
+          <div class="price-card">
+            <h4>Content OS + Operations</h4>
+            <p class="price-eyebrow">Build + monthly support</p>
+            <div class="price-amount"><sup>$</sup>297<span style="font-size:1rem;color:var(--text3);">/mo</span></div>
+            <p class="price-cadence">After one-time $497 build · Cancel anytime</p>
+            <ul class="price-features">
+              <li>Everything in Done-For-You</li>
+              <li>Monthly content strategy refresh</li>
+              <li>New AI prompts as platforms change</li>
+              <li>Ongoing async support</li>
+              <li>Priority turnaround</li>
+            </ul>
+            <a class="price-cta green-outline" onclick="document.getElementById('b2c-form').scrollIntoView({behavior:'smooth'})">Start with Build →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- QUOTE -->
+    <section class="section" style="padding-top:48px;padding-bottom:80px;">
+      <div class="section-inner" style="max-width:720px;">
+        <div class="quote-block">
+          <p class="quote-text">"The tool is not the product. The machine is. And the machine needs a human operator — just not a burned-out one doing everything manually."</p>
+          <span class="quote-attr">— Webguy, on AI content systems</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- B2C FORM -->
+    <div id="b2c-form"></div>
+    <section class="form-section">
+      <div class="form-inner">
+        <h2 class="form-title">Get your system built.</h2>
+        <p class="form-sub">Tell me what you're working on and what you're trying to fix. I'll follow up within one business day.</p>
+        <div id="b2cFormWrap">
+          <form id="b2cLeadForm" novalidate>
+            <div class="form-grid">
+              <div><label>First Name</label><input type="text" id="b-name" placeholder="Your name" required></div>
+              <div><label>Phone</label><input type="tel" id="b-phone" placeholder="(555) 000-0000" required></div>
+              <div class="full"><label>Email</label><input type="email" id="b-email" placeholder="you@example.com" required></div>
+              <div class="full">
+                <label>What are you looking for?</label>
+                <select id="b-type" required>
+                  <option value="">— select —</option>
+                  <option value="Webguy B2C - done-for-you system">Done-for-you Notion AI Content OS</option>
+                  <option value="Webguy B2C - template">Self-serve template ($97)</option>
+                  <option value="Webguy - general inquiry">Not sure — want to talk first</option>
+                </select>
+              </div>
+              <div class="full"><label>Current setup <span style="opacity:.5;font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></label><textarea id="b-note" placeholder="What tools are you using now? What's broken?"></textarea></div>
+            </div>
+            <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-theme="dark"></div>
+            <p id="b2cFormError" class="form-error" style="display:none;"></p>
+            <button type="submit" class="btn btn-emerald form-submit" id="b2cSubmitBtn">Send My Request →</button>
+            <p class="form-note">No spam. No pressure. Response within one business day.</p>
+          </form>
+        </div>
+        <div class="form-success" id="b2cFormSuccess">
+          <h3 style="color:var(--emerald);">✓ You're in.</h3>
+          <p>I'll be in touch within one business day to talk about your system build.</p>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /page-b2c -->
+
+
+  <!-- ═══════════════════════════════════════════════ B2B PAGE -->
+  <div class="page page-b2b" id="page-b2b">
+
+    <section class="hero">
+      <div class="hero-bg" style="background:radial-gradient(ellipse 80% 60% at 50% -10%, rgba(139,92,246,.15) 0%, transparent 70%), var(--bg);"></div>
+      <div class="hero-grid"></div>
+      <div class="hero-inner">
+        <div class="hero-badge"><span class="dot"></span> For Founder-Led Businesses · 1–10 People</div>
+        <h1>Install a <span class="blue">content machine</span><br>in your <span class="cyan">business</span>.</h1>
+        <p class="hero-sub">Your competitors are using AI. You're using it too — just not systematically. We install a working B2B content system inside your business: content OS, lead pipeline, and AI workflow. Delivered in a week. Running on day one.</p>
+        <div class="hero-btns">
+          <a class="btn btn-purple" onclick="document.getElementById('b2b-form').scrollIntoView({behavior:'smooth'})">Book a Discovery Call →</a>
+          <a class="btn btn-outline" onclick="document.getElementById('b2b-pricing').scrollIntoView({behavior:'smooth'})">See Packages</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- THE PROBLEM -->
+    <section class="section surface-section">
+      <div class="section-inner" style="max-width:780px;">
+        <p class="section-label">The gap</p>
+        <h2 class="section-title">You're using AI.<br>You don't have an <span class="cyan">AI system</span>.</h2>
+        <p class="section-sub">Most founder-led businesses are using ChatGPT, Claude, and a dozen other tools — but none of it is connected. There's no machine. Just disconnected experiments that don't compound.</p>
+        <div class="feature-grid" style="margin-top:8px;">
+          <div class="feature-card"><span class="fc-icon">🗑️</span><h4>Content graveyard</h4><p>Half-finished blog posts, drafted LinkedIn content that never went live, a content calendar nobody follows. Sound familiar?</p></div>
+          <div class="feature-card"><span class="fc-icon">🔀</span><h4>Ad hoc AI usage</h4><p>AI is being used — but randomly. No consistent workflow, no shared prompt library, no way to maintain voice or scale output.</p></div>
+          <div class="feature-card"><span class="fc-icon">📉</span><h4>No attribution</h4><p>You don't know which content is driving leads. You don't know what's working. You're creating on faith, not data.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WHAT WE BUILD -->
+    <section class="section">
+      <div class="section-inner">
+        <p class="section-label">The implementation</p>
+        <h2 class="section-title">A <span class="cyan">B2B Content Machine</span><br>installed inside your business.</h2>
+        <p class="section-sub">Not a strategy doc. Not a course. A working system built inside your Notion workspace, with AI prompts calibrated to your voice, your audience, and your offer.</p>
+        <div class="feature-grid">
+          <div class="feature-card"><span class="fc-icon">🏭</span><h4>Content Machine Build</h4><p>End-to-end content OS: idea capture, AI drafting, editing workflow, publishing queue, and distribution. Built in your workspace.</p><span class="fc-tag">B2B content machine</span></div>
+          <div class="feature-card"><span class="fc-icon">📡</span><h4>Lead Pipeline Architecture</h4><p>Content strategy mapped to business goals. Every platform, every post, every CTA connected to the same outcome: booked calls.</p><span class="fc-tag">content → leads</span></div>
+          <div class="feature-card"><span class="fc-icon">🤖</span><h4>AI Prompt Library</h4><p>Custom-built AI prompts calibrated to your voice, your audience, and your specific offer. No more generic outputs.</p><span class="fc-tag">AI content differentiation</span></div>
+          <div class="feature-card"><span class="fc-icon">🗂️</span><h4>Command Center Dashboard</h4><p>Your business command center: CRM, content pipeline, platform tracker, and content calendar in a single Notion workspace.</p><span class="fc-tag">notion business dashboard</span></div>
+          <div class="feature-card"><span class="fc-icon">📈</span><h4>Thought Leadership at Scale</h4><p>Founder-led content strategy that builds authority without requiring you to write every post from scratch. System creates the volume. You maintain the voice.</p><span class="fc-tag">B2B thought leadership</span></div>
+          <div class="feature-card"><span class="fc-icon">🔄</span><h4>Ongoing AI Operations</h4><p>Monthly retainer to keep the machine running, updated, and optimized as your business grows and platforms evolve.</p><span class="fc-tag">AI content ops</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRICING -->
+    <section class="section surface-section" id="b2b-pricing">
+      <div class="section-inner">
+        <p class="section-label">Packages</p>
+        <h2 class="section-title">The right <span class="cyan">investment</span><br>for where you are.</h2>
+        <p class="section-sub">One client acquired through your new content system pays for all of this. Multiple times over.</p>
+        <div class="pricing-grid">
+          <div class="price-card">
+            <h4>Starter Implementation</h4>
+            <p class="price-eyebrow">Delivered in 5–7 business days</p>
+            <div class="price-amount"><sup>$</sup>2,000</div>
+            <p class="price-cadence">One-time · Foundational content system</p>
+            <ul class="price-features">
+              <li>Content OS build in your Notion</li>
+              <li>AI prompt library (calibrated to your voice)</li>
+              <li>LinkedIn + 1 secondary platform setup</li>
+              <li>Content strategy framework</li>
+              <li>Handoff call + SOPs</li>
+              <li>30 days email support</li>
+            </ul>
+            <a class="price-cta purple-outline" onclick="document.getElementById('b2b-form').scrollIntoView({behavior:'smooth'})">Book Discovery Call →</a>
+          </div>
+          <div class="price-card featured">
+            <div class="featured-tag">Best Value</div>
+            <h4>Full Content Machine</h4>
+            <p class="price-eyebrow">Complete implementation · 7–10 days</p>
+            <div class="price-amount"><sup>$</sup>3,500</div>
+            <p class="price-cadence">One-time · Full B2B content machine</p>
+            <ul class="price-features">
+              <li>Full content OS + command center</li>
+              <li>All platforms connected</li>
+              <li>Lead pipeline architecture</li>
+              <li>Repurposing engine built in</li>
+              <li>Custom AI prompts for every content type</li>
+              <li>2-hour implementation call + training</li>
+              <li>60 days async support</li>
+            </ul>
+            <a class="price-cta purple" onclick="document.getElementById('b2b-form').scrollIntoView({behavior:'smooth'})">Get the Machine Built →</a>
+          </div>
+          <div class="price-card">
+            <h4>Machine + Retainer</h4>
+            <p class="price-eyebrow">Implementation + ongoing ops</p>
+            <div class="price-amount"><sup>$</sup>1,500<span style="font-size:1rem;color:var(--text3);">/mo</span></div>
+            <p class="price-cadence">After one-time $3,500 build · Cancel anytime</p>
+            <ul class="price-features">
+              <li>Everything in Full Content Machine</li>
+              <li>Monthly content strategy sessions</li>
+              <li>New content + AI prompt updates</li>
+              <li>System management and optimization</li>
+              <li>Priority turnaround on all requests</li>
+              <li>Quarterly lead pipeline review</li>
+            </ul>
+            <a class="price-cta purple-outline" onclick="document.getElementById('b2b-form').scrollIntoView({behavior:'smooth'})">Start with Discovery →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="section" style="padding-bottom:48px;">
+      <div class="section-inner" style="max-width:700px;">
+        <div class="quote-block">
+          <p class="quote-text">"The businesses winning with AI aren't the ones using the most tools. They're the ones with the clearest system — where the AI knows exactly what to do and the human operator stays in control of what matters."</p>
+          <span class="quote-attr">— Webguy Business Services</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- B2B FORM -->
+    <div id="b2b-form"></div>
+    <section class="form-section">
+      <div class="form-inner">
+        <h2 class="form-title">Book a discovery call.</h2>
+        <p class="form-sub">Free. 30 minutes. We map your current workflow, identify the bottlenecks, and figure out what a working system actually looks like for your business.</p>
+        <div id="b2bFormWrap">
+          <form id="b2bLeadForm" novalidate>
+            <div class="form-grid">
+              <div><label>First Name</label><input type="text" id="bb-name" placeholder="Your name" required></div>
+              <div><label>Phone</label><input type="tel" id="bb-phone" placeholder="(555) 000-0000" required></div>
+              <div class="full"><label>Business Email</label><input type="email" id="bb-email" placeholder="you@yourcompany.com" required></div>
+              <div class="full">
+                <label>What are you looking for?</label>
+                <select id="bb-type" required>
+                  <option value="">— select —</option>
+                  <option value="Webguy B2B - content machine">Full content machine implementation</option>
+                  <option value="Webguy B2B - AI implementation">AI workflow / automation build</option>
+                  <option value="Webguy B2B - retainer">Ongoing AI content ops retainer</option>
+                  <option value="Webguy - general inquiry">Discovery call — not sure yet</option>
+                </select>
+              </div>
+              <div class="full"><label>About your business <span style="opacity:.5;font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></label><textarea id="bb-note" placeholder="What does your business do? What's the content/AI problem you're trying to solve?"></textarea></div>
+            </div>
+            <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-theme="dark"></div>
+            <p id="b2bFormError" class="form-error" style="display:none;"></p>
+            <button type="submit" class="btn btn-purple form-submit" id="b2bSubmitBtn">Book Discovery Call →</button>
+            <p class="form-note">Free 30-minute call. No commitment required.</p>
+          </form>
+        </div>
+        <div class="form-success" id="b2bFormSuccess">
+          <h3 style="color:var(--purple);">✓ Request received.</h3>
+          <p>I'll be in touch within one business day to schedule your discovery call.</p>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /page-b2b -->
+
+
+  <!-- FOOTER (shared) -->
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="footer-logo">Web<span>guy</span> Business Services</div>
+        <p>AI tools. Content systems. Business growth. We build the machine so you can run the business.</p>
+      </div>
+      <div class="footer-col">
+        <h5>Navigate</h5>
+        <a onclick="showPage('home')">Home</a>
+        <a onclick="showPage('b2c')">For You (B2C)</a>
+        <a onclick="showPage('b2b')">For Business (B2B)</a>
+        <a onclick="scrollToForm()">Get Started</a>
+      </div>
+      <div class="footer-col">
+        <h5>Services</h5>
+        <a>Notion AI Content OS</a>
+        <a>B2B Content Machine</a>
+        <a>AI Workflow Build</a>
+        <a>Content Ops Retainer</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© 2026 Webguy Business Services. All rights reserved.</p>
+      <p>AI implementations · Content systems · Notion done-for-you</p>
+    </div>
+  </footer>
+
+  <script>
+    const WORKER = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+
+    // ── PAGE ROUTING ──
+    function showPage(name) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById('page-' + name).classList.add('active');
+      document.querySelectorAll('.nav-links a[id^="nav-"]').forEach(a => a.classList.remove('active'));
+      const navEl = document.getElementById('nav-' + name);
+      if (navEl) navEl.classList.add('active');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function scrollToForm() {
+      const activePage = document.querySelector('.page.active').id;
+      const formId = activePage === 'page-b2c' ? 'b2c-form' : activePage === 'page-b2b' ? 'b2b-form' : 'home-form';
+      document.getElementById(formId).scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // ── FORM SUBMIT ──
+    async function submitForm({ name, phone, email, fraudType, note, campaign, errorId, wrapId, successId, btnId }) {
+      const errEl = document.getElementById(errorId);
+      const btn   = document.getElementById(btnId);
+      errEl.style.display = 'none';
+
+      if (!name)      { showErr(errEl, 'Please enter your name.');            return; }
+      if (!email)     { showErr(errEl, 'Please enter your email address.');   return; }
+      if (!phone)     { showErr(errEl, 'Please enter your phone number.');    return; }
+      if (!fraudType) { showErr(errEl, 'Please select what you\'re looking for.'); return; }
+
+      const tsToken = document.querySelector('#' + wrapId + ' [name="cf-turnstile-response"]')?.value || '';
+      if (!tsToken)   { showErr(errEl, 'Please complete the security check.'); return; }
+
+      btn.disabled = true; btn.textContent = 'Sending…';
+
+      try {
+        const res = await fetch(WORKER, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'submitLead', campaign, email, phone, fraudType, note: (name ? 'Name: ' + name + '\n' : '') + (note ? '\n' + note : ''), tsToken })
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'Submission failed');
+        document.getElementById(wrapId).style.display = 'none';
+        document.getElementById(successId).style.display = 'block';
+      } catch(err) {
+        showErr(errEl, err.message || 'Something went wrong. Please try again.');
+        btn.disabled = false; btn.textContent = btn.dataset.label || 'Send My Request →';
+      }
+    }
+
+    function showErr(el, msg) { el.textContent = msg; el.style.display = 'block'; }
+
+    // Home form
+    document.getElementById('homeLeadForm').addEventListener('submit', e => {
+      e.preventDefault();
+      submitForm({ name: document.getElementById('h-name').value.trim(), phone: document.getElementById('h-phone').value.trim(), email: document.getElementById('h-email').value.trim(), fraudType: document.getElementById('h-type').value, note: document.getElementById('h-note').value.trim(), campaign: 'webguy', errorId: 'homeFormError', wrapId: 'homeFormWrap', successId: 'homeFormSuccess', btnId: 'homeSubmitBtn' });
+    });
+
+    // B2C form
+    document.getElementById('b2cLeadForm').addEventListener('submit', e => {
+      e.preventDefault();
+      submitForm({ name: document.getElementById('b-name').value.trim(), phone: document.getElementById('b-phone').value.trim(), email: document.getElementById('b-email').value.trim(), fraudType: document.getElementById('b-type').value, note: document.getElementById('b-note').value.trim(), campaign: 'webguy-b2c', errorId: 'b2cFormError', wrapId: 'b2cFormWrap', successId: 'b2cFormSuccess', btnId: 'b2cSubmitBtn' });
+    });
+
+    // B2B form
+    document.getElementById('b2bLeadForm').addEventListener('submit', e => {
+      e.preventDefault();
+      submitForm({ name: document.getElementById('bb-name').value.trim(), phone: document.getElementById('bb-phone').value.trim(), email: document.getElementById('bb-email').value.trim(), fraudType: document.getElementById('bb-type').value, note: document.getElementById('bb-note').value.trim(), campaign: 'webguy-b2b', errorId: 'b2bFormError', wrapId: 'b2bFormWrap', successId: 'b2bFormSuccess', btnId: 'b2bSubmitBtn' });
+    });
+  </script>
+
+</body>
+</html>
