@@ -1315,9 +1315,13 @@ async function deleteSmPost(id) {
 }
 
 // ── SM POSTS MODAL ────────────────────────────────────────────────────
+const SM_PROMPT_TEMPLATE = `Use Apify to research short-form script ideas for these keywords: [KEYWORDS]. For each keyword, run the TikTok Scraper and YouTube Shorts Scraper. Return the top 10 videos per platform per keyword, sorted by views. For each video include: title/caption, view count, and any hashtags. Then summarize the top 3 recurring themes or angles across all results — these are my script ideas.
+
+When done, write your full output to Notion: update the "TikTok Trends" property on Research page [RESEARCH_ID] with the complete text. Use the Notion MCP notion-update-page tool, command update_properties, property name "TikTok Trends". Do not abbreviate.`;
+
 function openSmPromptModal() {
-  const saved = localStorage.getItem('smResearchPrompt_' + CAMPAIGN_ID) || '';
-  document.getElementById('smResearchKws').value = saved;
+  const saved = localStorage.getItem('smResearchPrompt_' + CAMPAIGN_ID);
+  document.getElementById('smResearchKws').value = saved || SM_PROMPT_TEMPLATE;
   document.getElementById('smPromptStatus').textContent = '';
   document.getElementById('smPromptStatus').style.color = '#888';
   const btn = document.getElementById('smPromptSendBtn');
@@ -1337,7 +1341,10 @@ document.getElementById('smPromptModal').addEventListener('click', function(e) {
 async function runSmResearch() {
   const kwsRaw = document.getElementById('smResearchKws').value.trim();
   if (!kwsRaw) return;
-  const kws  = kwsRaw.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
+  // Extract keywords: look for "these keywords: X, Y, Z" pattern first, fallback to splitting whole text
+  const kwMatch = kwsRaw.match(/(?:these keywords?:)\s*([^\n.]+)/i);
+  const kwStr   = kwMatch ? kwMatch[1] : kwsRaw;
+  const kws     = kwStr.split(/[,]+/).map(s => s.trim()).filter(Boolean);
   localStorage.setItem('smResearchPrompt_' + CAMPAIGN_ID, kwsRaw);
   const btn    = document.getElementById('smPromptSendBtn');
   const status = document.getElementById('smPromptStatus');
