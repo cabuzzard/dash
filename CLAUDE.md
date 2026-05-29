@@ -70,6 +70,7 @@ All 10 databases live directly under 🏠 Home:
 | Assets | `e91bdb6e770b4d298e9f62166a0fd5de` |
 | Research | `557e6b7b8c434a578d45ecb0a8329f63` |
 | Leads | `e4518a459f004eb0b9646e48d8718705` |
+| Emails | `6252e9917027488fb628436aabb89947` |
 
 The **Leads DB** `Campaign` field is plain text — any campaign form submits to the same DB with a different `campaign` value. The `Fraud Type` field (a Notion select) accepts the values in `validFraudTypes` in `worker.js` — **keep that allowlist in sync with Notion's select options**.
 
