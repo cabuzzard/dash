@@ -1841,6 +1841,21 @@ Output the script text only. No preamble, no labels.`;
         return json({ success: true, scriptGenerated: !!script });
       }
 
+      // ── SM POSTS: updateSmPostScript ─────────────────────────────────────
+      if (body.action === "updateSmPostScript") {
+        const { id, script } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Script": { rich_text: [{ type: "text", text: { content: (script || "").slice(0, 2000) } }] } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
       // ── SM POSTS: updateSmPostVideoPath ──────────────────────────────────
       if (body.action === "updateSmPostVideoPath") {
         const { id, localPath } = body;

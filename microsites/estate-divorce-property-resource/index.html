@@ -70,6 +70,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 .smp-link { font-size: 13px; color: #555; text-decoration: none; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; transition: color .15s; }
 .smp-link:hover { color: #c9c9c9; }
 .smp-approved .smp-title { color: #666; }
+.smp-edit   { background: none; border: 1px solid #3a3a2a; color: #9e9e5e; font-size: 13px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
+.smp-edit:hover   { background: rgba(158,158,94,.15); }
 .smp-render { background: none; border: 1px solid #2a3a5a; color: #5e8ec9; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
 .smp-render:hover { background: rgba(94,142,201,.15); }
 .smp-localpath { font-size: 10px; color: #444; margin-top: 3px; font-family: monospace; word-break: break-all; }
@@ -367,6 +369,25 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
       <button class="modal-btn save" id="modalSave" onclick="saveModal()">Save to Notion</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCRIPT EDIT MODAL -->
+<div class="modal-overlay" id="scriptModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="scriptModalTitle">Edit Script</div>
+      <button class="modal-close" onclick="closeScriptModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Edit the voiceover script. Saved directly to Notion — the render modal will use the updated version.</div>
+      <textarea class="modal-ta" id="scriptModalTa" rows="10" style="resize:vertical;font-size:13px;line-height:1.6;"></textarea>
+      <div class="modal-status" id="scriptModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeScriptModal()">Cancel</button>
+      <button class="modal-btn save" id="scriptModalSave" onclick="saveScript()">Save to Notion</button>
     </div>
   </div>
 </div>
@@ -1311,6 +1332,7 @@ async function loadSmPosts() {
             ${p.localPath ? `<div class="smp-localpath">${esc(p.localPath)}</div>` : ''}
           </div>
           <div class="smp-actions">
+            <button class="smp-edit" onclick="openScriptModal('${p.id}')" title="Edit script">✎</button>
             ${hasScript ? `<button class="smp-render" onclick="openRenderModal('${p.id}')" title="Render video">▶</button>` : ''}
             <a href="https://www.notion.so/${p.id}" target="_blank" class="smp-link" title="Open in Notion">↗</a>
             <button class="smp-delete" onclick="deleteSmPost('${p.id}')" title="Delete">✕</button>
@@ -1410,6 +1432,68 @@ async function runSmResearch() {
     status.style.color = '#ff6b6b';
     btn.disabled    = false;
     btn.textContent = 'Run Research';
+  }
+}
+
+// ── SCRIPT EDIT MODAL ────────────────────────────────────────────────
+let SCRIPT_EDIT_ID = '';
+
+function openScriptModal(id) {
+  const d = SMP_DATA[id] || {};
+  SCRIPT_EDIT_ID = id;
+  const titleShort = (d.title || '').length > 42 ? (d.title || '').slice(0, 42) + '…' : (d.title || 'Post');
+  document.getElementById('scriptModalTitle').textContent = 'Script — ' + titleShort;
+  document.getElementById('scriptModalTa').value = d.script || '';
+  document.getElementById('scriptModalStatus').textContent = '';
+  document.getElementById('scriptModalStatus').className = 'modal-status';
+  document.getElementById('scriptModalSave').disabled = false;
+  document.getElementById('scriptModalSave').textContent = 'Save to Notion';
+  document.getElementById('scriptModal').classList.add('open');
+  setTimeout(() => document.getElementById('scriptModalTa').focus(), 100);
+}
+
+function closeScriptModal() {
+  document.getElementById('scriptModal').classList.remove('open');
+}
+
+document.getElementById('scriptModal').addEventListener('click', function(e) {
+  if (e.target === this) closeScriptModal();
+});
+
+async function saveScript() {
+  const script = document.getElementById('scriptModalTa').value.trim();
+  const btn    = document.getElementById('scriptModalSave');
+  const status = document.getElementById('scriptModalStatus');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    await w('updateSmPostScript', { id: SCRIPT_EDIT_ID, script });
+    // Update in-memory store so render modal picks up the change immediately
+    if (SMP_DATA[SCRIPT_EDIT_ID]) {
+      SMP_DATA[SCRIPT_EDIT_ID].script = script;
+      // Also show/hide the render button without a full reload
+      const row = document.getElementById('smp-' + SCRIPT_EDIT_ID);
+      if (row) {
+        const renderBtn = row.querySelector('.smp-render');
+        const editBtn   = row.querySelector('.smp-edit');
+        if (script && !renderBtn && editBtn) {
+          const btn2 = document.createElement('button');
+          btn2.className = 'smp-render';
+          btn2.title = 'Render video';
+          btn2.textContent = '▶';
+          btn2.onclick = () => openRenderModal(SCRIPT_EDIT_ID);
+          editBtn.insertAdjacentElement('afterend', btn2);
+        }
+      }
+    }
+    status.textContent = 'Saved ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeScriptModal, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Save to Notion';
   }
 }
 
