@@ -1384,6 +1384,7 @@ async function loadSmPosts() {
             <button class="smp-image"  onclick="openImageModal('${p.id}')"  title="Background image">⬛</button>
             <button class="smp-edit"   onclick="openScriptModal('${p.id}')" title="Edit script">✎</button>
             ${hasScript ? `<button class="smp-render" onclick="openRenderModal('${p.id}')" title="Render video">▶</button>` : ''}
+            <a href="https://chatgpt.com" target="_blank" class="smp-link" title="Open ChatGPT">AI</a>
             <a href="https://www.notion.so/${p.id}" target="_blank" class="smp-link" title="Open in Notion">↗</a>
             <button class="smp-delete" onclick="deleteSmPost('${p.id}')" title="Delete">✕</button>
           </div>
