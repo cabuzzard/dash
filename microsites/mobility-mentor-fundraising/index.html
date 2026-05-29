@@ -70,6 +70,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 .smp-link { font-size: 13px; color: #555; text-decoration: none; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; transition: color .15s; }
 .smp-link:hover { color: #c9c9c9; }
 .smp-approved .smp-title { color: #666; }
+.smp-render { background: none; border: 1px solid #2a3a5a; color: #5e8ec9; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
+.smp-render:hover { background: rgba(94,142,201,.15); }
+.smp-localpath { font-size: 10px; color: #444; margin-top: 3px; font-family: monospace; word-break: break-all; }
 </style>
 </head>
 <body>
@@ -361,6 +364,26 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
       <button class="modal-btn save" id="modalSave" onclick="saveModal()">Save to Notion</button>
+    </div>
+  </div>
+</div>
+
+<!-- RENDER VIDEO MODAL -->
+<div class="modal-overlay" id="renderModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="renderModalTitle">Render Video</div>
+      <button class="modal-close" onclick="closeRenderModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Review the voiceover script below, then click <strong>Copy Command</strong> and paste it into PowerShell. The video renders locally and the path is saved to Notion.</div>
+      <label class="lm-label" style="margin-top:14px;">Voiceover Script</label>
+      <textarea class="modal-ta" id="renderScriptTa" rows="9" style="resize:vertical;font-size:12px;line-height:1.5;font-family:monospace;"></textarea>
+      <div id="renderCmdStatus" style="font-size:11px;color:#888;margin-top:8px;min-height:16px;word-break:break-all;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeRenderModal()">Close</button>
+      <button class="modal-btn save" onclick="copyRenderCommand()">Copy Command</button>
     </div>
   </div>
 </div>
@@ -1232,6 +1255,8 @@ function init() {
 }
 
 // ── SM POSTS ──────────────────────────────────────────────────────────
+let SMP_DATA = {}; // id → { title, script }
+
 async function loadSmPosts() {
   const box = document.getElementById('smPostsBox');
   if (!box) return;
@@ -1270,13 +1295,17 @@ async function loadSmPosts() {
     if (approved.length) {
       html += `<div class="smp-section-label" style="margin-top:${pending.length?'12px':'0'};">Approved</div>`;
       approved.forEach(p => {
+        SMP_DATA[p.id] = { title: p.title, script: p.script || '' };
         const badges = (p.platforms || []).map(pl => `<span class="smp-badge">${esc(pl)}</span>`).join('');
+        const hasScript = !!p.script;
         html += `<div class="smp-row smp-approved" id="smp-${p.id}">
           <div class="smp-info">
             <div class="smp-title">${esc(p.title)}</div>
             ${badges ? `<div class="smp-plats">${badges}</div>` : ''}
+            ${p.localPath ? `<div class="smp-localpath">${esc(p.localPath)}</div>` : ''}
           </div>
           <div class="smp-actions">
+            ${hasScript ? `<button class="smp-render" onclick="openRenderModal('${p.id}')" title="Render video">▶</button>` : ''}
             <a href="https://www.notion.so/${p.id}" target="_blank" class="smp-link" title="Open in Notion">↗</a>
             <button class="smp-delete" onclick="deleteSmPost('${p.id}')" title="Delete">✕</button>
           </div>
@@ -1375,6 +1404,57 @@ async function runSmResearch() {
     status.style.color = '#ff6b6b';
     btn.disabled    = false;
     btn.textContent = 'Run Research';
+  }
+}
+
+// ── RENDER VIDEO MODAL ────────────────────────────────────────────────
+let RENDER_POST_ID = '';
+let RENDER_SLUG    = '';
+
+function slugify(s) {
+  return (s || '').toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 80);
+}
+
+function openRenderModal(id) {
+  const d = SMP_DATA[id] || {};
+  RENDER_POST_ID = id;
+  RENDER_SLUG    = slugify(d.title || '');
+  const titleShort = (d.title || '').length > 40 ? (d.title || '').slice(0, 40) + '…' : (d.title || '');
+  document.getElementById('renderModalTitle').textContent = 'Render — ' + titleShort;
+  document.getElementById('renderScriptTa').value = d.script || '';
+  document.getElementById('renderCmdStatus').textContent = '';
+  document.getElementById('renderModal').classList.add('open');
+  setTimeout(() => document.getElementById('renderScriptTa').focus(), 100);
+}
+
+function closeRenderModal() {
+  document.getElementById('renderModal').classList.remove('open');
+}
+
+document.getElementById('renderModal').addEventListener('click', function(e) {
+  if (e.target === this) closeRenderModal();
+});
+
+async function copyRenderCommand() {
+  const script = document.getElementById('renderScriptTa').value.trim();
+  const statusEl = document.getElementById('renderCmdStatus');
+  if (!script) { statusEl.textContent = 'Script is empty — approve a post first to generate a script.'; return; }
+  if (!RENDER_POST_ID || !RENDER_SLUG) { statusEl.textContent = 'No post selected.'; return; }
+  // Escape single quotes for PowerShell single-quoted string
+  const escaped = script.replace(/'/g, "''");
+  const cmd = `[System.IO.File]::WriteAllText('C:\\Users\\18318\\Videos\\src\\script.txt', '${escaped}', [System.Text.Encoding]::UTF8); & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}'`;
+  try {
+    await navigator.clipboard.writeText(cmd);
+    statusEl.style.color = '#5ec95e';
+    statusEl.textContent = '✓ Command copied — paste into PowerShell to render. Video will be saved to C:\\Users\\18318\\dash\\videos\\' + RENDER_SLUG + '.mp4';
+  } catch(e) {
+    statusEl.style.color = '#ff6b6b';
+    statusEl.textContent = 'Clipboard unavailable. Command: ' + cmd;
   }
 }
 </script>

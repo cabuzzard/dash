@@ -1750,6 +1750,8 @@ Rules:
             id:        r.id.replace(/-/g,""),
             title:     p["Post Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
             copy:      p["Post Copy"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            script:    p["Script"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            localPath: p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             status:    p["Status"]?.select?.name || "Draft",
             platforms: (p["Platform"]?.multi_select || []).map(s => s.name),
           };
@@ -1836,6 +1838,21 @@ Output the script text only. No preamble, no labels.`;
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
         return json({ success: true, scriptGenerated: !!script });
+      }
+
+      // ── SM POSTS: updateSmPostVideoPath ──────────────────────────────────
+      if (body.action === "updateSmPostVideoPath") {
+        const { id, localPath } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Local Path": { rich_text: [{ type: "text", text: { content: (localPath || "").slice(0, 2000) } }] } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
       }
 
       // ── SM POSTS: deleteSmPost ───────────────────────────────────────────
