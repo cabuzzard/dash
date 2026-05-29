@@ -28,7 +28,15 @@ try {
     if ($post.voiceId)         { $VoiceId        = $post.voiceId;         Write-Host "  Voice:      $VoiceId" }
     if ($post.captionStyle)    { $CaptionStyle   = $post.captionStyle;    Write-Host "  Style:      $CaptionStyle" }
     if ($post.backgroundImage) { $BackgroundImage = $post.backgroundImage; Write-Host "  Background: $BackgroundImage" }
-    if (-not $post.voiceId -and -not $post.captionStyle -and -not $post.backgroundImage) {
+    $vsPath = "C:\Users\18318\Videos\src\voice-settings.json"
+    if ($post.voiceSettings) {
+        [System.IO.File]::WriteAllText($vsPath, $post.voiceSettings, [System.Text.Encoding]::UTF8)
+        Write-Host "  Voice settings: written to src/voice-settings.json"
+    } elseif (Test-Path $vsPath) {
+        Remove-Item $vsPath -Force
+        Write-Host "  Voice settings: cleared (none saved for this post)"
+    }
+    if (-not $post.voiceId -and -not $post.captionStyle -and -not $post.backgroundImage -and -not $post.voiceSettings) {
         Write-Host "  No saved settings — using param defaults"
     }
 } catch {

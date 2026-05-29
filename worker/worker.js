@@ -1756,6 +1756,7 @@ Rules:
             voiceId:         p["Voice ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             captionStyle:    p["Caption Style"]?.select?.name || "",
             backgroundImage: p["Background Image"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            voiceSettings:   p["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             status:    p["Status"]?.select?.name || "Draft",
             platforms: (p["Platform"]?.multi_select || []).map(s => s.name),
           };
@@ -1781,6 +1782,7 @@ Rules:
           voiceId:         p["Voice ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
           captionStyle:    p["Caption Style"]?.select?.name || "",
           backgroundImage: p["Background Image"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+          voiceSettings:   p["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || "",
           localPath:       p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
         });
       }
@@ -1868,14 +1870,14 @@ Output the script text only. No preamble, no labels.`;
 
       // ── SM POSTS: updateSmPostSettings ───────────────────────────────────
       if (body.action === "updateSmPostSettings") {
-        const { id, voiceId, captionStyle } = body;
+        const { id, voiceId, captionStyle, backgroundImage, voiceSettings } = body;
         if (!id) return json({ error: "id required" }, 400);
         const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
-        const { backgroundImage } = body;
         const props = {};
-        if (voiceId !== undefined)         props["Voice ID"]         = { rich_text: [{ type: "text", text: { content: (voiceId || "").slice(0, 200) } }] };
-        if (captionStyle !== undefined)    props["Caption Style"]    = captionStyle ? { select: { name: captionStyle } } : { select: null };
-        if (backgroundImage !== undefined) props["Background Image"] = { rich_text: [{ type: "text", text: { content: (backgroundImage || "").slice(0, 500) } }] };
+        if (voiceId !== undefined)        props["Voice ID"]        = { rich_text: [{ type: "text", text: { content: (voiceId || "").slice(0, 200) } }] };
+        if (captionStyle !== undefined)   props["Caption Style"]   = captionStyle ? { select: { name: captionStyle } } : { select: null };
+        if (backgroundImage !== undefined)props["Background Image"]= { rich_text: [{ type: "text", text: { content: (backgroundImage || "").slice(0, 500) } }] };
+        if (voiceSettings !== undefined)  props["Voice Settings"]  = { rich_text: [{ type: "text", text: { content: (voiceSettings || "").slice(0, 500) } }] };
         if (!Object.keys(props).length) return json({ success: true });
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
           method: "PATCH",

@@ -451,6 +451,10 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
           </select>
         </div>
       </div>
+      <div style="margin-top:10px;">
+        <label class="lm-label">Voice Settings <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— JSON from ChatGPT e.g. {"stability":0.3,"similarity_boost":0.8}</span></label>
+        <textarea class="modal-ta" id="renderVoiceSettings" rows="2" placeholder='{"stability":0.5,"similarity_boost":0.75,"style":0.0}' style="font-size:11px;font-family:monospace;resize:vertical;"></textarea>
+      </div>
       <div id="renderCmdStatus" style="font-size:11px;color:#888;margin-top:8px;min-height:16px;word-break:break-all;"></div>
     </div>
     <div class="modal-foot">
@@ -1370,7 +1374,7 @@ async function loadSmPosts() {
     if (approved.length) {
       html += `<div class="smp-section-label" style="margin-top:${pending.length?'12px':'0'};">Approved</div>`;
       approved.forEach(p => {
-        SMP_DATA[p.id] = { title: p.title, script: p.script || '', voiceId: p.voiceId || '', captionStyle: p.captionStyle || '', backgroundImage: p.backgroundImage || '' };
+        SMP_DATA[p.id] = { title: p.title, script: p.script || '', voiceId: p.voiceId || '', captionStyle: p.captionStyle || '', backgroundImage: p.backgroundImage || '', voiceSettings: p.voiceSettings || '' };
         const badges = (p.platforms || []).map(pl => `<span class="smp-badge">${esc(pl)}</span>`).join('');
         const hasScript = !!p.script;
         html += `<div class="smp-row smp-approved" id="smp-${p.id}">
@@ -1679,6 +1683,7 @@ function openRenderModal(id) {
   document.getElementById('renderModalTitle').textContent = 'Render — ' + titleShort;
   document.getElementById('renderScriptTa').value = d.script || '';
   document.getElementById('renderVoiceId').value = d.voiceId || 'pNInz6obpgDQGcFmaJgB';
+  document.getElementById('renderVoiceSettings').value = d.voiceSettings || '';
   const styleEl = document.getElementById('renderCaptionStyle');
   styleEl.value = d.captionStyle && ['Standard','Karaoke','Cinematic','Energy'].includes(d.captionStyle)
     ? d.captionStyle : 'Standard';
@@ -1697,10 +1702,20 @@ document.getElementById('renderModal').addEventListener('click', function(e) {
 });
 
 async function copyRenderCommand() {
-  const script       = document.getElementById('renderScriptTa').value.trim();
-  const voiceId      = document.getElementById('renderVoiceId').value.trim() || 'pNInz6obpgDQGcFmaJgB';
-  const captionStyle = document.getElementById('renderCaptionStyle').value || 'Standard';
-  const statusEl     = document.getElementById('renderCmdStatus');
+  const script        = document.getElementById('renderScriptTa').value.trim();
+  const voiceId       = document.getElementById('renderVoiceId').value.trim() || 'pNInz6obpgDQGcFmaJgB';
+  const captionStyle  = document.getElementById('renderCaptionStyle').value || 'Standard';
+  const voiceSettings = document.getElementById('renderVoiceSettings').value.trim();
+  const statusEl      = document.getElementById('renderCmdStatus');
+
+  // Validate voice settings JSON if provided
+  if (voiceSettings) {
+    try { JSON.parse(voiceSettings); } catch(e) {
+      statusEl.style.color = '#ff6b6b';
+      statusEl.textContent = 'Voice Settings is not valid JSON — fix before copying.';
+      return;
+    }
+  }
   if (!script) { statusEl.textContent = 'Script is empty — approve a post first to generate a script.'; return; }
   if (!RENDER_POST_ID || !RENDER_SLUG) { statusEl.textContent = 'No post selected.'; return; }
 
@@ -1715,12 +1730,13 @@ async function copyRenderCommand() {
     await navigator.clipboard.writeText(cmd);
     statusEl.style.color = '#5ec95e';
     statusEl.textContent = `✓ Copied — paste into PowerShell. Voice: ${voiceId} · Style: ${captionStyle}`;
-    // Save voice + style back to Notion silently
+    // Save voice + style + voice settings back to Notion silently
     if (SMP_DATA[RENDER_POST_ID]) {
-      SMP_DATA[RENDER_POST_ID].voiceId      = voiceId;
-      SMP_DATA[RENDER_POST_ID].captionStyle = captionStyle;
+      SMP_DATA[RENDER_POST_ID].voiceId       = voiceId;
+      SMP_DATA[RENDER_POST_ID].captionStyle  = captionStyle;
+      SMP_DATA[RENDER_POST_ID].voiceSettings = voiceSettings;
     }
-    w('updateSmPostSettings', { id: RENDER_POST_ID, voiceId, captionStyle }).catch(() => {});
+    w('updateSmPostSettings', { id: RENDER_POST_ID, voiceId, captionStyle, voiceSettings }).catch(() => {});
   } catch(e) {
     statusEl.style.color = '#ff6b6b';
     statusEl.textContent = 'Clipboard unavailable — see console for command.';
