@@ -24,8 +24,8 @@ npx remotion render VoiceoverVideo $OutFile --scale=0.667
 if ($LASTEXITCODE -ne 0) { Write-Host "Render failed"; exit 1 }
 
 Write-Host "Updating Notion..."
-$LocalPath = $OutFile.Replace("\", "\\")
-$body = "{`"action`":`"updateSmPostVideoPath`",`"id`":`"$PostId`",`"localPath`":`"$OutFile`",`"token`":`"$Token`"}"
+$LocalPath = $OutFile.Replace("\", "/")
+$body = "{`"action`":`"updateSmPostVideoPath`",`"id`":`"$PostId`",`"localPath`":`"$LocalPath`",`"token`":`"$Token`"}"
 try {
     Invoke-WebRequest -Uri $WorkerUrl -Method POST -Body $body -ContentType "application/json" | Out-Null
     Write-Host "Notion updated."
