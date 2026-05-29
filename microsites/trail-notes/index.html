@@ -400,9 +400,24 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeRenderModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="modal-hint">Review the voiceover script below, then click <strong>Copy Command</strong> and paste it into PowerShell. The video renders locally and the path is saved to Notion.</div>
+      <div class="modal-hint">Review script, voice, and style — then <strong>Copy Command</strong> and paste into PowerShell. Settings are saved to Notion automatically.</div>
       <label class="lm-label" style="margin-top:14px;">Voiceover Script</label>
-      <textarea class="modal-ta" id="renderScriptTa" rows="9" style="resize:vertical;font-size:12px;line-height:1.5;font-family:monospace;"></textarea>
+      <textarea class="modal-ta" id="renderScriptTa" rows="7" style="resize:vertical;font-size:12px;line-height:1.5;font-family:monospace;"></textarea>
+      <div style="display:flex;gap:12px;margin-top:10px;">
+        <div style="flex:1;">
+          <label class="lm-label">Voice ID <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— ElevenLabs voice ID</span></label>
+          <input class="modal-ta" id="renderVoiceId" type="text" placeholder="pNInz6obpgDQGcFmaJgB" style="height:32px;padding:5px 10px;font-size:12px;font-family:monospace;" autocomplete="off" />
+        </div>
+        <div style="flex:0 0 140px;">
+          <label class="lm-label">Caption Style</label>
+          <select class="modal-ta" id="renderCaptionStyle" style="height:32px;padding:0 8px;font-size:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+            <option value="Standard">Standard</option>
+            <option value="Karaoke">Karaoke</option>
+            <option value="Cinematic">Cinematic</option>
+            <option value="Energy">Energy</option>
+          </select>
+        </div>
+      </div>
       <div id="renderCmdStatus" style="font-size:11px;color:#888;margin-top:8px;min-height:16px;word-break:break-all;"></div>
     </div>
     <div class="modal-foot">
@@ -1322,7 +1337,7 @@ async function loadSmPosts() {
     if (approved.length) {
       html += `<div class="smp-section-label" style="margin-top:${pending.length?'12px':'0'};">Approved</div>`;
       approved.forEach(p => {
-        SMP_DATA[p.id] = { title: p.title, script: p.script || '' };
+        SMP_DATA[p.id] = { title: p.title, script: p.script || '', voiceId: p.voiceId || '', captionStyle: p.captionStyle || '' };
         const badges = (p.platforms || []).map(pl => `<span class="smp-badge">${esc(pl)}</span>`).join('');
         const hasScript = !!p.script;
         html += `<div class="smp-row smp-approved" id="smp-${p.id}">
@@ -1517,7 +1532,12 @@ function openRenderModal(id) {
   const titleShort = (d.title || '').length > 40 ? (d.title || '').slice(0, 40) + '…' : (d.title || '');
   document.getElementById('renderModalTitle').textContent = 'Render — ' + titleShort;
   document.getElementById('renderScriptTa').value = d.script || '';
+  document.getElementById('renderVoiceId').value = d.voiceId || 'pNInz6obpgDQGcFmaJgB';
+  const styleEl = document.getElementById('renderCaptionStyle');
+  styleEl.value = d.captionStyle && ['Standard','Karaoke','Cinematic','Energy'].includes(d.captionStyle)
+    ? d.captionStyle : 'Standard';
   document.getElementById('renderCmdStatus').textContent = '';
+  document.getElementById('renderCmdStatus').style.color = '#888';
   document.getElementById('renderModal').classList.add('open');
   setTimeout(() => document.getElementById('renderScriptTa').focus(), 100);
 }
@@ -1531,20 +1551,32 @@ document.getElementById('renderModal').addEventListener('click', function(e) {
 });
 
 async function copyRenderCommand() {
-  const script = document.getElementById('renderScriptTa').value.trim();
-  const statusEl = document.getElementById('renderCmdStatus');
+  const script       = document.getElementById('renderScriptTa').value.trim();
+  const voiceId      = document.getElementById('renderVoiceId').value.trim() || 'pNInz6obpgDQGcFmaJgB';
+  const captionStyle = document.getElementById('renderCaptionStyle').value || 'Standard';
+  const statusEl     = document.getElementById('renderCmdStatus');
   if (!script) { statusEl.textContent = 'Script is empty — approve a post first to generate a script.'; return; }
   if (!RENDER_POST_ID || !RENDER_SLUG) { statusEl.textContent = 'No post selected.'; return; }
-  // Escape single quotes for PowerShell single-quoted string
+
+  // Escape single quotes for PowerShell single-quoted strings
   const escaped = script.replace(/'/g, "''");
-  const cmd = `[System.IO.File]::WriteAllText('C:\\Users\\18318\\Videos\\src\\script.txt', '${escaped}', [System.Text.Encoding]::UTF8); & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}'`;
+  const safeVoice = voiceId.replace(/'/g, "''");
+  const cmd = `[System.IO.File]::WriteAllText('C:\\Users\\18318\\Videos\\src\\script.txt', '${escaped}', [System.Text.Encoding]::UTF8); & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}' -VoiceId '${safeVoice}' -CaptionStyle '${captionStyle}'`;
+
   try {
     await navigator.clipboard.writeText(cmd);
     statusEl.style.color = '#5ec95e';
-    statusEl.textContent = '✓ Command copied — paste into PowerShell to render. Video will be saved to C:\\Users\\18318\\dash\\videos\\' + RENDER_SLUG + '.mp4';
+    statusEl.textContent = `✓ Copied — paste into PowerShell. Voice: ${voiceId} · Style: ${captionStyle}`;
+    // Save voice + style back to Notion silently
+    if (SMP_DATA[RENDER_POST_ID]) {
+      SMP_DATA[RENDER_POST_ID].voiceId      = voiceId;
+      SMP_DATA[RENDER_POST_ID].captionStyle = captionStyle;
+    }
+    w('updateSmPostSettings', { id: RENDER_POST_ID, voiceId, captionStyle }).catch(() => {});
   } catch(e) {
     statusEl.style.color = '#ff6b6b';
-    statusEl.textContent = 'Clipboard unavailable. Command: ' + cmd;
+    statusEl.textContent = 'Clipboard unavailable — see console for command.';
+    console.log('Render command:', cmd);
   }
 }
 </script>
