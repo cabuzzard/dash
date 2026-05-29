@@ -1384,7 +1384,7 @@ async function loadSmPosts() {
             <button class="smp-image"  onclick="openImageModal('${p.id}')"  title="Background image">⬛</button>
             <button class="smp-edit"   onclick="openScriptModal('${p.id}')" title="Edit script">✎</button>
             ${hasScript ? `<button class="smp-render" onclick="openRenderModal('${p.id}')" title="Render video">▶</button>` : ''}
-            <a href="https://chatgpt.com" target="_blank" class="smp-link" title="Open ChatGPT">AI</a>
+            <a href="#" onclick="openChatGPT('${esc(p.title)}');return false;" class="smp-link" title="Open ChatGPT with style prompt">AI</a>
             <a href="https://www.notion.so/${p.id}" target="_blank" class="smp-link" title="Open in Notion">↗</a>
             <button class="smp-delete" onclick="deleteSmPost('${p.id}')" title="Delete">✕</button>
           </div>
@@ -1484,6 +1484,29 @@ async function runSmResearch() {
     btn.disabled    = false;
     btn.textContent = 'Run Research';
   }
+}
+
+// ── CHATGPT STYLE PROMPT ─────────────────────────────────────────────
+function openChatGPT(title) {
+  const prompt = `I'm building short-form vertical videos (1080×1920, TikTok/Reels format) rendered in Remotion (a React video renderer). The caption system shows a rolling window of words synced to audio, with the active spoken word highlighted in a different colour. I control exactly 4 parameters:
+
+- highlightColor — hex colour of the active (currently spoken) word
+- fontSize — pixel size at full 1080px canvas width (68px = standard)
+- captionBottom — pixels from the bottom of the frame (180 = above phone nav bar)
+- windowSize — how many words visible at once (1 = karaoke, 4 = standard, 6 = more context)
+
+Font is always Montserrat Black (900 weight), white base, heavy black text shadow. Canvas renders at 720×1280.
+
+Current presets:
+- Standard: #FFD700, 68px, 180px, 4 words
+- Karaoke: #FFD700, 88px, 140px, 1 word
+- Cinematic: #FFFFFF, 58px, 220px, 6 words
+- Energy: #FF4500, 76px, 160px, 3 words
+
+Suggest a caption style for a video titled: "${title}"
+
+Return exactly 4 values: highlightColor, fontSize, captionBottom, windowSize. Then briefly explain the vibe.`;
+  window.open('https://chatgpt.com/?q=' + encodeURIComponent(prompt), '_blank');
 }
 
 // ── BACKGROUND IMAGE MODAL ───────────────────────────────────────────
