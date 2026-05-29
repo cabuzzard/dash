@@ -1561,7 +1561,7 @@ async function copyRenderCommand() {
   // Escape single quotes for PowerShell single-quoted strings
   const escaped = script.replace(/'/g, "''");
   const safeVoice = voiceId.replace(/'/g, "''");
-  const cmd = `[System.IO.File]::WriteAllText('C:\\Users\\18318\\Videos\\src\\script.txt', '${escaped}', [System.Text.Encoding]::UTF8); & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}' -VoiceId '${safeVoice}' -CaptionStyle '${captionStyle}'`;
+  const cmd = `Set-ExecutionPolicy Bypass -Scope Process -Force; [System.IO.File]::WriteAllText('C:\\Users\\18318\\Videos\\src\\script.txt', '${escaped}', [System.Text.Encoding]::UTF8); & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}' -VoiceId '${safeVoice}' -CaptionStyle '${captionStyle}'`;
 
   try {
     await navigator.clipboard.writeText(cmd);

@@ -34,7 +34,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "Audio generation failed"; exit 1 }
 
 # ── Video ─────────────────────────────────────────────────────────────────────
 Write-Host "Rendering video (style: $CaptionStyle)..."
-npx remotion render VoiceoverVideo $OutFile --scale=0.667 --props=$StyleProps
+npx --yes remotion render VoiceoverVideo $OutFile --scale=0.667 --props=$StyleProps
 if ($LASTEXITCODE -ne 0) { Write-Host "Render failed"; exit 1 }
 
 # ── Notion update ─────────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ Write-Host "Updating Notion..."
 $LocalPath = $OutFile.Replace("\", "/")
 $body = "{`"action`":`"updateSmPostVideoPath`",`"id`":`"$PostId`",`"localPath`":`"$LocalPath`",`"token`":`"$Token`"}"
 try {
-    Invoke-WebRequest -Uri $WorkerUrl -Method POST -Body $body -ContentType "application/json" | Out-Null
+    Invoke-WebRequest -Uri $WorkerUrl -Method POST -Body $body -ContentType "application/json" -UseBasicParsing | Out-Null
     Write-Host "Notion updated."
 } catch {
     Write-Host "Notion update failed (video still saved locally): $_"
