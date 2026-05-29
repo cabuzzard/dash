@@ -461,6 +461,11 @@ async function w(action, extra = {}) {
   return d;
 }
 
+// Escape HTML special characters
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // Strip HTML tags to plain text
 function stripHtml(raw) {
   return raw ? raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : '';
