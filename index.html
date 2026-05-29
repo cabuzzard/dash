@@ -3983,20 +3983,20 @@ if (SESSION_TOKEN) {
 // ── DEBUG TAB ─────────────────────────────────────────────────────────
 let debugTabLoaded = false;
 const DEBUG_SECTIONS = [
-  { n:1,  label:'Campaign',             layout:'SEC 1 · 3-col' },
-  { n:2,  label:'Thoughts',             layout:'SEC 1 · 3-col' },
-  { n:3,  label:'Main TD',              layout:'SEC 1 · 3-col' },
-  { n:4,  label:'Keywords',             layout:'SEC 2 · 3-col' },
-  { n:5,  label:'Key Message',          layout:'SEC 2 · 3-col' },
-  { n:6,  label:'Main Problem',         layout:'SEC 2 · 3-col' },
-  { n:7,  label:'Product Ideas',        layout:'SEC 3 · 2-col' },
-  { n:8,  label:'Recommended Actions',  layout:'SEC 3 · 2-col' },
-  { n:9,  label:'Platforms',            layout:'SEC 4 · 2-col' },
-  { n:10, label:'Methods',              layout:'SEC 4 · 2-col' },
-  { n:11, label:'News Feed',            layout:'SEC 5 · 2-col' },
-  { n:12, label:'SM Posts',             layout:'SEC 5 · 2-col' },
-  { n:13, label:'Development Titles',   layout:'SEC 6 · 2-col' },
-  { n:14, label:'Publish Titles',       layout:'SEC 6 · 2-col' },
+  { n:1,  label:'Campaign',            layout:'SEC 1 · 3-col', source:'Campaigns DB · Name, Status, Last Updated, Site URL' },
+  { n:2,  label:'Thoughts',            layout:'SEC 1 · 3-col', source:'Research DB · Thoughts' },
+  { n:3,  label:'Main TD',             layout:'SEC 1 · 3-col', source:'Main TD DB · tasks with Campaign relation' },
+  { n:4,  label:'Keywords',            layout:'SEC 2 · 3-col', source:'Campaigns DB · Keywords' },
+  { n:5,  label:'Key Message',         layout:'SEC 2 · 3-col', source:'Research DB · Key Message → Claude condense' },
+  { n:6,  label:'Main Problem',        layout:'SEC 2 · 3-col', source:'Research DB · Notes + Pain Points + Campaign Goal → Claude condense' },
+  { n:7,  label:'Product Ideas',       layout:'SEC 3 · 2-col', source:'Research DB · Product Ideas → Claude condense' },
+  { n:8,  label:'Recommended Actions', layout:'SEC 3 · 2-col', source:'Research DB · Notes → Claude condense' },
+  { n:9,  label:'Platforms',           layout:'SEC 4 · 2-col', source:'Logins DB · records with Campaign relation' },
+  { n:10, label:'Methods',             layout:'SEC 4 · 2-col', source:'Research DB · Platforms & Methods (methods portion) → Claude condense' },
+  { n:11, label:'News Feed',           layout:'SEC 5 · 2-col', source:'Research DB · News Feed → Claude condense' },
+  { n:12, label:'SM Posts',            layout:'SEC 5 · 2-col', source:'SM Posts DB · records with Campaign relation (all statuses)' },
+  { n:13, label:'Development Titles',  layout:'SEC 6 · 2-col', source:'Content Strategy DB · Campaign relation · stages: Development, Writing, Review, Approved, Explode' },
+  { n:14, label:'Publish Titles',      layout:'SEC 6 · 2-col', source:'Content Strategy DB · Campaign relation · stages: Publish, Published, Done' },
 ];
 const DEBUG_KEY = 'hermes_debug_sections';
 
@@ -4016,8 +4016,7 @@ function initDebugTab() {
   tbody.innerHTML = '';
   DEBUG_SECTIONS.forEach(s => {
     const key = 'sec' + s.n;
-    const td  = (data[key] && data[key].td)     || '';
-    const src = (data[key] && data[key].source)  || '';
+    const td  = (data[key] && data[key].td) || '';
     const tr  = document.createElement('tr');
     tr.style.cssText = 'border-bottom:1px solid rgba(255,255,255,.04);';
     tr.innerHTML = `
@@ -4030,12 +4029,7 @@ function initDebugTab() {
           onfocus="this.style.borderColor='#555'" onblur="this.style.borderColor='#2a2a2a';debugSave(this.dataset.key,this.dataset.field,this.innerText.trim())"
         >${esc(td)}</div>
       </td>
-      <td style="padding:4px 6px;">
-        <div contenteditable="true" data-key="${key}" data-field="source"
-          style="min-height:28px;padding:4px 8px;background:#1a1a1a;border:1px solid #2a2a2a;color:var(--text1);font-size:12px;line-height:1.5;outline:none;white-space:pre-wrap;"
-          onfocus="this.style.borderColor='#555'" onblur="this.style.borderColor='#2a2a2a';debugSave(this.dataset.key,this.dataset.field,this.innerText.trim())"
-        >${esc(src)}</div>
-      </td>`;
+      <td style="padding:7px 10px;color:var(--text3);font-size:11px;line-height:1.5;">${esc(s.source)}</td>`;
     tbody.appendChild(tr);
   });
 }
