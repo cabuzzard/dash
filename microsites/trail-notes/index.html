@@ -436,20 +436,13 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="modal-hint">Review script, voice, and style — then <strong>Copy Command</strong> and paste into PowerShell. Settings are saved to Notion automatically.</div>
       <label class="lm-label" style="margin-top:14px;">Voiceover Script</label>
       <textarea class="modal-ta" id="renderScriptTa" rows="7" style="resize:vertical;font-size:12px;line-height:1.5;font-family:monospace;"></textarea>
-      <div style="display:flex;gap:12px;margin-top:10px;">
-        <div style="flex:1;">
-          <label class="lm-label">Voice ID <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— ElevenLabs voice ID</span></label>
-          <input class="modal-ta" id="renderVoiceId" type="text" placeholder="pNInz6obpgDQGcFmaJgB" style="height:32px;padding:5px 10px;font-size:12px;font-family:monospace;" autocomplete="off" />
-        </div>
-        <div style="flex:0 0 140px;">
-          <label class="lm-label">Caption Style</label>
-          <select class="modal-ta" id="renderCaptionStyle" style="height:32px;padding:0 8px;font-size:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
-            <option value="Standard">Standard</option>
-            <option value="Karaoke">Karaoke</option>
-            <option value="Cinematic">Cinematic</option>
-            <option value="Energy">Energy</option>
-          </select>
-        </div>
+      <div style="margin-top:10px;">
+        <label class="lm-label">Voice ID <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— ElevenLabs voice ID</span></label>
+        <input class="modal-ta" id="renderVoiceId" type="text" placeholder="pNInz6obpgDQGcFmaJgB" style="height:32px;padding:5px 10px;font-size:12px;font-family:monospace;" autocomplete="off" />
+      </div>
+      <div style="margin-top:10px;">
+        <label class="lm-label">Caption Style Spec <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— JSON from ChatGPT</span></label>
+        <textarea class="modal-ta" id="renderCaptionStyle" rows="3" placeholder='{"presetName":"Zen Documentary","fontSize":78,"highlightColor":"#9CC7A3",...}' style="font-size:11px;font-family:monospace;resize:vertical;"></textarea>
       </div>
       <div style="margin-top:10px;">
         <label class="lm-label">Voice Settings <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— JSON from ChatGPT e.g. {"stability":0.3,"similarity_boost":0.8}</span></label>
@@ -1708,6 +1701,14 @@ async function copyRenderCommand() {
   const voiceSettings = document.getElementById('renderVoiceSettings').value.trim();
   const statusEl      = document.getElementById('renderCmdStatus');
 
+  // Validate caption style JSON if provided
+  if (captionStyle) {
+    try { JSON.parse(captionStyle); } catch(e) {
+      statusEl.style.color = '#ff6b6b';
+      statusEl.textContent = 'Caption Style is not valid JSON — fix before copying.';
+      return;
+    }
+  }
   // Validate voice settings JSON if provided
   if (voiceSettings) {
     try { JSON.parse(voiceSettings); } catch(e) {
@@ -1719,17 +1720,16 @@ async function copyRenderCommand() {
   if (!script) { statusEl.textContent = 'Script is empty — approve a post first to generate a script.'; return; }
   if (!RENDER_POST_ID || !RENDER_SLUG) { statusEl.textContent = 'No post selected.'; return; }
 
-  // Escape single quotes for PowerShell single-quoted strings
+  // Escape single quotes in script for PowerShell single-quoted strings
   const escaped = script.replace(/'/g, "''");
-  const safeVoice = voiceId.replace(/'/g, "''");
-  const bgImage = (SMP_DATA[RENDER_POST_ID]?.backgroundImage || '').replace(/'/g, "''");
-  const bgParam = bgImage ? ` -BackgroundImage '${bgImage}'` : '';
-  const cmd = `Set-ExecutionPolicy Bypass -Scope Process -Force; [System.IO.File]::WriteAllText('C:\\Users\\18318\\Videos\\src\\script.txt', '${escaped}', [System.Text.Encoding]::UTF8); & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}' -VoiceId '${safeVoice}' -CaptionStyle '${captionStyle}'${bgParam}`;
+  // Voice, style, background are all saved to Notion and fetched by the render script automatically
+  const cmd = `Set-ExecutionPolicy Bypass -Scope Process -Force; [System.IO.File]::WriteAllText('C:\\Users\\18318\\Videos\\src\\script.txt', '${escaped}', [System.Text.Encoding]::UTF8); & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}'`;
 
   try {
     await navigator.clipboard.writeText(cmd);
+    const presetLabel = captionStyle ? (JSON.parse(captionStyle).presetName || 'Custom') : 'Default';
     statusEl.style.color = '#5ec95e';
-    statusEl.textContent = `✓ Copied — paste into PowerShell. Voice: ${voiceId} · Style: ${captionStyle}`;
+    statusEl.textContent = `✓ Saved & copied — Voice: ${voiceId} · Style: ${presetLabel}`;
     // Save voice + style + voice settings back to Notion silently
     if (SMP_DATA[RENDER_POST_ID]) {
       SMP_DATA[RENDER_POST_ID].voiceId       = voiceId;

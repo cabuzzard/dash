@@ -1754,7 +1754,7 @@ Rules:
             localPath:    p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             topVideos:    p["Top Videos"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             voiceId:         p["Voice ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
-            captionStyle:    p["Caption Style"]?.select?.name || "",
+            captionStyle:    p["Caption Style"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             backgroundImage: p["Background Image"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             voiceSettings:   p["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             status:    p["Status"]?.select?.name || "Draft",
@@ -1780,7 +1780,7 @@ Rules:
           title:           p["Post Title"]?.title?.map(t=>t.plain_text).join("") || "",
           script:          p["Script"]?.rich_text?.map(t=>t.plain_text).join("") || "",
           voiceId:         p["Voice ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
-          captionStyle:    p["Caption Style"]?.select?.name || "",
+          captionStyle:    p["Caption Style"]?.rich_text?.map(t=>t.plain_text).join("") || "",
           backgroundImage: p["Background Image"]?.rich_text?.map(t=>t.plain_text).join("") || "",
           voiceSettings:   p["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || "",
           localPath:       p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
@@ -1875,7 +1875,7 @@ Output the script text only. No preamble, no labels.`;
         const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
         const props = {};
         if (voiceId !== undefined)        props["Voice ID"]        = { rich_text: [{ type: "text", text: { content: (voiceId || "").slice(0, 200) } }] };
-        if (captionStyle !== undefined)   props["Caption Style"]   = captionStyle ? { select: { name: captionStyle } } : { select: null };
+        if (captionStyle !== undefined)   props["Caption Style"]   = { rich_text: [{ type: "text", text: { content: (captionStyle || "").slice(0, 2000) } }] };
         if (backgroundImage !== undefined)props["Background Image"]= { rich_text: [{ type: "text", text: { content: (backgroundImage || "").slice(0, 500) } }] };
         if (voiceSettings !== undefined)  props["Voice Settings"]  = { rich_text: [{ type: "text", text: { content: (voiceSettings || "").slice(0, 500) } }] };
         if (!Object.keys(props).length) return json({ success: true });

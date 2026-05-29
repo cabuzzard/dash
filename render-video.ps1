@@ -43,12 +43,15 @@ try {
     Write-Host "  Could not reach Notion — using param defaults ($_)"
 }
 
-# ── Caption style → Remotion input props ─────────────────────────────────────
-$StyleProps = switch ($CaptionStyle) {
-    "Karaoke"   { '{"highlightColor":"#FFD700","fontSize":88,"captionBottom":140,"windowSize":1}' }
-    "Cinematic" { '{"highlightColor":"#FFFFFF","fontSize":58,"captionBottom":220,"windowSize":6}' }
-    "Energy"    { '{"highlightColor":"#FF4500","fontSize":76,"captionBottom":160,"windowSize":3}' }
-    default     { '{"highlightColor":"#FFD700","fontSize":68,"captionBottom":180,"windowSize":4}' }
+# ── Caption style → Remotion --props ────────────────────────────────────────
+# If captionStyle from Notion is a full JSON spec, pass it directly.
+# Otherwise fall back to a simple default.
+if ($CaptionStyle -and $CaptionStyle.TrimStart().StartsWith('{')) {
+    $StyleProps = $CaptionStyle
+    Write-Host "Using custom caption spec from Notion"
+} else {
+    $StyleProps = '{"highlightColor":"#FFD700","fontSize":68,"captionBottom":180,"windowSize":4}'
+    if ($CaptionStyle) { Write-Host "Unknown caption style '$CaptionStyle' — using default" }
 }
 
 # ── Background image ─────────────────────────────────────────────────────────
