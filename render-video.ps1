@@ -1,7 +1,8 @@
 # render-video.ps1
 # Usage: .\render-video.ps1 -PostId "abc123" -Slug "my-post-title" -Token "session-token"
-#                           -VoiceId "pNInz6obpgDQGcFmaJgB" -CaptionStyle "Standard"
-# Script text is written to C:\Users\18318\Videos\src\script.txt before calling this script.
+# Voice, caption style, and background image are read from Notion automatically.
+# Param overrides (-VoiceId, -CaptionStyle, -BackgroundImage) apply only if Notion fields are empty.
+# Script text must be written to C:\Users\18318\Videos\src\script.txt before calling this script.
 param(
     [string]$PostId,
     [string]$Slug,
@@ -17,6 +18,22 @@ $OutFile     = "$VideosDir\$Slug.mp4"
 $WorkerUrl   = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev"
 
 New-Item -ItemType Directory -Force $VideosDir | Out-Null
+
+# ── Fetch saved settings from Notion (override params if fields are set) ──────
+Write-Host "Fetching post settings from Notion..."
+try {
+    $notionBody = ConvertTo-Json @{ action = 'getSmPost'; id = $PostId; token = $Token } -Depth 3
+    $post = Invoke-RestMethod -Uri $WorkerUrl -Method POST `
+        -Body $notionBody -ContentType 'application/json' -UseBasicParsing
+    if ($post.voiceId)         { $VoiceId        = $post.voiceId;         Write-Host "  Voice:      $VoiceId" }
+    if ($post.captionStyle)    { $CaptionStyle   = $post.captionStyle;    Write-Host "  Style:      $CaptionStyle" }
+    if ($post.backgroundImage) { $BackgroundImage = $post.backgroundImage; Write-Host "  Background: $BackgroundImage" }
+    if (-not $post.voiceId -and -not $post.captionStyle -and -not $post.backgroundImage) {
+        Write-Host "  No saved settings — using param defaults"
+    }
+} catch {
+    Write-Host "  Could not reach Notion — using param defaults ($_)"
+}
 
 # ── Caption style → Remotion input props ─────────────────────────────────────
 $StyleProps = switch ($CaptionStyle) {

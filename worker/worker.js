@@ -1763,6 +1763,28 @@ Rules:
         return json({ posts });
       }
 
+      // ── SM POSTS: getSmPost (single post by ID) ──────────────────────────
+      if (body.action === "getSmPost") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+        });
+        const data = await resp.json();
+        if (!resp.ok) return json({ error: data.message || "Not found" }, resp.status);
+        const p = data.properties || {};
+        return json({
+          id:              data.id.replace(/-/g,""),
+          title:           p["Post Title"]?.title?.map(t=>t.plain_text).join("") || "",
+          script:          p["Script"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+          voiceId:         p["Voice ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+          captionStyle:    p["Caption Style"]?.select?.name || "",
+          backgroundImage: p["Background Image"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+          localPath:       p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+        });
+      }
+
       // ── SM POSTS: approveSmPost ──────────────────────────────────────────
       if (body.action === "approveSmPost") {
         const { id, campaignId } = body;
