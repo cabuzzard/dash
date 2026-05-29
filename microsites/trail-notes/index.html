@@ -53,6 +53,23 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 .plat-dd-item:hover { background: #393939; }
 .plat-dd-create { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #e8ff47; border-bottom: 1px solid #1e1e1e; font-style: italic; }
 .plat-dd-create:hover { background: #393939; }
+/* SM POSTS APPROVAL */
+.smp-section-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #555; padding: 4px 0 6px; border-bottom: 1px solid #1a1a1a; margin-bottom: 6px; }
+.smp-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.04); transition: opacity .2s; }
+.smp-row:last-child { border-bottom: none; }
+.smp-info { flex: 1; min-width: 0; }
+.smp-title { font-size: 13px; color: #c9c9c9; line-height: 1.3; }
+.smp-copy  { font-size: 11px; color: #555; margin-top: 3px; line-height: 1.4; }
+.smp-plats { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.smp-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; color: #888; border: 1px solid #2a2a2a; background: #1a1a1a; }
+.smp-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; padding-top: 1px; }
+.smp-approve { background: none; border: 1px solid #1e5c1e; color: #5ec95e; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
+.smp-approve:hover { background: rgba(94,201,94,.15); }
+.smp-delete  { background: none; border: 1px solid #5c1e1e; color: #c95e5e; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
+.smp-delete:hover  { background: rgba(201,94,94,.15); }
+.smp-link { font-size: 13px; color: #555; text-decoration: none; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; transition: color .15s; }
+.smp-link:hover { color: #c9c9c9; }
+.smp-approved .smp-title { color: #666; }
 </style>
 </head>
 <body>
@@ -173,9 +190,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Research prompt">✎</button></h2>
+    <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Run research">▶</button></h2>
     <div class="content">
-      <div class="body-text" id="r-tiktok"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div id="smPostsBox"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
@@ -350,19 +367,20 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 
 <!-- SM POSTS PROMPT MODAL -->
 <div class="modal-overlay" id="smPromptModal">
-  <div class="modal" style="max-width:600px;">
+  <div class="modal" style="max-width:480px;">
     <div class="modal-head">
-      <div class="modal-title">SM Posts — Research Prompt</div>
+      <div class="modal-title">SM Posts — Run Research</div>
       <button class="modal-close" onclick="closeSmPromptModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="modal-hint">Edit keywords or adjust the prompt, then copy and paste into a Claude session with Apify MCP. Claude will run the scrapers and write results back to the SM Posts box automatically.</div>
-      <textarea class="modal-ta" id="smPromptTa" rows="10" style="min-height:200px;"></textarea>
-      <div id="smPromptStatus" style="font-size:12px;color:#888;margin-top:8px;"></div>
+      <div class="modal-hint">Scrapes TikTok + YouTube for trending content around these keywords, then uses Claude to generate 5 script ideas. Each idea is added to the SM Posts box as a Draft.</div>
+      <label class="lm-label" for="smResearchKws" style="margin-top:14px;">Keywords</label>
+      <input type="text" class="modal-ta" id="smResearchKws" placeholder="keyword 1, keyword 2, keyword 3">
+      <div id="smPromptStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeSmPromptModal()">Close</button>
-      <button class="modal-btn save" id="smPromptSendBtn" onclick="sendSmPrompt()">Copy Prompt</button>
+      <button class="modal-btn save" id="smPromptSendBtn" onclick="runSmResearch()">Run Research</button>
     </div>
   </div>
 </div>
@@ -548,14 +566,13 @@ async function loadResearch() {
     const problemInput = (r.campaignGoal || '') + '\n' + (r.painPoints || '') + '\n' + rawNotes.split(/ROI-RANKED|RECOMMENDED|BOTTOM LINE/i)[0];
     const actionsInput = rawNotes;
 
-    const [problem, keymessage, products, actions, methods, news, tiktok] = await Promise.all([
+    const [problem, keymessage, products, actions, methods, news] = await Promise.all([
       condense('This campaign does X for customer Y — state the core problem this campaign solves in one sentence then list pain points', problemInput),
       condense('Key Message', r.keyMessage),
       condense('Product Ideas', r.productIdeas),
       condense('Recommended Actions — prioritised by ROI, what to do next', actionsInput),
       condense('Methods', rawMethods),
       condense('News Feed', r.newsFeed),
-      condense('SM Posts', r.tiktokTrends),
     ]);
 
     document.getElementById('r-problem').innerHTML    = problem;
@@ -564,7 +581,6 @@ async function loadResearch() {
     document.getElementById('r-actions').innerHTML  = actions;
     document.getElementById('r-methods').innerHTML   = methods;
     document.getElementById('r-news').innerHTML      = news;
-    document.getElementById('r-tiktok').innerHTML    = tiktok;
 
   } catch(e) {
     document.getElementById('r-name').textContent = 'Error: ' + e.message;
@@ -1213,24 +1229,101 @@ function init() {
   loadTitles();
   loadTodos();
   loadLogins();
+  loadSmPosts();
 }
 
-// ── SM POSTS PROMPT MODAL ─────────────────────────────────────────────
-const SM_PROMPT_TEMPLATE = `Use Apify to research short-form script ideas for these keywords: [KEYWORDS]. For each keyword, run the TikTok Scraper and YouTube Shorts Scraper. Return the top 10 videos per platform per keyword, sorted by views. For each video include: title/caption, view count, and any hashtags. Then summarize the top 3 recurring themes or angles across all results — these are my script ideas.
+// ── SM POSTS ──────────────────────────────────────────────────────────
+async function loadSmPosts() {
+  const box = document.getElementById('smPostsBox');
+  if (!box) return;
+  box.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  try {
+    const data    = await w('getSmPosts', { campaignId: CAMPAIGN_ID });
+    const posts   = data.posts || [];
+    const pending  = posts.filter(p => ['Draft','Review'].includes(p.status));
+    const approved = posts.filter(p => ['Publish','Published'].includes(p.status));
 
-When done, write your full output to Notion: update the "TikTok Trends" property on Research page [RESEARCH_ID] with the complete text. Use the Notion MCP notion-update-page tool, command update_properties, property name "TikTok Trends". Do not abbreviate.`;
+    if (!pending.length && !approved.length) {
+      box.innerHTML = '<div class="empty">No posts yet — click ▶ to run research.</div>';
+      return;
+    }
 
+    let html = '';
+    if (pending.length) {
+      html += '<div class="smp-section-label">Pending Approval</div>';
+      pending.forEach(p => {
+        const badges = (p.platforms || []).map(pl => `<span class="smp-badge">${esc(pl)}</span>`).join('');
+        const preview = p.copy.length > 100 ? p.copy.slice(0, 100) + '…' : p.copy;
+        html += `<div class="smp-row" id="smp-${p.id}">
+          <div class="smp-info">
+            <div class="smp-title">${esc(p.title)}</div>
+            ${preview ? `<div class="smp-copy">${esc(preview)}</div>` : ''}
+            ${badges ? `<div class="smp-plats">${badges}</div>` : ''}
+          </div>
+          <div class="smp-actions">
+            <button class="smp-approve" onclick="approveSmPost('${p.id}')" title="Approve">✓</button>
+            <button class="smp-delete"  onclick="deleteSmPost('${p.id}')"  title="Delete">✕</button>
+          </div>
+        </div>`;
+      });
+    }
+
+    if (approved.length) {
+      html += `<div class="smp-section-label" style="margin-top:${pending.length?'12px':'0'};">Approved</div>`;
+      approved.forEach(p => {
+        const badges = (p.platforms || []).map(pl => `<span class="smp-badge">${esc(pl)}</span>`).join('');
+        html += `<div class="smp-row smp-approved" id="smp-${p.id}">
+          <div class="smp-info">
+            <div class="smp-title">${esc(p.title)}</div>
+            ${badges ? `<div class="smp-plats">${badges}</div>` : ''}
+          </div>
+          <div class="smp-actions">
+            <a href="https://www.notion.so/${p.id}" target="_blank" class="smp-link" title="Open in Notion">↗</a>
+          </div>
+        </div>`;
+      });
+    }
+
+    box.innerHTML = html;
+  } catch(e) {
+    box.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`;
+  }
+}
+
+async function approveSmPost(id) {
+  const row = document.getElementById('smp-' + id);
+  if (row) row.style.opacity = '0.4';
+  try {
+    await w('approveSmPost', { id });
+    await loadSmPosts();
+  } catch(e) {
+    if (row) row.style.opacity = '';
+    alert('Error: ' + e.message);
+  }
+}
+
+async function deleteSmPost(id) {
+  const row = document.getElementById('smp-' + id);
+  if (row) { row.style.opacity = '0.4'; row.style.pointerEvents = 'none'; }
+  try {
+    await w('deleteSmPost', { id });
+    if (row) row.remove();
+    if (!document.querySelector('#smPostsBox .smp-row')) await loadSmPosts();
+  } catch(e) {
+    if (row) { row.style.opacity = ''; row.style.pointerEvents = ''; }
+    alert('Error: ' + e.message);
+  }
+}
+
+// ── SM POSTS MODAL ────────────────────────────────────────────────────
 function openSmPromptModal() {
   const kws = (RAW.keywords || '').split(',').map(s => s.trim()).filter(Boolean);
-  const kwStr = kws.length ? kws.join(', ') : '[keyword 1], [keyword 2], [keyword 3]';
-  const prompt = SM_PROMPT_TEMPLATE
-    .replace('[KEYWORDS]', kwStr)
-    .replace('[RESEARCH_ID]', RESEARCH_ID);
-  document.getElementById('smPromptTa').value = prompt;
+  document.getElementById('smResearchKws').value = kws.join(', ');
   document.getElementById('smPromptStatus').textContent = '';
   document.getElementById('smPromptStatus').style.color = '#888';
-  document.getElementById('smPromptSendBtn').disabled = false;
-  document.getElementById('smPromptSendBtn').textContent = 'Copy Prompt';
+  const btn = document.getElementById('smPromptSendBtn');
+  btn.disabled = false;
+  btn.textContent = 'Run Research';
   document.getElementById('smPromptModal').classList.add('open');
 }
 
@@ -1242,20 +1335,33 @@ document.getElementById('smPromptModal').addEventListener('click', function(e) {
   if (e.target === this) closeSmPromptModal();
 });
 
-async function sendSmPrompt() {
-  const prompt = document.getElementById('smPromptTa').value.trim();
-  if (!prompt) return;
+async function runSmResearch() {
+  const kwsRaw = document.getElementById('smResearchKws').value.trim();
+  if (!kwsRaw) return;
+  const kws  = kwsRaw.split(',').map(s => s.trim()).filter(Boolean);
   const btn    = document.getElementById('smPromptSendBtn');
   const status = document.getElementById('smPromptStatus');
+
+  btn.disabled    = true;
+  btn.textContent = 'Running…';
+  status.textContent = 'Scraping TikTok + YouTube, then generating ideas with Claude…';
+  status.style.color = '#888';
+
   try {
-    await navigator.clipboard.writeText(prompt);
-    btn.textContent = 'Copied ✓';
-    status.textContent = 'Paste into a Claude session with Apify MCP. Claude will run the scrapers and write results back to the SM Posts box.';
-    status.style.color = '#888';
-    setTimeout(() => { btn.textContent = 'Copy Prompt'; btn.disabled = false; }, 2000);
+    const res = await w('runSmResearch', { campaignId: CAMPAIGN_ID, keywords: kws });
+    if (res.error) throw new Error(res.error);
+    const n = res.count || 0;
+    status.textContent = `✓ ${n} idea${n !== 1 ? 's' : ''} created. Refreshing…`;
+    status.style.color = '#5ec95e';
+    setTimeout(async () => {
+      closeSmPromptModal();
+      await loadSmPosts();
+    }, 1200);
   } catch(e) {
-    status.textContent = 'Copy failed — select all and copy manually.';
+    status.textContent = 'Error: ' + e.message;
     status.style.color = '#ff6b6b';
+    btn.disabled    = false;
+    btn.textContent = 'Run Research';
   }
 }
 </script>

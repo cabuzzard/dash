@@ -14,6 +14,7 @@ const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
 const LEADS_DB           = "e4518a459f004eb0b9646e48d8718705";
 const SM_ACCOUNTS_DB     = "aa6a16f2a77245bfb5efd9a8eb314b07";
 const EMAILS_DB          = "6252e9917027488fb628436aabb89947";
+const SM_POSTS_DB        = "ec422a5d716142e6843f39a09893737b";
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -1732,6 +1733,180 @@ Rules:
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Delete failed" }, resp.status);
         return json({ success: true });
+      }
+
+      // ── SM POSTS: getSmPosts ─────────────────────────────────────────────
+      if (body.action === "getSmPosts") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const rows = await notionQuery(SM_POSTS_DB, {
+          filter: { property: "Campaign", relation: { contains: dash(campaignId) } },
+          sorts:  [{ property: "Status", direction: "ascending" }],
+        });
+        const posts = rows.map(r => {
+          const p = r.properties;
+          return {
+            id:        r.id.replace(/-/g,""),
+            title:     p["Post Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
+            copy:      p["Post Copy"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            status:    p["Status"]?.select?.name || "Draft",
+            platforms: (p["Platform"]?.multi_select || []).map(s => s.name),
+          };
+        });
+        return json({ posts });
+      }
+
+      // ── SM POSTS: approveSmPost ──────────────────────────────────────────
+      if (body.action === "approveSmPost") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── SM POSTS: deleteSmPost ───────────────────────────────────────────
+      if (body.action === "deleteSmPost") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Delete failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── SM POSTS: runSmResearch ──────────────────────────────────────────
+      // 1. Scrape TikTok via Apify free-tiktok-scraper (searchQueries)
+      // 2. Scrape YouTube via Apify api-ninja/youtube-search-scraper (query + type:video)
+      // 3. Pass results to Claude Haiku → generate 5 script ideas
+      // 4. Create SM Post records in Notion with Status=Draft + Campaign relation
+      if (body.action === "runSmResearch") {
+        const { campaignId, keywords } = body;
+        if (!campaignId || !keywords) return json({ error: "campaignId and keywords required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const AT = (env.APIFY_TOKEN || '').trim();
+        const kws = Array.isArray(keywords)
+          ? keywords.filter(Boolean)
+          : keywords.split(',').map(s => s.trim()).filter(Boolean);
+
+        // 1 — TikTok scrape
+        let tiktokItems = [];
+        if (AT) {
+          try {
+            const res = await fetch(
+              `https://api.apify.com/v2/acts/clockworks~free-tiktok-scraper/run-sync-get-dataset-items?token=${AT}&timeout=45`,
+              { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ searchQueries: kws.slice(0, 3), maxResults: 6 }) }
+            );
+            if (res.ok) tiktokItems = await res.json();
+          } catch(e) { /* proceed without TikTok data */ }
+        }
+
+        // 2 — YouTube scrape (one combined query)
+        let ytItems = [];
+        if (AT) {
+          try {
+            const res = await fetch(
+              `https://api.apify.com/v2/acts/api-ninja~youtube-search-scraper/run-sync-get-dataset-items?token=${AT}&timeout=45`,
+              { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: kws.slice(0, 3).join(' '), type: 'video', maxResults: 8, sortBy: 'viewCount' }) }
+            );
+            if (res.ok) ytItems = await res.json();
+          } catch(e) { /* proceed without YouTube data */ }
+        }
+
+        // 3 — Format + Claude
+        const fmtTT = (Array.isArray(tiktokItems) ? tiktokItems : []).slice(0, 12).map(v =>
+          `- "${(v.text || v.desc || v.title || '').slice(0, 80)}" | views: ${v.playCount || v.stats?.playCount || 0}`
+        ).join('\n') || '(no TikTok data — proceed from keywords only)';
+
+        const fmtYT = (Array.isArray(ytItems) ? ytItems : []).slice(0, 10).map(v =>
+          `- "${(v.title || '').slice(0, 80)}" | views: ${v.viewCount || 0} | ${v.channelName || v.channelTitle || ''}`
+        ).join('\n') || '(no YouTube data — proceed from keywords only)';
+
+        const claudePrompt = `You are a social media content strategist. Based on trending content for the keywords "${kws.join(', ')}", generate exactly 5 short-form script ideas.
+
+TRENDING TIKTOK:
+${fmtTT}
+
+TRENDING YOUTUBE:
+${fmtYT}
+
+Generate exactly 5 ideas. Use EXACTLY this format with no extra text before IDEA 1:
+
+IDEA 1
+Title: [compelling hook, max 10 words]
+Platform: [TikTok | YouTube | Both]
+Script: [2-3 sentence video outline]
+
+IDEA 2
+Title: ...
+Platform: ...
+Script: ...
+
+(continue through IDEA 5)`;
+
+        const cRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': (env.ANTHROPIC_API_KEY || '').trim(), 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-haiku-4-20250514', max_tokens: 1500, messages: [{ role: 'user', content: claudePrompt }] })
+        });
+        const cData = await cRes.json();
+        if (!cRes.ok) return json({ error: cData.error?.message || "Claude error" }, cRes.status);
+        const ideas = cData.content?.[0]?.text || '';
+
+        // 4 — Parse + create Notion records
+        const blocks = ideas.split(/(?=IDEA\s+\d)/i).filter(b => /IDEA\s+\d/i.test(b));
+        const created = [];
+
+        for (const block of blocks.slice(0, 5)) {
+          const titleM  = block.match(/Title:\s*(.+)/i);
+          const platM   = block.match(/Platform:\s*(.+)/i);
+          const scriptM = block.match(/Script:\s*([\s\S]+?)(?=\n\nIDEA|\s*$)/i);
+
+          const title   = (titleM?.[1] || '').trim() || 'Script Idea';
+          const platRaw = (platM?.[1] || 'TikTok').trim().toLowerCase();
+          const script  = (scriptM?.[1] || '').trim() ||
+            block.replace(/^IDEA\s+\d+\s*/i,'').replace(/Title:[^\n]+\n?/i,'').replace(/Platform:[^\n]+\n?/i,'').replace(/Script:\s*/i,'').trim();
+
+          const platforms = [];
+          if (platRaw.includes('tiktok') || platRaw.includes('both')) platforms.push({ name: 'TikTok' });
+          if (platRaw.includes('youtube') || platRaw.includes('shorts') || platRaw.includes('both')) platforms.push({ name: 'YouTube' });
+          if (!platforms.length) platforms.push({ name: 'TikTok' });
+
+          try {
+            const r = await fetch('https://api.notion.com/v1/pages', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${NOTION_TOKEN}`, 'Notion-Version': NOTION_VERSION, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                parent:     { database_id: dash(SM_POSTS_DB) },
+                properties: {
+                  "Post Title": { title:       [{ type: "text", text: { content: title } }] },
+                  "Status":     { select:      { name: "Draft" } },
+                  "Platform":   { multi_select: platforms },
+                  "Campaign":   { relation:    [{ id: dash(campaignId) }] },
+                  "Post Copy":  { rich_text:   [{ type: "text", text: { content: script.slice(0, 2000) } }] },
+                }
+              })
+            });
+            const page = await r.json();
+            if (r.ok) created.push(page.id.replace(/-/g,""));
+          } catch(e) { /* skip failed record */ }
+        }
+
+        return json({ success: true, count: created.length, ids: created });
       }
 
       return json({ error: "Unknown action" }, 400);
