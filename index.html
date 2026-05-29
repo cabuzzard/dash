@@ -619,8 +619,9 @@
 
     <div class="modal-field" style="position:relative;">
       <label class="modal-label">Email</label>
-      <input class="modal-input" id="smEmailInput" type="text" placeholder="Select or type email..." autocomplete="off"
+      <input class="modal-input" id="smEmailInput" type="text" placeholder="Select email..." autocomplete="off"
         oninput="smFilterEmails()" onfocus="smFilterEmails()" />
+      <input type="hidden" id="smEmailId" />
       <div id="smEmailDrop" class="camp-dropdown" style="display:none;"></div>
     </div>
 
@@ -1293,8 +1294,8 @@ function switchTab(name) {
   if (name === 'products'    && !prodLoaded)      { prodLoaded      = true; loadProducts(); }
   if (name === 'development' && !devLoaded)       { devLoaded       = true; loadDev(); }
   if (name === 'td'          && !tdTabLoaded)     { tdTabLoaded     = true; loadTdTab(); }
-  if (name === 'platforms') { loadPlatformMatrix(); if (!smAccsLoaded) loadSmAccounts(); }
-  if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); }
+  if (name === 'platforms') { loadPlatformMatrix(); if (!smAccsLoaded) loadSmAccounts(); if (!emailsLoaded) loadEmails(); }
+  if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
 }
 
 // ── DOMAINS TAB ───────────────────────────────────────────────────────
@@ -1420,13 +1421,17 @@ let smAccsLoaded = false;
 let smAccsOpen   = true;
 let smEditId     = null;
 
-const smKnownEmails = [
-  'evan@evraymond.com','info@evraymond.com','job@evraymond.com','jobs@evraymond.com','mktg@evraymond.com',
-  'evan@mountainwize.com','info@mountainwize.com','info@roi-systems.com',
-  'admin@webguyleadgeneration.com','info@webguyleadgeneration.com',
-  'info@creativeflowguitar.com','info@foundationfuturesllc.com','info@maiandros-investments.com',
-  'info@modernactivehome.com','info@naturalspirithealing.com','info@releasestresstoday.com',
-];
+let emailsData   = [];
+let emailsLoaded = false;
+
+async function loadEmails() {
+  if (emailsLoaded) return;
+  try {
+    const res = await call('getEmails', {});
+    emailsData   = res.emails || [];
+    emailsLoaded = true;
+  } catch(e) { console.warn('loadEmails failed:', e.message); }
+}
 const smKnownYt = [
   'Evan Raymond Music & Mindset (@evanraymondmusicandmindset2603)',
   '10 Minute Practice (@10minutepactice27)',
@@ -1495,7 +1500,7 @@ function renderSmAccounts() {
       '<td>' + smTypeBadge(a.type) + '</td>' +
       '<td style="font-size:11px;">' + (a.login ? '<a href="https://www.notion.so/'+dash(esc(a.loginId))+'" target="_blank" style="color:var(--text2);text-decoration:none;" onmouseover="this.style.opacity=\'.7\'" onmouseout="this.style.opacity=\'1\'">'+esc(a.login)+'</a>' : '<span style="color:var(--text3);">—</span>') + '</td>' +
       '<td style="font-size:11px;font-family:\'DM Mono\',monospace;">' + (a.username ? esc(a.username) : '<span style="color:var(--text3);">—</span>') + '</td>' +
-      '<td style="font-size:11px;">' + (a.email ? esc(a.email) : '<span style="color:var(--text3);">—</span>') + '</td>' +
+      '<td style="font-size:11px;">' + (()=>{ const em = emailsData.find(e => (a.emailIds||[]).includes(e.id)); return em ? esc(em.name) : '<span style="color:var(--text3);">—</span>'; })() + '</td>' +
       '<td style="font-size:11px;">' + (a.platform ? esc(a.platform) : '<span style="color:var(--text3);">—</span>') + '</td>' +
       '<td style="font-size:11px;">' + (a.campaign ? '<a href="https://www.notion.so/'+dash(esc(a.campaignId))+'" target="_blank" style="color:var(--text2);text-decoration:none;" onmouseover="this.style.opacity=\'.7\'" onmouseout="this.style.opacity=\'1\'">'+esc(a.campaign)+'</a>' : '<span style="color:var(--text3);">—</span>') + '</td>' +
       '<td style="text-align:center;white-space:nowrap;">' +
@@ -1511,7 +1516,7 @@ function openSmModal(id) {
   document.getElementById('smAccModalTitle').textContent = id ? 'Edit SM Account' : 'New SM Account';
   document.getElementById('smAccErr').textContent = '';
   ['smNameInput','smTypeInput','smLoginInput','smLoginId','smUserInput','smPwInput',
-   'smEmailInput','smPlatInput','smPlatId','smCampInput','smCampId'].forEach(f => {
+   'smEmailInput','smEmailId','smPlatInput','smPlatId','smCampInput','smCampId'].forEach(f => {
     const el = document.getElementById(f); if (el) el.value = '';
   });
   if (id) {
@@ -1523,7 +1528,9 @@ function openSmModal(id) {
       document.getElementById('smLoginId').value    = a.loginId    || '';
       document.getElementById('smUserInput').value  = a.username   || '';
       document.getElementById('smPwInput').value    = a.pw         || '';
-      document.getElementById('smEmailInput').value = a.email      || '';
+      const linkedEmail = emailsData.find(e => (a.emailIds||[]).includes(e.id));
+      document.getElementById('smEmailInput').value = linkedEmail ? linkedEmail.name : '';
+      document.getElementById('smEmailId').value    = linkedEmail ? linkedEmail.id   : '';
       document.getElementById('smPlatInput').value  = a.platform   || '';
       document.getElementById('smPlatId').value     = a.platformId || '';
       document.getElementById('smCampInput').value  = a.campaign   || '';
@@ -1554,7 +1561,7 @@ async function saveSmAccount() {
   const loginId    = document.getElementById('smLoginId').value.trim();
   const username   = document.getElementById('smUserInput').value.trim();
   const pw         = document.getElementById('smPwInput').value.trim();
-  const email      = document.getElementById('smEmailInput').value.trim();
+  const emailId    = document.getElementById('smEmailId').value.trim();
   const platform   = document.getElementById('smPlatInput').value.trim();
   const platId     = document.getElementById('smPlatId').value.trim();
   const campaign   = document.getElementById('smCampInput').value.trim();
@@ -1564,11 +1571,11 @@ async function saveSmAccount() {
   errEl.textContent = '';
   try {
     if (smEditId) {
-      await call('updateSmAccount', { id: smEditId, name: finalName, type, login, loginId, username, pw, email, platform, platformId: platId, campaign, campaignId });
+      await call('updateSmAccount', { id: smEditId, name: finalName, type, login, loginId, username, pw, emailId, platform, platformId: platId, campaign, campaignId });
       const idx = smAccsData.findIndex(x => x.id === smEditId);
-      if (idx >= 0) smAccsData[idx] = { ...smAccsData[idx], name: finalName, type, login, loginId, username, pw, email, platform, platformId: platId, campaign, campaignId };
+      if (idx >= 0) smAccsData[idx] = { ...smAccsData[idx], name: finalName, type, login, loginId, username, pw, emailIds: emailId ? [emailId] : [], platform, platformId: platId, campaign, campaignId };
     } else {
-      const res = await call('createSmAccount', { name: finalName, type, login, loginId, username, pw, email, platform, platformId: platId, campaign, campaignId });
+      const res = await call('createSmAccount', { name: finalName, type, login, loginId, username, pw, emailId, platform, platformId: platId, campaign, campaignId });
       smAccsData.push(res.account);
     }
     renderSmAccounts();
@@ -1625,9 +1632,11 @@ function smFilterUsername() {
 
 function smFilterEmails() {
   const q = document.getElementById('smEmailInput').value.toLowerCase();
-  const matches = smKnownEmails.filter(e => e.includes(q)).slice(0, 8);
-  smMakeDrop('smEmailDrop', matches.map(e => ({ label: e })), item => {
+  const matches = emailsData.filter(e => e.name.toLowerCase().includes(q)).slice(0, 8);
+  smMakeDrop('smEmailDrop', matches.map(e => ({ label: e.name, sub: e.domain })), item => {
+    const rec = emailsData.find(e => e.name === item.label);
     document.getElementById('smEmailInput').value = item.label;
+    document.getElementById('smEmailId').value    = rec ? rec.id : '';
   });
 }
 

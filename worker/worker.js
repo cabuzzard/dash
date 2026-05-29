@@ -13,6 +13,7 @@ const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
 const LEADS_DB           = "e4518a459f004eb0b9646e48d8718705";
 const SM_ACCOUNTS_DB     = "aa6a16f2a77245bfb5efd9a8eb314b07";
+const EMAILS_DB          = "6252e9917027488fb628436aabb89947";
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -247,7 +248,7 @@ export default {
     const TS_SECRET      = (env.TURNSTILE_SECRET|| "1x0000000000000000000000000000000AA").trim();
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
-    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-28-01" });
+    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-29-01" });
     if (request.method !== "POST")    return json({ error: "POST only" }, 405);
 
     let body;
@@ -1599,6 +1600,21 @@ Rules:
         return json({ success: true });
       }
 
+      // ── getEmails — fetch all Email records ───────────────────────────
+      if (body.action === "getEmails") {
+        const rows = await notionQuery(EMAILS_DB, { sorts: [{ property: "Email", direction: "ascending" }] });
+        const emails = rows.map(r => {
+          const p = r.properties;
+          const txt = prop => prop?.rich_text?.map(t=>t.plain_text).join("") || prop?.title?.map(t=>t.plain_text).join("") || "";
+          return {
+            id:     r.id.replace(/-/g,""),
+            name:   txt(p.Email),
+            domain: txt(p.Domain),
+          };
+        });
+        return json({ emails });
+      }
+
       // ── getSmAccounts — fetch all SM Account records ──────────────────
       if (body.action === "getSmAccounts") {
         const rows = await notionQuery(SM_ACCOUNTS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
@@ -1613,7 +1629,7 @@ Rules:
             loginId:     txt(p["Login ID"]),
             username:    txt(p.Username),
             pw:          txt(p.PW),
-            email:       txt(p.Email),
+            emailIds:    (p.Email?.relation || []).map(r=>r.id.replace(/-/g,"")),
             platform:    txt(p.Platform),
             platformId:  txt(p["Platform ID"]),
             campaign:    txt(p.Campaign),
@@ -1625,8 +1641,9 @@ Rules:
 
       // ── createSmAccount ───────────────────────────────────────────────
       if (body.action === "createSmAccount") {
-        const { name, type, login, loginId, username, pw, email, platform, platformId, campaign, campaignId } = body;
+        const { name, type, login, loginId, username, pw, emailId, platform, platformId, campaign, campaignId } = body;
         if (!name) return json({ error: "name required" }, 400);
+        const dash = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const rt = v => v ? [{ type:"text", text:{ content: v } }] : [];
         const props = {
           Name:          { title: [{ type:"text", text:{ content: name } }] },
@@ -1634,13 +1651,13 @@ Rules:
           "Login ID":    { rich_text: rt(loginId) },
           Username:      { rich_text: rt(username) },
           PW:            { rich_text: rt(pw) },
-          Email:         { rich_text: rt(email) },
           Platform:      { rich_text: rt(platform) },
           "Platform ID": { rich_text: rt(platformId) },
           Campaign:      { rich_text: rt(campaign) },
           "Campaign ID": { rich_text: rt(campaignId) },
         };
-        if (type) props.Type = { select: { name: type } };
+        if (type)    props.Type  = { select: { name: type } };
+        if (emailId) props.Email = { relation: [{ id: dash(emailId) }] };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -1648,12 +1665,12 @@ Rules:
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
-        return json({ success: true, account: { id: result.id.replace(/-/g,""), name, type: type||"", login: login||"", loginId: loginId||"", username: username||"", pw: pw||"", email: email||"", platform: platform||"", platformId: platformId||"", campaign: campaign||"", campaignId: campaignId||"" } });
+        return json({ success: true, account: { id: result.id.replace(/-/g,""), name, type: type||"", login: login||"", loginId: loginId||"", username: username||"", pw: pw||"", emailIds: emailId ? [emailId] : [], platform: platform||"", platformId: platformId||"", campaign: campaign||"", campaignId: campaignId||"" } });
       }
 
       // ── updateSmAccount ───────────────────────────────────────────────
       if (body.action === "updateSmAccount") {
-        const { id, name, type, login, loginId, username, pw, email, platform, platformId, campaign, campaignId } = body;
+        const { id, name, type, login, loginId, username, pw, emailId, platform, platformId, campaign, campaignId } = body;
         if (!id) return json({ error: "id required" }, 400);
         const dash = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const rt = v => v != null ? [{ type:"text", text:{ content: v } }] : [];
@@ -1664,7 +1681,7 @@ Rules:
         if (loginId    != null) props["Login ID"]    = { rich_text: rt(loginId) };
         if (username   != null) props.Username       = { rich_text: rt(username) };
         if (pw         != null) props.PW             = { rich_text: rt(pw) };
-        if (email      != null) props.Email          = { rich_text: rt(email) };
+        if (emailId    !== undefined) props.Email    = emailId ? { relation: [{ id: dash(emailId) }] } : { relation: [] };
         if (platform   != null) props.Platform       = { rich_text: rt(platform) };
         if (platformId != null) props["Platform ID"] = { rich_text: rt(platformId) };
         if (campaign   != null) props.Campaign       = { rich_text: rt(campaign) };
