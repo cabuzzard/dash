@@ -510,7 +510,7 @@ async function loadResearch() {
     const r = data.research;
     if (!r) {
       document.getElementById('r-name').textContent = 'No research record — add one in Notion to populate this page.';
-      ['r-problem','r-keymessage','r-products','r-actions','r-methods','r-news','r-tiktok'].forEach(id => {
+      ['r-problem','r-keymessage','r-products','r-actions','r-methods','r-news'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
       });
@@ -551,7 +551,7 @@ async function loadResearch() {
     }
     // Condense all fields in parallel via Claude
     const loading = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-    ['r-problem','r-keymessage','r-products','r-actions','r-methods','r-news','r-tiktok'].forEach(id => {
+    ['r-problem','r-keymessage','r-products','r-actions','r-methods','r-news'].forEach(id => {
       document.getElementById(id).innerHTML = loading;
     });
 
