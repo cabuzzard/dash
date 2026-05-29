@@ -6,7 +6,7 @@
 <meta http-equiv="X-Frame-Options" content="DENY">
 <link rel="stylesheet" href="../style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Estate &amp; Divorce Property Resource — Admin</title>
+<title>Webguy — AI Content Management</title>
 <style>
 /* STATUS CHANGE BUTTON */
 .title-status-btn {
@@ -173,7 +173,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2>TikTok Trends</h2>
+    <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Research prompt">✎</button></h2>
     <div class="content">
       <div class="body-text" id="r-tiktok"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -344,6 +344,26 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
       <button class="modal-btn save" id="modalSave" onclick="saveModal()">Save to Notion</button>
+    </div>
+  </div>
+</div>
+
+<!-- SM POSTS PROMPT MODAL -->
+<div class="modal-overlay" id="smPromptModal">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-head">
+      <div class="modal-title">SM Posts — Research Prompt</div>
+      <button class="modal-close" onclick="closeSmPromptModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Edit keywords or adjust the prompt, then send to Claude.</div>
+      <textarea class="modal-ta" id="smPromptTa" rows="10" style="min-height:200px;"></textarea>
+      <div id="smPromptStatus" style="font-size:12px;color:#888;margin-top:8px;"></div>
+      <div id="smPromptResult" style="display:none;margin-top:12px;font-size:12px;color:#c9c9c9;white-space:pre-wrap;background:#2a2a2a;padding:12px;border-radius:4px;max-height:320px;overflow-y:auto;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeSmPromptModal()">Close</button>
+      <button class="modal-btn save" id="smPromptSendBtn" onclick="sendSmPrompt()">Send to Claude</button>
     </div>
   </div>
 </div>
@@ -536,7 +556,7 @@ async function loadResearch() {
       condense('Recommended Actions — prioritised by ROI, what to do next', actionsInput),
       condense('Methods', rawMethods),
       condense('News Feed', r.newsFeed),
-      condense('TikTok Trends', r.tiktokTrends),
+      condense('SM Posts', r.tiktokTrends),
     ]);
 
     document.getElementById('r-problem').innerHTML    = problem;
@@ -1194,6 +1214,55 @@ function init() {
   loadTitles();
   loadTodos();
   loadLogins();
+}
+
+// ── SM POSTS PROMPT MODAL ─────────────────────────────────────────────
+const SM_PROMPT_TEMPLATE = `Use Apify to research short-form script ideas for these keywords: [KEYWORDS]. For each keyword, run the TikTok Scraper and YouTube Shorts Scraper. Return the top 10 videos per platform per keyword, sorted by views. For each video include: title/caption, view count, and any hashtags. Then summarize the top 3 recurring themes or angles across all results — these are my script ideas.`;
+
+function openSmPromptModal() {
+  const kws = (RAW.keywords || '').split(',').map(s => s.trim()).filter(Boolean);
+  const kwStr = kws.length ? kws.join(', ') : '[keyword 1], [keyword 2], [keyword 3]';
+  document.getElementById('smPromptTa').value = SM_PROMPT_TEMPLATE.replace('[KEYWORDS]', kwStr);
+  document.getElementById('smPromptStatus').textContent = '';
+  document.getElementById('smPromptStatus').style.color = '#888';
+  document.getElementById('smPromptResult').style.display = 'none';
+  document.getElementById('smPromptResult').textContent = '';
+  document.getElementById('smPromptSendBtn').disabled = false;
+  document.getElementById('smPromptSendBtn').textContent = 'Send to Claude';
+  document.getElementById('smPromptModal').classList.add('open');
+}
+
+function closeSmPromptModal() {
+  document.getElementById('smPromptModal').classList.remove('open');
+}
+
+document.getElementById('smPromptModal').addEventListener('click', function(e) {
+  if (e.target === this) closeSmPromptModal();
+});
+
+async function sendSmPrompt() {
+  const prompt = document.getElementById('smPromptTa').value.trim();
+  if (!prompt) return;
+  const btn    = document.getElementById('smPromptSendBtn');
+  const status = document.getElementById('smPromptStatus');
+  const result = document.getElementById('smPromptResult');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  status.textContent = 'Calling Claude…';
+  status.style.color = '#888';
+  result.style.display = 'none';
+  try {
+    const res = await w('sendPrompt', { prompt });
+    result.textContent = res.text || '(no response)';
+    result.style.display = 'block';
+    status.textContent = '';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#ff6b6b';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send to Claude';
+  }
 }
 </script>
 </body>

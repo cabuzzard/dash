@@ -248,7 +248,7 @@ export default {
     const TS_SECRET      = (env.TURNSTILE_SECRET|| "1x0000000000000000000000000000000AA").trim();
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
-    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-29-01" });
+    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-29-02" });
     if (request.method !== "POST")    return json({ error: "POST only" }, 405);
 
     let body;
@@ -1184,6 +1184,29 @@ Rules:
         const data = await resp.json();
         const out = data.content?.[0]?.text || '';
         return json({ text: out });
+      }
+
+      // ── CAMPAIGN ADMIN: sendPrompt via Claude ─────────────────────────
+      if (body.action === "sendPrompt") {
+        const { prompt } = body;
+        if (!prompt) return json({ error: "prompt required" }, 400);
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': env.ANTHROPIC_API_KEY || '',
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 2048,
+            messages: [{ role: 'user', content: prompt }]
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok) return json({ error: data.error?.message || "Claude error" }, resp.status);
+        const text = data.content?.[0]?.text || '';
+        return json({ text });
       }
 
       // ΓöÇΓöÇ CAMPAIGN ADMIN: updateResearch ΓöÇΓöÇ
