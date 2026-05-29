@@ -1520,11 +1520,20 @@ function openImageModal(id) {
   const titleShort = (d.title || '').length > 42 ? (d.title || '').slice(0, 42) + '…' : (d.title || 'Post');
   document.getElementById('imageModalTitle').textContent = 'Background — ' + titleShort;
 
-  // Auto-generate prompt from title + first 2 sentences of script
-  const scriptSnippet = (d.script || '').split(/(?<=[.!?])\s+/).slice(0, 2).join(' ').slice(0, 200);
-  const prompt = `A cinematic vertical (9:16 portrait) background image for a short-form social media video titled "${d.title || ''}".${scriptSnippet ? '\n\nThe video is about: ' + scriptSnippet : ''}
-
-Style: photographic, atmospheric, dramatic lighting, no text, no people, high visual contrast, suitable as a dark moody background with white text overlay. TikTok/Instagram Reels format. Ultra high quality.`;
+  // Use masterPrompt from Image Style DNA if available, otherwise auto-generate
+  let prompt = '';
+  if (d.imageStyleDna) {
+    try {
+      const dna = JSON.parse(d.imageStyleDna);
+      if (dna.masterPrompt) {
+        prompt = dna.masterPrompt + (d.title ? `\n\nSubject/theme: ${d.title}` : '');
+      }
+    } catch(e) {}
+  }
+  if (!prompt) {
+    const scriptSnippet = (d.script || '').split(/(?<=[.!?])\s+/).slice(0, 2).join(' ').slice(0, 200);
+    prompt = `A cinematic vertical (9:16 portrait) background image for a short-form social media video titled "${d.title || ''}".${scriptSnippet ? '\n\nThe video is about: ' + scriptSnippet : ''}\n\nStyle: photographic, atmospheric, dramatic lighting, no text, no people, high visual contrast, suitable as a dark moody background with white text overlay. TikTok/Instagram Reels format. Ultra high quality.`;
+  }
 
   document.getElementById('imagePromptTa').value = prompt;
   document.getElementById('imageSavePath').value  = IMAGE_SAVE_PATH;
