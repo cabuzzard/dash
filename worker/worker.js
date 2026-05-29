@@ -1653,7 +1653,7 @@ Rules:
             loginId:     txt(p["Login ID"]),
             username:    txt(p.Username),
             pw:          txt(p.PW),
-            emailIds:    (p.Email?.relation || []).map(r=>r.id.replace(/-/g,"")),
+            emailIds:    (p.Emai?.relation || []).map(r=>r.id.replace(/-/g,"")),
             platform:    txt(p.Platform),
             platformId:  txt(p["Platform ID"]),
             campaign:    txt(p.Campaign),
@@ -1681,7 +1681,7 @@ Rules:
           "Campaign ID": { rich_text: rt(campaignId) },
         };
         if (type)    props.Type  = { select: { name: type } };
-        if (emailId) props.Email = { relation: [{ id: dash(emailId) }] };
+        if (emailId) props.Emai  = { relation: [{ id: dash(emailId) }] };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -1705,7 +1705,7 @@ Rules:
         if (loginId    != null) props["Login ID"]    = { rich_text: rt(loginId) };
         if (username   != null) props.Username       = { rich_text: rt(username) };
         if (pw         != null) props.PW             = { rich_text: rt(pw) };
-        if (emailId    !== undefined) props.Email    = emailId ? { relation: [{ id: dash(emailId) }] } : { relation: [] };
+        if (emailId    !== undefined) props.Emai     = emailId ? { relation: [{ id: dash(emailId) }] } : { relation: [] };
         if (platform   != null) props.Platform       = { rich_text: rt(platform) };
         if (platformId != null) props["Platform ID"] = { rich_text: rt(platformId) };
         if (campaign   != null) props.Campaign       = { rich_text: rt(campaign) };
