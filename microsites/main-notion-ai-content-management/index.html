@@ -374,8 +374,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-body">
       <div class="modal-hint">Scrapes TikTok + YouTube for trending content around these keywords, then uses Claude to generate 5 script ideas. Each idea is added to the SM Posts box as a Draft.</div>
-      <label class="lm-label" for="smResearchKws" style="margin-top:14px;">Keywords</label>
-      <input type="text" class="modal-ta" id="smResearchKws" placeholder="keyword 1, keyword 2, keyword 3">
+      <label class="lm-label" for="smResearchKws" style="margin-top:14px;">Keywords <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— one per line, or comma-separated</span></label>
+      <textarea class="modal-ta" id="smResearchKws" rows="5" placeholder="keyword 1&#10;keyword 2&#10;keyword 3" style="resize:vertical;"></textarea>
       <div id="smPromptStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
     </div>
     <div class="modal-foot">
@@ -1316,8 +1316,8 @@ async function deleteSmPost(id) {
 
 // ── SM POSTS MODAL ────────────────────────────────────────────────────
 function openSmPromptModal() {
-  const kws = (RAW.keywords || '').split(',').map(s => s.trim()).filter(Boolean);
-  document.getElementById('smResearchKws').value = kws.join(', ');
+  const saved = localStorage.getItem('smResearchPrompt_' + CAMPAIGN_ID) || '';
+  document.getElementById('smResearchKws').value = saved;
   document.getElementById('smPromptStatus').textContent = '';
   document.getElementById('smPromptStatus').style.color = '#888';
   const btn = document.getElementById('smPromptSendBtn');
@@ -1337,7 +1337,8 @@ document.getElementById('smPromptModal').addEventListener('click', function(e) {
 async function runSmResearch() {
   const kwsRaw = document.getElementById('smResearchKws').value.trim();
   if (!kwsRaw) return;
-  const kws  = kwsRaw.split(',').map(s => s.trim()).filter(Boolean);
+  const kws  = kwsRaw.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
+  localStorage.setItem('smResearchPrompt_' + CAMPAIGN_ID, kwsRaw);
   const btn    = document.getElementById('smPromptSendBtn');
   const status = document.getElementById('smPromptStatus');
 
