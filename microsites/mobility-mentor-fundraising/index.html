@@ -73,6 +73,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 .smp-render { background: none; border: 1px solid #2a3a5a; color: #5e8ec9; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
 .smp-render:hover { background: rgba(94,142,201,.15); }
 .smp-localpath { font-size: 10px; color: #444; margin-top: 3px; font-family: monospace; word-break: break-all; }
+.smp-topvids { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+.smp-topvid  { font-size: 10px; color: #4a7ab5; text-decoration: none; border: 1px solid #2a3a5a; padding: 1px 6px; white-space: nowrap; transition: color .15s; }
+.smp-topvid:hover { color: #7aaee0; border-color: #4a7ab5; }
 </style>
 </head>
 <body>
@@ -1278,11 +1281,14 @@ async function loadSmPosts() {
       pending.forEach(p => {
         const badges = (p.platforms || []).map(pl => `<span class="smp-badge">${esc(pl)}</span>`).join('');
         const preview = p.copy.length > 100 ? p.copy.slice(0, 100) + '…' : p.copy;
+        const topVidLinks = (p.topVideos || '').split('\n').filter(u => u.startsWith('http')).slice(0, 3)
+          .map((u, i) => `<a class="smp-topvid" href="${esc(u)}" target="_blank" rel="noopener">▶ Vid ${i+1}</a>`).join('');
         html += `<div class="smp-row" id="smp-${p.id}">
           <div class="smp-info">
             <div class="smp-title">${esc(p.title)}</div>
             ${preview ? `<div class="smp-copy">${esc(preview)}</div>` : ''}
             ${badges ? `<div class="smp-plats">${badges}</div>` : ''}
+            ${topVidLinks ? `<div class="smp-topvids">${topVidLinks}</div>` : ''}
           </div>
           <div class="smp-actions">
             <button class="smp-approve" onclick="approveSmPost('${p.id}')" title="Approve">✓</button>

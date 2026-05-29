@@ -1752,6 +1752,7 @@ Rules:
             copy:      p["Post Copy"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             script:    p["Script"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             localPath: p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            topVideos: p["Top Videos"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             status:    p["Status"]?.select?.name || "Draft",
             platforms: (p["Platform"]?.multi_select || []).map(s => s.name),
           };
@@ -1911,16 +1912,32 @@ Output the script text only. No preamble, no labels.`;
         }
 
         // 3 — Format scraped data
-        const fmtTT = (Array.isArray(tiktokItems) ? tiktokItems : []).slice(0, 12).map(v =>
+        // Indexed version (with URLs) sent to Claude so it can pick TopVideos per idea
+        const tiktokData = Array.isArray(tiktokItems) ? tiktokItems.slice(0, 12) : [];
+        const ytData     = Array.isArray(ytItems)     ? ytItems.slice(0, 10)     : [];
+
+        const fmtTT = tiktokData.map((v, i) => {
+          const url   = v.webVideoUrl || v.url || '';
+          const title = (v.text || v.desc || v.title || '').slice(0, 70);
+          const views = v.playCount || v.stats?.playCount || 0;
+          return `[T${i+1}] "${title}" | views:${views}${url ? ' | ' + url : ''}`;
+        }).join('\n') || '(no TikTok data — proceed from keywords only)';
+
+        const fmtYT = ytData.map((v, i) => {
+          const url   = v.url || v.videoUrl || (v.id ? `https://youtube.com/watch?v=${v.id}` : '');
+          const title = (v.title || '').slice(0, 70);
+          const views = v.viewCount || 0;
+          return `[Y${i+1}] "${title}" | views:${views}${url ? ' | ' + url : ''}`;
+        }).join('\n') || '(no YouTube data — proceed from keywords only)';
+
+        // 3.5 — Write compact summary (no URLs) to Research TikTok Trends field
+        const fmtTTsummary = tiktokData.map(v =>
           `- "${(v.text || v.desc || v.title || '').slice(0, 80)}" | views: ${v.playCount || v.stats?.playCount || 0}`
-        ).join('\n') || '(no TikTok data — proceed from keywords only)';
-
-        const fmtYT = (Array.isArray(ytItems) ? ytItems : []).slice(0, 10).map(v =>
+        ).join('\n') || '(no TikTok data)';
+        const fmtYTsummary = ytData.map(v =>
           `- "${(v.title || '').slice(0, 80)}" | views: ${v.viewCount || 0} | ${v.channelName || v.channelTitle || ''}`
-        ).join('\n') || '(no YouTube data — proceed from keywords only)';
-
-        // 3.5 — Write raw Apify results to Research record TikTok Trends field
-        const rawSummary = `KEYWORDS: ${kws.join(', ')}\n\nTIKTOK TRENDING:\n${fmtTT}\n\nYOUTUBE TRENDING:\n${fmtYT}`;
+        ).join('\n') || '(no YouTube data)';
+        const rawSummary = `KEYWORDS: ${kws.join(', ')}\n\nTIKTOK TRENDING:\n${fmtTTsummary}\n\nYOUTUBE TRENDING:\n${fmtYTsummary}`;
         try {
           const resRows = await notionQuery(RESEARCH_DB, {
             filter: { property: "Campaign", relation: { contains: dash(campaignId) } }
@@ -1936,10 +1953,10 @@ Output the script text only. No preamble, no labels.`;
 
         const claudePrompt = `You are a social media content strategist. Based on trending content for the keywords "${kws.join(', ')}", generate exactly 5 short-form script ideas.
 
-TRENDING TIKTOK:
+TRENDING TIKTOK (indexed — copy URLs exactly for TopVideos):
 ${fmtTT}
 
-TRENDING YOUTUBE:
+TRENDING YOUTUBE (indexed — copy URLs exactly for TopVideos):
 ${fmtYT}
 
 Generate exactly 5 ideas. Use EXACTLY this format with no extra text before IDEA 1:
@@ -1948,18 +1965,22 @@ IDEA 1
 Title: [compelling hook, max 10 words]
 Platform: [TikTok | YouTube | Both]
 Script: [2-3 sentence video outline]
+TopVideos: [3 URLs from the lists above that best exemplify this idea's niche, space-separated]
 
 IDEA 2
 Title: ...
 Platform: ...
 Script: ...
+TopVideos: ...
 
-(continue through IDEA 5)`;
+(continue through IDEA 5)
+
+RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick the 3 that best match each specific idea's angle. If fewer than 3 URLs exist, use what is available. If no URLs at all, write "none".`;
 
         const cRes = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': (env.ANTHROPIC_API_KEY || '').trim(), 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1500, messages: [{ role: 'user', content: claudePrompt }] })
+          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2000, messages: [{ role: 'user', content: claudePrompt }] })
         });
         const cData = await cRes.json();
         if (!cRes.ok) return json({ error: cData.error?.message || "Claude error" }, cRes.status);
@@ -1970,34 +1991,40 @@ Script: ...
         const created = [];
 
         for (const block of blocks.slice(0, 5)) {
-          const titleM  = block.match(/Title:\s*(.+)/i);
-          const platM   = block.match(/Platform:\s*(.+)/i);
-          const scriptM = block.match(/Script:\s*([\s\S]+?)(?=\n\nIDEA|\s*$)/i);
+          const titleM   = block.match(/Title:\s*(.+)/i);
+          const platM    = block.match(/Platform:\s*(.+)/i);
+          const topVidM  = block.match(/TopVideos:\s*(.+)/i);
+          const scriptM  = block.match(/Script:\s*([\s\S]+?)(?=\nTopVideos:|\n\nIDEA|\s*$)/i);
 
-          const title   = (titleM?.[1] || '').trim() || 'Script Idea';
-          const platRaw = (platM?.[1] || 'TikTok').trim().toLowerCase();
-          const script  = (scriptM?.[1] || '').trim() ||
-            block.replace(/^IDEA\s+\d+\s*/i,'').replace(/Title:[^\n]+\n?/i,'').replace(/Platform:[^\n]+\n?/i,'').replace(/Script:\s*/i,'').trim();
+          const title      = (titleM?.[1] || '').trim() || 'Script Idea';
+          const platRaw    = (platM?.[1] || 'TikTok').trim().toLowerCase();
+          const script     = (scriptM?.[1] || '').trim() ||
+            block.replace(/^IDEA\s+\d+\s*/i,'').replace(/Title:[^\n]+\n?/i,'').replace(/Platform:[^\n]+\n?/i,'').replace(/Script:\s*/i,'').replace(/TopVideos:[^\n]+\n?/i,'').trim();
+
+          // Extract up to 3 real URLs from TopVideos line
+          const topVidsRaw = (topVidM?.[1] || '').trim();
+          const topVideos  = topVidsRaw === 'none' ? ''
+            : topVidsRaw.split(/\s+/).filter(u => u.startsWith('http')).slice(0, 3).join('\n');
 
           const platforms = [];
           if (platRaw.includes('tiktok') || platRaw.includes('both')) platforms.push({ name: 'TikTok' });
           if (platRaw.includes('youtube') || platRaw.includes('shorts') || platRaw.includes('both')) platforms.push({ name: 'YouTube' });
           if (!platforms.length) platforms.push({ name: 'TikTok' });
 
+          const props = {
+            "Post Title": { title:        [{ type: "text", text: { content: title } }] },
+            "Status":     { select:       { name: "Draft" } },
+            "Platform":   { multi_select: platforms },
+            "Campaign":   { relation:     [{ id: dash(campaignId) }] },
+            "Post Copy":  { rich_text:    [{ type: "text", text: { content: script.slice(0, 2000) } }] },
+          };
+          if (topVideos) props["Top Videos"] = { rich_text: [{ type: "text", text: { content: topVideos } }] };
+
           try {
             const r = await fetch('https://api.notion.com/v1/pages', {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${NOTION_TOKEN}`, 'Notion-Version': NOTION_VERSION, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                parent:     { database_id: dash(SM_POSTS_DB) },
-                properties: {
-                  "Post Title": { title:       [{ type: "text", text: { content: title } }] },
-                  "Status":     { select:      { name: "Draft" } },
-                  "Platform":   { multi_select: platforms },
-                  "Campaign":   { relation:    [{ id: dash(campaignId) }] },
-                  "Post Copy":  { rich_text:   [{ type: "text", text: { content: script.slice(0, 2000) } }] },
-                }
-              })
+              body: JSON.stringify({ parent: { database_id: dash(SM_POSTS_DB) }, properties: props })
             });
             const page = await r.json();
             if (r.ok) created.push(page.id.replace(/-/g,""));
