@@ -1278,6 +1278,7 @@ async function loadSmPosts() {
           </div>
           <div class="smp-actions">
             <a href="https://www.notion.so/${p.id}" target="_blank" class="smp-link" title="Open in Notion">↗</a>
+            <button class="smp-delete" onclick="deleteSmPost('${p.id}')" title="Delete">✕</button>
           </div>
         </div>`;
       });
