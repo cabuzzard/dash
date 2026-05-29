@@ -356,14 +356,13 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeSmPromptModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="modal-hint">Edit keywords or adjust the prompt, then send to Claude.</div>
+      <div class="modal-hint">Edit keywords or adjust the prompt, then copy and paste into a Claude session with Apify MCP. Claude will run the scrapers and write results back to the SM Posts box automatically.</div>
       <textarea class="modal-ta" id="smPromptTa" rows="10" style="min-height:200px;"></textarea>
       <div id="smPromptStatus" style="font-size:12px;color:#888;margin-top:8px;"></div>
-      <div id="smPromptResult" style="display:none;margin-top:12px;font-size:12px;color:#c9c9c9;white-space:pre-wrap;background:#2a2a2a;padding:12px;border-radius:4px;max-height:320px;overflow-y:auto;"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeSmPromptModal()">Close</button>
-      <button class="modal-btn save" id="smPromptSendBtn" onclick="sendSmPrompt()">Send to Claude</button>
+      <button class="modal-btn save" id="smPromptSendBtn" onclick="sendSmPrompt()">Copy Prompt</button>
     </div>
   </div>
 </div>
@@ -1217,18 +1216,21 @@ function init() {
 }
 
 // ── SM POSTS PROMPT MODAL ─────────────────────────────────────────────
-const SM_PROMPT_TEMPLATE = `Use Apify to research short-form script ideas for these keywords: [KEYWORDS]. For each keyword, run the TikTok Scraper and YouTube Shorts Scraper. Return the top 10 videos per platform per keyword, sorted by views. For each video include: title/caption, view count, and any hashtags. Then summarize the top 3 recurring themes or angles across all results — these are my script ideas.`;
+const SM_PROMPT_TEMPLATE = `Use Apify to research short-form script ideas for these keywords: [KEYWORDS]. For each keyword, run the TikTok Scraper and YouTube Shorts Scraper. Return the top 10 videos per platform per keyword, sorted by views. For each video include: title/caption, view count, and any hashtags. Then summarize the top 3 recurring themes or angles across all results — these are my script ideas.
+
+When done, write your full output to Notion: update the "TikTok Trends" property on Research page [RESEARCH_ID] with the complete text. Use the Notion MCP notion-update-page tool, command update_properties, property name "TikTok Trends". Do not abbreviate.`;
 
 function openSmPromptModal() {
   const kws = (RAW.keywords || '').split(',').map(s => s.trim()).filter(Boolean);
   const kwStr = kws.length ? kws.join(', ') : '[keyword 1], [keyword 2], [keyword 3]';
-  document.getElementById('smPromptTa').value = SM_PROMPT_TEMPLATE.replace('[KEYWORDS]', kwStr);
+  const prompt = SM_PROMPT_TEMPLATE
+    .replace('[KEYWORDS]', kwStr)
+    .replace('[RESEARCH_ID]', RESEARCH_ID);
+  document.getElementById('smPromptTa').value = prompt;
   document.getElementById('smPromptStatus').textContent = '';
   document.getElementById('smPromptStatus').style.color = '#888';
-  document.getElementById('smPromptResult').style.display = 'none';
-  document.getElementById('smPromptResult').textContent = '';
   document.getElementById('smPromptSendBtn').disabled = false;
-  document.getElementById('smPromptSendBtn').textContent = 'Send to Claude';
+  document.getElementById('smPromptSendBtn').textContent = 'Copy Prompt';
   document.getElementById('smPromptModal').classList.add('open');
 }
 
@@ -1245,23 +1247,15 @@ async function sendSmPrompt() {
   if (!prompt) return;
   const btn    = document.getElementById('smPromptSendBtn');
   const status = document.getElementById('smPromptStatus');
-  const result = document.getElementById('smPromptResult');
-  btn.disabled = true;
-  btn.textContent = 'Sending…';
-  status.textContent = 'Calling Claude…';
-  status.style.color = '#888';
-  result.style.display = 'none';
   try {
-    const res = await w('sendPrompt', { prompt });
-    result.textContent = res.text || '(no response)';
-    result.style.display = 'block';
-    status.textContent = '';
+    await navigator.clipboard.writeText(prompt);
+    btn.textContent = 'Copied ✓';
+    status.textContent = 'Paste into a Claude session with Apify MCP. Claude will run the scrapers and write results back to the SM Posts box.';
+    status.style.color = '#888';
+    setTimeout(() => { btn.textContent = 'Copy Prompt'; btn.disabled = false; }, 2000);
   } catch(e) {
-    status.textContent = 'Error: ' + e.message;
+    status.textContent = 'Copy failed — select all and copy manually.';
     status.style.color = '#ff6b6b';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Send to Claude';
   }
 }
 </script>
