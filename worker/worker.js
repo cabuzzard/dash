@@ -1753,8 +1753,9 @@ Rules:
             script:       p["Script"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             localPath:    p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             topVideos:    p["Top Videos"]?.rich_text?.map(t=>t.plain_text).join("") || "",
-            voiceId:      p["Voice ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
-            captionStyle: p["Caption Style"]?.select?.name || "",
+            voiceId:         p["Voice ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            captionStyle:    p["Caption Style"]?.select?.name || "",
+            backgroundImage: p["Background Image"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             status:    p["Status"]?.select?.name || "Draft",
             platforms: (p["Platform"]?.multi_select || []).map(s => s.name),
           };
@@ -1848,9 +1849,11 @@ Output the script text only. No preamble, no labels.`;
         const { id, voiceId, captionStyle } = body;
         if (!id) return json({ error: "id required" }, 400);
         const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const { backgroundImage } = body;
         const props = {};
-        if (voiceId !== undefined)      props["Voice ID"]      = { rich_text: [{ type: "text", text: { content: (voiceId || "").slice(0, 200) } }] };
-        if (captionStyle !== undefined) props["Caption Style"] = captionStyle ? { select: { name: captionStyle } } : { select: null };
+        if (voiceId !== undefined)         props["Voice ID"]         = { rich_text: [{ type: "text", text: { content: (voiceId || "").slice(0, 200) } }] };
+        if (captionStyle !== undefined)    props["Caption Style"]    = captionStyle ? { select: { name: captionStyle } } : { select: null };
+        if (backgroundImage !== undefined) props["Background Image"] = { rich_text: [{ type: "text", text: { content: (backgroundImage || "").slice(0, 500) } }] };
         if (!Object.keys(props).length) return json({ success: true });
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
           method: "PATCH",

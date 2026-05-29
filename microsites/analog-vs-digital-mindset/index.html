@@ -72,6 +72,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 .smp-approved .smp-title { color: #666; }
 .smp-edit   { background: none; border: 1px solid #3a3a2a; color: #9e9e5e; font-size: 13px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
 .smp-edit:hover   { background: rgba(158,158,94,.15); }
+.smp-image  { background: none; border: 1px solid #2a4a3a; color: #5ec99e; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
+.smp-image:hover  { background: rgba(94,201,158,.15); }
+.smp-bgpath { font-size: 10px; color: #3a6a4a; margin-top: 3px; font-family: monospace; word-break: break-all; }
 .smp-render { background: none; border: 1px solid #2a3a5a; color: #5e8ec9; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
 .smp-render:hover { background: rgba(94,142,201,.15); }
 .smp-localpath { font-size: 10px; color: #444; margin-top: 3px; font-family: monospace; word-break: break-all; }
@@ -369,6 +372,36 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
       <button class="modal-btn save" id="modalSave" onclick="saveModal()">Save to Notion</button>
+    </div>
+  </div>
+</div>
+
+<!-- BACKGROUND IMAGE MODAL -->
+<div class="modal-overlay" id="imageModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="imageModalTitle">Background Image</div>
+      <button class="modal-close" onclick="closeImageModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Copy the prompt below, then click <strong>Open ChatGPT</strong>. Generate the image, right-click → <em>Save As</em> → save directly to the path shown, then click <strong>Save Path to Notion</strong>.</div>
+      <label class="lm-label" style="margin-top:14px;">Image Prompt <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit before copying</span></label>
+      <textarea class="modal-ta" id="imagePromptTa" rows="6" style="resize:vertical;font-size:12px;line-height:1.5;"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="modal-btn save" style="flex:1;" onclick="copyImagePromptAndOpen()">Copy Prompt &amp; Open ChatGPT</button>
+      </div>
+      <label class="lm-label" style="margin-top:14px;">Save image here <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— right-click → Save As in ChatGPT</span></label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input class="modal-ta" id="imageSavePath" type="text" style="height:32px;padding:5px 10px;font-size:11px;font-family:monospace;flex:1;" readonly />
+        <button class="modal-btn cancel" style="flex:0 0 auto;padding:0 10px;" onclick="copyImageSavePath()">Copy</button>
+      </div>
+      <label class="lm-label" style="margin-top:14px;">Saved path <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit if you saved elsewhere</span></label>
+      <input class="modal-ta" id="imageActualPath" type="text" style="height:32px;padding:5px 10px;font-size:11px;font-family:monospace;" placeholder="C:\Users\18318\dash\images\..." />
+      <div class="modal-status" id="imageModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeImageModal()">Close</button>
+      <button class="modal-btn save" id="imageModalSave" onclick="saveImagePath()">Save Path to Notion</button>
     </div>
   </div>
 </div>
@@ -1337,17 +1370,19 @@ async function loadSmPosts() {
     if (approved.length) {
       html += `<div class="smp-section-label" style="margin-top:${pending.length?'12px':'0'};">Approved</div>`;
       approved.forEach(p => {
-        SMP_DATA[p.id] = { title: p.title, script: p.script || '', voiceId: p.voiceId || '', captionStyle: p.captionStyle || '' };
+        SMP_DATA[p.id] = { title: p.title, script: p.script || '', voiceId: p.voiceId || '', captionStyle: p.captionStyle || '', backgroundImage: p.backgroundImage || '' };
         const badges = (p.platforms || []).map(pl => `<span class="smp-badge">${esc(pl)}</span>`).join('');
         const hasScript = !!p.script;
         html += `<div class="smp-row smp-approved" id="smp-${p.id}">
           <div class="smp-info">
             <div class="smp-title">${esc(p.title)}</div>
             ${badges ? `<div class="smp-plats">${badges}</div>` : ''}
+            ${p.backgroundImage ? `<div class="smp-bgpath">🖼 ${esc(p.backgroundImage)}</div>` : ''}
             ${p.localPath ? `<div class="smp-localpath">${esc(p.localPath)}</div>` : ''}
           </div>
           <div class="smp-actions">
-            <button class="smp-edit" onclick="openScriptModal('${p.id}')" title="Edit script">✎</button>
+            <button class="smp-image"  onclick="openImageModal('${p.id}')"  title="Background image">⬛</button>
+            <button class="smp-edit"   onclick="openScriptModal('${p.id}')" title="Edit script">✎</button>
             ${hasScript ? `<button class="smp-render" onclick="openRenderModal('${p.id}')" title="Render video">▶</button>` : ''}
             <a href="https://www.notion.so/${p.id}" target="_blank" class="smp-link" title="Open in Notion">↗</a>
             <button class="smp-delete" onclick="deleteSmPost('${p.id}')" title="Delete">✕</button>
@@ -1447,6 +1482,93 @@ async function runSmResearch() {
     status.style.color = '#ff6b6b';
     btn.disabled    = false;
     btn.textContent = 'Run Research';
+  }
+}
+
+// ── BACKGROUND IMAGE MODAL ───────────────────────────────────────────
+let IMAGE_POST_ID   = '';
+let IMAGE_SAVE_PATH = '';
+
+function openImageModal(id) {
+  const d = SMP_DATA[id] || {};
+  IMAGE_POST_ID   = id;
+  IMAGE_SAVE_PATH = 'C:\\Users\\18318\\dash\\images\\' + slugify(d.title || id) + '.jpg';
+
+  const titleShort = (d.title || '').length > 42 ? (d.title || '').slice(0, 42) + '…' : (d.title || 'Post');
+  document.getElementById('imageModalTitle').textContent = 'Background — ' + titleShort;
+
+  // Auto-generate prompt from title + first 2 sentences of script
+  const scriptSnippet = (d.script || '').split(/(?<=[.!?])\s+/).slice(0, 2).join(' ').slice(0, 200);
+  const prompt = `A cinematic vertical (9:16 portrait) background image for a short-form social media video titled "${d.title || ''}".${scriptSnippet ? '\n\nThe video is about: ' + scriptSnippet : ''}
+
+Style: photographic, atmospheric, dramatic lighting, no text, no people, high visual contrast, suitable as a dark moody background with white text overlay. TikTok/Instagram Reels format. Ultra high quality.`;
+
+  document.getElementById('imagePromptTa').value = prompt;
+  document.getElementById('imageSavePath').value  = IMAGE_SAVE_PATH;
+  document.getElementById('imageActualPath').value = d.backgroundImage || IMAGE_SAVE_PATH;
+  document.getElementById('imageModalStatus').textContent = '';
+  document.getElementById('imageModalStatus').className   = 'modal-status';
+  document.getElementById('imageModalSave').disabled = false;
+  document.getElementById('imageModalSave').textContent = 'Save Path to Notion';
+  document.getElementById('imageModal').classList.add('open');
+}
+
+function closeImageModal() {
+  document.getElementById('imageModal').classList.remove('open');
+}
+
+document.getElementById('imageModal').addEventListener('click', function(e) {
+  if (e.target === this) closeImageModal();
+});
+
+async function copyImagePromptAndOpen() {
+  const prompt = document.getElementById('imagePromptTa').value.trim();
+  try {
+    await navigator.clipboard.writeText(prompt);
+  } catch(e) { /* silent — still open the tab */ }
+  window.open('https://chatgpt.com', '_blank');
+}
+
+async function copyImageSavePath() {
+  const path = document.getElementById('imageSavePath').value;
+  try {
+    await navigator.clipboard.writeText(path);
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  } catch(e) {}
+}
+
+async function saveImagePath() {
+  const path   = document.getElementById('imageActualPath').value.trim();
+  const btn    = document.getElementById('imageModalSave');
+  const status = document.getElementById('imageModalStatus');
+  if (!path) { status.textContent = 'Enter the path where you saved the image.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    await w('updateSmPostSettings', { id: IMAGE_POST_ID, backgroundImage: path });
+    if (SMP_DATA[IMAGE_POST_ID]) SMP_DATA[IMAGE_POST_ID].backgroundImage = path;
+    // Update the display in the approved list
+    const row = document.getElementById('smp-' + IMAGE_POST_ID);
+    if (row) {
+      let bgEl = row.querySelector('.smp-bgpath');
+      if (!bgEl) {
+        bgEl = document.createElement('div');
+        bgEl.className = 'smp-bgpath';
+        row.querySelector('.smp-info').appendChild(bgEl);
+      }
+      bgEl.textContent = '🖼 ' + path;
+    }
+    status.textContent = 'Saved ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeImageModal, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Save Path to Notion';
   }
 }
 
@@ -1561,7 +1683,9 @@ async function copyRenderCommand() {
   // Escape single quotes for PowerShell single-quoted strings
   const escaped = script.replace(/'/g, "''");
   const safeVoice = voiceId.replace(/'/g, "''");
-  const cmd = `Set-ExecutionPolicy Bypass -Scope Process -Force; [System.IO.File]::WriteAllText('C:\\Users\\18318\\Videos\\src\\script.txt', '${escaped}', [System.Text.Encoding]::UTF8); & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}' -VoiceId '${safeVoice}' -CaptionStyle '${captionStyle}'`;
+  const bgImage = (SMP_DATA[RENDER_POST_ID]?.backgroundImage || '').replace(/'/g, "''");
+  const bgParam = bgImage ? ` -BackgroundImage '${bgImage}'` : '';
+  const cmd = `Set-ExecutionPolicy Bypass -Scope Process -Force; [System.IO.File]::WriteAllText('C:\\Users\\18318\\Videos\\src\\script.txt', '${escaped}', [System.Text.Encoding]::UTF8); & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}' -VoiceId '${safeVoice}' -CaptionStyle '${captionStyle}'${bgParam}`;
 
   try {
     await navigator.clipboard.writeText(cmd);

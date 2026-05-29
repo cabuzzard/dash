@@ -6,8 +6,9 @@ param(
     [string]$PostId,
     [string]$Slug,
     [string]$Token,
-    [string]$VoiceId      = "pNInz6obpgDQGcFmaJgB",
-    [string]$CaptionStyle = "Standard"
+    [string]$VoiceId         = "pNInz6obpgDQGcFmaJgB",
+    [string]$CaptionStyle    = "Standard",
+    [string]$BackgroundImage = ""
 )
 
 $RemotionDir = "C:\Users\18318\Videos"
@@ -23,6 +24,14 @@ $StyleProps = switch ($CaptionStyle) {
     "Cinematic" { '{"highlightColor":"#FFFFFF","fontSize":58,"captionBottom":220,"windowSize":6}' }
     "Energy"    { '{"highlightColor":"#FF4500","fontSize":76,"captionBottom":160,"windowSize":3}' }
     default     { '{"highlightColor":"#FFD700","fontSize":68,"captionBottom":180,"windowSize":4}' }
+}
+
+# ── Background image ─────────────────────────────────────────────────────────
+if ($BackgroundImage -and (Test-Path $BackgroundImage)) {
+    Write-Host "Copying background image from $BackgroundImage..."
+    Copy-Item $BackgroundImage "$RemotionDir\public\background.jpg" -Force
+} elseif ($BackgroundImage) {
+    Write-Host "Warning: background image not found at $BackgroundImage — using existing public\background.jpg"
 }
 
 # ── Audio ─────────────────────────────────────────────────────────────────────
