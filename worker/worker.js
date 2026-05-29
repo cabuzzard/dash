@@ -1757,6 +1757,7 @@ Rules:
             captionStyle:    p["Caption Style"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             backgroundImage: p["Background Image"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             voiceSettings:   p["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            imageStyleDna:   p["Image Style DNA"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             status:    p["Status"]?.select?.name || "Draft",
             platforms: (p["Platform"]?.multi_select || []).map(s => s.name),
           };
@@ -1783,6 +1784,7 @@ Rules:
           captionStyle:    p["Caption Style"]?.rich_text?.map(t=>t.plain_text).join("") || "",
           backgroundImage: p["Background Image"]?.rich_text?.map(t=>t.plain_text).join("") || "",
           voiceSettings:   p["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+          imageStyleDna:   p["Image Style DNA"]?.rich_text?.map(t=>t.plain_text).join("") || "",
           localPath:       p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
         });
       }
@@ -1878,6 +1880,7 @@ Output the script text only. No preamble, no labels.`;
         if (captionStyle !== undefined)   props["Caption Style"]   = { rich_text: [{ type: "text", text: { content: (captionStyle || "").slice(0, 2000) } }] };
         if (backgroundImage !== undefined)props["Background Image"]= { rich_text: [{ type: "text", text: { content: (backgroundImage || "").slice(0, 500) } }] };
         if (voiceSettings !== undefined)  props["Voice Settings"]  = { rich_text: [{ type: "text", text: { content: (voiceSettings || "").slice(0, 500) } }] };
+        if (body.imageStyleDna !== undefined) props["Image Style DNA"] = { rich_text: [{ type: "text", text: { content: (body.imageStyleDna || "").slice(0, 2000) } }] };
         if (!Object.keys(props).length) return json({ success: true });
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
           method: "PATCH",

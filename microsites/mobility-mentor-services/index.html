@@ -397,11 +397,13 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       </div>
       <label class="lm-label" style="margin-top:14px;">Saved path <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit if you saved elsewhere</span></label>
       <input class="modal-ta" id="imageActualPath" type="text" style="height:32px;padding:5px 10px;font-size:11px;font-family:monospace;" placeholder="C:\Users\18318\dash\images\..." />
+      <label class="lm-label" style="margin-top:14px;">Image Style DNA <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— style spec from ChatGPT for this image</span></label>
+      <textarea class="modal-ta" id="imageStyleDna" rows="4" placeholder="Paste image style DNA from ChatGPT..." style="font-size:11px;line-height:1.5;resize:vertical;"></textarea>
       <div class="modal-status" id="imageModalStatus"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeImageModal()">Close</button>
-      <button class="modal-btn save" id="imageModalSave" onclick="saveImagePath()">Save Path to Notion</button>
+      <button class="modal-btn save" id="imageModalSave" onclick="saveImagePath()">Save to Notion</button>
     </div>
   </div>
 </div>
@@ -1367,7 +1369,7 @@ async function loadSmPosts() {
     if (approved.length) {
       html += `<div class="smp-section-label" style="margin-top:${pending.length?'12px':'0'};">Approved</div>`;
       approved.forEach(p => {
-        SMP_DATA[p.id] = { title: p.title, script: p.script || '', voiceId: p.voiceId || '', captionStyle: p.captionStyle || '', backgroundImage: p.backgroundImage || '', voiceSettings: p.voiceSettings || '' };
+        SMP_DATA[p.id] = { title: p.title, script: p.script || '', voiceId: p.voiceId || '', captionStyle: p.captionStyle || '', backgroundImage: p.backgroundImage || '', voiceSettings: p.voiceSettings || '', imageStyleDna: p.imageStyleDna || '' };
         const badges = (p.platforms || []).map(pl => `<span class="smp-badge">${esc(pl)}</span>`).join('');
         const hasScript = !!p.script;
         html += `<div class="smp-row smp-approved" id="smp-${p.id}">
@@ -1527,10 +1529,11 @@ Style: photographic, atmospheric, dramatic lighting, no text, no people, high vi
   document.getElementById('imagePromptTa').value = prompt;
   document.getElementById('imageSavePath').value  = IMAGE_SAVE_PATH;
   document.getElementById('imageActualPath').value = d.backgroundImage || IMAGE_SAVE_PATH;
+  document.getElementById('imageStyleDna').value   = d.imageStyleDna || '';
   document.getElementById('imageModalStatus').textContent = '';
   document.getElementById('imageModalStatus').className   = 'modal-status';
   document.getElementById('imageModalSave').disabled = false;
-  document.getElementById('imageModalSave').textContent = 'Save Path to Notion';
+  document.getElementById('imageModalSave').textContent = 'Save to Notion';
   document.getElementById('imageModal').classList.add('open');
 }
 
@@ -1562,15 +1565,19 @@ async function copyImageSavePath() {
 }
 
 async function saveImagePath() {
-  const path   = document.getElementById('imageActualPath').value.trim();
-  const btn    = document.getElementById('imageModalSave');
-  const status = document.getElementById('imageModalStatus');
+  const path         = document.getElementById('imageActualPath').value.trim();
+  const imageStyleDna = document.getElementById('imageStyleDna').value.trim();
+  const btn          = document.getElementById('imageModalSave');
+  const status       = document.getElementById('imageModalStatus');
   if (!path) { status.textContent = 'Enter the path where you saved the image.'; return; }
   btn.disabled = true;
   btn.textContent = 'Saving…';
   try {
-    await w('updateSmPostSettings', { id: IMAGE_POST_ID, backgroundImage: path });
-    if (SMP_DATA[IMAGE_POST_ID]) SMP_DATA[IMAGE_POST_ID].backgroundImage = path;
+    await w('updateSmPostSettings', { id: IMAGE_POST_ID, backgroundImage: path, imageStyleDna });
+    if (SMP_DATA[IMAGE_POST_ID]) {
+      SMP_DATA[IMAGE_POST_ID].backgroundImage = path;
+      SMP_DATA[IMAGE_POST_ID].imageStyleDna   = imageStyleDna;
+    }
     // Update the display in the approved list
     const row = document.getElementById('smp-' + IMAGE_POST_ID);
     if (row) {
@@ -1589,7 +1596,7 @@ async function saveImagePath() {
     status.textContent = 'Error: ' + e.message;
     status.className = 'modal-status err';
     btn.disabled = false;
-    btn.textContent = 'Save Path to Notion';
+    btn.textContent = 'Save to Notion';
   }
 }
 
