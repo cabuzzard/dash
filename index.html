@@ -247,6 +247,45 @@
   .toast.show    { opacity: 1; transform: translateX(-50%) translateY(0); }
   .toast.success { border-color: var(--accent); color: var(--accent); }
   .toast.error   { border-color: var(--danger);  color: var(--danger); }
+
+  /* ── PROMPTS TAB ── */
+  .prompt-grid { padding: 20px 4px 8px; }
+  .prompt-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px;
+    display: flex; flex-direction: column; gap: 8px;
+    transition: border-color .15s;
+  }
+  .prompt-card:hover { border-color: var(--border2); }
+  .prompt-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .prompt-card-label { font-size: 13px; font-weight: 700; color: var(--text); flex: 1; }
+  .prompt-card-tag {
+    font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--text3); padding: 2px 7px; border: 1px solid var(--border2);
+    border-radius: 4px; white-space: nowrap; flex-shrink: 0;
+  }
+  .prompt-card-preview {
+    font-size: 12px; color: var(--text3); line-height: 1.55;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; white-space: pre-line;
+  }
+  .prompt-card-actions { display: flex; gap: 6px; align-items: center; margin-top: 2px; }
+  .prompt-copy-btn {
+    font-size: 12px; font-weight: 600; padding: 6px 14px;
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: 6px; color: var(--text2); cursor: pointer;
+    transition: all .15s; white-space: nowrap;
+  }
+  .prompt-copy-btn:hover { border-color: var(--text3); color: var(--text); }
+  .prompt-copy-btn.copied { border-color: #00cc66; color: #00cc66; }
+  .prompt-edit-btn, .prompt-del-btn {
+    font-size: 12px; padding: 6px 8px;
+    background: transparent; border: 1px solid transparent;
+    border-radius: 6px; color: var(--text3); cursor: pointer;
+    transition: all .15s; font-family: 'DM Sans', sans-serif;
+  }
+  .prompt-edit-btn:hover { border-color: var(--border2); color: var(--text2); }
+  .prompt-del-btn:hover  { border-color: var(--danger); color: var(--danger); }
 </style>
 </head>
 <body>
@@ -298,6 +337,7 @@
     <div class="tab" onclick="switchTab('skills')">Skills</div>
     <div class="tab" onclick="switchTab('domains')">Domains</div>
     <div class="tab" onclick="switchTab('debug')">Debug</div>
+    <div class="tab" onclick="switchTab('prompts')">Prompts</div>
   </div>
 
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
@@ -567,6 +607,16 @@
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabPrompts">
+    <div class="prompt-grid">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <div style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Prompt Library</div>
+        <button onclick="openAddPromptModal()" class="prompt-copy-btn" style="padding:5px 12px;">+ Add</button>
+      </div>
+      <div id="promptsList"></div>
     </div>
   </div>
 
@@ -1075,6 +1125,29 @@
   </div>
 </div>
 
+<!-- Prompt Add/Edit Modal -->
+<div class="modal-bg" id="promptModal" onclick="if(event.target===this)closePromptModal()">
+  <div class="modal">
+    <div class="modal-title" id="promptModalTitle">Add Prompt</div>
+    <div class="modal-field">
+      <label class="modal-label">Label</label>
+      <input class="modal-input" id="promptLabelInput" type="text" placeholder="e.g. Script Hook Rewrite" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Tag <span style="color:var(--text3);font-weight:400;">(category)</span></label>
+      <input class="modal-input" id="promptTagInput" type="text" placeholder="e.g. Script, Image, Video..." />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Prompt Text</label>
+      <textarea class="modal-input" id="promptTextInput" rows="10" placeholder="Full prompt text..." style="resize:vertical;line-height:1.6;font-size:13px;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closePromptModal()">Cancel</button>
+      <button class="btn btn-primary" id="promptSaveBtn" onclick="savePrompt()">Save</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 
@@ -1316,6 +1389,7 @@ function switchTab(name) {
   if (name === 'platforms') { loadPlatformMatrix(); if (!smAccsLoaded) loadSmAccounts(); if (!emailsLoaded) loadEmails(); }
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
   if (name === 'debug'     && !debugTabLoaded) { debugTabLoaded = true; initDebugTab(); }
+  if (name === 'prompts'   && !promptsTabLoaded) { promptsTabLoaded = true; initPromptsTab(); }
 }
 
 // ── DOMAINS TAB ───────────────────────────────────────────────────────
@@ -3978,6 +4052,157 @@ if (SESSION_TOKEN) {
   document.getElementById('pinScreen').classList.add('hidden');
   if (!ovLoaded) { ovLoaded = true; loadOverview(); }
   call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
+}
+
+// ── PROMPTS TAB ───────────────────────────────────────────────────────
+let promptsTabLoaded = false;
+
+const PROMPTS_KEY = 'hermes_prompts';
+
+const DEFAULT_PROMPTS = [
+  {
+    id: 'p1',
+    label: 'Remotion Context',
+    tag: 'Video',
+    text: "I'm building short-form vertical videos (1080×1920, 30fps) with Remotion. The composition is called VoiceoverVideo and accepts these input props:\n\n- highlightColor: hex string — color of the currently-spoken word\n- fontSize: number in px — caption text size\n- captionBottom: number in px — distance of captions from bottom of frame\n- windowSize: number — how many words shown in the caption window at once\n\nThe video has a Ken Burns background image (slow zoom + pan), word-synced captions with highlight, subtle vignette, and an ElevenLabs voiceover. I render with:\n\nnpx remotion render VoiceoverVideo out/video.mp4 --scale=0.667 --props='{\"highlightColor\":\"#FFD700\",\"fontSize\":68,\"captionBottom\":180,\"windowSize\":4}'\n\nI need help choosing prop values for different visual styles."
+  },
+  {
+    id: 'p2',
+    label: 'Caption Style Values',
+    tag: 'Video',
+    text: "For a [TONE/STYLE] feel, recommend values for these Remotion props:\n- highlightColor (hex)\n- fontSize (px, typical range 55–95)\n- captionBottom (px, typical range 120–260)\n- windowSize (words shown at once, 1–6)\n\nReturn a single JSON object I can paste into --props, e.g.:\n{\"highlightColor\":\"#FF4500\",\"fontSize\":76,\"captionBottom\":160,\"windowSize\":3}"
+  },
+  {
+    id: 'p3',
+    label: 'DALL-E Background Brief',
+    tag: 'Image',
+    text: "Generate a photorealistic vertical background image (9:16 portrait) for a short-form video about [TOPIC].\n\nStyle: [MOOD/AESTHETIC — e.g. dramatic, calm, moody, energetic]\nLighting: cinematic, natural, or dramatic — no flash\nNo text, no people, no faces, no logos\nSuitable as a Ken Burns video backdrop (slow zoom will be applied)\n\nMake it visually striking with strong depth and atmosphere."
+  },
+  {
+    id: 'p4',
+    label: 'Script Hook Rewrite',
+    tag: 'Script',
+    text: "Rewrite the opening 1–2 sentences of this voiceover script as a stronger hook.\n\nRules:\n- Under 15 words total\n- Grab attention in the first half-second\n- No questions (make a bold statement or surprising fact)\n- No stage directions, no markdown, plain text only\n\nScript:\n[PASTE SCRIPT HERE]"
+  },
+  {
+    id: 'p5',
+    label: 'Script Punch-Up',
+    tag: 'Script',
+    text: "Punch up this voiceover script for short-form vertical video.\n\nRules:\n- Short sentences (4–8 words each)\n- Punchy, rhythmic cadence\n- Conversational tone — sounds natural when spoken\n- No complex punctuation (no semicolons, em-dashes, parentheses)\n- No markdown, no stage directions\n- Plain text output only\n- Keep the core message and approximate length\n\nScript:\n[PASTE SCRIPT HERE]"
+  },
+  {
+    id: 'p6',
+    label: 'Voice Style Advice',
+    tag: 'Script',
+    text: "Based on the tone of this script, which ElevenLabs voice style fits best?\n\nOptions:\n- Narrator: deep, neutral male (Adam — pNInz6obpgDQGcFmaJgB)\n- Warm: smooth, warm female (Bella — EXAVITQu4vr4xnSDxMaL)\n- Gravelly: rugged, dramatic male (Arnold — VR6AewLTigWG4xSOukaG)\n- Young: bright, energetic female (Elli — MF3mGyEYCl7XYWbV9V6O)\n\nExplain your choice in one sentence, then suggest stability and similarity_boost values (0.0–1.0 each).\n\nScript:\n[PASTE SCRIPT HERE]"
+  }
+];
+
+let allPrompts = [];
+let editingPromptId = null;
+
+function initPromptsTab() {
+  const stored = localStorage.getItem(PROMPTS_KEY);
+  if (stored) {
+    try { allPrompts = JSON.parse(stored); } catch(e) { allPrompts = DEFAULT_PROMPTS.map(p => ({...p})); }
+  } else {
+    allPrompts = DEFAULT_PROMPTS.map(p => ({...p}));
+    savePromptsToStorage();
+  }
+  renderPrompts();
+}
+
+function savePromptsToStorage() {
+  localStorage.setItem(PROMPTS_KEY, JSON.stringify(allPrompts));
+}
+
+function renderPrompts() {
+  const el = document.getElementById('promptsList');
+  if (!el) return;
+  if (!allPrompts.length) {
+    el.innerHTML = '<div class="empty">No prompts yet. Tap + Add to create one.</div>';
+    return;
+  }
+  el.innerHTML = allPrompts.map(p => `
+    <div class="prompt-card" id="pc-${p.id}">
+      <div class="prompt-card-top">
+        <div class="prompt-card-label">${escHtml(p.label)}</div>
+        ${p.tag ? `<div class="prompt-card-tag">${escHtml(p.tag)}</div>` : ''}
+      </div>
+      <div class="prompt-card-preview">${escHtml(p.text)}</div>
+      <div class="prompt-card-actions">
+        <button class="prompt-copy-btn" id="copybtn-${p.id}" onclick="copyPrompt('${p.id}')">Copy</button>
+        <button class="prompt-edit-btn" onclick="openEditPromptModal('${p.id}')">Edit</button>
+        <button class="prompt-del-btn" onclick="deletePrompt('${p.id}')">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function copyPrompt(id) {
+  const p = allPrompts.find(x => x.id === id);
+  if (!p) return;
+  navigator.clipboard.writeText(p.text).then(() => {
+    const btn = document.getElementById('copybtn-' + id);
+    if (btn) { btn.textContent = 'Copied!'; btn.classList.add('copied'); }
+    setTimeout(() => { if (btn) { btn.textContent = 'Copy'; btn.classList.remove('copied'); } }, 1800);
+  }).catch(() => showToast('Copy failed', 'error'));
+}
+
+function openAddPromptModal() {
+  editingPromptId = null;
+  document.getElementById('promptModalTitle').textContent = 'Add Prompt';
+  document.getElementById('promptLabelInput').value = '';
+  document.getElementById('promptTagInput').value = '';
+  document.getElementById('promptTextInput').value = '';
+  document.getElementById('promptSaveBtn').textContent = 'Add';
+  document.getElementById('promptModal').classList.add('open');
+  setTimeout(() => document.getElementById('promptLabelInput').focus(), 200);
+}
+
+function openEditPromptModal(id) {
+  const p = allPrompts.find(x => x.id === id);
+  if (!p) return;
+  editingPromptId = id;
+  document.getElementById('promptModalTitle').textContent = 'Edit Prompt';
+  document.getElementById('promptLabelInput').value = p.label;
+  document.getElementById('promptTagInput').value = p.tag || '';
+  document.getElementById('promptTextInput').value = p.text;
+  document.getElementById('promptSaveBtn').textContent = 'Save';
+  document.getElementById('promptModal').classList.add('open');
+  setTimeout(() => document.getElementById('promptLabelInput').focus(), 200);
+}
+
+function closePromptModal() {
+  document.getElementById('promptModal').classList.remove('open');
+}
+
+function savePrompt() {
+  const label = document.getElementById('promptLabelInput').value.trim();
+  const tag   = document.getElementById('promptTagInput').value.trim();
+  const text  = document.getElementById('promptTextInput').value.trim();
+  if (!label || !text) { showToast('Label and text required', 'error'); return; }
+  if (editingPromptId) {
+    const idx = allPrompts.findIndex(x => x.id === editingPromptId);
+    if (idx >= 0) allPrompts[idx] = { ...allPrompts[idx], label, tag, text };
+  } else {
+    allPrompts.push({ id: 'p' + Date.now(), label, tag, text });
+  }
+  savePromptsToStorage();
+  renderPrompts();
+  closePromptModal();
+  showToast(editingPromptId ? 'Prompt updated' : 'Prompt added', 'success');
+}
+
+function deletePrompt(id) {
+  allPrompts = allPrompts.filter(x => x.id !== id);
+  savePromptsToStorage();
+  renderPrompts();
+  showToast('Deleted', 'success');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── DEBUG TAB ─────────────────────────────────────────────────────────
