@@ -1759,17 +1759,83 @@ Rules:
 
       // ── SM POSTS: approveSmPost ──────────────────────────────────────────
       if (body.action === "approveSmPost") {
-        const { id } = body;
+        const { id, campaignId } = body;
         if (!id) return json({ error: "id required" }, 400);
         const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+
+        // 1 — Fetch the SM Post (title + copy + platform)
+        const postRes = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+        });
+        const postData = await postRes.json();
+        const pp = postData.properties || {};
+        const postTitle    = pp["Post Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled";
+        const postCopy     = pp["Post Copy"]?.rich_text?.map(t=>t.plain_text).join("") || "";
+        const postPlatform = (pp["Platform"]?.multi_select || []).map(s=>s.name).join(", ") || "TikTok";
+
+        // 2 — Fetch Research record for campaign context (TikTok Trends, keywords, key message)
+        let researchContext = "";
+        if (campaignId) {
+          try {
+            const resRows = await notionQuery(RESEARCH_DB, {
+              filter: { property: "Campaign", relation: { contains: dash(campaignId) } }
+            });
+            if (resRows.length) {
+              const rp = resRows[0].properties;
+              const tiktokTrends = rp["TikTok Trends"]?.rich_text?.map(t=>t.plain_text).join("") || "";
+              const keywords     = rp["Keywords"]?.rich_text?.map(t=>t.plain_text).join("") || "";
+              const keyMessage   = rp["Key Message"]?.rich_text?.map(t=>t.plain_text).join("") || "";
+              researchContext = [
+                tiktokTrends ? `TRENDING RESEARCH:\n${tiktokTrends.slice(0, 1200)}` : "",
+                keywords     ? `CAMPAIGN KEYWORDS: ${keywords}` : "",
+                keyMessage   ? `KEY MESSAGE: ${keyMessage}` : "",
+              ].filter(Boolean).join("\n\n");
+            }
+          } catch(e) { /* proceed without research context */ }
+        }
+
+        // 3 — Generate full short-form script via Claude
+        let script = "";
+        try {
+          const scriptPrompt = `You are a short-form video scriptwriter for TikTok and YouTube Shorts.
+
+Write a punchy 30-45 second voiceover script for this post:
+
+TITLE: ${postTitle}
+CONCEPT: ${postCopy}
+PLATFORM: ${postPlatform}
+${researchContext ? "\n" + researchContext : ""}
+
+Rules:
+- Hook in the first 2-3 seconds — grab attention immediately
+- Write pure spoken voiceover text only — no brackets, no stage directions, no labels
+- Conversational rhythm, short sentences, natural pauses implied by punctuation
+- Target 75-100 words (30-45 seconds at ~2.3 words/second)
+- End with a thought, question, or statement that lingers
+
+Output the script text only. No preamble, no labels.`;
+
+          const cRes = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': (env.ANTHROPIC_API_KEY || '').trim(), 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, messages: [{ role: 'user', content: scriptPrompt }] })
+          });
+          const cData = await cRes.json();
+          script = cData.content?.[0]?.text?.trim() || "";
+        } catch(e) { /* non-fatal — approve anyway */ }
+
+        // 4 — Update SM Post: Status=Publish + Script (if generated)
+        const updateProps = { "Status": { select: { name: "Publish" } } };
+        if (script) updateProps["Script"] = { rich_text: [{ type: "text", text: { content: script.slice(0, 2000) } }] };
+
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+          body: JSON.stringify({ properties: updateProps }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
-        return json({ success: true });
+        return json({ success: true, scriptGenerated: !!script });
       }
 
       // ── SM POSTS: deleteSmPost ───────────────────────────────────────────
@@ -1827,7 +1893,7 @@ Rules:
           } catch(e) { /* proceed without YouTube data */ }
         }
 
-        // 3 — Format + Claude
+        // 3 — Format scraped data
         const fmtTT = (Array.isArray(tiktokItems) ? tiktokItems : []).slice(0, 12).map(v =>
           `- "${(v.text || v.desc || v.title || '').slice(0, 80)}" | views: ${v.playCount || v.stats?.playCount || 0}`
         ).join('\n') || '(no TikTok data — proceed from keywords only)';
@@ -1835,6 +1901,21 @@ Rules:
         const fmtYT = (Array.isArray(ytItems) ? ytItems : []).slice(0, 10).map(v =>
           `- "${(v.title || '').slice(0, 80)}" | views: ${v.viewCount || 0} | ${v.channelName || v.channelTitle || ''}`
         ).join('\n') || '(no YouTube data — proceed from keywords only)';
+
+        // 3.5 — Write raw Apify results to Research record TikTok Trends field
+        const rawSummary = `KEYWORDS: ${kws.join(', ')}\n\nTIKTOK TRENDING:\n${fmtTT}\n\nYOUTUBE TRENDING:\n${fmtYT}`;
+        try {
+          const resRows = await notionQuery(RESEARCH_DB, {
+            filter: { property: "Campaign", relation: { contains: dash(campaignId) } }
+          });
+          if (resRows.length) {
+            await fetch(`https://api.notion.com/v1/pages/${resRows[0].id}`, {
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${NOTION_TOKEN}`, 'Notion-Version': NOTION_VERSION, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ properties: { "TikTok Trends": { rich_text: [{ type: "text", text: { content: rawSummary.slice(0, 2000) } }] } } })
+            });
+          }
+        } catch(e) { /* non-fatal — proceed without writing */ }
 
         const claudePrompt = `You are a social media content strategist. Based on trending content for the keywords "${kws.join(', ')}", generate exactly 5 short-form script ideas.
 
@@ -1861,7 +1942,7 @@ Script: ...
         const cRes = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': (env.ANTHROPIC_API_KEY || '').trim(), 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-haiku-4-20250514', max_tokens: 1500, messages: [{ role: 'user', content: claudePrompt }] })
+          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1500, messages: [{ role: 'user', content: claudePrompt }] })
         });
         const cData = await cRes.json();
         if (!cRes.ok) return json({ error: cData.error?.message || "Claude error" }, cRes.status);

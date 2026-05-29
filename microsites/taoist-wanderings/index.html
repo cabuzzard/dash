@@ -1291,12 +1291,17 @@ async function loadSmPosts() {
 
 async function approveSmPost(id) {
   const row = document.getElementById('smp-' + id);
-  if (row) row.style.opacity = '0.4';
+  if (row) {
+    row.style.opacity = '0.4';
+    row.style.pointerEvents = 'none';
+    const actionsEl = row.querySelector('.smp-actions');
+    if (actionsEl) actionsEl.innerHTML = '<span style="font-size:11px;color:#888;">Writing script…</span>';
+  }
   try {
-    await w('approveSmPost', { id });
+    await w('approveSmPost', { id, campaignId: CAMPAIGN_ID });
     await loadSmPosts();
   } catch(e) {
-    if (row) row.style.opacity = '';
+    if (row) { row.style.opacity = ''; row.style.pointerEvents = ''; }
     alert('Error: ' + e.message);
   }
 }
