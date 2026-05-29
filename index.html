@@ -297,6 +297,7 @@
     <div class="tab" onclick="switchTab('platforms')">Platforms</div>
     <div class="tab" onclick="switchTab('skills')">Skills</div>
     <div class="tab" onclick="switchTab('domains')">Domains</div>
+    <div class="tab" onclick="switchTab('debug')">Debug</div>
   </div>
 
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
@@ -566,6 +567,24 @@
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabDebug">
+    <div style="padding:20px 4px 8px;">
+      <div style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:16px;">Microsite Sections</div>
+      <table id="debugSectionsTable" style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:6px 10px;border-bottom:1px solid #2a2a2a;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;width:28px;">#</th>
+            <th style="text-align:left;padding:6px 10px;border-bottom:1px solid #2a2a2a;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;">Section</th>
+            <th style="text-align:left;padding:6px 10px;border-bottom:1px solid #2a2a2a;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;">Layout</th>
+            <th style="text-align:left;padding:6px 10px;border-bottom:1px solid #2a2a2a;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;width:220px;">TD</th>
+            <th style="text-align:left;padding:6px 10px;border-bottom:1px solid #2a2a2a;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;width:220px;">Source</th>
+          </tr>
+        </thead>
+        <tbody id="debugTbody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -1296,6 +1315,7 @@ function switchTab(name) {
   if (name === 'td'          && !tdTabLoaded)     { tdTabLoaded     = true; loadTdTab(); }
   if (name === 'platforms') { loadPlatformMatrix(); if (!smAccsLoaded) loadSmAccounts(); if (!emailsLoaded) loadEmails(); }
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
+  if (name === 'debug'     && !debugTabLoaded) { debugTabLoaded = true; initDebugTab(); }
 }
 
 // ── DOMAINS TAB ───────────────────────────────────────────────────────
@@ -3958,6 +3978,66 @@ if (SESSION_TOKEN) {
   document.getElementById('pinScreen').classList.add('hidden');
   if (!ovLoaded) { ovLoaded = true; loadOverview(); }
   call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
+}
+
+// ── DEBUG TAB ─────────────────────────────────────────────────────────
+let debugTabLoaded = false;
+const DEBUG_SECTIONS = [
+  { n:1,  label:'Campaign',             layout:'SEC 1 · 3-col' },
+  { n:2,  label:'Thoughts',             layout:'SEC 1 · 3-col' },
+  { n:3,  label:'Main TD',              layout:'SEC 1 · 3-col' },
+  { n:4,  label:'Keywords',             layout:'SEC 2 · 3-col' },
+  { n:5,  label:'Key Message',          layout:'SEC 2 · 3-col' },
+  { n:6,  label:'Main Problem',         layout:'SEC 2 · 3-col' },
+  { n:7,  label:'Product Ideas',        layout:'SEC 3 · 2-col' },
+  { n:8,  label:'Recommended Actions',  layout:'SEC 3 · 2-col' },
+  { n:9,  label:'Platforms',            layout:'SEC 4 · 2-col' },
+  { n:10, label:'Methods',              layout:'SEC 4 · 2-col' },
+  { n:11, label:'News Feed',            layout:'SEC 5 · 2-col' },
+  { n:12, label:'SM Posts',             layout:'SEC 5 · 2-col' },
+  { n:13, label:'Development Titles',   layout:'SEC 6 · 2-col' },
+  { n:14, label:'Publish Titles',       layout:'SEC 6 · 2-col' },
+];
+const DEBUG_KEY = 'hermes_debug_sections';
+
+function debugLoad() {
+  try { return JSON.parse(localStorage.getItem(DEBUG_KEY) || '{}'); } catch { return {}; }
+}
+function debugSave(key, field, val) {
+  const data = debugLoad();
+  if (!data[key]) data[key] = {};
+  data[key][field] = val;
+  localStorage.setItem(DEBUG_KEY, JSON.stringify(data));
+}
+
+function initDebugTab() {
+  const data  = debugLoad();
+  const tbody = document.getElementById('debugTbody');
+  tbody.innerHTML = '';
+  DEBUG_SECTIONS.forEach(s => {
+    const key = 'sec' + s.n;
+    const td  = (data[key] && data[key].td)     || '';
+    const src = (data[key] && data[key].source)  || '';
+    const tr  = document.createElement('tr');
+    tr.style.cssText = 'border-bottom:1px solid rgba(255,255,255,.04);';
+    tr.innerHTML = `
+      <td style="padding:7px 10px;color:var(--text3);font-size:11px;">${s.n}</td>
+      <td style="padding:7px 10px;color:var(--text1);font-weight:500;">${s.label}</td>
+      <td style="padding:7px 10px;color:var(--text3);font-size:11px;">${s.layout}</td>
+      <td style="padding:4px 6px;">
+        <div contenteditable="true" data-key="${key}" data-field="td"
+          style="min-height:28px;padding:4px 8px;background:#1a1a1a;border:1px solid #2a2a2a;color:var(--text1);font-size:12px;line-height:1.5;outline:none;white-space:pre-wrap;"
+          onfocus="this.style.borderColor='#555'" onblur="this.style.borderColor='#2a2a2a';debugSave(this.dataset.key,this.dataset.field,this.innerText.trim())"
+        >${esc(td)}</div>
+      </td>
+      <td style="padding:4px 6px;">
+        <div contenteditable="true" data-key="${key}" data-field="source"
+          style="min-height:28px;padding:4px 8px;background:#1a1a1a;border:1px solid #2a2a2a;color:var(--text1);font-size:12px;line-height:1.5;outline:none;white-space:pre-wrap;"
+          onfocus="this.style.borderColor='#555'" onblur="this.style.borderColor='#2a2a2a';debugSave(this.dataset.key,this.dataset.field,this.innerText.trim())"
+        >${esc(src)}</div>
+      </td>`;
+    tbody.appendChild(tr);
+  });
 }
 </script>
 </body>
