@@ -14,7 +14,7 @@ const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
 const LEADS_DB           = "e4518a459f004eb0b9646e48d8718705";
 const SM_ACCOUNTS_DB     = "aa6a16f2a77245bfb5efd9a8eb314b07";
 const EMAILS_DB          = "6252e9917027488fb628436aabb89947";
-const SM_POSTS_DB        = "ec422a5d716142e6843f39a09893737b";
+const SM_POSTS_DB        = "addcfe1d1beb46dbbcaa397504a8041d";
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
