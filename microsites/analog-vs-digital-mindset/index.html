@@ -1736,6 +1736,8 @@ function closeRenderModal() {
 
 document.getElementById('renderModal').addEventListener('click', function(e) {
   if (e.target === this) closeRenderModal();
+});
+
 async function saveRenderSettings() {
   const voiceId       = document.getElementById('renderVoiceId').value.trim();
   const captionStyle  = document.getElementById('renderCaptionStyle').value.trim();
