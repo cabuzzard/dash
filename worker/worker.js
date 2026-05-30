@@ -1814,6 +1814,16 @@ Rules:
         const postCopy     = pp["Post Copy"]?.rich_text?.map(t=>t.plain_text).join("") || "";
         const postPlatform = (pp["Platform"]?.multi_select || []).map(s=>s.name).join(", ") || "TikTok";
 
+        // 1b — Extract voice delivery guide from Voice Settings JSON (masterVoicePrompt key)
+        let voiceGuide = "";
+        try {
+          const vsRaw = stripMcpEscaping(pp["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || "");
+          if (vsRaw) {
+            const vs = JSON.parse(vsRaw);
+            if (vs.masterVoicePrompt) voiceGuide = vs.masterVoicePrompt;
+          }
+        } catch(e) { /* non-fatal — proceed without voice guide */ }
+
         // 2 — Fetch Research record for campaign context (TikTok Trends, keywords, key message)
         let researchContext = "";
         if (campaignId) {
@@ -1840,19 +1850,20 @@ Rules:
         try {
           const scriptPrompt = `You are a short-form video scriptwriter for TikTok and YouTube Shorts.
 
-Write a punchy 30-45 second voiceover script for this post:
+Write a 30-45 second voiceover script for this post:
 
 TITLE: ${postTitle}
 CONCEPT: ${postCopy}
 PLATFORM: ${postPlatform}
 ${researchContext ? "\n" + researchContext : ""}
+${voiceGuide ? "\nNARRATOR VOICE GUIDE (write to match this delivery style):\n" + voiceGuide : ""}
 
 Rules:
 - Hook in the first 2-3 seconds — grab attention immediately
 - Write pure spoken voiceover text only — no brackets, no stage directions, no labels
-- Conversational rhythm, short sentences, natural pauses implied by punctuation
 - Target 75-100 words (30-45 seconds at ~2.3 words/second)
 - End with a thought, question, or statement that lingers
+${voiceGuide ? "- Honour the narrator voice guide above — pace, tone, register, and sentence length should match that delivery style" : "- Conversational rhythm, short sentences, natural pauses implied by punctuation"}
 
 Output the script text only. No preamble, no labels.`;
 
@@ -1888,7 +1899,7 @@ Output the script text only. No preamble, no labels.`;
         if (voiceId !== undefined)        props["Voice ID"]        = { rich_text: [{ type: "text", text: { content: (voiceId || "").slice(0, 200) } }] };
         if (captionStyle !== undefined)   props["Caption Style"]   = { rich_text: [{ type: "text", text: { content: (captionStyle || "").slice(0, 2000) } }] };
         if (backgroundImage !== undefined)props["Background Image"]= { rich_text: [{ type: "text", text: { content: (backgroundImage || "").slice(0, 500) } }] };
-        if (voiceSettings !== undefined)  props["Voice Settings"]  = { rich_text: [{ type: "text", text: { content: (voiceSettings || "").slice(0, 500) } }] };
+        if (voiceSettings !== undefined)  props["Voice Settings"]  = { rich_text: [{ type: "text", text: { content: (voiceSettings || "").slice(0, 2000) } }] };
         if (body.imageStyleDna !== undefined) props["Image Style DNA"] = { rich_text: [{ type: "text", text: { content: (body.imageStyleDna || "").slice(0, 2000) } }] };
         if (!Object.keys(props).length) return json({ success: true });
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
