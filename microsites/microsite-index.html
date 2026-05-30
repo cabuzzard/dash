@@ -1731,20 +1731,29 @@ async function saveRenderSettings() {
   const captionStyle  = document.getElementById('renderCaptionStyle').value.trim();
   const voiceSettings = document.getElementById('renderVoiceSettings').value.trim();
   const statusEl      = document.getElementById('renderCmdStatus');
-  if (captionStyle) { try { JSON.parse(captionStyle); } catch(e) { statusEl.style.color='#ff6b6b'; statusEl.textContent='Caption Style is not valid JSON.'; return; } }
-  if (voiceSettings) { try { JSON.parse(voiceSettings); } catch(e) { statusEl.style.color='#ff6b6b'; statusEl.textContent='Voice Settings is not valid JSON.'; return; } }
   if (!RENDER_POST_ID) { statusEl.textContent = 'No post selected.'; return; }
+
+  // Validate JSON fields independently — bad JSON is skipped, not a blocker for saving voiceId
+  const warnings = [];
+  let saveCaptionStyle  = captionStyle  || undefined;
+  let saveVoiceSettings = voiceSettings || undefined;
+  if (captionStyle)  { try { JSON.parse(captionStyle);  } catch(e) { saveCaptionStyle  = undefined; warnings.push('Caption Style skipped (invalid JSON)'); } }
+  if (voiceSettings) { try { JSON.parse(voiceSettings); } catch(e) { saveVoiceSettings = undefined; warnings.push('Voice Settings skipped (invalid JSON)'); } }
+
   statusEl.style.color = '#888';
   statusEl.textContent = 'Saving…';
   try {
-    const r = await w('updateSmPostSettings', { id: RENDER_POST_ID, voiceId, captionStyle, voiceSettings });
-    if (r && r.error) throw new Error(r.error);
+    const payload = { id: RENDER_POST_ID, voiceId };
+    if (saveCaptionStyle  !== undefined) payload.captionStyle  = saveCaptionStyle;
+    if (saveVoiceSettings !== undefined) payload.voiceSettings = saveVoiceSettings;
+    await w('updateSmPostSettings', payload);
     if (SMP_DATA[RENDER_POST_ID]) Object.assign(SMP_DATA[RENDER_POST_ID], { voiceId, captionStyle, voiceSettings });
-    statusEl.style.color = '#5ec95e';
-    statusEl.textContent = `✓ Saved — Voice: ${voiceId || 'none'} · Style: ${captionStyle ? (JSON.parse(captionStyle).presetName||'Custom') : 'none'}`;
+    const note = warnings.length ? ' (' + warnings.join('; ') + ')' : '';
+    statusEl.style.color = warnings.length ? '#f0a500' : '#5ec95e';
+    statusEl.textContent = `✓ Saved — Voice: ${voiceId || 'none'}${note}`;
   } catch(e) {
     statusEl.style.color = '#ff6b6b';
-    statusEl.textContent = 'Save failed — session may have expired. Re-login and try again.';
+    statusEl.textContent = 'Save failed — ' + (e.message || 'unknown error');
   }
 }
 
@@ -1755,21 +1764,27 @@ async function copyRenderCommand() {
   const voiceSettings = document.getElementById('renderVoiceSettings').value.trim();
   const statusEl      = document.getElementById('renderCmdStatus');
 
-  if (captionStyle) { try { JSON.parse(captionStyle); } catch(e) { statusEl.style.color='#ff6b6b'; statusEl.textContent='Caption Style is not valid JSON — fix before copying.'; return; } }
-  if (voiceSettings) { try { JSON.parse(voiceSettings); } catch(e) { statusEl.style.color='#ff6b6b'; statusEl.textContent='Voice Settings is not valid JSON — fix before copying.'; return; } }
   if (!script) { statusEl.textContent = 'Script is empty.'; return; }
   if (!RENDER_POST_ID || !RENDER_SLUG) { statusEl.textContent = 'No post selected.'; return; }
+
+  // Validate JSON independently — skip invalid fields but don't block save
+  let saveCaptionStyle  = captionStyle  || undefined;
+  let saveVoiceSettings = voiceSettings || undefined;
+  if (captionStyle)  { try { JSON.parse(captionStyle);  } catch(e) { saveCaptionStyle  = undefined; } }
+  if (voiceSettings) { try { JSON.parse(voiceSettings); } catch(e) { saveVoiceSettings = undefined; } }
 
   // Save to Notion FIRST — always, before clipboard
   statusEl.style.color = '#888';
   statusEl.textContent = 'Saving…';
   try {
-    const r = await w('updateSmPostSettings', { id: RENDER_POST_ID, voiceId, captionStyle, voiceSettings });
-    if (r && r.error) throw new Error(r.error);
+    const payload = { id: RENDER_POST_ID, voiceId };
+    if (saveCaptionStyle  !== undefined) payload.captionStyle  = saveCaptionStyle;
+    if (saveVoiceSettings !== undefined) payload.voiceSettings = saveVoiceSettings;
+    await w('updateSmPostSettings', payload);
     if (SMP_DATA[RENDER_POST_ID]) Object.assign(SMP_DATA[RENDER_POST_ID], { voiceId, captionStyle, voiceSettings });
   } catch(e) {
     statusEl.style.color = '#ff6b6b';
-    statusEl.textContent = 'Save failed — session may have expired. Re-login and try again.';
+    statusEl.textContent = 'Save failed — ' + (e.message || 'unknown error');
     return;
   }
 
