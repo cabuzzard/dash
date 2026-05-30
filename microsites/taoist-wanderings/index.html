@@ -119,7 +119,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="content">
       <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
-      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/34b1f7d3a4bb81b6a8a8fee04df94807" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3581f7d3a4bb80c9b25efceb41a079b4" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Live Site</div><div class="field-value" id="r-livesite"></div></div>
     </div>
@@ -454,6 +454,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeRenderModal()">Close</button>
+      <button class="modal-btn" style="background:#3a5a6a;" onclick="saveRenderSettings()">Save Settings</button>
       <button class="modal-btn save" onclick="copyRenderCommand()">Copy Command</button>
     </div>
   </div>
@@ -480,7 +481,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 </div>
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-const CAMPAIGN_ID = "3581f7d3a4bb80c9b25efceb41a079b4"; // mobility-mentor-fundraising
+const CAMPAIGN_ID = "3581f7d3a4bb80c9b25efceb41a079b4"; // taoist-wanderings
 const RESEARCH_ID = "3661f7d3a4bb81adaaadc2ce80784112"; // research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/taoist-wanderings/";
 let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
@@ -533,7 +534,6 @@ async function pp(d) {
     }
   }
 }
-
 function pd() {
   if (!pin.length) return;
   document.getElementById('d' + (pin.length-1)).classList.remove('filled');
@@ -1390,7 +1390,7 @@ async function loadSmPosts() {
             <div class="smp-title">${esc(p.title)}</div>
             ${badges ? `<div class="smp-plats">${badges}</div>` : ''}
             ${p.backgroundImage ? `<div class="smp-bgpath">🖼 ${esc(p.backgroundImage)}</div>` : ''}
-            ${p.localPath ? `<div class="smp-localpath">${esc(p.localPath)}</div>` : ''}
+            ${p.videoUrl ? `<div class="smp-localpath"><a href="${esc(p.videoUrl)}" target="_blank" style="color:#6ec6a0;font-size:11px;text-decoration:none;">▶ ${esc(p.videoUrl)}</a></div>` : ''}
           </div>
           <div class="smp-actions">
             <button class="smp-image"  onclick="openImageModal('${p.id}')"  title="Background image">⬛</button>
