@@ -31,6 +31,15 @@ function json(data, status = 200) {
   });
 }
 
+// Strip backslash-escaping that the Notion MCP applies to JSON strings.
+// Notion MCP stores '{"key":"val"}' as '\{"key":"val"\}' (literal leading/trailing backslash).
+function stripMcpEscaping(s) {
+  if (!s) return s;
+  if (s.startsWith('\\{')) s = '{' + s.slice(2);
+  if (s.endsWith('\\}'))   s = s.slice(0, -2) + '}';
+  return s;
+}
+
 async function notionQuery(dbId, body) {
   const resp = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
     method: "POST",
@@ -249,7 +258,7 @@ export default {
     const TS_SECRET      = (env.TURNSTILE_SECRET|| "1x0000000000000000000000000000000AA").trim();
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
-    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-29-02" });
+    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-29-03" });
     if (request.method !== "POST")    return json({ error: "POST only" }, 405);
 
     let body;
@@ -1754,10 +1763,10 @@ Rules:
             localPath:    p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             topVideos:    p["Top Videos"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             voiceId:         p["Voice ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
-            captionStyle:    p["Caption Style"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            captionStyle:    stripMcpEscaping(p["Caption Style"]?.rich_text?.map(t=>t.plain_text).join("") || ""),
             backgroundImage: p["Background Image"]?.rich_text?.map(t=>t.plain_text).join("") || "",
-            voiceSettings:   p["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || "",
-            imageStyleDna:   p["Image Style DNA"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            voiceSettings:   stripMcpEscaping(p["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || ""),
+            imageStyleDna:   stripMcpEscaping(p["Image Style DNA"]?.rich_text?.map(t=>t.plain_text).join("") || ""),
             status:    p["Status"]?.select?.name || "Draft",
             platforms: (p["Platform"]?.multi_select || []).map(s => s.name),
           };
@@ -1781,10 +1790,10 @@ Rules:
           title:           p["Post Title"]?.title?.map(t=>t.plain_text).join("") || "",
           script:          p["Script"]?.rich_text?.map(t=>t.plain_text).join("") || "",
           voiceId:         p["Voice ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
-          captionStyle:    p["Caption Style"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+          captionStyle:    stripMcpEscaping(p["Caption Style"]?.rich_text?.map(t=>t.plain_text).join("") || ""),
           backgroundImage: p["Background Image"]?.rich_text?.map(t=>t.plain_text).join("") || "",
-          voiceSettings:   p["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || "",
-          imageStyleDna:   p["Image Style DNA"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+          voiceSettings:   stripMcpEscaping(p["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || ""),
+          imageStyleDna:   stripMcpEscaping(p["Image Style DNA"]?.rich_text?.map(t=>t.plain_text).join("") || ""),
           localPath:       p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
         });
       }

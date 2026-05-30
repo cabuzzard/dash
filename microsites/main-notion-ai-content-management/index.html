@@ -1684,22 +1684,37 @@ function slugify(s) {
     .slice(0, 80);
 }
 
-function openRenderModal(id) {
+async function openRenderModal(id) {
   const d = SMP_DATA[id] || {};
   RENDER_POST_ID = id;
   RENDER_SLUG    = slugify(d.title || '');
   const titleShort = (d.title || '').length > 40 ? (d.title || '').slice(0, 40) + '…' : (d.title || '');
   document.getElementById('renderModalTitle').textContent = 'Render — ' + titleShort;
-  document.getElementById('renderScriptTa').value = d.script || '';
-  document.getElementById('renderVoiceId').value = d.voiceId || 'pNInz6obpgDQGcFmaJgB';
-  document.getElementById('renderVoiceSettings').value = d.voiceSettings || '';
-  const styleEl = document.getElementById('renderCaptionStyle');
-  styleEl.value = d.captionStyle && ['Standard','Karaoke','Cinematic','Energy'].includes(d.captionStyle)
-    ? d.captionStyle : 'Standard';
+  // Populate immediately from cached SMP_DATA for fast UX
+  document.getElementById('renderScriptTa').value      = d.script || '';
+  document.getElementById('renderVoiceId').value        = d.voiceId || '';
+  document.getElementById('renderVoiceSettings').value  = d.voiceSettings || '';
+  document.getElementById('renderCaptionStyle').value   = d.captionStyle || '';
   document.getElementById('renderCmdStatus').textContent = '';
   document.getElementById('renderCmdStatus').style.color = '#888';
   document.getElementById('renderModal').classList.add('open');
   setTimeout(() => document.getElementById('renderScriptTa').focus(), 100);
+
+  // Fetch fresh data from Notion to get latest values (avoids stale SMP_DATA cache)
+  try {
+    const fresh = await w('getSmPost', { id });
+    if (fresh && !fresh.error) {
+      document.getElementById('renderScriptTa').value      = fresh.script || '';
+      document.getElementById('renderVoiceId').value        = fresh.voiceId || '';
+      document.getElementById('renderVoiceSettings').value  = fresh.voiceSettings || '';
+      document.getElementById('renderCaptionStyle').value   = fresh.captionStyle || '';
+      // Update local cache
+      if (SMP_DATA[id]) Object.assign(SMP_DATA[id], {
+        script: fresh.script, voiceId: fresh.voiceId,
+        voiceSettings: fresh.voiceSettings, captionStyle: fresh.captionStyle
+      });
+    }
+  } catch(e) { /* silent — modal shows cached data if fetch fails */ }
 }
 
 function closeRenderModal() {
@@ -1712,8 +1727,8 @@ document.getElementById('renderModal').addEventListener('click', function(e) {
 
 async function copyRenderCommand() {
   const script        = document.getElementById('renderScriptTa').value.trim();
-  const voiceId       = document.getElementById('renderVoiceId').value.trim() || 'pNInz6obpgDQGcFmaJgB';
-  const captionStyle  = document.getElementById('renderCaptionStyle').value || 'Standard';
+  const voiceId       = document.getElementById('renderVoiceId').value.trim();
+  const captionStyle  = document.getElementById('renderCaptionStyle').value.trim();
   const voiceSettings = document.getElementById('renderVoiceSettings').value.trim();
   const statusEl      = document.getElementById('renderCmdStatus');
 
@@ -1743,9 +1758,9 @@ async function copyRenderCommand() {
 
   try {
     await navigator.clipboard.writeText(cmd);
-    const presetLabel = captionStyle ? (JSON.parse(captionStyle).presetName || 'Custom') : 'Default';
+    const presetLabel = captionStyle ? (JSON.parse(captionStyle).presetName || 'Custom') : 'Script default';
     statusEl.style.color = '#5ec95e';
-    statusEl.textContent = `✓ Saved & copied — Voice: ${voiceId} · Style: ${presetLabel}`;
+    statusEl.textContent = `✓ Saved & copied — Voice: ${voiceId || 'Notion default'} · Style: ${presetLabel}`;
     // Save voice + style + voice settings back to Notion silently
     if (SMP_DATA[RENDER_POST_ID]) {
       SMP_DATA[RENDER_POST_ID].voiceId       = voiceId;

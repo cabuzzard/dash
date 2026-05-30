@@ -44,6 +44,11 @@ try {
 }
 
 # ── Caption style → Remotion --props ────────────────────────────────────────
+# Strip any Notion MCP backslash-escaping (\{ → { and \} → }) that may have
+# been introduced when saving JSON via the Notion MCP tool.
+if ($CaptionStyle -match '^\\\{') { $CaptionStyle = '{' + $CaptionStyle.Substring(2) }
+if ($CaptionStyle -match '\\\}$')  { $CaptionStyle = $CaptionStyle.Substring(0, $CaptionStyle.Length - 2) + '}' }
+
 # If captionStyle from Notion is a full JSON spec, pass it directly.
 # Otherwise fall back to a simple default.
 if ($CaptionStyle -and $CaptionStyle.TrimStart().StartsWith('{')) {
