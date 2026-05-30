@@ -454,6 +454,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeRenderModal()">Close</button>
+      <button class="modal-btn" style="background:#3a5a6a;" onclick="saveRenderSettings()">Save Settings</button>
       <button class="modal-btn save" onclick="copyRenderCommand()">Copy Command</button>
     </div>
   </div>
@@ -1725,6 +1726,28 @@ document.getElementById('renderModal').addEventListener('click', function(e) {
   if (e.target === this) closeRenderModal();
 });
 
+async function saveRenderSettings() {
+  const voiceId       = document.getElementById('renderVoiceId').value.trim();
+  const captionStyle  = document.getElementById('renderCaptionStyle').value.trim();
+  const voiceSettings = document.getElementById('renderVoiceSettings').value.trim();
+  const statusEl      = document.getElementById('renderCmdStatus');
+  if (captionStyle) { try { JSON.parse(captionStyle); } catch(e) { statusEl.style.color='#ff6b6b'; statusEl.textContent='Caption Style is not valid JSON.'; return; } }
+  if (voiceSettings) { try { JSON.parse(voiceSettings); } catch(e) { statusEl.style.color='#ff6b6b'; statusEl.textContent='Voice Settings is not valid JSON.'; return; } }
+  if (!RENDER_POST_ID) { statusEl.textContent = 'No post selected.'; return; }
+  statusEl.style.color = '#888';
+  statusEl.textContent = 'Saving…';
+  try {
+    const r = await w('updateSmPostSettings', { id: RENDER_POST_ID, voiceId, captionStyle, voiceSettings });
+    if (r && r.error) throw new Error(r.error);
+    if (SMP_DATA[RENDER_POST_ID]) Object.assign(SMP_DATA[RENDER_POST_ID], { voiceId, captionStyle, voiceSettings });
+    statusEl.style.color = '#5ec95e';
+    statusEl.textContent = `✓ Saved — Voice: ${voiceId || 'none'} · Style: ${captionStyle ? (JSON.parse(captionStyle).presetName||'Custom') : 'none'}`;
+  } catch(e) {
+    statusEl.style.color = '#ff6b6b';
+    statusEl.textContent = 'Save failed — session may have expired. Re-login and try again.';
+  }
+}
+
 async function copyRenderCommand() {
   const script        = document.getElementById('renderScriptTa').value.trim();
   const voiceId       = document.getElementById('renderVoiceId').value.trim();
@@ -1732,45 +1755,35 @@ async function copyRenderCommand() {
   const voiceSettings = document.getElementById('renderVoiceSettings').value.trim();
   const statusEl      = document.getElementById('renderCmdStatus');
 
-  // Validate caption style JSON if provided
-  if (captionStyle) {
-    try { JSON.parse(captionStyle); } catch(e) {
-      statusEl.style.color = '#ff6b6b';
-      statusEl.textContent = 'Caption Style is not valid JSON — fix before copying.';
-      return;
-    }
-  }
-  // Validate voice settings JSON if provided
-  if (voiceSettings) {
-    try { JSON.parse(voiceSettings); } catch(e) {
-      statusEl.style.color = '#ff6b6b';
-      statusEl.textContent = 'Voice Settings is not valid JSON — fix before copying.';
-      return;
-    }
-  }
-  if (!script) { statusEl.textContent = 'Script is empty — approve a post first to generate a script.'; return; }
+  if (captionStyle) { try { JSON.parse(captionStyle); } catch(e) { statusEl.style.color='#ff6b6b'; statusEl.textContent='Caption Style is not valid JSON — fix before copying.'; return; } }
+  if (voiceSettings) { try { JSON.parse(voiceSettings); } catch(e) { statusEl.style.color='#ff6b6b'; statusEl.textContent='Voice Settings is not valid JSON — fix before copying.'; return; } }
+  if (!script) { statusEl.textContent = 'Script is empty.'; return; }
   if (!RENDER_POST_ID || !RENDER_SLUG) { statusEl.textContent = 'No post selected.'; return; }
 
-  // Escape single quotes in script for PowerShell single-quoted strings
-  const escaped = script.replace(/'/g, "''");
-  // Voice, style, background are all saved to Notion and fetched by the render script automatically
-  const cmd = `Set-ExecutionPolicy Bypass -Scope Process -Force; [System.IO.File]::WriteAllText('C:\\Users\\18318\\Videos\\src\\script.txt', '${escaped}', [System.Text.Encoding]::UTF8); & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}'`;
+  // Save to Notion FIRST — always, before clipboard
+  statusEl.style.color = '#888';
+  statusEl.textContent = 'Saving…';
+  try {
+    const r = await w('updateSmPostSettings', { id: RENDER_POST_ID, voiceId, captionStyle, voiceSettings });
+    if (r && r.error) throw new Error(r.error);
+    if (SMP_DATA[RENDER_POST_ID]) Object.assign(SMP_DATA[RENDER_POST_ID], { voiceId, captionStyle, voiceSettings });
+  } catch(e) {
+    statusEl.style.color = '#ff6b6b';
+    statusEl.textContent = 'Save failed — session may have expired. Re-login and try again.';
+    return;
+  }
 
+  // Then copy command to clipboard
+  const escaped = script.replace(/'/g, "''");
+  const cmd = `Set-ExecutionPolicy Bypass -Scope Process -Force; [System.IO.File]::WriteAllText('C:\\Users\\18318\\Videos\\src\\script.txt', '${escaped}', [System.Text.Encoding]::UTF8); & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}'`;
   try {
     await navigator.clipboard.writeText(cmd);
     const presetLabel = captionStyle ? (JSON.parse(captionStyle).presetName || 'Custom') : 'Script default';
     statusEl.style.color = '#5ec95e';
     statusEl.textContent = `✓ Saved & copied — Voice: ${voiceId || 'Notion default'} · Style: ${presetLabel}`;
-    // Save voice + style + voice settings back to Notion silently
-    if (SMP_DATA[RENDER_POST_ID]) {
-      SMP_DATA[RENDER_POST_ID].voiceId       = voiceId;
-      SMP_DATA[RENDER_POST_ID].captionStyle  = captionStyle;
-      SMP_DATA[RENDER_POST_ID].voiceSettings = voiceSettings;
-    }
-    w('updateSmPostSettings', { id: RENDER_POST_ID, voiceId, captionStyle, voiceSettings }).catch(() => {});
   } catch(e) {
-    statusEl.style.color = '#ff6b6b';
-    statusEl.textContent = 'Clipboard unavailable — see console for command.';
+    statusEl.style.color = '#f0a500';
+    statusEl.textContent = '✓ Saved to Notion — clipboard blocked, command in console.';
     console.log('Render command:', cmd);
   }
 }
