@@ -4,7 +4,7 @@ param(
     [string]$PostId,
     [string]$Slug,
     [string]$Token,
-    [string]$VoiceId         = "pNInz6obpgDQGcFmaJgB",
+    [string]$VoiceId         = "7FroLDTDG92jPfUW6BlQ",
     [string]$CaptionStyle    = "",
     [string]$BackgroundImage = ""
 )
