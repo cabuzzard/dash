@@ -258,7 +258,7 @@ export default {
     const TS_SECRET      = (env.TURNSTILE_SECRET|| "1x0000000000000000000000000000000AA").trim();
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
-    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-29-05" });
+    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-29-06" });
     if (request.method !== "POST")    return json({ error: "POST only" }, 405);
 
     let body;
@@ -273,6 +273,30 @@ export default {
       if (body.pin !== PIN_VAL) return json({ error: "Unauthorized" }, 401);
       const token = await signToken(HMAC_SECRET);
       return json({ token });
+    }
+
+    // ── pinUpdate — PIN-authenticated field update (no session token needed) ─
+    // Accepts: { action, pin, id, voiceId?, captionStyle?, voiceSettings? }
+    if (body.action === "pinUpdate") {
+      if (!PIN_VAL) return json({ error: "Server not configured" }, 500);
+      await new Promise(r => setTimeout(r, 250));
+      if (body.pin !== PIN_VAL) return json({ error: "Unauthorized" }, 401);
+      const { id, voiceId, captionStyle, voiceSettings } = body;
+      if (!id) return json({ error: "id required" }, 400);
+      const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+      const props = {};
+      if (voiceId      !== undefined) props["Voice ID"]      = { rich_text: [{ type:"text", text:{ content:(voiceId||"").slice(0,200) } }] };
+      if (captionStyle !== undefined) props["Caption Style"] = { rich_text: [{ type:"text", text:{ content:(captionStyle||"").slice(0,2000) } }] };
+      if (voiceSettings!== undefined) props["Voice Settings"]= { rich_text: [{ type:"text", text:{ content:(voiceSettings||"").slice(0,2000) } }] };
+      if (!Object.keys(props).length) return json({ success: true });
+      const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
+        method: "PATCH",
+        headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+        body: JSON.stringify({ properties: props }),
+      });
+      const result = await resp.json();
+      if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+      return json({ success: true });
     }
 
     // ── submitLead — public, no token required ────────────────────────
