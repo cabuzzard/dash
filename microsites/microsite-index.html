@@ -1776,7 +1776,6 @@ async function copyRenderCommand() {
   const voiceSettings = document.getElementById('renderVoiceSettings').value.trim();
   const statusEl      = document.getElementById('renderCmdStatus');
 
-  if (!script) { statusEl.textContent = 'Script is empty.'; return; }
   if (!RENDER_POST_ID || !RENDER_SLUG) { statusEl.textContent = 'No post selected.'; return; }
 
   // Validate JSON independently — skip invalid fields but don't block save
@@ -1785,29 +1784,28 @@ async function copyRenderCommand() {
   if (captionStyle)  { try { JSON.parse(captionStyle);  } catch(e) { saveCaptionStyle  = undefined; } }
   if (voiceSettings) { try { JSON.parse(voiceSettings); } catch(e) { saveVoiceSettings = undefined; } }
 
-  // Save to Notion FIRST — always, before clipboard
+  // Save everything to Notion FIRST (script + settings)
   statusEl.style.color = '#888';
   statusEl.textContent = 'Saving…';
   try {
     const payload = { id: RENDER_POST_ID, voiceId };
+    if (script)               payload.script        = script;
     if (saveCaptionStyle  !== undefined) payload.captionStyle  = saveCaptionStyle;
     if (saveVoiceSettings !== undefined) payload.voiceSettings = saveVoiceSettings;
     await w('updateSmPostSettings', payload);
-    if (SMP_DATA[RENDER_POST_ID]) Object.assign(SMP_DATA[RENDER_POST_ID], { voiceId, captionStyle, voiceSettings });
+    if (SMP_DATA[RENDER_POST_ID]) Object.assign(SMP_DATA[RENDER_POST_ID], { voiceId, captionStyle, voiceSettings, script });
   } catch(e) {
     statusEl.style.color = '#ff6b6b';
     statusEl.textContent = 'Save failed — ' + (e.message || 'unknown error');
     return;
   }
 
-  // Then copy command to clipboard
-  const escaped = script.replace(/'/g, "''");
-  const cmd = `Set-ExecutionPolicy Bypass -Scope Process -Force; [System.IO.File]::WriteAllText('C:\\Users\\18318\\Videos\\src\\script.txt', '${escaped}', [System.Text.Encoding]::UTF8); & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}'`;
+  // Simple command — script + settings all come from Notion automatically
+  const cmd = `Set-ExecutionPolicy Bypass -Scope Process -Force; & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}'`;
   try {
     await navigator.clipboard.writeText(cmd);
-    const presetLabel = captionStyle ? (JSON.parse(captionStyle).presetName || 'Custom') : 'Script default';
     statusEl.style.color = '#5ec95e';
-    statusEl.textContent = `✓ Saved & copied — Voice: ${voiceId || 'Notion default'} · Style: ${presetLabel}`;
+    statusEl.textContent = `✓ Saved & copied — paste into PowerShell`;
   } catch(e) {
     statusEl.style.color = '#f0a500';
     statusEl.textContent = '✓ Saved to Notion — clipboard blocked, command in console.';

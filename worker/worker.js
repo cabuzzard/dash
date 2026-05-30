@@ -1925,6 +1925,7 @@ Output the script text only. No preamble, no labels.`;
         if (backgroundImage !== undefined)props["Background Image"]= { rich_text: [{ type: "text", text: { content: (backgroundImage || "").slice(0, 500) } }] };
         if (voiceSettings !== undefined)  props["Voice Settings"]  = { rich_text: [{ type: "text", text: { content: (voiceSettings || "").slice(0, 2000) } }] };
         if (body.imageStyleDna !== undefined) props["Image Style DNA"] = { rich_text: [{ type: "text", text: { content: (body.imageStyleDna || "").slice(0, 2000) } }] };
+        if (body.script !== undefined)    props["Script"]          = { rich_text: [{ type: "text", text: { content: (body.script || "").slice(0, 2000) } }] };
         if (!Object.keys(props).length) return json({ success: true });
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
           method: "PATCH",

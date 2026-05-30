@@ -4,7 +4,7 @@ param(
     [string]$PostId,
     [string]$Slug,
     [string]$Token,
-    [string]$VoiceId         = "7FroLDTDG92jPfUW6BlQ",
+    [string]$VoiceId         = "kXuFAM1KXqJVbauKJc2Z",
     [string]$CaptionStyle    = "",
     [string]$BackgroundImage = ""
 )
@@ -24,18 +24,24 @@ try {
     $post = Invoke-RestMethod -Uri $WorkerUrl -Method POST `
         -Body $notionBody -ContentType 'application/json' -UseBasicParsing
     if ($post.voiceId)         { $VoiceId        = $post.voiceId;         Write-Host "  Voice:      $VoiceId" }
-    if ($post.captionStyle)    { $CaptionStyle   = $post.captionStyle;    Write-Host "  Style:      $CaptionStyle" }
+    if ($post.captionStyle)    { $CaptionStyle   = $post.captionStyle;    Write-Host "  Style:      (loaded)" }
     if ($post.backgroundImage) { $BackgroundImage = $post.backgroundImage; Write-Host "  Background: $BackgroundImage" }
+    # Write script from Notion if available
+    if ($post.script) {
+        [System.IO.File]::WriteAllText("$RemotionDir\src\script.txt", $post.script, $NoBom)
+        Write-Host "  Script:     loaded from Notion ($($post.script.Split(' ').Count) words)"
+    } else {
+        Write-Host "  Script:     not found in Notion -- using existing script.txt"
+    }
     $vsPath = "C:\Users\18318\Videos\src\voice-settings.json"
     if ($post.voiceSettings) {
         [System.IO.File]::WriteAllText($vsPath, $post.voiceSettings, $NoBom)
-        Write-Host "  Voice settings: written (no BOM)"
+        Write-Host "  Voice settings: loaded from Notion"
     } elseif (Test-Path $vsPath) {
-        Remove-Item $vsPath -Force
-        Write-Host "  Voice settings: cleared"
+        Write-Host "  Voice settings: using existing file"
     }
-    if (-not $post.voiceId -and -not $post.captionStyle -and -not $post.backgroundImage -and -not $post.voiceSettings) {
-        Write-Host "  No saved settings -- using param defaults"
+    if (-not $post.voiceId -and -not $post.captionStyle -and -not $post.backgroundImage -and -not $post.voiceSettings -and -not $post.script) {
+        Write-Host "  No saved settings -- using local defaults"
     }
 } catch {
     Write-Host "  Could not reach Notion -- using param defaults ($_)"
