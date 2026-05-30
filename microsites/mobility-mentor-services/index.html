@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1369,7 +1369,7 @@ async function loadSmPosts() {
     if (approved.length) {
       html += `<div class="smp-section-label" style="margin-top:${pending.length?'12px':'0'};">Approved</div>`;
       approved.forEach(p => {
-        SMP_DATA[p.id] = { title: p.title, script: p.script || '', voiceId: p.voiceId || '', captionStyle: p.captionStyle || '', backgroundImage: p.backgroundImage || '', voiceSettings: p.voiceSettings || '', imageStyleDna: p.imageStyleDna || '' };
+        SMP_DATA[p.id] = { title: p.title, script: p.script || '', voiceId: p.voiceId || '', captionStyle: p.captionStyle || '', backgroundImage: p.backgroundImage || '', voiceSettings: p.voiceSettings || '', imageStyleDna: p.imageStyleDna || '', videoUrl: p.videoUrl || '' };
         const badges = (p.platforms || []).map(pl => `<span class="smp-badge">${esc(pl)}</span>`).join('');
         const hasScript = !!p.script;
         html += `<div class="smp-row smp-approved" id="smp-${p.id}">

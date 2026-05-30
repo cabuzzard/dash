@@ -258,7 +258,7 @@ export default {
     const TS_SECRET      = (env.TURNSTILE_SECRET|| "1x0000000000000000000000000000000AA").trim();
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
-    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-29-03" });
+    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-29-04" });
     if (request.method !== "POST")    return json({ error: "POST only" }, 405);
 
     let body;
@@ -1760,7 +1760,7 @@ Rules:
             title:     p["Post Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
             copy:      p["Post Copy"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             script:       p["Script"]?.rich_text?.map(t=>t.plain_text).join("") || "",
-            localPath:    p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            videoUrl:     p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             topVideos:    p["Top Videos"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             voiceId:         p["Voice ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             captionStyle:    stripMcpEscaping(p["Caption Style"]?.rich_text?.map(t=>t.plain_text).join("") || ""),
@@ -1794,7 +1794,7 @@ Rules:
           backgroundImage: p["Background Image"]?.rich_text?.map(t=>t.plain_text).join("") || "",
           voiceSettings:   stripMcpEscaping(p["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || ""),
           imageStyleDna:   stripMcpEscaping(p["Image Style DNA"]?.rich_text?.map(t=>t.plain_text).join("") || ""),
-          localPath:       p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+          videoUrl:        p["Local Path"]?.rich_text?.map(t=>t.plain_text).join("") || "",
         });
       }
 
@@ -1929,13 +1929,13 @@ Output the script text only. No preamble, no labels.`;
 
       // ── SM POSTS: updateSmPostVideoPath ──────────────────────────────────
       if (body.action === "updateSmPostVideoPath") {
-        const { id, localPath } = body;
+        const { id, videoUrl } = body;
         if (!id) return json({ error: "id required" }, 400);
         const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Local Path": { rich_text: [{ type: "text", text: { content: (localPath || "").slice(0, 2000) } }] } } }),
+          body: JSON.stringify({ properties: { "Local Path": { rich_text: [{ type: "text", text: { content: (videoUrl || "").slice(0, 2000) } }] } } }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);

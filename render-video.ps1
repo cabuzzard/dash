@@ -74,11 +74,11 @@ if ($LASTEXITCODE -ne 0) { Write-Host "Render failed"; exit 1 }
 
 # -- Notion update --
 Write-Host "Updating Notion..."
-$LocalPath = $OutFile.Replace("\", "/")
-$body = "{`"action`":`"updateSmPostVideoPath`",`"id`":`"$PostId`",`"localPath`":`"$LocalPath`",`"token`":`"$Token`"}"
+$VideoUrl = "https://cabuzzard.github.io/dash/videos/$Slug.mp4"
+$body = "{`"action`":`"updateSmPostVideoPath`",`"id`":`"$PostId`",`"videoUrl`":`"$VideoUrl`",`"token`":`"$Token`"}"
 try {
     Invoke-WebRequest -Uri $WorkerUrl -Method POST -Body $body -ContentType "application/json" -UseBasicParsing | Out-Null
-    Write-Host "Notion updated."
+    Write-Host "Notion updated -- video URL: $VideoUrl"
 } catch {
     Write-Host "Notion update failed (video still saved locally): $_"
 }

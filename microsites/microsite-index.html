@@ -1369,7 +1369,7 @@ async function loadSmPosts() {
     if (approved.length) {
       html += `<div class="smp-section-label" style="margin-top:${pending.length?'12px':'0'};">Approved</div>`;
       approved.forEach(p => {
-        SMP_DATA[p.id] = { title: p.title, script: p.script || '', voiceId: p.voiceId || '', captionStyle: p.captionStyle || '', backgroundImage: p.backgroundImage || '', voiceSettings: p.voiceSettings || '', imageStyleDna: p.imageStyleDna || '' };
+        SMP_DATA[p.id] = { title: p.title, script: p.script || '', voiceId: p.voiceId || '', captionStyle: p.captionStyle || '', backgroundImage: p.backgroundImage || '', voiceSettings: p.voiceSettings || '', imageStyleDna: p.imageStyleDna || '', videoUrl: p.videoUrl || '' };
         const badges = (p.platforms || []).map(pl => `<span class="smp-badge">${esc(pl)}</span>`).join('');
         const hasScript = !!p.script;
         html += `<div class="smp-row smp-approved" id="smp-${p.id}">
@@ -1377,7 +1377,7 @@ async function loadSmPosts() {
             <div class="smp-title">${esc(p.title)}</div>
             ${badges ? `<div class="smp-plats">${badges}</div>` : ''}
             ${p.backgroundImage ? `<div class="smp-bgpath">🖼 ${esc(p.backgroundImage)}</div>` : ''}
-            ${p.localPath ? `<div class="smp-localpath">${esc(p.localPath)}</div>` : ''}
+            ${p.videoUrl ? `<div class="smp-localpath"><a href="${esc(p.videoUrl)}" target="_blank" style="color:#6ec6a0;font-size:11px;text-decoration:none;">▶ ${esc(p.videoUrl)}</a></div>` : ''}
           </div>
           <div class="smp-actions">
             <button class="smp-image"  onclick="openImageModal('${p.id}')"  title="Background image">⬛</button>
