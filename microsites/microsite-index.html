@@ -495,30 +495,42 @@ if (SESSION_TOKEN) {
   });
 }
 
+function pinReset(msg, isErr) {
+  pin = '';
+  const dots = document.querySelectorAll('.pin-dot');
+  dots.forEach(d => d.classList.remove('filled'));
+  if (isErr) dots.forEach(d => d.classList.add('error'));
+  document.getElementById('pinError').textContent = msg;
+  setTimeout(() => { dots.forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; }, 900);
+}
 async function pp(d) {
   if (pin.length >= 4) return;
   pin += d;
   document.getElementById('d' + (pin.length-1)).classList.add('filled');
   if (pin.length === 4) {
+    const attemptPin = pin;
+    pin = ''; // free immediately so DEL/re-entry works during inflight request
     try {
-      const data = await fetch(WORKER_URL, {
+      const ctrl = new AbortController();
+      const tid  = setTimeout(() => ctrl.abort(), 6000); // 6s timeout
+      const resp = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'auth', pin })
-      }).then(r => r.json());
+        body: JSON.stringify({ action: 'auth', pin: attemptPin }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(tid);
+      const data = await resp.json();
       if (data.token) {
         SESSION_TOKEN = data.token;
         sessionStorage.setItem('hermes_token', SESSION_TOKEN);
         document.getElementById('pinScreen').classList.add('hidden');
         init();
       } else {
-        document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
-        document.getElementById('pinError').textContent = 'incorrect code';
-        setTimeout(() => { document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; pin = ''; }, 800);
+        pinReset('incorrect code', true);
       }
     } catch(e) {
-      document.getElementById('pinError').textContent = 'connection error';
-      setTimeout(() => { pin = ''; document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error')); document.getElementById('pinError').textContent = ''; }, 1500);
+      pinReset(e.name === 'AbortError' ? 'timeout — retry' : 'connection error', true);
     }
   }
 }
