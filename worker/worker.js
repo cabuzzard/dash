@@ -1,5 +1,5 @@
-// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET are set as Cloudflare Worker secrets (env vars).
-// They are loaded from env at the start of each request — never hardcoded here.
+﻿// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET are set as Cloudflare Worker secrets (env vars).
+// They are loaded from env at the start of each request â€” never hardcoded here.
 let NOTION_TOKEN = ""; // set per-request from env.NOTION_TOKEN
 const NOTION_VERSION     = "2022-06-28";
 const CAMPAIGNS_DB       = "087b1163b4e64975bc7a4b686ff801de";
@@ -55,7 +55,7 @@ async function notionQuery(dbId, body) {
   return data.results || [];
 }
 
-// ── SESSION TOKEN HELPERS ─────────────────────────────────────────────
+// â”€â”€ SESSION TOKEN HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function signToken(secret) {
   const payload  = { exp: Date.now() + 8 * 3600 * 1000, v: 1 };
   const payloadB64 = btoa(JSON.stringify(payload));
@@ -265,7 +265,7 @@ export default {
     try { body = await request.json(); }
     catch { return json({ error: "Invalid JSON" }, 400); }
 
-    // ── auth — exchange PIN for a session token (public, no token required) ──
+    // â”€â”€ auth â€” exchange PIN for a session token (public, no token required) â”€â”€
     if (body.action === "auth") {
       if (!PIN_VAL || !HMAC_SECRET) return json({ error: "Server not configured" }, 500);
       // Small delay to slow brute force attempts
@@ -275,7 +275,7 @@ export default {
       return json({ token });
     }
 
-    // ── pinUpdate — PIN-authenticated field update (no session token needed) ─
+    // â”€â”€ pinUpdate â€” PIN-authenticated field update (no session token needed) â”€
     // Accepts: { action, pin, id, voiceId?, captionStyle?, voiceSettings? }
     if (body.action === "pinUpdate") {
       if (!PIN_VAL) return json({ error: "Server not configured" }, 500);
@@ -299,7 +299,7 @@ export default {
       return json({ success: true });
     }
 
-    // ── submitLead — public, no token required ────────────────────────
+    // â”€â”€ submitLead â€” public, no token required â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (body.action === "submitLead") {
       const { campaign, email, phone, fraudType, note, tsToken } = body;
 
@@ -311,7 +311,7 @@ export default {
           body: `secret=${encodeURIComponent(TS_SECRET)}&response=${encodeURIComponent(tsToken)}`,
         });
         const tsData = await tsResp.json();
-        if (!tsData.success) return json({ error: "CAPTCHA verification failed — please try again" }, 403);
+        if (!tsData.success) return json({ error: "CAPTCHA verification failed â€” please try again" }, 403);
       }
 
       // --- Input validation ---
@@ -323,7 +323,7 @@ export default {
 
       const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
       const now = new Date().toISOString();
-      const name = "Lead — " + (campaign || "unknown") + " — " + now.slice(0,16).replace("T"," ");
+      const name = "Lead â€” " + (campaign || "unknown") + " â€” " + now.slice(0,16).replace("T"," ");
       const resp = await fetch("https://api.notion.com/v1/pages", {
         method: "POST",
         headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -341,11 +341,11 @@ export default {
         }),
       });
       const result = await resp.json();
-      if (!resp.ok) return json({ error: "Submission failed — please try again" }, resp.status);
+      if (!resp.ok) return json({ error: "Submission failed â€” please try again" }, resp.status);
       return json({ success: true });
     }
 
-    // ── All other actions require a valid session token ───────────────
+    // â”€â”€ All other actions require a valid session token â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET))) {
       return json({ error: "Unauthorized" }, 401);
     }
@@ -409,13 +409,13 @@ export default {
           const id     = t.id.replace(/-/g,"");
           const campRel = props.Campaign?.relation || [];
           const campId  = campRel.length ? campRel[0].id.replace(/-/g,"") : "__none__";
-          const camp    = campById[campId] || { name: "ΓÇö", site: "Other" };
+          const camp    = campById[campId] || { name: "Î“Ã‡Ã¶", site: "Other" };
 
           if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, titles: [] };
           campTitles[campId].titles.push({ id, title, status, grouping: props.Grouping?.rich_text?.map(x => x.plain_text).join("") || "" });
         });
 
-        // Add all campaigns ΓÇö even those with no titles
+        // Add all campaigns Î“Ã‡Ã¶ even those with no titles
         Object.entries(campById).forEach(([campId, camp]) => {
           if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, titles: [] };
         });
@@ -1042,7 +1042,7 @@ export default {
         return json({ success: true });
       }
 
-      // ΓöÇΓöÇ CAMPAIGN ADMIN: getTitles ΓöÇΓöÇ
+      // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: getTitles Î“Ã¶Ã‡Î“Ã¶Ã‡
       if (body.action === "getTitles") {
         const { stages, campaignId } = body;
         const stageFilters = (stages || ["Review", "Publish"]).map(s => ({
@@ -1074,7 +1074,7 @@ export default {
         });
       }
 
-      // ΓöÇΓöÇ CAMPAIGN ADMIN: getTodos ΓöÇΓöÇ
+      // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: getTodos Î“Ã¶Ã‡Î“Ã¶Ã‡
       if (body.action === "getTodos") {
         const results = await notionQuery(MAIN_TD_DB, {
           filter: {
@@ -1111,7 +1111,7 @@ export default {
         return json({ todos });
       }
 
-      // ΓöÇΓöÇ CAMPAIGN ADMIN: getExplodeQueue ΓöÇΓöÇ
+      // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: getExplodeQueue Î“Ã¶Ã‡Î“Ã¶Ã‡
       if (body.action === "getExplodeQueue") {
         const results = await notionQuery(CONTENT_STRATEGY_DB, {
           filter: {
@@ -1136,7 +1136,7 @@ export default {
         });
       }
 
-      // ΓöÇΓöÇ CAMPAIGN ADMIN: getChildren (Notion page children) ΓöÇΓöÇ
+      // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: getChildren (Notion page children) Î“Ã¶Ã‡Î“Ã¶Ã‡
       if (body.action === "getChildren") {
         const { pageId } = body;
         if (!pageId) return json({ error: "pageId required" }, 400);
@@ -1150,7 +1150,7 @@ export default {
         return json({ pages });
       }
 
-      // ΓöÇΓöÇ CAMPAIGN ADMIN: getResearch ΓöÇΓöÇ
+      // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: getResearch Î“Ã¶Ã‡Î“Ã¶Ã‡
       if (body.action === "getResearch") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
@@ -1186,10 +1186,10 @@ export default {
         });
       }
 
-      // ΓöÇΓöÇ CAMPAIGN ADMIN: condense via Claude ΓöÇΓöÇ
+      // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: condense via Claude Î“Ã¶Ã‡Î“Ã¶Ã‡
       if (body.action === "condense") {
         const { label, text } = body;
-        if (!text) return json({ html: '<p>ΓÇö</p>' });
+        if (!text) return json({ html: '<p>Î“Ã‡Ã¶</p>' });
         const resp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -1202,7 +1202,7 @@ export default {
             max_tokens: 500,
             system: `You are a content ops assistant. Rewrite the input as structured entries.
 
-FORMAT ΓÇö each entry on its own line:
+FORMAT Î“Ã‡Ã¶ each entry on its own line:
 HEADING: body text
 
 Rules:
@@ -1220,7 +1220,7 @@ Rules:
         return json({ text: out });
       }
 
-      // ── CAMPAIGN ADMIN: sendPrompt via Claude ─────────────────────────
+      // â”€â”€ CAMPAIGN ADMIN: sendPrompt via Claude â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "sendPrompt") {
         const { prompt } = body;
         if (!prompt) return json({ error: "prompt required" }, 400);
@@ -1243,7 +1243,7 @@ Rules:
         return json({ text });
       }
 
-      // ΓöÇΓöÇ CAMPAIGN ADMIN: updateResearch ΓöÇΓöÇ
+      // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: updateResearch Î“Ã¶Ã‡Î“Ã¶Ã‡
       if (body.action === "updateResearch") {
         const { researchId, field, value } = body;
         if (!researchId || !field) return json({ error: "researchId and field required" }, 400);
@@ -1269,7 +1269,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ΓöÇΓöÇ CAMPAIGN ADMIN: updateCampaignKeywords ΓöÇΓöÇ
+      // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: updateCampaignKeywords Î“Ã¶Ã‡Î“Ã¶Ã‡
       if (body.action === "updateCampaignKeywords") {
         const { campaignId, value } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
@@ -1284,7 +1284,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ── MICROSITE: getCampaignTodos ──
+      // â”€â”€ MICROSITE: getCampaignTodos â”€â”€
       if (body.action === "getCampaignTodos") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
@@ -1308,7 +1308,7 @@ Rules:
         return json({ todos: todos.filter(Boolean) });
       }
 
-      // ── MICROSITE: unlinkTodoFromCampaign ──
+      // â”€â”€ MICROSITE: unlinkTodoFromCampaign â”€â”€
       if (body.action === "unlinkTodoFromCampaign") {
         const { campaignId, todoId } = body;
         if (!campaignId || !todoId) return json({ error: "campaignId and todoId required" }, 400);
@@ -1327,7 +1327,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ── MICROSITE: updateCampaignField ──
+      // â”€â”€ MICROSITE: updateCampaignField â”€â”€
       if (body.action === "updateCampaignField") {
         const { campaignId, field, value } = body;
         if (!campaignId || !field) return json({ error: "campaignId and field required" }, 400);
@@ -1345,7 +1345,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ── MICROSITE: updateTitleStage ──
+      // â”€â”€ MICROSITE: updateTitleStage â”€â”€
       if (body.action === "updateTitleStage") {
         const { titleId, stage } = body;
         if (!titleId || !stage) return json({ error: "titleId and stage required" }, 400);
@@ -1362,7 +1362,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ── MICROSITE: getCampaignLogins ──
+      // â”€â”€ MICROSITE: getCampaignLogins â”€â”€
       if (body.action === "getCampaignLogins") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
@@ -1379,7 +1379,7 @@ Rules:
         return json({ logins });
       }
 
-      // ── MICROSITE: createCampaignLogin ──
+      // â”€â”€ MICROSITE: createCampaignLogin â”€â”€
       if (body.action === "createCampaignLogin") {
         const { campaignId, name } = body;
         if (!campaignId || !name) return json({ error: "campaignId and name required" }, 400);
@@ -1401,7 +1401,7 @@ Rules:
         return json({ success: true, id: result.id.replace(/-/g,""), name, status: "Planning" });
       }
 
-      // ── MICROSITE: updateLoginStatus ──
+      // â”€â”€ MICROSITE: updateLoginStatus â”€â”€
       if (body.action === "updateLoginStatus") {
         const { loginId, status } = body;
         if (!loginId || !status) return json({ error: "loginId and status required" }, 400);
@@ -1418,7 +1418,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ── PUBLIC SITE: getPublishedPosts ──────────────────────────────────────
+      // â”€â”€ PUBLIC SITE: getPublishedPosts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Fetches Publish/Published titles for a campaign, then reads each page's
       // block children to extract a real excerpt for blog cards.
       // Used by: dash/web/mobility-mentor-*/index.html
@@ -1474,9 +1474,9 @@ Rules:
               if (textParts.join(" ").length > 300) break;
             }
             excerpt = textParts.join(" ").slice(0, 280).trim();
-            if (textParts.join(" ").length > 280) excerpt += "…";
+            if (textParts.join(" ").length > 280) excerpt += "â€¦";
           } catch {
-            // excerpt stays empty — front-end shows fallback text
+            // excerpt stays empty â€” front-end shows fallback text
           }
 
           return { id, title, stage, cohort, scheduled, excerpt };
@@ -1485,7 +1485,7 @@ Rules:
         return json({ posts });
       }
 
-      // ── getLogins — full login records with campaignIds and platformIds ──
+      // â”€â”€ getLogins â€” full login records with campaignIds and platformIds â”€â”€
       if (body.action === "getLogins") {
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
         const rows = await notionQuery(LOGINS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
@@ -1510,7 +1510,7 @@ Rules:
         return json({ logins });
       }
 
-      // ── createLoginFull — create login linked to campaign + platform ──
+      // â”€â”€ createLoginFull â€” create login linked to campaign + platform â”€â”€
       if (body.action === "createLoginFull") {
         const { name, campaignId, platformId, category, status, usr, accountUrl, smAccountIds, smAccountId } = body;
         if (!name) return json({ error: "name required" }, 400);
@@ -1546,7 +1546,7 @@ Rules:
         }});
       }
 
-      // ── updateLoginFull — update login fields ──
+      // â”€â”€ updateLoginFull â€” update login fields â”€â”€
       if (body.action === "updateLoginFull") {
         const { loginId, name, category, status, usr, accountUrl, headline, bio, platformId, smAccountIds, smAccountId } = body;
         if (!loginId) return json({ error: "loginId required" }, 400);
@@ -1573,7 +1573,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ── deleteLogin — archive login record ──
+      // â”€â”€ deleteLogin â€” archive login record â”€â”€
       if (body.action === "deleteLogin") {
         const { loginId } = body;
         if (!loginId) return json({ error: "loginId required" }, 400);
@@ -1587,7 +1587,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ── linkLoginToCell — append campaign + platform to existing login ──
+      // â”€â”€ linkLoginToCell â€” append campaign + platform to existing login â”€â”€
       if (body.action === "linkLoginToCell") {
         const { loginId, campaignId, platformId } = body;
         if (!loginId) return json({ error: "loginId required" }, 400);
@@ -1616,7 +1616,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ── unlinkLoginFromCell — remove a campaign from an existing login ──
+      // â”€â”€ unlinkLoginFromCell â€” remove a campaign from an existing login â”€â”€
       if (body.action === "unlinkLoginFromCell") {
         const { loginId, campaignId } = body;
         if (!loginId || !campaignId) return json({ error: "loginId and campaignId required" }, 400);
@@ -1642,7 +1642,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ── updatePlatformStatus — set platform Status field ──
+      // â”€â”€ updatePlatformStatus â€” set platform Status field â”€â”€
       if (body.action === "updatePlatformStatus") {
         const { platformId, status } = body;
         if (!platformId || !status) return json({ error: "platformId and status required" }, 400);
@@ -1657,7 +1657,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ── getEmails — fetch all Email records ───────────────────────────
+      // â”€â”€ getEmails â€” fetch all Email records â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "getEmails") {
         const rows = await notionQuery(EMAILS_DB, { sorts: [{ property: "Email", direction: "ascending" }] });
         const emails = rows.map(r => {
@@ -1672,7 +1672,7 @@ Rules:
         return json({ emails });
       }
 
-      // ── getSmAccounts — fetch all SM Account records ──────────────────
+      // â”€â”€ getSmAccounts â€” fetch all SM Account records â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "getSmAccounts") {
         const rows = await notionQuery(SM_ACCOUNTS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
         const accounts = rows.map(r => {
@@ -1696,7 +1696,7 @@ Rules:
         return json({ accounts });
       }
 
-      // ── createSmAccount ───────────────────────────────────────────────
+      // â”€â”€ createSmAccount â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "createSmAccount") {
         const { name, type, login, loginId, username, pw, emailId, platform, platformId, campaign, campaignId } = body;
         if (!name) return json({ error: "name required" }, 400);
@@ -1725,7 +1725,7 @@ Rules:
         return json({ success: true, account: { id: result.id.replace(/-/g,""), name, type: type||"", login: login||"", loginId: loginId||"", username: username||"", pw: pw||"", emailIds: emailId ? [emailId] : [], platform: platform||"", platformId: platformId||"", campaign: campaign||"", campaignId: campaignId||"" } });
       }
 
-      // ── updateSmAccount ───────────────────────────────────────────────
+      // â”€â”€ updateSmAccount â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "updateSmAccount") {
         const { id, name, type, login, loginId, username, pw, emailId, platform, platformId, campaign, campaignId } = body;
         if (!id) return json({ error: "id required" }, 400);
@@ -1753,7 +1753,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ── deleteSmAccount — trash an SM Account record ──────────────────
+      // â”€â”€ deleteSmAccount â€” trash an SM Account record â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "deleteSmAccount") {
         const { id } = body;
         if (!id) return json({ error: "id required" }, 400);
@@ -1768,7 +1768,7 @@ Rules:
         return json({ success: true });
       }
 
-      // ── SM POSTS: getSmPosts ─────────────────────────────────────────────
+      // â”€â”€ SM POSTS: getSmPosts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "getSmPosts") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
@@ -1798,7 +1798,7 @@ Rules:
         return json({ posts });
       }
 
-      // ── SM POSTS: getSmPost (single post by ID) ──────────────────────────
+      // â”€â”€ SM POSTS: getSmPost (single post by ID) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "getSmPost") {
         const { id } = body;
         if (!id) return json({ error: "id required" }, 400);
@@ -1822,13 +1822,13 @@ Rules:
         });
       }
 
-      // ── SM POSTS: approveSmPost ──────────────────────────────────────────
+      // â”€â”€ SM POSTS: approveSmPost â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "approveSmPost") {
         const { id, campaignId } = body;
         if (!id) return json({ error: "id required" }, 400);
         const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
 
-        // 1 — Fetch the SM Post (title + copy + platform)
+        // 1 â€” Fetch the SM Post (title + copy + platform)
         const postRes = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
         });
@@ -1838,7 +1838,7 @@ Rules:
         const postCopy     = pp["Post Copy"]?.rich_text?.map(t=>t.plain_text).join("") || "";
         const postPlatform = (pp["Platform"]?.multi_select || []).map(s=>s.name).join(", ") || "TikTok";
 
-        // 1b — Extract voice delivery guide from Voice Settings JSON (masterVoicePrompt key)
+        // 1b â€” Extract voice delivery guide from Voice Settings JSON (masterVoicePrompt key)
         let voiceGuide = "";
         try {
           const vsRaw = stripMcpEscaping(pp["Voice Settings"]?.rich_text?.map(t=>t.plain_text).join("") || "");
@@ -1846,9 +1846,9 @@ Rules:
             const vs = JSON.parse(vsRaw);
             if (vs.masterVoicePrompt) voiceGuide = vs.masterVoicePrompt;
           }
-        } catch(e) { /* non-fatal — proceed without voice guide */ }
+        } catch(e) { /* non-fatal â€” proceed without voice guide */ }
 
-        // 2 — Fetch Research record for campaign context (TikTok Trends, keywords, key message)
+        // 2 â€” Fetch Research record for campaign context (TikTok Trends, keywords, key message)
         let researchContext = "";
         if (campaignId) {
           try {
@@ -1869,7 +1869,7 @@ Rules:
           } catch(e) { /* proceed without research context */ }
         }
 
-        // 3 — Generate full short-form script via Claude
+        // 3 â€” Generate full short-form script via Claude
         let script = "";
         try {
           const scriptPrompt = `You are a short-form video scriptwriter for TikTok and YouTube Shorts.
@@ -1883,11 +1883,11 @@ ${researchContext ? "\n" + researchContext : ""}
 ${voiceGuide ? "\nNARRATOR VOICE GUIDE (write to match this delivery style):\n" + voiceGuide : ""}
 
 Rules:
-- Hook in the first 2-3 seconds — grab attention immediately
-- Write pure spoken voiceover text only — no brackets, no stage directions, no labels
+- Hook in the first 2-3 seconds â€” grab attention immediately
+- Write pure spoken voiceover text only â€” no brackets, no stage directions, no labels
 - Target 75-100 words (30-45 seconds at ~2.3 words/second)
 - End with a thought, question, or statement that lingers
-${voiceGuide ? "- Honour the narrator voice guide above — pace, tone, register, and sentence length should match that delivery style" : "- Conversational rhythm, short sentences, natural pauses implied by punctuation"}
+${voiceGuide ? "- Honour the narrator voice guide above â€” pace, tone, register, and sentence length should match that delivery style" : "- Conversational rhythm, short sentences, natural pauses implied by punctuation"}
 
 Output the script text only. No preamble, no labels.`;
 
@@ -1898,9 +1898,9 @@ Output the script text only. No preamble, no labels.`;
           });
           const cData = await cRes.json();
           script = cData.content?.[0]?.text?.trim() || "";
-        } catch(e) { /* non-fatal — approve anyway */ }
+        } catch(e) { /* non-fatal â€” approve anyway */ }
 
-        // 4 — Update SM Post: Status=Publish + Script (if generated)
+        // 4 â€” Update SM Post: Status=Publish + Script (if generated)
         const updateProps = { "Status": { select: { name: "Publish" } } };
         if (script) updateProps["Script"] = { rich_text: [{ type: "text", text: { content: script.slice(0, 2000) } }] };
 
@@ -1914,7 +1914,7 @@ Output the script text only. No preamble, no labels.`;
         return json({ success: true, scriptGenerated: !!script });
       }
 
-      // ── SM POSTS: updateSmPostSettings ───────────────────────────────────
+      // â”€â”€ SM POSTS: updateSmPostSettings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "updateSmPostSettings") {
         const { id, voiceId, captionStyle, backgroundImage, voiceSettings } = body;
         if (!id) return json({ error: "id required" }, 400);
@@ -1937,7 +1937,7 @@ Output the script text only. No preamble, no labels.`;
         return json({ success: true });
       }
 
-      // ── SM POSTS: updateSmPostScript ─────────────────────────────────────
+      // â”€â”€ SM POSTS: updateSmPostScript â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "updateSmPostScript") {
         const { id, script } = body;
         if (!id) return json({ error: "id required" }, 400);
@@ -1952,7 +1952,7 @@ Output the script text only. No preamble, no labels.`;
         return json({ success: true });
       }
 
-      // ── SM POSTS: updateSmPostVideoPath ──────────────────────────────────
+      // â”€â”€ SM POSTS: updateSmPostVideoPath â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "updateSmPostVideoPath") {
         const { id, localPath } = body;
         if (!id) return json({ error: "id required" }, 400);
@@ -1967,7 +1967,7 @@ Output the script text only. No preamble, no labels.`;
         return json({ success: true });
       }
 
-      // ── SM POSTS: deleteSmPost ───────────────────────────────────────────
+      // â”€â”€ SM POSTS: deleteSmPost â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (body.action === "deleteSmPost") {
         const { id } = body;
         if (!id) return json({ error: "id required" }, 400);
@@ -1982,10 +1982,10 @@ Output the script text only. No preamble, no labels.`;
         return json({ success: true });
       }
 
-      // ── SM POSTS: runSmResearch ──────────────────────────────────────────
+      // â”€â”€ SM POSTS: runSmResearch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // 1. Scrape TikTok via Apify free-tiktok-scraper (searchQueries)
       // 2. Scrape YouTube via Apify api-ninja/youtube-search-scraper (query + type:video)
-      // 3. Pass results to Claude Haiku → generate 5 script ideas
+      // 3. Pass results to Claude Haiku â†’ generate 5 script ideas
       // 4. Create SM Post records in Notion with Status=Draft + Campaign relation
       if (body.action === "runSmResearch") {
         const { campaignId, keywords } = body;
@@ -1996,7 +1996,7 @@ Output the script text only. No preamble, no labels.`;
           ? keywords.filter(Boolean)
           : keywords.split(',').map(s => s.trim()).filter(Boolean);
 
-        // 1 — TikTok scrape
+        // 1 â€” TikTok scrape
         let tiktokItems = [];
         if (AT) {
           try {
@@ -2009,7 +2009,7 @@ Output the script text only. No preamble, no labels.`;
           } catch(e) { /* proceed without TikTok data */ }
         }
 
-        // 2 — YouTube scrape (one combined query)
+        // 2 â€” YouTube scrape (one combined query)
         let ytItems = [];
         if (AT) {
           try {
@@ -2022,7 +2022,7 @@ Output the script text only. No preamble, no labels.`;
           } catch(e) { /* proceed without YouTube data */ }
         }
 
-        // 3 — Format scraped data
+        // 3 â€” Format scraped data
         // Indexed version (with URLs) sent to Claude so it can pick TopVideos per idea
         const tiktokData = Array.isArray(tiktokItems) ? tiktokItems.slice(0, 12) : [];
         const ytData     = Array.isArray(ytItems)     ? ytItems.slice(0, 10)     : [];
@@ -2032,16 +2032,16 @@ Output the script text only. No preamble, no labels.`;
           const title = (v.text || v.desc || v.title || '').slice(0, 70);
           const views = v.playCount || v.stats?.playCount || 0;
           return `[T${i+1}] "${title}" | views:${views}${url ? ' | ' + url : ''}`;
-        }).join('\n') || '(no TikTok data — proceed from keywords only)';
+        }).join('\n') || '(no TikTok data â€” proceed from keywords only)';
 
         const fmtYT = ytData.map((v, i) => {
           const url   = v.url || v.videoUrl || (v.id ? `https://youtube.com/watch?v=${v.id}` : '');
           const title = (v.title || '').slice(0, 70);
           const views = v.viewCount || 0;
           return `[Y${i+1}] "${title}" | views:${views}${url ? ' | ' + url : ''}`;
-        }).join('\n') || '(no YouTube data — proceed from keywords only)';
+        }).join('\n') || '(no YouTube data â€” proceed from keywords only)';
 
-        // 3.5 — Write compact summary (no URLs) to Research TikTok Trends field
+        // 3.5 â€” Write compact summary (no URLs) to Research TikTok Trends field
         const fmtTTsummary = tiktokData.map(v =>
           `- "${(v.text || v.desc || v.title || '').slice(0, 80)}" | views: ${v.playCount || v.stats?.playCount || 0}`
         ).join('\n') || '(no TikTok data)';
@@ -2060,14 +2060,14 @@ Output the script text only. No preamble, no labels.`;
               body: JSON.stringify({ properties: { "TikTok Trends": { rich_text: [{ type: "text", text: { content: rawSummary.slice(0, 2000) } }] } } })
             });
           }
-        } catch(e) { /* non-fatal — proceed without writing */ }
+        } catch(e) { /* non-fatal â€” proceed without writing */ }
 
         const claudePrompt = `You are a social media content strategist. Based on trending content for the keywords "${kws.join(', ')}", generate exactly 5 short-form script ideas.
 
-TRENDING TIKTOK (indexed — copy URLs exactly for TopVideos):
+TRENDING TIKTOK (indexed â€” copy URLs exactly for TopVideos):
 ${fmtTT}
 
-TRENDING YOUTUBE (indexed — copy URLs exactly for TopVideos):
+TRENDING YOUTUBE (indexed â€” copy URLs exactly for TopVideos):
 ${fmtYT}
 
 Generate exactly 5 ideas. Use EXACTLY this format with no extra text before IDEA 1:
@@ -2097,7 +2097,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         if (!cRes.ok) return json({ error: cData.error?.message || "Claude error" }, cRes.status);
         const ideas = cData.content?.[0]?.text || '';
 
-        // 4 — Parse + create Notion records
+        // 4 â€” Parse + create Notion records
         const blocks = ideas.split(/(?=IDEA\s+\d)/i).filter(b => /IDEA\s+\d/i.test(b));
         const created = [];
 
@@ -2145,9 +2145,9 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ success: true, count: created.length, ids: created });
       }
 
-      // ── TRADES ────────────────────────────────────────────────────────
+      // â”€â”€ TRADES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-      if (action === 'saveTrade') {
+      if (body.action === 'saveTrade') {
         const { ticker, strike, expiry, direction, notes } = body;
         if (!ticker || !strike || !expiry || !direction) {
           return json({ error: 'Missing required trade fields' }, 400);
@@ -2163,7 +2163,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           direction,
           notes:               notes || '',
           entry_time:          now,
-          entry_price:         null,   // underlying at entry — filled by poller
+          entry_price:         null,   // underlying at entry â€” filled by poller
           price_captured:      false,
           current_price:       null,
           current_pct:         null,   // % move of underlying since entry
@@ -2180,15 +2180,15 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ success: true, id });
       }
 
-      if (action === 'getTrades') {
+      if (body.action === 'getTrades') {
         const list   = await env.TRADES.list({ prefix: 'trades:' });
         const trades = await Promise.all(list.keys.map(k => env.TRADES.get(k.name, 'json')));
         trades.sort((a, b) => new Date(b.entry_time) - new Date(a.entry_time));
         return json({ trades: trades.filter(Boolean) });
       }
 
-      if (action === 'updateTrade') {
-        const { id, ...fields } = body;
+      if (body.action === 'updateTrade') {
+        const { id, action: _a, token: _t, ...fields } = body;
         if (!id) return json({ error: 'Missing trade id' }, 400);
         const existing = await env.TRADES.get(`trades:${id}`, 'json');
         if (!existing) return json({ error: 'Trade not found' }, 404);
@@ -2196,14 +2196,14 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ success: true });
       }
 
-      if (action === 'deleteTrade') {
+      if (body.action === 'deleteTrade') {
         const { id } = body;
         if (!id) return json({ error: 'Missing trade id' }, 400);
         await env.TRADES.delete(`trades:${id}`);
         return json({ success: true });
       }
 
-      if (action === 'getActiveTrades') {
+      if (body.action === 'getActiveTrades') {
         const list = await env.TRADES.list({ prefix: 'trades:' });
         const all  = await Promise.all(list.keys.map(k => env.TRADES.get(k.name, 'json')));
         const active = all.filter(t => t && !t.expired);
