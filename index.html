@@ -3261,37 +3261,80 @@ function renderDev() {
           titlesEl.appendChild(subHdr);
         }
 
+        const DEV_STATUSES = ['Development','Writing','Review','Approved','Publish','Done'];
+        const DEV_STATUS_STYLE = {
+          'Development': { bg:'#ffffff', clr:'#000', badgeClr:'#444',    label:'DEV' },
+          'Writing':     { bg:'#ff8c00', clr:'#000', badgeClr:'#5a2e00', label:'WRI' },
+          'Review':      { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#888', label:'REV' },
+          'Approved':    { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#888', label:'APR' },
+          'Publish':     { bg:'#00cc66', clr:'#000', badgeClr:'#005522', label:'PUB' },
+          'Done':        { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#555', label:'DNE' },
+        };
+
         grpMap[grpKey].forEach((t, idx) => {
           const isLast = isLastGrp && idx === grpMap[grpKey].length - 1;
-          const isDev = t.status === 'Development';
           const isPub = t.status === 'Publish';
-          const bg  = isPub ? '#00cc66' : isDev ? '#ffffff' : 'var(--bg)';
-          const clr = (isPub || isDev) ? '#000' : 'var(--text2)';
+          const sty = DEV_STATUS_STYLE[t.status] || { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#ff6a00', label:'↗' };
           const br  = isLast ? '0 0 var(--radius-sm) var(--radius-sm)' : '0';
           const tRow = document.createElement('div');
-          tRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 10px 7px 28px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:'+bg+';border-radius:'+br+';';
+          tRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 10px 7px 28px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:'+sty.bg+';border-radius:'+br+';';
 
           // Title name — clickable link
           const titleLink = document.createElement('a');
           titleLink.href = 'https://www.notion.so/' + t.id;
           titleLink.target = '_blank';
-          titleLink.style.cssText = 'font-size:12px;font-weight:500;color:'+clr+';line-height:1.4;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;';
+          titleLink.style.cssText = 'font-size:12px;font-weight:500;color:'+sty.clr+';line-height:1.4;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;';
           titleLink.textContent = esc(t.title);
           tRow.appendChild(titleLink);
 
-          // Status badge — fixed width
+          // Status badge — clickable, cycles through statuses
           const statusBadge = document.createElement('span');
-          statusBadge.style.cssText = 'font-size:10px;font-weight:700;width:32px;text-align:center;flex-shrink:0;color:'+(isPub?'#005522':isDev?'#444':'#ff6a00')+';';
-          statusBadge.textContent = isPub ? 'PUB' : isDev ? 'DEV' : '↗';
-          // Assets button for publish titles — left of status
+          statusBadge.style.cssText = 'font-size:10px;font-weight:700;width:32px;text-align:center;flex-shrink:0;color:'+sty.badgeClr+';cursor:pointer;user-select:none;';
+          statusBadge.textContent = sty.label;
+          statusBadge.title = t.status;
+          statusBadge.onclick = async e => {
+            e.preventDefault(); e.stopPropagation();
+            const curIdx = DEV_STATUSES.indexOf(t.status);
+            const nextStatus = DEV_STATUSES[(curIdx + 1) % DEV_STATUSES.length];
+            const prevStatus = t.status;
+            t.status = nextStatus;
+            const nextSty = DEV_STATUS_STYLE[nextStatus] || sty;
+            tRow.style.background = nextSty.bg;
+            titleLink.style.color = nextSty.clr;
+            statusBadge.style.color = nextSty.badgeClr;
+            statusBadge.textContent = nextSty.label;
+            statusBadge.title = nextStatus;
+            // Update Assets button visibility
+            if (nextStatus === 'Publish' && !tRow.querySelector('.assets-btn')) {
+              const ab = document.createElement('span');
+              ab.className = 'assets-btn';
+              ab.textContent = 'Assets →';
+              ab.style.cssText = 'font-size:10px;font-weight:700;color:#005522;background:#00ff88;border-radius:4px;padding:2px 7px;cursor:pointer;flex-shrink:0;';
+              ab.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); showTitleAssets(t.id, t.title); };
+              tRow.insertBefore(ab, statusBadge);
+            } else if (nextStatus !== 'Publish') {
+              const ab = tRow.querySelector('.assets-btn');
+              if (ab) ab.remove();
+            }
+            try {
+              await call('updateTitleStage', { titleId: t.id, stage: nextStatus });
+              showToast(nextStatus + ' ✓', 'success');
+            } catch(err) {
+              t.status = prevStatus;
+              tRow.style.background = sty.bg;
+              titleLink.style.color = sty.clr;
+              statusBadge.style.color = sty.badgeClr;
+              statusBadge.textContent = sty.label;
+              statusBadge.title = prevStatus;
+              showToast('Failed: ' + err.message, 'error');
+            }
+          };
           if (isPub) {
             const assetsBtn = document.createElement('span');
+            assetsBtn.className = 'assets-btn';
             assetsBtn.textContent = 'Assets →';
             assetsBtn.style.cssText = 'font-size:10px;font-weight:700;color:#005522;background:#00ff88;border-radius:4px;padding:2px 7px;cursor:pointer;flex-shrink:0;';
-            assetsBtn.onclick = e => {
-              e.preventDefault(); e.stopPropagation();
-              showTitleAssets(t.id, t.title);
-            };
+            assetsBtn.onclick = e => { e.preventDefault(); e.stopPropagation(); showTitleAssets(t.id, t.title); };
             tRow.appendChild(assetsBtn);
           }
 
