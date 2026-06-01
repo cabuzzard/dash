@@ -3964,7 +3964,6 @@ function renderTdTab(items) {
       delBtn.onmouseover = () => delBtn.style.color = isDone ? '#000' : '#ffffff';
       delBtn.onmouseout  = () => delBtn.style.color = doneState ? '#000' : 'var(--text2)';
       delBtn.onclick = async () => {
-        if (!confirm('Delete "' + t.name + '"?')) return;
         delBtn.textContent = '⏳';
         try {
           await call('deleteTdItem', { itemId: t.id });
