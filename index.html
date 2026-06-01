@@ -4094,6 +4094,48 @@ const DEFAULT_PROMPTS = [
     label: 'Voice Style Advice',
     tag: 'Script',
     text: "Based on the tone of this script, which ElevenLabs voice style fits best?\n\nOptions:\n- Narrator: deep, neutral male (Adam — pNInz6obpgDQGcFmaJgB)\n- Warm: smooth, warm female (Bella — EXAVITQu4vr4xnSDxMaL)\n- Gravelly: rugged, dramatic male (Arnold — VR6AewLTigWG4xSOukaG)\n- Young: bright, energetic female (Elli — MF3mGyEYCl7XYWbV9V6O)\n\nExplain your choice in one sentence, then suggest stability and similarity_boost values (0.0–1.0 each).\n\nScript:\n[PASTE SCRIPT HERE]"
+  },
+  {
+    id: 'yt1',
+    label: 'Niche & Positioning',
+    tag: 'YouTube',
+    text: "Analyze the top 10 YouTube niches with high CPM, low competition, and strong evergreen demand. For each, give me: average CPM, content difficulty, monetization paths beyond AdSense, and a 3-word channel concept."
+  },
+  {
+    id: 'yt2',
+    label: 'Channel Identity',
+    tag: 'YouTube',
+    text: "I'm starting a YouTube channel about [NICHE]. Create a full channel identity: channel name (5 options), tagline, target audience persona, content pillars (4), and a 'unique mechanism' that differentiates me from existing creators."
+  },
+  {
+    id: 'yt3',
+    label: '90-Day Content Roadmap',
+    tag: 'YouTube',
+    text: "Build a 90-day YouTube content calendar for a new channel in [NICHE]. Include: 12 video titles optimized for search, upload schedule, which videos to prioritize for SEO vs. virality, and a content progression that builds authority over time."
+  },
+  {
+    id: 'yt4',
+    label: 'Video Script System',
+    tag: 'YouTube',
+    text: "Write a full YouTube script for '[VIDEO TITLE]'. Use this structure: hook (first 30 seconds designed to stop scrolling), problem agitation, solution walkthrough, 3 key insights, CTA, and an end screen tease for the next video."
+  },
+  {
+    id: 'yt5',
+    label: 'SEO & Thumbnail Strategy',
+    tag: 'YouTube',
+    text: "For the video '[TITLE]', give me: 3 thumbnail concepts with text overlay copy, a YouTube SEO-optimized title (under 60 chars), description (with timestamps, keywords, links), and 10 tags. Also suggest A/B test variations for the thumbnail."
+  },
+  {
+    id: 'yt6',
+    label: 'Monetization Stack',
+    tag: 'YouTube',
+    text: "I have a YouTube channel in [NICHE] with [X] subscribers. Build me a full monetization roadmap beyond AdSense: affiliate opportunities, digital product ideas, sponsorship pitch template, and a lead magnet I can offer to build an email list."
+  },
+  {
+    id: 'yt7',
+    label: 'Growth & Repurposing Engine',
+    tag: 'YouTube',
+    text: "Take this YouTube video script/transcript and repurpose it into: a Twitter/X thread, a LinkedIn post, 3 YouTube Shorts hooks, an email newsletter, and a Pinterest description. Also suggest which platforms to prioritize based on my niche."
   }
 ];
 
@@ -4103,7 +4145,12 @@ let editingPromptId = null;
 function initPromptsTab() {
   const stored = localStorage.getItem(PROMPTS_KEY);
   if (stored) {
-    try { allPrompts = JSON.parse(stored); } catch(e) { allPrompts = DEFAULT_PROMPTS.map(p => ({...p})); }
+    try {
+      allPrompts = JSON.parse(stored);
+      const existingIds = new Set(allPrompts.map(p => p.id));
+      DEFAULT_PROMPTS.forEach(p => { if (!existingIds.has(p.id)) allPrompts.push({...p}); });
+      savePromptsToStorage();
+    } catch(e) { allPrompts = DEFAULT_PROMPTS.map(p => ({...p})); }
   } else {
     allPrompts = DEFAULT_PROMPTS.map(p => ({...p}));
     savePromptsToStorage();
