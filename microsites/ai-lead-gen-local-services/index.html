@@ -125,9 +125,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2 class="editable" onclick="openModal('thoughts')">Thoughts</h2>
+    <h2>Unique Opportunity</h2>
     <div class="content">
-      <div class="body-text" id="r-thoughts" style="white-space:pre-wrap;min-height:40px;"></div>
+      <div class="body-text" id="r-uniqueopportunity" style="white-space:pre-wrap;min-height:40px;"></div>
     </div>
   </div>
   <div class="col">
@@ -138,18 +138,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 2: two col — keywords / unique opportunity -->
+<!-- SEC 2: keywords — full width -->
 <div class="two-col">
-  <div class="col">
+  <div class="col" style="grid-column:span 2">
     <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
     <div class="content">
       <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2>Unique Opportunity</h2>
-    <div class="content">
-      <div class="body-text" id="r-uniqueopportunity" style="white-space:pre-wrap;min-height:40px;"></div>
     </div>
   </div>
 </div>
@@ -601,14 +595,14 @@ async function loadResearch() {
     const sc = r.status ? r.status.toLowerCase() : 'draft';
     statusEl.innerHTML = `<span class="badge ${sc}">${r.status || '—'}</span>`;
     document.getElementById('r-date').textContent = r.lastUpdated || '—';
-    const notesDisplayEl = document.getElementById('r-thoughts');
-    if (notesDisplayEl) notesDisplayEl.textContent = r.thoughts || '';
+    // Unique Opportunity — render directly in SEC 1 panel
+    const uoEl = document.getElementById('r-uniqueopportunity');
+    if (uoEl) uoEl.textContent = r.uniqueOpportunity || '';
 
     // Store raw values for editing
     RESEARCH_ID_LIVE = r.id || '';
     RAW = {
       keywords: r.keywords || '',
-      thoughts: r.thoughts || '',
     };
 
     // SEC 2 — keywords as pills
@@ -618,10 +612,6 @@ async function loadResearch() {
     } else {
       kwEl.innerHTML = '<span class="empty">—</span>';
     }
-
-    // Unique Opportunity — render directly, no condense
-    const uoEl = document.getElementById('r-uniqueopportunity');
-    if (uoEl) uoEl.textContent = r.uniqueOpportunity || '';
 
     // News Feed — condense via Claude
     const newsEl = document.getElementById('r-news');
@@ -672,7 +662,6 @@ let RESEARCH_ID_LIVE = '';
 // Modal config per field
 const MODAL_CFG = {
   keywords: { title: 'Keywords', hint: 'Comma-separated keywords for this campaign', target: 'campaign' },
-  thoughts:  { title: 'Thoughts', hint: 'Personal notes and thoughts on this campaign', target: 'research', field: 'thoughts' },
 };
 
 let activeField = null;
@@ -690,7 +679,6 @@ function openModal(field) {
   // Pre-fill with raw value
   let val = '';
   if (field === 'keywords') val = RAW.keywords || '';
-  if (field === 'thoughts') val = RAW.thoughts || '';
   document.getElementById('modalTa').value = val;
 
   document.getElementById('editModal').classList.add('open');
@@ -724,10 +712,6 @@ async function saveModal() {
     } else {
       await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
       RAW[cfg.field] = val;
-      if (activeField === 'thoughts') {
-        const nd = document.getElementById('r-thoughts');
-        if (nd) nd.textContent = val;
-      }
     }
     status.textContent = 'Saved ✓';
     status.className = 'modal-status ok';
