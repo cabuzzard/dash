@@ -97,8 +97,17 @@ const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/{deploy-path}/"
 ```
 
 3. Push to GitHub (`git add`, `git commit`, `git push`)
-4. Create an Asset record in the Assets DB in Notion
-5. Set the Site URL on the Campaign record
+4. Create an Asset record in the Assets DB in Notion (data source `40a47fc9-4550-4a71-b0f7-f2afb8e45f63`):
+   - `Asset Title` = "{Campaign Name} — Microsite"
+   - `Asset Type` = "Microsite"
+   - `Asset Status` = "Published"
+   - `Site URL` = `https://cabuzzard.github.io/dash/microsites/{deploy-path}/`
+   - `Deploy Path` = "{deploy-path}/"
+   - `Campaign ID` = "{notion-campaign-page-id}"
+   - `Campaign` = relation to the Campaign record
+   - This feeds the **STE** column in the overview table
+5. Set `Web Page URL` on the Research record to the microsite URL
+6. Do NOT set `Campaign Page` on the Campaign record — that field is for the live public site (LVE column) only
 
 **To update all microsites** (after changes to `microsite-index.html`):
 - Preserve only the unique header block (4 JS constants + 2 Notion links per site)
