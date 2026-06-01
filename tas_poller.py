@@ -1,27 +1,19 @@
 """
-tas_poller.py — runs on your home machine alongside TWS.
-Polls Cloudflare KV for trades missing T&S data, fetches from TWS, pushes back.
+tas_poller.py — runs on your home machine.
+Polls Cloudflare KV for trades missing price data, fetches from Yahoo Finance, pushes back.
 
 Usage:
-    pip install ib_insync requests
+    pip install yfinance requests
     python tas_poller.py
-
-Requires TWS running on localhost:7497 (paper) or 7496 (live).
-Set WORKER_URL and WORKER_PIN at the top if needed.
 """
 
 import time
-import json
 import requests
-import pandas as pd
-from ib_insync import IB, Stock
+import yfinance as yf
 
-WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev"
-WORKER_PIN  = "1246"          # used only to get a session token
-TWS_HOST    = "127.0.0.1"
-TWS_PORT    = 7497            # 7497 = paper, 7496 = live
-POLL_SECS   = 30
-LOOKBACK    = 60              # seconds of T&S to snapshot
+WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev"
+WORKER_PIN = "1246"
+POLL_SECS  = 30
 
 # ── Auth ──────────────────────────────────────────────────────────────
 def get_token():
@@ -34,58 +26,35 @@ def worker_call(token, action, **kwargs):
     r.raise_for_status()
     return r.json()
 
-# ── T&S snapshot ──────────────────────────────────────────────────────
-def snapshot_tas(ticker: str) -> dict:
-    ib = IB()
+# ── Price snapshot ────────────────────────────────────────────────────
+def snapshot_price(ticker: str) -> dict:
     try:
-        ib.connect(TWS_HOST, TWS_PORT, clientId=10, timeout=10)
-        stock = Stock(ticker, "SMART", "USD")
-        ib.qualifyContracts(stock)
+        t    = yf.Ticker(ticker)
+        hist = t.history(period="1d", interval="1m")
 
-        bars = ib.reqHistoricalTicks(
-            stock,
-            startDateTime="",
-            endDateTime="",
-            numberOfTicks=1000,
-            whatToShow="TRADES",
-            useRth=False,
-        )
+        if hist.empty:
+            return {"price_captured": False}
 
-        now    = pd.Timestamp.now(tz="US/Eastern")
-        recent = [b for b in bars if (now - pd.Timestamp(b.time)).total_seconds() < LOOKBACK]
-
-        if not recent:
-            return {"tas_captured": False}
-
-        prices    = [b.price for b in recent]
-        upticks   = sum(1 for i in range(1, len(prices)) if prices[i] > prices[i - 1])
-        downticks = sum(1 for i in range(1, len(prices)) if prices[i] < prices[i - 1])
-        large     = sum(1 for b in recent if b.size >= 100)
-        velocity  = len(recent) / LOOKBACK
+        current   = round(float(hist["Close"].iloc[-1]), 2)
+        high_day  = round(float(hist["High"].max()), 2)
+        low_day   = round(float(hist["Low"].min()), 2)
+        open_day  = round(float(hist["Open"].iloc[0]), 2)
 
         return {
-            "tas_captured":          True,
-            "tas_velocity":          round(velocity, 2),
-            "tas_uptick_ratio":      round(upticks / max(len(recent) - 1, 1), 2),
-            "tas_total_prints":      len(recent),
-            "tas_uptick_count":      upticks,
-            "tas_downtick_count":    downticks,
-            "tas_large_print_count": large,
+            "price_captured":          True,
+            "underlying_price":        current,
+            "underlying_high_of_day":  high_day,
+            "underlying_low_of_day":   low_day,
+            "underlying_open":         open_day,
         }
     except Exception as e:
-        print(f"  [IBKR error] {e}")
-        return {"tas_captured": False}
-    finally:
-        try:
-            ib.disconnect()
-        except Exception:
-            pass
+        print(f"  [yfinance error] {e}")
+        return {"price_captured": False}
 
 # ── Main loop ─────────────────────────────────────────────────────────
 def main():
-    print(f"T&S Poller starting — polling every {POLL_SECS}s")
-    print(f"Worker: {WORKER_URL}")
-    print(f"TWS:    {TWS_HOST}:{TWS_PORT}\n")
+    print(f"Price Poller starting — polling every {POLL_SECS}s")
+    print(f"Worker: {WORKER_URL}\n")
 
     token = None
 
@@ -96,21 +65,27 @@ def main():
                 token = get_token()
                 print("Auth OK\n")
 
-            data    = worker_call(token, "getPendingTas")
+            data    = worker_call(token, "getPendingPrice")
             pending = data.get("trades", [])
 
             if pending:
-                print(f"{len(pending)} trade(s) need T&S snapshot")
+                print(f"{len(pending)} trade(s) need price snapshot")
                 for trade in pending:
                     tid    = trade["id"]
                     ticker = trade["ticker"]
+                    strike = trade["strike"]
                     print(f"  Snapshotting {ticker} for trade {tid}…")
-                    snap = snapshot_tas(ticker)
-                    if snap["tas_captured"]:
+                    snap = snapshot_price(ticker)
+                    if snap["price_captured"]:
+                        price     = snap["underlying_price"]
+                        high      = snap["underlying_high_of_day"]
+                        low       = snap["underlying_low_of_day"]
+                        otm_pct   = round((strike - price) / price * 100, 2)  # + = OTM call, - = ITM call
+                        snap["otm_pct"] = otm_pct
                         worker_call(token, "updateTrade", id=tid, **snap)
-                        print(f"  ✓ {ticker}: vel={snap['tas_velocity']}/s  uptick={snap['tas_uptick_ratio']}  large={snap['tas_large_print_count']}")
+                        print(f"  ✓ {ticker}: ${price}  HOD=${high}  LOD=${low}  OTM={otm_pct:+.1f}%")
                     else:
-                        print(f"  ✗ {ticker}: no T&S data (market closed or TWS issue)")
+                        print(f"  ✗ {ticker}: no price data (market closed?)")
             else:
                 print(f"[{time.strftime('%H:%M:%S')}] No pending trades")
 

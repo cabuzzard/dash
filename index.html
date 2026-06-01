@@ -4677,6 +4677,17 @@ function renderTradeDetail() {
     </div>
 
     <div class="td-section">
+      <div class="td-section-title">Underlying at Entry</div>
+      ${t.price_captured ? `
+      <div class="td-grid">
+        <div class="td-stat"><div class="td-stat-label">Price</div><div class="td-stat-val">$${t.underlying_price}</div></div>
+        <div class="td-stat"><div class="td-stat-label">Strike OTM</div><div class="td-stat-val ${t.otm_pct > 0 ? '' : 'win'}" style="${t.otm_pct > 2 ? 'color:#ff4444' : ''}">${t.otm_pct > 0 ? '+' : ''}${t.otm_pct?.toFixed(1)}%</div></div>
+        <div class="td-stat"><div class="td-stat-label">High of Day</div><div class="td-stat-val">$${t.underlying_high_of_day}</div></div>
+        <div class="td-stat"><div class="td-stat-label">Low of Day</div><div class="td-stat-val">$${t.underlying_low_of_day}</div></div>
+      </div>` : `<div style="font-size:13px;color:var(--text3);padding:8px 0;">Price snapshot pending…</div>`}
+    </div>
+
+    <div class="td-section">
       <div class="td-section-title">Time &amp; Sales at Entry</div>
       ${t.tas_captured ? `
       <div class="td-grid">

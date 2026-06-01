@@ -2157,25 +2157,31 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const id  = `${ticker.toUpperCase()}_${ts}`;
         const trade = {
           id,
-          ticker:               ticker.toUpperCase(),
-          strike:               parseFloat(strike),
+          ticker:                   ticker.toUpperCase(),
+          strike:                   parseFloat(strike),
           expiry,
           direction,
-          entry_option_price:   parseFloat(entry_option_price),
-          entry_time:           now,
-          notes:                notes || '',
-          tas_captured:         false,
-          tas_velocity:         null,
-          tas_uptick_ratio:     null,
-          tas_total_prints:     null,
-          tas_uptick_count:     null,
-          tas_downtick_count:   null,
-          tas_large_print_count: null,
-          gain_25pct_time:      null,
-          loss_25pct_time:      null,
-          max_rise_pct:         null,
-          max_rise_price:       null,
-          outcome:              'open',
+          entry_option_price:       parseFloat(entry_option_price),
+          entry_time:               now,
+          notes:                    notes || '',
+          price_captured:           false,
+          underlying_price:         null,
+          underlying_high_of_day:   null,
+          underlying_low_of_day:    null,
+          underlying_open:          null,
+          otm_pct:                  null,
+          tas_captured:             false,
+          tas_velocity:             null,
+          tas_uptick_ratio:         null,
+          tas_total_prints:         null,
+          tas_uptick_count:         null,
+          tas_downtick_count:       null,
+          tas_large_print_count:    null,
+          gain_25pct_time:          null,
+          loss_25pct_time:          null,
+          max_rise_pct:             null,
+          max_rise_price:           null,
+          outcome:                  'open',
         };
         await env.TRADES.put(`trades:${id}`, JSON.stringify(trade));
         return json({ success: true, id });
@@ -2217,6 +2223,13 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const list = await env.TRADES.list({ prefix: 'trades:' });
         const all  = await Promise.all(list.keys.map(k => env.TRADES.get(k.name, 'json')));
         const pending = all.filter(t => t && t.tas_captured === false);
+        return json({ trades: pending });
+      }
+
+      if (action === 'getPendingPrice') {
+        const list = await env.TRADES.list({ prefix: 'trades:' });
+        const all  = await Promise.all(list.keys.map(k => env.TRADES.get(k.name, 'json')));
+        const pending = all.filter(t => t && t.price_captured === false);
         return json({ trades: pending });
       }
 
