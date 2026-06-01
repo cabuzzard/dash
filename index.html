@@ -4182,8 +4182,12 @@ function initPromptsTab() {
   if (stored) {
     try {
       allPrompts = JSON.parse(stored);
+      const defaultMap = Object.fromEntries(DEFAULT_PROMPTS.map(p => [p.id, p]));
       const existingIds = new Set(allPrompts.map(p => p.id));
+      // Add missing defaults
       DEFAULT_PROMPTS.forEach(p => { if (!existingIds.has(p.id)) allPrompts.push({...p}); });
+      // Patch category/tag on existing prompts from defaults
+      allPrompts.forEach(p => { if (defaultMap[p.id]) { p.category = defaultMap[p.id].category; p.tag = defaultMap[p.id].tag; } });
       savePromptsToStorage();
     } catch(e) { allPrompts = DEFAULT_PROMPTS.map(p => ({...p})); }
   } else {
