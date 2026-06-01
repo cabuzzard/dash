@@ -310,77 +310,47 @@
   }
 
   /* ── TRADES TAB ── */
-  .trades-header { display:flex; align-items:center; justify-content:space-between; padding: 20px 4px 14px; }
-  .trades-title  { font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--text3); }
-  .trades-add-btn {
-    font-size:13px; font-weight:600; padding:7px 14px;
+  .trades-hdr { display:flex; align-items:center; justify-content:space-between; padding:20px 4px 14px; }
+  .trades-hdr-title { font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--text3); }
+  .tr-add-btn {
+    font-size:13px; font-weight:600; padding:7px 16px;
     background:var(--surface); border:1px solid var(--border2);
-    border-radius:var(--radius-sm); color:var(--text); cursor:pointer;
-    transition:all .15s;
+    border-radius:var(--radius-sm); color:var(--text); cursor:pointer; transition:all .15s;
   }
-  .trades-add-btn:hover { border-color:var(--text3); }
+  .tr-add-btn:hover { border-color:var(--text3); }
 
-  .trade-card {
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--radius); padding:14px 16px; margin-bottom:8px;
-    cursor:pointer; transition:border-color .15s;
-    border-left:3px solid var(--border);
+  /* table */
+  .tr-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .tr-table { width:100%; border-collapse:collapse; font-size:12px; min-width:560px; }
+  .tr-table th {
+    font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--text3); padding:8px 10px; text-align:left;
+    border-bottom:1px solid var(--border); white-space:nowrap;
   }
-  .trade-card:hover { border-color:var(--border2); }
-  .trade-card.high-vel { border-left-color: #ff6a00; }
-  .trade-card-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
-  .trade-card-sym { font-size:15px; font-weight:700; color:var(--text); }
-  .trade-badge {
-    font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
-    padding:3px 8px; border-radius:4px;
-  }
-  .trade-badge.win  { background:#0d2e1a; color:#00cc66; border:1px solid #00cc6633; }
-  .trade-badge.loss { background:#2e0d0d; color:#ff4444; border:1px solid #ff444433; }
-  .trade-badge.open { background:var(--surface2); color:var(--text3); border:1px solid var(--border2); }
-  .trade-card-meta { font-size:12px; color:var(--text3); display:flex; gap:12px; flex-wrap:wrap; }
-  .trade-card-tas  { font-size:11px; color:#ff6a00; margin-top:4px; }
+  .tr-table td { padding:10px; border-bottom:1px solid var(--border); vertical-align:middle; color:var(--text2); }
+  .tr-table tr:last-child td { border-bottom:none; }
+  .tr-table tr:hover td { background:var(--surface2); cursor:pointer; }
+  .tr-table tr.expired td { opacity:.45; }
+  .tr-sym  { font-size:13px; font-weight:700; color:var(--text); white-space:nowrap; }
+  .tr-mono { font-family:'DM Mono',monospace; }
+  .tr-up   { color:#00cc66; font-family:'DM Mono',monospace; }
+  .tr-dn   { color:#ff4444; font-family:'DM Mono',monospace; }
+  .tr-badge-struck { font-size:10px; font-weight:700; background:#1a0d00; color:#ff6a00; border:1px solid #ff6a0044; padding:2px 7px; border-radius:4px; white-space:nowrap; }
+  .tr-badge-open   { font-size:10px; font-weight:700; background:var(--surface2); color:var(--text3); border:1px solid var(--border2); padding:2px 7px; border-radius:4px; }
+  .tr-badge-exp    { font-size:10px; font-weight:700; background:#111; color:var(--text3); border:1px solid var(--border); padding:2px 7px; border-radius:4px; }
 
-  .trade-detail { display:none; padding:4px 0 20px; }
-  .trade-detail.active { display:block; }
-  .td-back { font-size:12px; font-weight:600; color:var(--text3); cursor:pointer; margin-bottom:16px; display:inline-block; }
-  .td-back:hover { color:var(--text); }
-  .td-section { margin-bottom:20px; }
-  .td-section-title { font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--text3); margin-bottom:10px; }
-  .td-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .td-stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 14px; }
-  .td-stat-label { font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text3); margin-bottom:4px; }
-  .td-stat-val { font-size:18px; font-weight:700; color:var(--text); font-family:'DM Mono',monospace; }
-  .td-stat-val.pending { color:var(--text3); font-size:13px; }
-  .td-stat-val.win  { color:#00cc66; }
-  .td-stat-val.loss { color:#ff4444; }
-  .td-milestone-row { display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); }
-  .td-milestone-row:last-child { border-bottom:none; }
-  .td-milestone-label { font-size:13px; color:var(--text2); }
-  .td-milestone-val   { font-size:12px; color:var(--text3); font-family:'DM Mono',monospace; }
-  .td-milestone-set-btn {
-    font-size:11px; font-weight:600; padding:4px 10px;
-    background:var(--surface2); border:1px solid var(--border2);
-    border-radius:6px; color:var(--text3); cursor:pointer; transition:all .15s;
-  }
-  .td-milestone-set-btn:hover { border-color:var(--text3); color:var(--text); }
-
-  .trade-analysis { display:none; padding:4px 0 20px; }
-  .trade-analysis.active { display:block; }
-  .ta-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; padding-top:20px; }
-  .ta-title { font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--text3); }
-  .ta-back { font-size:12px; font-weight:600; color:var(--text3); cursor:pointer; }
-  .ta-back:hover { color:var(--text); }
-  .ta-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:20px; }
-  .ta-stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 14px; }
-  .ta-stat-label { font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text3); margin-bottom:4px; }
-  .ta-stat-val { font-size:20px; font-weight:700; color:var(--text); font-family:'DM Mono',monospace; }
-  .ta-stat-sub  { font-size:11px; color:var(--text3); margin-top:2px; }
-  .ta-row { display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); }
-  .ta-row:last-child { border-bottom:none; }
-  .ta-row-label { font-size:13px; color:var(--text2); }
-  .ta-row-vals  { display:flex; gap:16px; }
-  .ta-win  { font-size:12px; color:#00cc66; font-family:'DM Mono',monospace; }
-  .ta-loss { font-size:12px; color:#ff4444; font-family:'DM Mono',monospace; }
+  /* detail */
+  .tr-detail { display:none; padding:4px 0 20px; }
+  .tr-detail.active { display:block; }
+  .tr-back { font-size:12px; font-weight:600; color:var(--text3); cursor:pointer; margin-bottom:16px; display:inline-block; padding:4px 0; }
+  .tr-back:hover { color:var(--text); }
+  .tr-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+  .tr-grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:12px; }
+  .tr-stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 14px; }
+  .tr-stat-label { font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text3); margin-bottom:4px; }
+  .tr-stat-val { font-size:17px; font-weight:700; color:var(--text); font-family:'DM Mono',monospace; }
+  .tr-stat-sub  { font-size:10px; color:var(--text3); margin-top:3px; }
+  .tr-section-label { font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--text3); margin:16px 0 8px; }
 </style>
 </head>
 <body>
@@ -737,35 +707,37 @@
   <!-- ── TRADES TAB ───────────────────────────────────────────────────── -->
   <div class="tab-panel" id="tabTrades">
 
-    <!-- Trade List View -->
+    <!-- List View -->
     <div id="tradesListView">
-      <div class="trades-header">
-        <div class="trades-title">Trades</div>
-        <div style="display:flex;gap:8px;">
-          <button class="trades-add-btn" onclick="openTradeAnalysis()">Analysis</button>
-          <button class="trades-add-btn" onclick="openNewTradeModal()">+ New</button>
-        </div>
+      <div class="trades-hdr">
+        <div class="trades-hdr-title">Trades</div>
+        <button class="tr-add-btn" onclick="openNewTradeModal()">+ New Trade</button>
       </div>
-      <div id="tradesListContent">
-        <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+      <div class="tr-table-wrap">
+        <table class="tr-table">
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>At Call</th>
+              <th>Strike</th>
+              <th>Expiry</th>
+              <th>Max High</th>
+              <th>Max Low</th>
+              <th>Current</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="tradesTableBody">
+            <tr><td colspan="8" style="color:var(--text3);font-style:italic;padding:20px 10px;">Loading…</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
-    <!-- Trade Detail View -->
-    <div id="tradesDetailView" class="trade-detail">
-      <span class="td-back" onclick="showTradeList()">← Trades</span>
+    <!-- Detail View -->
+    <div id="tradesDetailView" class="tr-detail">
+      <span class="tr-back" onclick="showTradeList()">← Trades</span>
       <div id="tradesDetailContent"></div>
-    </div>
-
-    <!-- Analysis View -->
-    <div id="tradesAnalysisView" class="trade-analysis">
-      <div class="ta-header">
-        <div class="ta-title">Correlation Analysis</div>
-        <span class="ta-back" onclick="showTradeList()">← Back</span>
-      </div>
-      <div id="tradesAnalysisContent">
-        <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
-      </div>
     </div>
 
   </div>
@@ -784,9 +756,9 @@
       </div>
       <div class="modal-field">
         <label class="modal-label">Direction</label>
-        <div style="display:flex;gap:6px;margin-top:2px;">
-          <button id="trDirC" onclick="setTradeDir('C')" class="btn btn-primary" style="height:44px;flex:1;font-size:15px;">Call</button>
-          <button id="trDirP" onclick="setTradeDir('P')" class="btn btn-secondary" style="height:44px;flex:1;font-size:15px;">Put</button>
+        <div style="display:flex;gap:6px;margin-top:4px;">
+          <button id="trDirC" onclick="setTradeDir('C')" class="btn btn-primary" style="height:44px;flex:1;font-size:14px;">Call</button>
+          <button id="trDirP" onclick="setTradeDir('P')" class="btn btn-secondary" style="height:44px;flex:1;font-size:14px;">Put</button>
         </div>
       </div>
     </div>
@@ -803,37 +775,13 @@
     </div>
 
     <div class="modal-field">
-      <label class="modal-label">Entry Option Price</label>
-      <input class="modal-input" id="trEntryPrice" type="number" step="0.01" placeholder="2.45">
-    </div>
-
-    <div class="modal-field">
       <label class="modal-label">Notes (optional)</label>
-      <input class="modal-input" id="trNotes" placeholder="discord call, high vol print...">
+      <input class="modal-input" id="trNotes" placeholder="discord call, high vol...">
     </div>
 
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeTradeModal()">Cancel</button>
       <button class="btn btn-primary" id="tradeSaveBtn" onclick="saveTrade()">Save Trade</button>
-    </div>
-  </div>
-</div>
-
-<!-- Set Milestone Modal -->
-<div class="modal-bg" id="milestoneModal" onclick="if(event.target===this)closeMilestoneModal()">
-  <div class="modal">
-    <div class="modal-title" id="milestoneModalTitle">Record Milestone</div>
-    <div class="modal-field">
-      <label class="modal-label">Option Price at This Point</label>
-      <input class="modal-input" id="msPriceInput" type="number" step="0.01" placeholder="3.06">
-    </div>
-    <div class="modal-field">
-      <label class="modal-label">Time (leave blank = now)</label>
-      <input class="modal-input" id="msTimeInput" type="datetime-local">
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeMilestoneModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveMilestone()">Save</button>
     </div>
   </div>
 </div>
@@ -4560,7 +4508,6 @@ function initDebugTab() {
 let tradesLoaded = false;
 let tradesCache  = [];
 let activeTrade  = null;
-let milestoneCtx = null; // { tradeId, field }
 let tradeDir     = 'C';
 
 function setTradeDir(d) {
@@ -4572,27 +4519,26 @@ function setTradeDir(d) {
 function openNewTradeModal() {
   tradeDir = 'C';
   setTradeDir('C');
-  ['trTicker','trStrike','trExpiry','trEntryPrice','trNotes'].forEach(id => document.getElementById(id).value = '');
+  ['trTicker','trStrike','trExpiry','trNotes'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('tradeModal').classList.add('open');
   setTimeout(() => document.getElementById('trTicker').focus(), 300);
 }
 function closeTradeModal() { document.getElementById('tradeModal').classList.remove('open'); }
 
 async function saveTrade() {
-  const ticker     = document.getElementById('trTicker').value.trim().toUpperCase();
-  const strike     = document.getElementById('trStrike').value.trim();
-  const expiry     = document.getElementById('trExpiry').value.trim();
-  const entryPrice = document.getElementById('trEntryPrice').value.trim();
-  const notes      = document.getElementById('trNotes').value.trim();
-  if (!ticker || !strike || !expiry || !entryPrice) { showToast('Fill in all required fields', 'error'); return; }
+  const ticker = document.getElementById('trTicker').value.trim().toUpperCase();
+  const strike = document.getElementById('trStrike').value.trim();
+  const expiry = document.getElementById('trExpiry').value.trim();
+  const notes  = document.getElementById('trNotes').value.trim();
+  if (!ticker || !strike || !expiry) { showToast('Fill in ticker, strike and expiry', 'error'); return; }
   const btn = document.getElementById('tradeSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    await call('saveTrade', { ticker, strike, expiry, direction: tradeDir, entry_option_price: entryPrice, notes });
+    await call('saveTrade', { ticker, strike, expiry, direction: tradeDir, notes });
     closeTradeModal();
     tradesLoaded = false;
     await loadTrades();
-    showToast('Trade saved', 'success');
+    showToast('Trade saved — price updates within 30 min', 'success');
   } catch(e) {
     showToast(e.message, 'error');
   } finally {
@@ -4601,189 +4547,148 @@ async function saveTrade() {
 }
 
 async function loadTrades() {
-  const el = document.getElementById('tradesListContent');
-  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  const tbody = document.getElementById('tradesTableBody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text3);padding:20px 10px;">Loading…</td></tr>';
   try {
     const data = await call('getTrades');
     tradesCache = data.trades || [];
-    renderTradeList();
+    renderTradeTable();
   } catch(e) {
-    el.innerHTML = `<div class="error-msg">${e.message}</div>`;
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="error-msg">' + e.message + '</td></tr>';
   }
 }
 
-function renderTradeList() {
-  const el = document.getElementById('tradesListContent');
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' ' +
+         d.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', hour12:true });
+}
+
+function fmtExpiry(s) {
+  if (!s || s.length < 8) return s || '';
+  return s.slice(4,6) + '/' + s.slice(6,8) + '/' + s.slice(2,4);
+}
+
+function pctColor(v) {
+  if (v == null) return 'var(--text3)';
+  return v >= 0 ? '#00cc66' : '#ff4444';
+}
+
+function renderTradeTable() {
+  const tbody = document.getElementById('tradesTableBody');
+  if (!tbody) return;
   if (!tradesCache.length) {
-    el.innerHTML = '<div class="empty" style="padding:20px 4px;">No trades yet. Tap + New to log your first trade.</div>';
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text3);font-style:italic;padding:20px 10px;">No trades yet. Tap + New Trade to log your first call.</td></tr>';
     return;
   }
-  el.innerHTML = tradesCache.map(t => {
-    const sym    = `${t.ticker} ${t.strike}${t.direction}`;
-    const dt     = new Date(t.entry_time).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
-    const badge  = `<span class="trade-badge ${t.outcome}">${t.outcome}</span>`;
-    const hv     = t.tas_velocity && t.tas_velocity > 10 ? ' high-vel' : '';
-    const tasLine = t.tas_captured
-      ? `<div class="trade-card-tas">T&S: ${t.tas_velocity}/s · ${Math.round((t.tas_uptick_ratio||0)*100)}% uptick · ${t.tas_large_print_count} large</div>`
-      : (t.outcome === 'open' ? '<div class="trade-card-tas" style="color:var(--text3);">T&S pending…</div>' : '');
-    const maxLine = t.max_rise_pct != null ? `<span>Max +${t.max_rise_pct.toFixed(1)}%</span>` : '';
-    return `<div class="trade-card${hv}" onclick="openTradeDetail('${t.id}')">
-      <div class="trade-card-top"><div class="trade-card-sym">${sym}</div>${badge}</div>
-      <div class="trade-card-meta"><span>${dt}</span><span>Entry $${t.entry_option_price}</span>${maxLine}</div>
-      ${tasLine}
-    </div>`;
+  tbody.innerHTML = tradesCache.map(t => {
+    const dir      = t.direction === 'C' ? 'Call' : 'Put';
+    const entryP   = t.entry_price   != null ? '$' + t.entry_price   : '…';
+    const curP     = t.current_price != null ? '$' + t.current_price : '…';
+    const curPct   = t.current_pct   != null ? (t.current_pct >= 0 ? '+' : '') + t.current_pct.toFixed(1) + '%' : '';
+    const curColor = pctColor(t.current_pct);
+    const maxH     = t.max_high != null
+      ? '$' + t.max_high + '<br><span style="font-size:10px;color:var(--text3);">' + fmtDate(t.max_high_time) + '</span>'
+      : '…';
+    const maxL     = t.max_low != null
+      ? '$' + t.max_low + '<br><span style="font-size:10px;color:var(--text3);">' + fmtDate(t.max_low_time) + '</span>'
+      : '…';
+    let badge;
+    if (t.expired)              badge = '<span class="tr-badge-exp">Expired</span>';
+    else if (t.strike_reached)  badge = '<span class="tr-badge-struck">★ Hit</span>';
+    else                        badge = '<span class="tr-badge-open">Open</span>';
+    const rowClass = t.expired ? 'expired' : '';
+    return `<tr class="${rowClass}" onclick="openTradeDetail('${t.id}')">
+      <td><span class="tr-sym">${t.ticker}</span> <span style="font-size:11px;color:var(--text3);">${dir}</span></td>
+      <td class="tr-mono">${entryP}</td>
+      <td class="tr-mono">${t.strike}</td>
+      <td class="tr-mono">${fmtExpiry(t.expiry)}</td>
+      <td class="tr-up">${maxH}</td>
+      <td class="tr-dn">${maxL}</td>
+      <td style="color:${curColor};font-family:'DM Mono',monospace;">${curP} <span style="font-size:11px;">${curPct}</span></td>
+      <td>${badge}</td>
+    </tr>`;
   }).join('');
+}
+
+function showTradeList() {
+  document.getElementById('tradesListView').style.display = 'block';
+  document.getElementById('tradesDetailView').classList.remove('active');
 }
 
 function openTradeDetail(id) {
   activeTrade = tradesCache.find(t => t.id === id);
   if (!activeTrade) return;
-  document.getElementById('tradesListView').style.display   = 'none';
-  document.getElementById('tradesAnalysisView').classList.remove('active');
+  document.getElementById('tradesListView').style.display = 'none';
   document.getElementById('tradesDetailView').classList.add('active');
   renderTradeDetail();
-}
-
-function showTradeList() {
-  document.getElementById('tradesListView').style.display   = 'block';
-  document.getElementById('tradesDetailView').classList.remove('active');
-  document.getElementById('tradesAnalysisView').classList.remove('active');
 }
 
 function renderTradeDetail() {
   const t   = activeTrade;
   const el  = document.getElementById('tradesDetailContent');
-  const dt  = ts => ts ? new Date(ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : null;
-  const pct = (price) => price ? (((price - t.entry_option_price) / t.entry_option_price) * 100).toFixed(1) : null;
+  const dir = t.direction === 'C' ? 'Call' : 'Put';
 
-  const gainTime = dt(t.gain_25pct_time);
-  const lossTime = dt(t.loss_25pct_time);
-  const gainMins = t.gain_25pct_time ? ((new Date(t.gain_25pct_time) - new Date(t.entry_time)) / 60000).toFixed(0) : null;
-  const lossMins = t.loss_25pct_time ? ((new Date(t.loss_25pct_time) - new Date(t.entry_time)) / 60000).toFixed(0) : null;
+  const strikeDist = t.entry_price != null
+    ? ((t.strike - t.entry_price) / t.entry_price * 100).toFixed(1) : null;
+  const maxHPct = (t.max_high != null && t.entry_price != null)
+    ? ((t.max_high - t.entry_price) / t.entry_price * 100).toFixed(1) : null;
+  const maxLPct = (t.max_low != null && t.entry_price != null)
+    ? ((t.max_low - t.entry_price) / t.entry_price * 100).toFixed(1) : null;
+  const curPct = t.current_pct != null
+    ? (t.current_pct >= 0 ? '+' : '') + t.current_pct.toFixed(1) + '%' : '…';
+
+  let statusBadge;
+  if (t.expired)             statusBadge = `<span class="tr-badge-exp">Expired ${fmtExpiry(t.expiry)}</span>`;
+  else if (t.strike_reached) statusBadge = `<span class="tr-badge-struck">★ Strike hit ${fmtDate(t.strike_reached_time)}</span>`;
+  else                       statusBadge = `<span class="tr-badge-open">Open — expires ${fmtExpiry(t.expiry)}</span>`;
 
   el.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <div style="font-size:20px;font-weight:700;">${t.ticker} ${t.strike}${t.direction} <span style="color:var(--text3);font-size:14px;">${t.expiry}</span></div>
-      <span class="trade-badge ${t.outcome}" style="font-size:12px;">${t.outcome}</span>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+      <div style="font-size:20px;font-weight:700;">${t.ticker} $${t.strike} <span style="color:var(--text3);font-size:14px;font-weight:500;">${dir}</span></div>
+      ${statusBadge}
     </div>
 
-    <div class="td-section">
-      <div class="td-section-title">Entry</div>
-      <div class="td-grid">
-        <div class="td-stat"><div class="td-stat-label">Option Price</div><div class="td-stat-val">$${t.entry_option_price}</div></div>
-        <div class="td-stat"><div class="td-stat-label">Time</div><div class="td-stat-val" style="font-size:13px;">${dt(t.entry_time)}</div></div>
+    <div class="tr-section-label">At Entry</div>
+    <div class="tr-grid3">
+      <div class="tr-stat">
+        <div class="tr-stat-label">Underlying</div>
+        <div class="tr-stat-val">${t.entry_price != null ? '$' + t.entry_price : '…'}</div>
+        <div class="tr-stat-sub">${fmtDate(t.entry_time)}</div>
       </div>
-      ${t.notes ? `<div style="font-size:12px;color:var(--text3);margin-top:8px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);">${t.notes}</div>` : ''}
-    </div>
-
-    <div class="td-section">
-      <div class="td-section-title">Underlying at Entry</div>
-      ${t.price_captured ? `
-      <div class="td-grid">
-        <div class="td-stat"><div class="td-stat-label">Price</div><div class="td-stat-val">$${t.underlying_price}</div></div>
-        <div class="td-stat"><div class="td-stat-label">Strike OTM</div><div class="td-stat-val ${t.otm_pct > 0 ? '' : 'win'}" style="${t.otm_pct > 2 ? 'color:#ff4444' : ''}">${t.otm_pct > 0 ? '+' : ''}${t.otm_pct?.toFixed(1)}%</div></div>
-        <div class="td-stat"><div class="td-stat-label">High of Day</div><div class="td-stat-val">$${t.underlying_high_of_day}</div></div>
-        <div class="td-stat"><div class="td-stat-label">Low of Day</div><div class="td-stat-val">$${t.underlying_low_of_day}</div></div>
-      </div>` : `<div style="font-size:13px;color:var(--text3);padding:8px 0;">Price snapshot pending…</div>`}
-    </div>
-
-    <div class="td-section">
-      <div class="td-section-title">Time &amp; Sales at Entry</div>
-      ${t.tas_captured ? `
-      <div class="td-grid">
-        <div class="td-stat"><div class="td-stat-label">Velocity</div><div class="td-stat-val">${t.tas_velocity}/s</div></div>
-        <div class="td-stat"><div class="td-stat-label">Uptick Ratio</div><div class="td-stat-val">${Math.round(t.tas_uptick_ratio*100)}%</div></div>
-        <div class="td-stat"><div class="td-stat-label">Total Prints</div><div class="td-stat-val">${t.tas_total_prints}</div></div>
-        <div class="td-stat"><div class="td-stat-label">Large Prints</div><div class="td-stat-val">${t.tas_large_print_count}</div></div>
-      </div>` : `<div style="font-size:13px;color:var(--text3);padding:8px 0;">T&S snapshot pending — poller will fill this in shortly.</div>`}
-    </div>
-
-    <div class="td-section">
-      <div class="td-section-title">Milestones</div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 16px;">
-        <div class="td-milestone-row">
-          <div>
-            <div class="td-milestone-label">+25% Gain</div>
-            ${gainTime ? `<div class="td-milestone-val" style="color:#00cc66;">${gainTime} (+${gainMins}m)</div>` : ''}
-          </div>
-          ${gainTime
-            ? `<span class="td-milestone-set-btn" onclick="openMilestone('gain_25pct_time','Max Rise Price')">Edit</span>`
-            : `<span class="td-milestone-set-btn" onclick="openMilestone('gain_25pct_time')">Record</span>`}
-        </div>
-        <div class="td-milestone-row">
-          <div>
-            <div class="td-milestone-label">-25% Loss</div>
-            ${lossTime ? `<div class="td-milestone-val" style="color:#ff4444;">${lossTime} (+${lossMins}m)</div>` : ''}
-          </div>
-          ${lossTime
-            ? `<span class="td-milestone-set-btn" onclick="openMilestone('loss_25pct_time')">Edit</span>`
-            : `<span class="td-milestone-set-btn" onclick="openMilestone('loss_25pct_time')">Record</span>`}
-        </div>
-        <div class="td-milestone-row">
-          <div>
-            <div class="td-milestone-label">Max Rise</div>
-            ${t.max_rise_pct != null ? `<div class="td-milestone-val" style="color:#00cc66;">$${t.max_rise_price} (+${t.max_rise_pct.toFixed(1)}%)</div>` : ''}
-          </div>
-          <span class="td-milestone-set-btn" onclick="openMilestone('max_rise')">
-            ${t.max_rise_pct != null ? 'Edit' : 'Record'}
-          </span>
-        </div>
+      <div class="tr-stat">
+        <div class="tr-stat-label">Strike</div>
+        <div class="tr-stat-val">$${t.strike}</div>
+        <div class="tr-stat-sub">${strikeDist != null ? (t.direction === 'C' ? '+' : '-') + Math.abs(strikeDist) + '% away' : ''}</div>
+      </div>
+      <div class="tr-stat">
+        <div class="tr-stat-label">Now</div>
+        <div class="tr-stat-val" style="color:${pctColor(t.current_pct)};">${t.current_price != null ? '$' + t.current_price : '…'}</div>
+        <div class="tr-stat-sub">${curPct}</div>
       </div>
     </div>
 
-    <div style="margin-top:8px;">
-      <button class="btn btn-secondary" style="color:var(--danger);border-color:#2a1a1a;width:100%;height:40px;font-size:13px;" onclick="confirmDeleteTrade('${t.id}')">Delete Trade</button>
+    <div class="tr-section-label">Range Since Entry</div>
+    <div class="tr-grid2">
+      <div class="tr-stat">
+        <div class="tr-stat-label">Max High</div>
+        <div class="tr-stat-val tr-up">${t.max_high != null ? '$' + t.max_high : '…'}</div>
+        <div class="tr-stat-sub">${maxHPct != null ? '+' + maxHPct + '% &nbsp;·&nbsp; ' : ''}${fmtDate(t.max_high_time)}</div>
+      </div>
+      <div class="tr-stat">
+        <div class="tr-stat-label">Max Low</div>
+        <div class="tr-stat-val tr-dn">${t.max_low != null ? '$' + t.max_low : '…'}</div>
+        <div class="tr-stat-sub">${maxLPct != null ? maxLPct + '% &nbsp;·&nbsp; ' : ''}${fmtDate(t.max_low_time)}</div>
+      </div>
+    </div>
+
+    ${t.notes ? `<div style="font-size:12px;color:var(--text3);padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:4px;">${t.notes}</div>` : ''}
+
+    <div style="margin-top:20px;">
+      <button class="btn btn-secondary" style="color:var(--danger);border-color:#2a1a1a;width:100%;height:40px;font-size:13px;"
+        onclick="confirmDeleteTrade('${t.id}')">Delete Trade</button>
     </div>`;
-}
-
-function openMilestone(field, label) {
-  milestoneCtx = { tradeId: activeTrade.id, field };
-  document.getElementById('milestoneModalTitle').textContent =
-    field === 'gain_25pct_time' ? 'Record +25% Hit' :
-    field === 'loss_25pct_time' ? 'Record -25% Hit' : 'Record Max Rise';
-  document.getElementById('msPriceInput').value  = '';
-  document.getElementById('msTimeInput').value   = '';
-  const showPrice = true;
-  document.getElementById('milestoneModal').classList.add('open');
-  setTimeout(() => document.getElementById('msPriceInput').focus(), 300);
-}
-function closeMilestoneModal() { document.getElementById('milestoneModal').classList.remove('open'); }
-
-async function saveMilestone() {
-  const price   = parseFloat(document.getElementById('msPriceInput').value);
-  const timeVal = document.getElementById('msTimeInput').value;
-  const ts      = timeVal ? new Date(timeVal).toISOString() : new Date().toISOString();
-  if (!price) { showToast('Enter the option price', 'error'); return; }
-
-  const { tradeId, field } = milestoneCtx;
-  const t    = tradesCache.find(x => x.id === tradeId);
-  const pct  = ((price - t.entry_option_price) / t.entry_option_price * 100);
-  const patch = {};
-
-  if (field === 'max_rise') {
-    patch.max_rise_price = price;
-    patch.max_rise_pct   = parseFloat(pct.toFixed(2));
-  } else {
-    patch[field] = ts;
-  }
-
-  try {
-    await call('updateTrade', { id: tradeId, ...patch });
-    Object.assign(t, patch);
-    // re-derive outcome locally
-    if (t.gain_25pct_time && !t.loss_25pct_time) t.outcome = 'win';
-    else if (t.loss_25pct_time && !t.gain_25pct_time) t.outcome = 'loss';
-    else if (t.gain_25pct_time && t.loss_25pct_time) {
-      t.outcome = new Date(t.gain_25pct_time) < new Date(t.loss_25pct_time) ? 'win' : 'loss';
-    }
-    activeTrade = t;
-    closeMilestoneModal();
-    renderTradeDetail();
-    renderTradeList();
-    showToast('Milestone saved', 'success');
-  } catch(e) {
-    showToast(e.message, 'error');
-  }
 }
 
 async function confirmDeleteTrade(id) {
@@ -4792,93 +4697,13 @@ async function confirmDeleteTrade(id) {
     await call('deleteTrade', { id });
     tradesCache = tradesCache.filter(t => t.id !== id);
     showTradeList();
-    renderTradeList();
+    renderTradeTable();
     showToast('Trade deleted');
   } catch(e) {
     showToast(e.message, 'error');
   }
 }
 
-async function openTradeAnalysis() {
-  document.getElementById('tradesListView').style.display   = 'none';
-  document.getElementById('tradesDetailView').classList.remove('active');
-  document.getElementById('tradesAnalysisView').classList.add('active');
-  const el = document.getElementById('tradesAnalysisContent');
-  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
-  try {
-    const d = await call('getTradeAnalysis');
-    if (d.total < 3) {
-      el.innerHTML = `<div class="empty" style="padding:20px 4px;">Need at least 3 completed trades with T&S data for correlation analysis. You have ${d.total} so far.</div>`;
-      return;
-    }
-    const pct  = v => v != null ? (v * 100).toFixed(0) + '%' : '—';
-    const num  = v => v != null ? v.toFixed(2) : '—';
-    const mins = v => v != null ? v.toFixed(0) + 'm' : '—';
-    el.innerHTML = `
-      <div class="ta-grid">
-        <div class="ta-stat"><div class="ta-stat-label">Trades</div><div class="ta-stat-val">${d.total}</div></div>
-        <div class="ta-stat"><div class="ta-stat-label">Win Rate</div><div class="ta-stat-val">${pct(d.win_rate)}</div></div>
-        <div class="ta-stat"><div class="ta-stat-label">Avg Max Rise</div><div class="ta-stat-val">${num(d.avg_max_rise)}%</div></div>
-        <div class="ta-stat"><div class="ta-stat-label">Avg Time to +25%</div><div class="ta-stat-val">${mins(d.avg_min_gain_time)}</div></div>
-      </div>
-
-      <div class="td-section-title" style="margin-bottom:10px;">T&S Correlation</div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 16px;margin-bottom:20px;">
-        <div class="ta-row">
-          <div class="ta-row-label">Avg Velocity</div>
-          <div class="ta-row-vals">
-            <span class="ta-win">W: ${num(d.avg_vel_wins)}/s</span>
-            <span class="ta-loss">L: ${num(d.avg_vel_losses)}/s</span>
-          </div>
-        </div>
-        <div class="ta-row">
-          <div class="ta-row-label">Avg Uptick Ratio</div>
-          <div class="ta-row-vals">
-            <span class="ta-win">W: ${pct(d.avg_uptick_wins)}</span>
-            <span class="ta-loss">L: ${pct(d.avg_uptick_losses)}</span>
-          </div>
-        </div>
-        <div class="ta-row">
-          <div class="ta-row-label">High Velocity Win Rate</div>
-          <div class="ta-row-vals"><span class="ta-win">${pct(d.high_vel_win_rate)}</span></div>
-        </div>
-        <div class="ta-row">
-          <div class="ta-row-label">Low Velocity Win Rate</div>
-          <div class="ta-row-vals"><span class="ta-loss">${pct(d.low_vel_win_rate)}</span></div>
-        </div>
-      </div>
-
-      <div class="td-section-title" style="margin-bottom:10px;">All Trades</div>
-      <div style="overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:420px;">
-          <thead><tr style="border-bottom:1px solid var(--border);">
-            <th style="text-align:left;padding:6px 10px;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;">Symbol</th>
-            <th style="text-align:right;padding:6px 10px;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;">Vel</th>
-            <th style="text-align:right;padding:6px 10px;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;">Uptick</th>
-            <th style="text-align:right;padding:6px 10px;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;">Max+</th>
-            <th style="text-align:right;padding:6px 10px;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;">+25m</th>
-            <th style="text-align:center;padding:6px 10px;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;">Out</th>
-          </tr></thead>
-          <tbody>
-            ${d.trades.map(t => {
-              const gainMins = t.gain_25pct_time ? ((new Date(t.gain_25pct_time)-new Date(t.entry_time))/60000).toFixed(0)+'m' : '—';
-              const oc = t.outcome === 'win' ? '#00cc66' : '#ff4444';
-              return `<tr style="border-bottom:1px solid var(--border);">
-                <td style="padding:7px 10px;color:var(--text);">${t.ticker} ${t.strike}${t.direction}</td>
-                <td style="padding:7px 10px;text-align:right;color:var(--text2);font-family:'DM Mono',monospace;">${t.tas_velocity ?? '—'}</td>
-                <td style="padding:7px 10px;text-align:right;color:var(--text2);font-family:'DM Mono',monospace;">${t.tas_uptick_ratio != null ? Math.round(t.tas_uptick_ratio*100)+'%' : '—'}</td>
-                <td style="padding:7px 10px;text-align:right;color:#00cc66;font-family:'DM Mono',monospace;">${t.max_rise_pct != null ? '+'+t.max_rise_pct.toFixed(1)+'%' : '—'}</td>
-                <td style="padding:7px 10px;text-align:right;color:var(--text2);font-family:'DM Mono',monospace;">${gainMins}</td>
-                <td style="padding:7px 10px;text-align:center;font-weight:700;color:${oc};">${t.outcome}</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>`;
-  } catch(e) {
-    el.innerHTML = `<div class="error-msg">${e.message}</div>`;
-  }
-}
 </script>
 </body>
 </html>
