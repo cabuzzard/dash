@@ -4631,11 +4631,19 @@ function renderTradeTable() {
     const curP     = t.current_price != null ? '$' + t.current_price : '…';
     const curPct   = t.current_pct   != null ? (t.current_pct >= 0 ? '+' : '') + t.current_pct.toFixed(1) + '%' : '';
     const curColor = pctColor(t.current_pct);
+    const maxHPctVal = (t.max_high != null && t.entry_price != null)
+      ? ((t.max_high - t.entry_price) / t.entry_price * 100).toFixed(1) : null;
+    const maxLPctVal = (t.max_low != null && t.entry_price != null)
+      ? ((t.max_low - t.entry_price) / t.entry_price * 100).toFixed(1) : null;
     const maxH     = t.max_high != null
-      ? '$' + t.max_high + '<br><span style="font-size:10px;color:var(--text3);">' + fmtDate(t.max_high_time) + '</span>'
+      ? (maxHPctVal != null ? '+' + maxHPctVal + '%' : '$' + t.max_high) +
+        '<br><span style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace;">' +
+        '$' + t.max_high + ' · ' + fmtDate(t.max_high_time) + '</span>'
       : '…';
     const maxL     = t.max_low != null
-      ? '$' + t.max_low + '<br><span style="font-size:10px;color:var(--text3);">' + fmtDate(t.max_low_time) + '</span>'
+      ? (maxLPctVal != null ? maxLPctVal + '%' : '$' + t.max_low) +
+        '<br><span style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace;">' +
+        '$' + t.max_low + ' · ' + fmtDate(t.max_low_time) + '</span>'
       : '…';
     let badge;
     if (t.expired)              badge = '<span class="tr-badge-exp">Expired</span>';
