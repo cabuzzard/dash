@@ -2145,6 +2145,113 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ success: true, count: created.length, ids: created });
       }
 
+      // ── TRADES ────────────────────────────────────────────────────────
+
+      if (action === 'saveTrade') {
+        const { ticker, strike, expiry, direction, entry_option_price, notes } = body;
+        if (!ticker || !strike || !expiry || !direction || !entry_option_price) {
+          return json({ error: 'Missing required trade fields' }, 400);
+        }
+        const now = new Date().toISOString();
+        const ts  = now.replace(/[-:T.Z]/g, '').slice(0, 14);
+        const id  = `${ticker.toUpperCase()}_${ts}`;
+        const trade = {
+          id,
+          ticker:               ticker.toUpperCase(),
+          strike:               parseFloat(strike),
+          expiry,
+          direction,
+          entry_option_price:   parseFloat(entry_option_price),
+          entry_time:           now,
+          notes:                notes || '',
+          tas_captured:         false,
+          tas_velocity:         null,
+          tas_uptick_ratio:     null,
+          tas_total_prints:     null,
+          tas_uptick_count:     null,
+          tas_downtick_count:   null,
+          tas_large_print_count: null,
+          gain_25pct_time:      null,
+          loss_25pct_time:      null,
+          max_rise_pct:         null,
+          max_rise_price:       null,
+          outcome:              'open',
+        };
+        await env.TRADES.put(`trades:${id}`, JSON.stringify(trade));
+        return json({ success: true, id });
+      }
+
+      if (action === 'getTrades') {
+        const list = await env.TRADES.list({ prefix: 'trades:' });
+        const trades = await Promise.all(
+          list.keys.map(k => env.TRADES.get(k.name, 'json'))
+        );
+        trades.sort((a, b) => new Date(b.entry_time) - new Date(a.entry_time));
+        return json({ trades: trades.filter(Boolean) });
+      }
+
+      if (action === 'updateTrade') {
+        const { id, ...fields } = body;
+        if (!id) return json({ error: 'Missing trade id' }, 400);
+        const existing = await env.TRADES.get(`trades:${id}`, 'json');
+        if (!existing) return json({ error: 'Trade not found' }, 404);
+        const updated = { ...existing, ...fields };
+        // auto-set outcome based on which milestone was hit first
+        if (updated.gain_25pct_time && !updated.loss_25pct_time) updated.outcome = 'win';
+        else if (updated.loss_25pct_time && !updated.gain_25pct_time) updated.outcome = 'loss';
+        else if (updated.gain_25pct_time && updated.loss_25pct_time) {
+          updated.outcome = new Date(updated.gain_25pct_time) < new Date(updated.loss_25pct_time) ? 'win' : 'loss';
+        }
+        await env.TRADES.put(`trades:${id}`, JSON.stringify(updated));
+        return json({ success: true });
+      }
+
+      if (action === 'deleteTrade') {
+        const { id } = body;
+        if (!id) return json({ error: 'Missing trade id' }, 400);
+        await env.TRADES.delete(`trades:${id}`);
+        return json({ success: true });
+      }
+
+      if (action === 'getPendingTas') {
+        const list = await env.TRADES.list({ prefix: 'trades:' });
+        const all  = await Promise.all(list.keys.map(k => env.TRADES.get(k.name, 'json')));
+        const pending = all.filter(t => t && t.tas_captured === false);
+        return json({ trades: pending });
+      }
+
+      if (action === 'getTradeAnalysis') {
+        const list = await env.TRADES.list({ prefix: 'trades:' });
+        const all  = await Promise.all(list.keys.map(k => env.TRADES.get(k.name, 'json')));
+        const complete = all.filter(t => t && t.tas_captured && t.outcome !== 'open');
+
+        const avg = arr => arr.length ? arr.reduce((a,b) => a+b, 0) / arr.length : null;
+        const wins   = complete.filter(t => t.outcome === 'win');
+        const losses = complete.filter(t => t.outcome === 'loss');
+
+        const minToMilestone = (t, field) => {
+          if (!t[field]) return null;
+          return (new Date(t[field]) - new Date(t.entry_time)) / 60000;
+        };
+
+        const highVel = complete.filter(t => t.tas_velocity > 10);
+        const lowVel  = complete.filter(t => t.tas_velocity <= 10);
+
+        return json({
+          total:                  complete.length,
+          win_rate:               complete.length ? wins.length / complete.length : null,
+          avg_max_rise:           avg(complete.map(t => t.max_rise_pct).filter(x => x != null)),
+          avg_min_gain_time:      avg(wins.map(t => minToMilestone(t, 'gain_25pct_time')).filter(x => x != null)),
+          avg_vel_wins:           avg(wins.map(t => t.tas_velocity).filter(x => x != null)),
+          avg_vel_losses:         avg(losses.map(t => t.tas_velocity).filter(x => x != null)),
+          avg_uptick_wins:        avg(wins.map(t => t.tas_uptick_ratio).filter(x => x != null)),
+          avg_uptick_losses:      avg(losses.map(t => t.tas_uptick_ratio).filter(x => x != null)),
+          high_vel_win_rate:      highVel.length ? highVel.filter(t => t.outcome === 'win').length / highVel.length : null,
+          low_vel_win_rate:       lowVel.length  ? lowVel.filter(t => t.outcome === 'win').length  / lowVel.length  : null,
+          trades:                 complete,
+        });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);

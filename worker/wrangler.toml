@@ -1,5 +1,10 @@
 name = "jolly-darkness-5dcc"
 main = "worker.js"
 compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "TRADES"
+id = "344c88fa8ca744fcbe25495b4701666d"
+
 [env]
 routes = [{ pattern = "https://cabuzzard.github.io/dash/*" }]
