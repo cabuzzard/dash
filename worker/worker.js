@@ -1180,6 +1180,7 @@ export default {
             tiktokTrends: props["TikTok Trends"]?.rich_text?.map(t => t.plain_text).join("") || "",
             keyMessage: props["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
             webPageUrl: props["Web Page URL"]?.url || "",
+            uniqueOpportunity: props["Unique Opportunity"]?.rich_text?.map(t => t.plain_text).join("") || "",
             campaignGoal: cp["Campaign Goal"]?.rich_text?.map(t => t.plain_text).join("") || "",
             painPoints: cp["Pain Points"]?.rich_text?.map(t => t.plain_text).join("") || "",
           }
@@ -1198,7 +1199,7 @@ export default {
             'anthropic-version': '2023-06-01',
           },
           body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
+            model: 'claude-haiku-4-5',
             max_tokens: 500,
             system: `You are a content ops assistant. Rewrite the input as structured entries.
 
@@ -1216,6 +1217,7 @@ Rules:
           })
         });
         const data = await resp.json();
+        if (!resp.ok) return json({ error: data.error?.message || 'Claude error' }, 502);
         const out = data.content?.[0]?.text || '';
         return json({ text: out });
       }
@@ -1232,7 +1234,7 @@ Rules:
             'anthropic-version': '2023-06-01',
           },
           body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
+            model: 'claude-sonnet-4-6',
             max_tokens: 2048,
             messages: [{ role: 'user', content: prompt }]
           })
@@ -1894,7 +1896,7 @@ Output the script text only. No preamble, no labels.`;
           const cRes = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-api-key': (env.ANTHROPIC_API_KEY || '').trim(), 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, messages: [{ role: 'user', content: scriptPrompt }] })
+            body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 400, messages: [{ role: 'user', content: scriptPrompt }] })
           });
           const cData = await cRes.json();
           script = cData.content?.[0]?.text?.trim() || "";
@@ -2091,7 +2093,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const cRes = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': (env.ANTHROPIC_API_KEY || '').trim(), 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2000, messages: [{ role: 'user', content: claudePrompt }] })
+          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 2000, messages: [{ role: 'user', content: claudePrompt }] })
         });
         const cData = await cRes.json();
         if (!cRes.ok) return json({ error: cData.error?.message || "Claude error" }, cRes.status);
