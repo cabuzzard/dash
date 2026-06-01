@@ -720,7 +720,7 @@
               <th>Symbol</th>
               <th>At Call</th>
               <th>Strike</th>
-              <th>Expiry</th>
+              <th id="thExpiry" style="cursor:pointer;user-select:none;" onclick="toggleTradesSort()">Expiry <span id="trSortArrow"></span></th>
               <th>Max High</th>
               <th>Max Low</th>
               <th>Current</th>
@@ -4618,6 +4618,15 @@ function pctColor(v) {
   return v >= 0 ? '#00cc66' : '#ff4444';
 }
 
+let tradesSortAsc = null; // null = default, true = asc, false = desc
+
+function toggleTradesSort() {
+  tradesSortAsc = tradesSortAsc === true ? false : true;
+  const arrow = document.getElementById('trSortArrow');
+  if (arrow) arrow.textContent = tradesSortAsc ? ' ↑' : ' ↓';
+  renderTradeTable();
+}
+
 function renderTradeTable() {
   const tbody = document.getElementById('tradesTableBody');
   if (!tbody) return;
@@ -4625,7 +4634,15 @@ function renderTradeTable() {
     tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text3);font-style:italic;padding:20px 10px;">No trades yet. Tap + New Trade to log your first call.</td></tr>';
     return;
   }
-  tbody.innerHTML = tradesCache.map(t => {
+  let rows = [...tradesCache];
+  if (tradesSortAsc !== null) {
+    rows.sort((a, b) => {
+      const ea = a.expiry || '';
+      const eb = b.expiry || '';
+      return tradesSortAsc ? ea.localeCompare(eb) : eb.localeCompare(ea);
+    });
+  }
+  tbody.innerHTML = rows.map(t => {
     const dir      = t.direction === 'C' ? 'Call' : 'Put';
     const entryP   = t.entry_price   != null ? '$' + t.entry_price   : '…';
     const curP     = t.current_price != null ? '$' + t.current_price : '…';
