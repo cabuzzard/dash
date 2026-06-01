@@ -121,6 +121,7 @@ Pattern from `foreclosure-fraud` and `estate-divorce-property-resource`:
 | `foreclosure-fraud` | live site | — |
 | `estate-divorce-property-resource` | microsite + live site | `3691f7d3a4bb81de93d9fa2f0607deb7` |
 | `mobility-mentor-fundraising` | microsite (template default) | `34b1f7d3a4bb81b6a8a8fee04df94807` |
+| `ai-lead-gen-local-services` | microsite | `34f1f7d3a4bb81c2be96c022bdd1ef40` |
 
 ## Security Notes
 
