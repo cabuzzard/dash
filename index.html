@@ -830,43 +830,102 @@
 
 <!-- New Trade Modal -->
 <div class="modal-bg" id="tradeModal" onclick="if(event.target===this)closeTradeModal()">
-  <div class="modal">
-    <div class="modal-title">New Trade</div>
+  <div class="modal" style="max-width:560px;">
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-      <div class="modal-field">
-        <label class="modal-label">Ticker</label>
-        <input class="modal-input" id="trTicker" placeholder="SPY" style="text-transform:uppercase;">
-      </div>
-      <div class="modal-field">
-        <label class="modal-label">Direction</label>
-        <div style="display:flex;gap:6px;margin-top:4px;">
-          <button id="trDirC" onclick="setTradeDir('C')" class="btn btn-primary" style="height:44px;flex:1;font-size:14px;">Call</button>
-          <button id="trDirP" onclick="setTradeDir('P')" class="btn btn-secondary" style="height:44px;flex:1;font-size:14px;">Put</button>
+    <!-- ── SCREEN 1: Picker ── -->
+    <div id="trPickerScreen">
+      <div class="modal-title">New Trade</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;">
+        <div class="modal-field" style="margin:0;">
+          <label class="modal-label">Ticker</label>
+          <input class="modal-input" id="trTicker" placeholder="SPY" style="text-transform:uppercase;"
+            onkeydown="if(event.key==='Enter')loadOptionsChain()">
+        </div>
+        <div class="modal-field" style="margin:0;">
+          <label class="modal-label">Type</label>
+          <div style="display:flex;gap:6px;margin-top:4px;">
+            <button id="trDirC" onclick="setTradeDir('C')" class="btn btn-primary" style="height:44px;width:64px;font-size:13px;">Call</button>
+            <button id="trDirP" onclick="setTradeDir('P')" class="btn btn-secondary" style="height:44px;width:64px;font-size:13px;">Put</button>
+          </div>
         </div>
       </div>
+      <button id="trLoadChainBtn" class="btn btn-primary" onclick="loadOptionsChain()" style="width:100%;height:40px;margin-top:10px;font-size:13px;">Load Chain</button>
+
+      <!-- Chain area -->
+      <div id="trChainArea" style="display:none;margin-top:14px;">
+        <div id="trUnderlyingLine" style="font-size:12px;color:var(--text3);margin-bottom:10px;"></div>
+        <div style="margin-bottom:8px;">
+          <div class="modal-label" style="margin-bottom:6px;">Expiry</div>
+          <div id="trExpiryPills" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+        </div>
+        <input class="modal-input" id="trStrikeFilter" placeholder="Filter by strike…"
+          oninput="filterChainTable()" style="height:36px;font-size:13px;margin-bottom:8px;">
+        <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:'DM Mono',monospace;">
+            <thead>
+              <tr style="position:sticky;top:0;background:var(--surface2);">
+                <th style="padding:7px 10px;text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;">Strike</th>
+                <th style="padding:7px 10px;text-align:right;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;">Last</th>
+                <th style="padding:7px 10px;text-align:right;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;">Bid</th>
+                <th style="padding:7px 10px;text-align:right;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;">Ask</th>
+                <th style="padding:7px 10px;text-align:right;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;">Vol</th>
+                <th style="padding:7px 10px;text-align:right;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;">OI</th>
+              </tr>
+            </thead>
+            <tbody id="trChainBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:14px;">
+        <button class="btn btn-secondary" onclick="closeTradeModal()">Cancel</button>
+        <button class="btn btn-secondary" style="font-size:12px;color:var(--text3);" onclick="switchToManualScreen()">Manual entry</button>
+      </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+    <!-- ── SCREEN 2: Confirm ── -->
+    <div id="trConfirmScreen" style="display:none;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <span style="cursor:pointer;font-size:13px;color:var(--text3);" onclick="switchToPickerScreen()">← Back</span>
+        <div class="modal-title" style="margin:0;">Confirm Trade</div>
+      </div>
+      <div id="trConfirmSummary" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px;font-family:'DM Mono',monospace;font-size:13px;line-height:2;"></div>
       <div class="modal-field">
-        <label class="modal-label">Strike</label>
-        <input class="modal-input" id="trStrike" type="number" placeholder="480">
+        <label class="modal-label">Notes (optional)</label>
+        <input class="modal-input" id="trConfirmNotes" placeholder="discord call, high vol…">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeTradeModal()">Cancel</button>
+        <button class="btn btn-primary" id="trConfirmSaveBtn" onclick="saveTradeFromPicker()">Save Trade</button>
+      </div>
+    </div>
+
+    <!-- ── SCREEN 3: Manual fallback ── -->
+    <div id="trManualScreen" style="display:none;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <span style="cursor:pointer;font-size:13px;color:var(--text3);" onclick="switchToPickerScreen()">← Back</span>
+        <div class="modal-title" style="margin:0;">Manual Entry</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="modal-field">
+          <label class="modal-label">Strike</label>
+          <input class="modal-input" id="trManualStrike" type="number" placeholder="480">
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">Expiry (YYYYMMDD)</label>
+          <input class="modal-input" id="trManualExpiry" placeholder="20260620">
+        </div>
       </div>
       <div class="modal-field">
-        <label class="modal-label">Expiry (YYYYMMDD)</label>
-        <input class="modal-input" id="trExpiry" placeholder="20260620">
+        <label class="modal-label">Notes (optional)</label>
+        <input class="modal-input" id="trManualNotes" placeholder="discord call, high vol…">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeTradeModal()">Cancel</button>
+        <button class="btn btn-primary" id="trManualSaveBtn" onclick="saveTradeManual()">Save Trade</button>
       </div>
     </div>
 
-    <div class="modal-field">
-      <label class="modal-label">Notes (optional)</label>
-      <input class="modal-input" id="trNotes" placeholder="discord call, high vol...">
-    </div>
-
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeTradeModal()">Cancel</button>
-      <button class="btn btn-primary" id="tradeSaveBtn" onclick="saveTrade()">Save Trade</button>
-    </div>
   </div>
 </div>
 
@@ -5138,24 +5197,209 @@ function setTradeDir(d) {
   tradeDir = d;
   document.getElementById('trDirC').className = d === 'C' ? 'btn btn-primary' : 'btn btn-secondary';
   document.getElementById('trDirP').className = d === 'P' ? 'btn btn-primary' : 'btn btn-secondary';
+  if (chainData) renderContractRows();
 }
+
+// ── picker state ──────────────────────────────────────────────────────
+let chainData       = null;   // last getOptionsChain response
+let chainExpiry     = null;   // selected expiry unix ts
+let selectedContractData = null; // { strike, expiry_yyyymmdd, last }
 
 function openNewTradeModal() {
   tradeDir = 'C';
   setTradeDir('C');
-  ['trTicker','trStrike','trExpiry','trNotes'].forEach(id => document.getElementById(id).value = '');
+  chainData = null; chainExpiry = null; selectedContractData = null;
+  document.getElementById('trTicker').value = '';
+  document.getElementById('trChainArea').style.display = 'none';
+  document.getElementById('trLoadChainBtn').textContent = 'Load Chain';
+  document.getElementById('trLoadChainBtn').disabled = false;
+  switchToPickerScreen();
   document.getElementById('tradeModal').classList.add('open');
   setTimeout(() => document.getElementById('trTicker').focus(), 300);
 }
 function closeTradeModal() { document.getElementById('tradeModal').classList.remove('open'); }
 
-async function saveTrade() {
+function switchToPickerScreen() {
+  document.getElementById('trPickerScreen').style.display  = 'block';
+  document.getElementById('trConfirmScreen').style.display = 'none';
+  document.getElementById('trManualScreen').style.display  = 'none';
+}
+function switchToManualScreen() {
+  document.getElementById('trPickerScreen').style.display  = 'none';
+  document.getElementById('trConfirmScreen').style.display = 'none';
+  document.getElementById('trManualScreen').style.display  = 'block';
+  document.getElementById('trManualStrike').value = '';
+  document.getElementById('trManualExpiry').value = '';
+  document.getElementById('trManualNotes').value  = '';
+  setTimeout(() => document.getElementById('trManualStrike').focus(), 100);
+}
+
+async function loadOptionsChain() {
   const ticker = document.getElementById('trTicker').value.trim().toUpperCase();
-  const strike = document.getElementById('trStrike').value.trim();
-  const expiry = document.getElementById('trExpiry').value.trim();
-  const notes  = document.getElementById('trNotes').value.trim();
+  if (!ticker) { showToast('Enter a ticker first', 'error'); return; }
+  const btn = document.getElementById('trLoadChainBtn');
+  btn.disabled = true; btn.textContent = 'Loading…';
+  try {
+    const data = await call('getOptionsChain', { ticker });
+    chainData   = data;
+    chainExpiry = data.fetchedDate;
+    renderChainArea();
+  } catch(e) {
+    showToast(e.message || 'Failed to load chain', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Reload';
+  }
+}
+
+async function switchChainExpiry(ts) {
+  chainExpiry = ts;
+  const ticker = document.getElementById('trTicker').value.trim().toUpperCase();
+  // Update pill styles immediately
+  document.querySelectorAll('.tr-expiry-pill').forEach(p => {
+    p.className = 'tr-expiry-pill btn ' + (p.dataset.ts == ts ? 'btn-primary' : 'btn-secondary');
+  });
+  document.getElementById('trChainBody').innerHTML =
+    '<tr><td colspan="6" style="padding:16px 10px;color:var(--text3);text-align:center;">Loading…</td></tr>';
+  try {
+    const data = await call('getOptionsChain', { ticker, date: ts });
+    chainData.calls = data.calls;
+    chainData.puts  = data.puts;
+    document.getElementById('trStrikeFilter').value = '';
+    renderContractRows();
+  } catch(e) {
+    showToast(e.message || 'Failed', 'error');
+  }
+}
+
+function renderChainArea() {
+  document.getElementById('trChainArea').style.display = 'block';
+  // Underlying price
+  const u = chainData.underlying;
+  document.getElementById('trUnderlyingLine').textContent =
+    u != null ? `${document.getElementById('trTicker').value.trim().toUpperCase()} @ $${u.toFixed(2)}` : '';
+  // Expiry pills
+  const pillsEl = document.getElementById('trExpiryPills');
+  pillsEl.innerHTML = '';
+  (chainData.expirationDates || []).slice(0, 16).forEach(ts => {
+    const d   = new Date(ts * 1000);
+    const lbl = d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'2-digit', timeZone:'UTC' });
+    const btn = document.createElement('button');
+    btn.textContent    = lbl;
+    btn.dataset.ts     = ts;
+    btn.className      = 'tr-expiry-pill btn ' + (ts === chainExpiry ? 'btn-primary' : 'btn-secondary');
+    btn.style.cssText  = 'font-size:11px;padding:4px 9px;height:28px;';
+    btn.onclick        = () => switchChainExpiry(ts);
+    pillsEl.appendChild(btn);
+  });
+  document.getElementById('trStrikeFilter').value = '';
+  renderContractRows();
+}
+
+function renderContractRows() {
+  const contracts = tradeDir === 'C' ? (chainData.calls || []) : (chainData.puts || []);
+  const filter    = (document.getElementById('trStrikeFilter').value || '').trim();
+  const filtered  = filter
+    ? contracts.filter(c => String(c.strike).includes(filter))
+    : contracts;
+  const tbody = document.getElementById('trChainBody');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="padding:16px 10px;color:var(--text3);text-align:center;">No contracts</td></tr>';
+    return;
+  }
+  const underlying = chainData.underlying;
+  tbody.innerHTML = filtered.map(c => {
+    const itm = underlying != null
+      ? (tradeDir === 'C' ? underlying >= c.strike : underlying <= c.strike)
+      : false;
+    const rowBg  = itm ? 'background:rgba(0,200,100,.06);' : '';
+    const strike = c.strike;
+    const last   = c.lastPrice != null ? '$' + c.lastPrice.toFixed(2) : '—';
+    const bid    = c.bid  != null ? '$' + c.bid.toFixed(2)  : '—';
+    const ask    = c.ask  != null ? '$' + c.ask.toFixed(2)  : '—';
+    const vol    = c.volume          != null ? c.volume.toLocaleString()          : '—';
+    const oi     = c.openInterest    != null ? c.openInterest.toLocaleString()    : '—';
+    return `<tr style="cursor:pointer;border-bottom:1px solid var(--border);${rowBg}"
+      onmouseover="this.style.background='var(--surface2)'"
+      onmouseout="this.style.background='${itm ? 'rgba(0,200,100,.06)' : ''}'"
+      onclick="selectContract(${strike}, ${c.lastPrice ?? 0}, ${c.bid ?? 0}, ${c.ask ?? 0})">
+      <td style="padding:8px 10px;font-weight:700;color:var(--text);">${strike}${itm ? ' <span style="font-size:9px;color:#00cc66;">ITM</span>' : ''}</td>
+      <td style="padding:8px 10px;text-align:right;color:var(--text);">${last}</td>
+      <td style="padding:8px 10px;text-align:right;color:var(--text3);">${bid}</td>
+      <td style="padding:8px 10px;text-align:right;color:var(--text3);">${ask}</td>
+      <td style="padding:8px 10px;text-align:right;color:var(--text3);">${vol}</td>
+      <td style="padding:8px 10px;text-align:right;color:var(--text3);">${oi}</td>
+    </tr>`;
+  }).join('');
+}
+
+function filterChainTable() {
+  if (chainData) renderContractRows();
+}
+
+function selectContract(strike, last, bid, ask) {
+  // Convert chainExpiry (unix ts) → YYYYMMDD
+  const d   = new Date(chainExpiry * 1000);
+  const yy  = d.getUTCFullYear();
+  const mm  = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd  = String(d.getUTCDate()).padStart(2, '0');
+  const expYYYYMMDD = `${yy}${mm}${dd}`;
+  // Best price: last, then midpoint
+  const price = last > 0 ? last : (bid > 0 && ask > 0 ? (bid + ask) / 2 : null);
+
+  selectedContractData = {
+    ticker:    document.getElementById('trTicker').value.trim().toUpperCase(),
+    strike,
+    expiry:    expYYYYMMDD,
+    direction: tradeDir,
+    price,
+  };
+
+  const dir     = tradeDir === 'C' ? 'Call' : 'Put';
+  const expFmt  = `${mm}/${dd}/${String(yy).slice(2)}`;
+  const priceFmt = price != null ? `$${price.toFixed(2)}` : '—';
+  document.getElementById('trConfirmSummary').innerHTML =
+    `<div style="font-size:16px;font-weight:700;margin-bottom:6px;">${selectedContractData.ticker} $${strike} ${dir}</div>` +
+    `<div style="color:var(--text3);">Expiry &nbsp;<span style="color:var(--text);">${expFmt}</span></div>` +
+    `<div style="color:var(--text3);">Entry contract &nbsp;<span style="color:var(--text);">${priceFmt}</span></div>` +
+    (bid > 0 && ask > 0 ? `<div style="color:var(--text3);font-size:11px;">Bid ${`$${bid.toFixed(2)}`} &nbsp;/&nbsp; Ask ${`$${ask.toFixed(2)}`}</div>` : '');
+
+  document.getElementById('trConfirmNotes').value = '';
+  document.getElementById('trPickerScreen').style.display  = 'none';
+  document.getElementById('trConfirmScreen').style.display = 'block';
+  setTimeout(() => document.getElementById('trConfirmNotes').focus(), 100);
+}
+
+async function saveTradeFromPicker() {
+  const c = selectedContractData;
+  if (!c) return;
+  const notes = document.getElementById('trConfirmNotes').value.trim();
+  const btn   = document.getElementById('trConfirmSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await call('saveTrade', {
+      ticker: c.ticker, strike: c.strike, expiry: c.expiry,
+      direction: c.direction, notes,
+      entry_contract: c.price,      // pre-fill from picker
+      contract_captured: c.price != null,
+    });
+    closeTradeModal();
+    tradesLoaded = false;
+    await loadTrades();
+    showToast('Trade saved — price updates within 30 min', 'success');
+  } catch(e) {
+    showToast(e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Trade';
+  }
+}
+
+async function saveTradeManual() {
+  const ticker = document.getElementById('trTicker').value.trim().toUpperCase();
+  const strike = document.getElementById('trManualStrike').value.trim();
+  const expiry = document.getElementById('trManualExpiry').value.trim();
+  const notes  = document.getElementById('trManualNotes').value.trim();
   if (!ticker || !strike || !expiry) { showToast('Fill in ticker, strike and expiry', 'error'); return; }
-  const btn = document.getElementById('tradeSaveBtn');
+  const btn = document.getElementById('trManualSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
     await call('saveTrade', { ticker, strike, expiry, direction: tradeDir, notes });

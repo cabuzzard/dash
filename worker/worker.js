@@ -2185,7 +2185,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       // â”€â”€ TRADES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
       if (body.action === 'saveTrade') {
-        const { ticker, strike, expiry, direction, notes } = body;
+        const { ticker, strike, expiry, direction, notes, entry_contract, contract_captured } = body;
         if (!ticker || !strike || !expiry || !direction) {
           return json({ error: 'Missing required trade fields' }, 400);
         }
@@ -2212,8 +2212,8 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           strike_reached_time:    null,
           last_updated:           null,
           expired:                false,
-          entry_contract:         null,
-          contract_captured:      false,
+          entry_contract:         entry_contract ?? null,
+          contract_captured:      contract_captured ?? false,
           current_contract:       null,
           contract_pct:           null,
           contract_max_high:      null,
@@ -2290,6 +2290,25 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         if (!id) return json({ error: 'Missing trade id' }, 400);
         await env.TRADES.delete(`trades:${id}`);
         return json({ success: true });
+      }
+
+      if (body.action === 'getOptionsChain') {
+        const { ticker, date } = body;
+        if (!ticker) return json({ error: 'ticker required' }, 400);
+        let url = `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(ticker.toUpperCase())}`;
+        if (date) url += `?date=${date}`;
+        const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!r.ok) return json({ error: `Yahoo ${r.status}` }, 502);
+        const data = await r.json();
+        const result = data?.optionChain?.result?.[0];
+        if (!result) return json({ error: 'No options data for ' + ticker }, 404);
+        return json({
+          underlying:      result.quote?.regularMarketPrice ?? null,
+          expirationDates: result.expirationDates || [],
+          fetchedDate:     result.options?.[0]?.expirationDate || null,
+          calls:           result.options?.[0]?.calls || [],
+          puts:            result.options?.[0]?.puts  || [],
+        });
       }
 
       if (body.action === 'getActiveTrades') {
