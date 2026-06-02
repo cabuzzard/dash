@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -119,16 +119,16 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="content">
       <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
-      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/34b1f7d3a4bb81b6a8a8fee04df94807" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3641f7d3a4bb8193898fc59d690851d4" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Microsite</div><div class="field-value" id="r-microsite"></div></div>
       <div class="field"><div class="field-label">Live Site</div><div class="field-value" id="r-livesite"></div></div>
     </div>
   </div>
   <div class="col">
-    <h2 class="editable" onclick="openModal('thoughts')">Thoughts</h2>
+    <h2>Unique Opportunity</h2>
     <div class="content">
-      <div class="body-text" id="r-thoughts" style="white-space:pre-wrap;min-height:40px;"></div>
+      <div class="body-text" id="r-uniqueopportunity" style="white-space:pre-wrap;min-height:40px;"></div>
     </div>
   </div>
   <div class="col">
@@ -139,45 +139,17 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 2: three col — keywords / key message / main problem -->
-<div class="three-col">
-  <div class="col">
+<!-- SEC 2: keywords — full width -->
+<div class="two-col">
+  <div class="col" style="grid-column:span 2">
     <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
     <div class="content">
       <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
-  <div class="col">
-    <h2 class="editable" onclick="openModal('keyMessage')">Key Message</h2>
-    <div class="content">
-      <div class="body-text" id="r-keymessage"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 class="editable" onclick="openModal('mainProblem')">Main Problem</h2>
-    <div class="content">
-      <div class="body-text" id="r-problem"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
 </div>
 
-<!-- SEC 3: two col — product ideas / recommended actions -->
-<div class="two-col">
-  <div class="col">
-    <h2 class="editable" onclick="openModal('productIdeas')">Product Ideas</h2>
-    <div class="content">
-      <div class="body-text" id="r-products"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 class="editable" onclick="openModal('actions')">Recommended Actions</h2>
-    <div class="content">
-      <div class="body-text" id="r-actions"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- SEC 4: two col — platforms / methods -->
+<!-- SEC 3: two col — platforms / news feed -->
 <div class="two-col">
   <div class="col">
     <h2>Platforms <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
@@ -186,22 +158,16 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2 class="editable" onclick="openModal('methods')">Methods</h2>
-    <div class="content">
-      <div class="body-text" id="r-methods"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- SEC 5: two col — news feed / tiktok trends -->
-<div class="two-col">
-  <div class="col">
     <h2>News Feed</h2>
     <div class="content">
       <div class="body-text" id="r-news"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
-  <div class="col">
+</div>
+
+<!-- SEC 4: SM posts — full width -->
+<div class="two-col">
+  <div class="col" style="grid-column:span 2">
     <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Run research">▶</button></h2>
     <div class="content">
       <div id="smPostsBox"><div class="loading"><div class="spinner"></div>Loading…</div></div>
@@ -209,7 +175,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 6: two col — development titles / publish titles -->
+<!-- SEC 5: two col — development titles / publish titles -->
 <div class="two-col">
   <div class="col">
     <h2>Development Titles</h2>
@@ -455,6 +421,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeRenderModal()">Close</button>
+      <button class="modal-btn" style="background:#3a5a6a;" onclick="saveRenderSettings()">Save Settings</button>
       <button class="modal-btn save" onclick="copyRenderCommand()">Copy Command</button>
     </div>
   </div>
@@ -481,7 +448,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 </div>
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-const CAMPAIGN_ID = "3641f7d3a4bb8193898fc59d690851d4"; // mobility-mentor-fundraising
+const CAMPAIGN_ID = "3641f7d3a4bb8193898fc59d690851d4"; // human-ai
 const RESEARCH_ID = "3661f7d3a4bb81adaaadc2ce80784112"; // research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/human-ai/";
 let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
@@ -534,7 +501,6 @@ async function pp(d) {
     }
   }
 }
-
 function pd() {
   if (!pin.length) return;
   document.getElementById('d' + (pin.length-1)).classList.remove('filled');
@@ -617,10 +583,8 @@ async function loadResearch() {
     const r = data.research;
     if (!r) {
       document.getElementById('r-name').textContent = 'No research record — add one in Notion to populate this page.';
-      ['r-problem','r-keymessage','r-products','r-actions','r-methods','r-news'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
-      });
+      const newsEl = document.getElementById('r-news');
+      if (newsEl) newsEl.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
       const kwEl = document.getElementById('r-keywords');
       if (kwEl) kwEl.innerHTML = '<span class="empty">—</span>';
       return;
@@ -635,24 +599,17 @@ async function loadResearch() {
     const liveSiteEl = document.getElementById('r-livesite');
     if (liveSiteEl) {
       if (r.liveSiteUrl) {
-        liveSiteEl.innerHTML = '<a href="' + r.liveSiteUrl + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + r.liveSiteUrl.replace(/^https?:///, '') + '</a>';
+        liveSiteEl.innerHTML = '<a href="' + r.liveSiteUrl + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + r.liveSiteUrl.replace(/^https?:\/\//, '') + '</a>';
       } else { liveSiteEl.innerHTML = '<span class="empty">—</span>'; }
     }
-    const notesDisplayEl = document.getElementById('r-thoughts');
-    if (notesDisplayEl) notesDisplayEl.textContent = r.thoughts || '';
+    // Unique Opportunity — render directly in SEC 1 panel
+    const uoEl = document.getElementById('r-uniqueopportunity');
+    if (uoEl) uoEl.textContent = r.uniqueOpportunity || '';
 
     // Store raw values for editing
     RESEARCH_ID_LIVE = r.id || '';
-    const pmSplitRaw = (r.platforms || '').replace(/<br\s*\/?>/gi,'\n').split(/ACTIVE METHODS:/i);
     RAW = {
-      keywords:     r.keywords || '',
-      productIdeas: r.productIdeas || '',
-      notes:        r.notes || '',
-      thoughts:     r.thoughts || '',
-      keyMessage:   r.keyMessage || '',
-      painPoints:   r.painPoints || '',
-      rawPlatforms: pmSplitRaw[0].replace(/ACTIVE PLATFORMS:\s*/i,'').replace(/<br\s*\/?>/gi,'\n').trim(),
-      rawMethods:   pmSplitRaw.length > 1 ? pmSplitRaw[1].replace(/<br\s*\/?>/gi,'\n').trim() : '',
+      keywords: r.keywords || '',
     };
 
     // SEC 2 — keywords as pills
@@ -662,38 +619,12 @@ async function loadResearch() {
     } else {
       kwEl.innerHTML = '<span class="empty">—</span>';
     }
-    // Condense all fields in parallel via Claude
-    const loading = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-    ['r-problem','r-keymessage','r-products','r-actions','r-methods','r-news'].forEach(id => {
-      document.getElementById(id).innerHTML = loading;
-    });
 
-    // Split platforms & methods from the combined field
-    const rawPm = stripHtml(r.platforms) || '';
-    const pmSplit = rawPm.split(/ACTIVE METHODS:/i);
-    const rawPlatforms = pmSplit[0].replace(/ACTIVE PLATFORMS:\s*/i, '').trim();
-    const rawMethods   = pmSplit.length > 1 ? pmSplit[1].trim() : '';
-
-    // Split notes into problem statement + recommended actions
-    const rawNotes = stripHtml(r.notes) || '';
-    const problemInput = (r.campaignGoal || '') + '\n' + (r.painPoints || '') + '\n' + rawNotes.split(/ROI-RANKED|RECOMMENDED|BOTTOM LINE/i)[0];
-    const actionsInput = rawNotes;
-
-    const [problem, keymessage, products, actions, methods, news] = await Promise.all([
-      condense('This campaign does X for customer Y — state the core problem this campaign solves in one sentence then list pain points', problemInput),
-      condense('Key Message', r.keyMessage),
-      condense('Product Ideas', r.productIdeas),
-      condense('Recommended Actions — prioritised by ROI, what to do next', actionsInput),
-      condense('Methods', rawMethods),
-      condense('News Feed', r.newsFeed),
-    ]);
-
-    document.getElementById('r-problem').innerHTML    = problem;
-    document.getElementById('r-keymessage').innerHTML = keymessage;
-    document.getElementById('r-products').innerHTML   = products;
-    document.getElementById('r-actions').innerHTML  = actions;
-    document.getElementById('r-methods').innerHTML   = methods;
-    document.getElementById('r-news').innerHTML      = news;
+    // News Feed — condense via Claude
+    const newsEl = document.getElementById('r-news');
+    if (newsEl) newsEl.innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
+    const news = await condense('News Feed', r.newsFeed);
+    if (newsEl) newsEl.innerHTML = news;
 
   } catch(e) {
     document.getElementById('r-name').textContent = 'Error: ' + e.message;
@@ -737,14 +668,7 @@ let RESEARCH_ID_LIVE = '';
 
 // Modal config per field
 const MODAL_CFG = {
-  keywords:     { title: 'Keywords',            hint: 'Comma-separated keywords for this campaign', target: 'campaign' },
-  keyMessage:   { title: 'Key Message',         hint: 'Core positioning statement for this campaign', target: 'research', field: 'keyMessage' },
-  mainProblem:  { title: 'Main Problem',        hint: 'Pain points this campaign addresses', target: 'campaignField', field: 'painPoints' },
-  productIdeas: { title: 'Product Ideas',        hint: 'Describe product ideas, offers, and pipeline', target: 'research', field: 'productIdeas' },
-  thoughts:     { title: 'Thoughts',             hint: 'Personal notes and thoughts on this campaign', target: 'research', field: 'thoughts' },
-  actions:      { title: 'Recommended Actions',  hint: 'ROI-ranked actions and next steps', target: 'research', field: 'notes' },
-  platforms:    { title: 'Platforms',            hint: 'Active and planned platforms for this campaign', target: 'research', field: 'platforms', combined: true },
-  methods:      { title: 'Methods',              hint: 'Active and planned methods for this campaign', target: 'research', field: 'platforms', combined: true },
+  keywords: { title: 'Keywords', hint: 'Comma-separated keywords for this campaign', target: 'campaign' },
 };
 
 let activeField = null;
@@ -761,14 +685,7 @@ function openModal(field) {
 
   // Pre-fill with raw value
   let val = '';
-  if (field === 'keywords')     val = RAW.keywords || '';
-  if (field === 'keyMessage')   val = RAW.keyMessage || '';
-  if (field === 'mainProblem')  val = RAW.painPoints || '';
-  if (field === 'productIdeas') val = RAW.productIdeas || '';
-  if (field === 'actions')      val = RAW.notes || '';
-  if (field === 'platforms')    val = RAW.rawPlatforms || '';
-  if (field === 'methods')      val = RAW.rawMethods || '';
-  if (field === 'thoughts')     val = RAW.thoughts || '';
+  if (field === 'keywords') val = RAW.keywords || '';
   document.getElementById('modalTa').value = val;
 
   document.getElementById('editModal').classList.add('open');
@@ -797,49 +714,11 @@ async function saveModal() {
     if (cfg.target === 'campaign') {
       await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, value: val });
       RAW.keywords = val;
-      // Re-render keywords pills
       const kwEl = document.getElementById('r-keywords');
       kwEl.innerHTML = val ? val.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('') : '<span class="empty">—</span>';
-    } else if (cfg.target === 'campaignField') {
-      await w('updateCampaignField', { campaignId: CAMPAIGN_ID, field: cfg.field, value: val });
-      RAW[cfg.field] = val;
-      // Re-condense display
-      status.textContent = 'Saved. Updating display…';
-      const displayId = { painPoints: 'r-problem' }[cfg.field];
-      const label = { painPoints: 'Main Problem' }[cfg.field];
-      if (displayId) {
-        document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-        const html = await condense(label, val);
-        document.getElementById(displayId).innerHTML = html;
-      }
     } else {
-      // For platforms/methods — need to combine back into one field
-      if (activeField === 'platforms') {
-        RAW.rawPlatforms = val;
-        const combined = 'ACTIVE PLATFORMS: ' + val + (RAW.rawMethods ? '\nACTIVE METHODS: ' + RAW.rawMethods : '');
-        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: 'platforms', value: combined });
-      } else if (activeField === 'methods') {
-        RAW.rawMethods = val;
-        const combined = 'ACTIVE PLATFORMS: ' + (RAW.rawPlatforms || '') + '\nACTIVE METHODS: ' + val;
-        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: 'platforms', value: combined });
-      } else {
-        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
-        RAW[cfg.field] = val;
-        // If editing the notes column directly, update its display without condensing
-        if (activeField === 'thoughts') {
-          const nd = document.getElementById('r-thoughts');
-          if (nd) nd.textContent = val;
-        }
-      }
-      // Re-condense the display
-      status.textContent = 'Saved. Updating display…';
-      const displayId = { keyMessage:'r-keymessage', productIdeas:'r-products', actions:'r-actions', methods:'r-methods' }[activeField];
-      const label = { keyMessage:'Key Message', productIdeas:'Product Ideas', actions:'Recommended Actions — prioritised by ROI', methods:'Methods' }[activeField];
-      if (displayId) {
-        document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-        const html = await condense(label, val);
-        document.getElementById(displayId).innerHTML = html;
-      }
+      await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
+      RAW[cfg.field] = val;
     }
     status.textContent = 'Saved ✓';
     status.className = 'modal-status ok';
@@ -1398,7 +1277,7 @@ async function loadSmPosts() {
             <div class="smp-title">${esc(p.title)}</div>
             ${badges ? `<div class="smp-plats">${badges}</div>` : ''}
             ${p.backgroundImage ? `<div class="smp-bgpath">🖼 ${esc(p.backgroundImage)}</div>` : ''}
-            ${p.localPath ? `<div class="smp-localpath">${esc(p.localPath)}</div>` : ''}
+            ${p.videoUrl ? `<div class="smp-localpath"><a href="${esc(p.videoUrl)}" target="_blank" style="color:#6ec6a0;font-size:11px;text-decoration:none;">▶ ${esc(p.videoUrl)}</a></div>` : ''}
           </div>
           <div class="smp-actions">
             <button class="smp-image"  onclick="openImageModal('${p.id}')"  title="Background image">⬛</button>
