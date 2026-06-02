@@ -351,6 +351,34 @@
   .tr-stat-val { font-size:17px; font-weight:700; color:var(--text); font-family:'DM Mono',monospace; }
   .tr-stat-sub  { font-size:10px; color:var(--text3); margin-top:3px; }
   .tr-section-label { font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--text3); margin:16px 0 8px; }
+
+  /* ── SCREENER ── */
+  .scr-hdr { display:flex; align-items:center; justify-content:space-between; padding:9px 12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); cursor:pointer; user-select:none; margin-bottom:0; }
+  .scr-hdr-title { font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#44cc88; }
+  .scr-body { display:none; padding:14px 0 4px; }
+  .scr-body.open { display:block; }
+  .scr-row { display:flex; gap:8px; align-items:flex-end; margin-bottom:12px; flex-wrap:wrap; }
+  .scr-textarea { flex:1; min-width:200px; background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius-sm); color:var(--text); font-family:'DM Mono',monospace; font-size:12px; padding:9px 12px; resize:vertical; min-height:68px; }
+  .scr-textarea:focus { outline:none; border-color:var(--text3); }
+  .scr-scan-btn { font-size:13px; font-weight:700; padding:10px 22px; background:#44cc88; border:none; border-radius:var(--radius-sm); color:#000; cursor:pointer; white-space:nowrap; transition:opacity .15s; letter-spacing:.04em; }
+  .scr-scan-btn:disabled { opacity:.45; cursor:default; }
+  .scr-save-btn { font-size:11px; font-weight:600; padding:6px 14px; background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius-sm); color:var(--text3); cursor:pointer; }
+  .scr-save-btn:hover { border-color:var(--text3); color:var(--text); }
+  .scr-status { font-size:11px; color:var(--text3); padding:6px 0; font-style:italic; }
+  .scr-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .scr-table { width:100%; border-collapse:collapse; font-size:12px; min-width:460px; }
+  .scr-table th { font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text3); padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; }
+  .scr-table th.r { text-align:right; }
+  .scr-table td { padding:9px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  .scr-table tr:last-child td { border-bottom:none; }
+  .scr-table tr:hover td { background:var(--surface2); }
+  .scr-sym { font-size:13px; font-weight:700; color:var(--text); }
+  .scr-mono { font-family:'DM Mono',monospace; text-align:right; }
+  .scr-sig-yes { display:inline-block; width:8px; height:8px; border-radius:50%; background:#44cc88; margin-right:4px; }
+  .scr-sig-no  { display:inline-block; width:8px; height:8px; border-radius:50%; background:#ff4444; margin-right:4px; }
+  .scr-sig-mid { display:inline-block; width:8px; height:8px; border-radius:50%; background:#ffaa33; margin-right:4px; }
+  .scr-score-bar { display:inline-block; height:6px; border-radius:3px; background:#44cc88; vertical-align:middle; margin-right:6px; }
+  .scr-err { color:var(--text3); font-size:11px; font-style:italic; }
 </style>
 </head>
 <body>
@@ -718,6 +746,44 @@
         </span>
       </div>
       <div id="tradingTdBody" style="display:none;"></div>
+    </div>
+
+    <!-- Screener Section -->
+    <div id="screenerSection" style="margin-bottom:16px;">
+      <div class="scr-hdr" onclick="toggleScreener()">
+        <span class="scr-hdr-title">Volume Accumulation Screener</span>
+        <span style="display:flex;align-items:center;gap:10px;">
+          <a href="https://www.tradingview.com" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:10px;font-weight:600;color:#4488ff;text-decoration:none;letter-spacing:.04em;border:1px solid #4488ff44;padding:2px 8px;border-radius:4px;">TradingView ↗</a>
+          <span id="scrLastRun" style="font-size:10px;color:var(--text3);"></span>
+          <span id="scrChev" style="font-size:10px;color:var(--text3);transition:transform .2s;">▶</span>
+        </span>
+      </div>
+      <div class="scr-body" id="scrBody">
+        <div class="scr-row">
+          <textarea class="scr-textarea" id="scrTickers" placeholder="SPY, QQQ, AAPL, NVDA, TSLA&#10;one per line or comma-separated"></textarea>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <button class="scr-scan-btn" id="scrScanBtn" onclick="runScreener()">⟳ Scan</button>
+            <button class="scr-save-btn" onclick="saveWatchlist()">Save List</button>
+          </div>
+        </div>
+        <div id="scrStatus" class="scr-status"></div>
+        <div class="scr-table-wrap" id="scrTableWrap" style="display:none;">
+          <table class="scr-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th class="r">Price</th>
+                <th class="r">Vol Ratio</th>
+                <th class="r">OBV Trend</th>
+                <th class="r">CMF</th>
+                <th>Signals</th>
+                <th class="r">Score</th>
+              </tr>
+            </thead>
+            <tbody id="scrTableBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- List View -->
@@ -1953,7 +2019,7 @@ function switchTab(name) {
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
   if (name === 'debug'     && !debugTabLoaded) { debugTabLoaded = true; initDebugTab(); }
   if (name === 'prompts'   && !promptsTabLoaded) { promptsTabLoaded = true; initPromptsTab(); }
-  if (name === 'trades'    && !tradesLoaded)     { tradesLoaded     = true; loadTrades(); }
+  if (name === 'trades'    && !tradesLoaded)     { tradesLoaded     = true; loadTrades(); loadWatchlist(); }
 }
 
 // ── DOMAINS TAB ───────────────────────────────────────────────────────
@@ -5360,6 +5426,112 @@ async function confirmDeleteTrade(id) {
   } catch(e) {
     showToast(e.message, 'error');
   }
+}
+
+// ── SCREENER ──────────────────────────────────────────────────────────
+let scrOpen = false;
+
+function toggleScreener() {
+  scrOpen = !scrOpen;
+  document.getElementById('scrBody').classList.toggle('open', scrOpen);
+  document.getElementById('scrChev').style.transform = scrOpen ? 'rotate(90deg)' : '';
+}
+
+async function loadWatchlist() {
+  try {
+    const data = await call('getWatchlist', {});
+    const tickers = data.tickers || [];
+    if (tickers.length) {
+      document.getElementById('scrTickers').value = tickers.join(', ');
+    }
+  } catch(e) { /* silent */ }
+}
+
+async function saveWatchlist() {
+  const tickers = parseTickers();
+  if (!tickers.length) { showToast('Enter at least one ticker', 'error'); return; }
+  try {
+    await call('saveWatchlist', { tickers });
+    showToast('Watchlist saved');
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+function parseTickers() {
+  const raw = document.getElementById('scrTickers').value;
+  return raw.split(/[\s,\n]+/).map(t => t.trim().toUpperCase()).filter(Boolean);
+}
+
+async function runScreener() {
+  const tickers = parseTickers();
+  if (!tickers.length) { showToast('Enter at least one ticker', 'error'); return; }
+
+  const btn    = document.getElementById('scrScanBtn');
+  const status = document.getElementById('scrStatus');
+  const wrap   = document.getElementById('scrTableWrap');
+
+  btn.disabled = true;
+  btn.textContent = 'Scanning…';
+  status.textContent = `Fetching ${tickers.length} ticker${tickers.length > 1 ? 's' : ''}…`;
+  wrap.style.display = 'none';
+
+  try {
+    const data = await call('screenStocks', { tickers });
+    const rows = data.screened || [];
+    renderScreenerTable(rows);
+
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('scrLastRun').textContent = `Last run ${now}`;
+    status.textContent = `${rows.filter(r => !r.error).length} of ${tickers.length} scanned`;
+    wrap.style.display = '';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    showToast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⟳ Scan';
+  }
+}
+
+function renderScreenerTable(rows) {
+  const tbody = document.getElementById('scrTableBody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="scr-err" style="padding:16px 10px;">No results.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    if (r.error) {
+      return `<tr>
+        <td class="scr-sym">${escHtml(r.sym)}</td>
+        <td colspan="6" class="scr-err">fetch error</td>
+      </tr>`;
+    }
+
+    const volDot  = r.volRatio >= 1.5 ? 'scr-sig-yes' : r.volRatio >= 1.0 ? 'scr-sig-mid' : 'scr-sig-no';
+    const obvDot  = r.obvSlope > 0.02 ? 'scr-sig-yes' : r.obvSlope > 0 ? 'scr-sig-mid' : 'scr-sig-no';
+    const cmfDot  = r.cmf > 0.05 ? 'scr-sig-yes' : r.cmf > 0 ? 'scr-sig-mid' : 'scr-sig-no';
+    const barW    = Math.round((r.score / 3) * 60);
+    const barCol  = r.score >= 2.2 ? '#44cc88' : r.score >= 1.4 ? '#ffaa33' : '#ff4444';
+    const volStr  = r.volRatio >= 1.5 ? `+${r.volRatio.toFixed(1)}×` : `${r.volRatio.toFixed(1)}×`;
+
+    return `<tr>
+      <td class="scr-sym">${escHtml(r.sym)}</td>
+      <td class="scr-mono">$${r.price.toFixed(2)}</td>
+      <td class="scr-mono" style="color:${r.volRatio>=1.5?'#44cc88':r.volRatio<1?'#ff4444':'inherit'}">${volStr}</td>
+      <td class="scr-mono" style="color:${r.obvSlope>0?'#44cc88':'#ff4444'}">${r.obvSlope>0?'+':''}${r.obvSlope.toFixed(3)}</td>
+      <td class="scr-mono" style="color:${r.cmf>0?'#44cc88':'#ff4444'}">${r.cmf>0?'+':''}${r.cmf.toFixed(3)}</td>
+      <td>
+        <span class="${volDot}" title="Vol ratio"></span>
+        <span class="${obvDot}" title="OBV trend"></span>
+        <span class="${cmfDot}" title="CMF"></span>
+      </td>
+      <td class="scr-mono" style="white-space:nowrap;">
+        <span class="scr-score-bar" style="width:${barW}px;background:${barCol};"></span>${r.score.toFixed(1)}
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 </script>

@@ -2469,6 +2469,109 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         } catch(e) { return json({ error: e.message }, 500); }
       }
 
+      // ── SCREENER ─────────────────────────────────────────────────────────────
+      if (body.action === 'getWatchlist') {
+        const raw = await env.TRADES.get('screener:watchlist');
+        const tickers = raw ? JSON.parse(raw) : [];
+        return json({ tickers });
+      }
+
+      if (body.action === 'saveWatchlist') {
+        const { tickers } = body;
+        if (!Array.isArray(tickers)) return json({ error: 'tickers array required' }, 400);
+        const clean = tickers.map(t => t.toUpperCase().trim()).filter(Boolean);
+        await env.TRADES.put('screener:watchlist', JSON.stringify(clean));
+        return json({ ok: true });
+      }
+
+      if (body.action === 'screenStocks') {
+        const { tickers } = body;
+        if (!Array.isArray(tickers) || !tickers.length) return json({ error: 'tickers required' }, 400);
+        const MAX = 40;
+        const list = tickers.slice(0, MAX).map(t => t.toUpperCase().trim());
+
+        async function fetchChart(sym) {
+          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=90d`;
+          const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          if (!r.ok) throw new Error(`${sym}: HTTP ${r.status}`);
+          return r.json();
+        }
+
+        function calcSignals(sym, data) {
+          const res = data?.chart?.result?.[0];
+          if (!res) return null;
+          const quotes = res.indicators?.quote?.[0];
+          const closes = quotes?.close;
+          const highs  = quotes?.high;
+          const lows   = quotes?.low;
+          const vols   = quotes?.volume;
+          if (!closes || closes.length < 21) return null;
+
+          // filter nulls (keep aligned)
+          const rows = closes.map((c, i) => ({ c, h: highs[i], l: lows[i], v: vols[i] }))
+                             .filter(r => r.c != null && r.v != null);
+          if (rows.length < 21) return null;
+
+          const n = rows.length;
+          const last = rows[n - 1];
+
+          // Volume vs 20-day avg
+          const vol20 = rows.slice(n - 21, n - 1).reduce((s, r) => s + r.v, 0) / 20;
+          const volRatio = last.v / vol20;
+
+          // OBV trend — linear regression slope over last 20 periods (normalised)
+          const obvArr = [];
+          let obv = 0;
+          for (let i = 1; i < rows.length; i++) {
+            obv += rows[i].c > rows[i-1].c ? rows[i].v : rows[i].c < rows[i-1].c ? -rows[i].v : 0;
+            obvArr.push(obv);
+          }
+          const recentObv = obvArr.slice(-20);
+          const xBar = 9.5, yBar = recentObv.reduce((a, b) => a + b, 0) / 20;
+          let num = 0, den = 0;
+          recentObv.forEach((y, i) => { num += (i - xBar) * (y - yBar); den += (i - xBar) ** 2; });
+          const obvSlope = den ? num / den : 0;
+          const obvNorm  = yBar ? obvSlope / Math.abs(yBar) : 0; // normalised slope
+
+          // Chaikin Money Flow (20-period)
+          const cmfRows = rows.slice(n - 20);
+          let mfvSum = 0, volSum = 0;
+          for (const r of cmfRows) {
+            const hl = r.h - r.l;
+            const mfm = hl ? ((r.c - r.l) - (r.h - r.c)) / hl : 0;
+            mfvSum += mfm * r.v;
+            volSum += r.v;
+          }
+          const cmf = volSum ? mfvSum / volSum : 0;
+
+          // Score: weighted sum of normalised signals (0–3 max)
+          const volScore = Math.min(volRatio / 2, 1);         // 0–1
+          const obvScore = Math.min(Math.max(obvNorm * 5 + 0.5, 0), 1); // 0–1
+          const cmfScore = Math.min(Math.max(cmf + 0.5, 0), 1);         // 0–1
+          const score    = volScore + obvScore + cmfScore;
+
+          return {
+            sym,
+            price:    +last.c.toFixed(2),
+            volRatio: +volRatio.toFixed(2),
+            obvSlope: +obvNorm.toFixed(4),
+            cmf:      +cmf.toFixed(3),
+            score:    +score.toFixed(2),
+          };
+        }
+
+        const results = await Promise.allSettled(
+          list.map(sym => fetchChart(sym).then(d => calcSignals(sym, d)))
+        );
+
+        const screened = results
+          .map((r, i) => r.status === 'fulfilled' ? r.value : { sym: list[i], error: true })
+          .filter(Boolean)
+          .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+
+        return json({ screened });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);
