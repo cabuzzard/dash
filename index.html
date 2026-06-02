@@ -1272,6 +1272,22 @@
 </div>
 
 <!-- Prompt Add/Edit Modal -->
+<div class="modal-bg" id="claudeModal" onclick="if(event.target===this)closeClaudeModal()">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title">✦ Ask Claude</div>
+    <div style="font-size:11px;color:var(--text3);margin:-8px 0 14px;padding:0 2px;" id="claudeModalContext"></div>
+    <div class="modal-field">
+      <label class="modal-label">Prompt</label>
+      <textarea class="modal-input" id="claudePromptInput" rows="5" placeholder="Write a hook for this title..." style="resize:vertical;line-height:1.6;font-size:13px;"></textarea>
+    </div>
+    <div class="modal-actions" style="margin-bottom:0;">
+      <button class="btn btn-secondary" onclick="closeClaudeModal()">Cancel</button>
+      <button class="btn btn-primary" id="claudeSendBtn" onclick="sendClaudePrompt()">Send</button>
+    </div>
+    <div id="claudeResponse" style="display:none;margin-top:16px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;max-height:320px;overflow-y:auto;"></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="promptModal" onclick="if(event.target===this)closePromptModal()">
   <div class="modal">
     <div class="modal-title" id="promptModalTitle">Add Prompt</div>
@@ -3287,6 +3303,18 @@ function renderDev() {
           titleLink.textContent = esc(t.title);
           tRow.appendChild(titleLink);
 
+          // Claude button — only for Development and Writing
+          if (t.status === 'Development' || t.status === 'Writing') {
+            const claudeBtn = document.createElement('span');
+            claudeBtn.textContent = '✦';
+            claudeBtn.title = 'Ask Claude';
+            claudeBtn.style.cssText = 'font-size:12px;cursor:pointer;flex-shrink:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:#a78bfa;border-radius:4px;';
+            claudeBtn.onmouseover = () => claudeBtn.style.background = '#2d2a4a';
+            claudeBtn.onmouseout  = () => claudeBtn.style.background = '#1a1a2e';
+            claudeBtn.onclick = e => { e.preventDefault(); e.stopPropagation(); openClaudeModal(t.title, t.id); };
+            tRow.appendChild(claudeBtn);
+          }
+
           // Status badge — clickable, cycles through statuses
           const statusBadge = document.createElement('span');
           statusBadge.style.cssText = 'font-size:10px;font-weight:700;width:32px;text-align:center;flex-shrink:0;color:'+sty.badgeClr+';cursor:pointer;user-select:none;';
@@ -4459,6 +4487,42 @@ function openEditPromptModal(id) {
   document.getElementById('promptSaveBtn').textContent = 'Save';
   document.getElementById('promptModal').classList.add('open');
   setTimeout(() => document.getElementById('promptLabelInput').focus(), 200);
+}
+
+// ── CLAUDE MODAL (title prompt) ──────────────────────────────────────
+let _claudeTitle = '';
+function openClaudeModal(titleName, titleId) {
+  _claudeTitle = titleName;
+  document.getElementById('claudeModalContext').textContent = '📋 ' + titleName;
+  document.getElementById('claudePromptInput').value = '';
+  document.getElementById('claudeResponse').style.display = 'none';
+  document.getElementById('claudeResponse').textContent = '';
+  document.getElementById('claudeSendBtn').disabled = false;
+  document.getElementById('claudeSendBtn').textContent = 'Send';
+  document.getElementById('claudeModal').classList.add('active');
+  setTimeout(() => document.getElementById('claudePromptInput').focus(), 80);
+}
+function closeClaudeModal() {
+  document.getElementById('claudeModal').classList.remove('active');
+}
+async function sendClaudePrompt() {
+  const prompt = document.getElementById('claudePromptInput').value.trim();
+  if (!prompt) return;
+  const btn = document.getElementById('claudeSendBtn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const respEl = document.getElementById('claudeResponse');
+  respEl.style.display = 'none'; respEl.textContent = '';
+  try {
+    const fullPrompt = 'Title: ' + _claudeTitle + '\n\n' + prompt;
+    const data = await call('sendPrompt', { prompt: fullPrompt });
+    respEl.textContent = data.text || '(no response)';
+    respEl.style.display = 'block';
+    btn.textContent = 'Send';
+    btn.disabled = false;
+  } catch(e) {
+    showToast('Claude error: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Send';
+  }
 }
 
 function closePromptModal() {
