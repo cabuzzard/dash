@@ -759,12 +759,13 @@
         </span>
       </div>
       <div class="scr-body" id="scrBody">
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <button class="scr-scan-btn" id="scrDiscoverBtn" onclick="runDiscover()" style="background:#4488ff;flex:1;min-width:140px;">⚡ Discover Top Picks</button>
+          <button class="scr-scan-btn" id="scrScanBtn" onclick="runScreener()" style="background:var(--surface);border:1px solid var(--border2);color:var(--text);flex:1;min-width:120px;">⟳ Scan Watchlist</button>
+        </div>
         <div class="scr-row">
-          <textarea class="scr-textarea" id="scrTickers" placeholder="SPY, QQQ, AAPL, NVDA, TSLA&#10;one per line or comma-separated"></textarea>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <button class="scr-scan-btn" id="scrScanBtn" onclick="runScreener()">⟳ Scan</button>
-            <button class="scr-save-btn" onclick="saveWatchlist()">Save List</button>
-          </div>
+          <textarea class="scr-textarea" id="scrTickers" placeholder="Watchlist: SPY, QQQ, AAPL, NVDA&#10;one per line or comma-separated"></textarea>
+          <button class="scr-save-btn" onclick="saveWatchlist()" style="align-self:flex-end;">Save</button>
         </div>
         <div id="scrStatus" class="scr-status"></div>
         <div class="scr-table-wrap" id="scrTableWrap" style="display:none;">
@@ -773,11 +774,12 @@
               <tr>
                 <th>Symbol</th>
                 <th class="r">Price</th>
-                <th class="r">Vol Ratio</th>
-                <th class="r">OBV Trend</th>
+                <th class="r">Vol/Avg</th>
+                <th class="r">OBV</th>
                 <th class="r">CMF</th>
+                <th class="r">%K/%D</th>
                 <th>Signals</th>
-                <th class="r">Score</th>
+                <th>Verdict</th>
               </tr>
             </thead>
             <tbody id="scrTableBody"></tbody>
@@ -5463,6 +5465,34 @@ function parseTickers() {
   return raw.split(/[\s,\n]+/).map(t => t.trim().toUpperCase()).filter(Boolean);
 }
 
+async function runDiscover() {
+  const btn    = document.getElementById('scrDiscoverBtn');
+  const status = document.getElementById('scrStatus');
+  const wrap   = document.getElementById('scrTableWrap');
+
+  btn.disabled = true;
+  btn.textContent = 'Scanning…';
+  status.textContent = 'Fetching top 100 most-active stocks, filtering stochastic < 50…';
+  wrap.style.display = 'none';
+
+  try {
+    const data = await call('discoverStocks', {});
+    const rows = data.screened || [];
+    renderScreenerTable(rows, true);
+
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('scrLastRun').textContent = `Last run ${now}`;
+    status.textContent = `${data.universe} stocks scanned → ${data.passed} passed stoch filter → top ${rows.length} shown`;
+    wrap.style.display = '';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    showToast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚡ Discover Top Picks';
+  }
+}
+
 async function runScreener() {
   const tickers = parseTickers();
   if (!tickers.length) { showToast('Enter at least one ticker', 'error'); return; }
@@ -5479,7 +5509,7 @@ async function runScreener() {
   try {
     const data = await call('screenStocks', { tickers });
     const rows = data.screened || [];
-    renderScreenerTable(rows);
+    renderScreenerTable(rows, false);
 
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     document.getElementById('scrLastRun').textContent = `Last run ${now}`;
@@ -5490,31 +5520,35 @@ async function runScreener() {
     showToast(e.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.textContent = '⟳ Scan';
+    btn.textContent = '⟳ Scan Watchlist';
   }
 }
 
-function renderScreenerTable(rows) {
+function renderScreenerTable(rows, isDiscover) {
   const tbody = document.getElementById('scrTableBody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="scr-err" style="padding:16px 10px;">No results.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="8" class="scr-err" style="padding:16px 10px;">${isDiscover ? 'No stocks passed the stochastic filter right now.' : 'No results.'}</td></tr>`;
     return;
   }
 
   tbody.innerHTML = rows.map(r => {
     if (r.error) {
-      return `<tr>
-        <td class="scr-sym">${escHtml(r.sym)}</td>
-        <td colspan="6" class="scr-err">fetch error</td>
-      </tr>`;
+      return `<tr><td class="scr-sym">${escHtml(r.sym)}</td><td colspan="7" class="scr-err">fetch error</td></tr>`;
     }
 
-    const volDot  = r.volRatio >= 1.5 ? 'scr-sig-yes' : r.volRatio >= 1.0 ? 'scr-sig-mid' : 'scr-sig-no';
-    const obvDot  = r.obvSlope > 0.02 ? 'scr-sig-yes' : r.obvSlope > 0 ? 'scr-sig-mid' : 'scr-sig-no';
-    const cmfDot  = r.cmf > 0.05 ? 'scr-sig-yes' : r.cmf > 0 ? 'scr-sig-mid' : 'scr-sig-no';
-    const barW    = Math.round((r.score / 3) * 60);
-    const barCol  = r.score >= 2.2 ? '#44cc88' : r.score >= 1.4 ? '#ffaa33' : '#ff4444';
-    const volStr  = r.volRatio >= 1.5 ? `+${r.volRatio.toFixed(1)}×` : `${r.volRatio.toFixed(1)}×`;
+    const volDot = r.volRatio >= 1.5 ? 'scr-sig-yes' : r.volRatio >= 1.0 ? 'scr-sig-mid' : 'scr-sig-no';
+    const obvDot = r.obvSlope > 0.02 ? 'scr-sig-yes' : r.obvSlope > 0 ? 'scr-sig-mid' : 'scr-sig-no';
+    const cmfDot = r.cmf > 0.05 ? 'scr-sig-yes' : r.cmf > 0 ? 'scr-sig-mid' : 'scr-sig-no';
+    const stDot  = r.stochK < 30 ? 'scr-sig-yes' : r.stochK < 50 ? 'scr-sig-mid' : 'scr-sig-no';
+
+    const volStr = `${r.volRatio >= 1.5 ? '+' : ''}${r.volRatio.toFixed(1)}×`;
+    const stStr  = `${r.stochK.toFixed(0)} / ${r.stochD.toFixed(0)}`;
+
+    const verdictStyle = r.verdict === 'BUY'
+      ? 'background:#0d2e1a;color:#44cc88;border:1px solid #44cc8844;'
+      : r.verdict === 'WATCH'
+      ? 'background:#2a1e00;color:#ffaa33;border:1px solid #ffaa3344;'
+      : 'background:var(--surface);color:var(--text3);border:1px solid var(--border);';
 
     return `<tr>
       <td class="scr-sym">${escHtml(r.sym)}</td>
@@ -5522,14 +5556,14 @@ function renderScreenerTable(rows) {
       <td class="scr-mono" style="color:${r.volRatio>=1.5?'#44cc88':r.volRatio<1?'#ff4444':'inherit'}">${volStr}</td>
       <td class="scr-mono" style="color:${r.obvSlope>0?'#44cc88':'#ff4444'}">${r.obvSlope>0?'+':''}${r.obvSlope.toFixed(3)}</td>
       <td class="scr-mono" style="color:${r.cmf>0?'#44cc88':'#ff4444'}">${r.cmf>0?'+':''}${r.cmf.toFixed(3)}</td>
-      <td>
-        <span class="${volDot}" title="Vol ratio"></span>
-        <span class="${obvDot}" title="OBV trend"></span>
+      <td class="scr-mono" style="color:${r.stochK<30?'#44cc88':r.stochK<50?'#ffaa33':'#ff4444'}">${stStr}</td>
+      <td style="white-space:nowrap;">
+        <span class="${volDot}" title="Vol"></span>
+        <span class="${obvDot}" title="OBV"></span>
         <span class="${cmfDot}" title="CMF"></span>
+        <span class="${stDot}"  title="Stoch"></span>
       </td>
-      <td class="scr-mono" style="white-space:nowrap;">
-        <span class="scr-score-bar" style="width:${barW}px;background:${barCol};"></span>${r.score.toFixed(1)}
-      </td>
+      <td><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;${verdictStyle}">${r.verdict}</span></td>
     </tr>`;
   }).join('');
 }

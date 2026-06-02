@@ -2470,6 +2470,97 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       }
 
       // ── SCREENER ─────────────────────────────────────────────────────────────
+
+      // Shared helpers used by screenStocks + discoverStocks
+      async function fetchChart(sym) {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=90d`;
+        const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!r.ok) throw new Error(`${sym}: HTTP ${r.status}`);
+        return r.json();
+      }
+
+      function calcSignals(sym, data) {
+        const res = data?.chart?.result?.[0];
+        if (!res) return null;
+        const quotes = res.indicators?.quote?.[0];
+        const closes = quotes?.close;
+        const highs  = quotes?.high;
+        const lows   = quotes?.low;
+        const vols   = quotes?.volume;
+        if (!closes || closes.length < 22) return null;
+
+        const rows = closes.map((c, i) => ({ c, h: highs[i], l: lows[i], v: vols[i] }))
+                           .filter(r => r.c != null && r.v != null && r.h != null && r.l != null);
+        if (rows.length < 22) return null;
+
+        const n    = rows.length;
+        const last = rows[n - 1];
+
+        // Stochastic %K/%D (14-period)
+        const stochK = [];
+        for (let i = 13; i < rows.length; i++) {
+          const window = rows.slice(i - 13, i + 1);
+          const hh = Math.max(...window.map(r => r.h));
+          const ll = Math.min(...window.map(r => r.l));
+          stochK.push(hh === ll ? 50 : ((rows[i].c - ll) / (hh - ll)) * 100);
+        }
+        const recentK = stochK.slice(-3);
+        const stochD  = recentK.reduce((a, b) => a + b, 0) / recentK.length;
+        const kNow    = stochK[stochK.length - 1];
+
+        // Volume vs 20-day avg
+        const vol20    = rows.slice(n - 21, n - 1).reduce((s, r) => s + r.v, 0) / 20;
+        const volRatio = last.v / vol20;
+
+        // OBV trend — linear regression slope over last 20 periods (normalised)
+        const obvArr = [];
+        let obv = 0;
+        for (let i = 1; i < rows.length; i++) {
+          obv += rows[i].c > rows[i-1].c ? rows[i].v : rows[i].c < rows[i-1].c ? -rows[i].v : 0;
+          obvArr.push(obv);
+        }
+        const recentObv = obvArr.slice(-20);
+        const xBar = 9.5, yBar = recentObv.reduce((a, b) => a + b, 0) / 20;
+        let num = 0, den = 0;
+        recentObv.forEach((y, i) => { num += (i - xBar) * (y - yBar); den += (i - xBar) ** 2; });
+        const obvSlope = den ? num / den : 0;
+        const obvNorm  = yBar ? obvSlope / Math.abs(yBar) : 0;
+
+        // Chaikin Money Flow (20-period)
+        const cmfRows = rows.slice(n - 20);
+        let mfvSum = 0, volSum = 0;
+        for (const r of cmfRows) {
+          const hl  = r.h - r.l;
+          const mfm = hl ? ((r.c - r.l) - (r.h - r.c)) / hl : 0;
+          mfvSum += mfm * r.v;
+          volSum += r.v;
+        }
+        const cmf = volSum ? mfvSum / volSum : 0;
+
+        // Score 0–3
+        const volScore = Math.min(volRatio / 2, 1);
+        const obvScore = Math.min(Math.max(obvNorm * 5 + 0.5, 0), 1);
+        const cmfScore = Math.min(Math.max(cmf + 0.5, 0), 1);
+        const score    = volScore + obvScore + cmfScore;
+
+        // Verdict
+        let verdict = 'SKIP';
+        if (score >= 2.4 && obvNorm > 0 && cmf > 0) verdict = 'BUY';
+        else if (score >= 1.6) verdict = 'WATCH';
+
+        return {
+          sym,
+          price:    +last.c.toFixed(2),
+          volRatio: +volRatio.toFixed(2),
+          obvSlope: +obvNorm.toFixed(4),
+          cmf:      +cmf.toFixed(3),
+          stochK:   +kNow.toFixed(1),
+          stochD:   +stochD.toFixed(1),
+          score:    +score.toFixed(2),
+          verdict,
+        };
+      }
+
       if (body.action === 'getWatchlist') {
         const raw = await env.TRADES.get('screener:watchlist');
         const tickers = raw ? JSON.parse(raw) : [];
@@ -2487,78 +2578,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       if (body.action === 'screenStocks') {
         const { tickers } = body;
         if (!Array.isArray(tickers) || !tickers.length) return json({ error: 'tickers required' }, 400);
-        const MAX = 40;
-        const list = tickers.slice(0, MAX).map(t => t.toUpperCase().trim());
-
-        async function fetchChart(sym) {
-          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=90d`;
-          const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-          if (!r.ok) throw new Error(`${sym}: HTTP ${r.status}`);
-          return r.json();
-        }
-
-        function calcSignals(sym, data) {
-          const res = data?.chart?.result?.[0];
-          if (!res) return null;
-          const quotes = res.indicators?.quote?.[0];
-          const closes = quotes?.close;
-          const highs  = quotes?.high;
-          const lows   = quotes?.low;
-          const vols   = quotes?.volume;
-          if (!closes || closes.length < 21) return null;
-
-          // filter nulls (keep aligned)
-          const rows = closes.map((c, i) => ({ c, h: highs[i], l: lows[i], v: vols[i] }))
-                             .filter(r => r.c != null && r.v != null);
-          if (rows.length < 21) return null;
-
-          const n = rows.length;
-          const last = rows[n - 1];
-
-          // Volume vs 20-day avg
-          const vol20 = rows.slice(n - 21, n - 1).reduce((s, r) => s + r.v, 0) / 20;
-          const volRatio = last.v / vol20;
-
-          // OBV trend — linear regression slope over last 20 periods (normalised)
-          const obvArr = [];
-          let obv = 0;
-          for (let i = 1; i < rows.length; i++) {
-            obv += rows[i].c > rows[i-1].c ? rows[i].v : rows[i].c < rows[i-1].c ? -rows[i].v : 0;
-            obvArr.push(obv);
-          }
-          const recentObv = obvArr.slice(-20);
-          const xBar = 9.5, yBar = recentObv.reduce((a, b) => a + b, 0) / 20;
-          let num = 0, den = 0;
-          recentObv.forEach((y, i) => { num += (i - xBar) * (y - yBar); den += (i - xBar) ** 2; });
-          const obvSlope = den ? num / den : 0;
-          const obvNorm  = yBar ? obvSlope / Math.abs(yBar) : 0; // normalised slope
-
-          // Chaikin Money Flow (20-period)
-          const cmfRows = rows.slice(n - 20);
-          let mfvSum = 0, volSum = 0;
-          for (const r of cmfRows) {
-            const hl = r.h - r.l;
-            const mfm = hl ? ((r.c - r.l) - (r.h - r.c)) / hl : 0;
-            mfvSum += mfm * r.v;
-            volSum += r.v;
-          }
-          const cmf = volSum ? mfvSum / volSum : 0;
-
-          // Score: weighted sum of normalised signals (0–3 max)
-          const volScore = Math.min(volRatio / 2, 1);         // 0–1
-          const obvScore = Math.min(Math.max(obvNorm * 5 + 0.5, 0), 1); // 0–1
-          const cmfScore = Math.min(Math.max(cmf + 0.5, 0), 1);         // 0–1
-          const score    = volScore + obvScore + cmfScore;
-
-          return {
-            sym,
-            price:    +last.c.toFixed(2),
-            volRatio: +volRatio.toFixed(2),
-            obvSlope: +obvNorm.toFixed(4),
-            cmf:      +cmf.toFixed(3),
-            score:    +score.toFixed(2),
-          };
-        }
+        const list = tickers.slice(0, 40).map(t => t.toUpperCase().trim());
 
         const results = await Promise.allSettled(
           list.map(sym => fetchChart(sym).then(d => calcSignals(sym, d)))
@@ -2570,6 +2590,36 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
 
         return json({ screened });
+      }
+
+      if (body.action === 'discoverStocks') {
+        // Step 1: fetch top 100 most-active tickers from Yahoo Finance
+        const scrUrl = 'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=most_actives&count=100&formatted=false&lang=en-US&region=US';
+        const scrResp = await fetch(scrUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!scrResp.ok) throw new Error(`Yahoo screener HTTP ${scrResp.status}`);
+        const scrData = await scrResp.json();
+        const quotes  = scrData?.finance?.result?.[0]?.quotes || [];
+        const tickers = quotes.map(q => q.symbol).filter(Boolean).slice(0, 100);
+        if (!tickers.length) return json({ error: 'No tickers from Yahoo screener' }, 502);
+
+        // Step 2: fetch OHLCV for all in parallel
+        const results = await Promise.allSettled(
+          tickers.map(sym => fetchChart(sym).then(d => calcSignals(sym, d)))
+        );
+
+        const all = results
+          .map((r, i) => r.status === 'fulfilled' ? r.value : null)
+          .filter(Boolean);
+
+        // Step 3: filter — stochastic %K < 50 (below midline, not yet extended)
+        const filtered = all.filter(s => s.stochK < 50);
+
+        // Step 4: sort by score, return top 15
+        const top = filtered
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 15);
+
+        return json({ screened: top, universe: tickers.length, passed: filtered.length });
       }
 
       return json({ error: "Unknown action" }, 400);
