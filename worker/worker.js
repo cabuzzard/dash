@@ -736,6 +736,7 @@ export default {
                 platform: p["Platform Name"]?.select?.name || "",
                 type: p["Asset Type"]?.select?.name || "",
                 status: p["Asset Status"]?.select?.name || "",
+                designLink: p["Design Link"]?.url || "",
               };
             } catch(e) { return null; }
           }));
@@ -764,6 +765,7 @@ export default {
                   platform: p["Platform Name"]?.select?.name || "",
                   type: p["Asset Type"]?.select?.name || "",
                   status: p["Asset Status"]?.select?.name || "",
+                  designLink: p["Design Link"]?.url || "",
                 };
               } catch(e) { return null; }
             }));
@@ -2226,6 +2228,19 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const all  = await Promise.all(list.keys.map(k => env.TRADES.get(k.name, 'json')));
         const active = all.filter(t => t && !t.expired);
         return json({ trades: active });
+      }
+
+      if (body.action === "setAssetDesignLink") {
+        const { assetId, url } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
+        const resp = await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
+          method: "PATCH",
+          headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Design Link": { url: url || null } } }),
+        });
+        if (!resp.ok) { const e = await resp.json(); return json({ error: e.message || "Update failed" }, 400); }
+        return json({ success: true });
       }
 
       if (body.action === "getAssetImages") {
