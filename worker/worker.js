@@ -2243,6 +2243,32 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ success: true });
       }
 
+      if (body.action === "renameAssetImage") {
+        const { assetId, imgKey, newName } = body;
+        if (!assetId || !imgKey) return json({ error: "assetId and imgKey required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
+        try {
+          const pageResp = await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
+            headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+          });
+          const page = await pageResp.json();
+          const existing = page.properties?.Images?.files || [];
+          const updated = existing.map(f => {
+            if (f.name?.startsWith("img:" + imgKey)) {
+              return { ...f, name: "img:" + imgKey + "|" + (newName || "") };
+            }
+            return f;
+          });
+          const patchResp = await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
+            method: "PATCH",
+            headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { Images: { files: updated } } }),
+          });
+          if (!patchResp.ok) { const e = await patchResp.json(); return json({ error: e.message || "Rename failed" }, 400); }
+          return json({ success: true });
+        } catch(e) { return json({ error: e.message }, 500); }
+      }
+
       if (body.action === "getAssetImages") {
         const { assetId } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
@@ -2252,11 +2278,16 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
             headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
           });
           const page = await resp.json();
-          const files = (page.properties?.Images?.files || []).map(f => ({
-            name: f.name || "image",
-            url: f.type === "external" ? f.external.url : (f.file?.url || ""),
-            key: f.name && f.name.startsWith("img:") ? f.name.slice(4) : null,
-          }));
+          const files = (page.properties?.Images?.files || []).map(f => {
+            const raw = f.name || "";
+            let key = null, displayName = raw;
+            if (raw.startsWith("img:")) {
+              const pipeIdx = raw.indexOf("|", 4);
+              if (pipeIdx !== -1) { key = raw.slice(4, pipeIdx); displayName = raw.slice(pipeIdx + 1); }
+              else { key = raw.slice(4); displayName = ""; }
+            }
+            return { name: displayName, url: f.type === "external" ? f.external.url : (f.file?.url || ""), key };
+          });
           return json({ images: files });
         } catch(e) { return json({ error: e.message }, 500); }
       }
@@ -2279,7 +2310,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           });
           const page = await pageResp.json();
           const existing = page.properties?.Images?.files || [];
-          const updated = [...existing, { type: "external", name: "img:" + imgKey.slice(4), external: { url: imgUrl } }];
+          const updated = [...existing, { type: "external", name: "img:" + imgKey.slice(4) + "|" + (fileName || "image"), external: { url: imgUrl } }];
 
           const patchResp = await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
             method: "PATCH",
@@ -2306,7 +2337,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           });
           const page = await pageResp.json();
           const existing = page.properties?.Images?.files || [];
-          const updated = existing.filter(f => f.name !== "img:" + imgKey);
+          const updated = existing.filter(f => !f.name?.startsWith("img:" + imgKey));
           await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
             method: "PATCH",
             headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },

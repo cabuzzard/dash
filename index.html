@@ -1520,6 +1520,9 @@ async function refreshAssetFilesGrid() {
       return;
     }
     images.forEach(img => {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+
       const cell = document.createElement('div');
       cell.style.cssText = 'position:relative;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;aspect-ratio:1;background:var(--surface2);';
       const imgEl = document.createElement('img');
@@ -1534,7 +1537,27 @@ async function refreshAssetFilesGrid() {
       del.onclick = async (e) => { e.stopPropagation(); if (!confirm('Delete this image?')) return; await deleteAssetImage(img.key); };
       cell.appendChild(imgEl);
       if (img.key) cell.appendChild(del);
-      grid.appendChild(cell);
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.value = img.name || '';
+      nameInput.placeholder = 'File name…';
+      nameInput.title = 'Click to rename';
+      nameInput.style.cssText = 'font-size:10px;color:var(--text2);background:transparent;border:none;border-bottom:1px solid transparent;border-radius:0;padding:1px 2px;width:100%;box-sizing:border-box;outline:none;cursor:text;';
+      nameInput.onfocus = () => nameInput.style.borderBottomColor = 'var(--border2)';
+      nameInput.onblur = async () => {
+        nameInput.style.borderBottomColor = 'transparent';
+        const newName = nameInput.value.trim();
+        if (img.key && newName !== (img.name || '')) {
+          try { await call('renameAssetImage', { assetId: _assetFilesId, imgKey: img.key, newName }); img.name = newName; }
+          catch(e) { showToast('Rename failed: ' + e.message, true); nameInput.value = img.name || ''; }
+        }
+      };
+      nameInput.onkeydown = (e) => { if (e.key === 'Enter') nameInput.blur(); if (e.key === 'Escape') { nameInput.value = img.name || ''; nameInput.blur(); } };
+
+      wrap.appendChild(cell);
+      if (img.key) wrap.appendChild(nameInput);
+      grid.appendChild(wrap);
     });
   } catch(e) {
     grid.innerHTML = '<div class="error-msg" style="grid-column:1/-1">' + esc(e.message) + '</div>';
