@@ -1,4 +1,4 @@
-﻿// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET are set as Cloudflare Worker secrets (env vars).
+// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET are set as Cloudflare Worker secrets (env vars).
 // They are loaded from env at the start of each request â€” never hardcoded here.
 let NOTION_TOKEN = ""; // set per-request from env.NOTION_TOKEN
 const NOTION_VERSION     = "2022-06-28";
@@ -1570,22 +1570,19 @@ Rules:
         }});
       }
 
-      // ── updateAssetStatus ──
-      if (body.action === “updateAssetStatus”) {
+      // â”€â”€ updateLoginFull â€” update login fields â”€â”€
+      // -- updateAssetStatus --
+      if (body.action === "updateAssetStatus") {
         const { assetId, status } = body;
-        if (!assetId || !status) return json({ error: “assetId and status required” }, 400);
-        const dash = id => { const s = id.replace(/-/g,””); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
-        const resp = await fetch(“https://api.notion.com/v1/pages/” + dash(assetId), {
-          method: “PATCH”,
-          headers: { “Authorization”: “Bearer “ + NOTION_TOKEN, “Notion-Version”: NOTION_VERSION, “Content-Type”: “application/json” },
-          body: JSON.stringify({ properties: { “Asset Status”: { select: { name: status } } } })
-        });
-        if (!resp.ok) { const e = await resp.json(); return json({ error: e.message || “Failed” }, resp.status); }
+        if (!assetId || !status) return json({ error: "assetId and status required" }, 400);
+        const dId = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
+        const pUrl = "https://api.notion.com/v1/pages/" + dId(assetId);
+        const ar = await fetch(pUrl, { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Asset Status": { select: { name: status } } } }) });
+        if (!ar.ok) { const e = await ar.json(); return json({ error: e.message || "Failed" }, ar.status); }
         return json({ success: true });
       }
 
-      // â”€â”€ updateLoginFull â€” update login fields â”€â”€
-      if (body.action === “updateLoginFull”) {
+      if (body.action === "updateLoginFull") {
         const { loginId, name, category, status, usr, accountUrl, headline, bio, platformId, smAccountIds, smAccountId } = body;
         if (!loginId) return json({ error: "loginId required" }, 400);
         const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };

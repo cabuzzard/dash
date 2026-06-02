@@ -1497,8 +1497,8 @@ let tdTabLoaded = false;
 
 const ASSET_STATUS_CYCLE = ['Publish', 'Published'];
 function assetStatusStyle(status) {
-  if (status === 'Published') return 'background:#0a2a0a;color:#4cff4c;border:1px solid #1a5a1a;';
-  if (status === 'Publish')   return 'background:#fff;color:#000;border:1px solid #ccc;';
+  if (status === 'Publish')   return 'background:#0a2a0a;color:#4cff4c;border:1px solid #1a5a1a;';
+  if (status === 'Published') return 'background:#fff;color:#000;border:1px solid #ccc;';
   return 'background:var(--surface2);color:var(--text3);border:1px solid var(--border2);';
 }
 async function toggleAssetStatus(assetId, currentStatus, el, ev) {
