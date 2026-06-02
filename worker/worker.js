@@ -15,6 +15,7 @@ const LEADS_DB           = "e4518a459f004eb0b9646e48d8718705";
 const SM_ACCOUNTS_DB     = "aa6a16f2a77245bfb5efd9a8eb314b07";
 const EMAILS_DB          = "6252e9917027488fb628436aabb89947";
 const SM_POSTS_DB        = "addcfe1d1beb46dbbcaa397504a8041d";
+const TRADES_DB          = "2207133ee3b04ff496e5e75415e3e43d";
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -508,6 +509,7 @@ export default {
               { property: "priority", multi_select: { contains: "daily content" } },
               { property: "priority", multi_select: { contains: "daily household" } },
               { property: "priority", multi_select: { contains: "done" } },
+              { property: "priority", multi_select: { contains: "trading" } },
             ]
           },
           sorts: [{ property: "Title", direction: "ascending" }],
@@ -2227,7 +2229,44 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         if (!id) return json({ error: 'Missing trade id' }, 400);
         const existing = await env.TRADES.get(`trades:${id}`, 'json');
         if (!existing) return json({ error: 'Trade not found' }, 404);
-        await env.TRADES.put(`trades:${id}`, JSON.stringify({ ...existing, ...fields }));
+        const updated = { ...existing, ...fields };
+        await env.TRADES.put(`trades:${id}`, JSON.stringify(updated));
+
+        // On expiry — archive full record to Notion then remove from KV
+        if (fields.expired) {
+          const rt = v => ({ rich_text: [{ type: "text", text: { content: String(v ?? "") } }] });
+          const name = `${updated.ticker} ${updated.strike}${updated.direction || "C"} ${updated.expiry}`;
+          try {
+            await fetch("https://api.notion.com/v1/pages", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                parent: { database_id: TRADES_DB },
+                properties: {
+                  Name:                  { title: [{ type: "text", text: { content: name } }] },
+                  Ticker:                rt(updated.ticker || ""),
+                  Strike:                { number: updated.strike ?? null },
+                  Expiry:                rt(updated.expiry || ""),
+                  Direction:             { select: { name: updated.direction || "C" } },
+                  Status:                { select: { name: "Expired" } },
+                  "Entry Price":         { number: updated.entry_price ?? null },
+                  "Current Price":       { number: updated.current_price ?? null },
+                  "Current Pct":         { number: updated.current_pct ?? null },
+                  "Max High":            { number: updated.max_high ?? null },
+                  "Max High Time":       rt(updated.max_high_time || ""),
+                  "Max Low":             { number: updated.max_low ?? null },
+                  "Max Low Time":        rt(updated.max_low_time || ""),
+                  "Strike Reached":      { checkbox: !!updated.strike_reached },
+                  "Strike Reached Time": rt(updated.strike_reached_time || ""),
+                  "Price Captured":      { checkbox: !!updated.price_captured },
+                  "Last Updated":        rt(updated.last_updated || ""),
+                }
+              }),
+            });
+            await env.TRADES.delete(`trades:${id}`);
+          } catch(e) { /* archive failed — leave in KV, don't error the poller */ }
+        }
+
         return json({ success: true });
       }
 

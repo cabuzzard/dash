@@ -707,6 +707,19 @@
   <!-- ── TRADES TAB ───────────────────────────────────────────────────── -->
   <div class="tab-panel" id="tabTrades">
 
+    <!-- Trading TD Section -->
+    <div id="tradingTdSection" style="margin-bottom:16px;">
+      <div id="tradingTdHdr" onclick="toggleTradingTd()" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;user-select:none;">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#4488ff;">Trading TD</span>
+        <span style="display:flex;align-items:center;gap:10px;">
+          <span id="tradingTdCount" style="font-size:11px;color:var(--text3);">0</span>
+          <button onclick="event.stopPropagation();openAddTradingTdModal()" style="font-size:10px;font-weight:700;padding:3px 9px;border:1px solid #4488ff;border-radius:4px;background:transparent;color:#4488ff;cursor:pointer;letter-spacing:.04em;">+ Add TD</button>
+          <span id="tradingTdChev" style="font-size:10px;color:var(--text3);transition:transform .2s;">▶</span>
+        </span>
+      </div>
+      <div id="tradingTdBody" style="display:none;"></div>
+    </div>
+
     <!-- List View -->
     <div id="tradesListView">
       <div class="trades-hdr">
@@ -998,6 +1011,7 @@
         <option value="get">Get</option>
         <option value="daily content">Daily Content</option>
         <option value="daily household">Daily Household</option>
+        <option value="trading">Trading</option>
       </select>
     </div>
     <div class="modal-actions">
@@ -5095,6 +5109,86 @@ async function loadTrades() {
   } catch(e) {
     if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="error-msg">' + e.message + '</td></tr>';
   }
+  loadTradingTd();
+}
+
+// ── TRADING TD SECTION ────────────────────────────────────────────────
+function toggleTradingTd() {
+  const body = document.getElementById('tradingTdBody');
+  const chev = document.getElementById('tradingTdChev');
+  const hdr  = document.getElementById('tradingTdHdr');
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  chev.style.transform = open ? '' : 'rotate(90deg)';
+  hdr.style.borderRadius = open ? 'var(--radius-sm)' : 'var(--radius-sm) var(--radius-sm) 0 0';
+}
+
+async function loadTradingTd() {
+  try {
+    const data = await call('getTdItems');
+    const items = (data.items || []).filter(t => (t.priority || []).includes('trading'));
+    renderTradingTdSection(items);
+  } catch(e) { /* silent */ }
+}
+
+function renderTradingTdSection(items) {
+  const body  = document.getElementById('tradingTdBody');
+  const count = document.getElementById('tradingTdCount');
+  count.textContent = items.length;
+  body.innerHTML = '';
+
+  if (!items.length) {
+    body.innerHTML = '<div style="padding:10px 14px 10px 24px;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);"><span class="empty">No trading TD items.</span></div>';
+    return;
+  }
+
+  items.forEach((t, idx) => {
+    const isLast = idx === items.length - 1;
+    const isDone = (t.priority || []).some(p => p === 'done');
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 14px 9px 24px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:' + (isDone ? '#1a2a1a' : 'var(--bg)') + ';' + (isLast ? 'border-radius:0 0 var(--radius-sm) var(--radius-sm);' : '');
+
+    const link = document.createElement('a');
+    link.href = 'https://www.notion.so/' + t.id;
+    link.target = '_blank';
+    link.style.cssText = 'flex:1;text-decoration:none;';
+    link.innerHTML = '<span style="font-size:13px;color:' + (isDone ? 'var(--text3)' : 'var(--text)') + ';line-height:1.4;text-decoration:' + (isDone ? 'line-through' : 'none') + ';">' + esc(t.name) + '</span>';
+
+    let doneState = isDone;
+    const doneBtn = document.createElement('button');
+    doneBtn.title = isDone ? 'Mark undone' : 'Mark done';
+    doneBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:16px;padding:0 6px;flex-shrink:0;color:' + (doneState ? '#4488ff' : 'var(--text3)') + ';';
+    doneBtn.textContent = doneState ? '★' : '☆';
+    doneBtn.onclick = async () => {
+      doneBtn.disabled = true;
+      const newDone = !doneState;
+      const base = (t.priority || []).filter(p => p !== 'done');
+      if (newDone) base.push('done');
+      try {
+        await call('updateTdPriority', { itemId: t.id, priority: base });
+        doneState = newDone;
+        t.priority = base;
+        doneBtn.textContent = newDone ? '★' : '☆';
+        doneBtn.style.color = newDone ? '#4488ff' : 'var(--text3)';
+        link.querySelector('span').style.textDecoration = newDone ? 'line-through' : 'none';
+        link.querySelector('span').style.color = newDone ? 'var(--text3)' : 'var(--text)';
+        row.style.background = newDone ? '#1a2a1a' : 'var(--bg)';
+        showToast(newDone ? 'Marked done ✓' : 'Unmarked ✓', 'success');
+      } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+      doneBtn.disabled = false;
+    };
+
+    row.appendChild(link);
+    row.appendChild(doneBtn);
+    body.appendChild(row);
+  });
+}
+
+function openAddTradingTdModal() {
+  document.getElementById('addTdTitle').value = '';
+  document.getElementById('addTdGrouping').value = 'trading';
+  document.getElementById('addTdModal').classList.add('open');
+  setTimeout(() => document.getElementById('addTdTitle').focus(), 300);
 }
 
 function fmtDate(iso) {
