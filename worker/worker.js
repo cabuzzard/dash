@@ -2268,7 +2268,37 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           });
           const result = await resp.json();
           if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
-          return json({ success: true, id: result.id.replace(/-/g,"") });
+          const newId = result.id;
+
+          // Copy page block content from source
+          async function fetchBlocks(blockId) {
+            const r = await fetch(`https://api.notion.com/v1/blocks/${blockId}/children?page_size=100`, {
+              headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+            });
+            const d = await r.json();
+            return d.results || [];
+          }
+          async function stripBlock(b) {
+            const stripped = { type: b.type, [b.type]: b[b.type] };
+            if (b.has_children) {
+              const children = await fetchBlocks(b.id);
+              stripped[b.type].children = await Promise.all(children.map(stripBlock));
+            }
+            return stripped;
+          }
+          try {
+            const srcBlocks = await fetchBlocks(dash(sourceAssetId));
+            if (srcBlocks.length) {
+              const stripped = await Promise.all(srcBlocks.map(stripBlock));
+              await fetch(`https://api.notion.com/v1/blocks/${newId}/children`, {
+                method: "PATCH",
+                headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+                body: JSON.stringify({ children: stripped }),
+              });
+            }
+          } catch(_) {}
+
+          return json({ success: true, id: newId.replace(/-/g,"") });
         } catch(e) { return json({ error: e.message }, 500); }
       }
 
