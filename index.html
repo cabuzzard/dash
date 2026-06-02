@@ -1495,6 +1495,30 @@ let prodLoaded = false;
 let devLoaded  = false;
 let tdTabLoaded = false;
 
+const ASSET_STATUS_CYCLE = ['Publish', 'Published'];
+function assetStatusStyle(status) {
+  if (status === 'Published') return 'background:#0a2a0a;color:#4cff4c;border:1px solid #1a5a1a;';
+  if (status === 'Publish')   return 'background:#fff;color:#000;border:1px solid #ccc;';
+  return 'background:var(--surface2);color:var(--text3);border:1px solid var(--border2);';
+}
+async function toggleAssetStatus(assetId, currentStatus, el, ev) {
+  ev.preventDefault(); ev.stopPropagation();
+  const idx = ASSET_STATUS_CYCLE.indexOf(currentStatus);
+  const next = ASSET_STATUS_CYCLE[(idx + 1) % ASSET_STATUS_CYCLE.length];
+  el.style.opacity = '0.5';
+  el.style.pointerEvents = 'none';
+  try {
+    await call('updateAssetStatus', { assetId, status: next });
+    el.textContent = next;
+    el.setAttribute('style', 'font-size:10px;padding:2px 8px;border-radius:20px;cursor:pointer;white-space:nowrap;' + assetStatusStyle(next));
+    el.onclick = ev2 => toggleAssetStatus(assetId, next, el, ev2);
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+  el.style.opacity = '1'; el.style.pointerEvents = '';
+}
+function makeAssetStatusBadge(assetId, status) {
+  return '<span onclick="toggleAssetStatus(\'' + assetId + '\',\'' + esc(status) + '\',this,event)" style="font-size:10px;padding:2px 8px;border-radius:20px;cursor:pointer;white-space:nowrap;' + assetStatusStyle(status) + '">' + esc(status) + '</span>';
+}
+
 async function showCampaignAssets(campId, campName, campPubTitleData) {
   if (!campName) return;
   const overlay = document.getElementById('assetOverlay');
@@ -1532,7 +1556,7 @@ async function showCampaignAssets(campId, campName, campPubTitleData) {
             '<span onclick="showAssetFiles(\'' + a.id + '\',\'' + esc(a.assetTitle).replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:var(--accent);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Files</span>' +
             '<span onclick="showAssetDesignModal(\'' + a.id + '\',\'' + esc(a.assetTitle).replace(/'/g,"\\'") + '\',\'' + (a.designLink||'').replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:' + (a.designLink ? '#a78bfa' : 'var(--text3)') + ';cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">' + (a.designLink ? 'Design ↗' : 'Design') + '</span>' +
             '<span onclick="openDupAssetModal(' + JSON.stringify({id:a.id,assetTitle:a.assetTitle,type:a.type,status:a.status,loginId:a.loginId}).replace(/"/g,"&quot;") + ',event)" style="font-size:10px;font-weight:600;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Dupe</span>' +
-            '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:' + (isPublished ? 'var(--surface2)' : '#0a1a00') + ';color:' + (isPublished ? 'var(--text3)' : '#44ff44') + ';border:1px solid ' + (isPublished ? 'var(--border2)' : '#1a4400') + ';">' + esc(a.status) + '</span>' +
+            makeAssetStatusBadge(a.id, a.status) +
           '</div>';
         body.appendChild(row);
       });
@@ -1862,7 +1886,7 @@ async function showTitleAssets(titleId, titleName) {
             '<span onclick="showAssetFiles(\'' + a.id + '\',\'' + esc(a.title).replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:var(--accent);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Files</span>' +
             '<span onclick="showAssetDesignModal(\'' + a.id + '\',\'' + esc(a.title).replace(/'/g,"\\'") + '\',\'' + (a.designLink||'').replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:' + (a.designLink ? '#a78bfa' : 'var(--text3)') + ';cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">' + (a.designLink ? 'Design ↗' : 'Design') + '</span>' +
             '<span onclick="openDupAssetModal(' + JSON.stringify({id:a.id,title:a.title,type:a.type,status:a.status,loginId:a.loginId}).replace(/"/g,"&quot;") + ',event)" style="font-size:10px;font-weight:600;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Dupe</span>' +
-            '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:' + (a.status==='Published'?'var(--surface2)':'#0a1a00') + ';color:' + (a.status==='Published'?'var(--text3)':'#44ff44') + ';border:1px solid ' + (a.status==='Published'?'var(--border2)':'#1a4400') + ';">' + esc(a.status||'') + '</span>' +
+            makeAssetStatusBadge(a.id, a.status || '') +
           '</div>';
         el.appendChild(row);
       });
