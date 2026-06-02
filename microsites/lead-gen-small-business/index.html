@@ -734,7 +734,8 @@ function renderTd() {
   TD_ITEMS.forEach(t => {
     const row = document.createElement('div');
     row.className = 'td-row';
-    row.innerHTML = `<span class="td-name">${t.name}</span><button class="td-del" onclick="deleteTodo('${t.id}', this)" title="Remove">✕</button>`;
+    const nid = t.id.replace(/-/g,'');
+    row.innerHTML = `<a class="td-name" href="https://www.notion.so/${nid}" target="_blank" rel="noopener">${t.name}</a><button class="td-del" onclick="deleteTodo('${t.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }
