@@ -13,8 +13,8 @@ dash/
 │   ├── style.css                       # Shared admin microsite styles
 │   ├── microsite-index.html            # CANONICAL TEMPLATE for all admin microsites
 │   └── {deploy-path}/index.html        # Per-campaign admin microsite (copy of template)
-├── web/campaign/
-│   └── {deploy-path}/index.html        # Public-facing lead gen pages
+├── web/
+│   └── {deploy-path}/index.html        # Public-facing live campaign pages
 └── worker/
     ├── worker.js                        # Cloudflare Worker (single file, all actions)
     └── wrangler.toml                    # Worker config (name: jolly-darkness-5dcc)
@@ -97,17 +97,8 @@ const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/{deploy-path}/"
 ```
 
 3. Push to GitHub (`git add`, `git commit`, `git push`)
-4. Create an Asset record in the Assets DB in Notion (data source `40a47fc9-4550-4a71-b0f7-f2afb8e45f63`):
-   - `Asset Title` = "{Campaign Name} — Microsite"
-   - `Asset Type` = "Microsite"
-   - `Asset Status` = "Published"
-   - `Site URL` = `https://cabuzzard.github.io/dash/microsites/{deploy-path}/`
-   - `Deploy Path` = "{deploy-path}/"
-   - `Campaign ID` = "{notion-campaign-page-id}"
-   - `Campaign` = relation to the Campaign record
-   - This feeds the **STE** column in the overview table
+4. Set the `"microsite"` URL property on the Campaign record in Notion to `https://cabuzzard.github.io/dash/microsites/{deploy-path}/` — this feeds the **STE** column in the overview
 5. Set `Web Page URL` on the Research record to the microsite URL
-6. Do NOT set `Campaign Page` on the Campaign record — that field is for the live public site (LVE column) only
 
 **To update all microsites** (after changes to `microsite-index.html`):
 - Preserve only the unique header block (4 JS constants + 2 Notion links per site)
@@ -115,23 +106,34 @@ const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/{deploy-path}/"
 
 ## Live (Public) Campaign Sites
 
-Public lead-gen pages at `web/campaign/{deploy-path}/index.html`.
+Public lead-gen pages at `web/{deploy-path}/index.html`.
+Live URL pattern: `https://cabuzzard.github.io/dash/web/{deploy-path}/`
 
-Pattern from `foreclosure-fraud` and `estate-divorce-property-resource`:
-- No auth, no Turnstile on admin features — just the lead form with Cloudflare Turnstile CAPTCHA
+- No auth — just the lead form with Cloudflare Turnstile CAPTCHA
 - Turnstile site key: `0x4AAAAAADUjP18lSj4N0zt1` (production, same domain for all pages)
 - Submit to worker: `{ action: 'submitLead', campaign: '{deploy-path}', email, phone, fraudType, note, tsToken }`
 - `fraudType` value must be in the worker's `validFraudTypes` allowlist
+- Set the `"live site"` URL property on the Campaign record in Notion — this feeds the **LVE** column in the overview
+
+## Admin Microsites
+
+Admin-only pages at `microsites/{deploy-path}/index.html`.
+Live URL pattern: `https://cabuzzard.github.io/dash/microsites/{deploy-path}/`
+
+- Set the `"microsite"` URL property on the Campaign record in Notion — this feeds the **STE** column in the overview
 
 ## Deployed Campaigns
 
-| Deploy Path | Type | Campaign ID |
-|---|---|---|
-| `foreclosure-fraud` | live site | — |
-| `estate-divorce-property-resource` | microsite + live site | `3691f7d3a4bb81de93d9fa2f0607deb7` |
-| `mobility-mentor-fundraising` | microsite (template default) | `34b1f7d3a4bb81b6a8a8fee04df94807` |
-| `ai-lead-gen-local-services` | microsite | `34f1f7d3a4bb81c2be96c022bdd1ef40` |
-| `lead-gen-small-business` | microsite | `3721f7d3a4bb813ebc1de7576df0ca0a` |
+| Deploy Path | Microsite | Live Site | Campaign ID |
+|---|---|---|---|
+| `foreclosure-fraud` | ✓ | ✓ | `3681f7d3a4bb8195a655d6f022e257f1` |
+| `estate-divorce-property-resource` | ✓ | ✓ | `3691f7d3a4bb81de93d9fa2f0607deb7` |
+| `lead-gen-small-business` | ✓ | ✓ | `3721f7d3a4bb813ebc1de7576df0ca0a` |
+| `mobility-mentor-fundraising` | ✓ | ✓ | `34b1f7d3a4bb81b6a8a8fee04df94807` |
+| `mobility-mentor-services` | — | ✓ | — |
+| `ai-lead-gen-local-services` | ✓ | — | `34f1f7d3a4bb81c2be96c022bdd1ef40` |
+| `mountainwize-coaching` | — | ✓ | — |
+| `webguy` | — | ✓ | — |
 
 ## Security Notes
 
