@@ -2295,9 +2295,27 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       if (body.action === 'getOptionsChain') {
         const { ticker, date } = body;
         if (!ticker) return json({ error: 'ticker required' }, 400);
-        let url = `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(ticker.toUpperCase())}`;
-        if (date) url += `?date=${date}`;
-        const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+
+        const YUA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+        // Step 1 — get session cookie from Yahoo Finance
+        const r0 = await fetch('https://finance.yahoo.com/', {
+          headers: { 'User-Agent': YUA, 'Accept': 'text/html' },
+          redirect: 'follow',
+        });
+        const rawCookies = r0.headers.getAll ? r0.headers.getAll('set-cookie') : [r0.headers.get('set-cookie')];
+        const cookieStr  = rawCookies.filter(Boolean).map(c => c.split(';')[0]).join('; ');
+
+        // Step 2 — exchange cookie for crumb
+        const r1 = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', {
+          headers: { 'User-Agent': YUA, 'Cookie': cookieStr },
+        });
+        const crumb = (await r1.text()).trim();
+
+        // Step 3 — fetch options chain
+        let url = `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(ticker.toUpperCase())}?crumb=${encodeURIComponent(crumb)}`;
+        if (date) url += `&date=${date}`;
+        const r = await fetch(url, { headers: { 'User-Agent': YUA, 'Cookie': cookieStr } });
         if (!r.ok) return json({ error: `Yahoo ${r.status}` }, 502);
         const data = await r.json();
         const result = data?.optionChain?.result?.[0];
