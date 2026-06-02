@@ -224,7 +224,7 @@ async function getCampaigns() {
       grouping:         (c.properties["Grouping"]?.multi_select || []).map(g => g.name),
       keyMessage:       c.properties["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
       research:         campaignToResearch[id] || null,
-      siteUrl:          campaignToSiteUrl[id] || null,
+      siteUrl:          c.properties["microsite"]?.url || campaignToSiteUrl[id] || null,
       mainTd:           (c.properties["Associated To Do"]?.relation || []).map(r => ({
         id:   r.id.replace(/-/g,""),
         name: todoById[r.id.replace(/-/g,"")] || "Untitled",
