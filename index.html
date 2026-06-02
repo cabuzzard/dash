@@ -801,7 +801,8 @@
           <thead>
             <tr>
               <th>Symbol</th>
-              <th>At Call</th>
+              <th>Underlying</th>
+              <th>Contract</th>
               <th>Strike</th>
               <th id="thExpiry" style="cursor:pointer;user-select:none;" onclick="toggleTradesSort()">Expiry <span id="trSortArrow"></span></th>
               <th>Max High</th>
@@ -811,7 +812,7 @@
             </tr>
           </thead>
           <tbody id="tradesTableBody">
-            <tr><td colspan="8" style="color:var(--text3);font-style:italic;padding:20px 10px;">Loading…</td></tr>
+            <tr><td colspan="9" style="color:var(--text3);font-style:italic;padding:20px 10px;">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -5291,7 +5292,7 @@ function renderTradeTable() {
   const tbody = document.getElementById('tradesTableBody');
   if (!tbody) return;
   if (!tradesCache.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text3);font-style:italic;padding:20px 10px;">No trades yet. Tap + New Trade to log your first call.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text3);font-style:italic;padding:20px 10px;">No trades yet. Tap + New Trade to log your first call.</td></tr>';
     return;
   }
   let rows = [...tradesCache];
@@ -5322,6 +5323,13 @@ function renderTradeTable() {
         '<br><span style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace;">' +
         '$' + t.max_low + ' · ' + fmtDate(t.max_low_time) + '</span>'
       : '…';
+    // Contract column
+    const entryC   = t.entry_contract   != null ? '$' + t.entry_contract   : '…';
+    const curC     = t.current_contract != null ? '$' + t.current_contract : '…';
+    const curCPct  = t.contract_pct     != null ? (t.contract_pct >= 0 ? '+' : '') + t.contract_pct.toFixed(1) + '%' : '';
+    const curCColor = pctColor(t.contract_pct);
+    const contractCell = `<span style="font-size:11px;color:var(--text3);">in</span> ${entryC}<br>` +
+      `<span style="color:${curCColor};font-size:12px;">${curC} <span style="font-size:10px;">${curCPct}</span></span>`;
     let badge;
     if (t.expired)              badge = '<span class="tr-badge-exp">Expired</span>';
     else if (t.strike_reached)  badge = '<span class="tr-badge-struck">★ Hit</span>';
@@ -5330,6 +5338,7 @@ function renderTradeTable() {
     return `<tr class="${rowClass}" onclick="openTradeDetail('${t.id}')">
       <td><span class="tr-sym">${t.ticker}</span> <span style="font-size:11px;color:var(--text3);">${dir}</span></td>
       <td class="tr-mono">${entryP}</td>
+      <td class="tr-mono" style="line-height:1.6;">${contractCell}</td>
       <td class="tr-mono">${t.strike}</td>
       <td class="tr-mono">${fmtExpiry(t.expiry)}</td>
       <td class="tr-up">${maxH}</td>
@@ -5397,7 +5406,7 @@ function renderTradeDetail() {
       </div>
     </div>
 
-    <div class="tr-section-label">Range Since Entry</div>
+    <div class="tr-section-label">Underlying Range Since Entry</div>
     <div class="tr-grid2">
       <div class="tr-stat">
         <div class="tr-stat-label">Max High</div>
@@ -5408,6 +5417,37 @@ function renderTradeDetail() {
         <div class="tr-stat-label">Max Low</div>
         <div class="tr-stat-val tr-dn">${t.max_low != null ? '$' + t.max_low : '…'}</div>
         <div class="tr-stat-sub">${maxLPct != null ? maxLPct + '% &nbsp;·&nbsp; ' : ''}${fmtDate(t.max_low_time)}</div>
+      </div>
+    </div>
+
+    <div class="tr-section-label">Contract Price</div>
+    <div class="tr-grid3">
+      <div class="tr-stat">
+        <div class="tr-stat-label">Entry Contract</div>
+        <div class="tr-stat-val">${t.entry_contract != null ? '$' + t.entry_contract : '…'}</div>
+        <div class="tr-stat-sub">${fmtDate(t.entry_time)}</div>
+      </div>
+      <div class="tr-stat">
+        <div class="tr-stat-label">Current Contract</div>
+        <div class="tr-stat-val" style="color:${pctColor(t.contract_pct)};">${t.current_contract != null ? '$' + t.current_contract : '…'}</div>
+        <div class="tr-stat-sub">${t.contract_pct != null ? (t.contract_pct >= 0 ? '+' : '') + t.contract_pct.toFixed(1) + '%' : '…'}</div>
+      </div>
+      <div class="tr-stat">
+        <div class="tr-stat-label">P&amp;L (1 contract)</div>
+        <div class="tr-stat-val" style="color:${pctColor(t.contract_pct)};">${t.entry_contract != null && t.current_contract != null ? (t.current_contract - t.entry_contract >= 0 ? '+' : '') + '$' + ((t.current_contract - t.entry_contract) * 100).toFixed(0) : '…'}</div>
+        <div class="tr-stat-sub">${t.entry_contract != null && t.current_contract != null ? '× 100 shares' : ''}</div>
+      </div>
+    </div>
+    <div class="tr-grid2">
+      <div class="tr-stat">
+        <div class="tr-stat-label">Contract Max High</div>
+        <div class="tr-stat-val tr-up">${t.contract_max_high != null ? '$' + t.contract_max_high : '…'}</div>
+        <div class="tr-stat-sub">${t.contract_max_high != null && t.entry_contract != null ? '+' + ((t.contract_max_high - t.entry_contract) / t.entry_contract * 100).toFixed(1) + '% &nbsp;·&nbsp; ' : ''}${fmtDate(t.contract_max_high_time)}</div>
+      </div>
+      <div class="tr-stat">
+        <div class="tr-stat-label">Contract Max Low</div>
+        <div class="tr-stat-val tr-dn">${t.contract_max_low != null ? '$' + t.contract_max_low : '…'}</div>
+        <div class="tr-stat-sub">${t.contract_max_low != null && t.entry_contract != null ? ((t.contract_max_low - t.entry_contract) / t.entry_contract * 100).toFixed(1) + '% &nbsp;·&nbsp; ' : ''}${fmtDate(t.contract_max_low_time)}</div>
       </div>
     </div>
 
