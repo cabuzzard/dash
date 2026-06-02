@@ -239,7 +239,7 @@ async function getCampaigns() {
       })),
       campaignLogins:   campaignToLogins[id] || [],
       platforms: (c.properties["Platforms"]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "Untitled" })),
-      campaignPage: c.properties["Campaign Page"]?.url || null,
+      campaignPage: c.properties["live site"]?.url || null,
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       pubTitleData: pubTitleMap[id] || [],
