@@ -1235,6 +1235,24 @@
   </div>
 </div>
 
+<!-- Asset Files Modal -->
+<div class="modal-overlay" id="assetFilesModal" style="display:none;" onclick="if(event.target===this)closeAssetFilesModal()">
+  <div class="modal" style="max-height:85vh;display:flex;flex-direction:column;width:520px;max-width:95vw;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div class="modal-title" id="assetFilesTitle" style="margin:0;font-size:14px;"></div>
+      <span onclick="closeAssetFilesModal()" style="cursor:pointer;color:var(--text3);font-size:18px;">✕</span>
+    </div>
+    <div id="assetFilesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;overflow-y:auto;flex:1;padding-bottom:14px;min-height:60px;"></div>
+    <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px;">
+      <label id="assetFilesUploadLabel" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2);border:1px dashed var(--border2);border-radius:var(--radius-sm);padding:8px 12px;">
+        <span id="assetFilesUploadIcon" style="font-size:16px;">＋</span>
+        <span id="assetFilesUploadText">Choose images to upload</span>
+        <input type="file" id="assetFilesInput" accept="image/*" multiple style="display:none;" onchange="handleAssetFileUpload(event)">
+      </label>
+    </div>
+  </div>
+</div>
+
 <!-- Add Title Modal -->
 <div class="modal-bg" id="titleModal" onclick="if(event.target===this)closeTitleModal()">
   <div class="modal">
@@ -1438,7 +1456,10 @@ async function showCampaignAssets(campId, campName, campPubTitleData) {
             '<div class="row-name">' + esc(a.assetTitle) + '</div>' +
             '<div class="row-meta">' + esc(a.platform) + (a.type ? ' · ' + esc(a.type) : '') + '</div>' +
           '</div>' +
-          '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:' + (isPublished ? 'var(--surface2)' : '#0a1a00') + ';color:' + (isPublished ? 'var(--text3)' : '#44ff44') + ';border:1px solid ' + (isPublished ? 'var(--border2)' : '#1a4400') + ';">' + esc(a.status) + '</span>';
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<span onclick="showAssetFiles(\'' + a.id + '\',\'' + esc(a.assetTitle).replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:var(--accent);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Files</span>' +
+            '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:' + (isPublished ? 'var(--surface2)' : '#0a1a00') + ';color:' + (isPublished ? 'var(--text3)' : '#44ff44') + ';border:1px solid ' + (isPublished ? 'var(--border2)' : '#1a4400') + ';">' + esc(a.status) + '</span>' +
+          '</div>';
         body.appendChild(row);
       });
     });
@@ -1449,6 +1470,88 @@ function closeAssetOverlay() {
   const o = document.getElementById('assetOverlay');
   o.classList.remove('visible');
   o.style.display = 'none';
+}
+
+// ── Asset Files Modal ─────────────────────────────────────────────────────────
+let _assetFilesId = null;
+
+async function showAssetFiles(assetId, assetTitle, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  _assetFilesId = assetId;
+  document.getElementById('assetFilesTitle').textContent = assetTitle + ' — Files';
+  const grid = document.getElementById('assetFilesGrid');
+  grid.innerHTML = '<div class="loading-wrap" style="grid-column:1/-1"><div class="spinner"></div>Loading...</div>';
+  document.getElementById('assetFilesModal').style.display = 'flex';
+  await refreshAssetFilesGrid();
+}
+
+function closeAssetFilesModal() {
+  document.getElementById('assetFilesModal').style.display = 'none';
+  _assetFilesId = null;
+}
+
+async function refreshAssetFilesGrid() {
+  const grid = document.getElementById('assetFilesGrid');
+  try {
+    const data = await call('getAssetImages', { assetId: _assetFilesId });
+    const images = data.images || [];
+    grid.innerHTML = '';
+    if (!images.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1;color:var(--text3);font-size:12px;padding:12px 0;">No images attached yet.</div>';
+      return;
+    }
+    images.forEach(img => {
+      const cell = document.createElement('div');
+      cell.style.cssText = 'position:relative;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;aspect-ratio:1;background:var(--surface2);';
+      const imgEl = document.createElement('img');
+      imgEl.src = img.url;
+      imgEl.alt = img.name;
+      imgEl.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;cursor:pointer;';
+      imgEl.onclick = () => window.open(img.url, '_blank');
+      const del = document.createElement('button');
+      del.textContent = '✕';
+      del.title = 'Delete';
+      del.style.cssText = 'position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;';
+      del.onclick = async (e) => { e.stopPropagation(); if (!confirm('Delete this image?')) return; await deleteAssetImage(img.key); };
+      cell.appendChild(imgEl);
+      if (img.key) cell.appendChild(del);
+      grid.appendChild(cell);
+    });
+  } catch(e) {
+    grid.innerHTML = '<div class="error-msg" style="grid-column:1/-1">' + esc(e.message) + '</div>';
+  }
+}
+
+async function handleAssetFileUpload(event) {
+  const files = Array.from(event.target.files);
+  if (!files.length || !_assetFilesId) return;
+  const label = document.getElementById('assetFilesUploadText');
+  const icon  = document.getElementById('assetFilesUploadIcon');
+  for (const file of files) {
+    label.textContent = 'Uploading ' + file.name + '…';
+    icon.textContent = '⏳';
+    try {
+      const b64 = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      await call('uploadAssetImage', { assetId: _assetFilesId, imageData: b64, fileName: file.name, mimeType: file.type });
+    } catch(e) { showToast('Upload failed: ' + e.message, true); }
+  }
+  label.textContent = 'Choose images to upload';
+  icon.textContent = '＋';
+  event.target.value = '';
+  await refreshAssetFilesGrid();
+}
+
+async function deleteAssetImage(imgKey) {
+  if (!_assetFilesId || !imgKey) return;
+  try {
+    await call('deleteAssetImage', { assetId: _assetFilesId, imgKey });
+    await refreshAssetFilesGrid();
+  } catch(e) { showToast('Delete failed: ' + e.message, true); }
 }
 
 async function showTitleAssets(titleId, titleName) {
@@ -1500,7 +1603,10 @@ async function showTitleAssets(titleId, titleName) {
             '<div style="font-size:13px;font-weight:500;color:var(--text);">' + esc(a.title) + '</div>' +
             (a.type ? '<div style="font-size:11px;color:var(--text3);margin-top:2px;">' + esc(a.type) + '</div>' : '') +
           '</div>' +
-          '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:' + (a.status==='Published'?'var(--surface2)':'#0a1a00') + ';color:' + (a.status==='Published'?'var(--text3)':'#44ff44') + ';border:1px solid ' + (a.status==='Published'?'var(--border2)':'#1a4400') + ';">' + esc(a.status||'') + '</span>';
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<span onclick="showAssetFiles(\'' + a.id + '\',\'' + esc(a.title).replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:var(--accent);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Files</span>' +
+            '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:' + (a.status==='Published'?'var(--surface2)':'#0a1a00') + ';color:' + (a.status==='Published'?'var(--text3)':'#44ff44') + ';border:1px solid ' + (a.status==='Published'?'var(--border2)':'#1a4400') + ';">' + esc(a.status||'') + '</span>' +
+          '</div>';
         el.appendChild(row);
       });
     });
@@ -3315,6 +3421,41 @@ function renderDev() {
             tRow.appendChild(claudeBtn);
           }
 
+          // Shared helper — apply a status change to this row
+          const applyStatus = async (newStatus, prevStatus) => {
+            const nSty = DEV_STATUS_STYLE[newStatus] || { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#ff6a00', label:'↗' };
+            t.status = newStatus;
+            tRow.style.background = nSty.bg;
+            titleLink.style.color = nSty.clr;
+            statusBadge.style.color = nSty.badgeClr;
+            statusBadge.textContent = nSty.label;
+            statusBadge.title = newStatus;
+            if (newStatus === 'Publish' && !tRow.querySelector('.assets-btn')) {
+              const ab = document.createElement('span');
+              ab.className = 'assets-btn';
+              ab.textContent = 'Assets →';
+              ab.style.cssText = 'font-size:10px;font-weight:700;color:#005522;background:#00ff88;border-radius:4px;padding:2px 7px;cursor:pointer;flex-shrink:0;';
+              ab.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); showTitleAssets(t.id, t.title); };
+              tRow.insertBefore(ab, statusBadge);
+            } else if (newStatus !== 'Publish') {
+              const ab = tRow.querySelector('.assets-btn');
+              if (ab) ab.remove();
+            }
+            try {
+              await call('updateTitleStage', { titleId: t.id, stage: newStatus });
+              showToast(newStatus + ' ✓', 'success');
+            } catch(err) {
+              t.status = prevStatus;
+              const pSty = DEV_STATUS_STYLE[prevStatus] || sty;
+              tRow.style.background = pSty.bg;
+              titleLink.style.color = pSty.clr;
+              statusBadge.style.color = pSty.badgeClr;
+              statusBadge.textContent = pSty.label;
+              statusBadge.title = prevStatus;
+              showToast('Failed: ' + err.message, 'error');
+            }
+          };
+
           // Status badge — clickable, cycles through statuses
           const statusBadge = document.createElement('span');
           statusBadge.style.cssText = 'font-size:10px;font-weight:700;width:32px;text-align:center;flex-shrink:0;color:'+sty.badgeClr+';cursor:pointer;user-select:none;';
@@ -3324,39 +3465,44 @@ function renderDev() {
             e.preventDefault(); e.stopPropagation();
             const curIdx = DEV_STATUSES.indexOf(t.status);
             const nextStatus = DEV_STATUSES[(curIdx + 1) % DEV_STATUSES.length];
-            const prevStatus = t.status;
-            t.status = nextStatus;
-            const nextSty = DEV_STATUS_STYLE[nextStatus] || sty;
-            tRow.style.background = nextSty.bg;
-            titleLink.style.color = nextSty.clr;
-            statusBadge.style.color = nextSty.badgeClr;
-            statusBadge.textContent = nextSty.label;
-            statusBadge.title = nextStatus;
-            // Update Assets button visibility
-            if (nextStatus === 'Publish' && !tRow.querySelector('.assets-btn')) {
-              const ab = document.createElement('span');
-              ab.className = 'assets-btn';
-              ab.textContent = 'Assets →';
-              ab.style.cssText = 'font-size:10px;font-weight:700;color:#005522;background:#00ff88;border-radius:4px;padding:2px 7px;cursor:pointer;flex-shrink:0;';
-              ab.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); showTitleAssets(t.id, t.title); };
-              tRow.insertBefore(ab, statusBadge);
-            } else if (nextStatus !== 'Publish') {
-              const ab = tRow.querySelector('.assets-btn');
-              if (ab) ab.remove();
-            }
-            try {
-              await call('updateTitleStage', { titleId: t.id, stage: nextStatus });
-              showToast(nextStatus + ' ✓', 'success');
-            } catch(err) {
-              t.status = prevStatus;
-              tRow.style.background = sty.bg;
-              titleLink.style.color = sty.clr;
-              statusBadge.style.color = sty.badgeClr;
-              statusBadge.textContent = sty.label;
-              statusBadge.title = prevStatus;
-              showToast('Failed: ' + err.message, 'error');
-            }
+            await applyStatus(nextStatus, t.status);
           };
+
+          // Status picker button — opens inline popover
+          const pickerWrap = document.createElement('div');
+          pickerWrap.style.cssText = 'position:relative;flex-shrink:0;';
+          const pickerBtn = document.createElement('span');
+          pickerBtn.textContent = '▾';
+          pickerBtn.title = 'Pick status';
+          pickerBtn.style.cssText = 'font-size:11px;cursor:pointer;width:18px;height:22px;display:flex;align-items:center;justify-content:center;background:var(--surface2);color:var(--text3);border-radius:4px;border:1px solid var(--border);user-select:none;';
+          pickerBtn.onmouseover = () => pickerBtn.style.color = 'var(--text)';
+          pickerBtn.onmouseout  = () => pickerBtn.style.color = 'var(--text3)';
+          const pickerMenu = document.createElement('div');
+          pickerMenu.style.cssText = 'display:none;position:absolute;right:0;top:26px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:999;min-width:110px;overflow:hidden;';
+          DEV_STATUSES.forEach(st => {
+            const pSty = DEV_STATUS_STYLE[st] || { bg:'var(--bg)', clr:'var(--text2)', label: st };
+            const opt = document.createElement('div');
+            opt.style.cssText = 'padding:7px 12px;font-size:11px;font-weight:600;cursor:pointer;background:'+pSty.bg+';color:'+pSty.clr+';';
+            opt.textContent = pSty.label + '  ' + st;
+            opt.onmouseover = () => opt.style.opacity = '.75';
+            opt.onmouseout  = () => opt.style.opacity = '1';
+            opt.onclick = async e => {
+              e.preventDefault(); e.stopPropagation();
+              pickerMenu.style.display = 'none';
+              if (st !== t.status) await applyStatus(st, t.status);
+            };
+            pickerMenu.appendChild(opt);
+          });
+          pickerBtn.onclick = e => {
+            e.preventDefault(); e.stopPropagation();
+            const open = pickerMenu.style.display !== 'none';
+            document.querySelectorAll('.status-picker-menu').forEach(m => m.style.display = 'none');
+            pickerMenu.style.display = open ? 'none' : 'block';
+          };
+          pickerMenu.className = 'status-picker-menu';
+          pickerWrap.appendChild(pickerBtn);
+          pickerWrap.appendChild(pickerMenu);
+
           if (isPub) {
             const assetsBtn = document.createElement('span');
             assetsBtn.className = 'assets-btn';
@@ -3367,6 +3513,7 @@ function renderDev() {
           }
 
           tRow.appendChild(statusBadge);
+          tRow.appendChild(pickerWrap);
 
           // Delete button — black on white
           const delBtn = document.createElement('span');
@@ -3403,6 +3550,10 @@ function renderDev() {
     el.appendChild(siteBody);
   });
 }
+
+document.addEventListener('click', () => {
+  document.querySelectorAll('.status-picker-menu').forEach(m => m.style.display = 'none');
+});
 
 // ── TITLE MODAL ──────────────────────────────────────────────────────
 function openTitleModal() {

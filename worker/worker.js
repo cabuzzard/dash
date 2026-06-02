@@ -17,7 +17,7 @@ const EMAILS_DB          = "6252e9917027488fb628436aabb89947";
 const SM_POSTS_DB        = "addcfe1d1beb46dbbcaa397504a8041d";
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
   "X-Content-Type-Options":       "nosniff",
   "X-Frame-Options":              "DENY",
@@ -172,7 +172,8 @@ async function getCampaigns() {
   // Count dev titles per campaign id
   const devCount = {};
   titleRows.forEach(t => {
-    if (t.properties.Status?.select?.name !== "Development") return;
+    const _ds = t.properties.Status?.select?.name;
+    if (_ds !== "Development" && _ds !== "Writing") return;
     (t.properties.Campaign?.relation || []).forEach(r => {
       const id = r.id.replace(/-/g, "");
       devCount[id] = (devCount[id] || 0) + 1;
@@ -258,7 +259,22 @@ export default {
     const TS_SECRET      = (env.TURNSTILE_SECRET|| "1x0000000000000000000000000000000AA").trim();
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
-    if (request.method === "GET")      return json({ status: "ok", version: "2026-05-29-06" });
+    if (request.method === "GET") {
+      const url = new URL(request.url);
+      if (url.pathname.startsWith("/img/")) {
+        const key = "img:" + url.pathname.slice(5);
+        const meta = await env.TRADES.getWithMetadata(key, "arrayBuffer");
+        if (!meta.value) return new Response("Not found", { status: 404 });
+        return new Response(meta.value, {
+          headers: {
+            "Content-Type": meta.metadata?.mime || "image/jpeg",
+            "Cache-Control": "public, max-age=31536000",
+            "Access-Control-Allow-Origin": "https://cabuzzard.github.io",
+          },
+        });
+      }
+      return json({ status: "ok", version: "2026-06-01-01" });
+    }
     if (request.method !== "POST")    return json({ error: "POST only" }, 405);
 
     let body;
@@ -2210,6 +2226,79 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const all  = await Promise.all(list.keys.map(k => env.TRADES.get(k.name, 'json')));
         const active = all.filter(t => t && !t.expired);
         return json({ trades: active });
+      }
+
+      if (body.action === "getAssetImages") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
+        try {
+          const resp = await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
+            headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+          });
+          const page = await resp.json();
+          const files = (page.properties?.Images?.files || []).map(f => ({
+            name: f.name || "image",
+            url: f.type === "external" ? f.external.url : (f.file?.url || ""),
+            key: f.name && f.name.startsWith("img:") ? f.name.slice(4) : null,
+          }));
+          return json({ images: files });
+        } catch(e) { return json({ error: e.message }, 500); }
+      }
+
+      if (body.action === "uploadAssetImage") {
+        const { assetId, imageData, fileName, mimeType } = body;
+        if (!assetId || !imageData) return json({ error: "assetId and imageData required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
+        try {
+          // Decode base64 to binary
+          const b64 = imageData.replace(/^data:[^;]+;base64,/, "");
+          const binary = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const imgKey = "img:" + crypto.randomUUID().replace(/-/g,"");
+          await env.TRADES.put(imgKey, binary, { metadata: { mime: mimeType || "image/jpeg", name: fileName || "image" } });
+          const imgUrl = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev/img/" + imgKey.slice(4);
+
+          // Fetch current images from Notion
+          const pageResp = await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
+            headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+          });
+          const page = await pageResp.json();
+          const existing = page.properties?.Images?.files || [];
+          const updated = [...existing, { type: "external", name: "img:" + imgKey.slice(4), external: { url: imgUrl } }];
+
+          const patchResp = await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
+            method: "PATCH",
+            headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { Images: { files: updated } } }),
+          });
+          if (!patchResp.ok) {
+            const err = await patchResp.json();
+            await env.TRADES.delete(imgKey);
+            return json({ error: err.message || "Notion update failed" }, 400);
+          }
+          return json({ success: true, url: imgUrl, key: imgKey.slice(4) });
+        } catch(e) { return json({ error: e.message }, 500); }
+      }
+
+      if (body.action === "deleteAssetImage") {
+        const { assetId, imgKey } = body;
+        if (!assetId || !imgKey) return json({ error: "assetId and imgKey required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
+        try {
+          await env.TRADES.delete("img:" + imgKey);
+          const pageResp = await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
+            headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+          });
+          const page = await pageResp.json();
+          const existing = page.properties?.Images?.files || [];
+          const updated = existing.filter(f => f.name !== "img:" + imgKey);
+          await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
+            method: "PATCH",
+            headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { Images: { files: updated } } }),
+          });
+          return json({ success: true });
+        } catch(e) { return json({ error: e.message }, 500); }
       }
 
       return json({ error: "Unknown action" }, 400);
