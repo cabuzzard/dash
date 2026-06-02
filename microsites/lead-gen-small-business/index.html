@@ -6,7 +6,7 @@
 <meta http-equiv="X-Frame-Options" content="DENY">
 <link rel="stylesheet" href="../style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Webguy — Lead Gen Small Business</title>
+<title>Webguy — AI Content Management</title>
 <style>
 /* STATUS CHANGE BUTTON */
 .title-status-btn {
@@ -599,7 +599,7 @@ async function loadResearch() {
     const liveSiteEl = document.getElementById('r-livesite');
     if (liveSiteEl) {
       if (r.liveSiteUrl) {
-        liveSiteEl.innerHTML = '<a href="' + r.liveSiteUrl + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + r.liveSiteUrl.replace(/^https?:///, '') + '</a>';
+        liveSiteEl.innerHTML = '<a href="' + r.liveSiteUrl + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + r.liveSiteUrl.replace(/^https?:\/\//, '') + '</a>';
       } else { liveSiteEl.innerHTML = '<span class="empty">—</span>'; }
     }
     // Unique Opportunity — render directly in SEC 1 panel
