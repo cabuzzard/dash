@@ -121,6 +121,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
       <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3581f7d3a4bb80c9b25efceb41a079b4" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
+      <div class="field"><div class="field-label">Microsite</div><div class="field-value" id="r-microsite"></div></div>
       <div class="field"><div class="field-label">Live Site</div><div class="field-value" id="r-livesite"></div></div>
     </div>
   </div>
@@ -631,6 +632,12 @@ async function loadResearch() {
     const sc = r.status ? r.status.toLowerCase() : 'draft';
     statusEl.innerHTML = `<span class="badge ${sc}">${r.status || '—'}</span>`;
     document.getElementById('r-date').textContent = r.lastUpdated || '—';
+    const liveSiteEl = document.getElementById('r-livesite');
+    if (liveSiteEl) {
+      if (r.liveSiteUrl) {
+        liveSiteEl.innerHTML = '<a href="' + r.liveSiteUrl + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + r.liveSiteUrl.replace(/^https?:///, '') + '</a>';
+      } else { liveSiteEl.innerHTML = '<span class="empty">—</span>'; }
+    }
     const notesDisplayEl = document.getElementById('r-thoughts');
     if (notesDisplayEl) notesDisplayEl.textContent = r.thoughts || '';
 
@@ -1325,12 +1332,12 @@ async function applyStatusChange(titleId, newStage) {
 }
 
 function init() {
-  const liveSiteEl = document.getElementById('r-livesite');
-  if (liveSiteEl) {
+  const micrositeEl = document.getElementById('r-microsite');
+  if (micrositeEl) {
     if (typeof SITE_URL !== 'undefined' && SITE_URL) {
       const display = SITE_URL.replace('https://cabuzzard.github.io/dash/','').replace(/\/$/,'');
-      liveSiteEl.innerHTML = '<a href="' + SITE_URL + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + display + '</a>';
-    } else { liveSiteEl.innerHTML = '<span class="empty">—</span>'; }
+      micrositeEl.innerHTML = '<a href="' + SITE_URL + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + display + '</a>';
+    } else { micrositeEl.innerHTML = '<span class="empty">—</span>'; }
   }
   loadResearch();
   loadTitles();
