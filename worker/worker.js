@@ -730,6 +730,7 @@ export default {
               });
               const a = await resp.json();
               const p = a.properties || {};
+              const loginRel = p["Login"]?.relation || [];
               return {
                 id: assetId,
                 title: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
@@ -737,6 +738,7 @@ export default {
                 type: p["Asset Type"]?.select?.name || "",
                 status: p["Asset Status"]?.select?.name || "",
                 designLink: p["Design Link"]?.url || "",
+                loginId: loginRel[0]?.id?.replace(/-/g,"") || "",
               };
             } catch(e) { return null; }
           }));
@@ -759,6 +761,7 @@ export default {
                 });
                 const a = await resp.json();
                 const p = a.properties || {};
+                const loginRel = p["Login"]?.relation || [];
                 return {
                   id: assetId,
                   assetTitle: p["Asset Title"]?.title?.map(x=>x.plain_text).join("") || "Untitled",
@@ -766,6 +769,7 @@ export default {
                   type: p["Asset Type"]?.select?.name || "",
                   status: p["Asset Status"]?.select?.name || "",
                   designLink: p["Design Link"]?.url || "",
+                  loginId: loginRel[0]?.id?.replace(/-/g,"") || "",
                 };
               } catch(e) { return null; }
             }));
@@ -2228,6 +2232,42 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const all  = await Promise.all(list.keys.map(k => env.TRADES.get(k.name, 'json')));
         const active = all.filter(t => t && !t.expired);
         return json({ trades: active });
+      }
+
+      if (body.action === "duplicateAsset") {
+        const { sourceAssetId, title, status, type, loginId } = body;
+        if (!sourceAssetId) return json({ error: "sourceAssetId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
+        try {
+          const srcResp = await fetch("https://api.notion.com/v1/pages/" + dash(sourceAssetId), {
+            headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+          });
+          const src = await srcResp.json();
+          const sp = src.properties || {};
+          const props = {
+            "Asset Title": { title: [{ type: "text", text: { content: title || "Untitled" } }] },
+            "Asset Status": { select: { name: status || "Draft" } },
+            "Asset Type": { select: { name: type || "" } },
+          };
+          // Copy relations from source
+          const campRel = sp["Campaign"]?.relation || [];
+          if (campRel.length) props["Campaign"] = { relation: campRel.map(r => ({ id: r.id })) };
+          const csRel = sp["Content Strategy"]?.relation || [];
+          if (csRel.length) props["Content Strategy"] = { relation: csRel.map(r => ({ id: r.id })) };
+          const platRel = sp["Platform"]?.relation || [];
+          if (platRel.length) props["Platform"] = { relation: platRel.map(r => ({ id: r.id })) };
+          const platName = sp["Platform Name"]?.select?.name;
+          if (platName) props["Platform Name"] = { select: { name: platName } };
+          if (loginId) props["Login"] = { relation: [{ id: dash(loginId) }] };
+          const resp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }),
+          });
+          const result = await resp.json();
+          if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+          return json({ success: true, id: result.id.replace(/-/g,"") });
+        } catch(e) { return json({ error: e.message }, 500); }
       }
 
       if (body.action === "setAssetDesignLink") {

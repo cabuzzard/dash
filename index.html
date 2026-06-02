@@ -1271,6 +1271,56 @@
   </div>
 </div>
 
+<!-- Duplicate Asset Modal -->
+<div class="modal-overlay" id="dupAssetModal" style="display:none;" onclick="if(event.target===this)closeDupAssetModal()">
+  <div class="modal" style="width:440px;max-width:95vw;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div class="modal-title" style="margin:0;font-size:14px;">Duplicate Asset</div>
+      <span onclick="closeDupAssetModal()" style="cursor:pointer;color:var(--text3);font-size:18px;">✕</span>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Title</label>
+      <input class="modal-input" id="dupAssetTitle" type="text" placeholder="Asset title…" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Status</label>
+      <select class="modal-select" id="dupAssetStatus">
+        <option value="Draft">Draft</option>
+        <option value="Publish">Publish</option>
+        <option value="Published">Published</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Type</label>
+      <select class="modal-select" id="dupAssetType">
+        <option value="">— none —</option>
+        <option>Post</option>
+        <option>Video</option>
+        <option>Microsite</option>
+        <option>Email</option>
+        <option>Ad</option>
+        <option>Story</option>
+        <option>Reel</option>
+        <option>Article</option>
+        <option>Newsletter</option>
+        <option>Graphic</option>
+      </select>
+    </div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Login <span style="color:var(--text3);font-weight:400;">(optional)</span></label>
+      <input class="modal-input" id="dupLoginInput" type="text" placeholder="Search logins or type to create…" autocomplete="off"
+        oninput="dupFilterLogins()" onfocus="dupFilterLogins()" />
+      <input type="hidden" id="dupLoginId" />
+      <div id="dupLoginDrop" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeDupAssetModal()">Cancel</button>
+      <button class="btn btn-primary" id="dupAssetSaveBtn" onclick="saveDupAsset()">Duplicate</button>
+    </div>
+    <div id="dupAssetErr" style="font-size:12px;color:var(--danger);margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- Add Title Modal -->
 <div class="modal-bg" id="titleModal" onclick="if(event.target===this)closeTitleModal()">
   <div class="modal">
@@ -1477,6 +1527,7 @@ async function showCampaignAssets(campId, campName, campPubTitleData) {
           '<div style="display:flex;align-items:center;gap:8px;">' +
             '<span onclick="showAssetFiles(\'' + a.id + '\',\'' + esc(a.assetTitle).replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:var(--accent);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Files</span>' +
             '<span onclick="showAssetDesignModal(\'' + a.id + '\',\'' + esc(a.assetTitle).replace(/'/g,"\\'") + '\',\'' + (a.designLink||'').replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:' + (a.designLink ? '#a78bfa' : 'var(--text3)') + ';cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">' + (a.designLink ? 'Design ↗' : 'Design') + '</span>' +
+            '<span onclick="openDupAssetModal(' + JSON.stringify({id:a.id,assetTitle:a.assetTitle,type:a.type,status:a.status,loginId:a.loginId}).replace(/"/g,"&quot;") + ',event)" style="font-size:10px;font-weight:600;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Dupe</span>' +
             '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:' + (isPublished ? 'var(--surface2)' : '#0a1a00') + ';color:' + (isPublished ? 'var(--text3)' : '#44ff44') + ';border:1px solid ' + (isPublished ? 'var(--border2)' : '#1a4400') + ';">' + esc(a.status) + '</span>' +
           '</div>';
         body.appendChild(row);
@@ -1639,6 +1690,118 @@ async function saveAssetDesignLink() {
   }
 }
 
+// ── Duplicate Asset Modal ─────────────────────────────────────────────────────
+let _dupSourceAsset = null;
+let _dupAllLogins   = [];
+
+async function openDupAssetModal(asset, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  _dupSourceAsset = asset;
+  document.getElementById('dupAssetTitle').value  = asset.title || asset.assetTitle || '';
+  document.getElementById('dupAssetErr').textContent = '';
+  const statusEl = document.getElementById('dupAssetStatus');
+  statusEl.value = asset.status || 'Draft';
+  if (!statusEl.value) statusEl.value = 'Draft';
+  const typeEl = document.getElementById('dupAssetType');
+  typeEl.value = asset.type || '';
+  document.getElementById('dupLoginInput').value = '';
+  document.getElementById('dupLoginId').value    = '';
+  document.getElementById('dupLoginDrop').style.display = 'none';
+  document.getElementById('dupAssetModal').style.display = 'flex';
+  // Pre-fill login if asset has one
+  if (asset.loginId) {
+    if (!_dupAllLogins.length) {
+      const d = await call('searchLogins', { query: '' });
+      _dupAllLogins = d.logins || [];
+    }
+    const login = _dupAllLogins.find(l => l.id === asset.loginId);
+    if (login) {
+      document.getElementById('dupLoginInput').value = login.name;
+      document.getElementById('dupLoginId').value    = login.id;
+    }
+  }
+  setTimeout(() => document.getElementById('dupAssetTitle').focus(), 50);
+}
+
+function closeDupAssetModal() {
+  document.getElementById('dupAssetModal').style.display = 'none';
+  _dupSourceAsset = null;
+}
+
+async function dupFilterLogins() {
+  if (!_dupAllLogins.length) {
+    const d = await call('searchLogins', { query: '' });
+    _dupAllLogins = d.logins || [];
+  }
+  const q    = document.getElementById('dupLoginInput').value.toLowerCase();
+  const drop = document.getElementById('dupLoginDrop');
+  const matches = _dupAllLogins.filter(l => l.name.toLowerCase().includes(q)).slice(0, 10);
+  drop.innerHTML = '';
+  // "Create new" option when query doesn't match exactly
+  const exact = _dupAllLogins.find(l => l.name.toLowerCase() === q);
+  if (q && !exact) {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.style.cssText = 'color:var(--accent);font-style:italic;';
+    div.textContent = '+ Create "' + q + '"';
+    div.onmousedown = async () => {
+      drop.style.display = 'none';
+      div.textContent = 'Creating…';
+      try {
+        const res = await call('createLogin', { title: q });
+        const newLogin = { id: res.id, name: q };
+        _dupAllLogins.push(newLogin);
+        document.getElementById('dupLoginInput').value = q;
+        document.getElementById('dupLoginId').value    = res.id;
+      } catch(e) { showToast('Create failed: ' + e.message, true); }
+    };
+    drop.appendChild(div);
+  }
+  matches.forEach(l => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = l.name;
+    div.onmousedown = () => {
+      document.getElementById('dupLoginInput').value = l.name;
+      document.getElementById('dupLoginId').value    = l.id;
+      drop.style.display = 'none';
+    };
+    drop.appendChild(div);
+  });
+  drop.style.display = (drop.children.length) ? 'block' : 'none';
+}
+
+async function saveDupAsset() {
+  if (!_dupSourceAsset) return;
+  const title   = document.getElementById('dupAssetTitle').value.trim();
+  const status  = document.getElementById('dupAssetStatus').value;
+  const type    = document.getElementById('dupAssetType').value;
+  const loginId = document.getElementById('dupLoginId').value.trim();
+  const errEl   = document.getElementById('dupAssetErr');
+  const btn     = document.getElementById('dupAssetSaveBtn');
+  if (!title) { errEl.textContent = 'Title is required.'; return; }
+  errEl.textContent = '';
+  btn.disabled = true; btn.textContent = 'Duplicating…';
+  try {
+    await call('duplicateAsset', {
+      sourceAssetId: _dupSourceAsset.id,
+      title, status, type: type || undefined,
+      loginId: loginId || undefined,
+    });
+    showToast('Asset duplicated');
+    closeDupAssetModal();
+  } catch(e) {
+    errEl.textContent = e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Duplicate';
+  }
+}
+
+document.addEventListener('click', e => {
+  const drop = document.getElementById('dupLoginDrop');
+  if (drop && !drop.contains(e.target) && e.target.id !== 'dupLoginInput') drop.style.display = 'none';
+});
+
 async function showTitleAssets(titleId, titleName) {
   // Switch to Publishing tab
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1691,6 +1854,7 @@ async function showTitleAssets(titleId, titleName) {
           '<div style="display:flex;align-items:center;gap:8px;">' +
             '<span onclick="showAssetFiles(\'' + a.id + '\',\'' + esc(a.title).replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:var(--accent);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Files</span>' +
             '<span onclick="showAssetDesignModal(\'' + a.id + '\',\'' + esc(a.title).replace(/'/g,"\\'") + '\',\'' + (a.designLink||'').replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:' + (a.designLink ? '#a78bfa' : 'var(--text3)') + ';cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">' + (a.designLink ? 'Design ↗' : 'Design') + '</span>' +
+            '<span onclick="openDupAssetModal(' + JSON.stringify({id:a.id,title:a.title,type:a.type,status:a.status,loginId:a.loginId}).replace(/"/g,"&quot;") + ',event)" style="font-size:10px;font-weight:600;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Dupe</span>' +
             '<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:' + (a.status==='Published'?'var(--surface2)':'#0a1a00') + ';color:' + (a.status==='Published'?'var(--text3)':'#44ff44') + ';border:1px solid ' + (a.status==='Published'?'var(--border2)':'#1a4400') + ';">' + esc(a.status||'') + '</span>' +
           '</div>';
         el.appendChild(row);
