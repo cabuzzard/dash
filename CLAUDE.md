@@ -124,16 +124,18 @@ Live URL pattern: `https://cabuzzard.github.io/dash/microsites/{deploy-path}/`
 
 ## Deployed Campaigns
 
-| Deploy Path | Microsite | Live Site | Campaign ID |
-|---|---|---|---|
-| `foreclosure-fraud` | ✓ | ✓ | `3681f7d3a4bb8195a655d6f022e257f1` |
-| `estate-divorce-property-resource` | ✓ | ✓ | `3691f7d3a4bb81de93d9fa2f0607deb7` |
-| `lead-gen-small-business` | ✓ | ✓ | `3721f7d3a4bb813ebc1de7576df0ca0a` |
-| `mobility-mentor-fundraising` | ✓ | ✓ | `34b1f7d3a4bb81b6a8a8fee04df94807` |
-| `mobility-mentor-services` | — | ✓ | — |
-| `ai-lead-gen-local-services` | ✓ | — | `34f1f7d3a4bb81c2be96c022bdd1ef40` |
-| `mountainwize-coaching` | — | ✓ | — |
-| `webguy` | — | ✓ | — |
+| Deploy Path | Microsite | Live Site | Campaign ID | Research ID |
+|---|---|---|---|---|
+| `foreclosure-fraud` | ✓ | ✓ | `3681f7d3a4bb8195a655d6f022e257f1` | `3681f7d3a4bb81e29542e24d178a3ad1` |
+| `estate-divorce-property-resource` | ✓ | ✓ | `3691f7d3a4bb81de93d9fa2f0607deb7` | `3691f7d3a4bb8150b543f42f77c7ce3a` |
+| `lead-gen-small-business` | ✓ | ✓ | `3721f7d3a4bb813ebc1de7576df0ca0a` | `3721f7d3a4bb8101a3cce42f55bfbec1` |
+| `mobility-mentor-fundraising` | ✓ | ✓ | `34b1f7d3a4bb81b6a8a8fee04df94807` | `3661f7d3a4bb81adaaadc2ce80784112` |
+| `mobility-mentor-services` | — | ✓ | — | — |
+| `ai-lead-gen-local-services` | ✓ | — | `34f1f7d3a4bb81c2be96c022bdd1ef40` | `36d1f7d3a4bb81ab8dbbcfdfff7428e3` |
+| `small-business-adu-ca` | ✓ | — | `3591f7d3a4bb811a907aeea020352484` | `3731f7d3a4bb814598eed9735cf331d3` |
+| `small-business-re-agent-ca` | ✓ | — | `3731f7d3a4bb816f9d9cd5bffda0549d` | `3731f7d3a4bb8117b12ddfb70d5a5ced` |
+| `mountainwize-coaching` | — | ✓ | — | — |
+| `webguy` | — | ✓ | — | — |
 
 ## Security Notes
 
