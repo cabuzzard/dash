@@ -2235,7 +2235,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       }
 
       if (body.action === "duplicateAsset") {
-        const { sourceAssetId, title, status, type, loginId } = body;
+        const { sourceAssetId, title, status, type, platformName, loginId } = body;
         if (!sourceAssetId) return json({ error: "sourceAssetId required" }, 400);
         const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
         try {
@@ -2256,9 +2256,11 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           if (csRel.length) props["Content Strategy"] = { relation: csRel.map(r => ({ id: r.id })) };
           const platRel = sp["Platform"]?.relation || [];
           if (platRel.length) props["Platform"] = { relation: platRel.map(r => ({ id: r.id })) };
-          const platName = sp["Platform Name"]?.select?.name;
+          const platName = platformName || sp["Platform Name"]?.select?.name;
           if (platName) props["Platform Name"] = { select: { name: platName } };
           if (loginId) props["Login"] = { relation: [{ id: dash(loginId) }] };
+          const srcImages = sp["Images"]?.files || [];
+          if (srcImages.length) props["Images"] = { files: srcImages };
           const resp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },

@@ -1306,6 +1306,10 @@
         <option>Graphic</option>
       </select>
     </div>
+    <div class="modal-field">
+      <label class="modal-label">Platform Name</label>
+      <input class="modal-input" id="dupPlatformName" type="text" placeholder="e.g. LinkedIn, Twitter…" />
+    </div>
     <div class="modal-field" style="position:relative;">
       <label class="modal-label">Login <span style="color:var(--text3);font-weight:400;">(optional)</span></label>
       <input class="modal-input" id="dupLoginInput" type="text" placeholder="Search logins or type to create…" autocomplete="off"
@@ -1704,6 +1708,7 @@ async function openDupAssetModal(asset, ev) {
   if (!statusEl.value) statusEl.value = 'Draft';
   const typeEl = document.getElementById('dupAssetType');
   typeEl.value = asset.type || '';
+  document.getElementById('dupPlatformName').value = asset.platform || '';
   document.getElementById('dupLoginInput').value = '';
   document.getElementById('dupLoginId').value    = '';
   document.getElementById('dupLoginDrop').style.display = 'none';
@@ -1773,10 +1778,11 @@ async function dupFilterLogins() {
 
 async function saveDupAsset() {
   if (!_dupSourceAsset) return;
-  const title   = document.getElementById('dupAssetTitle').value.trim();
-  const status  = document.getElementById('dupAssetStatus').value;
-  const type    = document.getElementById('dupAssetType').value;
-  const loginId = document.getElementById('dupLoginId').value.trim();
+  const title        = document.getElementById('dupAssetTitle').value.trim();
+  const status       = document.getElementById('dupAssetStatus').value;
+  const type         = document.getElementById('dupAssetType').value;
+  const platformName = document.getElementById('dupPlatformName').value.trim();
+  const loginId      = document.getElementById('dupLoginId').value.trim();
   const errEl   = document.getElementById('dupAssetErr');
   const btn     = document.getElementById('dupAssetSaveBtn');
   if (!title) { errEl.textContent = 'Title is required.'; return; }
@@ -1786,6 +1792,7 @@ async function saveDupAsset() {
     await call('duplicateAsset', {
       sourceAssetId: _dupSourceAsset.id,
       title, status, type: type || undefined,
+      platformName: platformName || undefined,
       loginId: loginId || undefined,
     });
     showToast('Asset duplicated');
