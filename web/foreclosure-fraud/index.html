@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Foreclosure Fraud Victims — Get a Free Case Review</title>
+  <meta name="description" content="If you lost your home to robo-signing, chain of title fraud, or improper bank procedures, you may still have legal rights. Get a free confidential case review.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700;900&family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', sans-serif; background: #fff; color: #1a2744; line-height: 1.6; }
+    h1, h2, h3 { font-family: 'Merriweather', serif; font-weight: 700; line-height: 1.2; }
+
+    /* NAV */
+    .nav { background: #071428; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 58px; position: sticky; top: 0; z-index: 50; }
+    .nav-logo { font-family: 'Merriweather', serif; font-size: 14px; color: #fff; font-weight: 700; letter-spacing: .01em; }
+    .nav-logo em { color: #c9a227; font-style: normal; }
+    .nav-cta { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #071428; background: #c9a227; padding: 8px 18px; text-decoration: none; transition: background .15s; white-space: nowrap; }
+    .nav-cta:hover { background: #e0b830; }
+
+    /* HERO */
+    .hero { background: linear-gradient(150deg, #071428 0%, #0c1f3f 55%, #162d5e 100%); padding: 80px 24px 88px; text-align: center; }
+    .hero-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: #c9a227; margin-bottom: 22px; }
+    .hero h1 { font-size: clamp(26px, 5vw, 54px); color: #fff; max-width: 820px; margin: 0 auto 26px; }
+    .hero h1 em { color: #c9a227; font-style: normal; }
+    .hero-sub { font-size: clamp(15px, 2vw, 18px); color: #8eafd0; max-width: 640px; margin: 0 auto 40px; line-height: 1.75; }
+    .hero-cta { display: inline-block; background: #c0392b; color: #fff; font-size: 15px; font-weight: 700; letter-spacing: .04em; padding: 16px 40px; text-decoration: none; transition: background .15s; border: 2px solid transparent; }
+    .hero-cta:hover { background: #e74c3c; }
+    .hero-note { font-size: 12px; color: #4a6a8a; margin-top: 14px; }
+
+    /* STATS BAR */
+    .stats { background: #0c1f3f; }
+    .stats-inner { max-width: 1040px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
+    .stat { text-align: center; padding: 28px 16px; border-right: 1px solid rgba(255,255,255,.07); }
+    .stat:last-child { border-right: none; }
+    .stat-num { font-family: 'Merriweather', serif; font-size: 34px; font-weight: 900; color: #c9a227; display: block; line-height: 1; }
+    .stat-label { font-size: 12px; color: #5a7a9a; margin-top: 8px; line-height: 1.5; }
+    @media (max-width: 640px) {
+      .stats-inner { grid-template-columns: 1fr 1fr; }
+      .stat { border-bottom: 1px solid rgba(255,255,255,.07); }
+      .stat:nth-child(even) { border-right: none; }
+      .stat:nth-last-child(-n+2) { border-bottom: none; }
+    }
+
+    /* SECTION LAYOUT */
+    .section-wrap { max-width: 960px; margin: 0 auto; padding: 64px 24px; }
+    .section-label { font-size: 11px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: #c9a227; margin-bottom: 12px; }
+    .section-wrap h2 { font-size: clamp(22px, 3vw, 36px); color: #0c1f3f; margin-bottom: 18px; }
+    .section-lead { font-size: 17px; color: #3a4e6a; line-height: 1.85; max-width: 720px; }
+
+    /* ALERT */
+    .alert-box { background: #fffbef; border-left: 4px solid #c9a227; padding: 18px 22px; margin: 36px 0 0; }
+    .alert-box p { font-size: 14px; color: #5a4200; line-height: 1.7; }
+    .alert-box strong { color: #2a1800; }
+
+    /* FRAUD GRID */
+    .fraud-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 40px; }
+    .fraud-card { border: 1px solid #dde3f0; padding: 24px 22px; background: #f8fafd; transition: border-color .15s; }
+    .fraud-card:hover { border-color: #b0c0de; }
+    .fraud-icon { font-size: 22px; margin-bottom: 12px; }
+    .fraud-card h3 { font-family: 'Merriweather', serif; font-size: 14px; color: #0c1f3f; margin-bottom: 8px; }
+    .fraud-card p { font-size: 13px; color: #5a6a80; line-height: 1.65; }
+
+    /* DIVIDER */
+    .divider { border: none; border-top: 1px solid #e8ecf4; }
+
+    /* TRUST BAR */
+    .trust-bar { background: #f8fafd; border-top: 1px solid #e8ecf4; border-bottom: 1px solid #e8ecf4; padding: 20px 24px; }
+    .trust-bar-inner { max-width: 960px; margin: 0 auto; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 28px; }
+    .trust-item { font-size: 13px; color: #3a4e6a; display: flex; align-items: center; gap: 8px; font-weight: 500; }
+    .trust-item::before { content: '✓'; color: #1a7a45; font-weight: 700; font-size: 14px; }
+
+    /* FORM SECTION */
+    .form-section { background: #f0f4fb; padding: 72px 24px; }
+    .form-inner { max-width: 580px; margin: 0 auto; }
+    .form-inner h2 { font-size: clamp(22px, 3vw, 34px); color: #0c1f3f; margin-bottom: 10px; }
+    .form-sub { font-size: 16px; color: #4a5a70; margin-bottom: 36px; line-height: 1.7; }
+
+    .form-group { margin-bottom: 18px; }
+    label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: #4a5a70; margin-bottom: 6px; }
+    input[type=text], input[type=email], input[type=tel], select, textarea {
+      width: 100%; padding: 12px 14px;
+      font-family: 'Inter', sans-serif; font-size: 15px;
+      border: 1px solid #c0cce0; background: #fff; color: #1a2744;
+      outline: none; transition: border-color .15s; border-radius: 0;
+      -webkit-appearance: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: #1a3a6e; box-shadow: 0 0 0 3px rgba(26,58,110,.08); }
+    textarea { resize: vertical; min-height: 128px; }
+    .char-counter { font-size: 11px; color: #8a9ab0; text-align: right; margin-top: 4px; }
+    .char-counter.near { color: #b87a00; }
+    .char-counter.full { color: #c0392b; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
+
+    .submit-btn {
+      width: 100%; padding: 16px 24px; margin-top: 8px;
+      background: #c0392b; color: #fff;
+      font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 700; letter-spacing: .04em;
+      border: none; cursor: pointer; transition: background .15s;
+    }
+    .submit-btn:hover:not(:disabled) { background: #e74c3c; }
+    .submit-btn:disabled { background: #8a9ab0; cursor: not-allowed; }
+
+    .privacy-note { font-size: 12px; color: #8a9ab0; text-align: center; margin-top: 16px; line-height: 1.6; }
+    .form-msg { padding: 16px 20px; margin-top: 20px; font-size: 14px; display: none; line-height: 1.6; }
+    .form-msg.success { background: #e6f7ee; color: #0f5c2e; border: 1px solid #a8d8bc; }
+    .form-msg.error   { background: #fde8e8; color: #8b0000; border: 1px solid #f0b8b8; }
+
+    /* FOOTER */
+    footer { background: #071428; padding: 44px 24px; text-align: center; }
+    footer p { font-size: 12px; color: #2a4a6a; line-height: 1.9; max-width: 720px; margin: 0 auto; }
+    footer a { color: #3a5a7a; text-decoration: none; }
+    footer a:hover { color: #6a9aba; }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-logo">Foreclosure<em>Fraud</em>Victims.org</div>
+  <a href="#report" class="nav-cta">Free Case Review ↓</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-eyebrow">Know Your Legal Rights</div>
+  <h1>Was Your Home Taken Through <em>Fraud?</em></h1>
+  <p class="hero-sub">Banks have illegally foreclosed on hundreds of thousands of homes using robo-signing, chain of title manipulation, and fraudulent loan modification denials. You may still have a case — even if it happened years ago.</p>
+  <a href="#report" class="hero-cta">Get a Free Confidential Case Review →</a>
+  <p class="hero-note">No fee unless you win &nbsp;·&nbsp; 100% confidential &nbsp;·&nbsp; Takes 2 minutes</p>
+</section>
+
+<!-- STATS BAR -->
+<div class="stats">
+  <div class="stats-inner">
+    <div class="stat">
+      <span class="stat-num">41,000+</span>
+      <div class="stat-label">Foreclosure filings in a single month (Feb 2026)</div>
+    </div>
+    <div class="stat">
+      <span class="stat-num">+20%</span>
+      <div class="stat-label">Year-over-year increase in foreclosure filings (2026)</div>
+    </div>
+    <div class="stat">
+      <span class="stat-num">$4.65M</span>
+      <div class="stat-label">Settlement paid for unlawful foreclosure practices (2026)</div>
+    </div>
+    <div class="stat">
+      <span class="stat-num">1,600+</span>
+      <div class="stat-label">Post-auction reports using disputed interest calculations</div>
+    </div>
+  </div>
+</div>
+
+<!-- WHAT IS FORECLOSURE FRAUD -->
+<section>
+  <div class="section-wrap">
+    <p class="section-label">What Qualifies</p>
+    <h2>What Is Foreclosure Fraud?</h2>
+    <p class="section-lead">Foreclosure fraud happens when a bank or mortgage servicer uses illegal, deceptive, or procedurally improper methods to take your home. Courts across the country have ruled that many foreclosures from the past two decades were legally void — meaning the bank never had the right to foreclose in the first place.</p>
+
+    <div class="alert-box">
+      <p><strong>Important:</strong> The statute of limitations on fraud claims varies by state — typically 2 to 6 years. However, courts in many states have ruled that <strong>void foreclosure judgments can be challenged at any time</strong>, because a void judgment has no legal force. Don't assume it's too late. Get a legal review.</p>
+    </div>
+
+    <div class="fraud-grid">
+      <div class="fraud-card">
+        <div class="fraud-icon">✍️</div>
+        <h3>Robo-Signing</h3>
+        <p>Bank employees signed thousands of foreclosure documents per day without reading them — falsely swearing under oath they had personal knowledge of each case. Courts have called this fraud.</p>
+      </div>
+      <div class="fraud-card">
+        <div class="fraud-icon">📜</div>
+        <h3>Chain of Title Fraud</h3>
+        <p>To foreclose legally, a bank must prove it owns your loan. Many cannot — the mortgage was sold multiple times through MERS and other channels, leaving the chain of ownership broken or forged.</p>
+      </div>
+      <div class="fraud-card">
+        <div class="fraud-icon">🚫</div>
+        <h3>Loan Modification Fraud</h3>
+        <p>Your servicer accepted trial modification payments, then foreclosed anyway — often without proper notice, or while your modification application was still under active review (illegal dual tracking).</p>
+      </div>
+      <div class="fraud-card">
+        <div class="fraud-icon">📋</div>
+        <h3>Improper Procedures</h3>
+        <p>The law requires specific notices, timelines, and steps before a foreclosure can proceed. Servicers routinely shortcut these requirements — cutting the 90-day cure period to 33 days, for example.</p>
+      </div>
+      <div class="fraud-card">
+        <div class="fraud-icon">💰</div>
+        <h3>Illegal Fees &amp; Charges</h3>
+        <p>Mortgage servicers have been caught charging illegal fees for property monitoring and forced-place insurance, and using disputed interest calculation methods that cost homeowners tens of thousands.</p>
+      </div>
+      <div class="fraud-card">
+        <div class="fraud-icon">🏦</div>
+        <h3>MERS &amp; Void Assignments</h3>
+        <p>Mortgages routed through MERS were assigned in legally questionable ways. Courts have ruled certain assignments void — meaning the foreclosing bank lacked legal standing to take your home.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST BAR -->
+<div class="trust-bar">
+  <div class="trust-bar-inner">
+    <div class="trust-item">Free confidential review</div>
+    <div class="trust-item">No upfront fees — ever</div>
+    <div class="trust-item">Attorneys licensed in your state</div>
+    <div class="trust-item">Cases handled nationwide</div>
+  </div>
+</div>
+
+<!-- RECENT NEWS SECTION -->
+<section style="background:#fff;">
+  <div class="section-wrap" style="padding-bottom: 48px;">
+    <p class="section-label">Recent Enforcement</p>
+    <h2>Banks Are Still Being Held Accountable</h2>
+    <p class="section-lead" style="margin-bottom:28px;">Foreclosure fraud didn't end in 2012. Courts and regulators continue to find and punish illegal bank behavior — which means victims continue to come forward with valid claims.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
+      <div style="border-left:3px solid #c9a227;padding:16px 20px;background:#fafbfd;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:#8a9ab0;text-transform:uppercase;margin-bottom:6px;">2026 — Massachusetts</div>
+        <p style="font-size:14px;color:#2a3a50;line-height:1.6;">State AG secures <strong>$4.65 million settlement</strong> against Newrez/SLS for unlawful foreclosures — servicer failed to give legally required 90-day cure period.</p>
+      </div>
+      <div style="border-left:3px solid #c9a227;padding:16px 20px;background:#fafbfd;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:#8a9ab0;text-transform:uppercase;margin-bottom:6px;">2026 — Florida Federal Court</div>
+        <p style="font-size:14px;color:#2a3a50;line-height:1.6;">Lawsuit filed against Movement Mortgage alleging the MERS assignment used to foreclose was <strong>legally void</strong> — stripping the bank of standing.</p>
+      </div>
+      <div style="border-left:3px solid #c9a227;padding:16px 20px;background:#fafbfd;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:#8a9ab0;text-transform:uppercase;margin-bottom:6px;">Dec 2025 — New York</div>
+        <p style="font-size:14px;color:#2a3a50;line-height:1.6;">Multiple major banks accused of <strong>"systematic fraud"</strong> in New York foreclosure filings, according to an investigative report by NYS Focus.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FORM -->
+<section class="form-section" id="report">
+  <div class="form-inner">
+    <p class="section-label">Free &amp; Confidential</p>
+    <h2>I Am a Victim of Foreclosure Fraud</h2>
+    <p class="form-sub">Complete this short form to request a free case review. A foreclosure fraud attorney will contact you within 1 business day.</p>
+
+    <form id="leadForm" novalidate>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-email">Email Address *</label>
+          <input type="email" id="f-email" name="email" required placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label for="f-phone">Phone Number *</label>
+          <input type="tel" id="f-phone" name="phone" required placeholder="(555) 000-0000" autocomplete="tel" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="f-fraud-type">Type of Foreclosure Fraud *</label>
+        <select id="f-fraud-type" name="fraudType" required>
+          <option value="">— Select the type that best applies —</option>
+          <option value="Robo-signing">Robo-Signing (fraudulent document signing)</option>
+          <option value="Chain of title fraud">Chain of Title / ownership fraud</option>
+          <option value="Loan modification fraud">Loan Modification fraud or dual tracking</option>
+          <option value="Improper procedures">Improper notice or foreclosure procedures</option>
+          <option value="Mortgage servicing fraud">Mortgage servicing abuse / illegal fees</option>
+          <option value="MERS assignment void">MERS or assignment void issues</option>
+          <option value="Other">Other / Not sure</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="f-note">Tell Us What Happened <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#8a9ab0;">(optional — helps us match you faster)</span></label>
+        <textarea id="f-note" name="note" placeholder="Briefly describe your situation — when it happened, what state, what the bank did..." maxlength="600"></textarea>
+        <div class="char-counter" id="charCounter">0 / 600 characters</div>
+      </div>
+
+      <!-- Cloudflare Turnstile CAPTCHA -->
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-theme="light" style="margin:8px 0 4px;"></div>
+
+      <button type="submit" class="submit-btn" id="submitBtn">Get My Free Case Review →</button>
+      <p class="privacy-note">🔒 Your information is 100% confidential. We will never sell or share your data with third parties. By submitting, you consent to be contacted by a licensed foreclosure fraud attorney regarding your situation.</p>
+    </form>
+
+    <div class="form-msg" id="formMsg"></div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <p>
+    This website is for informational purposes only and does not constitute legal advice. Submission of this form does not create an attorney-client relationship. Results in prior cases do not guarantee future outcomes. Attorney advertising.<br><br>
+    <a href="#">Privacy Policy</a> &nbsp;·&nbsp; <a href="#">Terms of Use</a> &nbsp;·&nbsp; <a href="#">Legal Disclaimer</a>
+  </p>
+</footer>
+
+<script>
+const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+
+// Character counter
+const noteEl    = document.getElementById('f-note');
+const counterEl = document.getElementById('charCounter');
+noteEl.addEventListener('input', () => {
+  const len = noteEl.value.length;
+  counterEl.textContent = len + ' / 600 characters';
+  counterEl.className = 'char-counter' + (len >= 600 ? ' full' : len >= 500 ? ' near' : '');
+});
+
+// Form submit
+document.getElementById('leadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn  = document.getElementById('submitBtn');
+  const msg  = document.getElementById('formMsg');
+
+  const email     = document.getElementById('f-email').value.trim();
+  const phone     = document.getElementById('f-phone').value.trim();
+  const fraudType = document.getElementById('f-fraud-type').value;
+  const note      = document.getElementById('f-note').value.trim();
+
+  // Validation
+  if (!email || !phone || !fraudType) {
+    msg.textContent = 'Please fill in all required fields marked with *.';
+    msg.className = 'form-msg error';
+    msg.style.display = 'block';
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    msg.textContent = 'Please enter a valid email address.';
+    msg.className = 'form-msg error';
+    msg.style.display = 'block';
+    return;
+  }
+  if (!/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) {
+    msg.textContent = 'Please enter a valid phone number (digits, spaces, dashes, and parentheses only).';
+    msg.className = 'form-msg error';
+    msg.style.display = 'block';
+    return;
+  }
+
+  // Collect Turnstile token
+  const tsToken = document.querySelector('[name="cf-turnstile-response"]')?.value || '';
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  msg.style.display = 'none';
+
+  try {
+    const res = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'submitLead', campaign: 'foreclosure-fraud', email, phone, fraudType, note, tsToken })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    // Success — hide form, show message
+    document.getElementById('leadForm').style.display = 'none';
+    msg.innerHTML = '<strong>Thank you — your request has been received.</strong><br><br>A foreclosure fraud attorney will contact you within 1 business day to discuss your case. Please check your email for a confirmation.';
+    msg.className = 'form-msg success';
+    msg.style.display = 'block';
+
+  } catch(err) {
+    msg.textContent = 'Something went wrong. Please try again, or call us directly.';
+    msg.className = 'form-msg error';
+    msg.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Get My Free Case Review →';
+  }
+});
+</script>
+</body>
+</html>
