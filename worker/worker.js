@@ -2622,6 +2622,140 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ screened: top, universe: tickers.length, passed: filtered.length });
       }
 
+      if (body.action === 'getEdgarPicks') {
+        const CUSIP_MAP = {
+          // Mega-cap tech
+          '037833100':'AAPL','594918104':'MSFT','023135106':'AMZN','67066G104':'NVDA',
+          '02079K305':'GOOGL','02079K107':'GOOG','30303M102':'META','88160R101':'TSLA',
+          '11135F101':'AVGO','45866F104':'INTC','007903107':'AMD','882184100':'TXN',
+          '747525103':'QCOM','17275R102':'CSCO','00724F101':'ADBE','461202183':'INTU',
+          '81762P102':'NOW','79466L302':'CRM','45866C105':'SNOW','406216101':'LRCX',
+          '44553T102':'KLAC','79551B107':'AMAT','04523Y102':'ASML',
+          // Healthcare
+          '532457108':'LLY','478160104':'JNJ','91324P102':'UNH','58933Y105':'MRK',
+          '883556102':'TMO','002824100':'ABT','00287Y109':'ABBV','031162100':'AMGN',
+          '375558103':'GILD','75886F107':'REGN','45241H103':'ISRG','717081103':'PFE',
+          '110122108':'BMY','58155Q103':'MDT','92826C859':'VRTX','73448Q102':'PSA',
+          // Financials
+          '46625H100':'JPM','060505104':'BAC','92826C839':'V','57636Q104':'MA',
+          '38141G104':'GS','617446448':'MS','025816109':'AXP','78409V104':'SPGI',
+          '09247X101':'BLK','808513105':'SCHW','172967424':'C','79590B101':'BX',
+          '693475105':'PNC','26875P101':'ELV','G2519Y108':'CB',
+          // Energy
+          '30231G102':'XOM','166764100':'CVX','20825C104':'COP','806857108':'SLB',
+          '247361702':'EQT','29977A105':'EOG','172385901':'DVN',
+          // Consumer / Industrial
+          '742718109':'PG','191216100':'KO','713448108':'PEP','580135101':'MCD',
+          '931142103':'WMT','437076102':'HD','22160K105':'COST','254687106':'DIS',
+          '20030N101':'BKNG','369604103':'GE','149123101':'CAT','747598103':'RTX',
+          '097023105':'BA','726854107':'LMT','025537101':'AMT','G0176J109':'UBER',
+          '00090Q103':'ABNB','69608A108':'PLTR','19260Q107':'COIN',
+          // Cloud / SaaS / Cybersec
+          '23804L103':'DDOG','18915M107':'NET','69400J107':'PANW','23795W105':'CRWD',
+          '98980G102':'ZS','60440W101':'MDB','95562D101':'WDAY','443573100':'HUBS',
+          '679273100':'OKTA','64110L106':'NFLX','G4124M105':'SPOT',
+          // Comm
+          '00206R102':'T','92343V104':'VZ',
+          // ETFs (sometimes in 13F)
+          '78462F103':'SPY','46090E103':'QQQ','78464A870':'IVV','464287655':'IWM',
+        };
+
+        const FUNDS = [
+          { name: 'Berkshire',    cik: '0001067983' },
+          { name: 'Bridgewater',  cik: '0001350694' },
+          { name: 'Two Sigma',    cik: '0001179392' },
+          { name: 'Citadel',      cik: '0001423053' },
+          { name: 'DE Shaw',      cik: '0001009207' },
+          { name: 'Tiger Global', cik: '0001167483' },
+          { name: 'Coatue',       cik: '0001336528' },
+          { name: 'Renaissance',  cik: '0001037389' },
+        ];
+
+        const UA = 'Hermes/1.0 research@cabuzzard.github.io';
+
+        async function getLatest13F(fund) {
+          const subResp = await fetch(`https://data.sec.gov/submissions/${fund.cik}.json`, { headers: { 'User-Agent': UA } });
+          if (!subResp.ok) return [];
+          const sub = await subResp.json();
+          const recent = sub.filings?.recent;
+          if (!recent) return [];
+
+          const idx = recent.form.findIndex(f => f === '13F-HR');
+          if (idx === -1) return [];
+
+          const accDash   = recent.accessionNumber[idx];
+          const accNoDash = accDash.replace(/-/g, '');
+          const cikNum    = fund.cik.replace(/^0+/, '');
+
+          const idxUrl  = `https://www.sec.gov/Archives/edgar/data/${cikNum}/${accNoDash}/${accDash}-index.json`;
+          const idxResp = await fetch(idxUrl, { headers: { 'User-Agent': UA } });
+          if (!idxResp.ok) return [];
+          const idxData = await idxResp.json();
+
+          const items  = idxData.directory?.item || [];
+          // information table is the large XML (not the cover/primary doc)
+          const xmlDoc = items.find(f => /infotable|informationtable/i.test(f.name) && f.name.endsWith('.xml'))
+                      || items.filter(f => f.name.endsWith('.xml')).sort((a, b) => (b.size||0) - (a.size||0))[0];
+          if (!xmlDoc) return [];
+
+          const xmlUrl  = `https://www.sec.gov/Archives/edgar/data/${cikNum}/${accNoDash}/${xmlDoc.name}`;
+          const xmlResp = await fetch(xmlUrl, { headers: { 'User-Agent': UA } });
+          if (!xmlResp.ok) return [];
+          const xml = await xmlResp.text();
+
+          const holdings = [];
+          const tableRe  = /<infoTable>([\s\S]*?)<\/infoTable>/gi;
+          let m;
+          while ((m = tableRe.exec(xml)) !== null) {
+            const block = m[1];
+            const get = tag => { const r = new RegExp(`<${tag}[^>]*>([^<]*)<`, 'i'); const mm = r.exec(block); return mm ? mm[1].trim() : ''; };
+            const cusip  = get('cusip');
+            const value  = parseInt(get('value')) || 0;
+            const ticker = CUSIP_MAP[cusip];
+            if (ticker && !['SPY','QQQ','IVV','IWM'].includes(ticker)) {
+              holdings.push({ ticker, value, fund: fund.name });
+            }
+          }
+          return holdings;
+        }
+
+        const allHoldings = (await Promise.allSettled(FUNDS.map(getLatest13F)))
+          .filter(r => r.status === 'fulfilled')
+          .flatMap(r => r.value);
+
+        // aggregate: rank by (fund count × big weight + total value)
+        const agg = {};
+        for (const h of allHoldings) {
+          if (!agg[h.ticker]) agg[h.ticker] = { ticker: h.ticker, value: 0, funds: [] };
+          agg[h.ticker].value += h.value;
+          if (!agg[h.ticker].funds.includes(h.fund)) agg[h.ticker].funds.push(h.fund);
+        }
+
+        const topTickers = Object.values(agg)
+          .sort((a, b) => (b.funds.length * 1e12 + b.value) - (a.funds.length * 1e12 + a.value))
+          .slice(0, 60)
+          .map(t => t.ticker);
+
+        if (!topTickers.length) return json({ error: 'No EDGAR holdings parsed — filings may be delayed', funds: FUNDS.length }, 502);
+
+        const results = await Promise.allSettled(
+          topTickers.map(sym => fetchChart(sym).then(d => {
+            const s = calcSignals(sym, d);
+            if (s && agg[sym]) {
+              s.funds     = agg[sym].funds;
+              s.fundCount = agg[sym].funds.length;
+            }
+            return s;
+          }))
+        );
+
+        const all      = results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean);
+        const filtered = all.filter(s => s.stochK < 50);
+        const top      = filtered.sort((a, b) => b.score - a.score).slice(0, 15);
+
+        return json({ screened: top, universe: topTickers.length, passed: filtered.length });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);

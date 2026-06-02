@@ -760,8 +760,9 @@
       </div>
       <div class="scr-body" id="scrBody">
         <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-          <button class="scr-scan-btn" id="scrDiscoverBtn" onclick="runDiscover()" style="background:#4488ff;flex:1;min-width:140px;">⚡ Discover Top Picks</button>
-          <button class="scr-scan-btn" id="scrScanBtn" onclick="runScreener()" style="background:var(--surface);border:1px solid var(--border2);color:var(--text);flex:1;min-width:120px;">⟳ Scan Watchlist</button>
+          <button class="scr-scan-btn" id="scrEdgarBtn" onclick="runEdgar()" style="background:#aa66ff;flex:1;min-width:140px;">📋 EDGAR 13F Picks</button>
+          <button class="scr-scan-btn" id="scrDiscoverBtn" onclick="runDiscover()" style="background:#4488ff;flex:1;min-width:140px;">⚡ Most Active</button>
+          <button class="scr-scan-btn" id="scrScanBtn" onclick="runScreener()" style="background:var(--surface);border:1px solid var(--border2);color:var(--text);flex:1;min-width:120px;">⟳ Watchlist</button>
         </div>
         <div class="scr-row">
           <textarea class="scr-textarea" id="scrTickers" placeholder="Watchlist: SPY, QQQ, AAPL, NVDA&#10;one per line or comma-separated"></textarea>
@@ -780,6 +781,7 @@
                 <th class="r">%K/%D</th>
                 <th>Signals</th>
                 <th>Verdict</th>
+                <th id="scrFundsHeader" style="display:none;">Held By</th>
               </tr>
             </thead>
             <tbody id="scrTableBody"></tbody>
@@ -5465,6 +5467,34 @@ function parseTickers() {
   return raw.split(/[\s,\n]+/).map(t => t.trim().toUpperCase()).filter(Boolean);
 }
 
+async function runEdgar() {
+  const btn    = document.getElementById('scrEdgarBtn');
+  const status = document.getElementById('scrStatus');
+  const wrap   = document.getElementById('scrTableWrap');
+
+  btn.disabled = true;
+  btn.textContent = 'Fetching 13F filings…';
+  status.textContent = 'Pulling latest 13F-HR filings from 8 major funds via SEC EDGAR…';
+  wrap.style.display = 'none';
+  document.getElementById('scrFundsHeader').style.display = '';
+
+  try {
+    const data = await call('getEdgarPicks', {});
+    const rows = data.screened || [];
+    renderScreenerTable(rows, false, true);
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('scrLastRun').textContent = `Last run ${now}`;
+    status.textContent = `${data.universe} institutional holdings → ${data.passed} passed stoch < 50 filter → top ${rows.length} shown`;
+    wrap.style.display = '';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    showToast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📋 EDGAR 13F Picks';
+  }
+}
+
 async function runDiscover() {
   const btn    = document.getElementById('scrDiscoverBtn');
   const status = document.getElementById('scrStatus');
@@ -5474,12 +5504,12 @@ async function runDiscover() {
   btn.textContent = 'Scanning…';
   status.textContent = 'Fetching top 100 most-active stocks, filtering stochastic < 50…';
   wrap.style.display = 'none';
+  document.getElementById('scrFundsHeader').style.display = 'none';
 
   try {
     const data = await call('discoverStocks', {});
     const rows = data.screened || [];
-    renderScreenerTable(rows, true);
-
+    renderScreenerTable(rows, true, false);
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     document.getElementById('scrLastRun').textContent = `Last run ${now}`;
     status.textContent = `${data.universe} stocks scanned → ${data.passed} passed stoch filter → top ${rows.length} shown`;
@@ -5489,7 +5519,7 @@ async function runDiscover() {
     showToast(e.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.textContent = '⚡ Discover Top Picks';
+    btn.textContent = '⚡ Most Active';
   }
 }
 
@@ -5505,12 +5535,12 @@ async function runScreener() {
   btn.textContent = 'Scanning…';
   status.textContent = `Fetching ${tickers.length} ticker${tickers.length > 1 ? 's' : ''}…`;
   wrap.style.display = 'none';
+  document.getElementById('scrFundsHeader').style.display = 'none';
 
   try {
     const data = await call('screenStocks', { tickers });
     const rows = data.screened || [];
-    renderScreenerTable(rows, false);
-
+    renderScreenerTable(rows, false, false);
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     document.getElementById('scrLastRun').textContent = `Last run ${now}`;
     status.textContent = `${rows.filter(r => !r.error).length} of ${tickers.length} scanned`;
@@ -5520,20 +5550,22 @@ async function runScreener() {
     showToast(e.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.textContent = '⟳ Scan Watchlist';
+    btn.textContent = '⟳ Watchlist';
   }
 }
 
-function renderScreenerTable(rows, isDiscover) {
+function renderScreenerTable(rows, isDiscover, showFunds) {
   const tbody = document.getElementById('scrTableBody');
+  const cols  = showFunds ? 9 : 8;
+
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="scr-err" style="padding:16px 10px;">${isDiscover ? 'No stocks passed the stochastic filter right now.' : 'No results.'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${cols}" class="scr-err" style="padding:16px 10px;">${isDiscover ? 'No stocks passed the stochastic filter right now.' : 'No results.'}</td></tr>`;
     return;
   }
 
   tbody.innerHTML = rows.map(r => {
     if (r.error) {
-      return `<tr><td class="scr-sym">${escHtml(r.sym)}</td><td colspan="7" class="scr-err">fetch error</td></tr>`;
+      return `<tr><td class="scr-sym">${escHtml(r.sym)}</td><td colspan="${cols - 1}" class="scr-err">fetch error</td></tr>`;
     }
 
     const volDot = r.volRatio >= 1.5 ? 'scr-sig-yes' : r.volRatio >= 1.0 ? 'scr-sig-mid' : 'scr-sig-no';
@@ -5542,13 +5574,17 @@ function renderScreenerTable(rows, isDiscover) {
     const stDot  = r.stochK < 30 ? 'scr-sig-yes' : r.stochK < 50 ? 'scr-sig-mid' : 'scr-sig-no';
 
     const volStr = `${r.volRatio >= 1.5 ? '+' : ''}${r.volRatio.toFixed(1)}×`;
-    const stStr  = `${r.stochK.toFixed(0)} / ${r.stochD.toFixed(0)}`;
+    const stStr  = `${r.stochK != null ? r.stochK.toFixed(0) : '--'} / ${r.stochD != null ? r.stochD.toFixed(0) : '--'}`;
 
     const verdictStyle = r.verdict === 'BUY'
       ? 'background:#0d2e1a;color:#44cc88;border:1px solid #44cc8844;'
       : r.verdict === 'WATCH'
       ? 'background:#2a1e00;color:#ffaa33;border:1px solid #ffaa3344;'
       : 'background:var(--surface);color:var(--text3);border:1px solid var(--border);';
+
+    const fundsCell = showFunds
+      ? `<td style="font-size:10px;color:#aa66ff;max-width:140px;white-space:normal;line-height:1.4;">${(r.funds||[]).join(', ') || '—'}</td>`
+      : '';
 
     return `<tr>
       <td class="scr-sym">${escHtml(r.sym)}</td>
@@ -5564,6 +5600,7 @@ function renderScreenerTable(rows, isDiscover) {
         <span class="${stDot}"  title="Stoch"></span>
       </td>
       <td><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;${verdictStyle}">${r.verdict}</span></td>
+      ${fundsCell}
     </tr>`;
   }).join('');
 }
