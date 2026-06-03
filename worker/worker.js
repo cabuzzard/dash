@@ -1074,6 +1074,33 @@ export default {
       // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: getTitles Î“Ã¶Ã‡Î“Ã¶Ã‡
 
 
+
+      if (body.action === "updateRun") {
+        const { runId, templateName, format, status, price, canvaLink, publishedLink, etsyLink } = body;
+        if (!runId || !templateName) return json({ error: "runId and templateName required" }, 400);
+        const dashed = runId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const properties = {
+          "Template Name": { title: [{ text: { content: templateName } }] },
+          "Status":        { select: { name: status || "Not Started" } },
+          "Format":        format ? { select: { name: format } } : { select: null },
+          "Price":         price  ? { rich_text: [{ text: { content: price } }] } : { rich_text: [] },
+          "Canva Edit Link":          { url: canvaLink     || null },
+          "Published Template Link":  { url: publishedLink || null },
+          "Etsy Listing URL":         { url: etsyLink      || null },
+        };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: {
+            "Authorization":  `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type":   "application/json",
+          },
+          body: JSON.stringify({ properties }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
       if (body.action === "createRun") {
         const { productId, templateName, format, status, price, canvaLink, publishedLink, etsyLink } = body;
         if (!productId || !templateName) return json({ error: "productId and templateName required" }, 400);

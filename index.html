@@ -228,6 +228,8 @@
   .run-status.not-started      { background:#444; color:#aaa; }
   .run-status.template-published { background:#856404; color:#ffe083; }
   .run-status.listed-on-etsy   { background:#0a3d20; color:#5ddb8e; }
+  .run-edit-btn { background:none; border:none; cursor:pointer; color:var(--text); font-size:11px; text-align:left; padding:0; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px; }
+  .run-edit-btn:hover { color:#ff6a00; }
 
   /* ── CAMPAIGN AUTOCOMPLETE ── */
   .camp-dropdown {
@@ -1114,6 +1116,62 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeRunModal()">Cancel</button>
       <button class="btn btn-primary" id="runSubmitBtn" onclick="submitRun()">Create Run</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Run Modal -->
+<div class="modal-bg" id="editRunModal" onclick="if(event.target===this)closeEditRunModal()">
+  <div class="modal">
+    <div class="modal-title">Edit Run</div>
+
+    <div class="modal-field">
+      <label class="modal-label">Template Name <span style="color:var(--danger)">*</span></label>
+      <input class="modal-input" id="editRunTemplateName" type="text" placeholder="Template name..." />
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">Format</label>
+        <select class="modal-select" id="editRunFormat">
+          <option value="">— none —</option>
+          <option value="Instagram">Instagram</option>
+          <option value="LinkedIn">LinkedIn</option>
+        </select>
+      </div>
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">Status</label>
+        <select class="modal-select" id="editRunStatus">
+          <option value="Not Started">Not Started</option>
+          <option value="Template Published">Template Published</option>
+          <option value="Listed on Etsy">Listed on Etsy</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Price</label>
+      <input class="modal-input" id="editRunPrice" type="text" placeholder="e.g. $9.99" />
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Canva Edit Link</label>
+      <input class="modal-input" id="editRunCanvaLink" type="url" placeholder="https://..." />
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Published Template Link</label>
+      <input class="modal-input" id="editRunPublishedLink" type="url" placeholder="https://..." />
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Etsy Listing URL</label>
+      <input class="modal-input" id="editRunEtsyLink" type="url" placeholder="https://..." />
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeEditRunModal()">Cancel</button>
+      <button class="btn btn-primary" id="editRunSaveBtn" onclick="saveEditRun()">Save</button>
     </div>
   </div>
 </div>
@@ -3449,23 +3507,39 @@ function renderProducts() {
 function renderRunsPanel(panel, runs) {
   if (!runs.length) { panel.innerHTML = '<div class="runs-empty">No runs yet.</div>'; return; }
   const statusClass = s => s === 'Not Started' ? 'not-started' : s === 'Template Published' ? 'template-published' : s === 'Listed on Etsy' ? 'listed-on-etsy' : '';
-  let html = '<table class="runs-table"><thead><tr>' +
-    '<th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published Template</th><th>Etsy</th>' +
-    '</tr></thead><tbody>';
+
+  const table = document.createElement('table');
+  table.className = 'runs-table';
+  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published Template</th><th>Etsy</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+
   runs.forEach(r => {
-    html +=
-      '<tr>' +
-      '<td>' + esc(r.name) + '</td>' +
+    const tr = document.createElement('tr');
+
+    // Template name — clickable to open edit modal
+    const nameTd = document.createElement('td');
+    const nameBtn = document.createElement('button');
+    nameBtn.className = 'run-edit-btn';
+    nameBtn.textContent = r.name;
+    nameBtn.title = 'Edit run';
+    nameBtn.onclick = () => openEditRunModal(r, tr, runs);
+    nameTd.appendChild(nameBtn);
+    tr.appendChild(nameTd);
+
+    const link = (url, label) => url ? '<a href="' + esc(url) + '" target="_blank">' + label + '</a>' : '—';
+    tr.insertAdjacentHTML('beforeend',
       '<td>' + esc(r.format || '—') + '</td>' +
       '<td><span class="run-status ' + statusClass(r.status) + '">' + esc(r.status || '—') + '</span></td>' +
       '<td>' + esc(r.price || '—') + '</td>' +
-      '<td class="link">' + (r.canvaLink     ? '<a href="' + esc(r.canvaLink)     + '" target="_blank">Edit ↗</a>' : '—') + '</td>' +
-      '<td class="link">' + (r.publishedLink ? '<a href="' + esc(r.publishedLink) + '" target="_blank">View ↗</a>'  : '—') + '</td>' +
-      '<td class="link">' + (r.etsyLink      ? '<a href="' + esc(r.etsyLink)      + '" target="_blank">Etsy ↗</a>'  : '—') + '</td>' +
-      '</tr>';
+      '<td class="link">' + link(r.canvaLink,     'Edit ↗')  + '</td>' +
+      '<td class="link">' + link(r.publishedLink, 'View ↗')  + '</td>' +
+      '<td class="link">' + link(r.etsyLink,      'Etsy ↗')  + '</td>');
+    tbody.appendChild(tr);
   });
-  html += '</tbody></table>';
-  panel.innerHTML = html;
+
+  table.appendChild(tbody);
+  panel.innerHTML = '';
+  panel.appendChild(table);
 }
 
 let ovData = [];
@@ -3912,6 +3986,73 @@ async function submitProduct() {
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Add';
+  }
+}
+
+// ── EDIT RUN MODAL ───────────────────────────────────────────────────
+let editRunCurrent = null;   // the run object being edited
+let editRunRowRef  = null;   // the <tr> to update in-place
+let editRunListRef = null;   // the runs array (to mutate on save)
+
+function openEditRunModal(run, tr, runsList) {
+  editRunCurrent = run;
+  editRunRowRef  = tr;
+  editRunListRef = runsList;
+  document.getElementById('editRunTemplateName').value  = run.name          || '';
+  document.getElementById('editRunFormat').value        = run.format        || '';
+  document.getElementById('editRunStatus').value        = run.status        || 'Not Started';
+  document.getElementById('editRunPrice').value         = run.price         || '';
+  document.getElementById('editRunCanvaLink').value     = run.canvaLink     || '';
+  document.getElementById('editRunPublishedLink').value = run.publishedLink || '';
+  document.getElementById('editRunEtsyLink').value      = run.etsyLink      || '';
+  document.getElementById('editRunSaveBtn').disabled    = false;
+  document.getElementById('editRunSaveBtn').textContent = 'Save';
+  document.getElementById('editRunModal').classList.add('open');
+  setTimeout(() => document.getElementById('editRunTemplateName').focus(), 280);
+}
+
+function closeEditRunModal() {
+  document.getElementById('editRunModal').classList.remove('open');
+}
+
+async function saveEditRun() {
+  const templateName  = document.getElementById('editRunTemplateName').value.trim();
+  if (!templateName) { document.getElementById('editRunTemplateName').focus(); return; }
+
+  const btn = document.getElementById('editRunSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+
+  const updates = {
+    runId:         editRunCurrent.id,
+    templateName,
+    format:        document.getElementById('editRunFormat').value        || null,
+    status:        document.getElementById('editRunStatus').value,
+    price:         document.getElementById('editRunPrice').value.trim()         || null,
+    canvaLink:     document.getElementById('editRunCanvaLink').value.trim()     || null,
+    publishedLink: document.getElementById('editRunPublishedLink').value.trim() || null,
+    etsyLink:      document.getElementById('editRunEtsyLink').value.trim()      || null,
+  };
+
+  try {
+    await call('updateRun', updates);
+    // Patch local run object
+    Object.assign(editRunCurrent, {
+      name:          updates.templateName,
+      format:        updates.format        || '',
+      status:        updates.status,
+      price:         updates.price         || '',
+      canvaLink:     updates.canvaLink     || null,
+      publishedLink: updates.publishedLink || null,
+      etsyLink:      updates.etsyLink      || null,
+    });
+    // Re-render the panel by finding its container
+    const panel = editRunRowRef.closest('.runs-panel');
+    if (panel) renderRunsPanel(panel, editRunListRef);
+    closeEditRunModal();
+    showToast('Run updated ✓', 'success');
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
   }
 }
 
