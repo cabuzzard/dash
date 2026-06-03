@@ -1075,8 +1075,70 @@ export default {
 
 
 
+
+      if (body.action === "uploadDeliveryFile") {
+        const { runId, fileName, contentType, fileData } = body;
+        if (!runId || !fileName || !contentType || !fileData) return json({ error: "runId, fileName, contentType, fileData required" }, 400);
+        const dashed = runId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+
+        // Decode base64
+        const binary = atob(fileData);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+        // Step 1: Create file upload entry
+        const createResp = await fetch("https://api.notion.com/v1/file_uploads", {
+          method: "POST",
+          headers: {
+            "Authorization":  `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type":   "application/json",
+          },
+          body: JSON.stringify({ content_type: contentType, content_length: bytes.length }),
+        });
+        const createData = await createResp.json();
+        if (!createResp.ok) return json({ error: createData.message || "File upload init failed" }, createResp.status);
+        const { id: uploadId, upload_url: uploadUrl } = createData;
+
+        // Step 2: Upload file bytes
+        const putResp = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Authorization": `Bearer ${NOTION_TOKEN}`,
+            "Content-Type":  contentType,
+          },
+          body: bytes,
+        });
+        if (!putResp.ok) {
+          const putErr = await putResp.text();
+          return json({ error: "File upload failed: " + putErr }, putResp.status);
+        }
+
+        // Step 3: Attach to run page
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: {
+            "Authorization":  `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type":   "application/json",
+          },
+          body: JSON.stringify({
+            properties: {
+              "Delivery File": {
+                files: [{ type: "file_upload", name: fileName, file_upload: { id: uploadId } }],
+              },
+            },
+          }),
+        });
+        const patchData = await patchResp.json();
+        if (!patchResp.ok) return json({ error: patchData.message || "Attach failed" }, patchResp.status);
+
+        // Return the hosted file URL for immediate display
+        const fileUrl = patchData.properties?.["Delivery File"]?.files?.[0]?.file?.url || null;
+        return json({ success: true, fileName, fileUrl });
+      }
       if (body.action === "updateRun") {
-        const { runId, templateName, format, status, price, canvaLink, publishedLink, etsyLink, deliveryFile } = body;
+        const { runId, templateName, format, status, price, canvaLink, publishedLink, etsyLink } = body;
         if (!runId || !templateName) return json({ error: "runId and templateName required" }, 400);
         const dashed = runId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const properties = {
@@ -1087,7 +1149,7 @@ export default {
           "Canva Edit Link":          { url: canvaLink     || null },
           "Published Template Link":  { url: publishedLink || null },
           "Etsy Listing URL":         { url: etsyLink      || null },
-          "Delivery File":            { url: deliveryFile  || null },
+
         };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
@@ -1103,7 +1165,7 @@ export default {
         return json({ success: true });
       }
       if (body.action === "createRun") {
-        const { productId, templateName, format, status, price, canvaLink, publishedLink, etsyLink, deliveryFile } = body;
+        const { productId, templateName, format, status, price, canvaLink, publishedLink, etsyLink } = body;
         if (!productId || !templateName) return json({ error: "productId and templateName required" }, 400);
         const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const properties = {
@@ -1116,7 +1178,7 @@ export default {
         if (canvaLink)     properties["Canva Edit Link"]         = { url: canvaLink };
         if (publishedLink) properties["Published Template Link"] = { url: publishedLink };
         if (etsyLink)      properties["Etsy Listing URL"]        = { url: etsyLink };
-        if (deliveryFile)  properties["Delivery File"]             = { url: deliveryFile };
+
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: {
@@ -1149,7 +1211,8 @@ export default {
             canvaLink:     props["Canva Edit Link"]?.url || null,
             publishedLink: props["Published Template Link"]?.url || null,
             etsyLink:      props["Etsy Listing URL"]?.url || null,
-            deliveryFile:  props["Delivery File"]?.url || null,
+            deliveryFile:     props["Delivery File"]?.files?.[0]?.file?.url || null,
+            deliveryFileName: props["Delivery File"]?.files?.[0]?.name || null,
           };
         });
         return json({ runs });
