@@ -3564,7 +3564,7 @@ function renderRunsPanel(panel, runs) {
     const delivTd = document.createElement('td');
     delivTd.className = 'link';
     if (r.deliveryFile) {
-      delivTd.innerHTML = '<a href="' + esc(r.deliveryFile) + '" target="_blank">' + esc(r.deliveryFileName || 'File ↗') + '</a>';
+      delivTd.innerHTML = '<a href="' + esc(r.deliveryFile) + '" target="_blank">↗</a>';
     } else {
       const dash = document.createElement('button');
       dash.className = 'run-edit-btn';
