@@ -1097,9 +1097,9 @@ export default {
           body: JSON.stringify({ content_type: contentType, mode: "single_part" }),
         });
         const createData = await createResp.json();
-        if (!createResp.ok) return json({ error: "Step1: " + JSON.stringify(createData) }, createResp.status);
+        if (!createResp.ok) return json({ error: createData.message || "File upload init failed" }, createResp.status);
         const { id: uploadId, upload_url: uploadUrl } = createData;
-        if (!uploadId) return json({ error: "Step1 no id: " + JSON.stringify(createData) }, 500);
+        if (!uploadId) return json({ error: "File upload init returned no ID" }, 500);
 
         // Step 2: POST file as multipart/form-data to Notion upload_url
         const formData = new FormData();
@@ -1109,9 +1109,9 @@ export default {
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
           body: formData,
         });
-        const putBody = await putResp.text();
         if (!putResp.ok) {
-          return json({ error: "Step2 (" + putResp.status + "): " + putBody.slice(0, 300) }, putResp.status);
+          const putErr = await putResp.text();
+          return json({ error: "File upload failed: " + putErr.slice(0, 200) }, putResp.status);
         }
 
         // Step 3: Attach to run page
@@ -1131,7 +1131,7 @@ export default {
           }),
         });
         const patchData = await patchResp.json();
-        if (!patchResp.ok) return json({ error: "Step3: " + JSON.stringify(patchData) }, patchResp.status);
+        if (!patchResp.ok) return json({ error: patchData.message || "Failed to attach file" }, patchResp.status);
 
         // Return the hosted file URL for immediate display
         const fileUrl = patchData.properties?.["Delivery File"]?.files?.[0]?.file?.url || null;
