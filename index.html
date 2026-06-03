@@ -230,6 +230,9 @@
   .run-status.listed-on-etsy   { background:#0a3d20; color:#5ddb8e; }
   .run-edit-btn { background:none; border:none; cursor:pointer; color:var(--text); font-size:11px; text-align:left; padding:0; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px; }
   .run-edit-btn:hover { color:#ff6a00; }
+  .run-copy-btn { background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer; color:var(--text3); font-size:10px; padding:2px 6px; white-space:nowrap; transition:color .15s,border-color .15s; }
+  .run-copy-btn:hover { color:var(--text); border-color:var(--text3); }
+  .run-copy-btn.copied { color:#5ddb8e; border-color:#5ddb8e; }
 
   /* ── CAMPAIGN AUTOCOMPLETE ── */
   .camp-dropdown {
@@ -1114,6 +1117,11 @@
     </div>
 
     <div class="modal-field">
+      <label class="modal-label">Listing Copy</label>
+      <textarea class="modal-input" id="runListingCopy" rows="4" placeholder="Paste listing copy here..." style="resize:vertical;font-family:inherit;"></textarea>
+    </div>
+
+    <div class="modal-field">
       <label class="modal-label">Etsy Listing URL</label>
       <input class="modal-input" id="runEtsyLink" type="url" placeholder="https://..." />
     </div>
@@ -1173,6 +1181,11 @@
       <label class="modal-label">Delivery File</label>
       <div id="editRunDeliveryFileCurrent" style="font-size:11px;color:var(--text3);margin-bottom:6px;"></div>
       <input class="modal-input" id="editRunDeliveryFile" type="file" style="padding:6px;" />
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Listing Copy</label>
+      <textarea class="modal-input" id="editRunListingCopy" rows="4" placeholder="Paste listing copy here..." style="resize:vertical;font-family:inherit;"></textarea>
     </div>
 
     <div class="modal-field">
@@ -3521,7 +3534,7 @@ function renderRunsPanel(panel, runs) {
 
   const table = document.createElement('table');
   table.className = 'runs-table';
-  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published Template</th><th>Delivery</th><th>Etsy</th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published Template</th><th>Delivery</th><th>Etsy</th><th style="cursor:default;"></th></tr></thead>';
   const tbody = document.createElement('tbody');
 
   runs.forEach(r => {
@@ -3578,6 +3591,27 @@ function renderRunsPanel(panel, runs) {
 
     tr.insertAdjacentHTML('beforeend',
       '<td class="link">' + link(r.etsyLink, 'Etsy ↗') + '</td>');
+
+    // Copy listing copy button
+    const copyTd = document.createElement('td');
+    copyTd.style.cssText = 'text-align:center;white-space:nowrap;';
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'run-copy-btn';
+    copyBtn.textContent = r.listingCopy ? 'Copy' : '—';
+    copyBtn.disabled = !r.listingCopy;
+    copyBtn.style.opacity = r.listingCopy ? '' : '.35';
+    if (r.listingCopy) {
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(r.listingCopy).then(() => {
+          copyBtn.textContent = '✓ Copied';
+          copyBtn.classList.add('copied');
+          setTimeout(() => { copyBtn.textContent = 'Copy'; copyBtn.classList.remove('copied'); }, 1800);
+        }).catch(() => showToast('Copy failed', 'error'));
+      };
+    }
+    copyTd.appendChild(copyBtn);
+    tr.appendChild(copyTd);
+
     tbody.appendChild(tr);
   });
 
@@ -4069,6 +4103,7 @@ function openEditRunModal(run, tr, runsList) {
   document.getElementById('editRunPrice').value         = run.price         || '';
   document.getElementById('editRunCanvaLink').value     = run.canvaLink     || '';
   document.getElementById('editRunPublishedLink').value = run.publishedLink || '';
+  document.getElementById('editRunListingCopy').value   = run.listingCopy   || '';
   document.getElementById('editRunDeliveryFile').value  = '';
   document.getElementById('editRunEtsyLink').value      = run.etsyLink      || '';
   const cur = document.getElementById('editRunDeliveryFileCurrent');
@@ -4100,6 +4135,7 @@ async function saveEditRun() {
     price:         document.getElementById('editRunPrice').value.trim()         || null,
     canvaLink:     document.getElementById('editRunCanvaLink').value.trim()     || null,
     publishedLink: document.getElementById('editRunPublishedLink').value.trim() || null,
+    listingCopy:   document.getElementById('editRunListingCopy').value.trim()   || null,
     etsyLink:      document.getElementById('editRunEtsyLink').value.trim()      || null,
   };
 
@@ -4123,6 +4159,7 @@ async function saveEditRun() {
       price:         updates.price         || '',
       canvaLink:     updates.canvaLink     || null,
       publishedLink: updates.publishedLink || null,
+      listingCopy:   updates.listingCopy   || '',
       etsyLink:      updates.etsyLink      || null,
     });
     // Re-render the panel by finding its container
@@ -4138,7 +4175,7 @@ async function saveEditRun() {
 
 // ── RUN MODAL ────────────────────────────────────────────────────────
 function openRunModal() {
-  ['runProductInput','runTemplateName','runPrice','runCanvaLink','runPublishedLink','runEtsyLink'].forEach(id => {
+  ['runProductInput','runTemplateName','runPrice','runCanvaLink','runPublishedLink','runListingCopy','runEtsyLink'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('runDeliveryFile').value = '';
@@ -4203,6 +4240,7 @@ async function submitRun() {
       price:         document.getElementById('runPrice').value.trim() || null,
       canvaLink:     document.getElementById('runCanvaLink').value.trim() || null,
       publishedLink: document.getElementById('runPublishedLink').value.trim() || null,
+      listingCopy:   document.getElementById('runListingCopy').value.trim() || null,
       etsyLink:      document.getElementById('runEtsyLink').value.trim() || null,
     });
 

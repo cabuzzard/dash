@@ -1138,7 +1138,7 @@ export default {
         return json({ success: true, fileName, fileUrl });
       }
       if (body.action === "updateRun") {
-        const { runId, templateName, format, status, price, canvaLink, publishedLink, etsyLink } = body;
+        const { runId, templateName, format, status, price, canvaLink, publishedLink, etsyLink, listingCopy } = body;
         if (!runId || !templateName) return json({ error: "runId and templateName required" }, 400);
         const dashed = runId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const properties = {
@@ -1149,6 +1149,7 @@ export default {
           "Canva Edit Link":          { url: canvaLink     || null },
           "Published Template Link":  { url: publishedLink || null },
           "Etsy Listing URL":         { url: etsyLink      || null },
+          "Listing Copy":             listingCopy ? { rich_text: [{ text: { content: listingCopy } }] } : { rich_text: [] },
 
         };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
@@ -1165,7 +1166,7 @@ export default {
         return json({ success: true });
       }
       if (body.action === "createRun") {
-        const { productId, templateName, format, status, price, canvaLink, publishedLink, etsyLink } = body;
+        const { productId, templateName, format, status, price, canvaLink, publishedLink, etsyLink, listingCopy } = body;
         if (!productId || !templateName) return json({ error: "productId and templateName required" }, 400);
         const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const properties = {
@@ -1178,6 +1179,7 @@ export default {
         if (canvaLink)     properties["Canva Edit Link"]         = { url: canvaLink };
         if (publishedLink) properties["Published Template Link"] = { url: publishedLink };
         if (etsyLink)      properties["Etsy Listing URL"]        = { url: etsyLink };
+        if (listingCopy)   properties["Listing Copy"]             = { rich_text: [{ text: { content: listingCopy } }] };
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
@@ -1213,6 +1215,7 @@ export default {
             etsyLink:      props["Etsy Listing URL"]?.url || null,
             deliveryFile:     props["Delivery File"]?.files?.[0]?.file?.url || null,
             deliveryFileName: props["Delivery File"]?.files?.[0]?.name || null,
+            listingCopy:      props["Listing Copy"]?.rich_text?.map(t => t.plain_text).join("") || "",
           };
         });
         return json({ runs });
