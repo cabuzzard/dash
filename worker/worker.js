@@ -952,8 +952,9 @@ export default {
         campRows.forEach(c => {
           const id = c.id.replace(/-/g, "");
           campById[id] = {
-            name: c.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
-            site: c.properties.site?.select?.name || "Other",
+            name:      c.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+            site:      c.properties.site?.select?.name || "Other",
+            microsite: c.properties["microsite"]?.url || null,
           };
         });
 
@@ -966,21 +967,24 @@ export default {
           // Find campaign via the "Campaigns" relation property
           let campaignName = "";
           let site = props.Site?.select?.name || "";
+          let micrositeUrl = null;
           const campRel = props["Campaigns"]?.relation || [];
           campRel.forEach(r => {
             const rid = r.id.replace(/-/g, "");
             if (campaignIds.has(rid)) {
               campaignName = campById[rid].name;
               if (!site) site = campById[rid].site;
+              if (!micrositeUrl) micrositeUrl = campById[rid].microsite;
             }
           });
 
           return {
             id,
-            name:     props.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
-            campaign: campaignName,
+            name:      props.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+            campaign:  campaignName,
             site,
-            status:   props.Status?.select?.name || "",
+            status:    props.Status?.select?.name || "",
+            microsite: micrositeUrl,
           };
         });
 

@@ -3248,6 +3248,11 @@ function renderProducts() {
     };
     hrow.appendChild(th);
   });
+  // Remove the STE col from sortable cols — render as fixed link headers
+  const steTh = document.createElement('th');
+  steTh.textContent = 'STE';
+  steTh.style.cssText = 'text-align:center;cursor:default;';
+  hrow.appendChild(steTh);
   const dbTh = document.createElement('th');
   dbTh.textContent = 'DB';
   dbTh.style.cssText = 'text-align:center;cursor:default;';
@@ -3302,6 +3307,7 @@ function renderProducts() {
       '<td class="site">'  + esc(p.site     || '—')  + '</td>';
     tr.appendChild(statusTd);
     tr.insertAdjacentHTML('beforeend',
+      '<td class="link">' + (p.microsite ? '<a href="' + esc(p.microsite) + '" target="_blank">↗</a>' : '<span style="color:var(--text3)">—</span>') + '</td>' +
       '<td class="link"><a href="https://www.notion.so/' + p.id + '" target="_blank">↗</a></td>');
     tbody.appendChild(tr);
   });
