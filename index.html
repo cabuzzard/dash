@@ -3531,9 +3531,26 @@ function renderRunsPanel(panel, runs) {
       '<td>' + esc(r.format || '—') + '</td>' +
       '<td><span class="run-status ' + statusClass(r.status) + '">' + esc(r.status || '—') + '</span></td>' +
       '<td>' + esc(r.price || '—') + '</td>' +
-      '<td class="link">' + link(r.canvaLink,     'Edit ↗')  + '</td>' +
-      '<td class="link">' + link(r.publishedLink, 'View ↗')  + '</td>' +
-      '<td class="link">' + link(r.etsyLink,      'Etsy ↗')  + '</td>');
+      '<td class="link">' + link(r.canvaLink, 'Edit ↗') + '</td>');
+
+    // Published Template — link if set, clickable dash if blank
+    const pubTd = document.createElement('td');
+    pubTd.className = 'link';
+    if (r.publishedLink) {
+      pubTd.innerHTML = '<a href="' + esc(r.publishedLink) + '" target="_blank">View ↗</a>';
+    } else {
+      const dash = document.createElement('button');
+      dash.className = 'run-edit-btn';
+      dash.textContent = '—';
+      dash.style.color = 'var(--text3)';
+      dash.title = 'Add published template link';
+      dash.onclick = () => openEditRunModal(r, tr, runs);
+      pubTd.appendChild(dash);
+    }
+    tr.appendChild(pubTd);
+
+    tr.insertAdjacentHTML('beforeend',
+      '<td class="link">' + link(r.etsyLink, 'Etsy ↗') + '</td>');
     tbody.appendChild(tr);
   });
 
