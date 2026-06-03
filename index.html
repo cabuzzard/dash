@@ -462,7 +462,8 @@
   </div>
 
   <div class="tab-panel" id="tabProducts">
-    <a class="add-link" onclick="openProductModal()">+ Add new product</a>
+    <a class="add-link" onclick="openProductModal()">+ Add product</a>
+    <a class="add-link" onclick="openRunModal()" style="margin-left:12px;">+ Add run</a>
     <div id="prodContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
@@ -1049,6 +1050,70 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeProductModal()">Cancel</button>
       <button class="btn btn-primary" id="prodSubmitBtn" onclick="submitProduct()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Run Modal -->
+<div class="modal-bg" id="runModal" onclick="if(event.target===this)closeRunModal()">
+  <div class="modal">
+    <div class="modal-title">New Run</div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Product <span style="color:var(--danger)">*</span></label>
+      <input class="modal-input" id="runProductInput" type="text" placeholder="Search In Development products..." autocomplete="off"
+        oninput="filterRunProducts()" onfocus="filterRunProducts()" />
+      <input type="hidden" id="runProductId" />
+      <div id="runProductDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Template Name <span style="color:var(--danger)">*</span></label>
+      <input class="modal-input" id="runTemplateName" type="text" placeholder="Template name..." />
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">Format</label>
+        <select class="modal-select" id="runFormat">
+          <option value="">— none —</option>
+          <option value="Instagram">Instagram</option>
+          <option value="LinkedIn">LinkedIn</option>
+        </select>
+      </div>
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">Status</label>
+        <select class="modal-select" id="runStatus">
+          <option value="Not Started">Not Started</option>
+          <option value="Template Published">Template Published</option>
+          <option value="Listed on Etsy">Listed on Etsy</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Price</label>
+      <input class="modal-input" id="runPrice" type="text" placeholder="e.g. $9.99" />
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Canva Edit Link</label>
+      <input class="modal-input" id="runCanvaLink" type="url" placeholder="https://..." />
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Published Template Link</label>
+      <input class="modal-input" id="runPublishedLink" type="url" placeholder="https://..." />
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Etsy Listing URL</label>
+      <input class="modal-input" id="runEtsyLink" type="url" placeholder="https://..." />
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeRunModal()">Cancel</button>
+      <button class="btn btn-primary" id="runSubmitBtn" onclick="submitRun()">Create Run</button>
     </div>
   </div>
 </div>
@@ -3385,7 +3450,7 @@ function renderRunsPanel(panel, runs) {
   if (!runs.length) { panel.innerHTML = '<div class="runs-empty">No runs yet.</div>'; return; }
   const statusClass = s => s === 'Not Started' ? 'not-started' : s === 'Template Published' ? 'template-published' : s === 'Listed on Etsy' ? 'listed-on-etsy' : '';
   let html = '<table class="runs-table"><thead><tr>' +
-    '<th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published</th><th>Etsy</th>' +
+    '<th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published Template</th><th>Etsy</th>' +
     '</tr></thead><tbody>';
   runs.forEach(r => {
     html +=
@@ -3394,9 +3459,9 @@ function renderRunsPanel(panel, runs) {
       '<td>' + esc(r.format || '—') + '</td>' +
       '<td><span class="run-status ' + statusClass(r.status) + '">' + esc(r.status || '—') + '</span></td>' +
       '<td>' + esc(r.price || '—') + '</td>' +
-      '<td class="link">' + (r.canvaLink     ? '<a href="' + esc(r.canvaLink)     + '" target="_blank">↗</a>' : '—') + '</td>' +
-      '<td class="link">' + (r.publishedLink ? '<a href="' + esc(r.publishedLink) + '" target="_blank">↗</a>' : '—') + '</td>' +
-      '<td class="link">' + (r.etsyLink      ? '<a href="' + esc(r.etsyLink)      + '" target="_blank">↗</a>' : '—') + '</td>' +
+      '<td class="link">' + (r.canvaLink     ? '<a href="' + esc(r.canvaLink)     + '" target="_blank">Edit ↗</a>' : '—') + '</td>' +
+      '<td class="link">' + (r.publishedLink ? '<a href="' + esc(r.publishedLink) + '" target="_blank">View ↗</a>'  : '—') + '</td>' +
+      '<td class="link">' + (r.etsyLink      ? '<a href="' + esc(r.etsyLink)      + '" target="_blank">Etsy ↗</a>'  : '—') + '</td>' +
       '</tr>';
   });
   html += '</tbody></table>';
@@ -3847,6 +3912,85 @@ async function submitProduct() {
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Add';
+  }
+}
+
+// ── RUN MODAL ────────────────────────────────────────────────────────
+function openRunModal() {
+  ['runProductInput','runTemplateName','runPrice','runCanvaLink','runPublishedLink','runEtsyLink'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('runProductId').value = '';
+  document.getElementById('runProductDropdown').style.display = 'none';
+  document.getElementById('runFormat').value = '';
+  document.getElementById('runStatus').value = 'Not Started';
+  document.getElementById('runSubmitBtn').disabled = false;
+  document.getElementById('runSubmitBtn').textContent = 'Create Run';
+  document.getElementById('runModal').classList.add('open');
+  setTimeout(() => document.getElementById('runProductInput').focus(), 280);
+}
+
+function filterRunProducts() {
+  const query = document.getElementById('runProductInput').value.trim().toLowerCase();
+  const dd    = document.getElementById('runProductDropdown');
+  // Only offer In Development products
+  const pool  = prodData.filter(p => p.status === 'In Development');
+  const matches = pool.filter(p => !query || (p.name || '').toLowerCase().includes(query));
+  dd.innerHTML = '';
+  matches.slice(0, 8).forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = p.name + (p.site ? ' · ' + p.site : '');
+    div.onmousedown = () => {
+      document.getElementById('runProductInput').value = p.name;
+      document.getElementById('runProductId').value    = p.id;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#runProductInput') && !e.target.closest('#runProductDropdown')) {
+    const dd = document.getElementById('runProductDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+function closeRunModal() {
+  document.getElementById('runModal').classList.remove('open');
+  document.getElementById('runProductDropdown').style.display = 'none';
+}
+
+async function submitRun() {
+  const productId    = document.getElementById('runProductId').value;
+  const templateName = document.getElementById('runTemplateName').value.trim();
+  if (!productId)    { document.getElementById('runProductInput').focus(); showToast('Select a product', 'error'); return; }
+  if (!templateName) { document.getElementById('runTemplateName').focus(); return; }
+
+  const btn = document.getElementById('runSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+
+  try {
+    await call('createRun', {
+      productId,
+      templateName,
+      format:        document.getElementById('runFormat').value || null,
+      status:        document.getElementById('runStatus').value,
+      price:         document.getElementById('runPrice').value.trim() || null,
+      canvaLink:     document.getElementById('runCanvaLink').value.trim() || null,
+      publishedLink: document.getElementById('runPublishedLink').value.trim() || null,
+      etsyLink:      document.getElementById('runEtsyLink').value.trim() || null,
+    });
+    closeRunModal();
+    showToast('Run created ✓', 'success');
+    // Force reload of the expanded run panel for this product if open
+    prodLoaded = false;
+    loadProducts();
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Create Run';
   }
 }
 

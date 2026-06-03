@@ -1073,6 +1073,34 @@ export default {
 
       // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: getTitles Î“Ã¶Ã‡Î“Ã¶Ã‡
 
+
+      if (body.action === "createRun") {
+        const { productId, templateName, format, status, price, canvaLink, publishedLink, etsyLink } = body;
+        if (!productId || !templateName) return json({ error: "productId and templateName required" }, 400);
+        const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const properties = {
+          "Template Name": { title: [{ text: { content: templateName } }] },
+          "products":      { relation: [{ id: dashed }] },
+          "Status":        { select: { name: status || "Not Started" } },
+        };
+        if (format)        properties["Format"]                  = { select: { name: format } };
+        if (price)         properties["Price"]                   = { rich_text: [{ text: { content: price } }] };
+        if (canvaLink)     properties["Canva Edit Link"]         = { url: canvaLink };
+        if (publishedLink) properties["Published Template Link"] = { url: publishedLink };
+        if (etsyLink)      properties["Etsy Listing URL"]        = { url: etsyLink };
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: {
+            "Authorization":  `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type":   "application/json",
+          },
+          body: JSON.stringify({ parent: { database_id: RUNS_DB }, properties }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ id: result.id });
+      }
       if (body.action === "getRuns") {
         const { productId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
