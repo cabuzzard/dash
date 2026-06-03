@@ -1109,6 +1109,11 @@
     </div>
 
     <div class="modal-field">
+      <label class="modal-label">Delivery File</label>
+      <input class="modal-input" id="runDeliveryFile" type="url" placeholder="https://..." />
+    </div>
+
+    <div class="modal-field">
       <label class="modal-label">Etsy Listing URL</label>
       <input class="modal-input" id="runEtsyLink" type="url" placeholder="https://..." />
     </div>
@@ -1162,6 +1167,11 @@
     <div class="modal-field">
       <label class="modal-label">Published Template Link</label>
       <input class="modal-input" id="editRunPublishedLink" type="url" placeholder="https://..." />
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Delivery File</label>
+      <input class="modal-input" id="editRunDeliveryFile" type="url" placeholder="https://..." />
     </div>
 
     <div class="modal-field">
@@ -3510,7 +3520,7 @@ function renderRunsPanel(panel, runs) {
 
   const table = document.createElement('table');
   table.className = 'runs-table';
-  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published Template</th><th>Etsy</th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published Template</th><th>Delivery</th><th>Etsy</th></tr></thead>';
   const tbody = document.createElement('tbody');
 
   runs.forEach(r => {
@@ -3548,6 +3558,22 @@ function renderRunsPanel(panel, runs) {
       pubTd.appendChild(dash);
     }
     tr.appendChild(pubTd);
+
+    // Delivery File — link if set, clickable dash if blank
+    const delivTd = document.createElement('td');
+    delivTd.className = 'link';
+    if (r.deliveryFile) {
+      delivTd.innerHTML = '<a href="' + esc(r.deliveryFile) + '" target="_blank">File ↗</a>';
+    } else {
+      const dash = document.createElement('button');
+      dash.className = 'run-edit-btn';
+      dash.textContent = '—';
+      dash.style.color = 'var(--text3)';
+      dash.title = 'Add delivery file';
+      dash.onclick = () => openEditRunModal(r, tr, runs);
+      delivTd.appendChild(dash);
+    }
+    tr.appendChild(delivTd);
 
     tr.insertAdjacentHTML('beforeend',
       '<td class="link">' + link(r.etsyLink, 'Etsy ↗') + '</td>');
@@ -4021,6 +4047,7 @@ function openEditRunModal(run, tr, runsList) {
   document.getElementById('editRunPrice').value         = run.price         || '';
   document.getElementById('editRunCanvaLink').value     = run.canvaLink     || '';
   document.getElementById('editRunPublishedLink').value = run.publishedLink || '';
+  document.getElementById('editRunDeliveryFile').value  = run.deliveryFile  || '';
   document.getElementById('editRunEtsyLink').value      = run.etsyLink      || '';
   document.getElementById('editRunSaveBtn').disabled    = false;
   document.getElementById('editRunSaveBtn').textContent = 'Save';
@@ -4047,6 +4074,7 @@ async function saveEditRun() {
     price:         document.getElementById('editRunPrice').value.trim()         || null,
     canvaLink:     document.getElementById('editRunCanvaLink').value.trim()     || null,
     publishedLink: document.getElementById('editRunPublishedLink').value.trim() || null,
+    deliveryFile:  document.getElementById('editRunDeliveryFile').value.trim()  || null,
     etsyLink:      document.getElementById('editRunEtsyLink').value.trim()      || null,
   };
 
@@ -4060,6 +4088,7 @@ async function saveEditRun() {
       price:         updates.price         || '',
       canvaLink:     updates.canvaLink     || null,
       publishedLink: updates.publishedLink || null,
+      deliveryFile:  updates.deliveryFile  || null,
       etsyLink:      updates.etsyLink      || null,
     });
     // Re-render the panel by finding its container
@@ -4075,7 +4104,7 @@ async function saveEditRun() {
 
 // ── RUN MODAL ────────────────────────────────────────────────────────
 function openRunModal() {
-  ['runProductInput','runTemplateName','runPrice','runCanvaLink','runPublishedLink','runEtsyLink'].forEach(id => {
+  ['runProductInput','runTemplateName','runPrice','runCanvaLink','runPublishedLink','runDeliveryFile','runEtsyLink'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('runProductId').value = '';
@@ -4139,6 +4168,7 @@ async function submitRun() {
       price:         document.getElementById('runPrice').value.trim() || null,
       canvaLink:     document.getElementById('runCanvaLink').value.trim() || null,
       publishedLink: document.getElementById('runPublishedLink').value.trim() || null,
+      deliveryFile:  document.getElementById('runDeliveryFile').value.trim() || null,
       etsyLink:      document.getElementById('runEtsyLink').value.trim() || null,
     });
     closeRunModal();

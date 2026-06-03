@@ -1076,7 +1076,7 @@ export default {
 
 
       if (body.action === "updateRun") {
-        const { runId, templateName, format, status, price, canvaLink, publishedLink, etsyLink } = body;
+        const { runId, templateName, format, status, price, canvaLink, publishedLink, etsyLink, deliveryFile } = body;
         if (!runId || !templateName) return json({ error: "runId and templateName required" }, 400);
         const dashed = runId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const properties = {
@@ -1087,6 +1087,7 @@ export default {
           "Canva Edit Link":          { url: canvaLink     || null },
           "Published Template Link":  { url: publishedLink || null },
           "Etsy Listing URL":         { url: etsyLink      || null },
+          "Delivery File":            { url: deliveryFile  || null },
         };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
@@ -1102,7 +1103,7 @@ export default {
         return json({ success: true });
       }
       if (body.action === "createRun") {
-        const { productId, templateName, format, status, price, canvaLink, publishedLink, etsyLink } = body;
+        const { productId, templateName, format, status, price, canvaLink, publishedLink, etsyLink, deliveryFile } = body;
         if (!productId || !templateName) return json({ error: "productId and templateName required" }, 400);
         const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const properties = {
@@ -1115,6 +1116,7 @@ export default {
         if (canvaLink)     properties["Canva Edit Link"]         = { url: canvaLink };
         if (publishedLink) properties["Published Template Link"] = { url: publishedLink };
         if (etsyLink)      properties["Etsy Listing URL"]        = { url: etsyLink };
+        if (deliveryFile)  properties["Delivery File"]             = { url: deliveryFile };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: {
@@ -1147,6 +1149,7 @@ export default {
             canvaLink:     props["Canva Edit Link"]?.url || null,
             publishedLink: props["Published Template Link"]?.url || null,
             etsyLink:      props["Etsy Listing URL"]?.url || null,
+            deliveryFile:  props["Delivery File"]?.url || null,
           };
         });
         return json({ runs });
