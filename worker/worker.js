@@ -1094,21 +1094,24 @@ export default {
             "Notion-Version": NOTION_VERSION,
             "Content-Type":   "application/json",
           },
-          body: JSON.stringify({ content_type: contentType, content_length: bytes.length }),
+          body: JSON.stringify({ content_type: contentType, mode: "single_part" }),
         });
         const createData = await createResp.json();
-        if (!createResp.ok) return json({ error: createData.message || "File upload init failed" }, createResp.status);
+        if (!createResp.ok) return json({ error: "Step1: " + JSON.stringify(createData) }, createResp.status);
         const { id: uploadId, upload_url: uploadUrl } = createData;
+        if (!uploadId) return json({ error: "Step1 no id: " + JSON.stringify(createData) }, 500);
 
-        // Step 2: Upload file bytes to presigned URL (no Auth header — S3 presigned URL)
+        // Step 2: Upload file bytes — send as multipart/form-data to Notion
+        const formData = new FormData();
+        formData.append("file", new Blob([bytes], { type: contentType }), fileName);
         const putResp = await fetch(uploadUrl, {
           method: "PUT",
-          headers: { "Content-Type": contentType },
-          body: bytes,
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}` },
+          body: formData,
         });
         if (!putResp.ok) {
           const putErr = await putResp.text();
-          return json({ error: "File upload failed: " + putErr }, putResp.status);
+          return json({ error: "Step2: " + putErr }, putResp.status);
         }
 
         // Step 3: Attach to run page
@@ -1128,7 +1131,7 @@ export default {
           }),
         });
         const patchData = await patchResp.json();
-        if (!patchResp.ok) return json({ error: patchData.message || "Attach failed" }, patchResp.status);
+        if (!patchResp.ok) return json({ error: "Step3: " + JSON.stringify(patchData) }, patchResp.status);
 
         // Return the hosted file URL for immediate display
         const fileUrl = patchData.properties?.["Delivery File"]?.files?.[0]?.file?.url || null;
