@@ -1010,28 +1010,27 @@
 <!-- Add Product Modal -->
 <div class="modal-bg" id="prodModal" onclick="if(event.target===this)closeProductModal()">
   <div class="modal">
-    <div class="modal-title">New Product</div>
-
-    <div class="modal-field">
-      <label class="modal-label">Title</label>
-      <input class="modal-input" id="prodTitle" type="text" placeholder="Product name..." />
-    </div>
+    <div class="modal-title">Add to In Development</div>
 
     <div class="modal-field" style="position:relative;">
-      <label class="modal-label">Campaign</label>
-      <input class="modal-input" id="prodCampaignInput" type="text" placeholder="Search or type to create..." autocomplete="off" oninput="filterCampaigns()" onfocus="filterCampaigns()" />
+      <label class="modal-label">Product</label>
+      <input class="modal-input" id="prodTitle" type="text" placeholder="Search existing or type new name..." autocomplete="off"
+        oninput="filterInDevProducts()" onfocus="filterInDevProducts()" />
+      <input type="hidden" id="prodSearchId" />
+      <div id="prodDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field" id="prodCampaignField" style="position:relative;display:none;">
+      <label class="modal-label">Campaign <span style="color:var(--text3);font-weight:400;">(optional, for new)</span></label>
+      <input class="modal-input" id="prodCampaignInput" type="text" placeholder="Search campaigns..." autocomplete="off"
+        oninput="filterCampaigns()" onfocus="filterCampaigns()" />
       <input type="hidden" id="prodCampaignId" />
       <div id="campDropdown" class="camp-dropdown" style="display:none;"></div>
     </div>
 
-    <div class="modal-field">
-      <label class="modal-label">Status</label>
-      <select class="modal-select" id="prodStatus"></select>
-    </div>
-
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeProductModal()">Cancel</button>
-      <button class="btn btn-primary" id="prodSubmitBtn" onclick="submitProduct()">Create</button>
+      <button class="btn btn-primary" id="prodSubmitBtn" onclick="submitProduct()">Add</button>
     </div>
   </div>
 </div>
@@ -3210,7 +3209,9 @@ async function loadProducts() {
 function renderProducts() {
   const el = document.getElementById('prodContent');
   el.innerHTML = '';
-  if (!prodData.length) { el.innerHTML = '<div class="empty">No products found.</div>'; return; }
+
+  const inDev = prodData.filter(p => p.status === 'In Development');
+  if (!inDev.length) { el.innerHTML = '<div class="empty">No products in development.</div>'; return; }
 
   const cols = [
     { label: 'Title',    key: 'name',     type: 'str' },
@@ -3219,11 +3220,7 @@ function renderProducts() {
     { label: 'Status',   key: 'status',   type: 'str' },
   ];
 
-  const STATUS_ORDER = { 'Active': 0, 'In Development': 1 };
-  const statusRank = s => STATUS_ORDER[s] ?? 2;
-
-  const sorted = [...prodData].sort((a, b) => {
-    // If user has clicked a column header, use that sort
+  const sorted = [...inDev].sort((a, b) => {
     if (prodSort.col !== null) {
       const col = cols[prodSort.col];
       const av = a[col.key] || '';
@@ -3231,9 +3228,7 @@ function renderProducts() {
       const cmp = String(av).localeCompare(String(bv));
       return prodSort.asc ? cmp : -cmp;
     }
-    // Default: Active → In Development → everything else, then alpha by name
-    const rankCmp = statusRank(a.status) - statusRank(b.status);
-    return rankCmp !== 0 ? rankCmp : (a.name || '').localeCompare(b.name || '');
+    return (a.name || '').localeCompare(b.name || '');
   });
 
   const table = document.createElement('table');
@@ -3605,22 +3600,73 @@ function renderTable() {
 
 // ── PRODUCT MODAL ────────────────────────────────────────────────────
 function openProductModal() {
-  // Status options
-  const statusSel = document.getElementById('prodStatus');
-  const statuses = prodStatuses.length ? prodStatuses : ['Active', 'Research', 'In Development', 'Paused', 'Retired'];
-  statusSel.innerHTML = statuses.map(s => `<option value="${s}">${s}</option>`).join('');
-
-  // Clear campaign
+  document.getElementById('prodTitle').value = '';
+  document.getElementById('prodSearchId').value = '';
+  document.getElementById('prodDropdown').style.display = 'none';
+  document.getElementById('prodCampaignField').style.display = 'none';
   document.getElementById('prodCampaignInput').value = '';
   document.getElementById('prodCampaignId').value = '';
   document.getElementById('campDropdown').style.display = 'none';
-
-  document.getElementById('prodTitle').value = '';
   document.getElementById('prodSubmitBtn').disabled = false;
-  document.getElementById('prodSubmitBtn').textContent = 'Create';
+  document.getElementById('prodSubmitBtn').textContent = 'Add';
   document.getElementById('prodModal').classList.add('open');
   setTimeout(() => document.getElementById('prodTitle').focus(), 280);
 }
+
+function filterInDevProducts() {
+  const query  = document.getElementById('prodTitle').value.trim().toLowerCase();
+  const dd     = document.getElementById('prodDropdown');
+  // Candidates: products NOT already In Development
+  const pool   = prodData.filter(p => p.status !== 'In Development');
+  const matches = pool.filter(p => !query || (p.name || '').toLowerCase().includes(query));
+
+  dd.innerHTML = '';
+
+  matches.slice(0, 8).forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = p.name + (p.status ? ' · ' + p.status : '');
+    div.onmousedown = () => {
+      document.getElementById('prodTitle').value    = p.name;
+      document.getElementById('prodSearchId').value = p.id;
+      document.getElementById('prodCampaignField').style.display = 'none';
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+
+  // "Create new" option if typed name doesn't exactly match an existing product
+  const exactMatch = prodData.some(p => p.name.toLowerCase() === query);
+  if (query && !exactMatch) {
+    const div = document.createElement('div');
+    div.className = 'camp-option create';
+    div.textContent = '+ Create new "' + document.getElementById('prodTitle').value.trim() + '"';
+    div.onmousedown = () => {
+      document.getElementById('prodSearchId').value = '';
+      document.getElementById('prodCampaignField').style.display = '';
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  }
+
+  // Clear existingId if user edits the text after selecting
+  if (document.getElementById('prodSearchId').value) {
+    const currentName = prodData.find(p => p.id === document.getElementById('prodSearchId').value)?.name || '';
+    if (document.getElementById('prodTitle').value !== currentName) {
+      document.getElementById('prodSearchId').value = '';
+      document.getElementById('prodCampaignField').style.display = query ? '' : 'none';
+    }
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#prodTitle') && !e.target.closest('#prodDropdown')) {
+    const dd = document.getElementById('prodDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
 
 function filterCampaigns() {
   const query = document.getElementById('prodCampaignInput').value.trim().toLowerCase();
@@ -3677,28 +3723,39 @@ document.addEventListener('click', e => {
 
 function closeProductModal() {
   document.getElementById('prodModal').classList.remove('open');
+  document.getElementById('prodDropdown').style.display = 'none';
   document.getElementById('campDropdown').style.display = 'none';
 }
 
 async function submitProduct() {
   const title      = document.getElementById('prodTitle').value.trim();
+  const existingId = document.getElementById('prodSearchId').value;
   const campaignId = document.getElementById('prodCampaignId').value;
-  const status     = document.getElementById('prodStatus').value;
 
   if (!title) { document.getElementById('prodTitle').focus(); return; }
 
   const btn = document.getElementById('prodSubmitBtn');
-  btn.disabled = true; btn.textContent = 'Creating...';
+  btn.disabled = true; btn.textContent = 'Adding...';
 
   try {
-    await call('createProduct', { title, campaignId, status });
+    if (existingId) {
+      // Promote existing product to In Development
+      await call('updateProductStatus', { productId: existingId, status: 'In Development' });
+      // Update local cache immediately
+      const p = prodData.find(x => x.id === existingId);
+      if (p) p.status = 'In Development';
+      showToast('Moved to In Development ✓', 'success');
+    } else {
+      // Create brand-new product, always In Development
+      await call('createProduct', { title, campaignId, status: 'In Development' });
+      showToast('Product created ✓', 'success');
+      prodLoaded = false;
+    }
     closeProductModal();
-    showToast('Product created ✓', 'success');
-    prodLoaded = false;
     loadProducts();
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
-    btn.disabled = false; btn.textContent = 'Create';
+    btn.disabled = false; btn.textContent = 'Add';
   }
 }
 
