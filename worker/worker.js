@@ -1100,13 +1100,10 @@ export default {
         if (!createResp.ok) return json({ error: createData.message || "File upload init failed" }, createResp.status);
         const { id: uploadId, upload_url: uploadUrl } = createData;
 
-        // Step 2: Upload file bytes
+        // Step 2: Upload file bytes to presigned URL (no Auth header — S3 presigned URL)
         const putResp = await fetch(uploadUrl, {
           method: "PUT",
-          headers: {
-            "Authorization": `Bearer ${NOTION_TOKEN}`,
-            "Content-Type":  contentType,
-          },
+          headers: { "Content-Type": contentType },
           body: bytes,
         });
         if (!putResp.ok) {
