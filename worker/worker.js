@@ -1,4 +1,4 @@
-// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET are set as Cloudflare Worker secrets (env vars).
+﻿// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET are set as Cloudflare Worker secrets (env vars).
 // They are loaded from env at the start of each request â€” never hardcoded here.
 let NOTION_TOKEN = ""; // set per-request from env.NOTION_TOKEN
 const NOTION_VERSION     = "2022-06-28";
@@ -16,6 +16,7 @@ const SM_ACCOUNTS_DB     = "aa6a16f2a77245bfb5efd9a8eb314b07";
 const EMAILS_DB          = "6252e9917027488fb628436aabb89947";
 const SM_POSTS_DB        = "addcfe1d1beb46dbbcaa397504a8041d";
 const TRADES_DB          = "2207133ee3b04ff496e5e75415e3e43d";
+const RUNS_DB            = "21c676fd91b74137b5f3ab57167a0849";
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -1071,6 +1072,30 @@ export default {
       }
 
       // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: getTitles Î“Ã¶Ã‡Î“Ã¶Ã‡
+
+      if (body.action === "getRuns") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const rows = await notionQuery(RUNS_DB, {
+          filter: { property: "products", relation: { contains: dashed } },
+          sorts: [{ timestamp: "created_time", direction: "descending" }],
+        });
+        const runs = rows.map(r => {
+          const props = r.properties;
+          return {
+            id:            r.id.replace(/-/g, ""),
+            name:          props["Template Name"]?.title?.map(t => t.plain_text).join("") || "Untitled",
+            status:        props.Status?.select?.name || "",
+            format:        props.Format?.select?.name || "",
+            price:         props.Price?.rich_text?.map(t => t.plain_text).join("") || "",
+            canvaLink:     props["Canva Edit Link"]?.url || null,
+            publishedLink: props["Published Template Link"]?.url || null,
+            etsyLink:      props["Etsy Listing URL"]?.url || null,
+          };
+        });
+        return json({ runs });
+      }
       if (body.action === "getTitles") {
         const { stages, campaignId } = body;
         const stageFilters = (stages || ["Review", "Publish"]).map(s => ({

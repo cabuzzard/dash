@@ -211,6 +211,24 @@
   .ov-table tbody tr.status-indev td { background: #ffffff; color: #000 !important; }
   .ov-table tbody tr.status-indev .status-select { background: #eeeeee; border-color: #ccc; color: #000; }
 
+  /* ── RUNS DROPDOWN ── */
+  .prod-expand-btn { background:none; border:none; cursor:pointer; color:var(--text3); font-size:11px; padding:0 4px; line-height:1; transition:transform .15s; }
+  .prod-expand-btn.open { transform:rotate(90deg); }
+  .runs-row td { padding:0 !important; border-bottom:1px solid var(--border); }
+  .runs-panel { background:var(--surface2); padding:10px 14px 10px 32px; }
+  .runs-panel .loading-wrap { padding:8px 0; }
+  .runs-table { width:100%; border-collapse:collapse; font-size:11px; }
+  .runs-table th { font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--text3); padding:4px 8px; text-align:left; border-bottom:1px solid var(--border); }
+  .runs-table td { padding:5px 8px; border-bottom:1px solid var(--border); color:var(--text2); vertical-align:middle; }
+  .runs-table tr:last-child td { border-bottom:none; }
+  .runs-table a { color:var(--text2); text-decoration:none; border-bottom:1px solid var(--border); }
+  .runs-table a:hover { color:#fff; }
+  .runs-empty { font-size:12px; color:var(--text3); padding:6px 0; }
+  .run-status { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:600; }
+  .run-status.not-started      { background:#444; color:#aaa; }
+  .run-status.template-published { background:#856404; color:#ffe083; }
+  .run-status.listed-on-etsy   { background:#0a3d20; color:#5ddb8e; }
+
   /* ── CAMPAIGN AUTOCOMPLETE ── */
   .camp-dropdown {
     position: absolute; top: 100%; left: 0; right: 0; z-index: 300;
@@ -3236,6 +3254,10 @@ function renderProducts() {
 
   const thead = document.createElement('thead');
   const hrow  = document.createElement('tr');
+  // Empty th for the expand-toggle column
+  const expandTh = document.createElement('th');
+  expandTh.style.cssText = 'width:24px;cursor:default;';
+  hrow.appendChild(expandTh);
   cols.forEach((col, i) => {
     const th = document.createElement('th');
     if (prodSort.col === i) th.classList.add('sorted');
@@ -3248,6 +3270,7 @@ function renderProducts() {
     };
     hrow.appendChild(th);
   });
+  // Empty th for expand toggle column is prepended above
   // Remove the STE col from sortable cols — render as fixed link headers
   const steTh = document.createElement('th');
   steTh.textContent = 'STE';
@@ -3301,21 +3324,83 @@ function renderProducts() {
     };
     statusTd.appendChild(sel);
 
-    tr.innerHTML =
+    // Expand toggle cell (first)
+    const expandTd = document.createElement('td');
+    expandTd.style.cssText = 'width:24px;padding:0 4px;';
+    const expandBtn = document.createElement('button');
+    expandBtn.className = 'prod-expand-btn';
+    expandBtn.textContent = '▶';
+    expandBtn.title = 'Show runs';
+    expandTd.appendChild(expandBtn);
+    tr.appendChild(expandTd);
+
+    tr.insertAdjacentHTML('beforeend',
       '<td class="name">'  + esc(p.name)            + '</td>' +
       '<td class="site">'  + esc(p.campaign || '—')  + '</td>' +
-      '<td class="site">'  + esc(p.site     || '—')  + '</td>';
+      '<td class="site">'  + esc(p.site     || '—')  + '</td>');
     tr.appendChild(statusTd);
     tr.insertAdjacentHTML('beforeend',
       '<td class="link">' + (p.microsite ? '<a href="' + esc(p.microsite) + '" target="_blank">↗</a>' : '<span style="color:var(--text3)">—</span>') + '</td>' +
       '<td class="link"><a href="https://www.notion.so/' + p.id + '" target="_blank">↗</a></td>');
     tbody.appendChild(tr);
+
+    // Runs sub-row (hidden until expanded)
+    const colSpan = cols.length + 4; // status + STE + DB + expand
+    const runsRow = document.createElement('tr');
+    runsRow.className = 'runs-row';
+    runsRow.style.display = 'none';
+    const runsTd = document.createElement('td');
+    runsTd.colSpan = colSpan;
+    const runsPanel = document.createElement('div');
+    runsPanel.className = 'runs-panel';
+    runsPanel.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading runs...</div>';
+    runsTd.appendChild(runsPanel);
+    runsRow.appendChild(runsTd);
+    tbody.appendChild(runsRow);
+
+    let runsLoaded = false;
+    expandBtn.onclick = async () => {
+      const open = runsRow.style.display !== 'none';
+      runsRow.style.display = open ? 'none' : '';
+      expandBtn.classList.toggle('open', !open);
+      if (!open && !runsLoaded) {
+        runsLoaded = true;
+        try {
+          const data = await call('getRuns', { productId: p.id });
+          renderRunsPanel(runsPanel, data.runs || []);
+        } catch (e) {
+          runsPanel.innerHTML = '<div class="runs-empty">Error: ' + esc(e.message) + '</div>';
+        }
+      }
+    };
   });
   table.appendChild(tbody);
   const wrap = document.createElement('div');
   wrap.className = 'table-wrap';
   wrap.appendChild(table);
   el.appendChild(wrap);
+}
+
+function renderRunsPanel(panel, runs) {
+  if (!runs.length) { panel.innerHTML = '<div class="runs-empty">No runs yet.</div>'; return; }
+  const statusClass = s => s === 'Not Started' ? 'not-started' : s === 'Template Published' ? 'template-published' : s === 'Listed on Etsy' ? 'listed-on-etsy' : '';
+  let html = '<table class="runs-table"><thead><tr>' +
+    '<th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published</th><th>Etsy</th>' +
+    '</tr></thead><tbody>';
+  runs.forEach(r => {
+    html +=
+      '<tr>' +
+      '<td>' + esc(r.name) + '</td>' +
+      '<td>' + esc(r.format || '—') + '</td>' +
+      '<td><span class="run-status ' + statusClass(r.status) + '">' + esc(r.status || '—') + '</span></td>' +
+      '<td>' + esc(r.price || '—') + '</td>' +
+      '<td class="link">' + (r.canvaLink     ? '<a href="' + esc(r.canvaLink)     + '" target="_blank">↗</a>' : '—') + '</td>' +
+      '<td class="link">' + (r.publishedLink ? '<a href="' + esc(r.publishedLink) + '" target="_blank">↗</a>' : '—') + '</td>' +
+      '<td class="link">' + (r.etsyLink      ? '<a href="' + esc(r.etsyLink)      + '" target="_blank">↗</a>' : '—') + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  panel.innerHTML = html;
 }
 
 let ovData = [];
