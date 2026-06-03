@@ -1101,17 +1101,17 @@ export default {
         const { id: uploadId, upload_url: uploadUrl } = createData;
         if (!uploadId) return json({ error: "Step1 no id: " + JSON.stringify(createData) }, 500);
 
-        // Step 2: Upload file bytes — send as multipart/form-data to Notion
+        // Step 2: POST file as multipart/form-data to Notion upload_url
         const formData = new FormData();
         formData.append("file", new Blob([bytes], { type: contentType }), fileName);
         const putResp = await fetch(uploadUrl, {
-          method: "PUT",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}` },
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
           body: formData,
         });
+        const putBody = await putResp.text();
         if (!putResp.ok) {
-          const putErr = await putResp.text();
-          return json({ error: "Step2: " + putErr }, putResp.status);
+          return json({ error: "Step2 (" + putResp.status + "): " + putBody.slice(0, 300) }, putResp.status);
         }
 
         // Step 3: Attach to run page
