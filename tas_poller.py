@@ -1,6 +1,6 @@
 """
 tas_poller.py
-Tracks underlying price for open options trades.
+Tracks underlying price and contract price for open options trades.
 Runs every 30 min during market hours, updates max high/low, marks expired on expiry date.
 
 Usage:
@@ -10,8 +10,8 @@ Usage:
 
 import time
 import requests
-from datetime import datetime, timezone, date, timedelta
-import calendar
+import yfinance as yf
+from datetime import datetime, timezone, date
 
 WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev"
 WORKER_PIN  = "1246"
@@ -28,104 +28,73 @@ def worker_call(token, action, **kwargs):
     r.raise_for_status()
     return r.json()
 
-# ── Price fetch ───────────────────────────────────────────────────────
+# ── Underlying price ───────────────────────────────────────────────────
 def get_price_data(ticker: str) -> dict | None:
     try:
-        url = (
-            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
-            "?interval=1m&range=1d"
-        )
-        s, crumb = yahoo_session()
-        r = s.get(url, timeout=15, proxies={})
-        r.raise_for_status()
-        result = r.json()["chart"]["result"][0]
-        closes = result["indicators"]["quote"][0]["close"]
-        highs  = result["indicators"]["quote"][0]["high"]
-        lows   = result["indicators"]["quote"][0]["low"]
-        timestamps = result["timestamp"]
-
-        # filter None values
-        valid_closes = [(t, c) for t, c in zip(timestamps, closes) if c is not None]
-        valid_highs  = [(t, h) for t, h in zip(timestamps, highs)  if h is not None]
-        valid_lows   = [(t, l) for t, l in zip(timestamps, lows)   if l is not None]
-
-        if not valid_closes:
+        t    = yf.Ticker(ticker)
+        hist = t.history(period="1d", interval="1m")
+        if hist.empty:
+            print(f"  [price] {ticker}: no history data")
             return None
 
-        current   = round(valid_closes[-1][1], 2)
-        high_t, high_v = max(valid_highs, key=lambda x: x[1])
-        low_t,  low_v  = min(valid_lows,  key=lambda x: x[1])
-
-        from datetime import timezone
-        high_time = datetime.fromtimestamp(high_t, tz=timezone.utc).isoformat()
-        low_time  = datetime.fromtimestamp(low_t,  tz=timezone.utc).isoformat()
+        current = round(float(hist["Close"].iloc[-1]), 2)
+        high_v  = round(float(hist["High"].max()), 2)
+        low_v   = round(float(hist["Low"].min()), 2)
+        high_t  = hist["High"].idxmax().isoformat()
+        low_t   = hist["Low"].idxmin().isoformat()
 
         return {
-            "current":    round(current, 2),
-            "high":       round(high_v, 2),
-            "high_time":  high_time,
-            "low":        round(low_v, 2),
-            "low_time":   low_time,
+            "current":    current,
+            "high":       high_v,
+            "high_time":  high_t,
+            "low":        low_v,
+            "low_time":   low_t,
         }
     except Exception as e:
         print(f"  [price error] {ticker}: {e}")
         return None
 
-YUA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-
-def get_yahoo_session() -> tuple[requests.Session, str]:
-    """Return an authenticated (session, crumb) pair for Yahoo Finance."""
-    s = requests.Session()
-    s.headers.update({"User-Agent": YUA, "Accept": "text/html,application/xhtml+xml"})
-    s.get("https://finance.yahoo.com/", timeout=15, proxies={})
-    crumb_r = s.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=10, proxies={})
-    crumb_r.raise_for_status()
-    return s, crumb_r.text.strip()
-
-# Module-level session cache so we don't re-auth on every poll tick
-_yahoo_session: requests.Session | None = None
-_yahoo_crumb: str = ""
-
-def yahoo_session() -> tuple[requests.Session, str]:
-    global _yahoo_session, _yahoo_crumb
-    if _yahoo_session is None or not _yahoo_crumb:
-        _yahoo_session, _yahoo_crumb = get_yahoo_session()
-    return _yahoo_session, _yahoo_crumb
-
-def reset_yahoo_session():
-    global _yahoo_session, _yahoo_crumb
-    _yahoo_session, _yahoo_crumb = None, ""
-
-# ── Contract price fetch ──────────────────────────────────────────────
+# ── Contract price ─────────────────────────────────────────────────────
 def get_contract_price(ticker: str, expiry_yyyymmdd: str, strike: float, direction: str) -> float | None:
-    """Fetch the last traded price for a specific options contract via Yahoo Finance."""
     try:
-        d  = date(int(expiry_yyyymmdd[:4]), int(expiry_yyyymmdd[4:6]), int(expiry_yyyymmdd[6:8]))
-        ts = calendar.timegm(d.timetuple())
-        s, crumb = yahoo_session()
-        url = f"https://query1.finance.yahoo.com/v7/finance/options/{ticker}?date={ts}&crumb={crumb}"
-        r = s.get(url, timeout=15, proxies={})
-        if r.status_code == 401:
-            reset_yahoo_session()
-            s, crumb = yahoo_session()
-            r = s.get(url.replace(f"crumb={crumb}", f"crumb={crumb}"), timeout=15, proxies={})
-        r.raise_for_status()
-        result = r.json().get("optionChain", {}).get("result", [])
-        if not result:
+        d          = date(int(expiry_yyyymmdd[:4]), int(expiry_yyyymmdd[4:6]), int(expiry_yyyymmdd[6:8]))
+        expiry_str = d.strftime("%Y-%m-%d")
+        t          = yf.Ticker(ticker)
+
+        # Check expiry is in the available list
+        available = t.options
+        if expiry_str not in available:
+            # Find nearest available expiry
+            nearest = min(available, key=lambda e: abs((date.fromisoformat(e) - d).days), default=None)
+            if nearest is None:
+                print(f"  [contract] {ticker}: no options available")
+                return None
+            print(f"  [contract] {ticker}: expiry {expiry_str} not found, using nearest {nearest}")
+            expiry_str = nearest
+
+        chain     = t.option_chain(expiry_str)
+        contracts = chain.calls if direction == "C" else chain.puts
+
+        if contracts.empty:
+            print(f"  [contract] {ticker}: no {'calls' if direction=='C' else 'puts'} for {expiry_str}")
             return None
-        chain_key = "calls" if direction == "C" else "puts"
-        contracts = result[0].get("options", [{}])[0].get(chain_key, [])
-        match = min(contracts, key=lambda c: abs(c.get("strike", 0) - strike), default=None)
-        if match is None:
-            return None
-        last = match.get("lastPrice")
-        bid  = match.get("bid", 0) or 0
-        ask  = match.get("ask", 0) or 0
-        if last and last > 0:
+
+        # Find closest strike
+        idx   = (contracts["strike"] - strike).abs().idxmin()
+        row   = contracts.loc[idx]
+        matched = float(row["strike"])
+        print(f"  [contract] {ticker}: matched strike {matched} (wanted {strike})")
+
+        last = float(row.get("lastPrice", 0) or 0)
+        bid  = float(row.get("bid", 0) or 0)
+        ask  = float(row.get("ask", 0) or 0)
+
+        if last > 0:
             return round(last, 2)
         if bid > 0 and ask > 0:
             return round((bid + ask) / 2, 2)
+
+        print(f"  [contract] {ticker}: no price data (last={last} bid={bid} ask={ask})")
         return None
     except Exception as e:
         print(f"  [contract error] {ticker}: {e}")
@@ -142,18 +111,16 @@ def process_trade(token, trade):
 
     # Check if expired
     expiry_date = date(int(expiry[:4]), int(expiry[4:6]), int(expiry[6:8]))
-    today       = date.today()
-    is_expired  = today >= expiry_date
+    is_expired  = date.today() >= expiry_date
 
     price_data = get_price_data(ticker)
     if price_data is None:
-        print(f"  ✗ {ticker}: no data")
+        print(f"  ✗ {ticker}: no price data")
         return
 
-    current    = price_data["current"]
-    patch      = {"current_price": current, "last_updated": now}
+    current = price_data["current"]
+    patch   = {"current_price": current, "last_updated": now}
 
-    # Contract price
     contract = get_contract_price(ticker, expiry, strike, direction)
     if contract is not None:
         patch["current_contract"] = contract
@@ -167,24 +134,22 @@ def process_trade(token, trade):
         patch["max_low"]        = current
         patch["max_low_time"]   = now
         if contract is not None and not trade.get("contract_captured"):
-            patch["entry_contract"]       = contract
-            patch["contract_captured"]    = True
-            patch["contract_max_high"]    = contract
+            patch["entry_contract"]         = contract
+            patch["contract_captured"]      = True
+            patch["contract_max_high"]      = contract
             patch["contract_max_high_time"] = now
-            patch["contract_max_low"]     = contract
+            patch["contract_max_low"]       = contract
             patch["contract_max_low_time"]  = now
         print(f"  ✓ {ticker}: entry captured — underlying ${current}, contract ${contract}")
     else:
         entry = trade.get("entry_price", current)
         patch["current_pct"] = round((current - entry) / entry * 100, 2)
 
-        # Update running max high (underlying)
+        # Running max/min — underlying
         if trade.get("max_high") is None or current > trade["max_high"]:
             patch["max_high"]      = current
             patch["max_high_time"] = now
             print(f"  ↑ {ticker}: new max high ${current}")
-
-        # Update running max low (underlying)
         if trade.get("max_low") is None or current < trade["max_low"]:
             patch["max_low"]      = current
             patch["max_low_time"] = now
@@ -192,7 +157,6 @@ def process_trade(token, trade):
 
         # Contract tracking
         if contract is not None:
-            # First contract capture after entry (in case entry_contract missed on first poll)
             if not trade.get("contract_captured"):
                 patch["entry_contract"]         = contract
                 patch["contract_captured"]      = True
@@ -212,19 +176,19 @@ def process_trade(token, trade):
                     patch["contract_max_low_time"] = now
                     print(f"  ↓ {ticker}: new contract max low ${contract}")
 
-        # Check if strike was reached
+        # Strike reached?
         if not trade.get("strike_reached"):
             if (direction == "C" and current >= strike) or (direction == "P" and current <= strike):
                 patch["strike_reached"]      = True
                 patch["strike_reached_time"] = now
                 print(f"  ★ {ticker}: STRIKE {strike} REACHED at ${current}!")
 
-        # Log current status
-        max_h  = trade.get("max_high", current)
-        max_l  = trade.get("max_low", current)
-        pct    = patch.get("current_pct", 0)
-        c_pct  = patch.get("contract_pct", trade.get("contract_pct", 0)) or 0
-        c_str  = f"  contract=${contract} ({c_pct:+.1f}%)" if contract else ""
+        # Status log
+        max_h = trade.get("max_high", current)
+        max_l = trade.get("max_low", current)
+        pct   = patch.get("current_pct", 0)
+        c_pct = patch.get("contract_pct", trade.get("contract_pct", 0)) or 0
+        c_str = f"  contract=${contract} ({c_pct:+.1f}%)" if contract else "  contract=—"
         print(f"  {ticker}: ${current} ({pct:+.1f}%)  HOD=${max_h}  LOD=${max_l}  Strike={strike}{c_str}")
 
     if is_expired:

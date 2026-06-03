@@ -5990,23 +5990,39 @@ function renderTradeTable() {
       ? ((t.max_high - t.entry_price) / t.entry_price * 100).toFixed(1) : null;
     const maxLPctVal = (t.max_low != null && t.entry_price != null)
       ? ((t.max_low - t.entry_price) / t.entry_price * 100).toFixed(1) : null;
-    const maxH     = t.max_high != null
-      ? (maxHPctVal != null ? '+' + maxHPctVal + '%' : '$' + t.max_high) +
-        '<br><span style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace;">' +
-        '$' + t.max_high + ' · ' + fmtDate(t.max_high_time) + '</span>'
+    // Underlying max high / low
+    const maxH = t.max_high != null
+      ? (maxHPctVal != null ? '<span style="color:#00cc66;">+' + maxHPctVal + '%</span>' : '') +
+        '<br><span style="font-size:11px;color:var(--text3);">$' + t.max_high + '</span>'
       : '…';
-    const maxL     = t.max_low != null
-      ? (maxLPctVal != null ? maxLPctVal + '%' : '$' + t.max_low) +
-        '<br><span style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace;">' +
-        '$' + t.max_low + ' · ' + fmtDate(t.max_low_time) + '</span>'
+    const maxL = t.max_low != null
+      ? (maxLPctVal != null ? '<span style="color:#ff4444;">' + maxLPctVal + '%</span>' : '') +
+        '<br><span style="font-size:11px;color:var(--text3);">$' + t.max_low + '</span>'
       : '…';
-    // Contract column
-    const entryC   = t.entry_contract   != null ? '$' + t.entry_contract   : '…';
-    const curC     = t.current_contract != null ? '$' + t.current_contract : '…';
-    const curCPct  = t.contract_pct     != null ? (t.contract_pct >= 0 ? '+' : '') + t.contract_pct.toFixed(1) + '%' : '';
+    // Contract max high / low
+    const cMaxHPct = (t.contract_max_high != null && t.entry_contract != null)
+      ? ((t.contract_max_high - t.entry_contract) / t.entry_contract * 100).toFixed(1) : null;
+    const cMaxLPct = (t.contract_max_low != null && t.entry_contract != null)
+      ? ((t.contract_max_low - t.entry_contract) / t.entry_contract * 100).toFixed(1) : null;
+    const maxHC = t.contract_max_high != null
+      ? (cMaxHPct != null ? '<span style="color:#00cc66;font-size:10px;">+' + cMaxHPct + '%</span>' : '') +
+        ' <span style="font-size:10px;color:var(--text3);">$' + t.contract_max_high + '</span>'
+      : '<span style="color:var(--text3);font-size:10px;">—</span>';
+    const maxLC = t.contract_max_low != null
+      ? (cMaxLPct != null ? '<span style="color:#ff4444;font-size:10px;">' + cMaxLPct + '%</span>' : '') +
+        ' <span style="font-size:10px;color:var(--text3);">$' + t.contract_max_low + '</span>'
+      : '<span style="color:var(--text3);font-size:10px;">—</span>';
+    // Contract entry/current column
+    const entryC    = t.entry_contract   != null ? '$' + t.entry_contract   : '…';
+    const curC      = t.current_contract != null ? '$' + t.current_contract : '…';
+    const curCPct   = t.contract_pct != null ? (t.contract_pct >= 0 ? '+' : '') + t.contract_pct.toFixed(1) + '%' : '';
     const curCColor = pctColor(t.contract_pct);
     const contractCell = `<span style="font-size:11px;color:var(--text3);">in</span> ${entryC}<br>` +
       `<span style="color:${curCColor};font-size:12px;">${curC} <span style="font-size:10px;">${curCPct}</span></span>`;
+    // Current column — underlying + contract stacked
+    const currentCell =
+      `<span style="color:${curColor};">${curP}</span> <span style="font-size:11px;">${curPct}</span>` +
+      `<br><span style="color:${curCColor};font-size:11px;">${curC} <span style="font-size:10px;">${curCPct}</span></span>`;
     let badge;
     if (t.expired)              badge = '<span class="tr-badge-exp">Expired</span>';
     else if (t.strike_reached)  badge = '<span class="tr-badge-struck">★ Hit</span>';
@@ -6018,9 +6034,9 @@ function renderTradeTable() {
       <td class="tr-mono" style="line-height:1.6;">${contractCell}</td>
       <td class="tr-mono">${t.strike}</td>
       <td class="tr-mono">${fmtExpiry(t.expiry)}</td>
-      <td class="tr-up">${maxH}</td>
-      <td class="tr-dn">${maxL}</td>
-      <td style="color:${curColor};font-family:'DM Mono',monospace;">${curP} <span style="font-size:11px;">${curPct}</span></td>
+      <td class="tr-mono" style="line-height:1.8;">${maxH}<br>${maxHC}</td>
+      <td class="tr-mono" style="line-height:1.8;">${maxL}<br>${maxLC}</td>
+      <td class="tr-mono" style="line-height:1.8;">${currentCell}</td>
       <td>${badge}</td>
     </tr>`;
   }).join('');
