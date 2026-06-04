@@ -1236,11 +1236,35 @@
     </div>
 
     <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Micro</label>
+      <input class="modal-input" id="editDriveMicroInput" type="text" placeholder="Search campaigns..." autocomplete="off"
+        oninput="filterEditDriveMicro()" onfocus="filterEditDriveMicro()" />
+      <input type="hidden" id="editDriveMicroId" />
+      <div id="editDriveMicroDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field" style="position:relative;">
       <label class="modal-label">Method</label>
       <input class="modal-input" id="editDriveMethodInput" type="text" placeholder="Search methods..." autocomplete="off"
         oninput="filterEditDriveMethods()" onfocus="filterEditDriveMethods()" />
       <input type="hidden" id="editDriveMethodId" />
       <div id="editDriveMethodDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Email</label>
+      <input class="modal-input" id="editDriveEmailInput" type="text" placeholder="Search logins..." autocomplete="off"
+        oninput="filterEditDriveLogins('editDriveEmailInput','editDriveEmailId','editDriveEmailDropdown')" onfocus="filterEditDriveLogins('editDriveEmailInput','editDriveEmailId','editDriveEmailDropdown')" />
+      <input type="hidden" id="editDriveEmailId" />
+      <div id="editDriveEmailDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Instagram</label>
+      <input class="modal-input" id="editDriveInstagramInput" type="text" placeholder="Search logins..." autocomplete="off"
+        oninput="filterEditDriveLogins('editDriveInstagramInput','editDriveInstagramId','editDriveInstagramDropdown')" onfocus="filterEditDriveLogins('editDriveInstagramInput','editDriveInstagramId','editDriveInstagramDropdown')" />
+      <input type="hidden" id="editDriveInstagramId" />
+      <div id="editDriveInstagramDropdown" class="camp-dropdown" style="display:none;"></div>
     </div>
 
     <div class="modal-actions">
@@ -4225,14 +4249,17 @@ async function submitProduct() {
 
 function renderDrivesPanel(panel, drives) {
   if (!drives.length) { panel.innerHTML = ''; return; }
+  const lnk = (url, label) => url ? '<a href="' + esc(url) + '" target="_blank">' + label + '</a>' : '—';
   const table = document.createElement('table');
   table.className = 'runs-table';
-  table.innerHTML = '<thead><tr><th>Name</th><th>Campaign</th><th>Method</th><th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">DB</th></tr></thead>';
+  table.innerHTML = '<thead><tr>' +
+    '<th>Name</th><th>Campaign</th><th>Micro</th><th>Method</th><th>Email</th><th>Instagram</th>' +
+    '<th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">STE</th>' +
+    '<th style="cursor:default;text-align:center;">DB</th>' +
+    '</tr></thead>';
   const tbody = document.createElement('tbody');
   drives.forEach(d => {
     const tr = document.createElement('tr');
-
-    // Name — clickable to open edit modal
     const nameTd = document.createElement('td');
     const nameBtn = document.createElement('button');
     nameBtn.className = 'run-edit-btn';
@@ -4241,11 +4268,14 @@ function renderDrivesPanel(panel, drives) {
     nameBtn.onclick = () => openEditDriveModal(d, tr, drives);
     nameTd.appendChild(nameBtn);
     tr.appendChild(nameTd);
-
     tr.insertAdjacentHTML('beforeend',
-      '<td>' + esc(d.campaign || '—') + '</td>' +
-      '<td>'  + esc(d.method   || '—') + '</td>' +
-      '<td class="link">' + (d.landing ? '<a href="' + esc(d.landing) + '" target="_blank">↗</a>' : '—') + '</td>' +
+      '<td>' + esc(d.campaign  || '—') + '</td>' +
+      '<td>' + esc(d.micro     || '—') + '</td>' +
+      '<td>' + esc(d.method    || '—') + '</td>' +
+      '<td>' + esc(d.email     || '—') + '</td>' +
+      '<td>' + esc(d.instagram || '—') + '</td>' +
+      '<td class="link">' + lnk(d.landing, '↗') + '</td>' +
+      '<td class="link">' + lnk(d.ste,     '↗') + '</td>' +
       '<td class="link"><a href="https://www.notion.so/' + d.id + '" target="_blank">↗</a></td>');
     tbody.appendChild(tr);
   });
@@ -4507,25 +4537,33 @@ let editDriveRowRef  = null;
 let editDriveListRef = null;
 let allMethodsCache  = [];
 
+let allLoginsCache = [];
+
 function openEditDriveModal(drive, tr, drivesList) {
   editDriveCurrent = drive;
   editDriveRowRef  = tr;
   editDriveListRef = drivesList;
-  document.getElementById('editDriveName').value            = drive.name       || '';
-  document.getElementById('editDriveCampaignInput').value   = drive.campaign   || '';
-  document.getElementById('editDriveCampaignId').value      = drive.campaignId || '';
-  document.getElementById('editDriveMethodInput').value     = drive.method     || '';
-  document.getElementById('editDriveMethodId').value        = drive.methodId   || '';
-  document.getElementById('editDriveCampaignDropdown').style.display = 'none';
-  document.getElementById('editDriveMethodDropdown').style.display   = 'none';
+  document.getElementById('editDriveName').value              = drive.name        || '';
+  document.getElementById('editDriveCampaignInput').value     = drive.campaign    || '';
+  document.getElementById('editDriveCampaignId').value        = drive.campaignId  || '';
+  document.getElementById('editDriveMicroInput').value        = drive.micro       || '';
+  document.getElementById('editDriveMicroId').value           = drive.microId     || '';
+  document.getElementById('editDriveMethodInput').value       = drive.method      || '';
+  document.getElementById('editDriveMethodId').value          = drive.methodId    || '';
+  document.getElementById('editDriveEmailInput').value        = drive.email       || '';
+  document.getElementById('editDriveEmailId').value           = drive.emailId     || '';
+  document.getElementById('editDriveInstagramInput').value    = drive.instagram   || '';
+  document.getElementById('editDriveInstagramId').value       = drive.instagramId || '';
+  ['editDriveCampaignDropdown','editDriveMicroDropdown','editDriveMethodDropdown',
+   'editDriveEmailDropdown','editDriveInstagramDropdown'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
   document.getElementById('editDriveDbLink').href = 'https://www.notion.so/' + drive.id;
   document.getElementById('editDriveSaveBtn').disabled    = false;
   document.getElementById('editDriveSaveBtn').textContent = 'Save';
   document.getElementById('editDriveModal').classList.add('open');
-  // Pre-load methods if not cached
-  if (!allMethodsCache.length) {
-    call('searchMethods', { query: '' }).then(d => { allMethodsCache = d.methods || []; }).catch(() => {});
-  }
+  if (!allMethodsCache.length) call('searchMethods', { query: '' }).then(d => { allMethodsCache = d.methods || []; }).catch(() => {});
+  if (!allLoginsCache.length)  call('getLogins').then(d => { allLoginsCache = d.logins || []; }).catch(() => {});
   setTimeout(() => document.getElementById('editDriveName').focus(), 280);
 }
 
@@ -4543,6 +4581,36 @@ function filterEditDriveCampaigns() {
       document.getElementById('editDriveCampaignId').value    = c.id;
       dd.style.display = 'none';
     };
+    dd.appendChild(div);
+  });
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+function filterEditDriveMicro() {
+  const query = document.getElementById('editDriveMicroInput').value.trim().toLowerCase();
+  const dd = document.getElementById('editDriveMicroDropdown');
+  const matches = ovData.filter(c => !query || c.name.toLowerCase().includes(query));
+  dd.innerHTML = '';
+  matches.slice(0, 8).forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = c.name + (c.site ? ' · ' + c.site : '');
+    div.onmousedown = () => { document.getElementById('editDriveMicroInput').value = c.name; document.getElementById('editDriveMicroId').value = c.id; dd.style.display = 'none'; };
+    dd.appendChild(div);
+  });
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+function filterEditDriveLogins(inputId, hiddenId, dropId) {
+  const query = document.getElementById(inputId).value.trim().toLowerCase();
+  const dd = document.getElementById(dropId);
+  const matches = allLoginsCache.filter(l => !query || (l.name || '').toLowerCase().includes(query));
+  dd.innerHTML = '';
+  matches.slice(0, 8).forEach(l => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = l.name;
+    div.onmousedown = () => { document.getElementById(inputId).value = l.name; document.getElementById(hiddenId).value = l.id; dd.style.display = 'none'; };
     dd.appendChild(div);
   });
   dd.style.display = dd.children.length ? 'block' : 'none';
@@ -4567,15 +4635,26 @@ function filterEditDriveMethods() {
   dd.style.display = dd.children.length ? 'block' : 'none';
 }
 
-['editDriveCampaignInput','editDriveMethodInput'].forEach(inputId => {
+({
+  editDriveCampaignInput:  'editDriveCampaignDropdown',
+  editDriveMicroInput:     'editDriveMicroDropdown',
+  editDriveMethodInput:    'editDriveMethodDropdown',
+  editDriveEmailInput:     'editDriveEmailDropdown',
+  editDriveInstagramInput: 'editDriveInstagramDropdown',
+}).forEach ? Object.entries({
+  editDriveCampaignInput:  'editDriveCampaignDropdown',
+  editDriveMicroInput:     'editDriveMicroDropdown',
+  editDriveMethodInput:    'editDriveMethodDropdown',
+  editDriveEmailInput:     'editDriveEmailDropdown',
+  editDriveInstagramInput: 'editDriveInstagramDropdown',
+}).forEach(([inputId, dropId]) => {
   document.addEventListener('click', e => {
-    const dropId = inputId === 'editDriveCampaignInput' ? 'editDriveCampaignDropdown' : 'editDriveMethodDropdown';
     if (!e.target.closest('#' + inputId) && !e.target.closest('#' + dropId)) {
       const dd = document.getElementById(dropId);
       if (dd) dd.style.display = 'none';
     }
   });
-});
+}) : null;
 
 function closeEditDriveModal() {
   document.getElementById('editDriveModal').classList.remove('open');
@@ -4590,17 +4669,26 @@ async function saveEditDrive() {
   const btn = document.getElementById('editDriveSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving...';
 
-  const campaignId = document.getElementById('editDriveCampaignId').value || null;
-  const methodId   = document.getElementById('editDriveMethodId').value   || null;
+  const campaignId  = document.getElementById('editDriveCampaignId').value    || null;
+  const microId     = document.getElementById('editDriveMicroId').value        || null;
+  const methodId    = document.getElementById('editDriveMethodId').value       || null;
+  const emailId     = document.getElementById('editDriveEmailId').value        || null;
+  const instagramId = document.getElementById('editDriveInstagramId').value    || null;
 
   try {
-    await call('updateDrive', { driveId: editDriveCurrent.id, name, campaignId, methodId });
+    await call('updateDrive', { driveId: editDriveCurrent.id, name, campaignId, microId, methodId, emailId, instagramId });
     Object.assign(editDriveCurrent, {
       name,
-      campaign:   document.getElementById('editDriveCampaignInput').value || '',
-      campaignId: campaignId || null,
-      method:     document.getElementById('editDriveMethodInput').value   || '',
-      methodId:   methodId   || null,
+      campaign:    document.getElementById('editDriveCampaignInput').value   || '',
+      campaignId:  campaignId  || null,
+      micro:       document.getElementById('editDriveMicroInput').value      || '',
+      microId:     microId     || null,
+      method:      document.getElementById('editDriveMethodInput').value     || '',
+      methodId:    methodId    || null,
+      email:       document.getElementById('editDriveEmailInput').value      || '',
+      emailId:     emailId     || null,
+      instagram:   document.getElementById('editDriveInstagramInput').value  || '',
+      instagramId: instagramId || null,
     });
     // Re-render the drives section (the tr's parent tbody's drivesSection container)
     const drivesSection = editDriveRowRef.closest('table')?.parentElement;
