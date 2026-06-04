@@ -1236,14 +1236,6 @@
     </div>
 
     <div class="modal-field" style="position:relative;">
-      <label class="modal-label">Micro</label>
-      <input class="modal-input" id="editDriveMicroInput" type="text" placeholder="Search campaigns..." autocomplete="off"
-        oninput="filterEditDriveMicro()" onfocus="filterEditDriveMicro()" />
-      <input type="hidden" id="editDriveMicroId" />
-      <div id="editDriveMicroDropdown" class="camp-dropdown" style="display:none;"></div>
-    </div>
-
-    <div class="modal-field" style="position:relative;">
       <label class="modal-label">Method</label>
       <input class="modal-input" id="editDriveMethodInput" type="text" placeholder="Search methods..." autocomplete="off"
         oninput="filterEditDriveMethods()" onfocus="filterEditDriveMethods()" />
@@ -4253,7 +4245,7 @@ function renderDrivesPanel(panel, drives) {
   const table = document.createElement('table');
   table.className = 'runs-table';
   table.innerHTML = '<thead><tr>' +
-    '<th>Name</th><th>Campaign</th><th>Micro</th><th>Method</th><th>Email</th><th>Instagram</th>' +
+    '<th>Name</th><th>Campaign</th><th>Method</th><th>Email</th><th>Instagram</th>' +
     '<th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">STE</th>' +
     '<th style="cursor:default;text-align:center;">DB</th>' +
     '</tr></thead>';
@@ -4270,7 +4262,6 @@ function renderDrivesPanel(panel, drives) {
     tr.appendChild(nameTd);
     tr.insertAdjacentHTML('beforeend',
       '<td>' + esc(d.campaign  || '—') + '</td>' +
-      '<td>' + esc(d.micro     || '—') + '</td>' +
       '<td>' + esc(d.method    || '—') + '</td>' +
       '<td>' + esc(d.email     || '—') + '</td>' +
       '<td>' + esc(d.instagram || '—') + '</td>' +
