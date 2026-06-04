@@ -178,7 +178,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 <!-- SEC 5: two col — development titles / publish titles -->
 <div class="two-col">
   <div class="col">
-    <h2>Development Titles</h2>
+    <h2>Development Titles <button class="td-add-btn-inline" onclick="openAddTitleModal()" title="Add title">+</button></h2>
     <div class="content">
       <div class="title-list" id="devTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -446,6 +446,25 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
 </div>
+<!-- ADD TITLE MODAL -->
+<div class="modal-overlay" id="addTitleModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head">
+      <div class="modal-title">Add Development Title</div>
+      <button class="modal-close" onclick="closeAddTitleModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label">Title <span style="color:var(--danger,#e05);">*</span></label>
+      <input class="modal-ta" id="addTitleInput" type="text" placeholder="Title text…" autocomplete="off" style="margin-bottom:12px;" />
+      <div id="addTitleStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeAddTitleModal()">Cancel</button>
+      <button class="modal-btn save" id="addTitleSaveBtn" onclick="submitAddTitle()">Create</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "34b1f7d3a4bb81b6a8a8fee04df94807"; // mobility-mentor-fundraising
@@ -1697,6 +1716,38 @@ async function copyRenderCommand() {
     statusEl.style.color = '#f0a500';
     statusEl.textContent = '✓ Saved to Notion — clipboard blocked, command in console.';
     console.log('Render command:', cmd);
+  }
+}
+
+// ── ADD TITLE MODAL ──────────────────────────────────────────────────
+function openAddTitleModal() {
+  document.getElementById('addTitleInput').value = '';
+  document.getElementById('addTitleStatus').textContent = '';
+  document.getElementById('addTitleSaveBtn').disabled = false;
+  document.getElementById('addTitleSaveBtn').textContent = 'Create';
+  document.getElementById('addTitleModal').classList.add('open');
+  setTimeout(() => document.getElementById('addTitleInput').focus(), 200);
+}
+function closeAddTitleModal() {
+  document.getElementById('addTitleModal').classList.remove('open');
+}
+document.getElementById('addTitleModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAddTitleModal();
+});
+async function submitAddTitle() {
+  const title = document.getElementById('addTitleInput').value.trim();
+  if (!title) { document.getElementById('addTitleInput').focus(); return; }
+  const btn = document.getElementById('addTitleSaveBtn');
+  const status = document.getElementById('addTitleStatus');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  status.textContent = '';
+  try {
+    await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, status: 'Development' });
+    closeAddTitleModal();
+    loadTitles();
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Create';
   }
 }
 </script>
