@@ -470,6 +470,7 @@
     <a class="add-link" onclick="openProductModal()">+ Add product</a>
     <a class="add-link" onclick="openRunModal()" style="margin-left:12px;">+ Add run</a>
     <a class="add-link" onclick="openDriveModal()" style="margin-left:12px;">+ Add drive</a>
+    <a class="add-link" onclick="openResumeModal()" style="margin-left:12px;">+ Add resume</a>
     <div id="prodContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
@@ -1155,6 +1156,60 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeDriveModal()">Cancel</button>
       <button class="btn btn-primary" id="driveSubmitBtn" onclick="submitDrive()">Create Drive</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Resume Modal -->
+<div class="modal-bg" id="resumeModal" onclick="if(event.target===this)closeResumeModal()">
+  <div class="modal">
+    <div class="modal-title">New Resume</div>
+    <div class="modal-field">
+      <label class="modal-label">Name <span style="color:var(--danger)">*</span></label>
+      <input class="modal-input" id="resumeNameInput" type="text" placeholder="Resume name..." />
+    </div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Product <span style="color:var(--danger)">*</span></label>
+      <input class="modal-input" id="resumeProductInput" type="text" placeholder="Search In Development products..." autocomplete="off"
+        oninput="filterResumeProducts()" onfocus="filterResumeProducts()" />
+      <input type="hidden" id="resumeProductId" />
+      <div id="resumeProductDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Campaign</label>
+      <input class="modal-input" id="resumeCampaignInput" type="text" placeholder="Search campaigns..." autocomplete="off"
+        oninput="filterResumeCampaigns('resumeCampaignInput','resumeCampaignId','resumeCampaignDropdown')" onfocus="filterResumeCampaigns('resumeCampaignInput','resumeCampaignId','resumeCampaignDropdown')" />
+      <input type="hidden" id="resumeCampaignId" />
+      <div id="resumeCampaignDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeResumeModal()">Cancel</button>
+      <button class="btn btn-primary" id="resumeSubmitBtn" onclick="submitResume()">Create Resume</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Resume Modal -->
+<div class="modal-bg" id="editResumeModal" onclick="if(event.target===this)closeEditResumeModal()">
+  <div class="modal">
+    <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;">
+      Edit Resume
+      <a id="editResumeDbLink" href="#" target="_blank" style="font-size:12px;font-weight:400;color:var(--text3);text-decoration:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;">↗ Notion</a>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Name <span style="color:var(--danger)">*</span></label>
+      <input class="modal-input" id="editResumeName" type="text" placeholder="Resume name..." />
+    </div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Campaign</label>
+      <input class="modal-input" id="editResumeCampaignInput" type="text" placeholder="Search campaigns..." autocomplete="off"
+        oninput="filterResumeCampaigns('editResumeCampaignInput','editResumeCampaignId','editResumeCampaignDropdown')" onfocus="filterResumeCampaigns('editResumeCampaignInput','editResumeCampaignId','editResumeCampaignDropdown')" />
+      <input type="hidden" id="editResumeCampaignId" />
+      <div id="editResumeCampaignDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeEditResumeModal()">Cancel</button>
+      <button class="btn btn-primary" id="editResumeSaveBtn" onclick="saveEditResume()">Save</button>
     </div>
   </div>
 </div>
@@ -3578,9 +3633,10 @@ function renderProducts() {
       if (!open && !subLoaded) {
         subLoaded = true;
         try {
-          const [runsData, drivesData] = await Promise.all([
-            call('getRuns',   { productId: p.id }),
-            call('getDrives', { productId: p.id }),
+          const [runsData, drivesData, resumesData] = await Promise.all([
+            call('getRuns',    { productId: p.id }),
+            call('getDrives',  { productId: p.id }),
+            call('getResumes', { productId: p.id }),
           ]);
           subPanel.innerHTML = '';
           // Runs section
@@ -3602,6 +3658,18 @@ function renderProducts() {
             drivesSection.appendChild(drivesLabel);
             renderDrivesPanel(drivesSection, drives);
             subPanel.appendChild(drivesSection);
+          }
+          // Resumes section
+          const resumes = resumesData.resumes || [];
+          if (resumes.length) {
+            const resumesSection = document.createElement('div');
+            resumesSection.style.marginTop = '14px';
+            const resumesLabel = document.createElement('div');
+            resumesLabel.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;';
+            resumesLabel.textContent = 'Resumes';
+            resumesSection.appendChild(resumesLabel);
+            renderResumesPanel(resumesSection, resumes);
+            subPanel.appendChild(resumesSection);
           }
         } catch (e) {
           subPanel.innerHTML = '<div class="runs-empty">Error: ' + esc(e.message) + '</div>';
@@ -4288,6 +4356,145 @@ async function saveEditRun() {
     if (panel) renderRunsPanel(panel, editRunListRef);
     closeEditRunModal();
     showToast('Run updated ✓', 'success');
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── RESUMES ──────────────────────────────────────────────────────────
+function renderResumesPanel(panel, resumes) {
+  if (!resumes.length) { panel.innerHTML = ''; return; }
+  const table = document.createElement('table');
+  table.className = 'runs-table';
+  table.innerHTML = '<thead><tr><th>Name</th><th>Campaign</th><th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">DB</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  resumes.forEach(r => {
+    const tr = document.createElement('tr');
+    const nameTd = document.createElement('td');
+    const nameBtn = document.createElement('button');
+    nameBtn.className = 'run-edit-btn';
+    nameBtn.textContent = r.name;
+    nameBtn.title = 'Edit resume';
+    nameBtn.onclick = () => openEditResumeModal(r, tr, resumes);
+    nameTd.appendChild(nameBtn);
+    tr.appendChild(nameTd);
+    tr.insertAdjacentHTML('beforeend',
+      '<td>' + esc(r.campaign || '—') + '</td>' +
+      '<td class="link">' + (r.landing ? '<a href="' + esc(r.landing) + '" target="_blank">↗</a>' : '—') + '</td>' +
+      '<td class="link"><a href="https://www.notion.so/' + r.id + '" target="_blank">↗</a></td>');
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  panel.innerHTML = '';
+  panel.appendChild(table);
+}
+
+// Add Resume Modal
+function openResumeModal() {
+  document.getElementById('resumeNameInput').value = '';
+  document.getElementById('resumeProductInput').value = '';
+  document.getElementById('resumeProductId').value = '';
+  document.getElementById('resumeCampaignInput').value = '';
+  document.getElementById('resumeCampaignId').value = '';
+  document.getElementById('resumeProductDropdown').style.display = 'none';
+  document.getElementById('resumeCampaignDropdown').style.display = 'none';
+  document.getElementById('resumeSubmitBtn').disabled = false;
+  document.getElementById('resumeSubmitBtn').textContent = 'Create Resume';
+  document.getElementById('resumeModal').classList.add('open');
+  setTimeout(() => document.getElementById('resumeNameInput').focus(), 280);
+}
+function closeResumeModal() {
+  document.getElementById('resumeModal').classList.remove('open');
+}
+function filterResumeProducts() {
+  const query = document.getElementById('resumeProductInput').value.trim().toLowerCase();
+  const dd = document.getElementById('resumeProductDropdown');
+  const matches = prodData.filter(p => p.status === 'In Development' && (!query || p.name.toLowerCase().includes(query)));
+  dd.innerHTML = '';
+  matches.slice(0, 8).forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = p.name + (p.site ? ' · ' + p.site : '');
+    div.onmousedown = () => { document.getElementById('resumeProductInput').value = p.name; document.getElementById('resumeProductId').value = p.id; dd.style.display = 'none'; };
+    dd.appendChild(div);
+  });
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+function filterResumeCampaigns(inputId, hiddenId, dropId) {
+  const query = document.getElementById(inputId).value.trim().toLowerCase();
+  const dd = document.getElementById(dropId);
+  const matches = ovData.filter(c => !query || c.name.toLowerCase().includes(query));
+  dd.innerHTML = '';
+  matches.slice(0, 8).forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = c.name + (c.site ? ' · ' + c.site : '');
+    div.onmousedown = () => { document.getElementById(inputId).value = c.name; document.getElementById(hiddenId).value = c.id; dd.style.display = 'none'; };
+    dd.appendChild(div);
+  });
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+['resumeProductInput','resumeCampaignInput','editResumeCampaignInput'].forEach(id => {
+  document.addEventListener('click', e => {
+    const map = { resumeProductInput: 'resumeProductDropdown', resumeCampaignInput: 'resumeCampaignDropdown', editResumeCampaignInput: 'editResumeCampaignDropdown' };
+    if (!e.target.closest('#' + id) && !e.target.closest('#' + map[id])) {
+      const dd = document.getElementById(map[id]);
+      if (dd) dd.style.display = 'none';
+    }
+  });
+});
+async function submitResume() {
+  const name = document.getElementById('resumeNameInput').value.trim();
+  const productId = document.getElementById('resumeProductId').value;
+  const campaignId = document.getElementById('resumeCampaignId').value || null;
+  if (!name) { document.getElementById('resumeNameInput').focus(); return; }
+  if (!productId) { document.getElementById('resumeProductInput').focus(); showToast('Select a product', 'error'); return; }
+  const btn = document.getElementById('resumeSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    await call('createResume', { name, productId, campaignId });
+    closeResumeModal();
+    showToast('Resume created ✓', 'success');
+    prodLoaded = false; loadProducts();
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Create Resume';
+  }
+}
+
+// Edit Resume Modal
+let editResumeCurrent = null, editResumeRowRef = null, editResumeListRef = null;
+function openEditResumeModal(resume, tr, list) {
+  editResumeCurrent = resume; editResumeRowRef = tr; editResumeListRef = list;
+  document.getElementById('editResumeName').value = resume.name || '';
+  document.getElementById('editResumeCampaignInput').value = resume.campaign || '';
+  document.getElementById('editResumeCampaignId').value = resume.campaignId || '';
+  document.getElementById('editResumeCampaignDropdown').style.display = 'none';
+  document.getElementById('editResumeDbLink').href = 'https://www.notion.so/' + resume.id;
+  document.getElementById('editResumeSaveBtn').disabled = false;
+  document.getElementById('editResumeSaveBtn').textContent = 'Save';
+  document.getElementById('editResumeModal').classList.add('open');
+  setTimeout(() => document.getElementById('editResumeName').focus(), 280);
+}
+function closeEditResumeModal() { document.getElementById('editResumeModal').classList.remove('open'); }
+async function saveEditResume() {
+  const name = document.getElementById('editResumeName').value.trim();
+  if (!name) { document.getElementById('editResumeName').focus(); return; }
+  const campaignId = document.getElementById('editResumeCampaignId').value || null;
+  const btn = document.getElementById('editResumeSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    await call('updateResume', { resumeId: editResumeCurrent.id, name, campaignId });
+    Object.assign(editResumeCurrent, {
+      name,
+      campaign:   document.getElementById('editResumeCampaignInput').value || '',
+      campaignId: campaignId || null,
+    });
+    const section = editResumeRowRef.closest('table')?.parentElement;
+    if (section) renderResumesPanel(section, editResumeListRef);
+    closeEditResumeModal();
+    showToast('Resume updated ✓', 'success');
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';

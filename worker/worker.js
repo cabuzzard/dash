@@ -18,6 +18,7 @@ const SM_POSTS_DB        = "addcfe1d1beb46dbbcaa397504a8041d";
 const TRADES_DB          = "2207133ee3b04ff496e5e75415e3e43d";
 const RUNS_DB            = "21c676fd91b74137b5f3ab57167a0849";
 const DRIVES_DB          = "3751f7d3a4bb806cb133ff9182306ec8";
+const RESUMES_DB         = "3751f7d3a4bb80599583c9aef8d10b05";
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -1242,6 +1243,76 @@ export default {
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
         return json({ id: result.id });
+      }
+
+      if (body.action === "getResumes") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const [resumeRows, campRows] = await Promise.all([
+          notionQuery(RESUMES_DB, {
+            filter: { property: "product", relation: { contains: dashed } },
+            sorts: [{ timestamp: "created_time", direction: "descending" }],
+          }),
+          notionQuery(CAMPAIGNS_DB, {}),
+        ]);
+        const campById = {};
+        campRows.forEach(c => { campById[c.id.replace(/-/g,"")] = c.properties.Name?.title?.map(t => t.plain_text).join("") || ""; });
+        const resumes = resumeRows.map(r => {
+          const props = r.properties;
+          const campRel = (props["campaign"]?.relation || []).map(x => x.id.replace(/-/g,""));
+          return {
+            id:         r.id.replace(/-/g, ""),
+            name:       props["Name"]?.title?.map(t => t.plain_text).join("") || "Untitled",
+            landing:    props["landing"]?.rollup?.array?.[0]?.url || null,
+            campaignId: campRel[0] || null,
+            campaign:   campRel[0] ? (campById[campRel[0]] || "") : "",
+          };
+        });
+        return json({ resumes });
+      }
+
+      if (body.action === "createResume") {
+        const { name, productId, campaignId } = body;
+        if (!name || !productId) return json({ error: "name and productId required" }, 400);
+        const pDashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const properties = {
+          "Name":    { title: [{ text: { content: name } }] },
+          "product": { relation: [{ id: pDashed }] },
+        };
+        if (campaignId) {
+          const cDashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+          properties["campaign"] = { relation: [{ id: cDashed }] };
+        }
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: RESUMES_DB }, properties }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ id: result.id });
+      }
+
+      if (body.action === "updateResume") {
+        const { resumeId, name, campaignId } = body;
+        if (!resumeId || !name) return json({ error: "resumeId and name required" }, 400);
+        const dashed = resumeId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const properties = { "Name": { title: [{ text: { content: name } }] } };
+        if (campaignId) {
+          const cDashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+          properties["campaign"] = { relation: [{ id: cDashed }] };
+        } else {
+          properties["campaign"] = { relation: [] };
+        }
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
       }
       if (body.action === "getDrives") {
         const { productId } = body;
