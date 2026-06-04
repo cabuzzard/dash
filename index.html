@@ -3494,32 +3494,55 @@ function renderProducts() {
       '<td class="link"><a href="https://www.notion.so/' + p.id + '" target="_blank">↗</a></td>');
     tbody.appendChild(tr);
 
-    // Runs sub-row (hidden until expanded)
-    const colSpan = cols.length + 4; // status + STE + DB + expand
-    const runsRow = document.createElement('tr');
-    runsRow.className = 'runs-row';
-    runsRow.style.display = 'none';
-    const runsTd = document.createElement('td');
-    runsTd.colSpan = colSpan;
-    const runsPanel = document.createElement('div');
-    runsPanel.className = 'runs-panel';
-    runsPanel.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading runs...</div>';
-    runsTd.appendChild(runsPanel);
-    runsRow.appendChild(runsTd);
-    tbody.appendChild(runsRow);
+    // Expandable sub-row (runs + drives)
+    const colSpan = cols.length + 4;
+    const subRow = document.createElement('tr');
+    subRow.className = 'runs-row';
+    subRow.style.display = 'none';
+    const subTd = document.createElement('td');
+    subTd.colSpan = colSpan;
+    const subPanel = document.createElement('div');
+    subPanel.className = 'runs-panel';
+    subPanel.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+    subTd.appendChild(subPanel);
+    subRow.appendChild(subTd);
+    tbody.appendChild(subRow);
 
-    let runsLoaded = false;
+    let subLoaded = false;
     expandBtn.onclick = async () => {
-      const open = runsRow.style.display !== 'none';
-      runsRow.style.display = open ? 'none' : '';
+      const open = subRow.style.display !== 'none';
+      subRow.style.display = open ? 'none' : '';
       expandBtn.classList.toggle('open', !open);
-      if (!open && !runsLoaded) {
-        runsLoaded = true;
+      if (!open && !subLoaded) {
+        subLoaded = true;
         try {
-          const data = await call('getRuns', { productId: p.id });
-          renderRunsPanel(runsPanel, data.runs || []);
+          const [runsData, drivesData] = await Promise.all([
+            call('getRuns',   { productId: p.id }),
+            call('getDrives', { productId: p.id }),
+          ]);
+          subPanel.innerHTML = '';
+          // Runs section
+          const runsSection = document.createElement('div');
+          const runsLabel = document.createElement('div');
+          runsLabel.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;';
+          runsLabel.textContent = 'Runs';
+          runsSection.appendChild(runsLabel);
+          renderRunsPanel(runsSection, runsData.runs || []);
+          subPanel.appendChild(runsSection);
+          // Drives section
+          const drives = drivesData.drives || [];
+          if (drives.length) {
+            const drivesSection = document.createElement('div');
+            drivesSection.style.marginTop = '14px';
+            const drivesLabel = document.createElement('div');
+            drivesLabel.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;';
+            drivesLabel.textContent = 'Drives';
+            drivesSection.appendChild(drivesLabel);
+            renderDrivesPanel(drivesSection, drives);
+            subPanel.appendChild(drivesSection);
+          }
         } catch (e) {
-          runsPanel.innerHTML = '<div class="runs-empty">Error: ' + esc(e.message) + '</div>';
+          subPanel.innerHTML = '<div class="runs-empty">Error: ' + esc(e.message) + '</div>';
         }
       }
     };
@@ -4068,6 +4091,23 @@ async function submitProduct() {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Add';
   }
+}
+
+function renderDrivesPanel(panel, drives) {
+  if (!drives.length) { panel.innerHTML = '<div class="runs-empty">No drives yet.</div>'; return; }
+  const table = document.createElement('table');
+  table.className = 'runs-table';
+  table.innerHTML = '<thead><tr><th>Name</th><th>Landing</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  drives.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.insertAdjacentHTML('beforeend',
+      '<td><a href="https://www.notion.so/' + d.id + '" target="_blank" style="color:var(--text2);text-decoration:none;border-bottom:1px dotted var(--border);">' + esc(d.name) + '</a></td>' +
+      '<td class="link">' + (d.landing ? '<a href="' + esc(d.landing) + '" target="_blank">↗</a>' : '—') + '</td>');
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  panel.appendChild(table);
 }
 
 // ── DELIVERY FILE UPLOAD HELPER ──────────────────────────────────────

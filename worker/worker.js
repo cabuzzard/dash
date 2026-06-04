@@ -17,6 +17,7 @@ const EMAILS_DB          = "6252e9917027488fb628436aabb89947";
 const SM_POSTS_DB        = "addcfe1d1beb46dbbcaa397504a8041d";
 const TRADES_DB          = "2207133ee3b04ff496e5e75415e3e43d";
 const RUNS_DB            = "21c676fd91b74137b5f3ab57167a0849";
+const DRIVES_DB          = "3751f7d3a4bb806cb133ff9182306ec8";
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -1193,6 +1194,25 @@ export default {
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
         return json({ id: result.id });
+      }
+
+      if (body.action === "getDrives") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const rows = await notionQuery(DRIVES_DB, {
+          filter: { property: "product", relation: { contains: dashed } },
+          sorts: [{ timestamp: "created_time", direction: "descending" }],
+        });
+        const drives = rows.map(r => {
+          const props = r.properties;
+          return {
+            id:       r.id.replace(/-/g, ""),
+            name:     props["Name"]?.title?.map(t => t.plain_text).join("") || "Untitled",
+            landing:  props["landing"]?.rollup?.array?.[0]?.url || null,
+          };
+        });
+        return json({ drives });
       }
       if (body.action === "getRuns") {
         const { productId } = body;
