@@ -1159,6 +1159,42 @@
   </div>
 </div>
 
+<!-- Edit Drive Modal -->
+<div class="modal-bg" id="editDriveModal" onclick="if(event.target===this)closeEditDriveModal()">
+  <div class="modal">
+    <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;">
+      Edit Drive
+      <a id="editDriveDbLink" href="#" target="_blank" style="font-size:12px;font-weight:400;color:var(--text3);text-decoration:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;">↗ Notion</a>
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Name <span style="color:var(--danger)">*</span></label>
+      <input class="modal-input" id="editDriveName" type="text" placeholder="Drive name..." />
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Campaign</label>
+      <input class="modal-input" id="editDriveCampaignInput" type="text" placeholder="Search campaigns..." autocomplete="off"
+        oninput="filterEditDriveCampaigns()" onfocus="filterEditDriveCampaigns()" />
+      <input type="hidden" id="editDriveCampaignId" />
+      <div id="editDriveCampaignDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Method</label>
+      <input class="modal-input" id="editDriveMethodInput" type="text" placeholder="Search methods..." autocomplete="off"
+        oninput="filterEditDriveMethods()" onfocus="filterEditDriveMethods()" />
+      <input type="hidden" id="editDriveMethodId" />
+      <div id="editDriveMethodDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeEditDriveModal()">Cancel</button>
+      <button class="btn btn-primary" id="editDriveSaveBtn" onclick="saveEditDrive()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Edit Run Modal -->
 <div class="modal-bg" id="editRunModal" onclick="if(event.target===this)closeEditRunModal()">
   <div class="modal">
@@ -4120,19 +4156,33 @@ async function submitProduct() {
 }
 
 function renderDrivesPanel(panel, drives) {
-  if (!drives.length) { panel.innerHTML = '<div class="runs-empty">No drives yet.</div>'; return; }
+  if (!drives.length) { panel.innerHTML = ''; return; }
   const table = document.createElement('table');
   table.className = 'runs-table';
-  table.innerHTML = '<thead><tr><th>Name</th><th>Landing</th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Name</th><th>Campaign</th><th>Method</th><th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">DB</th></tr></thead>';
   const tbody = document.createElement('tbody');
   drives.forEach(d => {
     const tr = document.createElement('tr');
+
+    // Name — clickable to open edit modal
+    const nameTd = document.createElement('td');
+    const nameBtn = document.createElement('button');
+    nameBtn.className = 'run-edit-btn';
+    nameBtn.textContent = d.name;
+    nameBtn.title = 'Edit drive';
+    nameBtn.onclick = () => openEditDriveModal(d, tr, drives);
+    nameTd.appendChild(nameBtn);
+    tr.appendChild(nameTd);
+
     tr.insertAdjacentHTML('beforeend',
-      '<td><a href="https://www.notion.so/' + d.id + '" target="_blank" style="color:var(--text2);text-decoration:none;border-bottom:1px dotted var(--border);">' + esc(d.name) + '</a></td>' +
-      '<td class="link">' + (d.landing ? '<a href="' + esc(d.landing) + '" target="_blank">↗</a>' : '—') + '</td>');
+      '<td>' + esc(d.campaign || '—') + '</td>' +
+      '<td>'  + esc(d.method   || '—') + '</td>' +
+      '<td class="link">' + (d.landing ? '<a href="' + esc(d.landing) + '" target="_blank">↗</a>' : '—') + '</td>' +
+      '<td class="link"><a href="https://www.notion.so/' + d.id + '" target="_blank">↗</a></td>');
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
+  panel.innerHTML = '';
   panel.appendChild(table);
 }
 
@@ -4238,6 +4288,118 @@ async function saveEditRun() {
     if (panel) renderRunsPanel(panel, editRunListRef);
     closeEditRunModal();
     showToast('Run updated ✓', 'success');
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── EDIT DRIVE MODAL ─────────────────────────────────────────────────
+let editDriveCurrent = null;
+let editDriveRowRef  = null;
+let editDriveListRef = null;
+let allMethodsCache  = [];
+
+function openEditDriveModal(drive, tr, drivesList) {
+  editDriveCurrent = drive;
+  editDriveRowRef  = tr;
+  editDriveListRef = drivesList;
+  document.getElementById('editDriveName').value            = drive.name       || '';
+  document.getElementById('editDriveCampaignInput').value   = drive.campaign   || '';
+  document.getElementById('editDriveCampaignId').value      = drive.campaignId || '';
+  document.getElementById('editDriveMethodInput').value     = drive.method     || '';
+  document.getElementById('editDriveMethodId').value        = drive.methodId   || '';
+  document.getElementById('editDriveCampaignDropdown').style.display = 'none';
+  document.getElementById('editDriveMethodDropdown').style.display   = 'none';
+  document.getElementById('editDriveDbLink').href = 'https://www.notion.so/' + drive.id;
+  document.getElementById('editDriveSaveBtn').disabled    = false;
+  document.getElementById('editDriveSaveBtn').textContent = 'Save';
+  document.getElementById('editDriveModal').classList.add('open');
+  // Pre-load methods if not cached
+  if (!allMethodsCache.length) {
+    call('searchMethods', { query: '' }).then(d => { allMethodsCache = d.methods || []; }).catch(() => {});
+  }
+  setTimeout(() => document.getElementById('editDriveName').focus(), 280);
+}
+
+function filterEditDriveCampaigns() {
+  const query = document.getElementById('editDriveCampaignInput').value.trim().toLowerCase();
+  const dd = document.getElementById('editDriveCampaignDropdown');
+  const matches = ovData.filter(c => !query || c.name.toLowerCase().includes(query));
+  dd.innerHTML = '';
+  matches.slice(0, 8).forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = c.name + (c.site ? ' · ' + c.site : '');
+    div.onmousedown = () => {
+      document.getElementById('editDriveCampaignInput').value = c.name;
+      document.getElementById('editDriveCampaignId').value    = c.id;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+function filterEditDriveMethods() {
+  const query = document.getElementById('editDriveMethodInput').value.trim().toLowerCase();
+  const dd = document.getElementById('editDriveMethodDropdown');
+  const matches = allMethodsCache.filter(m => !query || (m.name || '').toLowerCase().includes(query));
+  dd.innerHTML = '';
+  matches.slice(0, 8).forEach(m => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = m.name;
+    div.onmousedown = () => {
+      document.getElementById('editDriveMethodInput').value = m.name;
+      document.getElementById('editDriveMethodId').value    = m.id;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+['editDriveCampaignInput','editDriveMethodInput'].forEach(inputId => {
+  document.addEventListener('click', e => {
+    const dropId = inputId === 'editDriveCampaignInput' ? 'editDriveCampaignDropdown' : 'editDriveMethodDropdown';
+    if (!e.target.closest('#' + inputId) && !e.target.closest('#' + dropId)) {
+      const dd = document.getElementById(dropId);
+      if (dd) dd.style.display = 'none';
+    }
+  });
+});
+
+function closeEditDriveModal() {
+  document.getElementById('editDriveModal').classList.remove('open');
+  document.getElementById('editDriveCampaignDropdown').style.display = 'none';
+  document.getElementById('editDriveMethodDropdown').style.display   = 'none';
+}
+
+async function saveEditDrive() {
+  const name = document.getElementById('editDriveName').value.trim();
+  if (!name) { document.getElementById('editDriveName').focus(); return; }
+
+  const btn = document.getElementById('editDriveSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+
+  const campaignId = document.getElementById('editDriveCampaignId').value || null;
+  const methodId   = document.getElementById('editDriveMethodId').value   || null;
+
+  try {
+    await call('updateDrive', { driveId: editDriveCurrent.id, name, campaignId, methodId });
+    Object.assign(editDriveCurrent, {
+      name,
+      campaign:   document.getElementById('editDriveCampaignInput').value || '',
+      campaignId: campaignId || null,
+      method:     document.getElementById('editDriveMethodInput').value   || '',
+      methodId:   methodId   || null,
+    });
+    // Re-render the drives section (the tr's parent tbody's drivesSection container)
+    const drivesSection = editDriveRowRef.closest('table')?.parentElement;
+    if (drivesSection) renderDrivesPanel(drivesSection, editDriveListRef);
+    closeEditDriveModal();
+    showToast('Drive updated ✓', 'success');
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';

@@ -1197,6 +1197,29 @@ export default {
       }
 
 
+
+      if (body.action === "updateDrive") {
+        const { driveId, name, campaignId, methodId } = body;
+        if (!driveId || !name) return json({ error: "driveId and name required" }, 400);
+        const dashed = driveId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const properties = {
+          "Name": { title: [{ text: { content: name } }] },
+          "campaign": campaignId ? { relation: [{ id: campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5") }] } : { relation: [] },
+          "method":   methodId   ? { relation: [{ id: methodId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5") }] } : { relation: [] },
+        };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: {
+            "Authorization":  `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type":   "application/json",
+          },
+          body: JSON.stringify({ properties }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
       if (body.action === "createDrive") {
         const { name, productId } = body;
         if (!name || !productId) return json({ error: "name and productId required" }, 400);
@@ -1224,16 +1247,30 @@ export default {
         const { productId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
         const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-        const rows = await notionQuery(DRIVES_DB, {
-          filter: { property: "product", relation: { contains: dashed } },
-          sorts: [{ timestamp: "created_time", direction: "descending" }],
-        });
-        const drives = rows.map(r => {
+        const [driveRows, campRows, methodRows] = await Promise.all([
+          notionQuery(DRIVES_DB, {
+            filter: { property: "product", relation: { contains: dashed } },
+            sorts: [{ timestamp: "created_time", direction: "descending" }],
+          }),
+          notionQuery(CAMPAIGNS_DB, {}),
+          notionQuery(METHODS_DB, {}),
+        ]);
+        const campById = {};
+        campRows.forEach(c => { campById[c.id.replace(/-/g,"")] = c.properties.Name?.title?.map(t => t.plain_text).join("") || ""; });
+        const methodById = {};
+        methodRows.forEach(m => { methodById[m.id.replace(/-/g,"")] = m.properties.Name?.title?.map(t => t.plain_text).join("") || ""; });
+        const drives = driveRows.map(r => {
           const props = r.properties;
+          const campRel   = (props["campaign"]?.relation || []).map(x => x.id.replace(/-/g,""));
+          const methodRel = (props["method"]?.relation   || []).map(x => x.id.replace(/-/g,""));
           return {
-            id:       r.id.replace(/-/g, ""),
-            name:     props["Name"]?.title?.map(t => t.plain_text).join("") || "Untitled",
-            landing:  props["landing"]?.rollup?.array?.[0]?.url || null,
+            id:         r.id.replace(/-/g, ""),
+            name:       props["Name"]?.title?.map(t => t.plain_text).join("") || "Untitled",
+            landing:    props["landing"]?.rollup?.array?.[0]?.url || null,
+            campaignId: campRel[0] || null,
+            campaign:   campRel[0] ? (campById[campRel[0]] || "") : "",
+            methodId:   methodRel[0] || null,
+            method:     methodRel[0] ? (methodById[methodRel[0]] || "") : "",
           };
         });
         return json({ drives });
