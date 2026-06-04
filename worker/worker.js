@@ -1196,6 +1196,30 @@ export default {
         return json({ id: result.id });
       }
 
+
+      if (body.action === "createDrive") {
+        const { name, productId } = body;
+        if (!name || !productId) return json({ error: "name and productId required" }, 400);
+        const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: {
+            "Authorization":  `Bearer ${NOTION_TOKEN}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type":   "application/json",
+          },
+          body: JSON.stringify({
+            parent: { database_id: DRIVES_DB },
+            properties: {
+              "Name":    { title: [{ text: { content: name } }] },
+              "product": { relation: [{ id: dashed }] },
+            },
+          }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ id: result.id });
+      }
       if (body.action === "getDrives") {
         const { productId } = body;
         if (!productId) return json({ error: "productId required" }, 400);

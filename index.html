@@ -469,6 +469,7 @@
   <div class="tab-panel" id="tabProducts">
     <a class="add-link" onclick="openProductModal()">+ Add product</a>
     <a class="add-link" onclick="openRunModal()" style="margin-left:12px;">+ Add run</a>
+    <a class="add-link" onclick="openDriveModal()" style="margin-left:12px;">+ Add drive</a>
     <div id="prodContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
@@ -1129,6 +1130,31 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeRunModal()">Cancel</button>
       <button class="btn btn-primary" id="runSubmitBtn" onclick="submitRun()">Create Run</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Drive Modal -->
+<div class="modal-bg" id="driveModal" onclick="if(event.target===this)closeDriveModal()">
+  <div class="modal">
+    <div class="modal-title">New Drive</div>
+
+    <div class="modal-field">
+      <label class="modal-label">Name <span style="color:var(--danger)">*</span></label>
+      <input class="modal-input" id="driveNameInput" type="text" placeholder="Drive name..." />
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Product <span style="color:var(--danger)">*</span></label>
+      <input class="modal-input" id="driveProductInput" type="text" placeholder="Search In Development products..." autocomplete="off"
+        oninput="filterDriveProducts()" onfocus="filterDriveProducts()" />
+      <input type="hidden" id="driveProductId" />
+      <div id="driveProductDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeDriveModal()">Cancel</button>
+      <button class="btn btn-primary" id="driveSubmitBtn" onclick="submitDrive()">Create Drive</button>
     </div>
   </div>
 </div>
@@ -4215,6 +4241,71 @@ async function saveEditRun() {
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── DRIVE MODAL ──────────────────────────────────────────────────────
+function openDriveModal() {
+  document.getElementById('driveNameInput').value = '';
+  document.getElementById('driveProductInput').value = '';
+  document.getElementById('driveProductId').value = '';
+  document.getElementById('driveProductDropdown').style.display = 'none';
+  document.getElementById('driveSubmitBtn').disabled = false;
+  document.getElementById('driveSubmitBtn').textContent = 'Create Drive';
+  document.getElementById('driveModal').classList.add('open');
+  setTimeout(() => document.getElementById('driveNameInput').focus(), 280);
+}
+
+function filterDriveProducts() {
+  const query = document.getElementById('driveProductInput').value.trim().toLowerCase();
+  const dd    = document.getElementById('driveProductDropdown');
+  const pool  = prodData.filter(p => p.status === 'In Development');
+  const matches = pool.filter(p => !query || (p.name || '').toLowerCase().includes(query));
+  dd.innerHTML = '';
+  matches.slice(0, 8).forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = p.name + (p.site ? ' · ' + p.site : '');
+    div.onmousedown = () => {
+      document.getElementById('driveProductInput').value = p.name;
+      document.getElementById('driveProductId').value    = p.id;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#driveProductInput') && !e.target.closest('#driveProductDropdown')) {
+    const dd = document.getElementById('driveProductDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+function closeDriveModal() {
+  document.getElementById('driveModal').classList.remove('open');
+  document.getElementById('driveProductDropdown').style.display = 'none';
+}
+
+async function submitDrive() {
+  const name      = document.getElementById('driveNameInput').value.trim();
+  const productId = document.getElementById('driveProductId').value;
+  if (!name)      { document.getElementById('driveNameInput').focus(); return; }
+  if (!productId) { document.getElementById('driveProductInput').focus(); showToast('Select a product', 'error'); return; }
+
+  const btn = document.getElementById('driveSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+
+  try {
+    await call('createDrive', { name, productId });
+    closeDriveModal();
+    showToast('Drive created ✓', 'success');
+    prodLoaded = false;
+    loadProducts();
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Create Drive';
   }
 }
 
