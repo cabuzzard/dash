@@ -3581,7 +3581,7 @@ function renderProducts() {
 }
 
 function renderRunsPanel(panel, runs) {
-  if (!runs.length) { panel.innerHTML = '<div class="runs-empty">No runs yet.</div>'; return; }
+  if (!runs.length) { panel.innerHTML = ''; return; }
   const statusClass = s => s === 'Not Started' ? 'not-started' : s === 'Template Published' ? 'template-published' : s === 'Listed on Etsy' ? 'listed-on-etsy' : '';
 
   const table = document.createElement('table');
