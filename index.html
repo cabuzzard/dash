@@ -4537,15 +4537,13 @@ function openEditDriveModal(drive, tr, drivesList) {
   document.getElementById('editDriveName').value              = drive.name        || '';
   document.getElementById('editDriveCampaignInput').value     = drive.campaign    || '';
   document.getElementById('editDriveCampaignId').value        = drive.campaignId  || '';
-  document.getElementById('editDriveMicroInput').value        = drive.micro       || '';
-  document.getElementById('editDriveMicroId').value           = drive.microId     || '';
   document.getElementById('editDriveMethodInput').value       = drive.method      || '';
   document.getElementById('editDriveMethodId').value          = drive.methodId    || '';
   document.getElementById('editDriveEmailInput').value        = drive.email       || '';
   document.getElementById('editDriveEmailId').value           = drive.emailId     || '';
   document.getElementById('editDriveInstagramInput').value    = drive.instagram   || '';
   document.getElementById('editDriveInstagramId').value       = drive.instagramId || '';
-  ['editDriveCampaignDropdown','editDriveMicroDropdown','editDriveMethodDropdown',
+  ['editDriveCampaignDropdown','editDriveMethodDropdown',
    'editDriveEmailDropdown','editDriveInstagramDropdown'].forEach(id => {
     document.getElementById(id).style.display = 'none';
   });
@@ -4661,19 +4659,16 @@ async function saveEditDrive() {
   btn.disabled = true; btn.textContent = 'Saving...';
 
   const campaignId  = document.getElementById('editDriveCampaignId').value    || null;
-  const microId     = document.getElementById('editDriveMicroId').value        || null;
   const methodId    = document.getElementById('editDriveMethodId').value       || null;
   const emailId     = document.getElementById('editDriveEmailId').value        || null;
   const instagramId = document.getElementById('editDriveInstagramId').value    || null;
 
   try {
-    await call('updateDrive', { driveId: editDriveCurrent.id, name, campaignId, microId, methodId, emailId, instagramId });
+    await call('updateDrive', { driveId: editDriveCurrent.id, name, campaignId, methodId, emailId, instagramId });
     Object.assign(editDriveCurrent, {
       name,
       campaign:    document.getElementById('editDriveCampaignInput').value   || '',
       campaignId:  campaignId  || null,
-      micro:       document.getElementById('editDriveMicroInput').value      || '',
-      microId:     microId     || null,
       method:      document.getElementById('editDriveMethodInput').value     || '',
       methodId:    methodId    || null,
       email:       document.getElementById('editDriveEmailInput').value      || '',
