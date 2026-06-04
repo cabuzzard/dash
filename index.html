@@ -1136,7 +1136,10 @@
 <!-- Edit Run Modal -->
 <div class="modal-bg" id="editRunModal" onclick="if(event.target===this)closeEditRunModal()">
   <div class="modal">
-    <div class="modal-title">Edit Run</div>
+    <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;">
+      Edit Run
+      <a id="editRunDbLink" href="#" target="_blank" style="font-size:12px;font-weight:400;color:var(--text3);text-decoration:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;">↗ Notion</a>
+    </div>
 
     <div class="modal-field">
       <label class="modal-label">Template Name <span style="color:var(--danger)">*</span></label>
@@ -4112,6 +4115,8 @@ function openEditRunModal(run, tr, runsList) {
     : 'No file uploaded.';
   document.getElementById('editRunSaveBtn').disabled    = false;
   document.getElementById('editRunSaveBtn').textContent = 'Save';
+  const dbLink = document.getElementById('editRunDbLink');
+  dbLink.href = 'https://www.notion.so/' + run.id;
   document.getElementById('editRunModal').classList.add('open');
   setTimeout(() => document.getElementById('editRunTemplateName').focus(), 280);
 }
