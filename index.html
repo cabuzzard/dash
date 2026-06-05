@@ -7029,7 +7029,7 @@ function renderScreenerTable(rows, isDiscover, showFunds) {
       ? `<td style="font-size:10px;color:#aa66ff;max-width:140px;white-space:normal;line-height:1.4;">${(r.funds||[]).join(', ') || '—'}</td>`
       : '';
 
-    return `<tr data-sym="${escHtml(r.sym)}">
+    return `<tr data-sym="${escHtml(r.sym)}" data-score="${r.score ?? 0}" data-verdict="${r.verdict}">
       <td class="scr-sym"><a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(r.sym)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px solid #4488ff44;" title="Open ${r.sym} on TradingView">${escHtml(r.sym)} <span style="font-size:9px;color:#4488ff;vertical-align:middle;">↗</span></a></td>
       <td class="scr-mono">$${r.price.toFixed(2)}</td>
       <td class="scr-mono" style="color:${r.volRatio>=1.5?'#44cc88':r.volRatio<1?'#ff4444':'inherit'}">${volStr}</td>
@@ -7050,10 +7050,12 @@ function renderScreenerTable(rows, isDiscover, showFunds) {
   }).join('');
 }
 
-// ── SENTIMENT ENRICHMENT ───────────────────────────────────────────────
+// ── SENTIMENT ENRICHMENT + RE-SCORING ─────────────────────────────────
 async function enrichWithSentiment(tickers) {
   if (!tickers || !tickers.length) return;
+  const status = document.getElementById('scrStatus');
   try {
+    if (status) status.textContent += '  ·  Fetching WSB + options flow…';
     const data = await call('getSentiment', { tickers });
     const sentMap = {};
     for (const s of (data.sentiment || [])) sentMap[s.sym] = s;
@@ -7061,31 +7063,39 @@ async function enrichWithSentiment(tickers) {
     const tbody = document.getElementById('scrTableBody');
     if (!tbody) return;
 
-    tbody.querySelectorAll('tr[data-sym]').forEach(row => {
-      const sym  = row.dataset.sym;
-      const sent = sentMap[sym];
-      if (!sent) return;
+    // Score each row, update cells + verdict
+    const rows = Array.from(tbody.querySelectorAll('tr[data-sym]'));
+    const scored = [];
 
-      // WSB cell
+    rows.forEach(row => {
+      const sym        = row.dataset.sym;
+      const techScore  = parseFloat(row.dataset.score) || 0;
+      const origVerdict= row.dataset.verdict || 'SKIP';
+      const sent       = sentMap[sym];
+
+      // ── WSB signal: −1 to +1
+      let wsbSignal = 0;
       const wsbCell = row.querySelector('.scr-wsb-cell');
-      if (wsbCell && sent.reddit !== null) {
+      if (sent?.reddit) {
         const rd = sent.reddit;
-        const score = rd.score;
-        const color = score > 0.1 ? '#44cc88' : score < -0.1 ? '#ff4444' : 'var(--text3)';
-        const dot   = score > 0.1 ? '●' : score < -0.1 ? '●' : '○';
-        const label = rd.mentions > 0 ? `${rd.mentions}` : '0';
+        wsbSignal = rd.score; // already (bull-bear)/mentions
+        const color = wsbSignal > 0.1 ? '#44cc88' : wsbSignal < -0.1 ? '#ff4444' : 'var(--text3)';
+        const dot   = wsbSignal > 0.1 ? '●' : wsbSignal < -0.1 ? '●' : '○';
         wsbCell.style.color = color;
-        wsbCell.title = `${rd.bull} bullish / ${rd.bear} bearish out of ${rd.mentions} posts today`;
-        wsbCell.innerHTML = `<span style="color:${color};margin-right:3px;">${dot}</span>${label}`;
+        wsbCell.title = `${rd.bull} bullish / ${rd.bear} bearish · ${rd.mentions} posts today`;
+        wsbCell.innerHTML = `<span style="color:${color};margin-right:3px;">${dot}</span>${rd.mentions}`;
       } else if (wsbCell) {
         wsbCell.textContent = '—';
       }
 
-      // P/C cell
+      // ── P/C signal: inverted ratio → −1 to +1
+      let pcSignal = 0;
       const pcCell = row.querySelector('.scr-pc-cell');
-      if (pcCell && sent.putCall !== null) {
+      if (sent?.putCall) {
         const pc = sent.putCall;
         const ratio = pc.ratio;
+        // < 0.7 bullish (+1), 0.7–1.0 mild (+0.3), 1.0–1.3 mild (−0.3), > 1.3 bearish (−1)
+        pcSignal = ratio < 0.7 ? 1 : ratio < 1.0 ? 0.3 : ratio < 1.3 ? -0.3 : -1;
         const color = ratio < 0.7 ? '#44cc88' : ratio > 1.3 ? '#ff4444' : '#ffaa33';
         pcCell.style.color = color;
         pcCell.title = `Calls: ${pc.callVol.toLocaleString()} · Puts: ${pc.putVol.toLocaleString()}`;
@@ -7093,9 +7103,55 @@ async function enrichWithSentiment(tickers) {
       } else if (pcCell) {
         pcCell.textContent = '—';
       }
+
+      // ── Combined sentiment: average of two signals (0 if both missing)
+      const hasSent    = sent?.reddit || sent?.putCall;
+      const sentScore  = hasSent ? (wsbSignal + pcSignal) / 2 : 0;
+      const combined   = techScore + sentScore * 2; // weight sentiment at 2× bonus points
+
+      // ── Upgrade / downgrade verdict
+      let newVerdict = origVerdict;
+      if (hasSent) {
+        if (sentScore >= 0.4  && origVerdict === 'WATCH') newVerdict = 'BUY';
+        if (sentScore >= 0.4  && origVerdict === 'SKIP')  newVerdict = 'WATCH';
+        if (sentScore <= -0.4 && origVerdict === 'BUY')   newVerdict = 'WATCH';
+        if (sentScore <= -0.4 && origVerdict === 'WATCH')  newVerdict = 'SKIP';
+      }
+
+      // Update verdict cell if changed
+      if (newVerdict !== origVerdict) {
+        const verdCell = row.querySelector('td:nth-child(8) span, td:nth-child(9) span');
+        if (verdCell) {
+          const vStyle = newVerdict === 'BUY'
+            ? 'background:#0d2e1a;color:#44cc88;border:1px solid #44cc8844;'
+            : newVerdict === 'WATCH'
+            ? 'background:#2a1e00;color:#ffaa33;border:1px solid #ffaa3344;'
+            : 'background:var(--surface);color:var(--text3);border:1px solid var(--border);';
+          verdCell.style.cssText = `font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;${vStyle}`;
+          verdCell.textContent = newVerdict;
+          verdCell.title = `Was ${origVerdict} · sentiment ${sentScore >= 0 ? '+' : ''}${sentScore.toFixed(2)}`;
+        }
+        row.dataset.verdict = newVerdict;
+      }
+
+      scored.push({ row, combined, newVerdict });
     });
+
+    // ── Re-sort table: BUY first, then WATCH, then SKIP; within each group by combined score
+    const order = { BUY: 0, WATCH: 1, SKIP: 2 };
+    scored.sort((a, b) =>
+      (order[a.newVerdict] ?? 3) - (order[b.newVerdict] ?? 3) ||
+      b.combined - a.combined
+    );
+    scored.forEach(({ row }) => tbody.appendChild(row));
+
+    // ── Update status
+    const buys   = scored.filter(s => s.newVerdict === 'BUY').length;
+    const watches = scored.filter(s => s.newVerdict === 'WATCH').length;
+    const skips  = scored.filter(s => s.newVerdict === 'SKIP').length;
+    if (status) status.textContent = `After sentiment: ${buys} BUY · ${watches} WATCH · ${skips} SKIP  (sorted by combined score)`;
+
   } catch(e) {
-    // silent — enrichment is best-effort
     document.querySelectorAll('.scr-wsb-cell,.scr-pc-cell').forEach(c => { c.textContent = '—'; });
   }
 }
