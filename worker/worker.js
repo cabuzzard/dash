@@ -2563,8 +2563,10 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         if (fields.expired) {
           const rt = v => ({ rich_text: [{ type: "text", text: { content: String(v ?? "") } }] });
           const name = `${updated.ticker} ${updated.strike}${updated.direction || "C"} ${updated.expiry}`;
+          let archiveOk = false;
+          let archiveError = null;
           try {
-            await fetch("https://api.notion.com/v1/pages", {
+            const notionResp = await fetch("https://api.notion.com/v1/pages", {
               method: "POST",
               headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -2597,10 +2599,81 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
                 }
               }),
             });
+            if (notionResp.ok) {
+              archiveOk = true;
+            } else {
+              const errBody = await notionResp.text().catch(() => '');
+              archiveError = `Notion ${notionResp.status}: ${errBody.slice(0, 200)}`;
+            }
+          } catch(e) {
+            archiveError = e.message || 'Network error';
+          }
+
+          if (archiveOk) {
+            // Safe to remove from KV — confirmed in Notion
             await env.TRADES.delete(`trades:${id}`);
-          } catch(e) { /* archive failed — leave in KV, don't error the poller */ }
+          } else {
+            // Archive failed — keep in KV, flag it so the UI can warn the user
+            await env.TRADES.put(`trades:${id}`, JSON.stringify({
+              ...updated,
+              archive_failed: true,
+              archive_error: archiveError,
+              archive_attempted: new Date().toISOString(),
+            }));
+          }
         }
 
+        return json({ success: true });
+      }
+
+      if (body.action === 'retryArchiveTrade') {
+        // Re-attempt Notion archive for a trade that previously failed
+        const { id } = body;
+        if (!id) return json({ error: 'Missing trade id' }, 400);
+        const trade = await env.TRADES.get(`trades:${id}`, 'json');
+        if (!trade) return json({ error: 'Trade not found' }, 404);
+        if (!trade.expired) return json({ error: 'Trade is not marked expired' }, 400);
+        // Trigger the same archive path by calling updateTrade logic inline
+        const rt = v => ({ rich_text: [{ type: "text", text: { content: String(v ?? "") } }] });
+        const name = `${trade.ticker} ${trade.strike}${trade.direction || "C"} ${trade.expiry}`;
+        const notionResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: TRADES_DB },
+            properties: {
+              Name:                  { title: [{ type: "text", text: { content: name } }] },
+              Ticker:                rt(trade.ticker || ""),
+              Strike:                { number: trade.strike ?? null },
+              Expiry:                rt(trade.expiry || ""),
+              Direction:             { select: { name: trade.direction || "C" } },
+              Status:                { select: { name: "Expired" } },
+              "Entry Price":         { number: trade.entry_price ?? null },
+              "Current Price":       { number: trade.current_price ?? null },
+              "Current Pct":         { number: trade.current_pct ?? null },
+              "Max High":            { number: trade.max_high ?? null },
+              "Max High Time":       rt(trade.max_high_time || ""),
+              "Max Low":             { number: trade.max_low ?? null },
+              "Max Low Time":        rt(trade.max_low_time || ""),
+              "Strike Reached":         { checkbox: !!trade.strike_reached },
+              "Strike Reached Time":    rt(trade.strike_reached_time || ""),
+              "Price Captured":         { checkbox: !!trade.price_captured },
+              "Last Updated":           rt(trade.last_updated || ""),
+              "Entry Contract":         { number: trade.entry_contract ?? null },
+              "Current Contract":       { number: trade.current_contract ?? null },
+              "Contract Pct":           { number: trade.contract_pct ?? null },
+              "Contract Max High":      { number: trade.contract_max_high ?? null },
+              "Contract Max High Time": rt(trade.contract_max_high_time || ""),
+              "Contract Max Low":       { number: trade.contract_max_low ?? null },
+              "Contract Max Low Time":  rt(trade.contract_max_low_time || ""),
+            }
+          }),
+        });
+        if (!notionResp.ok) {
+          const errBody = await notionResp.text().catch(() => '');
+          return json({ error: `Notion ${notionResp.status}: ${errBody.slice(0, 200)}` }, 502);
+        }
+        await env.TRADES.delete(`trades:${id}`);
         return json({ success: true });
       }
 
