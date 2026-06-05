@@ -1261,6 +1261,14 @@
       <div id="editDriveInstagramDropdown" class="camp-dropdown" style="display:none;"></div>
     </div>
 
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Main TD</label>
+      <input class="modal-input" id="editDriveMainTdInput" type="text" placeholder="Search main TD items..." autocomplete="off"
+        oninput="filterMainTd('editDriveMainTdInput','editDriveMainTdId','editDriveMainTdDropdown')" onfocus="filterMainTd('editDriveMainTdInput','editDriveMainTdId','editDriveMainTdDropdown')" />
+      <input type="hidden" id="editDriveMainTdId" />
+      <div id="editDriveMainTdDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeEditDriveModal()">Cancel</button>
       <button class="btn btn-primary" id="editDriveSaveBtn" onclick="saveEditDrive()">Save</button>
@@ -1324,6 +1332,14 @@
     <div class="modal-field">
       <label class="modal-label">Listing Copy</label>
       <textarea class="modal-input" id="editRunListingCopy" rows="4" placeholder="Paste listing copy here..." style="resize:vertical;font-family:inherit;"></textarea>
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Main TD</label>
+      <input class="modal-input" id="editRunMainTdInput" type="text" placeholder="Search main TD items..." autocomplete="off"
+        oninput="filterMainTd('editRunMainTdInput','editRunMainTdId','editRunMainTdDropdown')" onfocus="filterMainTd('editRunMainTdInput','editRunMainTdId','editRunMainTdDropdown')" />
+      <input type="hidden" id="editRunMainTdId" />
+      <div id="editRunMainTdDropdown" class="camp-dropdown" style="display:none;"></div>
     </div>
 
     <div class="modal-field">
@@ -3708,7 +3724,7 @@ function renderRunsPanel(panel, runs) {
 
   const table = document.createElement('table');
   table.className = 'runs-table';
-  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published Template</th><th>Delivery</th><th>Etsy</th><th style="cursor:default;"></th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published Template</th><th>Delivery</th><th>Etsy</th><th>Main TD</th><th style="cursor:default;"></th></tr></thead>';
   const tbody = document.createElement('tbody');
 
   runs.forEach(r => {
@@ -3764,7 +3780,8 @@ function renderRunsPanel(panel, runs) {
     tr.appendChild(delivTd);
 
     tr.insertAdjacentHTML('beforeend',
-      '<td class="link">' + link(r.etsyLink, 'Etsy ↗') + '</td>');
+      '<td class="link">' + link(r.etsyLink, 'Etsy ↗') + '</td>' +
+      '<td>' + esc(r.mainTd || '—') + '</td>');
 
     // Copy listing copy button
     const copyTd = document.createElement('td');
@@ -4247,7 +4264,7 @@ function renderDrivesPanel(panel, drives) {
   const table = document.createElement('table');
   table.className = 'runs-table';
   table.innerHTML = '<thead><tr>' +
-    '<th>Name</th><th>Campaign</th><th>Method</th><th>Email</th><th>Instagram</th>' +
+    '<th>Name</th><th>Campaign</th><th>Method</th><th>Email</th><th>Instagram</th><th>Main TD</th>' +
     '<th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">STE</th>' +
     '<th style="cursor:default;text-align:center;">DB</th>' +
     '</tr></thead>';
@@ -4267,6 +4284,7 @@ function renderDrivesPanel(panel, drives) {
       '<td>' + esc(d.method    || '—') + '</td>' +
       '<td>' + esc(d.email     || '—') + '</td>' +
       '<td>' + esc(d.instagram || '—') + '</td>' +
+      '<td>' + esc(d.mainTd   || '—') + '</td>' +
       '<td class="link">' + lnk(d.landing, '↗') + '</td>' +
       '<td class="link">' + lnk(d.ste,     '↗') + '</td>' +
       '<td class="link"><a href="https://www.notion.so/' + d.id + '" target="_blank">↗</a></td>');
@@ -4276,6 +4294,44 @@ function renderDrivesPanel(panel, drives) {
   panel.innerHTML = '';
   panel.appendChild(table);
 }
+
+// ── MAIN TD AUTOCOMPLETE (shared) ────────────────────────────────────
+let allMainTdCache = [];
+function filterMainTd(inputId, hiddenId, dropId) {
+  if (!allMainTdCache.length) {
+    call('searchTodos', { query: '' }).then(d => {
+      allMainTdCache = d.todos || [];
+      filterMainTd(inputId, hiddenId, dropId);
+    }).catch(() => {});
+    return;
+  }
+  const query = document.getElementById(inputId).value.trim().toLowerCase();
+  const dd = document.getElementById(dropId);
+  const matches = allMainTdCache.filter(t => !query || (t.name || '').toLowerCase().includes(query));
+  dd.innerHTML = '';
+  matches.slice(0, 8).forEach(t => {
+    const label = t.name || 'Untitled';
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = label;
+    div.onmousedown = () => {
+      document.getElementById(inputId).value = label;
+      document.getElementById(hiddenId).value = t.id;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+['editRunMainTdInput','editDriveMainTdInput'].forEach(id => {
+  document.addEventListener('click', e => {
+    const map = { editRunMainTdInput: 'editRunMainTdDropdown', editDriveMainTdInput: 'editDriveMainTdDropdown' };
+    if (!e.target.closest('#' + id) && !e.target.closest('#' + map[id])) {
+      const dd = document.getElementById(map[id]);
+      if (dd) dd.style.display = 'none';
+    }
+  });
+});
 
 // ── DELIVERY FILE UPLOAD HELPER ──────────────────────────────────────
 async function uploadDeliveryFile(runId, file) {
@@ -4315,6 +4371,8 @@ function openEditRunModal(run, tr, runsList) {
   document.getElementById('editRunPublishedLink').value = run.publishedLink || '';
   document.getElementById('editRunListingCopy').value   = run.listingCopy   || '';
   document.getElementById('editRunDeliveryFile').value  = '';
+  document.getElementById('editRunMainTdInput').value   = run.mainTd        || '';
+  document.getElementById('editRunMainTdId').value      = run.mainTdId      || '';
   document.getElementById('editRunEtsyLink').value      = run.etsyLink      || '';
   const cur = document.getElementById('editRunDeliveryFileCurrent');
   cur.innerHTML = run.deliveryFile
@@ -4348,6 +4406,7 @@ async function saveEditRun() {
     canvaLink:     document.getElementById('editRunCanvaLink').value.trim()     || null,
     publishedLink: document.getElementById('editRunPublishedLink').value.trim() || null,
     listingCopy:   document.getElementById('editRunListingCopy').value.trim()   || null,
+    mainTdId:      document.getElementById('editRunMainTdId').value             || null,
     etsyLink:      document.getElementById('editRunEtsyLink').value.trim()      || null,
   };
 
@@ -4372,6 +4431,8 @@ async function saveEditRun() {
       canvaLink:     updates.canvaLink     || null,
       publishedLink: updates.publishedLink || null,
       listingCopy:   updates.listingCopy   || '',
+      mainTdId:      updates.mainTdId      || null,
+      mainTd:        document.getElementById('editRunMainTdInput').value || '',
       etsyLink:      updates.etsyLink      || null,
     });
     // Re-render the panel by finding its container
@@ -4545,6 +4606,8 @@ function openEditDriveModal(drive, tr, drivesList) {
   document.getElementById('editDriveEmailId').value           = drive.emailId     || '';
   document.getElementById('editDriveInstagramInput').value    = drive.instagram   || '';
   document.getElementById('editDriveInstagramId').value       = drive.instagramId || '';
+  document.getElementById('editDriveMainTdInput').value       = drive.mainTd      || '';
+  document.getElementById('editDriveMainTdId').value          = drive.mainTdId    || '';
   ['editDriveCampaignDropdown','editDriveMethodDropdown',
    'editDriveEmailDropdown','editDriveInstagramDropdown'].forEach(id => {
     document.getElementById(id).style.display = 'none';
@@ -4664,9 +4727,10 @@ async function saveEditDrive() {
   const methodId    = document.getElementById('editDriveMethodId').value       || null;
   const emailId     = document.getElementById('editDriveEmailId').value        || null;
   const instagramId = document.getElementById('editDriveInstagramId').value    || null;
+  const mainTdId    = document.getElementById('editDriveMainTdId').value       || null;
 
   try {
-    await call('updateDrive', { driveId: editDriveCurrent.id, name, campaignId, methodId, emailId, instagramId });
+    await call('updateDrive', { driveId: editDriveCurrent.id, name, campaignId, methodId, emailId, instagramId, mainTdId });
     Object.assign(editDriveCurrent, {
       name,
       campaign:    document.getElementById('editDriveCampaignInput').value   || '',
@@ -4677,6 +4741,8 @@ async function saveEditDrive() {
       emailId:     emailId     || null,
       instagram:   document.getElementById('editDriveInstagramInput').value  || '',
       instagramId: instagramId || null,
+      mainTd:      document.getElementById('editDriveMainTdInput').value     || '',
+      mainTdId:    mainTdId    || null,
     });
     // Re-render the drives section (the tr's parent tbody's drivesSection container)
     const drivesSection = editDriveRowRef.closest('table')?.parentElement;
