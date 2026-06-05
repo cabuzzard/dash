@@ -1905,7 +1905,7 @@ async function checkPin() {
 function lockApp() {
   SESSION_TOKEN = null;
   sessionStorage.removeItem('hermes_token');
-  pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false; devLoaded = false; tdTabLoaded = false;
+  pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false; devLoaded = false; tdTabLoaded = false; tradesLoaded = false;
   updateDots();
   document.getElementById('pinScreen').classList.remove('hidden');
   document.getElementById('ovContent').innerHTML   = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
