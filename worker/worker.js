@@ -3105,6 +3105,58 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ screened: top, universe: tickers.length, passed: filtered.length });
       }
 
+      // ── SENTIMENT (Reddit WSB + Yahoo Options P/C) ───────────────────────────
+      if (body.action === 'getSentiment') {
+        const { tickers } = body;
+        if (!Array.isArray(tickers) || !tickers.length) return json({ error: 'tickers required' }, 400);
+        const list = tickers.slice(0, 20).map(t => t.toUpperCase().trim());
+
+        async function fetchRedditSentiment(sym) {
+          const BULL = ['call','calls','bull','bullish','moon','buy','long','squeeze','breakout','pump','green','yolo','🚀','rip','gap up','upside'];
+          const BEAR = ['put','puts','bear','bearish','short','dump','down','crash','sell','red','drop','fall','tank','collapse','puts printing'];
+          try {
+            const url = `https://www.reddit.com/search.json?q=%22${encodeURIComponent(sym)}%22+options&sort=new&t=day&limit=25&restrict_sr=false`;
+            const r = await fetch(url, { headers: { 'User-Agent': 'HermesScanner/1.0 (market research)' } });
+            if (!r.ok) return null;
+            const data = await r.json();
+            const posts = data?.data?.children || [];
+            let bull = 0, bear = 0;
+            for (const p of posts) {
+              const text = ((p.data?.title || '') + ' ' + (p.data?.selftext || '')).toLowerCase();
+              if (BULL.some(w => text.includes(w))) bull++;
+              if (BEAR.some(w => text.includes(w))) bear++;
+            }
+            return { mentions: posts.length, bull, bear, score: posts.length === 0 ? 0 : (bull - bear) / Math.max(posts.length, 1) };
+          } catch { return null; }
+        }
+
+        async function fetchPutCall(sym) {
+          try {
+            const url = `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(sym)}`;
+            const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!r.ok) return null;
+            const data = await r.json();
+            const opts = data?.optionChain?.result?.[0]?.options?.[0];
+            if (!opts) return null;
+            const callVol = (opts.calls || []).reduce((s, c) => s + (c.volume || 0), 0);
+            const putVol  = (opts.puts  || []).reduce((s, p) => s + (p.volume || 0), 0);
+            if (!callVol && !putVol) return null;
+            return { callVol, putVol, ratio: callVol > 0 ? +(putVol / callVol).toFixed(2) : 99 };
+          } catch { return null; }
+        }
+
+        const results = await Promise.allSettled(list.map(async sym => {
+          const [red, pc] = await Promise.allSettled([fetchRedditSentiment(sym), fetchPutCall(sym)]);
+          return {
+            sym,
+            reddit: red.status === 'fulfilled' ? red.value : null,
+            putCall: pc.status  === 'fulfilled' ? pc.value  : null,
+          };
+        }));
+
+        return json({ sentiment: results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean) });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);
