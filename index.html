@@ -4156,7 +4156,7 @@ function renderProdTds(data) {
   const makeTable = (rows) => {
     let html = '<table class="prod-td-table"><thead><tr><th>Product</th><th>Item</th><th>TD</th></tr></thead><tbody>';
     byProduct(rows).forEach(r => {
-      html += '<tr><td>' + esc(r.product || '—') + '</td><td>' + esc(r.item || '—') + '</td><td>' + esc(r.td || '—') + '</td></tr>';
+      html += '<tr><td>' + esc(r.product || '—') + '</td><td>' + esc(r.item || '—') + '</td><td style="color:#ff6a00;font-weight:500;">' + esc(r.td || '—') + '</td></tr>';
     });
     return html + '</tbody></table>';
   };
