@@ -939,6 +939,60 @@ export default {
         return json({ campaigns });
       }
 
+
+      if (body.action === "getProductsTds") {
+        // Fetch all In Development products + their runs/drives/resumes + resolve TD titles
+        const [productRows, mainTdRows] = await Promise.all([
+          notionQuery(PRODUCTS_DB, {
+            filter: { property: "Status", select: { equals: "In Development" } },
+          }),
+          notionQuery(MAIN_TD_DB, { sorts: [{ property: "Title", direction: "ascending" }] }),
+        ]);
+
+        const tdById = {};
+        mainTdRows.forEach(t => { tdById[t.id.replace(/-/g,"")] = t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled"; });
+
+        const prodNames = {};
+        productRows.forEach(p => { prodNames[p.id.replace(/-/g,"")] = p.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled"; });
+        const prodIds = productRows.map(p => p.id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5"));
+
+        if (!prodIds.length) return json({ runs: [], drives: [], resumes: [] });
+
+        // Build OR filter across all product IDs for each DB
+        const makeFilter = (prop, ids) => ids.length === 1
+          ? { property: prop, relation: { contains: ids[0] } }
+          : { or: ids.map(id => ({ property: prop, relation: { contains: id } })) };
+
+        const [runRows, driveRows, resumeRows] = await Promise.all([
+          notionQuery(RUNS_DB,    { filter: makeFilter("products", prodIds) }),
+          notionQuery(DRIVES_DB,  { filter: makeFilter("product",  prodIds) }),
+          notionQuery(RESUMES_DB, { filter: makeFilter("product",  prodIds) }),
+        ]);
+
+        const extractTds = (rows, nameField, productField) => {
+          const results = [];
+          rows.forEach(r => {
+            const props = r.properties;
+            const tdRel = (props["main td"]?.relation || []).map(x => x.id.replace(/-/g,""));
+            if (!tdRel.length) return;
+            const prodRel = (props[productField]?.relation || []).map(x => x.id.replace(/-/g,""));
+            const prodName = prodRel[0] ? (prodNames[prodRel[0]] || "") : "";
+            const itemName = (nameField === "Template Name"
+              ? props["Template Name"]?.title?.map(t => t.plain_text).join("")
+              : props["Name"]?.title?.map(t => t.plain_text).join("")) || "Untitled";
+            tdRel.forEach(tdId => {
+              results.push({ product: prodName, item: itemName, td: tdById[tdId] || tdId, tdId });
+            });
+          });
+          return results;
+        };
+
+        return json({
+          runs:    extractTds(runRows,    "Template Name", "products"),
+          drives:  extractTds(driveRows,  "Name",          "product"),
+          resumes: extractTds(resumeRows, "Name",          "product"),
+        });
+      }
       if (body.action === "getProducts") {
         // Fetch products and campaigns in parallel so we can resolve campaign name + site
         const [productRows, campRows] = await Promise.all([

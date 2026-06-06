@@ -230,6 +230,21 @@
   .run-status.listed-on-etsy   { background:#0a3d20; color:#5ddb8e; }
   .run-edit-btn { background:none; border:none; cursor:pointer; color:var(--text); font-size:11px; text-align:left; padding:0; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px; }
   .run-edit-btn:hover { color:#ff6a00; }
+  .prod-td-panel { background:var(--surface2); border:1px solid var(--border); border-radius:6px; margin-bottom:14px; overflow:hidden; }
+  .prod-td-header { display:flex; align-items:center; gap:8px; padding:8px 14px; cursor:pointer; user-select:none; }
+  .prod-td-header:hover { background:var(--surface3,#2a2a2a); }
+  .prod-td-toggle { font-size:11px; color:var(--text3); transition:transform .15s; }
+  .prod-td-toggle.open { transform:rotate(90deg); }
+  .prod-td-title { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text3); }
+  .prod-td-count { font-size:10px; color:var(--text3); background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1px 7px; }
+  .prod-td-body { display:none; padding:0 14px 12px; }
+  .prod-td-body.open { display:block; }
+  .prod-td-group { margin-top:10px; }
+  .prod-td-group-label { font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text3); margin-bottom:5px; }
+  .prod-td-table { width:100%; border-collapse:collapse; font-size:11px; }
+  .prod-td-table th { font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text3); padding:3px 8px; text-align:left; border-bottom:1px solid var(--border); }
+  .prod-td-table td { padding:5px 8px; border-bottom:1px solid var(--border); color:var(--text2); vertical-align:middle; }
+  .prod-td-table tr:last-child td { border-bottom:none; }
   .run-copy-btn { background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer; color:var(--text3); font-size:10px; padding:2px 6px; white-space:nowrap; transition:color .15s,border-color .15s; }
   .run-copy-btn:hover { color:var(--text); border-color:var(--text3); }
   .run-copy-btn.copied { color:#5ddb8e; border-color:#5ddb8e; }
@@ -471,6 +486,18 @@
     <a class="add-link" onclick="openRunModal()" style="margin-left:12px;">+ Add run</a>
     <a class="add-link" onclick="openDriveModal()" style="margin-left:12px;">+ Add drive</a>
     <a class="add-link" onclick="openResumeModal()" style="margin-left:12px;">+ Add resume</a>
+
+    <div class="prod-td-panel" id="prodTdPanel" style="margin-top:14px;">
+      <div class="prod-td-header" onclick="toggleProdTdPanel()">
+        <span class="prod-td-toggle" id="prodTdToggle">▶</span>
+        <span class="prod-td-title">TDs</span>
+        <span class="prod-td-count" id="prodTdCount">—</span>
+      </div>
+      <div class="prod-td-body" id="prodTdBody">
+        <div class="loading-wrap"><div class="spinner"></div>Loading…</div>
+      </div>
+    </div>
+
     <div id="prodContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
@@ -1930,7 +1957,7 @@ async function checkPin() {
 function lockApp() {
   SESSION_TOKEN = null;
   sessionStorage.removeItem('hermes_token');
-  pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false; devLoaded = false; tdTabLoaded = false; tradesLoaded = false;
+  pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false; prodTdLoaded = false; devLoaded = false; tdTabLoaded = false; tradesLoaded = false;
   updateDots();
   document.getElementById('pinScreen').classList.remove('hidden');
   document.getElementById('ovContent').innerHTML   = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
@@ -4102,6 +4129,56 @@ function renderTable() {
   wrap.className = 'table-wrap';
   wrap.appendChild(table);
   el.appendChild(wrap);
+}
+
+// ── PRODUCTS TD PANEL ────────────────────────────────────────────────
+let prodTdLoaded = false;
+let prodTdOpen   = false;
+
+function toggleProdTdPanel() {
+  prodTdOpen = !prodTdOpen;
+  document.getElementById('prodTdToggle').classList.toggle('open', prodTdOpen);
+  document.getElementById('prodTdBody').classList.toggle('open', prodTdOpen);
+  if (prodTdOpen && !prodTdLoaded) loadProdTds();
+}
+
+async function loadProdTds() {
+  const body = document.getElementById('prodTdBody');
+  body.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading…</div>';
+  try {
+    const data = await call('getProductsTds');
+    prodTdLoaded = true;
+    renderProdTds(data);
+  } catch (e) {
+    body.innerHTML = '<div class="runs-empty" style="padding:8px 0;">Error: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderProdTds(data) {
+  const body  = document.getElementById('prodTdBody');
+  const total = (data.runs?.length || 0) + (data.drives?.length || 0) + (data.resumes?.length || 0);
+  document.getElementById('prodTdCount').textContent = total || '0';
+  if (!total) { body.innerHTML = '<div class="runs-empty" style="padding:8px 0;">No TDs linked.</div>'; return; }
+
+  const makeTable = (rows) => {
+    let html = '<table class="prod-td-table"><thead><tr><th>Product</th><th>Item</th><th>TD</th></tr></thead><tbody>';
+    rows.forEach(r => {
+      html += '<tr><td>' + esc(r.product || '—') + '</td><td>' + esc(r.item || '—') + '</td><td>' + esc(r.td || '—') + '</td></tr>';
+    });
+    return html + '</tbody></table>';
+  };
+
+  let html = '';
+  if (data.runs?.length) {
+    html += '<div class="prod-td-group"><div class="prod-td-group-label">Runs</div>' + makeTable(data.runs) + '</div>';
+  }
+  if (data.drives?.length) {
+    html += '<div class="prod-td-group"><div class="prod-td-group-label">Drives</div>' + makeTable(data.drives) + '</div>';
+  }
+  if (data.resumes?.length) {
+    html += '<div class="prod-td-group"><div class="prod-td-group-label">Resumes</div>' + makeTable(data.resumes) + '</div>';
+  }
+  body.innerHTML = html;
 }
 
 // ── PRODUCT MODAL ────────────────────────────────────────────────────
