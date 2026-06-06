@@ -4702,17 +4702,48 @@ function filterEditDriveMicro() {
 }
 
 function filterEditDriveLogins(inputId, hiddenId, dropId) {
-  const query = document.getElementById(inputId).value.trim().toLowerCase();
-  const dd = document.getElementById(dropId);
-  const matches = allLoginsCache.filter(l => !query || (l.name || '').toLowerCase().includes(query));
-  dd.innerHTML = '';
+  const rawQuery = document.getElementById(inputId).value.trim();
+  const query    = rawQuery.toLowerCase();
+  const dd       = document.getElementById(dropId);
+  const matches  = allLoginsCache.filter(l => !query || (l.name || '').toLowerCase().includes(query));
+  dd.innerHTML   = '';
+
   matches.slice(0, 8).forEach(l => {
     const div = document.createElement('div');
     div.className = 'camp-option';
     div.textContent = l.name;
-    div.onmousedown = () => { document.getElementById(inputId).value = l.name; document.getElementById(hiddenId).value = l.id; dd.style.display = 'none'; };
+    div.onmousedown = () => {
+      document.getElementById(inputId).value = l.name;
+      document.getElementById(hiddenId).value = l.id;
+      dd.style.display = 'none';
+    };
     dd.appendChild(div);
   });
+
+  // "Create new" option when typed name has no exact match
+  const exactMatch = allLoginsCache.some(l => (l.name || '').toLowerCase() === query);
+  if (rawQuery && !exactMatch) {
+    const div = document.createElement('div');
+    div.className = 'camp-option create';
+    div.textContent = '+ Create "' + rawQuery + '"';
+    div.onmousedown = async () => {
+      dd.style.display = 'none';
+      document.getElementById(inputId).value = rawQuery;
+      document.getElementById(inputId).disabled = true;
+      try {
+        const res = await call('createLogin', { title: rawQuery });
+        const newId = res.id || res.loginId || '';
+        document.getElementById(hiddenId).value = newId;
+        if (newId) allLoginsCache.push({ id: newId, name: rawQuery });
+        showToast('"' + rawQuery + '" created ✓', 'success');
+      } catch (e) {
+        showToast('Failed to create login: ' + e.message, 'error');
+      }
+      document.getElementById(inputId).disabled = false;
+    };
+    dd.appendChild(div);
+  }
+
   dd.style.display = dd.children.length ? 'block' : 'none';
 }
 
