@@ -45,18 +45,27 @@ function stripMcpEscaping(s) {
 }
 
 async function notionQuery(dbId, body) {
-  const resp = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
-    method: "POST",
-    headers: {
-      "Authorization":  `Bearer ${NOTION_TOKEN}`,
-      "Notion-Version": NOTION_VERSION,
-      "Content-Type":   "application/json",
-    },
-    body: JSON.stringify({ page_size: 100, ...body }),
-  });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.message || "Notion error");
-  return data.results || [];
+  const results = [];
+  let cursor = undefined;
+  while (true) {
+    const payload = { page_size: 100, ...body };
+    if (cursor) payload.start_cursor = cursor;
+    const resp = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
+      method: "POST",
+      headers: {
+        "Authorization":  `Bearer ${NOTION_TOKEN}`,
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type":   "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.message || "Notion error");
+    results.push(...(data.results || []));
+    if (!data.has_more || !data.next_cursor) break;
+    cursor = data.next_cursor;
+  }
+  return results;
 }
 
 // â”€â”€ SESSION TOKEN HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

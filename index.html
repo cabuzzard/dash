@@ -4496,7 +4496,12 @@ async function saveEditRun() {
 
   try {
     const runSaveResult = await call('updateRun', updates);
-    showToast('TD saved: ' + JSON.stringify(runSaveResult.mainTdSaved), 'success');
+    const tdDebug = runSaveResult.mainTdSaved;
+    if (tdDebug && tdDebug.length) {
+      showToast('TD saved to Notion ✓ (' + tdDebug.length + ' item)', 'success');
+    } else {
+      showToast('Warning: TD not confirmed in Notion response', 'error');
+    }
 
     // Upload new delivery file if selected
     const fileInput = document.getElementById('editRunDeliveryFile');
