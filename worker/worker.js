@@ -1216,7 +1216,6 @@ export default {
           "Published Template Link":  { url: publishedLink || null },
           "Etsy Listing URL":         { url: etsyLink      || null },
           "listing copy":             listingCopy ? { rich_text: [{ text: { content: listingCopy } }] } : { rich_text: [] },
-          "main td":                  mainTdId ? { relation: [{ id: dashId(mainTdId) }] } : { relation: [] },
         };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
@@ -1229,7 +1228,26 @@ export default {
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed", detail: result }, resp.status);
-        const savedMainTd = result.properties?.["main td"]?.relation || [];
+
+        // Patch main td separately — Notion ignores relation updates mixed with other props
+        let savedMainTd = [];
+        if (mainTdId !== undefined) {
+          const tdResp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+            method: "PATCH",
+            headers: {
+              "Authorization":  `Bearer ${NOTION_TOKEN}`,
+              "Notion-Version": NOTION_VERSION,
+              "Content-Type":   "application/json",
+            },
+            body: JSON.stringify({
+              properties: {
+                "main td": mainTdId ? { relation: [{ id: dashId(mainTdId) }] } : { relation: [] },
+              },
+            }),
+          });
+          const tdResult = await tdResp.json();
+          if (tdResp.ok) savedMainTd = tdResult.properties?.["main td"]?.relation || [];
+        }
         return json({ success: true, mainTdSaved: savedMainTd });
       }
       if (body.action === "createRun") {
@@ -1276,7 +1294,6 @@ export default {
           "method":    rel(methodId),
           "email":     rel(emailId),
           "instagram": rel(instagramId),
-          "main td":   driveMainTdId ? { relation: [{ id: dash(driveMainTdId) }] } : { relation: [] },
         };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
@@ -1285,6 +1302,14 @@ export default {
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        // Patch main td separately
+        if (driveMainTdId !== undefined) {
+          await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+            method: "PATCH",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "main td": driveMainTdId ? { relation: [{ id: dash(driveMainTdId) }] } : { relation: [] } } }),
+          });
+        }
         return json({ success: true });
       }
       if (body.action === "createDrive") {
@@ -1373,7 +1398,6 @@ export default {
         const dashed = dash(resumeId);
         const properties = { "Name": { title: [{ text: { content: name } }] } };
         properties["campaign"] = campaignId ? { relation: [{ id: dash(campaignId) }] } : { relation: [] };
-        properties["main td"]  = mainTdId   ? { relation: [{ id: dash(mainTdId)   }] } : { relation: [] };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -1381,6 +1405,14 @@ export default {
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        // Patch main td separately
+        if (mainTdId !== undefined) {
+          await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+            method: "PATCH",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "main td": mainTdId ? { relation: [{ id: dash(mainTdId) }] } : { relation: [] } } }),
+          });
+        }
         return json({ success: true });
       }
       if (body.action === "getDrives") {
