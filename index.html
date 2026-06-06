@@ -1347,7 +1347,12 @@
     </div>
 
     <div class="modal-field">
-      <label class="modal-label">Canva Edit Link</label>
+      <label class="modal-label">Canva Link (merged carousel)</label>
+      <input class="modal-input" id="editRunCanvaLinkMerged" type="url" placeholder="https://www.canva.com/d/..." />
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Canva Edit Link (individual slide)</label>
       <input class="modal-input" id="editRunCanvaLink" type="url" placeholder="https://..." />
     </div>
 
@@ -3754,7 +3759,7 @@ function renderRunsPanel(panel, runs) {
 
   const table = document.createElement('table');
   table.className = 'runs-table';
-  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published Template</th><th>Delivery</th><th>Etsy</th><th>TD</th><th style="cursor:default;"></th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th style="cursor:default;text-align:center;">Canva</th><th>Canva Edit</th><th>Published</th><th>Delivery</th><th>Etsy</th><th>TD</th><th style="cursor:default;"></th></tr></thead>';
   const tbody = document.createElement('tbody');
 
   runs.forEach(r => {
@@ -3771,11 +3776,28 @@ function renderRunsPanel(panel, runs) {
     tr.appendChild(nameTd);
 
     const link = (url, label) => url ? '<a href="' + esc(url) + '" target="_blank">' + label + '</a>' : '—';
+
+    // Canva link cell — clickable dash if blank
+    const canvaTd = document.createElement('td');
+    canvaTd.className = 'link';
+    if (r.canvaLink) {
+      canvaTd.innerHTML = '<a href="' + esc(r.canvaLink) + '" target="_blank">↗</a>';
+    } else {
+      const dash = document.createElement('button');
+      dash.className = 'run-edit-btn';
+      dash.textContent = '—';
+      dash.style.color = 'var(--text3)';
+      dash.title = 'Add Canva link';
+      dash.onclick = () => openEditRunModal(r, tr, runs);
+      canvaTd.appendChild(dash);
+    }
+    tr.appendChild(canvaTd);
+
     tr.insertAdjacentHTML('beforeend',
       '<td>' + esc(r.format || '—') + '</td>' +
       '<td><span class="run-status ' + statusClass(r.status) + '">' + esc(r.status || '—') + '</span></td>' +
       '<td>' + esc(r.price || '—') + '</td>' +
-      '<td class="link">' + link(r.canvaLink, 'Edit ↗') + '</td>');
+      '<td class="link">' + link(r.canvaEditLink, 'Edit ↗') + '</td>');
 
     // Published Template — link if set, clickable dash if blank
     const pubTd = document.createElement('td');
@@ -4414,7 +4436,8 @@ function openEditRunModal(run, tr, runsList) {
   document.getElementById('editRunFormat').value        = run.format        || '';
   document.getElementById('editRunStatus').value        = run.status        || 'Not Started';
   document.getElementById('editRunPrice').value         = run.price         || '';
-  document.getElementById('editRunCanvaLink').value     = run.canvaLink     || '';
+  document.getElementById('editRunCanvaLinkMerged').value = run.canvaLink     || '';
+  document.getElementById('editRunCanvaLink').value       = run.canvaEditLink || '';
   document.getElementById('editRunPublishedLink').value = run.publishedLink || '';
   document.getElementById('editRunListingCopy').value   = run.listingCopy   || '';
   document.getElementById('editRunDeliveryFile').value  = '';
@@ -4449,11 +4472,12 @@ async function saveEditRun() {
     format:        document.getElementById('editRunFormat').value        || null,
     status:        document.getElementById('editRunStatus').value,
     price:         document.getElementById('editRunPrice').value.trim()         || null,
-    canvaLink:     document.getElementById('editRunCanvaLink').value.trim()     || null,
-    publishedLink: document.getElementById('editRunPublishedLink').value.trim() || null,
-    listingCopy:   document.getElementById('editRunListingCopy').value.trim()   || null,
-    td:            document.getElementById('editRunTd').value.trim() || null,
-    etsyLink:      document.getElementById('editRunEtsyLink').value.trim()      || null,
+    canvaLink:        document.getElementById('editRunCanvaLink').value.trim()        || null,
+    canvaLinkMerged:  document.getElementById('editRunCanvaLinkMerged').value.trim()  || null,
+    publishedLink:    document.getElementById('editRunPublishedLink').value.trim()    || null,
+    listingCopy:      document.getElementById('editRunListingCopy').value.trim()      || null,
+    td:               document.getElementById('editRunTd').value.trim()               || null,
+    etsyLink:         document.getElementById('editRunEtsyLink').value.trim()         || null,
   };
 
   try {
@@ -4476,7 +4500,8 @@ async function saveEditRun() {
       format:        updates.format        || '',
       status:        updates.status,
       price:         updates.price         || '',
-      canvaLink:     updates.canvaLink     || null,
+      canvaEditLink: updates.canvaLink        || null,
+      canvaLink:     updates.canvaLinkMerged || null,
       publishedLink: updates.publishedLink || null,
       listingCopy:   updates.listingCopy   || '',
       td:            updates.td            || '',

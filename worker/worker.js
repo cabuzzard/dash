@@ -1192,7 +1192,7 @@ export default {
         return json({ success: true, fileName, fileUrl });
       }
       if (body.action === "updateRun") {
-        const { runId, templateName, format, status, price, canvaLink, publishedLink, etsyLink, listingCopy, td } = body;
+        const { runId, templateName, format, status, price, canvaLink, canvaLinkMerged, publishedLink, etsyLink, listingCopy, td } = body;
         if (!runId || !templateName) return json({ error: "runId and templateName required" }, 400);
         const dashed = runId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const properties = {
@@ -1205,7 +1205,9 @@ export default {
           "Etsy Listing URL":         { url: etsyLink      || null },
           "listing copy":             listingCopy ? { rich_text: [{ text: { content: listingCopy } }] } : { rich_text: [] },
           "td":                       td          ? { rich_text: [{ text: { content: td } }]          } : { rich_text: [] },
+          "canva link":               canvaLinkMerged !== undefined ? { url: canvaLinkMerged || null } : undefined,
         };
+        Object.keys(properties).forEach(k => properties[k] === undefined && delete properties[k]);
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -1429,9 +1431,10 @@ export default {
             status:        props.Status?.select?.name || "",
             format:        props.Format?.select?.name || "",
             price:         props.Price?.rich_text?.map(t => t.plain_text).join("") || "",
-            canvaLink:     props["Canva Edit Link"]?.url || null,
-            publishedLink: props["Published Template Link"]?.url || null,
-            etsyLink:      props["Etsy Listing URL"]?.url || null,
+            canvaEditLink:    props["Canva Edit Link"]?.url || null,
+            canvaLink:        props["canva link"]?.url || null,
+            publishedLink:    props["Published Template Link"]?.url || null,
+            etsyLink:         props["Etsy Listing URL"]?.url || null,
             deliveryFile:     props["Delivery File"]?.files?.[0]?.file?.url || null,
             deliveryFileName: props["Delivery File"]?.files?.[0]?.name || null,
             listingCopy:      props["listing copy"]?.rich_text?.map(t => t.plain_text).join("") || "",
