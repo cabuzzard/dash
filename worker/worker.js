@@ -1396,10 +1396,7 @@ export default {
           notionQuery(CAMPAIGNS_DB, {}),
           notionQuery(METHODS_DB, {}),
           notionQuery(LOGINS_DB, {}),
-          notionQuery(MAIN_TD_DB, { sorts: [{ property: "Title", direction: "ascending" }] }),
         ]);
-        const mainTdByIdDrv = {};
-        mainTdRowsDrv.forEach(t => { mainTdByIdDrv[t.id.replace(/-/g,"")] = t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled"; });
         const campById = {};
         campRows.forEach(c => { campById[c.id.replace(/-/g,"")] = { name: c.properties.Name?.title?.map(t => t.plain_text).join("") || "", microsite: c.properties["microsite"]?.url || null }; });
         const methodById = {};
@@ -1428,8 +1425,7 @@ export default {
             email:       emailRel[0]     ? (loginById[emailRel[0]]          || "") : "",
             instagramId: instagramRel[0] || null,
             instagram:   instagramRel[0] ? (loginById[instagramRel[0]] || "") : "",
-            mainTdId:    (props["main td"]?.relation || []).map(x => x.id.replace(/-/g,""))[0] || null,
-            mainTd:      (props["main td"]?.relation || []).map(x => x.id.replace(/-/g,""))[0] ? (mainTdByIdDrv[(props["main td"]?.relation || []).map(x => x.id.replace(/-/g,""))[0]] || "") : "",
+            td:          props["td"]?.rich_text?.map(t => t.plain_text).join("") || "",
           };
         });
         return json({ drives });
