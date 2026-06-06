@@ -4151,9 +4151,11 @@ function renderProdTds(data) {
   document.getElementById('prodTdCount').textContent = total || '0';
   if (!total) { body.innerHTML = '<div class="runs-empty" style="padding:8px 0;">No TDs linked.</div>'; return; }
 
+  const byProduct = rows => [...rows].sort((a, b) => (a.product || '').localeCompare(b.product || ''));
+
   const makeTable = (rows) => {
     let html = '<table class="prod-td-table"><thead><tr><th>Product</th><th>Item</th><th>TD</th></tr></thead><tbody>';
-    rows.forEach(r => {
+    byProduct(rows).forEach(r => {
       html += '<tr><td>' + esc(r.product || '—') + '</td><td>' + esc(r.item || '—') + '</td><td>' + esc(r.td || '—') + '</td></tr>';
     });
     return html + '</tbody></table>';
