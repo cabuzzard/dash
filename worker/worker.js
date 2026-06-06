@@ -1248,19 +1248,22 @@ export default {
 
 
       if (body.action === "updateDrive") {
-        const { driveId, name, campaignId, methodId, emailId, instagramId, td } = body;
+        const { driveId, name, campaignId, methodId, emailId, instagramId, td, canvaLink } = body;
         if (!driveId || !name) return json({ error: "driveId and name required" }, 400);
         const dash = id => id ? id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5") : null;
         const rel  = id => id ? { relation: [{ id: dash(id) }] } : { relation: [] };
         const dashed = dash(driveId);
         const properties = {
-          "Name":      { title: [{ text: { content: name } }] },
-          "campaign":  rel(campaignId),
-          "method":    rel(methodId),
-          "email":     rel(emailId),
-          "instagram": rel(instagramId),
-          "td": td ? { rich_text: [{ text: { content: td } }] } : { rich_text: [] },
+          "Name":        { title: [{ text: { content: name } }] },
+          "campaign":    rel(campaignId),
+          "method":      rel(methodId),
+          "email":       rel(emailId),
+          "instagram":   rel(instagramId),
+          "td":          td ? { rich_text: [{ text: { content: td } }] } : { rich_text: [] },
+          "canva link":  canvaLink !== undefined ? { url: canvaLink || null } : undefined,
         };
+        // Remove undefined properties
+        Object.keys(properties).forEach(k => properties[k] === undefined && delete properties[k]);
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -1405,6 +1408,7 @@ export default {
             instagramId: instagramRel[0] || null,
             instagram:   instagramRel[0] ? (loginById[instagramRel[0]] || "") : "",
             td:          props["td"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            canvaLink:   props["canva link"]?.url || null,
           };
         });
         return json({ drives });

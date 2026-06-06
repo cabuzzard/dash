@@ -1297,6 +1297,11 @@
       <input class="modal-input" id="editDriveTd" type="text" placeholder="TD note..." />
     </div>
 
+    <div class="modal-field">
+      <label class="modal-label">Canva Link</label>
+      <input class="modal-input" id="editDriveCanvaLink" type="url" placeholder="https://www.canva.com/d/..." />
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeEditDriveModal()">Cancel</button>
       <button class="btn btn-primary" id="editDriveSaveBtn" onclick="saveEditDrive()">Save</button>
@@ -4341,7 +4346,7 @@ function renderDrivesPanel(panel, drives) {
   const table = document.createElement('table');
   table.className = 'runs-table';
   table.innerHTML = '<thead><tr>' +
-    '<th>Name</th><th>Campaign</th><th>Method</th><th>Email</th><th>Instagram</th><th>TD</th>' +
+    '<th>Name</th><th>Campaign</th><th>Method</th><th>Email</th><th>Instagram</th><th>TD</th><th style="cursor:default;text-align:center;">Canva</th>' +
     '<th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">STE</th>' +
     '<th style="cursor:default;text-align:center;">DB</th>' +
     '</tr></thead>';
@@ -4362,6 +4367,7 @@ function renderDrivesPanel(panel, drives) {
       '<td>' + esc(d.email     || '—') + '</td>' +
       '<td>' + esc(d.instagram || '—') + '</td>' +
       '<td>' + esc(d.td || '—') + '</td>' +
+      '<td class="link">' + lnk(d.canvaLink, '↗') + '</td>' +
       '<td class="link">' + lnk(d.landing, '↗') + '</td>' +
       '<td class="link">' + lnk(d.ste,     '↗') + '</td>' +
       '<td class="link"><a href="https://www.notion.so/' + d.id + '" target="_blank">↗</a></td>');
@@ -4653,7 +4659,8 @@ function openEditDriveModal(drive, tr, drivesList) {
   document.getElementById('editDriveEmailId').value           = drive.emailId     || '';
   document.getElementById('editDriveInstagramInput').value    = drive.instagram   || '';
   document.getElementById('editDriveInstagramId').value       = drive.instagramId || '';
-  document.getElementById('editDriveTd').value = drive.td || '';
+  document.getElementById('editDriveTd').value        = drive.td        || '';
+  document.getElementById('editDriveCanvaLink').value = drive.canvaLink || '';
   ['editDriveCampaignDropdown','editDriveMethodDropdown',
    'editDriveEmailDropdown','editDriveInstagramDropdown'].forEach(id => {
     document.getElementById(id).style.display = 'none';
@@ -4804,10 +4811,11 @@ async function saveEditDrive() {
   const methodId    = document.getElementById('editDriveMethodId').value       || null;
   const emailId     = document.getElementById('editDriveEmailId').value        || null;
   const instagramId = document.getElementById('editDriveInstagramId').value    || null;
-  const driveTd = document.getElementById('editDriveTd').value.trim() || null;
+  const driveTd       = document.getElementById('editDriveTd').value.trim()        || null;
+  const driveCanvaLink = document.getElementById('editDriveCanvaLink').value.trim() || null;
 
   try {
-    await call('updateDrive', { driveId: editDriveCurrent.id, name, campaignId, methodId, emailId, instagramId, td: driveTd });
+    await call('updateDrive', { driveId: editDriveCurrent.id, name, campaignId, methodId, emailId, instagramId, td: driveTd, canvaLink: driveCanvaLink });
     Object.assign(editDriveCurrent, {
       name,
       campaign:    document.getElementById('editDriveCampaignInput').value   || '',
@@ -4818,7 +4826,8 @@ async function saveEditDrive() {
       emailId:     emailId     || null,
       instagram:   document.getElementById('editDriveInstagramInput').value  || '',
       instagramId: instagramId || null,
-      td:          driveTd || '',
+      td:          driveTd    || '',
+      canvaLink:   driveCanvaLink || null,
       
     });
     // Re-render the drives section (the tr's parent tbody's drivesSection container)
