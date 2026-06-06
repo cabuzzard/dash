@@ -1194,9 +1194,10 @@ export default {
         return json({ success: true, fileName, fileUrl });
       }
       if (body.action === "updateRun") {
-        const { runId, templateName, format, status, price, canvaLink, publishedLink, etsyLink, listingCopy } = body;
+        const { runId, templateName, format, status, price, canvaLink, publishedLink, etsyLink, listingCopy, mainTdId } = body;
         if (!runId || !templateName) return json({ error: "runId and templateName required" }, 400);
-        const dashed = runId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const dashId = id => id ? id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5") : null;
+        const dashed = dashId(runId);
         const properties = {
           "Template Name": { title: [{ text: { content: templateName } }] },
           "Status":        { select: { name: status || "Not Started" } },
@@ -1206,7 +1207,7 @@ export default {
           "Published Template Link":  { url: publishedLink || null },
           "Etsy Listing URL":         { url: etsyLink      || null },
           "listing copy":             listingCopy ? { rich_text: [{ text: { content: listingCopy } }] } : { rich_text: [] },
-
+          "main td":                  mainTdId ? { relation: [{ id: dashId(mainTdId) }] } : { relation: [] },
         };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
@@ -1376,7 +1377,7 @@ export default {
         const { productId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
         const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-        const [driveRows, campRows, methodRows, loginRows] = await Promise.all([
+        const [driveRows, campRows, methodRows, loginRows, mainTdRowsDrv] = await Promise.all([
           notionQuery(DRIVES_DB, {
             filter: { property: "product", relation: { contains: dashed } },
             sorts: [{ timestamp: "created_time", direction: "descending" }],
@@ -1384,7 +1385,10 @@ export default {
           notionQuery(CAMPAIGNS_DB, {}),
           notionQuery(METHODS_DB, {}),
           notionQuery(LOGINS_DB, {}),
+          notionQuery(MAIN_TD_DB, { sorts: [{ property: "Title", direction: "ascending" }] }),
         ]);
+        const mainTdByIdDrv = {};
+        mainTdRowsDrv.forEach(t => { mainTdByIdDrv[t.id.replace(/-/g,"")] = t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled"; });
         const campById = {};
         campRows.forEach(c => { campById[c.id.replace(/-/g,"")] = { name: c.properties.Name?.title?.map(t => t.plain_text).join("") || "", microsite: c.properties["microsite"]?.url || null }; });
         const methodById = {};
@@ -1412,7 +1416,9 @@ export default {
             emailId:     emailRel[0]     || null,
             email:       emailRel[0]     ? (loginById[emailRel[0]]          || "") : "",
             instagramId: instagramRel[0] || null,
-            instagram:   instagramRel[0] ? (loginById[instagramRel[0]]      || "") : "",
+            instagram:   instagramRel[0] ? (loginById[instagramRel[0]] || "") : "",
+            mainTdId:    (props["main td"]?.relation || []).map(x => x.id.replace(/-/g,""))[0] || null,
+            mainTd:      (props["main td"]?.relation || []).map(x => x.id.replace(/-/g,""))[0] ? (mainTdByIdDrv[(props["main td"]?.relation || []).map(x => x.id.replace(/-/g,""))[0]] || "") : "",
           };
         });
         return json({ drives });
@@ -1421,12 +1427,18 @@ export default {
         const { productId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
         const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-        const rows = await notionQuery(RUNS_DB, {
-          filter: { property: "products", relation: { contains: dashed } },
-          sorts: [{ timestamp: "created_time", direction: "descending" }],
-        });
+        const [rows, mainTdRows] = await Promise.all([
+          notionQuery(RUNS_DB, {
+            filter: { property: "products", relation: { contains: dashed } },
+            sorts: [{ timestamp: "created_time", direction: "descending" }],
+          }),
+          notionQuery(MAIN_TD_DB, { sorts: [{ property: "Title", direction: "ascending" }] }),
+        ]);
+        const mainTdById = {};
+        mainTdRows.forEach(t => { mainTdById[t.id.replace(/-/g,"")] = t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled"; });
         const runs = rows.map(r => {
           const props = r.properties;
+          const mainTdRel = (props["main td"]?.relation || []).map(x => x.id.replace(/-/g,""));
           return {
             id:            r.id.replace(/-/g, ""),
             name:          props["Template Name"]?.title?.map(t => t.plain_text).join("") || "Untitled",
@@ -1439,6 +1451,8 @@ export default {
             deliveryFile:     props["Delivery File"]?.files?.[0]?.file?.url || null,
             deliveryFileName: props["Delivery File"]?.files?.[0]?.name || null,
             listingCopy:      props["listing copy"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            mainTdId:         mainTdRel[0] || null,
+            mainTd:           mainTdRel[0] ? (mainTdById[mainTdRel[0]] || "") : "",
           };
         });
         return json({ runs });
