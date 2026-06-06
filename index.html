@@ -1237,11 +1237,8 @@
       <div id="editResumeCampaignDropdown" class="camp-dropdown" style="display:none;"></div>
     </div>
     <div class="modal-field" style="position:relative;">
-      <label class="modal-label">Main TD</label>
-      <input class="modal-input" id="editResumeMainTdInput" type="text" placeholder="Search main TD items..." autocomplete="off"
-        oninput="filterMainTd('editResumeMainTdInput','editResumeMainTdId','editResumeMainTdDropdown')" onfocus="filterMainTd('editResumeMainTdInput','editResumeMainTdId','editResumeMainTdDropdown')" />
-      <input type="hidden" id="editResumeMainTdId" />
-      <div id="editResumeMainTdDropdown" class="camp-dropdown" style="display:none;"></div>
+      <label class="modal-label">TD</label>
+      <input class="modal-input" id="editResumeTd" type="text" placeholder="TD note..." />
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeEditResumeModal()">Cancel</button>
@@ -1296,11 +1293,8 @@
     </div>
 
     <div class="modal-field" style="position:relative;">
-      <label class="modal-label">Main TD</label>
-      <input class="modal-input" id="editDriveMainTdInput" type="text" placeholder="Search main TD items..." autocomplete="off"
-        oninput="filterMainTd('editDriveMainTdInput','editDriveMainTdId','editDriveMainTdDropdown')" onfocus="filterMainTd('editDriveMainTdInput','editDriveMainTdId','editDriveMainTdDropdown')" />
-      <input type="hidden" id="editDriveMainTdId" />
-      <div id="editDriveMainTdDropdown" class="camp-dropdown" style="display:none;"></div>
+      <label class="modal-label">TD</label>
+      <input class="modal-input" id="editDriveTd" type="text" placeholder="TD note..." />
     </div>
 
     <div class="modal-actions">
@@ -1369,11 +1363,8 @@
     </div>
 
     <div class="modal-field" style="position:relative;">
-      <label class="modal-label">Main TD</label>
-      <input class="modal-input" id="editRunMainTdInput" type="text" placeholder="Search main TD items..." autocomplete="off"
-        oninput="filterMainTd('editRunMainTdInput','editRunMainTdId','editRunMainTdDropdown')" onfocus="filterMainTd('editRunMainTdInput','editRunMainTdId','editRunMainTdDropdown')" />
-      <input type="hidden" id="editRunMainTdId" />
-      <div id="editRunMainTdDropdown" class="camp-dropdown" style="display:none;"></div>
+      <label class="modal-label">TD</label>
+      <input class="modal-input" id="editRunTd" type="text" placeholder="TD note..." />
     </div>
 
     <div class="modal-field">
@@ -3758,7 +3749,7 @@ function renderRunsPanel(panel, runs) {
 
   const table = document.createElement('table');
   table.className = 'runs-table';
-  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published Template</th><th>Delivery</th><th>Etsy</th><th>Main TD</th><th style="cursor:default;"></th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th>Canva</th><th>Published Template</th><th>Delivery</th><th>Etsy</th><th>TD</th><th style="cursor:default;"></th></tr></thead>';
   const tbody = document.createElement('tbody');
 
   runs.forEach(r => {
@@ -3815,7 +3806,7 @@ function renderRunsPanel(panel, runs) {
 
     tr.insertAdjacentHTML('beforeend',
       '<td class="link">' + link(r.etsyLink, 'Etsy ↗') + '</td>' +
-      '<td>' + esc(r.mainTd || '—') + '</td>');
+      '<td>' + esc(r.td || '—') + '</td>');
 
     // Copy listing copy button
     const copyTd = document.createElement('td');
@@ -4348,7 +4339,7 @@ function renderDrivesPanel(panel, drives) {
   const table = document.createElement('table');
   table.className = 'runs-table';
   table.innerHTML = '<thead><tr>' +
-    '<th>Name</th><th>Campaign</th><th>Method</th><th>Email</th><th>Instagram</th><th>Main TD</th>' +
+    '<th>Name</th><th>Campaign</th><th>Method</th><th>Email</th><th>Instagram</th><th>TD</th>' +
     '<th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">STE</th>' +
     '<th style="cursor:default;text-align:center;">DB</th>' +
     '</tr></thead>';
@@ -4368,7 +4359,7 @@ function renderDrivesPanel(panel, drives) {
       '<td>' + esc(d.method    || '—') + '</td>' +
       '<td>' + esc(d.email     || '—') + '</td>' +
       '<td>' + esc(d.instagram || '—') + '</td>' +
-      '<td>' + esc(d.mainTd   || '—') + '</td>' +
+      '<td>' + esc(d.td || '—') + '</td>' +
       '<td class="link">' + lnk(d.landing, '↗') + '</td>' +
       '<td class="link">' + lnk(d.ste,     '↗') + '</td>' +
       '<td class="link"><a href="https://www.notion.so/' + d.id + '" target="_blank">↗</a></td>');
@@ -4380,42 +4371,6 @@ function renderDrivesPanel(panel, drives) {
 }
 
 // ── MAIN TD AUTOCOMPLETE (shared) ────────────────────────────────────
-let allMainTdCache = [];
-function filterMainTd(inputId, hiddenId, dropId) {
-  if (!allMainTdCache.length) {
-    call('searchTodos', { query: '' }).then(d => {
-      allMainTdCache = d.todos || [];
-      filterMainTd(inputId, hiddenId, dropId);
-    }).catch(() => {});
-    return;
-  }
-  const query = document.getElementById(inputId).value.trim().toLowerCase();
-  const dd = document.getElementById(dropId);
-  const matches = allMainTdCache.filter(t => !query || (t.name || '').toLowerCase().includes(query));
-  dd.innerHTML = '';
-  matches.slice(0, 8).forEach(t => {
-    const label = t.name || 'Untitled';
-    const div = document.createElement('div');
-    div.className = 'camp-option';
-    div.textContent = label;
-    div.onmousedown = () => {
-      document.getElementById(inputId).value = label;
-      document.getElementById(hiddenId).value = t.id;
-      dd.style.display = 'none';
-    };
-    dd.appendChild(div);
-  });
-  dd.style.display = dd.children.length ? 'block' : 'none';
-}
-['editRunMainTdInput','editDriveMainTdInput','editResumeMainTdInput'].forEach(id => {
-  document.addEventListener('click', e => {
-    const map = { editRunMainTdInput: 'editRunMainTdDropdown', editDriveMainTdInput: 'editDriveMainTdDropdown', editResumeMainTdInput: 'editResumeMainTdDropdown' };
-    if (!e.target.closest('#' + id) && !e.target.closest('#' + map[id])) {
-      const dd = document.getElementById(map[id]);
-      if (dd) dd.style.display = 'none';
-    }
-  });
-});
 
 // ── DELIVERY FILE UPLOAD HELPER ──────────────────────────────────────
 async function uploadDeliveryFile(runId, file) {
@@ -4455,8 +4410,7 @@ function openEditRunModal(run, tr, runsList) {
   document.getElementById('editRunPublishedLink').value = run.publishedLink || '';
   document.getElementById('editRunListingCopy').value   = run.listingCopy   || '';
   document.getElementById('editRunDeliveryFile').value  = '';
-  document.getElementById('editRunMainTdInput').value   = run.mainTd        || '';
-  document.getElementById('editRunMainTdId').value      = run.mainTdId      || '';
+  document.getElementById('editRunTd').value = run.td || '';
   document.getElementById('editRunEtsyLink').value      = run.etsyLink      || '';
   const cur = document.getElementById('editRunDeliveryFileCurrent');
   cur.innerHTML = run.deliveryFile
@@ -4490,14 +4444,14 @@ async function saveEditRun() {
     canvaLink:     document.getElementById('editRunCanvaLink').value.trim()     || null,
     publishedLink: document.getElementById('editRunPublishedLink').value.trim() || null,
     listingCopy:   document.getElementById('editRunListingCopy').value.trim()   || null,
-    mainTdId:      document.getElementById('editRunMainTdId').value             || null,
+    td:            document.getElementById('editRunTd').value.trim() || null,
     etsyLink:      document.getElementById('editRunEtsyLink').value.trim()      || null,
   };
 
   try {
     const runSaveResult = await call('updateRun', updates);
-    const tdDebug = runSaveResult.mainTdSaved;
-    const tdMsg = tdDebug && tdDebug.length ? 'TD→Notion:' + tdDebug.length : 'TD→Notion:0';
+    
+    
 
     // Upload new delivery file if selected
     const fileInput = document.getElementById('editRunDeliveryFile');
@@ -4517,15 +4471,15 @@ async function saveEditRun() {
       canvaLink:     updates.canvaLink     || null,
       publishedLink: updates.publishedLink || null,
       listingCopy:   updates.listingCopy   || '',
-      mainTdId:      updates.mainTdId      || null,
-      mainTd:        document.getElementById('editRunMainTdInput').value || '',
+      td:            updates.td            || '',
+      
       etsyLink:      updates.etsyLink      || null,
     });
     // Re-render the panel by finding its container
     const panel = editRunRowRef.closest('.runs-panel');
     if (panel) renderRunsPanel(panel, editRunListRef);
     closeEditRunModal();
-    showToast('Run updated ✓ ' + tdMsg, 'success');
+    showToast('Run updated ✓ ', 'success');
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
@@ -4537,7 +4491,7 @@ function renderResumesPanel(panel, resumes) {
   if (!resumes.length) { panel.innerHTML = ''; return; }
   const table = document.createElement('table');
   table.className = 'runs-table';
-  table.innerHTML = '<thead><tr><th>Name</th><th>Campaign</th><th>Main TD</th><th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">DB</th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Name</th><th>Campaign</th><th>TD</th><th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">DB</th></tr></thead>';
   const tbody = document.createElement('tbody');
   resumes.forEach(r => {
     const tr = document.createElement('tr');
@@ -4551,7 +4505,7 @@ function renderResumesPanel(panel, resumes) {
     tr.appendChild(nameTd);
     tr.insertAdjacentHTML('beforeend',
       '<td>' + esc(r.campaign || '—') + '</td>' +
-      '<td>' + esc(r.mainTd   || '—') + '</td>' +
+      '<td>' + esc(r.td || '—') + '</td>' +
       '<td class="link">' + (r.landing ? '<a href="' + esc(r.landing) + '" target="_blank">↗</a>' : '—') + '</td>' +
       '<td class="link"><a href="https://www.notion.so/' + r.id + '" target="_blank">↗</a></td>');
     tbody.appendChild(tr);
@@ -4641,8 +4595,7 @@ function openEditResumeModal(resume, tr, list) {
   document.getElementById('editResumeName').value = resume.name || '';
   document.getElementById('editResumeCampaignInput').value = resume.campaign || '';
   document.getElementById('editResumeCampaignId').value = resume.campaignId || '';
-  document.getElementById('editResumeMainTdInput').value  = resume.mainTd   || '';
-  document.getElementById('editResumeMainTdId').value     = resume.mainTdId || '';
+  document.getElementById('editResumeTd').value = resume.td || '';
   document.getElementById('editResumeCampaignDropdown').style.display = 'none';
   document.getElementById('editResumeDbLink').href = 'https://www.notion.so/' + resume.id;
   document.getElementById('editResumeSaveBtn').disabled = false;
@@ -4655,17 +4608,17 @@ async function saveEditResume() {
   const name = document.getElementById('editResumeName').value.trim();
   if (!name) { document.getElementById('editResumeName').focus(); return; }
   const campaignId = document.getElementById('editResumeCampaignId').value  || null;
-  const mainTdId   = document.getElementById('editResumeMainTdId').value    || null;
+  const resumeTd = document.getElementById('editResumeTd').value.trim() || null;
   const btn = document.getElementById('editResumeSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving...';
   try {
-    await call('updateResume', { resumeId: editResumeCurrent.id, name, campaignId, mainTdId });
+    await call('updateResume', { resumeId: editResumeCurrent.id, name, campaignId, td: resumeTd });
     Object.assign(editResumeCurrent, {
       name,
       campaign:   document.getElementById('editResumeCampaignInput').value  || '',
       campaignId: campaignId || null,
-      mainTd:     document.getElementById('editResumeMainTdInput').value    || '',
-      mainTdId:   mainTdId   || null,
+      td:         resumeTd || '',
+      
     });
     const section = editResumeRowRef.closest('table')?.parentElement;
     if (section) renderResumesPanel(section, editResumeListRef);
@@ -4698,8 +4651,7 @@ function openEditDriveModal(drive, tr, drivesList) {
   document.getElementById('editDriveEmailId').value           = drive.emailId     || '';
   document.getElementById('editDriveInstagramInput').value    = drive.instagram   || '';
   document.getElementById('editDriveInstagramId').value       = drive.instagramId || '';
-  document.getElementById('editDriveMainTdInput').value       = drive.mainTd      || '';
-  document.getElementById('editDriveMainTdId').value          = drive.mainTdId    || '';
+  document.getElementById('editDriveTd').value = drive.td || '';
   ['editDriveCampaignDropdown','editDriveMethodDropdown',
    'editDriveEmailDropdown','editDriveInstagramDropdown'].forEach(id => {
     document.getElementById(id).style.display = 'none';
@@ -4819,10 +4771,10 @@ async function saveEditDrive() {
   const methodId    = document.getElementById('editDriveMethodId').value       || null;
   const emailId     = document.getElementById('editDriveEmailId').value        || null;
   const instagramId = document.getElementById('editDriveInstagramId').value    || null;
-  const mainTdId    = document.getElementById('editDriveMainTdId').value       || null;
+  const driveTd = document.getElementById('editDriveTd').value.trim() || null;
 
   try {
-    await call('updateDrive', { driveId: editDriveCurrent.id, name, campaignId, methodId, emailId, instagramId, mainTdId });
+    await call('updateDrive', { driveId: editDriveCurrent.id, name, campaignId, methodId, emailId, instagramId, td: driveTd });
     Object.assign(editDriveCurrent, {
       name,
       campaign:    document.getElementById('editDriveCampaignInput').value   || '',
@@ -4833,8 +4785,8 @@ async function saveEditDrive() {
       emailId:     emailId     || null,
       instagram:   document.getElementById('editDriveInstagramInput').value  || '',
       instagramId: instagramId || null,
-      mainTd:      document.getElementById('editDriveMainTdInput').value     || '',
-      mainTdId:    mainTdId    || null,
+      td:          driveTd || '',
+      
     });
     // Re-render the drives section (the tr's parent tbody's drivesSection container)
     const drivesSection = editDriveRowRef.closest('table')?.parentElement;
