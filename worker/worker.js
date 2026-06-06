@@ -1200,7 +1200,7 @@ export default {
 
 
       if (body.action === "updateDrive") {
-        const { driveId, name, campaignId, methodId, microId, emailId, instagramId } = body;
+        const { driveId, name, campaignId, methodId, emailId, instagramId, mainTdId: driveMainTdId } = body;
         if (!driveId || !name) return json({ error: "driveId and name required" }, 400);
         const dash = id => id ? id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5") : null;
         const rel  = id => id ? { relation: [{ id: dash(id) }] } : { relation: [] };
@@ -1209,9 +1209,9 @@ export default {
           "Name":      { title: [{ text: { content: name } }] },
           "campaign":  rel(campaignId),
           "method":    rel(methodId),
-          "micro":     rel(microId),
           "email":     rel(emailId),
           "instagram": rel(instagramId),
+          "main td":   driveMainTdId ? { relation: [{ id: dash(driveMainTdId) }] } : { relation: [] },
         };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
