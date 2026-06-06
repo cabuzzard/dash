@@ -1209,6 +1209,13 @@
       <input type="hidden" id="editResumeCampaignId" />
       <div id="editResumeCampaignDropdown" class="camp-dropdown" style="display:none;"></div>
     </div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Main TD</label>
+      <input class="modal-input" id="editResumeMainTdInput" type="text" placeholder="Search main TD items..." autocomplete="off"
+        oninput="filterMainTd('editResumeMainTdInput','editResumeMainTdId','editResumeMainTdDropdown')" onfocus="filterMainTd('editResumeMainTdInput','editResumeMainTdId','editResumeMainTdDropdown')" />
+      <input type="hidden" id="editResumeMainTdId" />
+      <div id="editResumeMainTdDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeEditResumeModal()">Cancel</button>
       <button class="btn btn-primary" id="editResumeSaveBtn" onclick="saveEditResume()">Save</button>
@@ -4323,9 +4330,9 @@ function filterMainTd(inputId, hiddenId, dropId) {
   });
   dd.style.display = dd.children.length ? 'block' : 'none';
 }
-['editRunMainTdInput','editDriveMainTdInput'].forEach(id => {
+['editRunMainTdInput','editDriveMainTdInput','editResumeMainTdInput'].forEach(id => {
   document.addEventListener('click', e => {
-    const map = { editRunMainTdInput: 'editRunMainTdDropdown', editDriveMainTdInput: 'editDriveMainTdDropdown' };
+    const map = { editRunMainTdInput: 'editRunMainTdDropdown', editDriveMainTdInput: 'editDriveMainTdDropdown', editResumeMainTdInput: 'editResumeMainTdDropdown' };
     if (!e.target.closest('#' + id) && !e.target.closest('#' + map[id])) {
       const dd = document.getElementById(map[id]);
       if (dd) dd.style.display = 'none';
@@ -4451,7 +4458,7 @@ function renderResumesPanel(panel, resumes) {
   if (!resumes.length) { panel.innerHTML = ''; return; }
   const table = document.createElement('table');
   table.className = 'runs-table';
-  table.innerHTML = '<thead><tr><th>Name</th><th>Campaign</th><th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">DB</th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Name</th><th>Campaign</th><th>Main TD</th><th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">DB</th></tr></thead>';
   const tbody = document.createElement('tbody');
   resumes.forEach(r => {
     const tr = document.createElement('tr');
@@ -4465,6 +4472,7 @@ function renderResumesPanel(panel, resumes) {
     tr.appendChild(nameTd);
     tr.insertAdjacentHTML('beforeend',
       '<td>' + esc(r.campaign || '—') + '</td>' +
+      '<td>' + esc(r.mainTd   || '—') + '</td>' +
       '<td class="link">' + (r.landing ? '<a href="' + esc(r.landing) + '" target="_blank">↗</a>' : '—') + '</td>' +
       '<td class="link"><a href="https://www.notion.so/' + r.id + '" target="_blank">↗</a></td>');
     tbody.appendChild(tr);
@@ -4554,6 +4562,8 @@ function openEditResumeModal(resume, tr, list) {
   document.getElementById('editResumeName').value = resume.name || '';
   document.getElementById('editResumeCampaignInput').value = resume.campaign || '';
   document.getElementById('editResumeCampaignId').value = resume.campaignId || '';
+  document.getElementById('editResumeMainTdInput').value  = resume.mainTd   || '';
+  document.getElementById('editResumeMainTdId').value     = resume.mainTdId || '';
   document.getElementById('editResumeCampaignDropdown').style.display = 'none';
   document.getElementById('editResumeDbLink').href = 'https://www.notion.so/' + resume.id;
   document.getElementById('editResumeSaveBtn').disabled = false;
@@ -4565,15 +4575,18 @@ function closeEditResumeModal() { document.getElementById('editResumeModal').cla
 async function saveEditResume() {
   const name = document.getElementById('editResumeName').value.trim();
   if (!name) { document.getElementById('editResumeName').focus(); return; }
-  const campaignId = document.getElementById('editResumeCampaignId').value || null;
+  const campaignId = document.getElementById('editResumeCampaignId').value  || null;
+  const mainTdId   = document.getElementById('editResumeMainTdId').value    || null;
   const btn = document.getElementById('editResumeSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving...';
   try {
-    await call('updateResume', { resumeId: editResumeCurrent.id, name, campaignId });
+    await call('updateResume', { resumeId: editResumeCurrent.id, name, campaignId, mainTdId });
     Object.assign(editResumeCurrent, {
       name,
-      campaign:   document.getElementById('editResumeCampaignInput').value || '',
+      campaign:   document.getElementById('editResumeCampaignInput').value  || '',
       campaignId: campaignId || null,
+      mainTd:     document.getElementById('editResumeMainTdInput').value    || '',
+      mainTdId:   mainTdId   || null,
     });
     const section = editResumeRowRef.closest('table')?.parentElement;
     if (section) renderResumesPanel(section, editResumeListRef);

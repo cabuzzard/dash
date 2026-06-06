@@ -1250,24 +1250,30 @@ export default {
         const { productId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
         const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-        const [resumeRows, campRows] = await Promise.all([
+        const [resumeRows, campRows, mainTdRowsR] = await Promise.all([
           notionQuery(RESUMES_DB, {
             filter: { property: "product", relation: { contains: dashed } },
             sorts: [{ timestamp: "created_time", direction: "descending" }],
           }),
           notionQuery(CAMPAIGNS_DB, {}),
+          notionQuery(MAIN_TD_DB, { sorts: [{ property: "Title", direction: "ascending" }] }),
         ]);
         const campById = {};
         campRows.forEach(c => { campById[c.id.replace(/-/g,"")] = c.properties.Name?.title?.map(t => t.plain_text).join("") || ""; });
+        const mainTdByIdR = {};
+        mainTdRowsR.forEach(t => { mainTdByIdR[t.id.replace(/-/g,"")] = t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled"; });
         const resumes = resumeRows.map(r => {
           const props = r.properties;
-          const campRel = (props["campaign"]?.relation || []).map(x => x.id.replace(/-/g,""));
+          const campRel   = (props["campaign"]?.relation || []).map(x => x.id.replace(/-/g,""));
+          const mainTdRel = (props["main td"]?.relation  || []).map(x => x.id.replace(/-/g,""));
           return {
             id:         r.id.replace(/-/g, ""),
             name:       props["Name"]?.title?.map(t => t.plain_text).join("") || "Untitled",
             landing:    props["landing"]?.rollup?.array?.[0]?.url || null,
-            campaignId: campRel[0] || null,
-            campaign:   campRel[0] ? (campById[campRel[0]] || "") : "",
+            campaignId: campRel[0]   || null,
+            campaign:   campRel[0]   ? (campById[campRel[0]]     || "") : "",
+            mainTdId:   mainTdRel[0] || null,
+            mainTd:     mainTdRel[0] ? (mainTdByIdR[mainTdRel[0]] || "") : "",
           };
         });
         return json({ resumes });
@@ -1296,16 +1302,13 @@ export default {
       }
 
       if (body.action === "updateResume") {
-        const { resumeId, name, campaignId } = body;
+        const { resumeId, name, campaignId, mainTdId } = body;
         if (!resumeId || !name) return json({ error: "resumeId and name required" }, 400);
-        const dashed = resumeId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const dash = id => id ? id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5") : null;
+        const dashed = dash(resumeId);
         const properties = { "Name": { title: [{ text: { content: name } }] } };
-        if (campaignId) {
-          const cDashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-          properties["campaign"] = { relation: [{ id: cDashed }] };
-        } else {
-          properties["campaign"] = { relation: [] };
-        }
+        properties["campaign"] = campaignId ? { relation: [{ id: dash(campaignId) }] } : { relation: [] };
+        properties["main td"]  = mainTdId   ? { relation: [{ id: dash(mainTdId)   }] } : { relation: [] };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
