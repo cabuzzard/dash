@@ -4497,11 +4497,7 @@ async function saveEditRun() {
   try {
     const runSaveResult = await call('updateRun', updates);
     const tdDebug = runSaveResult.mainTdSaved;
-    if (tdDebug && tdDebug.length) {
-      showToast('TD saved to Notion ✓ (' + tdDebug.length + ' item)', 'success');
-    } else {
-      showToast('Warning: TD not confirmed in Notion response', 'error');
-    }
+    const tdMsg = tdDebug && tdDebug.length ? 'TD→Notion:' + tdDebug.length : 'TD→Notion:0';
 
     // Upload new delivery file if selected
     const fileInput = document.getElementById('editRunDeliveryFile');
@@ -4529,7 +4525,7 @@ async function saveEditRun() {
     const panel = editRunRowRef.closest('.runs-panel');
     if (panel) renderRunsPanel(panel, editRunListRef);
     closeEditRunModal();
-    showToast('Run updated ✓', 'success');
+    showToast('Run updated ✓ ' + tdMsg, 'success');
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
