@@ -4495,7 +4495,8 @@ async function saveEditRun() {
   };
 
   try {
-    await call('updateRun', updates);
+    const runSaveResult = await call('updateRun', updates);
+    showToast('TD saved: ' + JSON.stringify(runSaveResult.mainTdSaved), 'success');
 
     // Upload new delivery file if selected
     const fileInput = document.getElementById('editRunDeliveryFile');

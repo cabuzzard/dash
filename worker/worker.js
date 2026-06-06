@@ -1219,8 +1219,9 @@ export default {
           body: JSON.stringify({ properties }),
         });
         const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
-        return json({ success: true });
+        if (!resp.ok) return json({ error: result.message || "Update failed", detail: result }, resp.status);
+        const savedMainTd = result.properties?.["main td"]?.relation || [];
+        return json({ success: true, mainTdSaved: savedMainTd });
       }
       if (body.action === "createRun") {
         const { productId, templateName, format, status, price, canvaLink, publishedLink, etsyLink, listingCopy } = body;
