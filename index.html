@@ -1948,7 +1948,7 @@ async function checkPin() {
 function lockApp() {
   SESSION_TOKEN = null;
   sessionStorage.removeItem('hermes_token');
-  pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false; prodTdLoaded = false; prodTdLoaded = false; devLoaded = false; tdTabLoaded = false; tradesLoaded = false;
+  pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false; prodTdLoaded = false; devLoaded = false; tdTabLoaded = false; tradesLoaded = false;
   updateDots();
   document.getElementById('pinScreen').classList.remove('hidden');
   document.getElementById('ovContent').innerHTML   = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
@@ -1978,7 +1978,7 @@ async function call(action, extra = {}) {
 }
 
 // ── TABS ─────────────────────────────────────────────────────────────
-let prodLoaded = false; prodTdLoaded = false;
+let prodLoaded = false;
 let devLoaded  = false;
 let tdTabLoaded = false;
 
