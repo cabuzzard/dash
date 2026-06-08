@@ -601,29 +601,15 @@
       <div class="dom-collapse">
         <div class="dom-col-hdr" onclick="domToggle('emailsBody','emailsArrow')">
           <span class="dom-col-title">Email Accounts</span>
-          <span class="dom-col-count">16</span>
+          <span class="dom-col-count" id="emailsCount">—</span>
+          <button onclick="event.stopPropagation();openEmailModal()" style="font-size:11px;padding:3px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);cursor:pointer;margin-left:auto;margin-right:8px;">+ Add Row</button>
           <span class="dom-col-arrow" id="emailsArrow">▼</span>
         </div>
         <div class="dom-col-body open" id="emailsBody">
           <table class="dtable">
-            <thead><tr><th>Email</th><th>Used</th><th>Limit</th><th>Host</th></tr></thead>
-            <tbody>
-              <tr><td>evan@evraymond.com</td><td>6.21 GB</td><td>∞</td><td>evraymond.com</td></tr>
-              <tr><td>info@evraymond.com</td><td>199.3 MB</td><td>∞</td><td>evraymond.com</td></tr>
-              <tr><td>job@evraymond.com</td><td>1.65 GB</td><td>∞</td><td>evraymond.com</td></tr>
-              <tr><td>jobs@evraymond.com</td><td>248.8 KB</td><td>∞</td><td>evraymond.com</td></tr>
-              <tr><td>mktg@evraymond.com</td><td>2.79 GB</td><td>∞</td><td>evraymond.com</td></tr>
-              <tr><td>evan@mountainwize.com</td><td>3.07 MB</td><td>∞</td><td>mountainwize.com</td></tr>
-              <tr><td>info@mountainwize.com</td><td>966 MB</td><td>∞</td><td>mountainwize.com</td></tr>
-              <tr><td>info@roi-systems.com</td><td>2.3 MB</td><td>∞</td><td>roi-systems.com</td></tr>
-              <tr><td>admin@webguyleadgeneration.com</td><td>9.05 MB</td><td>500 MB</td><td>webguyleadgeneration.com</td></tr>
-              <tr><td>info@webguyleadgeneration.com</td><td>6.77 MB</td><td>500 MB</td><td>webguyleadgeneration.com</td></tr>
-              <tr><td>info@creativeflowguitar.com</td><td>3.83 MB</td><td>500 MB</td><td>creativeflowguitar.com</td></tr>
-              <tr><td>info@foundationfuturesllc.com</td><td>58.5 KB</td><td>500 MB</td><td>foundationfuturesllc.com</td></tr>
-              <tr><td>info@maiandros-investments.com</td><td>1.48 MB</td><td>500 MB</td><td>maiandros-investments.com</td></tr>
-              <tr><td>info@modernactivehome.com</td><td>174.3 KB</td><td>500 MB</td><td>modernactivehome.com</td></tr>
-              <tr><td>info@naturalspirithealing.com</td><td>56.4 KB</td><td>500 MB</td><td>naturalspirithealing.com</td></tr>
-              <tr><td>info@releasestresstoday.com</td><td>55.6 KB</td><td>500 MB</td><td>releasestresstoday.com</td></tr>
+            <thead><tr><th>Email</th><th>Used</th><th>Limit</th><th>Host</th><th style="width:40px;"></th></tr></thead>
+            <tbody id="emailsTbody">
+              <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:16px;">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -633,12 +619,13 @@
       <div class="dom-collapse">
         <div class="dom-col-hdr" onclick="domToggle('domsBody','domsArrow')">
           <span class="dom-col-title">Domains</span>
-          <span class="dom-col-count">62</span>
+          <span class="dom-col-count" id="domsCount">62</span>
+          <button onclick="event.stopPropagation();openDomainModal()" style="font-size:11px;padding:3px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);cursor:pointer;margin-left:auto;margin-right:8px;">+ Add Row</button>
           <span class="dom-col-arrow" id="domsArrow">▼</span>
         </div>
         <div class="dom-col-body open" id="domsBody">
           <table class="dtable">
-            <thead><tr><th>Domain</th><th>Expires</th><th>Days</th><th>Host</th><th>Account</th></tr></thead>
+            <thead><tr><th>Domain</th><th>Expires</th><th>Days</th><th>Host</th><th>Account</th><th style="width:40px;"></th></tr></thead>
             <tbody id="domsTableBody"></tbody>
           </table>
         </div>
@@ -648,7 +635,8 @@
       <div class="dom-collapse">
         <div class="dom-col-hdr" onclick="domToggle('gAccsBody','gAccsArrow')">
           <span class="dom-col-title">Google Accounts</span>
-          <span class="dom-col-count">4 accounts · 17 brand channels</span>
+          <span class="dom-col-count" id="gAccsCount">4 accounts · 17 brand channels</span>
+          <button onclick="event.stopPropagation();openGaccModal()" style="font-size:11px;padding:3px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);cursor:pointer;margin-left:auto;margin-right:8px;">+ Add Channel</button>
           <span class="dom-col-arrow" id="gAccsArrow">▼</span>
         </div>
         <div class="dom-col-body open" id="gAccsBody" style="padding:12px 14px;display:block;">
@@ -717,6 +705,7 @@
             </div>
           </div>
 
+          <div id="gAccsAdditions"></div>
         </div>
       </div>
 
@@ -981,6 +970,90 @@
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- Email Modal -->
+<div class="modal-bg" id="emailModal" onclick="if(event.target===this)closeEmailModal()">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title">Add Email Account</div>
+    <div class="modal-field">
+      <label class="modal-label">Email Address</label>
+      <input class="modal-input" id="emEmailInput" type="text" placeholder="user@domain.com" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Host <span style="color:var(--text3);font-weight:400;">(e.g. Bluehost, GreenGeeks)</span></label>
+      <input class="modal-input" id="emHostInput" type="text" placeholder="Hosting provider..." />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Storage Used <span style="color:var(--text3);font-weight:400;">(optional)</span></label>
+      <input class="modal-input" id="emUsedInput" type="text" placeholder="e.g. 1.2 GB" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Storage Limit <span style="color:var(--text3);font-weight:400;">(optional)</span></label>
+      <input class="modal-input" id="emLimitInput" type="text" placeholder="e.g. 500 MB or ∞" />
+    </div>
+    <div style="display:flex;gap:10px;margin-top:4px;">
+      <button class="modal-btn" onclick="saveEmailRow()" style="flex:1;">Save</button>
+      <button class="modal-btn" onclick="closeEmailModal()" style="background:transparent;border-color:var(--border2);color:var(--text3);">Cancel</button>
+    </div>
+    <div id="emailModalErr" style="font-size:12px;color:var(--danger);margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
+<!-- Domain Modal -->
+<div class="modal-bg" id="domainModal" onclick="if(event.target===this)closeDomainModal()">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title">Add Domain</div>
+    <div class="modal-field">
+      <label class="modal-label">Domain</label>
+      <input class="modal-input" id="dmDomainInput" type="text" placeholder="example.com" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Expires</label>
+      <input class="modal-input" id="dmExpiresInput" type="text" placeholder="MM/DD/YYYY" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Host</label>
+      <input class="modal-input" id="dmHostInput" type="text" placeholder="e.g. Bluehost, GreenGeeks, Namecheap" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Account</label>
+      <input class="modal-input" id="dmAcctInput" type="text" placeholder="e.g. Evan Raymond" />
+    </div>
+    <div style="display:flex;gap:10px;margin-top:4px;">
+      <button class="modal-btn" onclick="saveDomainRow()" style="flex:1;">Save</button>
+      <button class="modal-btn" onclick="closeDomainModal()" style="background:transparent;border-color:var(--border2);color:var(--text3);">Cancel</button>
+    </div>
+    <div id="domainModalErr" style="font-size:12px;color:var(--danger);margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
+<!-- Google Account / Channel Modal -->
+<div class="modal-bg" id="gaccModal" onclick="if(event.target===this)closeGaccModal()">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title">Add YouTube Channel</div>
+    <div class="modal-field">
+      <label class="modal-label">Google Account Name</label>
+      <input class="modal-input" id="gaAcctInput" type="text" placeholder="e.g. flipoclock (existing or new)" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Channel Name</label>
+      <input class="modal-input" id="gaChNameInput" type="text" placeholder="e.g. Trail Notes" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Handle</label>
+      <input class="modal-input" id="gaHandleInput" type="text" placeholder="@handle" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Subscribers <span style="color:var(--text3);font-weight:400;">(optional)</span></label>
+      <input class="modal-input" id="gaSubsInput" type="text" placeholder="e.g. 5 subs" />
+    </div>
+    <div style="display:flex;gap:10px;margin-top:4px;">
+      <button class="modal-btn" onclick="saveGaccRow()" style="flex:1;">Save</button>
+      <button class="modal-btn" onclick="closeGaccModal()" style="background:transparent;border-color:var(--border2);color:var(--text3);">Cancel</button>
+    </div>
+    <div id="gaccModalErr" style="font-size:12px;color:var(--danger);margin-top:8px;min-height:16px;"></div>
   </div>
 </div>
 
@@ -2516,6 +2589,10 @@ function initDomainsTab() {
     ['webguyleadgeneration.com','12/11/2026','Bluehost','Steven Richardson'],
   ];
 
+  // Merge localStorage additions
+  const localDoms = loadLocalDomains();
+  localDoms.forEach(d => domains.push([d.domain, d.expires, d.host, d.acct, d.id]));
+
   // Sort by expiry date ascending
   domains.sort((a,b) => new Date(a[1]) - new Date(b[1]));
 
@@ -2523,7 +2600,7 @@ function initDomainsTab() {
   const tbody = document.getElementById('domsTableBody');
   tbody.innerHTML = '';
 
-  domains.forEach(([domain, exp, host, acct]) => {
+  domains.forEach(([domain, exp, host, acct, localId]) => {
     const expDate = new Date(exp);
     const days    = Math.ceil((expDate - today) / 86400000);
     let color = '';
@@ -2538,9 +2615,17 @@ function initDomainsTab() {
       '<td style="color:' + (color||'var(--text3)') + ';white-space:nowrap;">' + badge + exp + '</td>' +
       '<td style="color:' + (color||'var(--text3)') + ';font-weight:' + (color?'700':'400') + ';white-space:nowrap;">' + days + 'd</td>' +
       '<td style="color:var(--text3);">' + host + '</td>' +
-      '<td style="color:var(--text3);">' + acct + '</td>';
+      '<td style="color:var(--text3);">' + acct + '</td>' +
+      '<td style="text-align:center;">' + (localId ? '<span onclick="deleteDomainRow(\'' + localId + '\')" style="font-size:11px;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border);border-radius:4px;" title="Delete">✕</span>' : '') + '</td>';
     tbody.appendChild(tr);
   });
+
+  // Update count
+  const domsCount = document.getElementById('domsCount');
+  if (domsCount) domsCount.textContent = domains.length;
+
+  // Render Google account additions
+  renderGaccAdditions();
 
   // Update expiry stat card
   const card  = document.getElementById('domExpiryCard');
@@ -2571,7 +2656,174 @@ async function loadEmails() {
     const res = await call('getEmails', {});
     emailsData   = res.emails || [];
     emailsLoaded = true;
+    renderEmails();
   } catch(e) { console.warn('loadEmails failed:', e.message); }
+}
+
+function renderEmails() {
+  const tbody = document.getElementById('emailsTbody');
+  const count = document.getElementById('emailsCount');
+  if (!tbody) return;
+  if (!emailsData.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:16px;font-style:italic;">No records yet — click + Add Row</td></tr>';
+    if (count) count.textContent = '0';
+    return;
+  }
+  tbody.innerHTML = '';
+  emailsData.forEach(e => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td style="font-size:12px;">' + esc(e.name) + '</td>' +
+      '<td style="color:var(--text3);font-size:12px;">' + (e.used  || '—') + '</td>' +
+      '<td style="color:var(--text3);font-size:12px;">' + (e.limit || '—') + '</td>' +
+      '<td style="color:var(--text3);font-size:12px;">' + (e.host  || e.domain || '—') + '</td>' +
+      '<td style="text-align:center;"><span onclick="deleteEmailRow(\'' + e.id + '\',\'' + esc(e.name) + '\')" style="font-size:11px;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border);border-radius:4px;" title="Delete">✕</span></td>';
+    tbody.appendChild(tr);
+  });
+  if (count) count.textContent = emailsData.length;
+}
+
+function openEmailModal() {
+  ['emEmailInput','emHostInput','emUsedInput','emLimitInput'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('emailModalErr').textContent = '';
+  document.getElementById('emailModal').classList.add('open');
+  document.getElementById('emEmailInput').focus();
+}
+function closeEmailModal() { document.getElementById('emailModal').classList.remove('open'); }
+
+async function saveEmailRow() {
+  const email = document.getElementById('emEmailInput').value.trim();
+  const host  = document.getElementById('emHostInput').value.trim();
+  const used  = document.getElementById('emUsedInput').value.trim();
+  const limit = document.getElementById('emLimitInput').value.trim();
+  const err   = document.getElementById('emailModalErr');
+  if (!email) { err.textContent = 'Email address is required.'; return; }
+  err.textContent = '';
+  try {
+    const res = await call('createEmail', { email, host, used, limit });
+    emailsData.push(res.email);
+    emailsData.sort((a,b) => a.name.localeCompare(b.name));
+    emailsLoaded = true;
+    renderEmails();
+    closeEmailModal();
+  } catch(e) { err.textContent = e.message || 'Save failed.'; }
+}
+
+async function deleteEmailRow(id, name) {
+  if (!confirm('Delete email "' + name + '"?\nThis archives it in Notion.')) return;
+  try {
+    await call('deleteEmail', { id });
+    emailsData = emailsData.filter(e => e.id !== id);
+    renderEmails();
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
+// ── DOMAINS (localStorage-backed additions) ──────────────────────────────────
+function loadLocalDomains() {
+  try { return JSON.parse(localStorage.getItem('hermes_domain_additions') || '[]'); }
+  catch(e) { return []; }
+}
+function saveLocalDomains(arr) { localStorage.setItem('hermes_domain_additions', JSON.stringify(arr)); }
+
+function openDomainModal() {
+  ['dmDomainInput','dmExpiresInput','dmHostInput','dmAcctInput'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('domainModalErr').textContent = '';
+  document.getElementById('domainModal').classList.add('open');
+  document.getElementById('dmDomainInput').focus();
+}
+function closeDomainModal() { document.getElementById('domainModal').classList.remove('open'); }
+
+function saveDomainRow() {
+  const domain  = document.getElementById('dmDomainInput').value.trim();
+  const expires = document.getElementById('dmExpiresInput').value.trim();
+  const host    = document.getElementById('dmHostInput').value.trim();
+  const acct    = document.getElementById('dmAcctInput').value.trim();
+  const err     = document.getElementById('domainModalErr');
+  if (!domain)  { err.textContent = 'Domain is required.'; return; }
+  if (!expires) { err.textContent = 'Expiry date is required.'; return; }
+  err.textContent = '';
+  const additions = loadLocalDomains();
+  const id = Date.now().toString();
+  additions.push({ id, domain, expires, host, acct });
+  saveLocalDomains(additions);
+  closeDomainModal();
+  initDomainsTab();
+}
+
+function deleteDomainRow(id) {
+  const additions = loadLocalDomains().filter(d => d.id !== id);
+  saveLocalDomains(additions);
+  initDomainsTab();
+}
+
+// ── GOOGLE ACCOUNTS (localStorage-backed additions) ───────────────────────────
+function loadLocalGaccs() {
+  try { return JSON.parse(localStorage.getItem('hermes_gacc_additions') || '[]'); }
+  catch(e) { return []; }
+}
+function saveLocalGaccs(arr) { localStorage.setItem('hermes_gacc_additions', JSON.stringify(arr)); }
+
+function renderGaccAdditions() {
+  const container = document.getElementById('gAccsAdditions');
+  if (!container) return;
+  const additions = loadLocalGaccs();
+  if (!additions.length) { container.innerHTML = ''; return; }
+  // Group channels by account name
+  const accounts = {};
+  additions.forEach(ch => {
+    if (!accounts[ch.acct]) accounts[ch.acct] = [];
+    accounts[ch.acct].push(ch);
+  });
+  container.innerHTML = Object.entries(accounts).map(([acctName, channels], i) => {
+    const safeId = 'gacc_add_' + i;
+    const rows = channels.map(ch =>
+      '<div class="gacc-row">' +
+        '<span class="gacc-ch-name">' + esc(ch.chName) + '</span>' +
+        '<span class="gacc-handle">' + esc(ch.handle) + '</span>' +
+        '<span class="gacc-subs' + (!ch.subs ? ' gacc-zero' : '') + '">' + (ch.subs || '—') + '</span>' +
+        '<span onclick="deleteGaccRow(\'' + ch.id + '\')" style="font-size:11px;color:var(--text3);cursor:pointer;padding:1px 5px;border:1px solid var(--border);border-radius:3px;margin-left:auto;" title="Delete">✕</span>' +
+      '</div>'
+    ).join('');
+    return '<div class="gacc-block">' +
+      '<div class="gacc-hdr" onclick="domToggle(\'' + safeId + '\',\'' + safeId + 'Arr\')">' +
+        '<span class="gacc-icon">G</span>' +
+        '<span class="gacc-name">' + esc(acctName) + '</span>' +
+        '<span class="gacc-meta">' + channels.length + ' channel' + (channels.length !== 1 ? 's' : '') + '</span>' +
+        '<span class="dom-col-arrow" id="' + safeId + 'Arr" style="margin-left:auto;">▼</span>' +
+      '</div>' +
+      '<div class="gacc-body open" id="' + safeId + '">' + rows + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function openGaccModal() {
+  ['gaAcctInput','gaChNameInput','gaHandleInput','gaSubsInput'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('gaccModalErr').textContent = '';
+  document.getElementById('gaccModal').classList.add('open');
+  document.getElementById('gaAcctInput').focus();
+}
+function closeGaccModal() { document.getElementById('gaccModal').classList.remove('open'); }
+
+function saveGaccRow() {
+  const acct   = document.getElementById('gaAcctInput').value.trim();
+  const chName = document.getElementById('gaChNameInput').value.trim();
+  const handle = document.getElementById('gaHandleInput').value.trim();
+  const subs   = document.getElementById('gaSubsInput').value.trim();
+  const err    = document.getElementById('gaccModalErr');
+  if (!acct)   { err.textContent = 'Google account name is required.'; return; }
+  if (!chName) { err.textContent = 'Channel name is required.'; return; }
+  err.textContent = '';
+  const additions = loadLocalGaccs();
+  additions.push({ id: Date.now().toString(), acct, chName, handle, subs });
+  saveLocalGaccs(additions);
+  renderGaccAdditions();
+  closeGaccModal();
+}
+
+function deleteGaccRow(id) {
+  if (!confirm('Remove this channel?')) return;
+  saveLocalGaccs(loadLocalGaccs().filter(ch => ch.id !== id));
+  renderGaccAdditions();
 }
 const smKnownYt = [
   'Evan Raymond Music & Mindset (@evanraymondmusicandmindset2603)',

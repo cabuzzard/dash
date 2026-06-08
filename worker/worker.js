@@ -2080,9 +2080,48 @@ Rules:
             id:     r.id.replace(/-/g,""),
             name:   txt(p.Email),
             domain: txt(p.Domain),
+            host:   txt(p.Host),
+            used:   txt(p.Used),
+            limit:  txt(p.Limit),
           };
         });
         return json({ emails });
+      }
+
+      if (body.action === "createEmail") {
+        const { email, host, used, limit } = body;
+        if (!email) return json({ error: "email required" }, 400);
+        const domain = email.includes('@') ? email.split('@')[1] : '';
+        const rt = v => v ? [{ type:"text", text:{ content: v } }] : [];
+        const props = {
+          Email:  { title: [{ type:"text", text:{ content: email } }] },
+          Domain: { rich_text: rt(domain) },
+          Host:   { rich_text: rt(host   || '') },
+          Used:   { rich_text: rt(used   || '') },
+          Limit:  { rich_text: rt(limit  || '') },
+        };
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: EMAILS_DB }, properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, email: { id: result.id.replace(/-/g,""), name: email, domain, host: host||'', used: used||'', limit: limit||'' } });
+      }
+
+      if (body.action === "deleteEmail") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const dash = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Delete failed" }, resp.status);
+        return json({ success: true });
       }
 
       // â”€â”€ getSmAccounts â€” fetch all SM Account records â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
