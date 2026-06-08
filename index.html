@@ -607,7 +607,7 @@
         </div>
         <div class="dom-col-body open" id="emailsBody">
           <table class="dtable">
-            <thead><tr><th>Email</th><th>Used</th><th>Limit</th><th>Host</th><th style="width:40px;"></th></tr></thead>
+            <thead><tr><th>Email</th><th>Domain</th><th style="width:40px;"></th></tr></thead>
             <tbody id="emailsTbody">
               <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:16px;">Loading...</td></tr>
             </tbody>
@@ -980,18 +980,6 @@
     <div class="modal-field">
       <label class="modal-label">Email Address</label>
       <input class="modal-input" id="emEmailInput" type="text" placeholder="user@domain.com" />
-    </div>
-    <div class="modal-field">
-      <label class="modal-label">Host <span style="color:var(--text3);font-weight:400;">(e.g. Bluehost, GreenGeeks)</span></label>
-      <input class="modal-input" id="emHostInput" type="text" placeholder="Hosting provider..." />
-    </div>
-    <div class="modal-field">
-      <label class="modal-label">Storage Used <span style="color:var(--text3);font-weight:400;">(optional)</span></label>
-      <input class="modal-input" id="emUsedInput" type="text" placeholder="e.g. 1.2 GB" />
-    </div>
-    <div class="modal-field">
-      <label class="modal-label">Storage Limit <span style="color:var(--text3);font-weight:400;">(optional)</span></label>
-      <input class="modal-input" id="emLimitInput" type="text" placeholder="e.g. 500 MB or ∞" />
     </div>
     <div style="display:flex;gap:10px;margin-top:4px;">
       <button class="modal-btn" onclick="saveEmailRow()" style="flex:1;">Save</button>
@@ -2674,9 +2662,7 @@ function renderEmails() {
     const tr = document.createElement('tr');
     tr.innerHTML =
       '<td style="font-size:12px;">' + esc(e.name) + '</td>' +
-      '<td style="color:var(--text3);font-size:12px;">' + (e.used  || '—') + '</td>' +
-      '<td style="color:var(--text3);font-size:12px;">' + (e.limit || '—') + '</td>' +
-      '<td style="color:var(--text3);font-size:12px;">' + (e.host  || e.domain || '—') + '</td>' +
+      '<td style="color:var(--text3);font-size:12px;">' + (e.domain || '—') + '</td>' +
       '<td style="text-align:center;"><span onclick="deleteEmailRow(\'' + e.id + '\',\'' + esc(e.name) + '\')" style="font-size:11px;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border);border-radius:4px;" title="Delete">✕</span></td>';
     tbody.appendChild(tr);
   });
@@ -2684,7 +2670,7 @@ function renderEmails() {
 }
 
 function openEmailModal() {
-  ['emEmailInput','emHostInput','emUsedInput','emLimitInput'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('emEmailInput').value = '';
   document.getElementById('emailModalErr').textContent = '';
   document.getElementById('emailModal').classList.add('open');
   document.getElementById('emEmailInput').focus();
@@ -2693,14 +2679,11 @@ function closeEmailModal() { document.getElementById('emailModal').classList.rem
 
 async function saveEmailRow() {
   const email = document.getElementById('emEmailInput').value.trim();
-  const host  = document.getElementById('emHostInput').value.trim();
-  const used  = document.getElementById('emUsedInput').value.trim();
-  const limit = document.getElementById('emLimitInput').value.trim();
   const err   = document.getElementById('emailModalErr');
   if (!email) { err.textContent = 'Email address is required.'; return; }
   err.textContent = '';
   try {
-    const res = await call('createEmail', { email, host, used, limit });
+    const res = await call('createEmail', { email });
     emailsData.push(res.email);
     emailsData.sort((a,b) => a.name.localeCompare(b.name));
     emailsLoaded = true;

@@ -2080,25 +2080,19 @@ Rules:
             id:     r.id.replace(/-/g,""),
             name:   txt(p.Email),
             domain: txt(p.Domain),
-            host:   txt(p.Host),
-            used:   txt(p.Used),
-            limit:  txt(p.Limit),
           };
         });
         return json({ emails });
       }
 
       if (body.action === "createEmail") {
-        const { email, host, used, limit } = body;
+        const { email } = body;
         if (!email) return json({ error: "email required" }, 400);
         const domain = email.includes('@') ? email.split('@')[1] : '';
         const rt = v => v ? [{ type:"text", text:{ content: v } }] : [];
         const props = {
           Email:  { title: [{ type:"text", text:{ content: email } }] },
           Domain: { rich_text: rt(domain) },
-          Host:   { rich_text: rt(host   || '') },
-          Used:   { rich_text: rt(used   || '') },
-          Limit:  { rich_text: rt(limit  || '') },
         };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
@@ -2107,7 +2101,7 @@ Rules:
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
-        return json({ success: true, email: { id: result.id.replace(/-/g,""), name: email, domain, host: host||'', used: used||'', limit: limit||'' } });
+        return json({ success: true, email: { id: result.id.replace(/-/g,""), name: email, domain } });
       }
 
       if (body.action === "deleteEmail") {
