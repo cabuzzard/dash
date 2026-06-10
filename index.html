@@ -417,6 +417,42 @@
   .scr-sig-mid { display:inline-block; width:8px; height:8px; border-radius:50%; background:#ffaa33; margin-right:4px; }
   .scr-score-bar { display:inline-block; height:6px; border-radius:3px; background:#44cc88; vertical-align:middle; margin-right:6px; }
   .scr-err { color:var(--text3); font-size:11px; font-style:italic; }
+
+  /* ── BOTTOM NAV + MORNING VIEW ── */
+  .view { display: none; padding: 16px; padding-bottom: 72px; }
+  .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 56px; background: var(--bg); border-top: 1px solid var(--border); display: flex; z-index: 150; }
+  .nav-tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; color: var(--text3); font-size: 10px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; transition: color 0.15s; -webkit-tap-highlight-color: transparent; }
+  .nav-tab.active { color: var(--text); }
+  .nav-tab-icon { font-size: 20px; line-height: 1; }
+  .view-wrap { padding-bottom: 64px; }
+  .morning-view { padding: 16px; padding-bottom: 80px; }
+  .morning-day { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); margin-bottom: 4px; }
+  .morning-heading { font-size: 22px; font-weight: 600; color: var(--text); margin-bottom: 20px; }
+  .morning-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; }
+  .morning-block-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .morning-time-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; }
+  .badge-teal { background: #0f6e5620; color: #5dcaa5; border: 1px solid #0f6e5640; }
+  .badge-amber { background: #854f0b20; color: #ef9f27; border: 1px solid #854f0b40; }
+  .badge-purple { background: #534ab720; color: #afa9ec; border: 1px solid #534ab740; }
+  .badge-blue { background: #185fa520; color: #85b7eb; border: 1px solid #185fa540; }
+  .badge-coral { background: #993c1d20; color: #f0997b; border: 1px solid #993c1d40; }
+  .morning-block-title { font-size: 14px; font-weight: 600; color: var(--text); }
+  .morning-block-sub { font-size: 12px; color: var(--text2); margin-bottom: 10px; line-height: 1.5; }
+  .morning-task-list { list-style: none; padding: 0; margin: 0; }
+  .morning-task { font-size: 13px; color: var(--text2); padding: 6px 0; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; }
+  .morning-task:last-child { border-bottom: none; padding-bottom: 0; }
+  .morning-task-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text3); flex-shrink: 0; margin-top: 7px; }
+  .morning-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+  .morning-tag { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+  .tag-teal { background: #0f6e5620; color: #5dcaa5; }
+  .tag-purple { background: #534ab720; color: #afa9ec; }
+  .tag-amber { background: #854f0b20; color: #ef9f27; }
+  .tag-blue { background: #185fa520; color: #85b7eb; }
+  .tag-coral { background: #993c1d20; color: #f0997b; }
+  .morning-principle { border-left: 2px solid var(--border2); padding: 8px 12px; margin-bottom: 8px; font-size: 13px; color: var(--text2); line-height: 1.6; font-style: italic; }
+  .morning-section-label { font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text2); margin: 20px 0 8px; }
+  .morning-todo-section { margin-top: 4px; }
+  .refresh-link { font-size: 11px; color: var(--text3); cursor: pointer; padding: 4px; }
 </style>
 </head>
 <body>
@@ -1218,6 +1254,15 @@
       <input class="modal-input" id="runEtsyLink" type="url" placeholder="https://..." />
     </div>
 
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Login</label>
+      <input class="modal-input" id="runLoginInput" type="text" placeholder="Search logins..." autocomplete="off"
+        oninput="filterRunLogins('runLoginInput','runLoginId','runLoginDrop')"
+        onfocus="filterRunLogins('runLoginInput','runLoginId','runLoginDrop')" />
+      <input type="hidden" id="runLoginId" />
+      <div id="runLoginDrop" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeRunModal()">Cancel</button>
       <button class="btn btn-primary" id="runSubmitBtn" onclick="submitRun()">Create Run</button>
@@ -1441,6 +1486,15 @@
     <div class="modal-field">
       <label class="modal-label">Etsy Listing URL</label>
       <input class="modal-input" id="editRunEtsyLink" type="url" placeholder="https://..." />
+    </div>
+
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Login</label>
+      <input class="modal-input" id="editRunLoginInput" type="text" placeholder="Search logins..." autocomplete="off"
+        oninput="filterRunLogins('editRunLoginInput','editRunLoginId','editRunLoginDrop')"
+        onfocus="filterRunLogins('editRunLoginInput','editRunLoginId','editRunLoginDrop')" />
+      <input type="hidden" id="editRunLoginId" />
+      <div id="editRunLoginDrop" class="camp-dropdown" style="display:none;"></div>
     </div>
 
     <div class="modal-actions">
@@ -1777,6 +1831,96 @@
         <button class="btn btn-primary" id="leSaveBtn" onclick="saveLoginEdit()">Save</button>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="view" id="viewMorning" style="display:none;">
+  <div class="morning-view">
+    <div class="morning-day" id="morningDayLabel"></div>
+    <div class="morning-heading" id="morningHeading"></div>
+
+    <div class="morning-section-label">Phase 1 — before screen</div>
+    <div class="morning-block">
+      <div class="morning-block-header">
+        <span class="morning-time-badge badge-teal">First 15 min</span>
+        <span class="morning-block-title">Trail time — voice capture</span>
+      </div>
+      <div class="morning-block-sub">The trail is the office. Voice memo before you open anything.</div>
+      <ul class="morning-task-list">
+        <li class="morning-task"><span class="morning-task-dot"></span>One voice memo — an observation, question, or tension from yesterday. Feeds Trail Notes + AI workflow content simultaneously.</li>
+        <li class="morning-task"><span class="morning-task-dot"></span>One spontaneous thought about your audience's pain (purpose crisis, content overwhelm, fundraising anxiety) — raw material for posts.</li>
+      </ul>
+      <div class="morning-tags">
+        <span class="morning-tag tag-teal">Trail Notes</span>
+        <span class="morning-tag tag-purple">B2B AI Workflows</span>
+      </div>
+    </div>
+
+    <div class="morning-section-label">Phase 2 — intake</div>
+    <div class="morning-block">
+      <div class="morning-block-header">
+        <span class="morning-time-badge badge-amber">15 min</span>
+        <span class="morning-block-title">Trend scan</span>
+      </div>
+      <div class="morning-block-sub">TikTok Creative Center → X Explore → Google Trends. One tab each.</div>
+      <ul class="morning-task-list">
+        <li class="morning-task"><span class="morning-task-dot"></span>TikTok Creative Center — self-actualization, AI productivity, coaching, business systems</li>
+        <li class="morning-task"><span class="morning-task-dot"></span>X Explore — what are founders complaining about or celebrating today?</li>
+        <li class="morning-task"><span class="morning-task-dot"></span>Google Trends — 2 min check on your campaign keywords</li>
+      </ul>
+      <div class="morning-tags">
+        <span class="morning-tag tag-teal">Trail Notes</span>
+        <span class="morning-tag tag-blue">B2C Content OS</span>
+        <span class="morning-tag tag-coral">Mobility Mentor</span>
+      </div>
+    </div>
+
+    <div class="morning-section-label">Phase 3 — create (peak window)</div>
+    <div class="morning-block" id="morningCreateBlock">
+      <div class="morning-block-header">
+        <span class="morning-time-badge badge-purple">60 min</span>
+        <span class="morning-block-title" id="morningCreateTitle">One deep creation task</span>
+      </div>
+      <div class="morning-block-sub" id="morningCreateSub">Loading today's task...</div>
+      <ul class="morning-task-list" id="morningCreateTasks"></ul>
+      <div class="morning-tags" id="morningCreateTags"></div>
+    </div>
+
+    <div class="morning-section-label">Phase 4 — deploy</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="morning-block">
+        <div class="morning-block-header">
+          <span class="morning-time-badge badge-blue">20 min</span>
+        </div>
+        <div class="morning-block-title" style="font-size:13px;margin-bottom:6px">Publish / schedule</div>
+        <ul class="morning-task-list">
+          <li class="morning-task"><span class="morning-task-dot"></span>Push yesterday's creation to its platform</li>
+          <li class="morning-task"><span class="morning-task-dot"></span>Schedule any queued SM posts</li>
+        </ul>
+      </div>
+      <div class="morning-block">
+        <div class="morning-block-header">
+          <span class="morning-time-badge badge-coral">10 min</span>
+        </div>
+        <div class="morning-block-title" style="font-size:13px;margin-bottom:6px">Notion triage</div>
+        <ul class="morning-task-list">
+          <li class="morning-task"><span class="morning-task-dot"></span>Clear MAIN TO DO</li>
+          <li class="morning-task"><span class="morning-task-dot"></span>Update campaign status or titles</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="morning-section-label">Live todos</div>
+    <div class="level-header" style="margin-bottom:8px">
+      <div class="section-label" style="font-size:10px"></div>
+      <span class="refresh-link" onclick="loadMorningTodos()">↻ refresh</span>
+    </div>
+    <div id="morningTodoList"><div style="font-size:13px;color:var(--text3);font-style:italic">Loading...</div></div>
+
+    <div class="morning-section-label">Principles</div>
+    <div class="morning-principle">The trail is not time away from the business. It <em>is</em> the business. Voice memo on every walk — that's content for three campaigns.</div>
+    <div class="morning-principle">One creation task per morning, finished. Splitting between campaigns before noon kills both.</div>
+    <div class="morning-principle">Trail Notes publishes Thursday. The essay must be written by Wednesday morning. Tuesday's block is the safety net — use it.</div>
   </div>
 </div>
 
@@ -3994,7 +4138,7 @@ function renderRunsPanel(panel, runs) {
 
   const table = document.createElement('table');
   table.className = 'runs-table';
-  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th style="cursor:default;text-align:center;">Canva</th><th>Canva Edit</th><th>Published</th><th>Delivery</th><th>Etsy</th><th>TD</th><th style="cursor:default;"></th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Template</th><th>Format</th><th>Status</th><th>Price</th><th style="cursor:default;text-align:center;">Canva</th><th>Canva Edit</th><th>Published</th><th>Delivery</th><th>Etsy</th><th>TD</th><th>Login</th><th style="cursor:default;"></th></tr></thead>';
   const tbody = document.createElement('tbody');
 
   runs.forEach(r => {
@@ -4011,6 +4155,11 @@ function renderRunsPanel(panel, runs) {
     tr.appendChild(nameTd);
 
     const link = (url, label) => url ? '<a href="' + esc(url) + '" target="_blank">' + label + '</a>' : '—';
+
+    tr.insertAdjacentHTML('beforeend',
+      '<td>' + esc(r.format || '—') + '</td>' +
+      '<td><span class="run-status ' + statusClass(r.status) + '">' + esc(r.status || '—') + '</span></td>' +
+      '<td>' + esc(r.price || '—') + '</td>');
 
     // Canva link cell — clickable dash if blank
     const canvaTd = document.createElement('td');
@@ -4029,9 +4178,6 @@ function renderRunsPanel(panel, runs) {
     tr.appendChild(canvaTd);
 
     tr.insertAdjacentHTML('beforeend',
-      '<td>' + esc(r.format || '—') + '</td>' +
-      '<td><span class="run-status ' + statusClass(r.status) + '">' + esc(r.status || '—') + '</span></td>' +
-      '<td>' + esc(r.price || '—') + '</td>' +
       '<td class="link">' + link(r.canvaEditLink, 'Edit ↗') + '</td>');
 
     // Published Template — link if set, clickable dash if blank
@@ -4066,9 +4212,13 @@ function renderRunsPanel(panel, runs) {
     }
     tr.appendChild(delivTd);
 
+    const loginName = r.loginIds && r.loginIds.length
+      ? (allLoginsCache.find(l => l.id === r.loginIds[0])?.name || r.loginIds[0].slice(0,8) + '…')
+      : '—';
     tr.insertAdjacentHTML('beforeend',
       '<td class="link">' + link(r.etsyLink, 'Etsy ↗') + '</td>' +
-      '<td>' + esc(r.td || '—') + '</td>');
+      '<td>' + esc(r.td || '—') + '</td>' +
+      '<td style="font-size:11px;">' + esc(loginName) + '</td>');
 
     // Copy listing copy button
     const copyTd = document.createElement('td');
@@ -4678,6 +4828,12 @@ function openEditRunModal(run, tr, runsList) {
   document.getElementById('editRunDeliveryFile').value  = '';
   document.getElementById('editRunTd').value = run.td || '';
   document.getElementById('editRunEtsyLink').value      = run.etsyLink      || '';
+  // Login relation
+  const loginId0 = run.loginIds && run.loginIds.length ? run.loginIds[0] : '';
+  document.getElementById('editRunLoginId').value    = loginId0;
+  document.getElementById('editRunLoginInput').value = loginId0
+    ? (allLoginsCache.find(l => l.id === loginId0)?.name || loginId0)
+    : '';
   const cur = document.getElementById('editRunDeliveryFileCurrent');
   cur.innerHTML = run.deliveryFile
     ? 'Current: <a href="' + esc(run.deliveryFile) + '" target="_blank" style="color:var(--text2);">' + esc(run.deliveryFileName || 'View file ↗') + '</a>'
@@ -4713,6 +4869,7 @@ async function saveEditRun() {
     listingCopy:      document.getElementById('editRunListingCopy').value.trim()      || null,
     td:               document.getElementById('editRunTd').value.trim()               || null,
     etsyLink:         document.getElementById('editRunEtsyLink').value.trim()         || null,
+    loginId:          document.getElementById('editRunLoginId').value.trim()           || null,
   };
 
   try {
@@ -4740,8 +4897,8 @@ async function saveEditRun() {
       publishedLink: updates.publishedLink || null,
       listingCopy:   updates.listingCopy   || '',
       td:            updates.td            || '',
-      
       etsyLink:      updates.etsyLink      || null,
+      loginIds:      updates.loginId ? [updates.loginId] : [],
     });
     // Re-render the panel by finding its container
     const panel = editRunRowRef.closest('.runs-panel');
@@ -4968,6 +5125,27 @@ function filterEditDriveMicro() {
   dd.style.display = dd.children.length ? 'block' : 'none';
 }
 
+function filterRunLogins(inputId, hiddenId, dropId) {
+  if (!allLoginsCache.length) call('getLogins').then(d => { allLoginsCache = d.logins || []; filterRunLogins(inputId, hiddenId, dropId); }).catch(() => {});
+  const q  = document.getElementById(inputId).value.trim().toLowerCase();
+  const dd = document.getElementById(dropId);
+  const matches = allLoginsCache.filter(l => !q || (l.name || '').toLowerCase().includes(q)).slice(0, 8);
+  dd.innerHTML = '';
+  if (!matches.length && !q) { dd.style.display = 'none'; return; }
+  matches.forEach(l => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = l.name;
+    div.onmousedown = () => {
+      document.getElementById(inputId).value  = l.name;
+      document.getElementById(hiddenId).value = l.id;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+  dd.style.display = matches.length ? '' : 'none';
+}
+
 function filterEditDriveLogins(inputId, hiddenId, dropId) {
   const rawQuery = document.getElementById(inputId).value.trim();
   const query    = rawQuery.toLowerCase();
@@ -5168,16 +5346,18 @@ async function submitDrive() {
 
 // ── RUN MODAL ────────────────────────────────────────────────────────
 function openRunModal() {
-  ['runProductInput','runTemplateName','runPrice','runCanvaLink','runPublishedLink','runListingCopy','runEtsyLink'].forEach(id => {
+  ['runProductInput','runTemplateName','runPrice','runCanvaLink','runPublishedLink','runListingCopy','runEtsyLink','runLoginInput'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('runDeliveryFile').value = '';
   document.getElementById('runProductId').value = '';
+  document.getElementById('runLoginId').value   = '';
   document.getElementById('runProductDropdown').style.display = 'none';
   document.getElementById('runFormat').value = '';
   document.getElementById('runStatus').value = 'Not Started';
   document.getElementById('runSubmitBtn').disabled = false;
   document.getElementById('runSubmitBtn').textContent = 'Create Run';
+  if (!allLoginsCache.length) call('getLogins').then(d => { allLoginsCache = d.logins || []; }).catch(() => {});
   document.getElementById('runModal').classList.add('open');
   setTimeout(() => document.getElementById('runProductInput').focus(), 280);
 }
@@ -5235,6 +5415,7 @@ async function submitRun() {
       publishedLink: document.getElementById('runPublishedLink').value.trim() || null,
       listingCopy:   document.getElementById('runListingCopy').value.trim() || null,
       etsyLink:      document.getElementById('runEtsyLink').value.trim() || null,
+      loginId:       document.getElementById('runLoginId').value.trim() || null,
     });
 
     // Upload delivery file if one was selected
@@ -7581,6 +7762,168 @@ async function enrichWithSentiment(tickers) {
   }
 }
 
+
+// ── Bottom nav ──────────────────────────────────────────────────────────────
+function switchBottomTab(tab) {
+  if (tab === 'dash') {
+    document.getElementById('navDash').classList.add('active');
+    document.getElementById('navMorning').classList.remove('active');
+    document.getElementById('viewMain').style.display = '';
+    document.getElementById('viewMorning').style.display = 'none';
+  } else {
+    document.getElementById('navMorning').classList.add('active');
+    document.getElementById('navDash').classList.remove('active');
+    document.getElementById('viewMain').style.display = 'none';
+    document.getElementById('viewMorning').style.display = 'block';
+    renderMorning();
+  }
+}
+
+// ── Morning view ─────────────────────────────────────────────────────────────
+const DAY_PLANS = {
+  0: { // Sunday
+    label: 'Sunday — rest + prep',
+    create: {
+      title: 'Optional: batch Substack Notes',
+      sub: 'If energy is there, draft 3–5 short Notes for the week ahead. Otherwise, rest.',
+      tasks: ['Review Trail Notes essay progress — is Thursday covered?', 'Scan your content titles in Notion — anything stale?'],
+      tags: [['Trail Notes','tag-teal'],['B2C Content OS','tag-blue']]
+    }
+  },
+  1: { // Monday
+    label: 'Monday — B2B LinkedIn',
+    create: {
+      title: 'LinkedIn post — B2B campaign',
+      sub: 'Write and schedule one LinkedIn post. Rotate between Content OS, AI Workflows, and Content Command Center.',
+      tasks: ['Pick one pain point from your B2B campaign notes', 'Write post using post-writer skill — hook + insight + CTA', 'Schedule via Buffer or publish direct'],
+      tags: [['B2C Content OS','tag-blue'],['B2B AI Workflows','tag-purple'],['Command Center','tag-amber']]
+    }
+  },
+  2: { // Tuesday
+    label: 'Tuesday — Trail Notes safety net',
+    create: {
+      title: 'Trail Notes essay draft',
+      sub: "Thursday is publish day. If the essay isn't written yet — write it now. Don't wait until Wednesday.",
+      tasks: ["Open this week's Trail Notes question from Notion", 'Write the full essay draft — one question, one trail, one answer', 'If essay is already done: write a LinkedIn post about AI workflow or purpose'],
+      tags: [['Trail Notes','tag-teal'],['B2B AI Workflows','tag-purple']]
+    }
+  },
+  3: { // Wednesday
+    label: 'Wednesday — Substack Notes batch',
+    create: {
+      title: 'Substack Notes — 3 to 5 Notes',
+      sub: 'Notes are your discovery layer. Short-form observations, 1–3 sentences. These drive new Trail Notes subscribers.',
+      tasks: ['Draft 3–5 Notes from voice memos or trail observations this week', 'Schedule them across Thu–Sun in Substack', 'Final review of Thursday essay — is it ready to publish?'],
+      tags: [['Trail Notes','tag-teal']]
+    }
+  },
+  4: { // Thursday
+    label: 'Thursday — publish day',
+    create: {
+      title: 'Publish Trail Notes essay',
+      sub: "Your scheduled publish day. Send the essay. Then write next week's question in Notion.",
+      tasks: ['Final proofread and publish Trail Notes essay at 11am', 'Log the question and answer in your Notion titles database', "Write or capture next week's trail question in Notion"],
+      tags: [['Trail Notes','tag-teal']]
+    }
+  },
+  5: { // Friday
+    label: 'Friday — outreach block',
+    create: {
+      title: 'Scrape-and-outreach session',
+      sub: 'Outreach is active across 5 campaigns. Use this block for prospecting or follow-ups.',
+      tasks: ['Review Leads database in Notion — who needs follow-up?', 'Send 5–10 personalized outreach messages (LinkedIn or email)', "Log any new leads from this week's content into Notion"],
+      tags: [['B2C Content OS','tag-blue'],['Command Center','tag-amber'],['Mobility Mentor','tag-coral']]
+    }
+  },
+  6: { // Saturday
+    label: 'Saturday — review + plan',
+    create: {
+      title: 'Weekly review — 30 min',
+      sub: "Look back at the week. One thing that worked, one thing to fix. Set Monday's LinkedIn topic.",
+      tasks: ['Check campaign statuses in Notion — anything slipped?', 'Note one win and one gap from this week', "Set Monday's LinkedIn post topic in a voice memo or Notion note"],
+      tags: [['Trail Notes','tag-teal'],['B2C Content OS','tag-blue']]
+    }
+  }
+};
+
+function renderMorning() {
+  const now = new Date();
+  const dayIndex = now.getDay();
+  const plan = DAY_PLANS[dayIndex];
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  document.getElementById('morningDayLabel').textContent =
+    dayNames[dayIndex] + ' · ' + months[now.getMonth()] + ' ' + now.getDate();
+  document.getElementById('morningHeading').textContent = plan.label;
+
+  document.getElementById('morningCreateTitle').textContent = plan.create.title;
+  document.getElementById('morningCreateSub').textContent = plan.create.sub;
+
+  const taskEl = document.getElementById('morningCreateTasks');
+  taskEl.innerHTML = '';
+  plan.create.tasks.forEach(t => {
+    const li = document.createElement('li');
+    li.className = 'morning-task';
+    li.innerHTML = '<span class="morning-task-dot"></span>' + t;
+    taskEl.appendChild(li);
+  });
+
+  const tagsEl = document.getElementById('morningCreateTags');
+  tagsEl.innerHTML = '';
+  plan.create.tags.forEach(([label, cls]) => {
+    const span = document.createElement('span');
+    span.className = 'morning-tag ' + cls;
+    span.textContent = label;
+    tagsEl.appendChild(span);
+  });
+
+  window.scrollTo(0, 0);
+  loadMorningTodos();
+}
+
+async function loadMorningTodos() {
+  const container = document.getElementById('morningTodoList');
+  container.innerHTML = '<div style="font-size:13px;color:var(--text3);font-style:italic">Loading...</div>';
+  try {
+    const data = await call('getTodos');
+    if (!data.todos || !data.todos.length) {
+      container.innerHTML = '<div class="empty">No open todos.</div>';
+      return;
+    }
+    const sorted = data.todos.slice().sort((a, b) => {
+      const aH = a.priority && a.priority.includes('high') ? 0 : 1;
+      const bH = b.priority && b.priority.includes('high') ? 0 : 1;
+      return aH - bH;
+    });
+    const list = document.createElement('div');
+    list.className = 'todo-list';
+    sorted.forEach(todo => {
+      const item = document.createElement('div');
+      item.className = 'todo-item' + (todo.priority && todo.priority.includes('high') ? ' high' : '');
+      item.innerHTML =
+        '<div class="todo-name">' + todo.name + '</div>' +
+        (todo.campaign ? '<div class="todo-campaign">↳ ' + todo.campaign + '</div>' : '') +
+        (todo.site ? '<div class="todo-campaign" style="color:var(--text3)">' + todo.site + '</div>' : '');
+      list.appendChild(item);
+    });
+    container.appendChild(list);
+  } catch(e) {
+    container.innerHTML = '<div class="error-msg">Could not load todos.</div>';
+  }
+}
+
 </script>
+
+<div class="bottom-nav" id="bottomNav">
+  <div class="nav-tab active" id="navDash" onclick="switchBottomTab('dash')">
+    <div class="nav-tab-icon">🗂</div>
+    <div>Dash</div>
+  </div>
+  <div class="nav-tab" id="navMorning" onclick="switchBottomTab('morning')">
+    <div class="nav-tab-icon">🌅</div>
+    <div>Morning</div>
+  </div>
+</div>
 </body>
 </html>
