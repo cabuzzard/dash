@@ -1192,9 +1192,10 @@ export default {
         return json({ success: true, fileName, fileUrl });
       }
       if (body.action === "updateRun") {
-        const { runId, templateName, format, status, price, canvaLink, canvaLinkMerged, publishedLink, etsyLink, listingCopy, td } = body;
+        const { runId, templateName, format, status, price, canvaLink, canvaLinkMerged, publishedLink, etsyLink, listingCopy, td, loginId } = body;
         if (!runId || !templateName) return json({ error: "runId and templateName required" }, 400);
-        const dashed = runId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const dash = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const dashed = dash(runId);
         const properties = {
           "Template Name": { title: [{ text: { content: templateName } }] },
           "Status":        { select: { name: status || "Not Started" } },
@@ -1206,6 +1207,7 @@ export default {
           "listing copy":             listingCopy ? { rich_text: [{ text: { content: listingCopy } }] } : { rich_text: [] },
           "td":                       td          ? { rich_text: [{ text: { content: td } }]          } : { rich_text: [] },
           "canva link":               canvaLinkMerged !== undefined ? { url: canvaLinkMerged || null } : undefined,
+          "Login":                    loginId !== undefined ? (loginId ? { relation: [{ id: dash(loginId) }] } : { relation: [] }) : undefined,
         };
         Object.keys(properties).forEach(k => properties[k] === undefined && delete properties[k]);
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
@@ -1218,9 +1220,10 @@ export default {
         return json({ success: true });
       }
       if (body.action === "createRun") {
-        const { productId, templateName, format, status, price, canvaLink, publishedLink, etsyLink, listingCopy } = body;
+        const { productId, templateName, format, status, price, canvaLink, publishedLink, etsyLink, listingCopy, loginId } = body;
         if (!productId || !templateName) return json({ error: "productId and templateName required" }, 400);
-        const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const dash = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const dashed = dash(productId);
         const properties = {
           "Template Name": { title: [{ text: { content: templateName } }] },
           "products":      { relation: [{ id: dashed }] },
@@ -1232,6 +1235,7 @@ export default {
         if (publishedLink) properties["Published Template Link"] = { url: publishedLink };
         if (etsyLink)      properties["Etsy Listing URL"]        = { url: etsyLink };
         if (listingCopy)   properties["listing copy"]             = { rich_text: [{ text: { content: listingCopy } }] };
+        if (loginId)       properties["Login"]                   = { relation: [{ id: dash(loginId) }] };
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
@@ -1386,7 +1390,15 @@ export default {
         const methodById = {};
         methodRows.forEach(m => { methodById[m.id.replace(/-/g,"")] = m.properties.Name?.title?.map(t => t.plain_text).join("") || ""; });
         const loginById = {};
-        loginRows.forEach(l => { loginById[l.id.replace(/-/g,"")] = l.properties.Name?.title?.map(t => t.plain_text).join("") || ""; });
+        loginRows.forEach(l => {
+          const lp = l.properties;
+          loginById[l.id.replace(/-/g,"")] = {
+            id:     l.id.replace(/-/g,""),
+            name:   lp.Name?.title?.map(t => t.plain_text).join("") || "",
+            status: lp.Status?.select?.name || "",
+            usr:    lp.Usr?.rich_text?.map(t => t.plain_text).join("") || "",
+          };
+        });
         const drives = driveRows.map(r => {
           const props = r.properties;
           const campRel      = (props["campaign"]?.relation   || []).map(x => x.id.replace(/-/g,""));
@@ -1394,23 +1406,25 @@ export default {
           const methodRel    = (props["method"]?.relation     || []).map(x => x.id.replace(/-/g,""));
           const emailRel     = (props["email"]?.relation      || []).map(x => x.id.replace(/-/g,""));
           const instagramRel = (props["instagram"]?.relation  || []).map(x => x.id.replace(/-/g,""));
+          const listingRel   = (props["Listing"]?.relation    || []).map(x => x.id.replace(/-/g,""));
           return {
-            id:          r.id.replace(/-/g, ""),
-            name:        props["Name"]?.title?.map(t => t.plain_text).join("") || "Untitled",
-            landing:     props["landing"]?.rollup?.array?.[0]?.url || null,
-            ste:         props["ste"]?.rollup?.array?.[0]?.url     || null,
-            campaignId:  campRel[0]      || null,
-            campaign:    campRel[0]      ? (campById[campRel[0]]?.name      || "") : "",
-            microId:     microRel[0]     || null,
-            micro:       microRel[0]     ? (campById[microRel[0]]?.name     || "") : "",
-            methodId:    methodRel[0]    || null,
-            method:      methodRel[0]    ? (methodById[methodRel[0]]        || "") : "",
-            emailId:     emailRel[0]     || null,
-            email:       emailRel[0]     ? (loginById[emailRel[0]]          || "") : "",
-            instagramId: instagramRel[0] || null,
-            instagram:   instagramRel[0] ? (loginById[instagramRel[0]] || "") : "",
-            td:          props["td"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            canvaLink:   props["canva link"]?.url || null,
+            id:             r.id.replace(/-/g, ""),
+            name:           props["Name"]?.title?.map(t => t.plain_text).join("") || "Untitled",
+            landing:        props["landing"]?.rollup?.array?.[0]?.url || null,
+            ste:            props["ste"]?.rollup?.array?.[0]?.url     || null,
+            campaignId:     campRel[0]      || null,
+            campaign:       campRel[0]      ? (campById[campRel[0]]?.name      || "") : "",
+            microId:        microRel[0]     || null,
+            micro:          microRel[0]     ? (campById[microRel[0]]?.name     || "") : "",
+            methodId:       methodRel[0]    || null,
+            method:         methodRel[0]    ? (methodById[methodRel[0]]        || "") : "",
+            emailId:        emailRel[0]     || null,
+            email:          emailRel[0]     ? (loginById[emailRel[0]]?.name    || "") : "",
+            instagramId:    instagramRel[0] || null,
+            instagram:      instagramRel[0] ? (loginById[instagramRel[0]]?.name || "") : "",
+            td:             props["td"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            canvaLink:      props["canva link"]?.url || null,
+            listingLogins:  listingRel.map(id => loginById[id]).filter(Boolean),
           };
         });
         return json({ drives });
@@ -1439,6 +1453,7 @@ export default {
             deliveryFileName: props["Delivery File"]?.files?.[0]?.name || null,
             listingCopy:      props["listing copy"]?.rich_text?.map(t => t.plain_text).join("") || "",
             td:               props["td"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            loginIds:         (props["Login"]?.relation || []).map(x => x.id.replace(/-/g,"")),
           };
         });
         return json({ runs });
@@ -1913,6 +1928,45 @@ Rules:
       }
 
       // â”€â”€ createLoginFull â€” create login linked to campaign + platform â”€â”€
+      if (body.action === "linkLoginToDrive") {
+        const { driveId, loginId } = body;
+        if (!driveId || !loginId) return json({ error: "driveId and loginId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const cur = await fetch(`https://api.notion.com/v1/pages/${dash(driveId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const curData = await cur.json();
+        const existing = (curData.properties?.["Listing"]?.relation || []).map(r => ({ id: r.id }));
+        existing.push({ id: dash(loginId) });
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(driveId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Listing: { relation: existing } } }),
+        });
+        if (!resp.ok) { const e = await resp.json(); return json({ error: e.message || "Failed" }, resp.status); }
+        return json({ success: true });
+      }
+
+      if (body.action === "unlinkLoginFromDrive") {
+        const { driveId, loginId } = body;
+        if (!driveId || !loginId) return json({ error: "driveId and loginId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const cur = await fetch(`https://api.notion.com/v1/pages/${dash(driveId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const curData = await cur.json();
+        const remaining = (curData.properties?.["Listing"]?.relation || [])
+          .filter(r => r.id.replace(/-/g,"") !== loginId)
+          .map(r => ({ id: r.id }));
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(driveId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Listing: { relation: remaining } } }),
+        });
+        if (!resp.ok) { const e = await resp.json(); return json({ error: e.message || "Failed" }, resp.status); }
+        return json({ success: true });
+      }
+
       if (body.action === "createLoginFull") {
         const { name, campaignId, platformId, category, status, usr, accountUrl, smAccountIds, smAccountId } = body;
         if (!name) return json({ error: "name required" }, 400);

@@ -7937,68 +7937,105 @@ function switchBottomTab(tab) {
 }
 
 // ── Morning view ─────────────────────────────────────────────────────────────
+// Mon–Fri only. Weekend = rest. Each day rotates through active campaigns
+// and surfaces the products that depend on that campaign's content output.
 const DAY_PLANS = {
   0: { // Sunday
-    label: 'Sunday — rest + prep',
+    label: 'Sunday — offline',
     create: {
-      title: 'Optional: batch Substack Notes',
-      sub: 'If energy is there, draft 3–5 short Notes for the week ahead. Otherwise, rest.',
-      tasks: ['Review Trail Notes essay progress — is Thursday covered?', 'Scan your content titles in Notion — anything stale?'],
-      tags: [['Trail Notes','tag-teal'],['B2C Content OS','tag-blue']]
+      title: 'No output today',
+      sub: 'Rest is part of the system. The machine runs Monday. Use today to capture a voice note if something comes up on trail.',
+      tasks: ['One voice memo max — capture, don\'t produce', 'Check nothing is broken in Hermes or Notion'],
+      tags: [['Rest Day','tag-teal']]
     }
   },
   1: { // Monday
-    label: 'Monday — B2B LinkedIn',
+    label: 'Monday — B2B content machine',
     create: {
-      title: 'LinkedIn post — B2B campaign',
-      sub: 'Write and schedule one LinkedIn post. Rotate between Content OS, AI Workflows, and Content Command Center.',
-      tasks: ['Pick one pain point from your B2B campaign notes', 'Write post using post-writer skill — hook + insight + CTA', 'Schedule via Buffer or publish direct'],
-      tags: [['B2C Content OS','tag-blue'],['B2B AI Workflows','tag-purple'],['Command Center','tag-amber']]
+      title: 'One LinkedIn post — B2B Content OS or Command Center',
+      sub: 'Monday is the B2B face. Pick one title from the Content Command Center or B2B Content OS Development queue and write it. These feed the Content OS Build tiers and Freelance / Bespoke Notion AI OS products.',
+      tasks: [
+        'Open Notion Dev Titles — filter Campaign = Content Command Center or B2B Content OS',
+        'Pick highest sequence order title not yet written — Phase 1 or Phase 2 priority',
+        'Write using post-writer skill: hook (1 line) + insight (3–5 lines) + CTA (audit or Energy Session)',
+        'Publish or schedule — upload-post.com → LinkedIn',
+        'Update title status → Writing, then Review when done'
+      ],
+      tags: [['Content Command Center','tag-amber'],['B2B Content OS','tag-purple'],['Freelance Notion AI OS','tag-blue'],['Bespoke Notion AI OS','tag-blue']]
     }
   },
   2: { // Tuesday
-    label: 'Tuesday — Trail Notes safety net',
+    label: 'Tuesday — Trail Notes + Natural Psych',
     create: {
-      title: 'Trail Notes essay draft',
-      sub: "Thursday is publish day. If the essay isn't written yet — write it now. Don't wait until Wednesday.",
-      tasks: ["Open this week's Trail Notes question from Notion", 'Write the full essay draft — one question, one trail, one answer', 'If essay is already done: write a LinkedIn post about AI workflow or purpose'],
-      tags: [['Trail Notes','tag-teal'],['B2B AI Workflows','tag-purple']]
+      title: 'Trail Notes essay draft OR Natural Psych Paradigms post',
+      sub: 'Thursday publish day is 48 hours out. If the essay isn\'t written, write it now. If it\'s done, work one Natural Psych Paradigms title — these feed Mountainwize Coaching and the Energy Session product.',
+      tasks: [
+        'Check Trail Notes essay status in Notion — is this week\'s essay in Writing or Review?',
+        'If not written: open the Trail Notes question, write full essay draft, status → Writing',
+        'If essay is done: open Natural Psych Paradigms dev titles (Phase 1–3 in queue)',
+        'Priority titles: "What Three Days in Wilderness Does to Your Brain", "The Voice in Your Head Has an Off Switch", "The Five Natural Psychological Paradigms"',
+        'Substack essays → post-writer skill → voice-builder applied in full',
+        'Status → Writing when started, Review when draft complete'
+      ],
+      tags: [['Trail Notes','tag-teal'],['Natural Psych Paradigms','tag-teal'],['Mountainwize Coaching','tag-teal'],['Energy Session','tag-coral']]
     }
   },
   3: { // Wednesday
-    label: 'Wednesday — Substack Notes batch',
+    label: 'Wednesday — Modern Paradigm + Trail-First Workflow',
     create: {
-      title: 'Substack Notes — 3 to 5 Notes',
-      sub: 'Notes are your discovery layer. Short-form observations, 1–3 sentences. These drive new Trail Notes subscribers.',
-      tasks: ['Draft 3–5 Notes from voice memos or trail observations this week', 'Schedule them across Thu–Sun in Substack', 'Final review of Thursday essay — is it ready to publish?'],
-      tags: [['Trail Notes','tag-teal']]
+      title: 'One Substack or LinkedIn post — Modern Paradigm OR Trail-First Workflow campaign',
+      sub: 'Two full Dev title queues here, both linked to Mountainwize Coaching. The Modern Paradigm campaign (diagnosis → alternative) and the Trail-First Workflow campaign (system → conversion). Also: final review of Thursday\'s Trail Notes essay.',
+      tasks: [
+        'Final review of Thursday essay — read it cold, fix anything, status → Review if not already',
+        'Modern Paradigm priority titles: "You Are Not Anxious…", "The Algorithm Doesn\'t Just Take Your Time", "Presence Is Not a Spiritual Practice"',
+        'Trail-First Workflow priority titles: "I Run My Entire Business From a Hiking Trail", "The Voice-First Capture Stack", "\'Work From Anywhere\' Is Not What I\'m Describing"',
+        'Write one piece from either campaign using post-writer + voice-builder',
+        'LinkedIn posts → upload-post.com · Substack essays → paste directly in Substack',
+        'Update title status in Notion when done'
+      ],
+      tags: [['Modern Paradigm','tag-teal'],['Trail-First Workflow','tag-teal'],['Mountainwize Coaching','tag-teal']]
     }
   },
   4: { // Thursday
-    label: 'Thursday — publish day',
+    label: 'Thursday — publish + local lead gen + Hard Grind',
     create: {
-      title: 'Publish Trail Notes essay',
-      sub: "Your scheduled publish day. Send the essay. Then write next week's question in Notion.",
-      tasks: ['Final proofread and publish Trail Notes essay at 11am', 'Log the question and answer in your Notion titles database', "Write or capture next week's trail question in Notion"],
-      tags: [['Trail Notes','tag-teal']]
+      title: 'Publish Trail Notes essay. Then: AI Lead Gen for Local Services OR Hard Grind.',
+      sub: 'Publish day. Trail Notes essay goes out at 11am. Afternoon block: one post from the AI Lead Gen for Local Services campaign (feeds the Core Lead Gen Retainer product) or one Hard Grind piece if the energy is right.',
+      tasks: [
+        'Proofread essay one final time — publish via Substack at 11am',
+        'Log this week\'s title as Published in Notion Content Strategy DB',
+        'Capture next week\'s Trail Notes question in Notion — one voice memo or typed note',
+        'Afternoon: open AI Lead Gen for Local Services dev titles in Notion',
+        'Priority titles: "Why Most Local Businesses Are Invisible Online", "The Local Business Lead Gen Stack", "How AI Is Letting Small Businesses Compete With Franchises"',
+        'Or: Hard Grind — "People Are Complete Shit" anchor essay if the day calls for it (HOLD flag — write only when ready)',
+        'Write one piece, status → Writing → Review'
+      ],
+      tags: [['Trail Notes','tag-teal'],['AI Lead Gen','tag-amber'],['Hard Grind','tag-coral'],['Core Lead Gen Retainer','tag-amber']]
     }
   },
   5: { // Friday
-    label: 'Friday — outreach block',
+    label: 'Friday — outreach + Mobility Mentor + Ohio Comedy',
     create: {
-      title: 'Scrape-and-outreach session',
-      sub: 'Outreach is active across 5 campaigns. Use this block for prospecting or follow-ups.',
-      tasks: ['Review Leads database in Notion — who needs follow-up?', 'Send 5–10 personalized outreach messages (LinkedIn or email)', "Log any new leads from this week's content into Notion"],
-      tags: [['B2C Content OS','tag-blue'],['Command Center','tag-amber'],['Mobility Mentor','tag-coral']]
+      title: 'Outreach session + Mobility Mentor content + one Ohio Comedy reel',
+      sub: 'Friday has three jobs: outreach against leads, one Mobility Mentor content piece (feeds the caregiver placement and ILS products), and one Ohio Comedy reel script (30s format, already outlined).',
+      tasks: [
+        'Outreach block first: open Leads DB in Notion — review follow-up queue, send 5–10 messages via LinkedIn or email',
+        'Mobility Mentor content: pick one dev title — "5 Questions to Ask Before Hiring a Caregiver", "How Mobility Mentor Matches Caregivers to Clients", "7 Signs It\'s Time to Bring In Professional Support"',
+        'Also available: Fundraising Mobility Mentor titles — One Sheet, True Independence, Mentoring Youth with Disabilities',
+        'Ohio Comedy: pick one reel — The Rating, The Porch Light, The Note, Ohio Weather, or Five Stars — write the 30s monologue script',
+        'Update all title statuses in Notion',
+        'Log any new leads from this week\'s content into Notion'
+      ],
+      tags: [['Mobility Mentor','tag-coral'],['Ohio Comedy','tag-amber'],['Outreach','tag-purple']]
     }
   },
   6: { // Saturday
-    label: 'Saturday — review + plan',
+    label: 'Saturday — offline',
     create: {
-      title: 'Weekly review — 30 min',
-      sub: "Look back at the week. One thing that worked, one thing to fix. Set Monday's LinkedIn topic.",
-      tasks: ['Check campaign statuses in Notion — anything slipped?', 'Note one win and one gap from this week', "Set Monday's LinkedIn post topic in a voice memo or Notion note"],
-      tags: [['Trail Notes','tag-teal'],['B2C Content OS','tag-blue']]
+      title: 'No output today',
+      sub: 'Saturday is trail time. One voice memo if something lands. Nothing else. Weekly review lives in Sunday\'s head, not Saturday\'s calendar.',
+      tasks: ['Trail only', 'Voice memo if something comes up — 60 seconds max'],
+      tags: [['Rest Day','tag-teal']]
     }
   }
 };
