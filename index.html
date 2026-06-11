@@ -1761,6 +1761,30 @@
   </div>
 </div>
 
+<!-- Product Listing Login Modal -->
+<div class="modal-bg" id="prodListingModal" onclick="if(event.target===this)closeProdListingModal()">
+  <div class="modal" style="max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <div class="modal-title" id="prodListingTitle" style="margin:0;"></div>
+      <span onclick="closeProdListingModal()" style="cursor:pointer;color:var(--text3);font-size:18px;padding:4px;">✕</span>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:16px;">Listing</div>
+    <div id="prodListingList" style="margin-bottom:12px;"></div>
+    <div id="prodListingCreateWrap">
+      <div style="display:flex;gap:8px;margin-bottom:0;">
+        <button class="btn btn-secondary" id="prodListingAddBtn" onclick="showProdListingLinkForm()" style="flex:1;">↗ Link existing</button>
+      </div>
+      <div id="prodListingLinkForm" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
+        <input class="modal-input" id="plLinkSearch" type="text" placeholder="Search logins…" oninput="renderProdListingLinkList(this.value)" style="margin-bottom:8px;" />
+        <div id="plLinkList" style="max-height:220px;overflow-y:auto;"></div>
+        <div class="modal-actions" style="margin-top:12px;">
+          <button class="btn btn-secondary" onclick="hideProdListingLinkForm()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Login Edit Modal -->
 <div class="modal-bg" id="loginEditModal" onclick="if(event.target===this)closeLoginEditModal()">
   <div class="modal" style="max-height:90vh;overflow-y:auto;">
@@ -3805,6 +3829,117 @@ async function saveLoginCell() {
   }
 }
 
+// ── DRIVE LISTING MODAL ──────────────────────────────────────────────
+let plDriveId = null;
+let plDriveRef = null;
+
+function openDriveListingModal(drive, logins) {
+  plDriveId  = drive.id;
+  plDriveRef = drive;
+  document.getElementById('prodListingTitle').textContent = drive.name;
+  hideProdListingLinkForm();
+  renderProdListingList(logins);
+  document.getElementById('prodListingModal').classList.add('open');
+}
+
+function closeProdListingModal() {
+  document.getElementById('prodListingModal').classList.remove('open');
+}
+
+function renderProdListingList(logins) {
+  const el = document.getElementById('prodListingList');
+  if (!logins.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);margin-bottom:8px;">No listing login linked yet.</div>';
+    return;
+  }
+  el.innerHTML = '';
+  logins.forEach(l => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;gap:8px;';
+    row.onmouseover = () => row.style.borderColor = 'var(--border2)';
+    row.onmouseout  = () => row.style.borderColor = 'var(--border)';
+    const dot = STATUS_DOT[l.status] || '#888';
+    const left = document.createElement('div');
+    left.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;min-width:0;';
+    left.innerHTML =
+      '<span style="width:7px;height:7px;border-radius:50%;background:' + dot + ';flex-shrink:0;"></span>' +
+      '<div style="min-width:0;">' +
+        '<div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(l.name) + '</div>' +
+        (l.usr ? '<div style="font-size:11px;color:var(--text3);margin-top:1px;">' + esc(l.usr) + '</div>' : '') +
+      '</div>';
+    const unlinkBtn = document.createElement('span');
+    unlinkBtn.textContent = 'unlink';
+    unlinkBtn.style.cssText = 'font-size:10px;color:var(--text3);cursor:pointer;padding:2px 7px;border:1px solid var(--border);border-radius:4px;flex-shrink:0;';
+    unlinkBtn.onmouseover = () => { unlinkBtn.style.borderColor = '#e55'; unlinkBtn.style.color = '#e55'; };
+    unlinkBtn.onmouseout  = () => { unlinkBtn.style.borderColor = 'var(--border)'; unlinkBtn.style.color = 'var(--text3)'; };
+    unlinkBtn.onclick = e => { e.stopPropagation(); unlinkProdListingLogin(l); };
+    const arrow = document.createElement('span');
+    arrow.textContent = '›';
+    arrow.style.cssText = 'font-size:13px;color:var(--text3);flex-shrink:0;';
+    row.appendChild(left);
+    row.appendChild(unlinkBtn);
+    row.appendChild(arrow);
+    row.onclick = () => { closeProdListingModal(); openLoginEditModal(l); };
+    el.appendChild(row);
+  });
+}
+
+async function unlinkProdListingLogin(login) {
+  if (!confirm('Unlink "' + login.name + '" from this drive?\n\nThe login record is not deleted.')) return;
+  try {
+    await call('unlinkLoginFromDrive', { driveId: plDriveId, loginId: login.id });
+    plDriveRef.listingLogins = (plDriveRef.listingLogins || []).filter(l => l.id !== login.id);
+    renderProdListingList(plDriveRef.listingLogins);
+    showToast(login.name + ' unlinked ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+function showProdListingLinkForm() {
+  document.getElementById('prodListingLinkForm').style.display = 'block';
+  document.getElementById('prodListingAddBtn').style.display = 'none';
+  document.getElementById('plLinkSearch').value = '';
+  renderProdListingLinkList('');
+  setTimeout(() => document.getElementById('plLinkSearch').focus(), 50);
+}
+
+function hideProdListingLinkForm() {
+  document.getElementById('prodListingLinkForm').style.display = 'none';
+  document.getElementById('prodListingAddBtn').style.display = '';
+}
+
+function renderProdListingLinkList(q) {
+  const el = document.getElementById('plLinkList');
+  const query = (q || '').toLowerCase();
+  const linked = new Set((plDriveRef?.listingLogins || []).map(l => l.id));
+  const matches = allLoginsCache.filter(l => !linked.has(l.id) && (!query || (l.name || '').toLowerCase().includes(query))).slice(0, 10);
+  if (!matches.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px;">No logins found.</div>'; return; }
+  el.innerHTML = '';
+  matches.forEach(l => {
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:8px 12px;cursor:pointer;border-radius:var(--radius-sm);font-size:13px;';
+    row.textContent = l.name + (l.usr ? ' — ' + l.usr : '');
+    row.onmouseover = () => row.style.background = 'var(--surface2)';
+    row.onmouseout  = () => row.style.background = '';
+    row.onclick = () => linkProdListingLogin(l);
+    el.appendChild(row);
+  });
+}
+
+async function linkProdListingLogin(login) {
+  try {
+    await call('linkLoginToDrive', { driveId: plDriveId, loginId: login.id });
+    if (!plDriveRef.listingLogins) plDriveRef.listingLogins = [];
+    plDriveRef.listingLogins.push(login);
+    hideProdListingLinkForm();
+    renderProdListingList(plDriveRef.listingLogins);
+    showToast(login.name + ' linked ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
 // ── LOGIN EDIT MODAL ──────────────────────────────────────────────────
 function openLoginEditModal(login) {
   leLoginId   = login.id;
@@ -4755,6 +4890,7 @@ function renderDrivesPanel(panel, drives) {
   table.innerHTML = '<thead><tr>' +
     '<th>Name</th><th>Campaign</th><th>Method</th><th>Email</th><th>Instagram</th><th>TD</th><th style="cursor:default;text-align:center;">Canva</th>' +
     '<th style="cursor:default;text-align:center;">Landing</th><th style="cursor:default;text-align:center;">STE</th>' +
+    '<th style="cursor:default;text-align:center;">LST</th>' +
     '<th style="cursor:default;text-align:center;">DB</th>' +
     '</tr></thead>';
   const tbody = document.createElement('tbody');
@@ -4776,7 +4912,28 @@ function renderDrivesPanel(panel, drives) {
       '<td>' + esc(d.td || '—') + '</td>' +
       '<td class="link">' + lnk(d.canvaLink, '↗') + '</td>' +
       '<td class="link">' + lnk(d.landing, '↗') + '</td>' +
-      '<td class="link">' + lnk(d.ste,     '↗') + '</td>' +
+      '<td class="link">' + lnk(d.ste,     '↗') + '</td>');
+    // Listing login cell
+    const lstTd = document.createElement('td');
+    lstTd.style.cssText = 'text-align:center;padding:4px 6px;vertical-align:middle;cursor:pointer;';
+    lstTd.title = 'Click to manage listing login';
+    const lstLogins = d.listingLogins || [];
+    if (lstLogins.length) {
+      lstLogins.forEach(l => {
+        const pill = document.createElement('div');
+        const dot = STATUS_DOT[l.status] || '#888';
+        pill.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:20px;border:1px solid var(--border);margin:1px;max-width:90px;overflow:hidden;';
+        pill.innerHTML =
+          '<span style="width:5px;height:5px;border-radius:50%;background:' + dot + ';flex-shrink:0;"></span>' +
+          '<span style="font-size:10px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(l.name || '—') + '</span>';
+        lstTd.appendChild(pill);
+      });
+    } else {
+      lstTd.innerHTML = '<span style="font-size:14px;color:var(--border2);">+</span>';
+    }
+    lstTd.onclick = () => openDriveListingModal(d, lstLogins);
+    tr.appendChild(lstTd);
+    tr.insertAdjacentHTML('beforeend',
       '<td class="link"><a href="https://www.notion.so/' + d.id + '" target="_blank">↗</a></td>');
     tbody.appendChild(tr);
   });
