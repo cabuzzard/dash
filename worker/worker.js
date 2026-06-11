@@ -1526,7 +1526,65 @@ export default {
         return json({ todos });
       }
 
-      // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: getExplodeQueue Î“Ã¶Ã‡Î“Ã¶Ã‡
+      // ── getMorningBriefing ──
+      if (body.action === "getMorningBriefing") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const [campRows, titleRows, todoRows] = await Promise.all([
+          notionQuery(CAMPAIGNS_DB, {
+            filter: { property: "Status", select: { equals: "Active" } },
+            sorts: [{ property: "Name", direction: "ascending" }],
+          }),
+          notionQuery(CONTENT_STRATEGY_DB, {
+            filter: { or: [
+              { property: "Status", select: { equals: "Development" } },
+              { property: "Status", select: { equals: "Writing" } },
+              { property: "Status", select: { equals: "Idea" } },
+              { property: "Status", select: { equals: "Outline" } },
+            ]},
+            sorts: [{ property: "Sequence Order", direction: "ascending" }],
+          }),
+          notionQuery(MAIN_TD_DB, {
+            filter: { property: "priority", multi_select: { contains: "high" } },
+          }),
+        ]);
+
+        // Map campaign id -> next 2 queued titles
+        const nextTitles = {};
+        titleRows.forEach(t => {
+          const tname  = t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled";
+          const tstage = t.properties.Status?.select?.name || "";
+          (t.properties.Campaign?.relation || []).forEach(r => {
+            const cid = r.id.replace(/-/g,"");
+            if (!nextTitles[cid]) nextTitles[cid] = [];
+            if (nextTitles[cid].length < 2) nextTitles[cid].push({ title: tname, stage: tstage });
+          });
+        });
+
+        // Map campaign id -> high-priority todo count
+        const highTodoCounts = {};
+        todoRows.forEach(t => {
+          (t.properties.campaign?.relation || []).forEach(r => {
+            const cid = r.id.replace(/-/g,"");
+            highTodoCounts[cid] = (highTodoCounts[cid] || 0) + 1;
+          });
+        });
+
+        const campaigns = campRows.map(c => {
+          const id = c.id.replace(/-/g,"");
+          return {
+            id,
+            name:      c.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
+            siteUrl:   c.properties["microsite"]?.url || null,
+            liveUrl:   c.properties["live site"]?.url || null,
+            titles:    nextTitles[id] || [],
+            highTodos: highTodoCounts[id] || 0,
+          };
+        });
+
+        return json({ campaigns });
+      }
+
+      //Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: getExplodeQueue Î“Ã¶Ã‡Î“Ã¶Ã‡
       if (body.action === "getExplodeQueue") {
         const results = await notionQuery(CONTENT_STRATEGY_DB, {
           filter: {

@@ -7937,135 +7937,42 @@ function switchBottomTab(tab) {
 }
 
 // ── Morning view ─────────────────────────────────────────────────────────────
-// Mon–Fri only. Weekend = rest. Each day rotates through active campaigns
-// and surfaces the products that depend on that campaign's content output.
-const DAY_PLANS = {
-  0: { // Sunday
-    label: 'Sunday — offline',
-    create: {
-      title: 'No output today',
-      sub: 'Rest is part of the system. The machine runs Monday. Use today to capture a voice note if something comes up on trail.',
-      tasks: ['One voice memo max — capture, don\'t produce', 'Check nothing is broken in Hermes or Notion'],
-      tags: [['Rest Day','tag-teal']]
-    }
-  },
-  1: { // Monday
-    label: 'Monday — B2B content machine',
-    create: {
-      title: 'One LinkedIn post — B2B Content OS or Command Center',
-      sub: 'Monday is the B2B face. Pick one title from the Content Command Center or B2B Content OS Development queue and write it. These feed the Content OS Build tiers and Freelance / Bespoke Notion AI OS products.',
-      tasks: [
-        'Open Notion Dev Titles — filter Campaign = Content Command Center or B2B Content OS',
-        'Pick highest sequence order title not yet written — Phase 1 or Phase 2 priority',
-        'Write using post-writer skill: hook (1 line) + insight (3–5 lines) + CTA (audit or Energy Session)',
-        'Publish or schedule — upload-post.com → LinkedIn',
-        'Update title status → Writing, then Review when done'
-      ],
-      tags: [['Content Command Center','tag-amber'],['B2B Content OS','tag-purple'],['Freelance Notion AI OS','tag-blue'],['Bespoke Notion AI OS','tag-blue']]
-    }
-  },
-  2: { // Tuesday
-    label: 'Tuesday — Trail Notes + Natural Psych',
-    create: {
-      title: 'Trail Notes essay draft OR Natural Psych Paradigms post',
-      sub: 'Thursday publish day is 48 hours out. If the essay isn\'t written, write it now. If it\'s done, work one Natural Psych Paradigms title — these feed Mountainwize Coaching and the Energy Session product.',
-      tasks: [
-        'Check Trail Notes essay status in Notion — is this week\'s essay in Writing or Review?',
-        'If not written: open the Trail Notes question, write full essay draft, status → Writing',
-        'If essay is done: open Natural Psych Paradigms dev titles (Phase 1–3 in queue)',
-        'Priority titles: "What Three Days in Wilderness Does to Your Brain", "The Voice in Your Head Has an Off Switch", "The Five Natural Psychological Paradigms"',
-        'Substack essays → post-writer skill → voice-builder applied in full',
-        'Status → Writing when started, Review when draft complete'
-      ],
-      tags: [['Trail Notes','tag-teal'],['Natural Psych Paradigms','tag-teal'],['Mountainwize Coaching','tag-teal'],['Energy Session','tag-coral']]
-    }
-  },
-  3: { // Wednesday
-    label: 'Wednesday — Modern Paradigm + Trail-First Workflow',
-    create: {
-      title: 'One Substack or LinkedIn post — Modern Paradigm OR Trail-First Workflow campaign',
-      sub: 'Two full Dev title queues here, both linked to Mountainwize Coaching. The Modern Paradigm campaign (diagnosis → alternative) and the Trail-First Workflow campaign (system → conversion). Also: final review of Thursday\'s Trail Notes essay.',
-      tasks: [
-        'Final review of Thursday essay — read it cold, fix anything, status → Review if not already',
-        'Modern Paradigm priority titles: "You Are Not Anxious…", "The Algorithm Doesn\'t Just Take Your Time", "Presence Is Not a Spiritual Practice"',
-        'Trail-First Workflow priority titles: "I Run My Entire Business From a Hiking Trail", "The Voice-First Capture Stack", "\'Work From Anywhere\' Is Not What I\'m Describing"',
-        'Write one piece from either campaign using post-writer + voice-builder',
-        'LinkedIn posts → upload-post.com · Substack essays → paste directly in Substack',
-        'Update title status in Notion when done'
-      ],
-      tags: [['Modern Paradigm','tag-teal'],['Trail-First Workflow','tag-teal'],['Mountainwize Coaching','tag-teal']]
-    }
-  },
-  4: { // Thursday
-    label: 'Thursday — publish + local lead gen + Hard Grind',
-    create: {
-      title: 'Publish Trail Notes essay. Then: AI Lead Gen for Local Services OR Hard Grind.',
-      sub: 'Publish day. Trail Notes essay goes out at 11am. Afternoon block: one post from the AI Lead Gen for Local Services campaign (feeds the Core Lead Gen Retainer product) or one Hard Grind piece if the energy is right.',
-      tasks: [
-        'Proofread essay one final time — publish via Substack at 11am',
-        'Log this week\'s title as Published in Notion Content Strategy DB',
-        'Capture next week\'s Trail Notes question in Notion — one voice memo or typed note',
-        'Afternoon: open AI Lead Gen for Local Services dev titles in Notion',
-        'Priority titles: "Why Most Local Businesses Are Invisible Online", "The Local Business Lead Gen Stack", "How AI Is Letting Small Businesses Compete With Franchises"',
-        'Or: Hard Grind — "People Are Complete Shit" anchor essay if the day calls for it (HOLD flag — write only when ready)',
-        'Write one piece, status → Writing → Review'
-      ],
-      tags: [['Trail Notes','tag-teal'],['AI Lead Gen','tag-amber'],['Hard Grind','tag-coral'],['Core Lead Gen Retainer','tag-amber']]
-    }
-  },
-  5: { // Friday
-    label: 'Friday — outreach + Mobility Mentor + Ohio Comedy',
-    create: {
-      title: 'Outreach session + Mobility Mentor content + one Ohio Comedy reel',
-      sub: 'Friday has three jobs: outreach against leads, one Mobility Mentor content piece (feeds the caregiver placement and ILS products), and one Ohio Comedy reel script (30s format, already outlined).',
-      tasks: [
-        'Outreach block first: open Leads DB in Notion — review follow-up queue, send 5–10 messages via LinkedIn or email',
-        'Mobility Mentor content: pick one dev title — "5 Questions to Ask Before Hiring a Caregiver", "How Mobility Mentor Matches Caregivers to Clients", "7 Signs It\'s Time to Bring In Professional Support"',
-        'Also available: Fundraising Mobility Mentor titles — One Sheet, True Independence, Mentoring Youth with Disabilities',
-        'Ohio Comedy: pick one reel — The Rating, The Porch Light, The Note, Ohio Weather, or Five Stars — write the 30s monologue script',
-        'Update all title statuses in Notion',
-        'Log any new leads from this week\'s content into Notion'
-      ],
-      tags: [['Mobility Mentor','tag-coral'],['Ohio Comedy','tag-amber'],['Outreach','tag-purple']]
-    }
-  },
-  6: { // Saturday
-    label: 'Saturday — offline',
-    create: {
-      title: 'No output today',
-      sub: 'Saturday is trail time. One voice memo if something lands. Nothing else. Weekly review lives in Sunday\'s head, not Saturday\'s calendar.',
-      tasks: ['Trail only', 'Voice memo if something comes up — 60 seconds max'],
-      tags: [['Rest Day','tag-teal']]
-    }
-  }
+// Day themes are static structure; tasks are injected live from Notion via
+// getMorningBriefing. Each day maps to campaign name keywords — active campaigns
+// matching those keywords surface their real next queued titles as tasks.
+const DAY_THEMES = {
+  0: { label: 'Sunday — offline',   title: 'No output today',   sub: 'Rest is part of the system. The machine runs Monday. Use today to capture a voice note if something comes up on trail.', campaigns: [], fallbackTasks: ['One voice memo max — capture, don\'t produce', 'Check nothing is broken in Hermes or Notion'], tags: [['Rest Day','tag-teal']] },
+  1: { label: 'Monday — B2B content machine',   title: 'One LinkedIn post',   sub: 'Monday is the B2B face. Pick the next queued title from Content Command Center or B2B Content OS and write it.', campaigns: ['content command center','b2b content os'], fallbackTasks: ['Open Notion Dev Titles — Content Command Center or B2B Content OS', 'Pick highest sequence title, write using post-writer skill', 'Publish or schedule — upload-post.com → LinkedIn'], tags: [['Content Command Center','tag-amber'],['B2B Content OS','tag-purple']] },
+  2: { label: 'Tuesday — Trail Notes + Natural Psych',   title: 'Trail Notes draft or Natural Psych post',   sub: 'Thursday publish is 48 hours out. If the essay isn\'t written, write it now. If done, work the next Natural Psych Paradigms title.', campaigns: ['trail notes','natural psych'], fallbackTasks: ['Check Trail Notes essay status in Notion', 'If not written: write the full essay draft, status → Writing', 'If done: open Natural Psych Paradigms dev titles and write the next one'], tags: [['Trail Notes','tag-teal'],['Natural Psych Paradigms','tag-teal']] },
+  3: { label: 'Wednesday — Modern Paradigm + Trail-First Workflow',   title: 'One Substack or LinkedIn post',   sub: 'Two full queues here, both linked to Mountainwize Coaching. Also: final review of Thursday\'s Trail Notes essay.', campaigns: ['modern paradigm','trail-first workflow'], fallbackTasks: ['Final review of Thursday essay — read cold, fix anything, status → Review', 'Pick next title from Modern Paradigm or Trail-First Workflow queue', 'Write using post-writer + voice-builder, update status in Notion'], tags: [['Modern Paradigm','tag-teal'],['Trail-First Workflow','tag-teal']] },
+  4: { label: 'Thursday — publish + local lead gen',   title: 'Publish Trail Notes. Then: AI Lead Gen or Hard Grind.',   sub: 'Publish day. Essay goes out at 11am. Afternoon: one post from AI Lead Gen for Local Services, or a Hard Grind piece if the energy is right.', campaigns: ['ai lead gen','hard grind'], fallbackTasks: ['Proofread essay — publish via Substack at 11am', 'Log title as Published in Notion', 'Capture next week\'s Trail Notes question — one voice memo'], tags: [['Trail Notes','tag-teal'],['AI Lead Gen','tag-amber'],['Hard Grind','tag-coral']] },
+  5: { label: 'Friday — outreach + Mobility Mentor + Ohio Comedy',   title: 'Outreach session + Mobility Mentor content + one reel',   sub: 'Friday has three jobs: outreach, one Mobility Mentor content piece, and one Ohio Comedy reel script.', campaigns: ['mobility mentor','ohio comedy'], fallbackTasks: ['Outreach block: Leads DB — follow-up queue, send 5–10 messages', 'Mobility Mentor: pick next dev title and write it', 'Ohio Comedy: write one 30s reel monologue script'], tags: [['Mobility Mentor','tag-coral'],['Ohio Comedy','tag-amber'],['Outreach','tag-purple']] },
+  6: { label: 'Saturday — offline',   title: 'No output today',   sub: 'Saturday is trail time. One voice memo if something lands. Nothing else.', campaigns: [], fallbackTasks: ['Trail only', 'Voice memo if something comes up — 60 seconds max'], tags: [['Rest Day','tag-teal']] },
 };
 
-function renderMorning() {
+const MORNING_CACHE_KEY = 'morning_briefing_v1';
+const MORNING_CACHE_TTL = 30 * 60 * 1000; // 30 min
+
+async function renderMorning() {
   const now = new Date();
   const dayIndex = now.getDay();
-  const plan = DAY_PLANS[dayIndex];
+  const theme = DAY_THEMES[dayIndex];
   const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   document.getElementById('morningDayLabel').textContent =
     dayNames[dayIndex] + ' · ' + months[now.getMonth()] + ' ' + now.getDate();
-  document.getElementById('morningHeading').textContent = plan.label;
+  document.getElementById('morningHeading').textContent = theme.label;
+  document.getElementById('morningCreateTitle').textContent = theme.title;
+  document.getElementById('morningCreateSub').textContent = theme.sub;
 
-  document.getElementById('morningCreateTitle').textContent = plan.create.title;
-  document.getElementById('morningCreateSub').textContent = plan.create.sub;
-
+  // Show loading state in task list while fetching
   const taskEl = document.getElementById('morningCreateTasks');
-  taskEl.innerHTML = '';
-  plan.create.tasks.forEach(t => {
-    const li = document.createElement('li');
-    li.className = 'morning-task';
-    li.innerHTML = '<span class="morning-task-dot"></span>' + t;
-    taskEl.appendChild(li);
-  });
+  taskEl.innerHTML = '<li class="morning-task"><span class="morning-task-dot"></span><em style="color:var(--text3)">Loading live titles…</em></li>';
 
   const tagsEl = document.getElementById('morningCreateTags');
   tagsEl.innerHTML = '';
-  plan.create.tags.forEach(([label, cls]) => {
+  theme.tags.forEach(([label, cls]) => {
     const span = document.createElement('span');
     span.className = 'morning-tag ' + cls;
     span.textContent = label;
@@ -8074,6 +7981,84 @@ function renderMorning() {
 
   window.scrollTo(0, 0);
   loadMorningTodos();
+
+  // Load live briefing (cached 30 min)
+  let briefing = null;
+  try {
+    const cached = sessionStorage.getItem(MORNING_CACHE_KEY);
+    if (cached) {
+      const { ts, data } = JSON.parse(cached);
+      if (Date.now() - ts < MORNING_CACHE_TTL) briefing = data;
+    }
+  } catch {}
+
+  if (!briefing) {
+    try {
+      briefing = await call('getMorningBriefing');
+      sessionStorage.setItem(MORNING_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: briefing }));
+    } catch {}
+  }
+
+  _renderMorningTasks(theme, briefing);
+}
+
+function _renderMorningTasks(theme, briefing) {
+  const taskEl = document.getElementById('morningCreateTasks');
+  taskEl.innerHTML = '';
+
+  const addTask = (text, link) => {
+    const li = document.createElement('li');
+    li.className = 'morning-task';
+    li.innerHTML = '<span class="morning-task-dot"></span>' +
+      (link ? '<a href="' + link + '" target="_blank" style="color:inherit;text-decoration:underline;text-underline-offset:2px">' + text + '</a>' : text);
+    taskEl.appendChild(li);
+  };
+
+  // Weekend / rest days — just use fallback tasks, no live data needed
+  if (!theme.campaigns.length) {
+    theme.fallbackTasks.forEach(t => addTask(t));
+    return;
+  }
+
+  if (!briefing || !briefing.campaigns) {
+    theme.fallbackTasks.forEach(t => addTask(t));
+    return;
+  }
+
+  // Find active campaigns matching today's keywords
+  const keywords = theme.campaigns;
+  const todayCampaigns = briefing.campaigns.filter(c =>
+    keywords.some(kw => c.name.toLowerCase().includes(kw))
+  );
+
+  if (!todayCampaigns.length) {
+    theme.fallbackTasks.forEach(t => addTask(t));
+    return;
+  }
+
+  let hasTitles = false;
+  todayCampaigns.forEach(c => {
+    if (c.titles.length) {
+      hasTitles = true;
+      c.titles.forEach(t => {
+        const label = '[' + c.name + '] Write: ' + t.title + (t.stage && t.stage !== 'Development' ? ' (' + t.stage + ')' : '');
+        addTask(label, c.siteUrl || null);
+      });
+    }
+    if (c.highTodos > 0) {
+      addTask('⚠ ' + c.highTodos + ' high-priority todo' + (c.highTodos > 1 ? 's' : '') + ' — ' + c.name, c.siteUrl || null);
+    }
+  });
+
+  if (!hasTitles) {
+    addTask('Queue is clear for today\'s campaigns — add titles in Notion');
+    todayCampaigns.forEach(c => {
+      if (c.siteUrl) addTask('Open ' + c.name + ' microsite', c.siteUrl);
+    });
+  }
+
+  // Always append the process reminder as the last task
+  addTask('Update title status in Notion when done (Writing → Review)');
 }
 
 async function loadMorningTodos() {
