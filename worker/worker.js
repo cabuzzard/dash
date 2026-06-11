@@ -262,6 +262,123 @@ async function getCampaigns() {
   return campaigns;
 }
 
+// ── Deep scan ────────────────────────────────────────────────────────────────
+function extractPropValue(prop) {
+  if (!prop) return null;
+  switch (prop.type) {
+    case 'title':        return prop.title?.map(t => t.plain_text).join("") || "";
+    case 'rich_text':    return prop.rich_text?.map(t => t.plain_text).join("") || "";
+    case 'select':       return prop.select?.name || null;
+    case 'multi_select': return (prop.multi_select || []).map(s => s.name).sort().join(", ") || null;
+    case 'status':       return prop.status?.name || null;
+    case 'checkbox':     return prop.checkbox ?? null;
+    case 'number':       return prop.number ?? null;
+    case 'date':         return prop.date?.start || null;
+    case 'url':          return prop.url || null;
+    case 'email':        return prop.email || null;
+    case 'phone_number': return prop.phone_number || null;
+    case 'relation':     return (prop.relation || []).map(r => r.id.replace(/-/g,"")).sort().join(",") || null;
+    case 'people':       return (prop.people || []).map(p => p.name || p.id).sort().join(", ") || null;
+    case 'files':        return (prop.files || []).map(f => f.name).join(", ") || null;
+    case 'formula':      return prop.formula?.string ?? prop.formula?.number ?? prop.formula?.boolean ?? null;
+    default:             return null;
+  }
+}
+
+function serializeRow(row) {
+  const props = {};
+  for (const [key, val] of Object.entries(row.properties)) {
+    props[key] = extractPropValue(val);
+  }
+  const name = Object.values(row.properties).find(p => p.type === 'title')
+    ?.title?.map(t => t.plain_text).join("") || "Untitled";
+  return { id: row.id.replace(/-/g,""), name, lastEdited: row.last_edited_time, props };
+}
+
+async function deepScan(env) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const DAY_MS = 86400000;
+
+  const [campRows, prodRows] = await Promise.all([
+    notionQuery(CAMPAIGNS_DB, {}),
+    notionQuery(PRODUCTS_DB, {}),
+  ]);
+
+  const campSnap = campRows.map(serializeRow);
+  const prodSnap = prodRows.map(serializeRow);
+
+  const campSchema = [...new Set(campRows.flatMap(r => Object.keys(r.properties)))].sort();
+  const prodSchema = [...new Set(prodRows.flatMap(r => Object.keys(r.properties)))].sort();
+
+  const newSnapshot = { date: todayStr, campaigns: campSnap, products: prodSnap, campSchema, prodSchema };
+
+  let prevSnapshot = null;
+  try {
+    const raw = await env.TRADES.get("morning:snapshot");
+    if (raw) prevSnapshot = JSON.parse(raw);
+  } catch {}
+
+  const diff = { date: todayStr, changes: [], newProps: [], newRecords: [], removedRecords: [], recency: {} };
+
+  if (prevSnapshot) {
+    // Schema changes
+    (prevSnapshot.campSchema || []).concat().filter(p => !campSchema.includes(p))
+      .forEach(p => diff.newProps.push({ db: 'Campaigns', prop: p, kind: 'removed' }));
+    campSchema.filter(p => !(prevSnapshot.campSchema || []).includes(p))
+      .forEach(p => diff.newProps.push({ db: 'Campaigns', prop: p, kind: 'added' }));
+    (prevSnapshot.prodSchema || []).filter(p => !prodSchema.includes(p))
+      .forEach(p => diff.newProps.push({ db: 'Products', prop: p, kind: 'removed' }));
+    prodSchema.filter(p => !(prevSnapshot.prodSchema || []).includes(p))
+      .forEach(p => diff.newProps.push({ db: 'Products', prop: p, kind: 'added' }));
+
+    const prevById = {};
+    [...(prevSnapshot.campaigns || []).map(r => ({...r, db:'Campaigns'})),
+     ...(prevSnapshot.products  || []).map(r => ({...r, db:'Products'}))
+    ].forEach(r => { prevById[r.id] = r; });
+
+    const currById = {};
+    [...campSnap.map(r => ({...r, db:'Campaigns'})),
+     ...prodSnap.map(r => ({...r, db:'Products'}))
+    ].forEach(r => {
+      currById[r.id] = r;
+      if (!prevById[r.id]) {
+        diff.newRecords.push({ db: r.db, name: r.name, id: r.id });
+      } else {
+        const prev = prevById[r.id];
+        const allKeys = new Set([...Object.keys(r.props), ...Object.keys(prev.props)]);
+        allKeys.forEach(key => {
+          const nv = JSON.stringify(r.props[key] ?? null);
+          const ov = JSON.stringify(prev.props[key] ?? null);
+          if (nv !== ov) diff.changes.push({ db: r.db, name: r.name, id: r.id, field: key, from: prev.props[key] ?? null, to: r.props[key] ?? null });
+        });
+      }
+    });
+    Object.keys(prevById).forEach(id => {
+      if (!currById[id]) diff.removedRecords.push({ db: prevById[id].db, name: prevById[id].name, id });
+    });
+  }
+
+  // Recency buckets
+  [...campSnap.map(r => ({...r, db:'Campaigns'})), ...prodSnap.map(r => ({...r, db:'Products'}))].forEach(r => {
+    const ageDays = r.lastEdited ? (now.getTime() - new Date(r.lastEdited).getTime()) / DAY_MS : 9999;
+    diff.recency[r.id] = {
+      name: r.name, db: r.db, lastEdited: r.lastEdited,
+      ageDays: Math.floor(ageDays),
+      bucket: ageDays < 7 ? 'active' : ageDays < 30 ? 'cooling' : 'orphaned',
+    };
+  });
+
+  await Promise.all([
+    env.TRADES.put("morning:snapshot", JSON.stringify(newSnapshot)),
+    env.TRADES.put("morning:diff",     JSON.stringify(diff)),
+    env.TRADES.put("morning:last_scan", todayStr),
+  ]);
+
+  return diff;
+}
+
 export default {
   async fetch(request, env) {
     // Load secrets from environment on every request (.trim() guards against
@@ -1581,7 +1698,14 @@ export default {
           };
         });
 
-        return json({ campaigns });
+        // Pull last scan diff + date from KV
+        const [diffRaw, lastScanDate] = await Promise.all([
+          env.TRADES.get("morning:diff").catch(() => null),
+          env.TRADES.get("morning:last_scan").catch(() => null),
+        ]);
+        const scanDiff = diffRaw ? JSON.parse(diffRaw) : null;
+
+        return json({ campaigns, diff: scanDiff, lastScanDate: lastScanDate || null });
       }
 
       //Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: getExplodeQueue Î“Ã¶Ã‡Î“Ã¶Ã‡
@@ -3432,9 +3556,20 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ sentiment: results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean) });
       }
 
+      // ── runDeepScan (manual trigger) ──
+      if (body.action === "runDeepScan") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const diff = await deepScan(env);
+        return json({ diff });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);
     }
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(deepScan(env));
   },
 };

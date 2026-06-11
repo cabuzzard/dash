@@ -6,5 +6,8 @@ compatibility_date = "2024-01-01"
 binding = "TRADES"
 id = "344c88fa8ca744fcbe25495b4701666d"
 
+[triggers]
+crons = ["0 0 * * *"]
+
 [env]
 routes = [{ pattern = "https://cabuzzard.github.io/dash/*" }]
