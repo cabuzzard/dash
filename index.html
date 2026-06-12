@@ -207,6 +207,11 @@
   /* ── STATUS ROW HIGHLIGHTS ── */
   .ov-table tbody tr.status-active td { background: #00cc66; color: #000 !important; }
   .ov-table tbody tr.status-active .status-select { background: #00aa55; border-color: #007733; color: #000; }
+  .ov-table tbody tr.sub-campaign-row { background: var(--surface); }
+  .ov-table tbody tr.sub-campaign-row td.name { font-weight: 400; color: var(--text2); font-size: 12px; }
+  .ov-table tbody tr.sub-campaign-row td { font-size: 12px; }
+  .sub-branch { display: inline-block; color: var(--text3); margin-right: 6px; font-family: 'DM Mono', monospace; }
+  .niche-tag { display: inline-block; font-size: 9px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; padding: 1px 6px; border-radius: 10px; background: var(--surface2); border: 1px solid var(--border2); color: var(--text3); margin-left: 6px; vertical-align: middle; }
 
   .ov-table tbody tr.status-indev td { background: #ffffff; color: #000 !important; }
   .ov-table tbody tr.status-indev .status-select { background: #eeeeee; border-color: #ccc; color: #000; }
@@ -4554,9 +4559,18 @@ function renderTable() {
 
   // Body
   const tbody = document.createElement('tbody');
-  sorted.forEach(c => {
+  // Build lookups for main/sub campaign nesting via "Associated Campaigns"
+  const byId = {};
+  ovData.forEach(c => { byId[c.id] = c; });
+  const childIds = new Set();
+  ovData.forEach(c => {
+    (c.associatedCampaigns || []).forEach(a => childIds.add(a.id));
+  });
+
+  function buildRow(c, isSub) {
     const notionUrl = 'https://www.notion.so/' + c.id;
     const tr = document.createElement('tr');
+    if (isSub) tr.classList.add('sub-campaign-row');
 
     // Key message cell — clickable to edit
     const kmCell = document.createElement('td');
@@ -4571,7 +4585,14 @@ function renderTable() {
     nameCell.className = 'name';
     nameCell.style.cssText = 'cursor:pointer;';
     nameCell.title = 'Click to edit';
-    nameCell.textContent = c.name;
+    if (isSub) {
+      nameCell.innerHTML = '<span class="sub-branch">↳</span>' + esc(c.name) + '<span class="niche-tag">niche</span>';
+    } else {
+      nameCell.textContent = c.name;
+      if (!isSub && (c.associatedCampaigns || []).some(a => byId[a.id])) {
+        nameCell.innerHTML = esc(c.name) + '<span class="niche-tag">main</span>';
+      }
+    }
     nameCell.onclick = () => openNameModal(c, nameCell);
 
     // Grouping cell — shows tags, click to edit
@@ -4681,6 +4702,12 @@ function renderTable() {
       '<td class="link">' + (c.campaignPage ? '<a href="' + c.campaignPage + '" target="_blank" title="Live Site">↗</a>' : '') + '</td>' +
       '<td class="link">' + (c.research ? '<a href="https://www.notion.so/' + c.research.id + '" target="_blank" title="ROI Notes">↗</a>' : '') + '</td>'
     );
+
+    return { tr, isThisWeek };
+  }
+
+  function appendRow(c, isSub) {
+    const { tr, isThisWeek } = buildRow(c, isSub);
     tbody.appendChild(tr);
     // Make pub cell clickable
     const pubTd = tr.querySelector('td.pub-cell:not(.zero)');
@@ -4692,6 +4719,16 @@ function renderTable() {
       tr.style.background = '#ffffff';
       tr.querySelectorAll('td').forEach(td => td.style.color = '#000');
     }
+  }
+
+  sorted.forEach(c => {
+    if (childIds.has(c.id)) return; // rendered nested under its main campaign below
+    appendRow(c, false);
+    (c.associatedCampaigns || []).forEach(a => {
+      const sub = byId[a.id];
+      if (!sub) return;
+      appendRow(sub, true);
+    });
   });
   table.appendChild(tbody);
   const wrap = document.createElement('div');

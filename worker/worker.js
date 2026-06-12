@@ -226,6 +226,12 @@ async function getCampaigns() {
     });
   });
 
+  // Build campaign id -> name lookup for "Associated Campaigns" self-relation
+  const campaignNameById = {};
+  campRows.forEach(c => {
+    campaignNameById[c.id.replace(/-/g,"")] = c.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
+  });
+
   return campRows.map(c => {
     const id = c.id.replace(/-/g, "");
     return {
@@ -251,6 +257,10 @@ async function getCampaigns() {
       })),
       campaignLogins:   campaignToLogins[id] || [],
       platforms: (c.properties["Platforms"]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "Untitled" })),
+      associatedCampaigns: (c.properties["Associated Campaigns"]?.relation || []).map(r => ({
+        id:   r.id.replace(/-/g,""),
+        name: campaignNameById[r.id.replace(/-/g,"")] || "Untitled",
+      })),
       campaignPage: c.properties["live site"]?.url || null,
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
