@@ -3388,6 +3388,14 @@ function renderPlatformMatrix() {
     siteMap[site].push(c);
   });
 
+  // Build global main/sub lookups via "Associated Campaigns" (same hierarchy as Overview)
+  const platById = {};
+  platCampaigns.forEach(c => { platById[c.id] = c; });
+  const platChildIds = new Set();
+  platCampaigns.forEach(c => {
+    (c.associatedCampaigns || []).forEach(a => platChildIds.add(a.id));
+  });
+
   // Wrap in horizontal scroll container
   const wrap = document.createElement('div');
   wrap.style.cssText = 'overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:24px;';
@@ -3506,21 +3514,33 @@ function renderPlatformMatrix() {
     tbody.appendChild(siteRow);
 
     const campRowEls = [];
-    [...camps].sort((a, b) => (b.devTitles || 0) - (a.devTitles || 0)).forEach(c => {
+    function buildCampRow(c, isSub) {
       const tr = document.createElement('tr');
-      tr.style.cssText = 'border-bottom:1px solid #444;' + (isCollapsed ? 'display:none;' : '');
+      tr.style.cssText = 'border-bottom:1px solid #444;' + (isCollapsed ? 'display:none;' : '') + (isSub ? 'background:var(--surface);' : '');
       tr.onmouseover = () => tr.style.background = 'var(--surface)';
-      tr.onmouseout  = () => tr.style.background = '';
+      tr.onmouseout  = () => tr.style.background = isSub ? 'var(--surface)' : '';
 
       // Campaign name cell (sticky)
       const nameTd = document.createElement('td');
       nameTd.style.cssText = 'padding:8px 12px 8px 0;font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;position:sticky;left:0;background:inherit;z-index:1;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-right:1px solid #444;';
       nameTd.title = c.name;
-      if (c.siteUrl) {
-        nameTd.innerHTML = esc(c.name) + ' <a href="' + c.siteUrl + '" target="_blank" onclick="event.stopPropagation()" title="Open microsite" style="font-size:10px;color:var(--text3);text-decoration:none;vertical-align:middle;opacity:.7;flex-shrink:0;">↗</a>';
-      } else {
-        nameTd.textContent = c.name;
+      let nameHtml = '';
+      if (isSub) {
+        nameHtml += '<span style="display:inline-block;color:var(--text3);margin-right:6px;font-family:\'DM Mono\',monospace;">↳</span>';
+        nameTd.style.fontWeight = '400';
+        nameTd.style.color = 'var(--text2)';
+        nameTd.style.fontSize = '11px';
       }
+      nameHtml += esc(c.name);
+      if (isSub) {
+        nameHtml += '<span style="display:inline-block;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);margin-left:6px;vertical-align:middle;">niche</span>';
+      } else if ((c.associatedCampaigns || []).some(a => platById[a.id])) {
+        nameHtml += '<span style="display:inline-block;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);margin-left:6px;vertical-align:middle;">main</span>';
+      }
+      if (c.siteUrl) {
+        nameHtml += ' <a href="' + c.siteUrl + '" target="_blank" onclick="event.stopPropagation()" title="Open microsite" style="font-size:10px;color:var(--text3);text-decoration:none;vertical-align:middle;opacity:.7;flex-shrink:0;">↗</a>';
+      }
+      nameTd.innerHTML = nameHtml;
       tr.appendChild(nameTd);
 
       // Dev / Pub count cells
@@ -3602,8 +3622,24 @@ function renderPlatformMatrix() {
       // Empty add-platform spacer cell
       const spaceTd = document.createElement('td');
       tr.appendChild(spaceTd);
+      return tr;
+    }
+
+    // Main campaigns for this site = those not globally claimed as a sub-campaign elsewhere
+    const mainCamps = camps.filter(c => !platChildIds.has(c.id));
+    [...mainCamps].sort((a, b) => (b.devTitles || 0) - (a.devTitles || 0)).forEach(c => {
+      const tr = buildCampRow(c, false);
       campRowEls.push(tr);
       tbody.appendChild(tr);
+
+      // Render this campaign's niche/sub-campaigns immediately below, nested
+      (c.associatedCampaigns || []).forEach(a => {
+        const sub = platById[a.id];
+        if (!sub) return;
+        const subTr = buildCampRow(sub, true);
+        campRowEls.push(subTr);
+        tbody.appendChild(subTr);
+      });
     });
 
     siteRow.onclick = () => {
