@@ -2914,6 +2914,10 @@ async function showTitleAssets(titleId, titleName) {
       platformMap[key].push(a);
     });
 
+    if (!_eaAllLogins.length) {
+      try { const ld = await call('getLogins', {}); _eaAllLogins = ld.logins || []; } catch(e) {}
+    }
+
     Object.keys(platformMap).sort().forEach(platform => {
       const platHdr = document.createElement('div');
       platHdr.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:16px 0 6px;padding:4px 0;border-bottom:1px solid var(--border);';
@@ -2921,21 +2925,34 @@ async function showTitleAssets(titleId, titleName) {
       el.appendChild(platHdr);
 
       platformMap[platform].forEach(a => {
-        const row = document.createElement('a');
-        row.href = 'https://www.notion.so/' + a.id;
-        row.target = '_blank';
-        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);text-decoration:none;';
-        row.innerHTML =
+        const row = document.createElement('div');
+        row.style.cssText = 'padding:10px 14px;margin-bottom:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);';
+
+        const topLine = document.createElement('div');
+        topLine.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
+        topLine.innerHTML =
           '<div>' +
-            '<div style="font-size:13px;font-weight:500;color:var(--text);">' + esc(a.title) + '</div>' +
+            '<div class="asset-row-title" data-aid="' + a.id + '" style="font-size:13px;font-weight:500;color:var(--text);" onclick=\'openEditAssetModal(' + JSON.stringify(a).replace(/'/g,"&apos;") + ')\'>' + esc(a.title) + '</div>' +
             (a.type ? '<div style="font-size:11px;color:var(--text3);margin-top:2px;">' + esc(a.type) + '</div>' : '') +
           '</div>' +
-          '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">' +
+            '<a href="https://www.notion.so/' + a.id + '" target="_blank" style="font-size:10px;font-weight:600;color:var(--text3);text-decoration:none;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Notion ↗</a>' +
             '<span onclick="showAssetFiles(\'' + a.id + '\',\'' + esc(a.title).replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:var(--accent);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Files</span>' +
             '<span onclick="showAssetDesignModal(\'' + a.id + '\',\'' + esc(a.title).replace(/'/g,"\\'") + '\',\'' + (a.designLink||'').replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:' + (a.designLink ? '#a78bfa' : 'var(--text3)') + ';cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">' + (a.designLink ? 'Design ↗' : 'Design') + '</span>' +
             '<span onclick="openDupAssetModal(' + JSON.stringify({id:a.id,title:a.title,type:a.type,status:a.status,loginId:a.loginId}).replace(/"/g,"&quot;") + ',event)" style="font-size:10px;font-weight:600;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Dupe</span>' +
             makeAssetStatusBadge(a.id, a.status || '') +
           '</div>';
+        row.appendChild(topLine);
+
+        const strip = document.createElement('div');
+        strip.className = 'asset-chip-strip';
+        strip.setAttribute('data-aid', a.id);
+        strip.innerHTML = buildAssetChipsHtml(a);
+        strip.querySelectorAll('.asset-comp-chip').forEach(chip => {
+          chip.onclick = () => openEditAssetModal(a);
+        });
+        row.appendChild(strip);
+
         el.appendChild(row);
       });
     });

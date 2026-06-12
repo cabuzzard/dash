@@ -858,6 +858,34 @@ export default {
         const { titleId } = body;
         if (!titleId) return json({ error: "titleId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const filesOf = p => (p?.Images?.files || []).map(f => {
+          const raw = f.name || "";
+          let key = null, displayName = raw;
+          if (raw.startsWith("img:")) {
+            const pipeIdx = raw.indexOf("|", 4);
+            if (pipeIdx !== -1) { key = raw.slice(4, pipeIdx); displayName = raw.slice(pipeIdx + 1); }
+            else { key = raw.slice(4); displayName = ""; }
+          }
+          return { name: displayName, url: f.type === "external" ? f.external.url : (f.file?.url || ""), key };
+        });
+        const shapeAsset = (assetId, p) => {
+          const loginRel = p["Login"]?.relation || [];
+          return {
+            id: assetId,
+            title: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
+            assetTitle: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
+            platform: p["Platform Name"]?.select?.name || "",
+            type: p["Asset Type"]?.select?.name || "",
+            status: p["Asset Status"]?.select?.name || "",
+            designLink: p["Design Link"]?.url || "",
+            loginId: loginRel[0]?.id?.replace(/-/g,"") || "",
+            body: p["Body"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            images: filesOf(p),
+            componentIds: (p["Components"]?.relation || []).map(r => r.id.replace(/-/g,"")),
+            campaignId: (p["Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || "",
+            contentStrategyId: (p["Content Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"") || "",
+          };
+        };
         try {
           const page = await fetch("https://api.notion.com/v1/pages/" + dash(titleId), {
             headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
@@ -870,17 +898,18 @@ export default {
                 headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
               });
               const a = await resp.json();
-              const p = a.properties || {};
-              const loginRel = p["Login"]?.relation || [];
-              return {
-                id: assetId,
-                title: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
-                platform: p["Platform Name"]?.select?.name || "",
-                type: p["Asset Type"]?.select?.name || "",
-                status: p["Asset Status"]?.select?.name || "",
-                designLink: p["Design Link"]?.url || "",
-                loginId: loginRel[0]?.id?.replace(/-/g,"") || "",
-              };
+              const shaped = shapeAsset(assetId, a.properties || {});
+              shaped.components = await Promise.all(shaped.componentIds.map(async cid => {
+                try {
+                  const cr = await fetch("https://api.notion.com/v1/pages/" + dash(cid), {
+                    headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+                  });
+                  const cp = (await cr.json()).properties || {};
+                  return shapeAsset(cid, cp);
+                } catch(e) { return null; }
+              }));
+              shaped.components = shaped.components.filter(Boolean);
+              return shaped;
             } catch(e) { return null; }
           }));
           return json({ assets: assets.filter(Boolean) });
