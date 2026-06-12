@@ -644,7 +644,7 @@ async function runSMTrends() {
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
   try {
-    const data = await w('getSMTrends', { researchId: RESEARCH_ID, kwOverride });
+    const data = await w('getSMTrends', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
     if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
     renderSMTrends(data.text || '');
   } catch(e) {
@@ -678,7 +678,7 @@ async function runProductIdeas() {
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
   try {
-    const data = await w('getProductIdeas', { researchId: RESEARCH_ID, kwOverride });
+    const data = await w('getProductIdeas', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
     if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
     renderProductIdeas(data.text || '');
   } catch(e) {
