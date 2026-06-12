@@ -1997,6 +1997,61 @@ Rules:
         return json({ success: true, text: result });
       }
 
+      // ── getProductIdeas ──
+      if (body.action === "getProductIdeas") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const { researchId, kwOverride } = body;
+        if (!researchId) return json({ error: "researchId required" }, 400);
+
+        const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+
+        let keywords = (kwOverride || "").trim();
+        if (!keywords) {
+          try {
+            const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+            });
+            const resData = await resResp.json();
+            keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+          } catch {}
+        }
+        if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
+
+        const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY || '', 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5',
+            max_tokens: 1200,
+            system: `You are a product strategist. Given campaign keywords, identify 15 specific product or offer ideas that would sell well to this audience. Focus on digital products, info products, services, or physical products that directly address the audience's pain points and desires.
+
+FORMAT — output exactly 15 lines, one per idea:
+PRODUCT NAME: one-line description of the product and who it's for
+
+Rules:
+- PRODUCT NAME is 2-5 words, title case
+- Description is max 15 words, specific and monetizable
+- No bullets, no numbering, no markdown, no preamble or closing remarks
+- Output only the 15 lines, nothing else`,
+            messages: [{ role: 'user', content: `Campaign keywords: ${keywords}` }]
+          })
+        });
+        const claudeData = await claudeResp.json();
+        if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error' }, 502);
+        const result = (claudeData.content?.[0]?.text || '').trim();
+
+        const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+          method: 'PATCH',
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Product Ideas": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+        });
+        if (!patch.ok) {
+          const pe = await patch.json();
+          return json({ error: pe.message || "Notion write failed" }, patch.status);
+        }
+        return json({ success: true, text: result });
+      }
+
       // Î”Ã¶Ã‡Î”Ã¶Ã‡ CAMPAIGN ADMIN: updateCampaignKeywords Î”Ã¶Ã‡Î”Ã¶Ã‡
       if (body.action === "updateCampaignKeywords") {
         const { campaignId, value } = body;
