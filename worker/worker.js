@@ -257,7 +257,8 @@ async function getCampaigns() {
       })),
       campaignLogins:   campaignToLogins[id] || [],
       platforms: (c.properties["Platforms"]?.relation || []).map(r => ({ id: r.id.replace(/-/g,""), name: platformById[r.id.replace(/-/g,"")] || "Untitled" })),
-      associatedCampaigns: (c.properties["Associated Campaigns"]?.relation || []).map(r => ({
+      parentCampaignId: (c.properties["Parent Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || "",
+      nicheCampaigns: (c.properties["Niche Campaigns"]?.relation || []).map(r => ({
         id:   r.id.replace(/-/g,""),
         name: campaignNameById[r.id.replace(/-/g,"")] || "Untitled",
       })),
@@ -544,6 +545,7 @@ export default {
           campById[c.id.replace(/-/g,"")] = {
             name: c.properties.Name?.title?.map(t => t.plain_text).join("") || "",
             site: c.properties.site?.select?.name || "Other",
+            parentCampaignId: (c.properties["Parent Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || "",
           };
         });
 
@@ -567,13 +569,13 @@ export default {
           const campId  = campRel.length ? campRel[0].id.replace(/-/g,"") : "__none__";
           const camp    = campById[campId] || { name: "Î“Ã‡Ã¶", site: "Other" };
 
-          if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, titles: [] };
+          if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", titles: [] };
           campTitles[campId].titles.push({ id, title, status, grouping: props.Grouping?.rich_text?.map(x => x.plain_text).join("") || "" });
         });
 
         // Add all campaigns Î“Ã‡Ã¶ even those with no titles
         Object.entries(campById).forEach(([campId, camp]) => {
-          if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, titles: [] };
+          if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", titles: [] };
         });
 
         const campaigns = Object.entries(campTitles).map(([campId, camp]) => {
@@ -582,7 +584,7 @@ export default {
           const prodCount = activeProdCount[campId] || 0;
           const STATUS_RANK = { "Development": 0, "Publish": 1 };
           camp.titles.sort((a, b) => (STATUS_RANK[a.status] ?? 2) - (STATUS_RANK[b.status] ?? 2));
-          return { campId, name: camp.name, site: camp.site, titles: camp.titles, devCount, pubCount, prodCount };
+          return { campId, name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", titles: camp.titles, devCount, pubCount, prodCount };
         });
 
         campaigns.sort((a, b) => b.devCount - a.devCount);

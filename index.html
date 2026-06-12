@@ -3691,12 +3691,16 @@ function renderPlatformMatrix() {
     siteMap[site].push(c);
   });
 
-  // Build global main/sub lookups via "Associated Campaigns" (same hierarchy as Overview)
+  // Build global main/sub lookups via Parent Campaign (same hierarchy as Overview)
   const platById = {};
   platCampaigns.forEach(c => { platById[c.id] = c; });
   const platChildIds = new Set();
+  const platParentOf = {};
   platCampaigns.forEach(c => {
-    (c.associatedCampaigns || []).forEach(a => platChildIds.add(a.id));
+    if (c.parentCampaignId && platById[c.parentCampaignId] && c.parentCampaignId !== c.id) {
+      platChildIds.add(c.id);
+      platParentOf[c.id] = c.parentCampaignId;
+    }
   });
 
   // Wrap in horizontal scroll container
@@ -3837,7 +3841,7 @@ function renderPlatformMatrix() {
       nameHtml += esc(c.name);
       if (isSub) {
         nameHtml += '<span style="display:inline-block;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);margin-left:6px;vertical-align:middle;">niche</span>';
-      } else if ((c.associatedCampaigns || []).some(a => platById[a.id])) {
+      } else if (platCampaigns.some(x => platParentOf[x.id] === c.id)) {
         nameHtml += '<span style="display:inline-block;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);margin-left:6px;vertical-align:middle;">main</span>';
       }
       if (c.siteUrl) {
@@ -3936,9 +3940,8 @@ function renderPlatformMatrix() {
       tbody.appendChild(tr);
 
       // Render this campaign's niche/sub-campaigns immediately below, nested
-      (c.associatedCampaigns || []).forEach(a => {
-        const sub = platById[a.id];
-        if (!sub) return;
+      platCampaigns.forEach(sub => {
+        if (platParentOf[sub.id] !== c.id) return;
         const subTr = buildCampRow(sub, true);
         campRowEls.push(subTr);
         tbody.appendChild(subTr);
@@ -4902,8 +4905,12 @@ function renderTable() {
   const byId = {};
   ovData.forEach(c => { byId[c.id] = c; });
   const childIds = new Set();
+  const parentOf = {};
   ovData.forEach(c => {
-    (c.associatedCampaigns || []).forEach(a => childIds.add(a.id));
+    if (c.parentCampaignId && byId[c.parentCampaignId] && c.parentCampaignId !== c.id) {
+      childIds.add(c.id);
+      parentOf[c.id] = c.parentCampaignId;
+    }
   });
 
   function buildRow(c, isSub) {
@@ -4928,7 +4935,7 @@ function renderTable() {
       nameCell.innerHTML = '<span class="sub-branch">↳</span>' + esc(c.name) + '<span class="niche-tag">niche</span>';
     } else {
       nameCell.textContent = c.name;
-      if (!isSub && (c.associatedCampaigns || []).some(a => byId[a.id])) {
+      if (!isSub && ovData.some(x => parentOf[x.id] === c.id)) {
         nameCell.innerHTML = esc(c.name) + '<span class="niche-tag">main</span>';
       }
     }
@@ -5063,10 +5070,8 @@ function renderTable() {
   sorted.forEach(c => {
     if (childIds.has(c.id)) return; // rendered nested under its main campaign below
     appendRow(c, false);
-    (c.associatedCampaigns || []).forEach(a => {
-      const sub = byId[a.id];
-      if (!sub) return;
-      appendRow(sub, true);
+    sorted.forEach(sub => {
+      if (parentOf[sub.id] === c.id) appendRow(sub, true);
     });
   });
   table.appendChild(tbody);
@@ -6020,13 +6025,25 @@ function renderDev() {
   el.innerHTML = '';
   if (!devData.length) { el.innerHTML = '<div class="empty">No titles found.</div>'; return; }
 
-  // devData is now campaigns[], each with { name, site, titles[], devCount, pubCount }
+  // devData is now campaigns[], each with { name, site, titles[], devCount, pubCount, parentCampaignId }
   // Group campaigns by site, already sorted by devCount desc within site
   const siteMap = {};
   devData.forEach(camp => {
     const site = camp.site || 'Other';
     if (!siteMap[site]) siteMap[site] = [];
     siteMap[site].push(camp);
+  });
+
+  // Build main/sub lookup via Parent Campaign — same hierarchy as Overview/Platforms
+  const devById = {};
+  devData.forEach(camp => { devById[camp.campId] = camp; });
+  const devChildIds = new Set();
+  const devParentOf = {};
+  devData.forEach(camp => {
+    if (camp.parentCampaignId && devById[camp.parentCampaignId] && camp.parentCampaignId !== camp.campId) {
+      devChildIds.add(camp.campId);
+      devParentOf[camp.campId] = camp.parentCampaignId;
+    }
   });
 
   const SITE_ICONS = {
@@ -6054,10 +6071,18 @@ function renderDev() {
       siteChev.style.transform = open ? '' : 'rotate(90deg)';
     };
 
-    // ── Campaigns under this site ──
+    // ── Campaigns under this site (main campaigns, each followed by its niche/sub-campaigns) ──
+    const displayList = [];
     siteMap[site].forEach(camp => {
+      if (devChildIds.has(camp.campId)) return; // rendered nested under its parent instead
+      displayList.push(camp);
+      devData.forEach(sub => {
+        if (devParentOf[sub.campId] === camp.campId) displayList.push(Object.assign({}, sub, { isSub: true }));
+      });
+    });
+    displayList.forEach(camp => {
       const campRow = document.createElement('div');
-      campRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 12px 9px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;';
+      campRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 12px 9px ' + (camp.isSub ? '36px' : '20px') + ';background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;' + (camp.isSub ? 'opacity:.85;' : '');
       campRow.dataset.campid = camp.campId || camp.id || '';
       const campChev = document.createElement('span');
       campChev.style.cssText = 'font-size:10px;color:var(--text3);transition:transform .2s;flex-shrink:0;';
@@ -6066,7 +6091,11 @@ function renderDev() {
       campRow.appendChild(campChev);
       const nameSpan = document.createElement('span');
       nameSpan.style.cssText = 'font-size:12px;font-weight:600;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-      nameSpan.textContent = camp.name;
+      if (camp.isSub) {
+        nameSpan.innerHTML = '<span style="display:inline-block;color:var(--text3);margin-right:6px;font-family:\'DM Mono\',monospace;">↳</span>' + esc(camp.name) + '<span style="display:inline-block;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);margin-left:6px;vertical-align:middle;">niche</span>';
+      } else {
+        nameSpan.textContent = camp.name;
+      }
       campRow.appendChild(nameSpan);
 
       // Fixed-width columns for counts
