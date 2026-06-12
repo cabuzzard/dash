@@ -1844,6 +1844,7 @@ export default {
             platforms: props["Platforms & Methods"]?.rich_text?.map(t => t.plain_text).join("") || "",
             productIdeas: props["Product Ideas"]?.rich_text?.map(t => t.plain_text).join("") || "",
             tiktokTrends: props["TikTok Trends"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            trendIntelligence: props["Trend Intelligence"]?.rich_text?.map(t => t.plain_text).join("") || "",
             keyMessage: props["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
             webPageUrl: props["Web Page URL"]?.url || "",
             uniqueOpportunity: props["Unique Opportunity"]?.rich_text?.map(t => t.plain_text).join("") || "",
@@ -1920,6 +1921,7 @@ Rules:
           notes:        "Notes",
           platforms:    "Platforms & Methods",
           tiktokTrends: "TikTok Trends",
+          trendIntelligence: "Trend Intelligence",
           newsFeed:     "News Feed",
           keyMessage:   "Key Message",
           thoughts:     "Thoughts",
@@ -1933,12 +1935,70 @@ Rules:
           body: JSON.stringify({ properties: { [notionField]: { rich_text: [{ type: "text", text: { content: value || "" } }] } } })
         });
         const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        if (!resp.ok) return json({ error: result.message || “Update failed” }, resp.status);
         return json({ success: true });
       }
 
-      // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: updateCampaignKeywords Î“Ã¶Ã‡Î“Ã¶Ã‡
-      if (body.action === "updateCampaignKeywords") {
+      // ── getSMTrends ──
+      if (body.action === “getSMTrends”) {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: “Unauthorized” }, 401);
+        const { researchId, kwOverride } = body;
+        if (!researchId) return json({ error: “researchId required” }, 400);
+
+        const dashId = i => { const s=i.replace(/-/g,””); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+
+        // Resolve keywords — use override if provided, else pull from Research record
+        let keywords = (kwOverride || “”).trim();
+        if (!keywords) {
+          try {
+            const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+              headers: { “Authorization”: `Bearer ${NOTION_TOKEN}`, “Notion-Version”: NOTION_VERSION }
+            });
+            const resData = await resResp.json();
+            keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join(“”) || “”;
+          } catch {}
+        }
+        if (!keywords) return json({ error: “No keywords found — add keywords to the Research record or enter them manually” }, 400);
+
+        // Ask Claude Haiku for 15 underserved short-form video niches
+        const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY || '', 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5',
+            max_tokens: 1200,
+            system: `You are a short-form video niche researcher. Given campaign keywords, identify the 15 most underserved niches and trends on TikTok and YouTube Shorts. Focus on niches with high audience demand but low quality content supply — real gaps where a creator can win quickly.
+
+FORMAT — output exactly 15 lines, one per niche:
+NICHE NAME: one-line description of the opportunity and why it's underserved
+
+Rules:
+- NICHE NAME is 2-5 words, title case
+- Description is max 15 words, specific and actionable
+- No bullets, no numbering, no markdown, no preamble or closing remarks
+- Output only the 15 lines, nothing else`,
+            messages: [{ role: 'user', content: `Campaign keywords: ${keywords}` }]
+          })
+        });
+        const claudeData = await claudeResp.json();
+        if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error' }, 502);
+        const result = (claudeData.content?.[0]?.text || '').trim();
+
+        // Write to Notion Research DB → Trend Intelligence field
+        const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+          method: 'PATCH',
+          headers: { “Authorization”: `Bearer ${NOTION_TOKEN}`, “Notion-Version”: NOTION_VERSION, “Content-Type”: “application/json” },
+          body: JSON.stringify({ properties: { “Trend Intelligence”: { rich_text: [{ type: “text”, text: { content: result.slice(0, 2000) } }] } } })
+        });
+        if (!patch.ok) {
+          const pe = await patch.json();
+          return json({ error: pe.message || “Notion write failed” }, patch.status);
+        }
+        return json({ success: true, text: result });
+      }
+
+      // Î”Ã¶Ã‡Î”Ã¶Ã‡ CAMPAIGN ADMIN: updateCampaignKeywords Î”Ã¶Ã‡Î”Ã¶Ã‡
+      if (body.action === “updateCampaignKeywords”) {
         const { campaignId, value } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");

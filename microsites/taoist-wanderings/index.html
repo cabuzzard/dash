@@ -139,12 +139,24 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 2: keywords — full width -->
+<!-- SEC 2: keywords + SM trends — two col -->
 <div class="two-col">
-  <div class="col" style="grid-column:span 2">
+  <div class="col">
     <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
     <div class="content">
       <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>SM Trends</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="smTrendsKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:140px;outline:none">
+        <button id="smTrendsBtn" onclick="runSMTrends()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-smtrends"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
@@ -178,7 +190,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 <!-- SEC 5: two col — development titles / publish titles -->
 <div class="two-col">
   <div class="col">
-    <h2>Development Titles</h2>
+    <h2>Development Titles <button class="td-add-btn-inline" onclick="openAddTitleModal()" title="Add title">+</button></h2>
     <div class="content">
       <div class="title-list" id="devTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -446,6 +458,25 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
 </div>
+<!-- ADD TITLE MODAL -->
+<div class="modal-overlay" id="addTitleModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head">
+      <div class="modal-title">Add Development Title</div>
+      <button class="modal-close" onclick="closeAddTitleModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label">Title <span style="color:var(--danger,#e05);">*</span></label>
+      <input class="modal-ta" id="addTitleInput" type="text" placeholder="Title text…" autocomplete="off" style="margin-bottom:12px;" />
+      <div id="addTitleStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeAddTitleModal()">Cancel</button>
+      <button class="modal-btn save" id="addTitleSaveBtn" onclick="submitAddTitle()">Create</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "3581f7d3a4bb80c9b25efceb41a079b4"; // taoist-wanderings
@@ -577,6 +608,40 @@ async function condense(label, raw) {
   }
 }
 
+function renderSMTrends(text) {
+  const el = document.getElementById('r-smtrends');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No trends yet — press ⟳ search to generate.</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    const niche = line.slice(0, colonIdx).trim();
+    const desc  = line.slice(colonIdx + 1).trim();
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${niche}</span><span class="sm-trend-body">${desc}</span></div>`;
+  }).join('');
+}
+
+async function runSMTrends() {
+  const btn = document.getElementById('smTrendsBtn');
+  const el  = document.getElementById('r-smtrends');
+  const kwOverride = (document.getElementById('smTrendsKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
+  try {
+    const data = await w('getSMTrends', { researchId: RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderSMTrends(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
+
 async function loadResearch() {
   try {
     const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
@@ -619,6 +684,9 @@ async function loadResearch() {
     } else {
       kwEl.innerHTML = '<span class="empty">—</span>';
     }
+
+    // SEC 2 — SM trends from Trend Intelligence field
+    renderSMTrends(r.trendIntelligence || '');
 
     // News Feed — condense via Claude
     const newsEl = document.getElementById('r-news');
@@ -1697,6 +1765,38 @@ async function copyRenderCommand() {
     statusEl.style.color = '#f0a500';
     statusEl.textContent = '✓ Saved to Notion — clipboard blocked, command in console.';
     console.log('Render command:', cmd);
+  }
+}
+
+// ── ADD TITLE MODAL ──────────────────────────────────────────────────
+function openAddTitleModal() {
+  document.getElementById('addTitleInput').value = '';
+  document.getElementById('addTitleStatus').textContent = '';
+  document.getElementById('addTitleSaveBtn').disabled = false;
+  document.getElementById('addTitleSaveBtn').textContent = 'Create';
+  document.getElementById('addTitleModal').classList.add('open');
+  setTimeout(() => document.getElementById('addTitleInput').focus(), 200);
+}
+function closeAddTitleModal() {
+  document.getElementById('addTitleModal').classList.remove('open');
+}
+document.getElementById('addTitleModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAddTitleModal();
+});
+async function submitAddTitle() {
+  const title = document.getElementById('addTitleInput').value.trim();
+  if (!title) { document.getElementById('addTitleInput').focus(); return; }
+  const btn = document.getElementById('addTitleSaveBtn');
+  const status = document.getElementById('addTitleStatus');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  status.textContent = '';
+  try {
+    await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, status: 'Development' });
+    closeAddTitleModal();
+    loadTitles();
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Create';
   }
 }
 </script>
