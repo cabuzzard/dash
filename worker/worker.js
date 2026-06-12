@@ -893,6 +893,33 @@ export default {
         const { pubTitleData } = body;
         if (!pubTitleData || !pubTitleData.length) return json({ titles: [] });
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const filesOf = p => (p?.Images?.files || []).map(f => {
+          const raw = f.name || "";
+          let key = null, displayName = raw;
+          if (raw.startsWith("img:")) {
+            const pipeIdx = raw.indexOf("|", 4);
+            if (pipeIdx !== -1) { key = raw.slice(4, pipeIdx); displayName = raw.slice(pipeIdx + 1); }
+            else { key = raw.slice(4); displayName = ""; }
+          }
+          return { name: displayName, url: f.type === "external" ? f.external.url : (f.file?.url || ""), key };
+        });
+        const shapeAsset = (assetId, p) => {
+          const loginRel = p["Login"]?.relation || [];
+          return {
+            id: assetId,
+            assetTitle: p["Asset Title"]?.title?.map(x=>x.plain_text).join("") || "Untitled",
+            platform: p["Platform Name"]?.select?.name || "",
+            type: p["Asset Type"]?.select?.name || "",
+            status: p["Asset Status"]?.select?.name || "",
+            designLink: p["Design Link"]?.url || "",
+            loginId: loginRel[0]?.id?.replace(/-/g,"") || "",
+            body: p["Body"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            images: filesOf(p),
+            componentIds: (p["Components"]?.relation || []).map(r => r.id.replace(/-/g,"")),
+            campaignId: (p["Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || "",
+            contentStrategyId: (p["Content Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"") || "",
+          };
+        };
         try {
           const titles = await Promise.all(pubTitleData.map(async t => {
             const assets = await Promise.all((t.assetIds || []).map(async assetId => {
@@ -901,17 +928,18 @@ export default {
                   headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
                 });
                 const a = await resp.json();
-                const p = a.properties || {};
-                const loginRel = p["Login"]?.relation || [];
-                return {
-                  id: assetId,
-                  assetTitle: p["Asset Title"]?.title?.map(x=>x.plain_text).join("") || "Untitled",
-                  platform: p["Platform Name"]?.select?.name || "",
-                  type: p["Asset Type"]?.select?.name || "",
-                  status: p["Asset Status"]?.select?.name || "",
-                  designLink: p["Design Link"]?.url || "",
-                  loginId: loginRel[0]?.id?.replace(/-/g,"") || "",
-                };
+                const shaped = shapeAsset(assetId, a.properties || {});
+                shaped.components = await Promise.all(shaped.componentIds.map(async cid => {
+                  try {
+                    const cr = await fetch("https://api.notion.com/v1/pages/" + dash(cid), {
+                      headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+                    });
+                    const cp = (await cr.json()).properties || {};
+                    return shapeAsset(cid, cp);
+                  } catch(e) { return null; }
+                }));
+                shaped.components = shaped.components.filter(Boolean);
+                return shaped;
               } catch(e) { return null; }
             }));
             return { title: t.title, assets: assets.filter(Boolean) };
@@ -3143,6 +3171,82 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         });
         if (!resp.ok) { const e = await resp.json(); return json({ error: e.message || "Update failed" }, 400); }
         return json({ success: true });
+      }
+
+      if (body.action === "updateAssetField") {
+        const { assetId, field, value } = body;
+        if (!assetId || !field) return json({ error: "assetId and field required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
+        const props = {};
+        if (field === "Body") {
+          props["Body"] = { rich_text: value ? [{ type: "text", text: { content: String(value).slice(0, 2000) } }] : [] };
+        } else if (field === "Asset Title") {
+          props["Asset Title"] = { title: value ? [{ type: "text", text: { content: String(value) } }] : [{ type: "text", text: { content: "Untitled" } }] };
+        } else if (field === "Design Link") {
+          props["Design Link"] = { url: value || null };
+        } else if (field === "Asset Type") {
+          props["Asset Type"] = value ? { select: { name: value } } : { select: null };
+        } else if (field === "Asset Status") {
+          props["Asset Status"] = value ? { select: { name: value } } : { select: null };
+        } else if (field === "Status") {
+          props["Status"] = value ? { select: { name: value } } : { select: null };
+        } else if (field === "Notes") {
+          props["Notes"] = { rich_text: value ? [{ type: "text", text: { content: String(value).slice(0, 2000) } }] : [] };
+        } else {
+          return json({ error: "Unsupported field: " + field }, 400);
+        }
+        const resp = await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
+          method: "PATCH",
+          headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: props }),
+        });
+        if (!resp.ok) { const e = await resp.json(); return json({ error: e.message || "Update failed" }, 400); }
+        return json({ success: true });
+      }
+
+      if (body.action === "setAssetLogin") {
+        const { assetId, loginId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
+        const resp = await fetch("https://api.notion.com/v1/pages/" + dash(assetId), {
+          method: "PATCH",
+          headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Login": { relation: loginId ? [{ id: dash(loginId) }] : [] } } }),
+        });
+        if (!resp.ok) { const e = await resp.json(); return json({ error: e.message || "Update failed" }, 400); }
+        return json({ success: true });
+      }
+
+      if (body.action === "createAssetComponent") {
+        const { parentAssetId, assetType, title } = body;
+        if (!parentAssetId || !assetType) return json({ error: "parentAssetId and assetType required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
+        try {
+          const srcResp = await fetch("https://api.notion.com/v1/pages/" + dash(parentAssetId), {
+            headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+          });
+          const src = await srcResp.json();
+          const sp = src.properties || {};
+          const props = {
+            "Asset Title": { title: [{ type: "text", text: { content: title || (assetType + " — " + (sp["Asset Title"]?.title?.map(x=>x.plain_text).join("") || "Untitled")) } }] },
+            "Asset Type": { select: { name: assetType } },
+            "Asset Status": { select: { name: sp["Asset Status"]?.select?.name || "Development" } },
+            "Status": { select: { name: "Draft" } },
+            "Parent Asset": { relation: [{ id: dash(parentAssetId) }] },
+          };
+          const campRel = sp["Campaign"]?.relation || [];
+          if (campRel.length) props["Campaign"] = { relation: campRel.map(r => ({ id: r.id })) };
+          const csRel = sp["Content Strategy"]?.relation || [];
+          if (csRel.length) props["Content Strategy"] = { relation: csRel.map(r => ({ id: r.id })) };
+          const resp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }),
+          });
+          const result = await resp.json();
+          if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+          return json({ success: true, id: result.id.replace(/-/g,""), assetTitle: props["Asset Title"].title[0].text.content, type: assetType, body: "", images: [], designLink: "", status: "Draft" });
+        } catch(e) { return json({ error: e.message }, 500); }
       }
 
       if (body.action === "renameAssetImage") {
