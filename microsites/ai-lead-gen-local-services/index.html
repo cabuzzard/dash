@@ -139,8 +139,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 2: keywords + SM trends — two col -->
-<div class="two-col">
+<!-- SEC 2: keywords + SM trends + news feed — three col -->
+<div class="three-col">
   <div class="col">
     <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
     <div class="content">
@@ -151,7 +151,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <span>SM Trends</span>
       <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <input id="smTrendsKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:140px;outline:none">
+        <input id="smTrendsKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
         <button id="smTrendsBtn" onclick="runSMTrends()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
       </span>
     </h2>
@@ -159,9 +159,15 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div id="r-smtrends"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
+  <div class="col">
+    <h2>News Feed</h2>
+    <div class="content">
+      <div class="body-text" id="r-news"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
 </div>
 
-<!-- SEC 3: three col — product ideas / tiktok shop / news feed -->
+<!-- SEC 3: three col — product ideas / tiktok shop / kdp best sellers -->
 <div class="three-col">
   <div class="col">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -188,9 +194,15 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2>News Feed</h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>KDP Best Sellers</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="kdpKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="kdpBtn" onclick="runKDPBestSellers()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
     <div class="content">
-      <div class="body-text" id="r-news"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div id="r-kdp"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
@@ -683,6 +695,40 @@ function renderProductIdeas(text) {
   }).join('');
 }
 
+function renderKDPBestSellers(text) {
+  const el = document.getElementById('r-kdp');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No results yet — press ⟳ search to find KDP bestsellers.</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    const title = line.slice(0, colonIdx).trim();
+    const desc  = line.slice(colonIdx + 1).trim();
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${title}</span><span class="sm-trend-body">${desc}</span></div>`;
+  }).join('');
+}
+
+async function runKDPBestSellers() {
+  const btn = document.getElementById('kdpBtn');
+  const el  = document.getElementById('r-kdp');
+  const kwOverride = (document.getElementById('kdpKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching Amazon KDP…</div>';
+  try {
+    const data = await w('getKDPBestSellers', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderKDPBestSellers(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
+
 function renderTikTokShop(text) {
   const el = document.getElementById('r-ttshop');
   if (!el) return;
@@ -785,6 +831,9 @@ async function loadResearch() {
 
     // SEC 3 — TikTok Shop Products field
     renderTikTokShop(r.tikTokShopProducts || '');
+
+    // SEC 3 — KDP Best Sellers field
+    renderKDPBestSellers(r.kdpBestSellers || '');
 
     // News Feed — condense via Claude
     const newsEl = document.getElementById('r-news');

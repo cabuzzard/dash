@@ -1844,6 +1844,7 @@ export default {
             platforms: props["Platforms & Methods"]?.rich_text?.map(t => t.plain_text).join("") || "",
             productIdeas: props["Product Ideas"]?.rich_text?.map(t => t.plain_text).join("") || "",
             tikTokShopProducts: props["TikTok Shop Products"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            kdpBestSellers: props["KDP Best Sellers"]?.rich_text?.map(t => t.plain_text).join("") || "",
             tiktokTrends: props["TikTok Trends"]?.rich_text?.map(t => t.plain_text).join("") || "",
             trendIntelligence: props["Trend Intelligence"]?.rich_text?.map(t => t.plain_text).join("") || "",
             keyMessage: props["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
@@ -1990,6 +1991,94 @@ Rules:
           method: 'PATCH',
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "Trend Intelligence": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+        });
+        if (!patch.ok) {
+          const pe = await patch.json();
+          return json({ error: pe.message || "Notion write failed" }, patch.status);
+        }
+        return json({ success: true, text: result });
+      }
+
+      // ── getKDPBestSellers ──
+      if (body.action === "getKDPBestSellers") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const { researchId, kwOverride } = body;
+        if (!researchId) return json({ error: "researchId required" }, 400);
+
+        const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+
+        let keywords = (kwOverride || "").trim();
+        if (!keywords) {
+          try {
+            const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+            });
+            const resData = await resResp.json();
+            keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+          } catch {}
+        }
+        if (!keywords) return json({ error: "No keywords found — add keywords or enter them manually" }, 400);
+
+        const APIFY_KEY = env.APIFY_KEY || "";
+        if (!APIFY_KEY) return json({ error: "APIFY_KEY secret not set on worker" }, 500);
+
+        // Search Amazon Kindle Store (digital-text) via Apify
+        const kwList = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3);
+        const apifyResp = await fetch(
+          `https://api.apify.com/v2/acts/apify~amazon-search-results-scraper/run-sync-get-dataset-items?token=${APIFY_KEY}&timeout=60&maxItems=15`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              keywords: kwList,
+              maxResultsPerPage: 10,
+              maxPages: 1,
+              category: "digital-text",
+              proxyConfig: { useApifyProxy: true }
+            })
+          }
+        );
+
+        if (!apifyResp.ok) {
+          const ae = await apifyResp.text();
+          return json({ error: `Apify error: ${ae.slice(0, 200)}` }, 502);
+        }
+
+        const items = await apifyResp.json();
+        if (!Array.isArray(items) || !items.length) return json({ error: "No results from Apify — try different keywords" }, 404);
+
+        // Format top results for Claude to clean up
+        const raw = items.slice(0, 15).map(it =>
+          `${it.title || it.name || "Unknown"} | ${it.stars || it.rating || "?"} stars | ${it.price || "?"} | ${it.reviewsCount || 0} reviews`
+        ).join("\n");
+
+        const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5",
+            max_tokens: 1000,
+            system: `You are a KDP publishing analyst. Format these Amazon Kindle ebook bestseller results into a clean, scannable list.
+
+FORMAT — output one line per book:
+TITLE (shortened to 5 words max): price · stars★ · review count reviews — one-line insight about why it sells
+
+Rules:
+- Title in title case, max 5 words, truncate with … if needed
+- No bullets, no numbering, no markdown, no preamble
+- Insight is max 10 words — what makes it a bestseller
+- Output only the formatted lines, nothing else`,
+            messages: [{ role: "user", content: `Kindle ebook bestsellers for keywords "${keywords}":\n\n${raw}` }]
+          })
+        });
+        const claudeData = await claudeResp.json();
+        if (!claudeResp.ok) return json({ error: claudeData.error?.message || "Claude error" }, 502);
+        const result = (claudeData.content?.[0]?.text || "").trim();
+
+        const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "KDP Best Sellers": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
         });
         if (!patch.ok) {
           const pe = await patch.json();
