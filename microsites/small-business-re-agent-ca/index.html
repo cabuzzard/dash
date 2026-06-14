@@ -139,22 +139,52 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 2: keywords — full width -->
+<!-- SEC 2: keywords + SM trends — two col -->
 <div class="two-col">
-  <div class="col" style="grid-column:span 2">
+  <div class="col">
     <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
     <div class="content">
       <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>SM Trends</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="smTrendsKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:140px;outline:none">
+        <button id="smTrendsBtn" onclick="runSMTrends()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-smtrends"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
 </div>
 
-<!-- SEC 3: two col — platforms / news feed -->
-<div class="two-col">
+<!-- SEC 3: three col — product ideas / tiktok shop / news feed -->
+<div class="three-col">
   <div class="col">
-    <h2>Platforms <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>Product Ideas</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="prodIdeasKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="prodIdeasBtn" onclick="runProductIdeas()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
     <div class="content">
-      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div id="r-prodideas"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>TikTok Shop</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="ttShopKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="ttShopBtn" onclick="runTikTokShop()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-ttshop"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
@@ -165,12 +195,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 4: SM posts — full width -->
+<!-- SEC 4: two col — SM posts / platforms -->
 <div class="two-col">
-  <div class="col" style="grid-column:span 2">
-    <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Run research">▶</button></h2>
+  <div class="col">
+    <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Run research">&#x25B6;</button></h2>
     <div class="content">
       <div id="smPostsBox"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Platforms <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
+    <div class="content">
+      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
@@ -454,7 +490,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeAddTitleModal()">✕</button>
     </div>
     <div class="modal-body">
-      <label class="lm-label">Title <span style="color:#e05;">*</span></label>
+      <label class="lm-label">Title <span style="color:var(--danger,#e05);">*</span></label>
       <input class="modal-ta" id="addTitleInput" type="text" placeholder="Title text…" autocomplete="off" style="margin-bottom:12px;" />
       <div id="addTitleStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
     </div>
@@ -464,9 +500,10 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
 </div>
+
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-const CAMPAIGN_ID = "3731f7d3a4bb816f9d9cd5bffda0549d"; // small-business-re-agent-ca
+const CAMPAIGN_ID = "3731f7d3a4bb816f9d9cd5bffda0549d"; // mobility-mentor-fundraising
 const RESEARCH_ID = "3731f7d3a4bb8117b12ddfb70d5a5ced"; // research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/small-business-re-agent-ca/";
 let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
@@ -595,6 +632,108 @@ async function condense(label, raw) {
   }
 }
 
+function renderSMTrends(text) {
+  const el = document.getElementById('r-smtrends');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No trends yet — press ⟳ search to generate.</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    const niche = line.slice(0, colonIdx).trim();
+    const desc  = line.slice(colonIdx + 1).trim();
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${niche}</span><span class="sm-trend-body">${desc}</span></div>`;
+  }).join('');
+}
+
+async function runSMTrends() {
+  const btn = document.getElementById('smTrendsBtn');
+  const el  = document.getElementById('r-smtrends');
+  const kwOverride = (document.getElementById('smTrendsKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
+  try {
+    const data = await w('getSMTrends', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderSMTrends(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
+
+function renderProductIdeas(text) {
+  const el = document.getElementById('r-prodideas');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No ideas yet — press ⟳ search to generate.</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    const name = line.slice(0, colonIdx).trim();
+    const desc = line.slice(colonIdx + 1).trim();
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
+  }).join('');
+}
+
+function renderTikTokShop(text) {
+  const el = document.getElementById('r-ttshop');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No results yet — press ⟳ search to find trending products.</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    const name = line.slice(0, colonIdx).trim();
+    const desc = line.slice(colonIdx + 1).trim();
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
+  }).join('');
+}
+
+async function runTikTokShop() {
+  const btn = document.getElementById('ttShopBtn');
+  const el  = document.getElementById('r-ttshop');
+  const kwOverride = (document.getElementById('ttShopKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching TikTok Shop…</div>';
+  try {
+    const data = await w('getTikTokShopProducts', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderTikTokShop(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
+
+async function runProductIdeas() {
+  const btn = document.getElementById('prodIdeasBtn');
+  const el  = document.getElementById('r-prodideas');
+  const kwOverride = (document.getElementById('prodIdeasKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
+  try {
+    const data = await w('getProductIdeas', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderProductIdeas(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
+
 async function loadResearch() {
   try {
     const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
@@ -637,6 +776,15 @@ async function loadResearch() {
     } else {
       kwEl.innerHTML = '<span class="empty">—</span>';
     }
+
+    // SEC 2 — SM trends from Trend Intelligence field
+    renderSMTrends(r.trendIntelligence || '');
+
+    // SEC 3 — Product Ideas field
+    renderProductIdeas(r.productIdeas || '');
+
+    // SEC 3 — TikTok Shop Products field
+    renderTikTokShop(r.tikTokShopProducts || '');
 
     // News Feed — condense via Claude
     const newsEl = document.getElementById('r-news');
@@ -1715,6 +1863,38 @@ async function copyRenderCommand() {
     statusEl.style.color = '#f0a500';
     statusEl.textContent = '✓ Saved to Notion — clipboard blocked, command in console.';
     console.log('Render command:', cmd);
+  }
+}
+
+// ── ADD TITLE MODAL ──────────────────────────────────────────────────
+function openAddTitleModal() {
+  document.getElementById('addTitleInput').value = '';
+  document.getElementById('addTitleStatus').textContent = '';
+  document.getElementById('addTitleSaveBtn').disabled = false;
+  document.getElementById('addTitleSaveBtn').textContent = 'Create';
+  document.getElementById('addTitleModal').classList.add('open');
+  setTimeout(() => document.getElementById('addTitleInput').focus(), 200);
+}
+function closeAddTitleModal() {
+  document.getElementById('addTitleModal').classList.remove('open');
+}
+document.getElementById('addTitleModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAddTitleModal();
+});
+async function submitAddTitle() {
+  const title = document.getElementById('addTitleInput').value.trim();
+  if (!title) { document.getElementById('addTitleInput').focus(); return; }
+  const btn = document.getElementById('addTitleSaveBtn');
+  const status = document.getElementById('addTitleStatus');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  status.textContent = '';
+  try {
+    await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, status: 'Development' });
+    closeAddTitleModal();
+    loadTitles();
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Create';
   }
 }
 </script>
