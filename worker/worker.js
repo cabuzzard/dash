@@ -2022,20 +2022,14 @@ Rules:
         const APIFY_KEY = env.APIFY_KEY || "";
         if (!APIFY_KEY) return json({ error: "APIFY_KEY secret not set on worker" }, 500);
 
-        // Search Amazon Kindle Store (digital-text) via Apify
-        const kwList = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3);
+        // Search Amazon KDP ebooks via Apify KDP Niche Analyzer
+        const searchTerm = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3).join(" ");
         const apifyResp = await fetch(
-          `https://api.apify.com/v2/acts/apify~amazon-search-results-scraper/run-sync-get-dataset-items?token=${APIFY_KEY}&timeout=60&maxItems=15`,
+          `https://api.apify.com/v2/acts/sarginstudio~kdp-amazon-book-niche-analyzer/run-sync-get-dataset-items?token=${APIFY_KEY}&timeout=90&maxItems=20`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              keywords: kwList,
-              maxResultsPerPage: 10,
-              maxPages: 1,
-              category: "digital-text",
-              proxyConfig: { useApifyProxy: true }
-            })
+            body: JSON.stringify({ searchTerm })
           }
         );
 
@@ -2044,12 +2038,15 @@ Rules:
           return json({ error: `Apify error: ${ae.slice(0, 200)}` }, 502);
         }
 
-        const items = await apifyResp.json();
-        if (!Array.isArray(items) || !items.length) return json({ error: "No results from Apify — try different keywords" }, 404);
+        const results = await apifyResp.json();
+        // Actor returns [{searchTerm, totalBooks, books:[...]}] or direct array
+        const resultObj = Array.isArray(results) ? results[0] : results;
+        const books = (resultObj?.books || []).slice(0, 20);
+        if (!books.length) return json({ error: "No results from Amazon — try different keywords" }, 404);
 
         // Format top results for Claude to clean up
-        const raw = items.slice(0, 15).map(it =>
-          `${it.title || it.name || "Unknown"} | ${it.stars || it.rating || "?"} stars | ${it.price || "?"} | ${it.reviewsCount || 0} reviews`
+        const raw = books.map(b =>
+          `${b.title} | ${b.price || "N/A"} | ${b.rating || "?"}★ | ${b.reviewCount || 0} reviews | score:${b.nicheScore || "?"}`
         ).join("\n");
 
         const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
