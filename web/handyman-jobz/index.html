@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Handyman & Property Improvement — Contra Costa County</title>
+<meta name="description" content="Reliable handyman and property improvement services in Concord, Walnut Creek, Pleasant Hill, Martinez, Clayton, and Lafayette. Free estimates. Call or text 831-818-5680.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --black:     #0A0A0A;
+  --dark:      #111111;
+  --card:      #161616;
+  --card-lt:   #1C1C1C;
+  --border:    rgba(255,255,255,0.08);
+  --border-lt: rgba(255,255,255,0.12);
+  --gold:      #C6F135;
+  --gold-lt:   #D4FF3A;
+  --gold-dim:  rgba(198,241,53,0.12);
+  --white:     #F5F4F0;
+  --muted:     rgba(245,244,240,0.5);
+  --muted-lt:  rgba(245,244,240,0.35);
+  --serif:     'Impact', 'Haettenschweiler', 'Arial Narrow Bold', sans-serif;
+  --sans:      'Plus Jakarta Sans', sans-serif;
+  --radius:    10px;
+  --shadow:    0 2px 24px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 48px rgba(0,0,0,0.6);
+  --glow:      0 0 40px rgba(198,241,53,0.10);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  font-family: var(--sans);
+  background: var(--black);
+  color: var(--white);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── NAV ── */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 200;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 52px;
+  background: rgba(10,10,10,0.94);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+nav.scrolled {
+  border-bottom-color: rgba(198,241,53,0.18);
+  box-shadow: 0 1px 32px rgba(0,0,0,0.5);
+}
+.nav-brand {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--white);
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+.nav-brand span { color: var(--gold); }
+.nav-links {
+  display: flex;
+  list-style: none;
+  gap: 36px;
+}
+.nav-links a {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: var(--white); }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.btn-nav-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 8px 14px;
+  transition: color 0.2s;
+}
+.btn-nav-text:hover { color: var(--white); }
+.btn-nav-primary {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--black);
+  background: var(--gold);
+  text-decoration: none;
+  padding: 10px 22px;
+  border-radius: var(--radius);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-nav-primary:hover {
+  background: var(--gold-lt);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(198,241,53,0.25);
+}
+
+/* ── HERO ── */
+.hero {
+  padding: 148px 52px 96px;
+  background: var(--black);
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -10%; left: 20%;
+  width: 70%; height: 70%;
+  background: radial-gradient(ellipse, rgba(198,241,53,0.05) 0%, transparent 65%);
+  pointer-events: none;
+}
+.hero-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: center;
+}
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 28px;
+}
+.hero-eyebrow::before, .hero-eyebrow::after {
+  content: '';
+  width: 24px; height: 1.5px;
+  background: var(--gold);
+  border-radius: 2px;
+}
+.hero-h1 {
+  font-family: var(--serif);
+  font-size: clamp(42px, 5.5vw, 72px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  color: var(--white);
+  margin-bottom: 24px;
+}
+.hero-h1 em { color: var(--gold); font-style: normal; }
+.hero-sub {
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1.75;
+  margin-bottom: 44px;
+  max-width: 620px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.hero-sub strong { color: var(--white); font-weight: 600; }
+.hero-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 48px;
+}
+.btn-primary {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--black);
+  background: var(--gold);
+  text-decoration: none;
+  padding: 17px 38px;
+  border-radius: var(--radius);
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-primary:hover {
+  background: var(--gold-lt);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(198,241,53,0.3);
+}
+.btn-secondary {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--white);
+  text-decoration: none;
+  padding: 17px 32px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-lt);
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-secondary:hover {
+  border-color: rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.05);
+}
+.hero-areas {
+  font-size: 13px;
+  color: var(--muted-lt);
+  letter-spacing: 0.05em;
+}
+.hero-areas span { color: var(--muted); font-weight: 500; }
+
+/* ── PROOF STRIP ── */
+.proof-strip {
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 20px 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 36px;
+  flex-wrap: wrap;
+}
+.proof-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.proof-check {
+  width: 18px; height: 18px;
+  background: var(--gold-dim);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gold);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+/* ── SECTION BASE ── */
+.section { padding: 96px 52px; }
+.section-inner { max-width: 1180px; margin: 0 auto; }
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 16px;
+}
+.eyebrow::before {
+  content: '';
+  width: 18px; height: 1.5px;
+  background: var(--gold);
+  border-radius: 2px;
+}
+.section-h2 {
+  font-family: var(--serif);
+  font-size: clamp(30px, 3.2vw, 48px);
+  font-weight: 700;
+  line-height: 1.18;
+  letter-spacing: 0.01em;
+  color: var(--white);
+  margin-bottom: 16px;
+}
+.section-h2 em { color: var(--gold); font-style: normal; }
+.section-sub {
+  font-size: 17px;
+  color: var(--muted);
+  line-height: 1.7;
+  max-width: 520px;
+}
+
+/* ── SERVICES ── */
+.services-section { background: var(--dark); }
+.services-head {
+  margin-bottom: 56px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: end;
+}
+.services-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.svc-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  transition: border-color 0.25s, background 0.25s;
+}
+.svc-card:hover {
+  border-color: rgba(198,241,53,0.22);
+  background: var(--card-lt);
+}
+.svc-check {
+  width: 20px; height: 20px;
+  background: var(--gold-dim);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gold);
+  font-size: 10px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.svc-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--white);
+  line-height: 1.4;
+}
+
+/* ── SPECIALIZING IN ── */
+.specialize-section { background: var(--black); }
+.spec-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 48px;
+}
+.spec-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 22px;
+  transition: all 0.25s;
+}
+.spec-card:hover {
+  border-color: rgba(198,241,53,0.22);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+}
+.spec-icon { font-size: 26px; margin-bottom: 14px; display: block; }
+.spec-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--white);
+  line-height: 1.35;
+}
+
+/* ── WHY CALL ── */
+.why-section { background: var(--dark); }
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 52px;
+}
+.why-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px 28px;
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+.why-card:hover {
+  border-color: rgba(198,241,53,0.22);
+  box-shadow: 0 0 0 1px rgba(198,241,53,0.06), var(--shadow);
+}
+.why-num {
+  font-family: var(--serif);
+  font-size: 38px;
+  font-weight: 700;
+  color: var(--gold);
+  line-height: 1;
+  margin-bottom: 12px;
+}
+.why-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 8px;
+}
+.why-desc { font-size: 14px; color: var(--muted); line-height: 1.65; }
+
+/* ── AREAS ── */
+.areas-section { background: var(--black); }
+.areas-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 40px;
+}
+.area-tag {
+  padding: 8px 18px;
+  border: 1px solid var(--border-lt);
+  border-radius: 100px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  transition: all 0.2s;
+}
+.area-tag:hover {
+  border-color: rgba(198,241,53,0.3);
+  color: var(--white);
+  background: var(--gold-dim);
+}
+.area-tag.primary {
+  border-color: rgba(198,241,53,0.25);
+  color: var(--white);
+  background: var(--gold-dim);
+}
+
+/* ── CTA / BOOK ── */
+.book-section { background: var(--dark); }
+.book-box {
+  background: var(--card);
+  border: 1px solid rgba(198,241,53,0.18);
+  border-radius: 20px;
+  padding: 64px 72px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 60px rgba(198,241,53,0.05), var(--shadow-lg);
+}
+.book-box::before {
+  content: '';
+  position: absolute;
+  top: -120px; right: -120px;
+  width: 450px; height: 450px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(198,241,53,0.06) 0%, transparent 60%);
+  pointer-events: none;
+}
+.book-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: start;
+  position: relative;
+  z-index: 1;
+}
+.book-left h2 {
+  font-family: var(--serif);
+  font-size: clamp(26px, 2.8vw, 42px);
+  font-weight: 700;
+  color: var(--white);
+  line-height: 1.22;
+  letter-spacing: 0.01em;
+  margin-bottom: 14px;
+}
+.book-left h2 em { color: var(--gold-lt); font-style: normal; }
+.book-left p {
+  font-size: 16px;
+  color: var(--muted);
+  line-height: 1.7;
+  margin-bottom: 32px;
+  max-width: 400px;
+}
+.cta-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.btn-gold-lg {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--black);
+  background: var(--gold);
+  text-decoration: none;
+  padding: 18px 32px;
+  border-radius: var(--radius);
+  text-align: center;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.btn-gold-lg:hover {
+  background: var(--gold-lt);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(198,241,53,0.32);
+}
+.btn-text-lg {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--white);
+  background: none;
+  border: 1px solid var(--border-lt);
+  text-decoration: none;
+  padding: 18px 32px;
+  border-radius: var(--radius);
+  text-align: center;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.btn-text-lg:hover {
+  border-color: rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.05);
+}
+.cta-divider {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted-lt);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 0;
+}
+.cta-note {
+  font-size: 12px;
+  color: var(--muted-lt);
+  text-align: center;
+  margin-top: 4px;
+}
+
+/* Calendly embed */
+.book-right {
+  background: var(--card-lt);
+  border: 1px solid var(--border-lt);
+  border-radius: 14px;
+  overflow: hidden;
+  min-height: 520px;
+}
+.calendly-inline-widget {
+  min-width: 100%;
+  height: 520px;
+}
+
+/* ── FOOTER ── */
+footer {
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  padding: 48px 52px 32px;
+}
+.footer-inner { max-width: 1180px; margin: 0 auto; }
+.footer-top {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 48px;
+  padding-bottom: 40px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--border);
+}
+.footer-brand-name {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 10px;
+}
+.footer-brand-name span { color: var(--gold); }
+.footer-tagline {
+  font-size: 14px;
+  color: var(--muted-lt);
+  line-height: 1.7;
+  max-width: 280px;
+  margin-bottom: 18px;
+}
+.footer-contact-link {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gold);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s;
+}
+.footer-contact-link:hover { color: var(--gold-lt); }
+.footer-col-head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-lt);
+  margin-bottom: 16px;
+}
+.footer-links { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.footer-links a {
+  font-size: 14px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.footer-links a:hover { color: var(--white); }
+.footer-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.footer-copy { font-size: 13px; color: var(--muted-lt); }
+
+/* ── ANIMATIONS ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.reveal.visible { opacity: 1; transform: translateY(0); }
+.rd1 { transition-delay: 0.08s; }
+.rd2 { transition-delay: 0.16s; }
+.rd3 { transition-delay: 0.24s; }
+.rd4 { transition-delay: 0.32s; }
+.rd5 { transition-delay: 0.40s; }
+.rd6 { transition-delay: 0.48s; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 1024px) {
+  nav { padding: 0 24px; }
+  .nav-links { display: none; }
+  .hero { padding: 120px 24px 72px; }
+  .section { padding: 72px 24px; }
+  .proof-strip { gap: 18px; padding: 18px 24px; }
+  .services-head { grid-template-columns: 1fr; gap: 16px; }
+  .services-grid { grid-template-columns: repeat(2, 1fr); }
+  .spec-grid { grid-template-columns: repeat(2, 1fr); }
+  .why-grid { grid-template-columns: 1fr; }
+  .book-box { padding: 48px 32px; }
+  .book-inner { grid-template-columns: 1fr; gap: 40px; }
+  .footer-top { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  nav { padding: 0 16px; }
+  .btn-nav-text { display: none; }
+  .hero { padding: 100px 16px 56px; }
+  .hero-h1 { font-size: clamp(34px, 9vw, 52px); }
+  .section { padding: 56px 16px; }
+  .proof-strip { padding: 16px; gap: 12px; justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
+  .services-grid { grid-template-columns: 1fr; }
+  .spec-grid { grid-template-columns: 1fr; }
+  .book-box { padding: 32px 20px; }
+  footer { padding: 40px 16px 24px; }
+  .footer-top { grid-template-columns: 1fr; gap: 32px; }
+  .footer-bottom { flex-direction: column; gap: 8px; text-align: center; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="nav">
+  <a href="#" class="nav-brand">Handy<span>man</span> Pro</a>
+  <ul class="nav-links">
+    <li><a href="#services">Services</a></li>
+    <li><a href="#specialize">Who We Help</a></li>
+    <li><a href="#areas">Service Area</a></li>
+    <li><a href="#book">Contact</a></li>
+  </ul>
+  <div class="nav-right">
+    <a href="sms:8318185680" class="btn-nav-text">Text Us</a>
+    <a href="#book" class="btn-nav-primary">Book a Call →</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-eyebrow">Contra Costa County</div>
+    <h1 class="hero-h1">Your project list,<br><em>finally finished.</em></h1>
+    <p class="hero-sub">Reliable handyman and property improvement services for homeowners, landlords, seniors, and real estate investors. <strong>Professional work. Fair pricing. Free estimates.</strong></p>
+    <div class="hero-actions">
+      <a href="https://calendly.com/flipoclock/15min" target="_blank" class="btn-primary">📅 Book a Call — Free</a>
+      <a href="sms:8318185680" class="btn-secondary">💬 Text Us — 831-818-5680</a>
+    </div>
+    <p class="hero-areas">Serving <span>Concord · Walnut Creek · Pleasant Hill · Martinez · Clayton · Lafayette</span> and surrounding communities</p>
+  </div>
+</section>
+
+<!-- PROOF STRIP -->
+<div class="proof-strip">
+  <div class="proof-item"><div class="proof-check">✓</div>Free estimates</div>
+  <div class="proof-item"><div class="proof-check">✓</div>Small jobs welcome</div>
+  <div class="proof-item"><div class="proof-check">✓</div>Professional project management background</div>
+  <div class="proof-item"><div class="proof-check">✓</div>Clean, organized work</div>
+  <div class="proof-item"><div class="proof-check">✓</div>Honest communication</div>
+  <div class="proof-item"><div class="proof-check">✓</div>Fair pricing</div>
+</div>
+
+<!-- SERVICES -->
+<section class="section services-section" id="services">
+  <div class="section-inner">
+    <div class="services-head">
+      <div>
+        <div class="eyebrow">Services Available</div>
+        <h2 class="section-h2">One call covers<br>the whole list.</h2>
+      </div>
+      <p class="section-sub">Whether it's one repair or a full project list, bring it all. No job too small, no list too long.</p>
+    </div>
+    <div class="services-grid">
+      <div class="svc-card reveal"><div class="svc-check">✓</div><div class="svc-name">Backyard Play Set Assembly</div></div>
+      <div class="svc-card reveal rd1"><div class="svc-check">✓</div><div class="svc-name">Pergola Installation &amp; Assembly</div></div>
+      <div class="svc-card reveal rd2"><div class="svc-check">✓</div><div class="svc-name">Fence Repairs</div></div>
+      <div class="svc-card reveal rd3"><div class="svc-check">✓</div><div class="svc-name">Gates &amp; Hardware</div></div>
+      <div class="svc-card reveal rd4"><div class="svc-check">✓</div><div class="svc-name">Drywall Patching &amp; Repairs</div></div>
+      <div class="svc-card reveal rd5"><div class="svc-check">✓</div><div class="svc-name">Trim Carpentry</div></div>
+      <div class="svc-card reveal"><div class="svc-check">✓</div><div class="svc-name">Shelving &amp; Storage Systems</div></div>
+      <div class="svc-card reveal rd1"><div class="svc-check">✓</div><div class="svc-name">Furniture Assembly</div></div>
+      <div class="svc-card reveal rd2"><div class="svc-check">✓</div><div class="svc-name">Door Replacement &amp; Adjustment</div></div>
+      <div class="svc-card reveal rd3"><div class="svc-check">✓</div><div class="svc-name">Window Screens</div></div>
+      <div class="svc-card reveal rd4"><div class="svc-check">✓</div><div class="svc-name">Caulking &amp; Weatherproofing</div></div>
+      <div class="svc-card reveal rd5"><div class="svc-check">✓</div><div class="svc-name">Property Maintenance</div></div>
+      <div class="svc-card reveal"><div class="svc-check">✓</div><div class="svc-name">Rental Turnovers</div></div>
+      <div class="svc-card reveal rd1"><div class="svc-check">✓</div><div class="svc-name">Move-In / Move-Out Repairs</div></div>
+      <div class="svc-card reveal rd2"><div class="svc-check">✓</div><div class="svc-name">Pressure Washing</div></div>
+      <div class="svc-card reveal rd3"><div class="svc-check">✓</div><div class="svc-name">Garden Structures &amp; Raised Beds</div></div>
+      <div class="svc-card reveal rd4"><div class="svc-check">✓</div><div class="svc-name">Backyard Improvements</div></div>
+      <div class="svc-card reveal rd5"><div class="svc-check">✓</div><div class="svc-name">General Labor &amp; Home Projects</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- SPECIALIZING IN -->
+<section class="section specialize-section" id="specialize">
+  <div class="section-inner">
+    <div class="eyebrow">Who We Help</div>
+    <h2 class="section-h2">Specialists in the projects<br>that actually need to <em>get done.</em></h2>
+    <div class="spec-grid">
+      <div class="spec-card reveal">
+        <span class="spec-icon">🏠</span>
+        <div class="spec-name">Homeowner Project Lists</div>
+      </div>
+      <div class="spec-card reveal rd1">
+        <span class="spec-icon">🔑</span>
+        <div class="spec-name">Rental Property Maintenance</div>
+      </div>
+      <div class="spec-card reveal rd2">
+        <span class="spec-icon">🤝</span>
+        <div class="spec-name">Senior Assistance Projects</div>
+      </div>
+      <div class="spec-card reveal rd3">
+        <span class="spec-icon">🏡</span>
+        <div class="spec-name">Real Estate Sale Preparation</div>
+      </div>
+      <div class="spec-card reveal rd4">
+        <span class="spec-icon">🌿</span>
+        <div class="spec-name">Backyard Improvements</div>
+      </div>
+      <div class="spec-card reveal">
+        <span class="spec-icon">🔨</span>
+        <div class="spec-name">Small Construction Projects</div>
+      </div>
+      <div class="spec-card reveal rd1">
+        <span class="spec-icon">📋</span>
+        <div class="spec-name">Property Punch Lists</div>
+      </div>
+      <div class="spec-card reveal rd2">
+        <span class="spec-icon">📦</span>
+        <div class="spec-name">Move-In / Move-Out Work</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WHY CALL -->
+<section class="section why-section">
+  <div class="section-inner">
+    <div class="eyebrow">Why Call</div>
+    <h2 class="section-h2">The kind of person<br>you actually want on the job.</h2>
+    <div class="why-grid">
+      <div class="why-card reveal">
+        <div class="why-num">01</div>
+        <div class="why-title">Professional Project Management Background</div>
+        <p class="why-desc">Every job is approached with the same discipline you'd expect from a general contractor — scoped, scheduled, and completed.</p>
+      </div>
+      <div class="why-card reveal rd1">
+        <div class="why-num">02</div>
+        <div class="why-title">Honest Communication</div>
+        <p class="why-desc">You'll know what's happening, what it costs, and when it's done. No surprises, no runaround.</p>
+      </div>
+      <div class="why-card reveal rd2">
+        <div class="why-num">03</div>
+        <div class="why-title">Clean &amp; Organized Work</div>
+        <p class="why-desc">Your home is treated with respect. The job site is left cleaner than we found it.</p>
+      </div>
+      <div class="why-card reveal rd3">
+        <div class="why-num">04</div>
+        <div class="why-title">Fair Pricing</div>
+        <p class="why-desc">Straightforward, honest rates. No inflated quotes, no nickel-and-diming. You'll know the number before we start.</p>
+      </div>
+      <div class="why-card reveal rd4">
+        <div class="why-num">05</div>
+        <div class="why-title">Free Estimates</div>
+        <p class="why-desc">Come with a list. We'll walk through it together and give you a clear estimate at no cost.</p>
+      </div>
+      <div class="why-card reveal rd5">
+        <div class="why-num">06</div>
+        <div class="why-title">Small Jobs Welcome</div>
+        <p class="why-desc">Most contractors skip the small stuff. We don't. One item or twenty — every job gets the same care.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- AREAS SERVED -->
+<section class="section areas-section" id="areas">
+  <div class="section-inner">
+    <div class="eyebrow">Service Area</div>
+    <h2 class="section-h2">Serving all of<br><em>Contra Costa County.</em></h2>
+    <p class="section-sub">Based in the area. Available throughout the county. If you're not sure whether we come to you — just ask.</p>
+    <div class="areas-grid">
+      <span class="area-tag primary">Concord</span>
+      <span class="area-tag primary">Walnut Creek</span>
+      <span class="area-tag primary">Pleasant Hill</span>
+      <span class="area-tag primary">Martinez</span>
+      <span class="area-tag primary">Clayton</span>
+      <span class="area-tag primary">Lafayette</span>
+      <span class="area-tag">Pittsburg</span>
+      <span class="area-tag">Antioch</span>
+      <span class="area-tag">Brentwood</span>
+      <span class="area-tag">Danville</span>
+      <span class="area-tag">San Ramon</span>
+      <span class="area-tag">Orinda</span>
+      <span class="area-tag">Moraga</span>
+      <span class="area-tag">El Cerrito</span>
+      <span class="area-tag">Hercules</span>
+      <span class="area-tag">Pinole</span>
+    </div>
+  </div>
+</section>
+
+<!-- BOOK / CTA -->
+<section class="section book-section" id="book">
+  <div class="section-inner">
+    <div class="book-box">
+      <div class="book-inner">
+        <div class="book-left">
+          <h2>Ready to get your<br>list <em>done?</em></h2>
+          <p>Book a free 15-minute call to go over your project. No obligation. Just tell me what you need and we'll figure out how to get it done.</p>
+          <div class="cta-options">
+            <a href="https://calendly.com/flipoclock/15min" target="_blank" class="btn-gold-lg">
+              📅 Book a Call — Free
+            </a>
+            <div class="cta-divider">— or —</div>
+            <a href="sms:8318185680" class="btn-text-lg">
+              💬 Text 831-818-5680
+            </a>
+            <a href="tel:8318185680" class="btn-text-lg" style="margin-top:-2px;">
+              📞 Call 831-818-5680
+            </a>
+            <p class="cta-note">Free estimates · Small jobs welcome · Contra Costa County</p>
+          </div>
+        </div>
+        <div class="book-right">
+          <div class="calendly-inline-widget" data-url="https://calendly.com/flipoclock/15min?hide_gdpr_banner=1&background_color=161616&text_color=f5f4f0&primary_color=c6f135"></div>
+          <script type="text/javascript" src="https://assets.calendly.com/assets/external/widget.js" async></script>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-top">
+      <div>
+        <div class="footer-brand-name">Handy<span>man</span> Pro</div>
+        <p class="footer-tagline">Handyman and property improvement services throughout Contra Costa County. Honest work. Fair pricing. Free estimates.</p>
+        <a href="tel:8318185680" class="footer-contact-link">📞 831-818-5680</a>
+      </div>
+      <div>
+        <div class="footer-col-head">Services</div>
+        <ul class="footer-links">
+          <li><a href="#services">Repairs &amp; Carpentry</a></li>
+          <li><a href="#services">Backyard Projects</a></li>
+          <li><a href="#services">Property Maintenance</a></li>
+          <li><a href="#services">Rental Turnovers</a></li>
+          <li><a href="#services">Move-In / Move-Out</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="footer-col-head">Get Started</div>
+        <ul class="footer-links">
+          <li><a href="https://calendly.com/flipoclock/15min" target="_blank">Book a Free Call</a></li>
+          <li><a href="sms:8318185680">Text 831-818-5680</a></li>
+          <li><a href="tel:8318185680">Call 831-818-5680</a></li>
+          <li><a href="#areas">Service Area</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span class="footer-copy">© 2026 Handyman Pro — Contra Costa County</span>
+      <span class="footer-copy">Free estimates · Call or text anytime</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  const nav = document.getElementById('nav');
+  window.addEventListener('scroll', () => {
+    nav.classList.toggle('scrolled', window.scrollY > 20);
+  });
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.06, rootMargin: '0px 0px -24px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
