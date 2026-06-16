@@ -1919,14 +1919,15 @@ Rules:
         const { researchId, field, value } = body;
         if (!researchId || !field) return json({ error: "researchId and field required" }, 400);
         const fieldMap = {
-          productIdeas: "Product Ideas",
-          notes:        "Notes",
-          platforms:    "Platforms & Methods",
-          tiktokTrends: "TikTok Trends",
+          productIdeas:      "Product Ideas",
+          notes:             "Notes",
+          platforms:         "Platforms & Methods",
+          tiktokTrends:      "TikTok Trends",
           trendIntelligence: "Trend Intelligence",
-          newsFeed:     "News Feed",
-          keyMessage:   "Key Message",
-          thoughts:     "Thoughts",
+          newsFeed:          "News Feed",
+          keyMessage:        "Key Message",
+          thoughts:          "Thoughts",
+          uniqueOpportunity: "Unique Opportunity",
         };
         const notionField = fieldMap[field];
         if (!notionField) return json({ error: "Unknown field: " + field }, 400);
@@ -2019,8 +2020,8 @@ Rules:
         }
         if (!keywords) return json({ error: "No keywords found — add keywords or enter them manually" }, 400);
 
-        const APIFY_KEY = env.APIFY_KEY || "";
-        if (!APIFY_KEY) return json({ error: "APIFY_KEY secret not set on worker" }, 500);
+        const APIFY_KEY = (env.APIFY_TOKEN || env.APIFY_KEY || "").trim();
+        if (!APIFY_KEY) return json({ error: "APIFY_TOKEN secret not set on worker" }, 500);
 
         // Search Amazon KDP ebooks via Apify KDP Niche Analyzer
         const searchTerm = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3).join(" ");

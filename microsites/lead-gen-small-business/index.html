@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -119,14 +119,14 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="content">
       <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
-      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3721f7d3a4bb813ebc1de7576df0ca0a" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3721f7d3a4bb8101a3cce42f55bfbec1" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/34b1f7d3a4bb81b6a8a8fee04df94807" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Microsite</div><div class="field-value" id="r-microsite"></div></div>
       <div class="field"><div class="field-label">Live Site</div><div class="field-value" id="r-livesite"></div></div>
     </div>
   </div>
   <div class="col">
-    <h2>Unique Opportunity</h2>
+    <h2>Unique Opportunity <button class="td-add-btn-inline" onclick="openFieldResearchModal('uniqueOpportunity')" title="Generate with AI">&#x25B6;</button></h2>
     <div class="content">
       <div class="body-text" id="r-uniqueopportunity" style="white-space:pre-wrap;min-height:40px;"></div>
     </div>
@@ -160,7 +160,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2>News Feed</h2>
+    <h2>News Feed <button class="td-add-btn-inline" onclick="openFieldResearchModal('newsFeed')" title="Generate with AI">&#x25B6;</button></h2>
     <div class="content">
       <div class="body-text" id="r-news"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -491,6 +491,25 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeSmPromptModal()">Close</button>
       <button class="modal-btn save" id="smPromptSendBtn" onclick="runSmResearch()">Run Research</button>
+    </div>
+  </div>
+</div>
+<!-- FIELD RESEARCH MODAL -->
+<div class="modal-overlay" id="fieldResearchModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="fieldResearchTitle">Generate Field</div>
+      <button class="modal-close" onclick="closeFieldResearchModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="fieldResearchHint"></div>
+      <label class="lm-label" for="fieldResearchPrompt" style="margin-top:14px;">Prompt <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit before running</span></label>
+      <textarea class="modal-ta" id="fieldResearchPrompt" rows="8" style="resize:vertical;min-height:160px!important;"></textarea>
+      <div id="fieldResearchStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeFieldResearchModal()">Close</button>
+      <button class="modal-btn save" id="fieldResearchRunBtn" onclick="runFieldResearch()">&#x25B6; Generate</button>
     </div>
   </div>
 </div>
@@ -1565,6 +1584,88 @@ function closeSmPromptModal() {
 document.getElementById('smPromptModal').addEventListener('click', function(e) {
   if (e.target === this) closeSmPromptModal();
 });
+
+// ── FIELD RESEARCH (Unique Opportunity / News Feed) ──────────────────
+const FIELD_META = {
+  uniqueOpportunity: {
+    title: 'Unique Opportunity — Generate',
+    hint:  'Claude will analyse the campaign keywords and write a Unique Opportunity statement (2–4 paragraphs). The result is saved back to Notion.',
+    promptFn: kws => `You are a campaign strategist. Based on these campaign keywords: ${kws}\n\nWrite a "Unique Opportunity" statement. Identify the specific market gap, timing advantage, or competitive differentiator that makes this campaign uniquely positioned right now. Write 2–4 focused paragraphs. Be specific and persuasive. No headers, no bullets — flowing prose only.`,
+    notionField: 'uniqueOpportunity',
+    renderId: 'r-uniqueopportunity',
+    renderFn: text => { const el = document.getElementById('r-uniqueopportunity'); if (el) el.textContent = text; },
+  },
+  newsFeed: {
+    title: 'News Feed — Generate',
+    hint:  'Claude will write 5–8 relevant news items / trends based on the campaign keywords and save them to Notion.',
+    promptFn: kws => `You are a content researcher. Based on these campaign keywords: ${kws}\n\nGenerate a "News Feed" of 5–8 current news items, trends, or insights relevant to this campaign. Format each entry as:\nHEADLINE: brief context (max 25 words)\n\nKeep each entry tight and actionable. Output only the entries, no preamble.`,
+    notionField: 'newsFeed',
+    renderId: 'r-news',
+    renderFn: async text => { const el = document.getElementById('r-news'); if (el) { el.innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>'; el.innerHTML = await condense('News Feed', text); } },
+  },
+};
+
+let FIELD_RESEARCH_ACTIVE = null;
+
+function openFieldResearchModal(field) {
+  const meta = FIELD_META[field];
+  if (!meta) return;
+  FIELD_RESEARCH_ACTIVE = field;
+  const kws = (RAW && RAW.keywords) ? RAW.keywords : '';
+  document.getElementById('fieldResearchTitle').textContent = meta.title;
+  document.getElementById('fieldResearchHint').textContent  = meta.hint;
+  document.getElementById('fieldResearchPrompt').value      = meta.promptFn(kws || '[keywords not loaded yet]');
+  document.getElementById('fieldResearchStatus').textContent = '';
+  document.getElementById('fieldResearchStatus').style.color = '#888';
+  const btn = document.getElementById('fieldResearchRunBtn');
+  btn.disabled    = false;
+  btn.textContent = '▶ Generate';
+  document.getElementById('fieldResearchModal').classList.add('open');
+}
+
+function closeFieldResearchModal() {
+  document.getElementById('fieldResearchModal').classList.remove('open');
+  FIELD_RESEARCH_ACTIVE = null;
+}
+
+document.getElementById('fieldResearchModal').addEventListener('click', function(e) {
+  if (e.target === this) closeFieldResearchModal();
+});
+
+async function runFieldResearch() {
+  const field = FIELD_RESEARCH_ACTIVE;
+  const meta  = field && FIELD_META[field];
+  if (!meta) return;
+  const prompt = document.getElementById('fieldResearchPrompt').value.trim();
+  if (!prompt) return;
+  const btn    = document.getElementById('fieldResearchRunBtn');
+  const status = document.getElementById('fieldResearchStatus');
+  btn.disabled    = true;
+  btn.textContent = 'Running…';
+  status.textContent = 'Generating with Claude…';
+  status.style.color = '#888';
+  try {
+    const res = await w('sendPrompt', { prompt });
+    if (res.error) throw new Error(res.error);
+    const text = (res.text || '').trim();
+    // Save back to Notion
+    status.textContent = 'Saving to Notion…';
+    const rid = RESEARCH_ID_LIVE || RESEARCH_ID;
+    await w('updateResearch', { researchId: rid, field: meta.notionField, value: text });
+    // Re-render section
+    await meta.renderFn(text);
+    status.textContent = '✓ Done — section updated.';
+    status.style.color = '#5ec95e';
+    btn.textContent = '▶ Generate';
+    btn.disabled = false;
+    setTimeout(() => closeFieldResearchModal(), 1400);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#ff6b6b';
+    btn.disabled    = false;
+    btn.textContent = '▶ Generate';
+  }
+}
 
 async function runSmResearch() {
   const kwsRaw = document.getElementById('smResearchKws').value.trim();
