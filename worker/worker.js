@@ -1932,10 +1932,16 @@ Rules:
         const notionField = fieldMap[field];
         if (!notionField) return json({ error: "Unknown field: " + field }, 400);
         const dashed = researchId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        // Notion rich_text blocks max 2000 chars — chunk if needed
+        const rtChunks = [];
+        const rtStr = value || "";
+        for (let i = 0; i < Math.max(rtStr.length, 1); i += 2000) {
+          rtChunks.push({ type: "text", text: { content: rtStr.slice(i, i + 2000) } });
+        }
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { [notionField]: { rich_text: [{ type: "text", text: { content: value || "" } }] } } })
+          body: JSON.stringify({ properties: { [notionField]: { rich_text: rtChunks } } })
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
