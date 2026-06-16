@@ -3004,7 +3004,21 @@ function switchTab(name) {
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
   if (name === 'debug'     && !debugTabLoaded) { debugTabLoaded = true; initDebugTab(); }
   if (name === 'prompts'   && !promptsTabLoaded) { promptsTabLoaded = true; initPromptsTab(); }
-  if (name === 'trades'    && !tradesLoaded)     { tradesLoaded     = true; loadTrades(); loadWatchlist(); }
+  if (name === 'trades') {
+    if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); }
+    startTradesAutoRefresh();
+  } else {
+    stopTradesAutoRefresh();
+  }
+}
+
+let _tradesRefreshTimer = null;
+function startTradesAutoRefresh() {
+  stopTradesAutoRefresh();
+  _tradesRefreshTimer = setInterval(() => { loadTrades(); loadWatchlist(); }, 5 * 60 * 1000);
+}
+function stopTradesAutoRefresh() {
+  if (_tradesRefreshTimer) { clearInterval(_tradesRefreshTimer); _tradesRefreshTimer = null; }
 }
 
 // ── DOMAINS TAB ───────────────────────────────────────────────────────
