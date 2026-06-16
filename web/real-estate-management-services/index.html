@@ -9,32 +9,36 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --black:     #141D45;
-  --dark:      #1A2456;
-  --card:      #1E2A62;
-  --card-lt:   #243070;
-  --border:    rgba(255,255,255,0.08);
-  --border-lt: rgba(255,255,255,0.14);
-  --gold:      #F06820;
-  --gold-lt:   #FF7A30;
-  --gold-dim:  rgba(240,104,32,0.15);
-  --white:     #F5F4F0;
-  --muted:     rgba(245,244,240,0.55);
-  --muted-lt:  rgba(245,244,240,0.35);
+  --bg:        #F8FAFC;
+  --surface:   #FFFFFF;
+  --navy:      #141D45;
+  --navy-md:   #1A2456;
+  --navy-lt:   #243070;
+  --accent:    #1E40AF;
+  --accent-lt: #2563EB;
+  --text:      #0F172A;
+  --text-md:   #334155;
+  --muted:     #64748B;
+  --muted-lt:  #94A3B8;
+  --border:    #E2E8F0;
+  --border-md: #CBD5E1;
+  --card-bg:   #FFFFFF;
+  --card-bg2:  #F1F5F9;
+  --navy-dim:  rgba(20,29,69,0.07);
   --serif:     'Oswald', 'Arial Narrow', sans-serif;
   --sans:      'Plus Jakarta Sans', sans-serif;
   --radius:    10px;
-  --shadow:    0 2px 24px rgba(0,0,0,0.4);
-  --shadow-lg: 0 8px 48px rgba(0,0,0,0.5);
-  --glow:      0 0 40px rgba(240,104,32,0.12);
+  --shadow-sm: 0 1px 4px rgba(15,23,42,0.07), 0 1px 2px rgba(15,23,42,0.05);
+  --shadow:    0 4px 16px rgba(15,23,42,0.08), 0 1px 4px rgba(15,23,42,0.06);
+  --shadow-lg: 0 12px 40px rgba(15,23,42,0.10), 0 2px 8px rgba(15,23,42,0.06);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; font-size: 16px; }
 body {
   font-family: var(--sans);
-  background: var(--black);
-  color: var(--white);
+  background: var(--bg);
+  color: var(--text);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
@@ -44,29 +48,26 @@ nav {
   position: fixed;
   top: 0; left: 0; right: 0;
   z-index: 200;
-  height: 72px;
+  height: 68px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 52px;
-  background: rgba(10,10,10,0.94);
-  backdrop-filter: blur(16px);
+  background: rgba(255,255,255,0.96);
+  backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
-  transition: border-color 0.3s, box-shadow 0.3s;
+  transition: box-shadow 0.3s;
 }
-nav.scrolled {
-  border-bottom-color: rgba(240,104,32,0.18);
-  box-shadow: 0 1px 32px rgba(0,0,0,0.5);
-}
+nav.scrolled { box-shadow: 0 2px 24px rgba(15,23,42,0.09); }
 .nav-brand {
   font-family: var(--serif);
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 700;
-  color: var(--white);
+  color: var(--navy);
   letter-spacing: 0.02em;
   text-decoration: none;
 }
-.nav-brand span { color: var(--gold); }
+.nav-brand span { color: var(--accent); }
 .nav-links {
   display: flex;
   list-style: none;
@@ -79,7 +80,7 @@ nav.scrolled {
   text-decoration: none;
   transition: color 0.2s;
 }
-.nav-links a:hover { color: var(--white); }
+.nav-links a:hover { color: var(--text); }
 .nav-right { display: flex; align-items: center; gap: 10px; }
 .btn-nav-text {
   font-size: 14px;
@@ -89,12 +90,12 @@ nav.scrolled {
   padding: 8px 14px;
   transition: color 0.2s;
 }
-.btn-nav-text:hover { color: var(--white); }
+.btn-nav-text:hover { color: var(--text); }
 .btn-nav-primary {
   font-size: 14px;
   font-weight: 700;
-  color: var(--black);
-  background: var(--gold);
+  color: #fff;
+  background: var(--navy);
   text-decoration: none;
   padding: 10px 22px;
   border-radius: var(--radius);
@@ -102,193 +103,193 @@ nav.scrolled {
   white-space: nowrap;
 }
 .btn-nav-primary:hover {
-  background: var(--gold-lt);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(240,104,32,0.3);
+  background: var(--navy-md);
+  box-shadow: 0 4px 14px rgba(20,29,69,0.22);
 }
 
 /* ── HERO ── */
 .hero {
-  padding: 148px 52px 96px;
-  background: var(--black);
+  padding: 144px 52px 96px;
+  background: var(--surface);
   position: relative;
-  overflow: hidden;
+  border-bottom: 1px solid var(--border);
 }
 .hero::before {
   content: '';
   position: absolute;
-  top: -10%; left: 20%;
-  width: 70%; height: 70%;
-  background: radial-gradient(ellipse, rgba(240,104,32,0.06) 0%, transparent 65%);
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 50% at 70% 30%, rgba(30,64,175,0.045) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 60% at 20% 80%, rgba(20,29,69,0.03) 0%, transparent 60%);
   pointer-events: none;
 }
 .hero-inner {
-  max-width: 900px;
+  max-width: 860px;
   margin: 0 auto;
   text-align: center;
+  position: relative;
 }
 .hero-eyebrow {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--gold);
+  color: var(--accent);
   margin-bottom: 28px;
-}
-.hero-eyebrow::before, .hero-eyebrow::after {
-  content: '';
-  width: 24px; height: 1.5px;
-  background: var(--gold);
-  border-radius: 2px;
+  padding: 6px 16px;
+  border: 1px solid rgba(30,64,175,0.2);
+  border-radius: 100px;
+  background: rgba(30,64,175,0.05);
 }
 .hero-h1 {
   font-family: var(--serif);
-  font-size: clamp(42px, 5.5vw, 72px);
+  font-size: clamp(40px, 5.2vw, 68px);
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.08;
   letter-spacing: 0.01em;
-  color: var(--white);
+  color: var(--navy);
   margin-bottom: 24px;
 }
-.hero-h1 em { color: var(--gold); font-style: normal; }
+.hero-h1 em { color: var(--accent); font-style: normal; }
 .hero-sub {
   font-size: 18px;
   font-weight: 400;
-  color: var(--muted);
+  color: var(--text-md);
   line-height: 1.75;
   margin-bottom: 44px;
-  max-width: 640px;
+  max-width: 600px;
   margin-left: auto;
   margin-right: auto;
 }
-.hero-sub strong { color: var(--white); font-weight: 600; }
+.hero-sub strong { color: var(--text); font-weight: 600; }
 .hero-actions {
   display: flex;
-  gap: 14px;
+  gap: 12px;
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  margin-bottom: 48px;
+  margin-bottom: 52px;
 }
 .btn-primary {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
-  color: var(--black);
-  background: var(--gold);
+  color: #fff;
+  background: var(--navy);
   text-decoration: none;
-  padding: 17px 38px;
+  padding: 16px 36px;
   border-radius: var(--radius);
   transition: all 0.2s;
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  box-shadow: 0 2px 10px rgba(20,29,69,0.18);
 }
 .btn-primary:hover {
-  background: var(--gold-lt);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(240,104,32,0.35);
+  background: var(--navy-md);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(20,29,69,0.24);
 }
 .btn-secondary {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  color: var(--white);
+  color: var(--navy);
   text-decoration: none;
-  padding: 17px 32px;
+  padding: 16px 30px;
   border-radius: var(--radius);
-  border: 1px solid var(--border-lt);
+  border: 1.5px solid var(--border-md);
+  background: var(--surface);
   transition: all 0.2s;
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 .btn-secondary:hover {
-  border-color: rgba(255,255,255,0.3);
-  background: rgba(255,255,255,0.05);
+  border-color: var(--navy);
+  background: var(--navy-dim);
 }
-.hero-areas {
+.hero-note {
   font-size: 13px;
   color: var(--muted-lt);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
 }
-.hero-areas span { color: var(--muted); font-weight: 500; }
+.hero-note span { color: var(--muted); font-weight: 500; }
 
-/* ── PROOF STRIP ── */
-.proof-strip {
-  background: var(--card);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  padding: 20px 52px;
+/* ── METRICS STRIP ── */
+.metrics-strip {
+  background: var(--navy);
+  padding: 28px 52px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 36px;
-  flex-wrap: wrap;
+  gap: 0;
 }
-.proof-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 13px;
+.metric-item {
+  flex: 1;
+  max-width: 220px;
+  text-align: center;
+  padding: 0 32px;
+  border-right: 1px solid rgba(255,255,255,0.1);
+}
+.metric-item:last-child { border-right: none; }
+.metric-num {
+  font-family: var(--serif);
+  font-size: 32px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.metric-label {
+  font-size: 12px;
   font-weight: 500;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.proof-check {
-  width: 18px; height: 18px;
-  background: var(--gold-dim);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--gold);
-  font-size: 10px;
-  flex-shrink: 0;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: 0.04em;
 }
 
 /* ── SECTION BASE ── */
-.section { padding: 96px 52px; }
-.section-inner { max-width: 1180px; margin: 0 auto; }
+.section { padding: 88px 52px; }
+.section-inner { max-width: 1160px; margin: 0 auto; }
 .eyebrow {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--gold);
-  margin-bottom: 16px;
+  color: var(--accent);
+  margin-bottom: 14px;
 }
 .eyebrow::before {
   content: '';
-  width: 18px; height: 1.5px;
-  background: var(--gold);
+  width: 16px; height: 2px;
+  background: var(--accent);
   border-radius: 2px;
 }
 .section-h2 {
   font-family: var(--serif);
-  font-size: clamp(30px, 3.2vw, 48px);
+  font-size: clamp(28px, 3vw, 44px);
   font-weight: 700;
   line-height: 1.18;
   letter-spacing: 0.01em;
-  color: var(--white);
-  margin-bottom: 16px;
+  color: var(--navy);
+  margin-bottom: 14px;
 }
-.section-h2 em { color: var(--gold); font-style: normal; }
+.section-h2 em { color: var(--accent); font-style: normal; }
 .section-sub {
-  font-size: 17px;
+  font-size: 16px;
   color: var(--muted);
-  line-height: 1.7;
-  max-width: 520px;
+  line-height: 1.75;
+  max-width: 500px;
 }
 
 /* ── SERVICES ── */
-.services-section { background: var(--dark); }
+.services-section { background: var(--bg); }
 .services-head {
-  margin-bottom: 56px;
+  margin-bottom: 48px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 48px;
@@ -297,239 +298,235 @@ nav.scrolled {
 .services-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
+  gap: 10px;
 }
 .svc-card {
-  background: var(--card);
+  background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 22px 20px;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  transition: border-color 0.25s, background 0.25s;
-}
-.svc-card:hover {
-  border-color: rgba(240,104,32,0.28);
-  background: var(--card-lt);
-}
-.svc-check {
-  width: 20px; height: 20px;
-  background: var(--gold-dim);
-  border-radius: 50%;
+  padding: 18px 16px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  color: var(--gold);
-  font-size: 10px;
-  flex-shrink: 0;
-  margin-top: 1px;
+  gap: 11px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: var(--shadow-sm);
 }
-.svc-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--white);
-  line-height: 1.4;
-}
-
-/* ── WHO WE HELP ── */
-.specialize-section { background: var(--black); }
-.spec-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-top: 48px;
-}
-.spec-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 28px 22px;
-  transition: all 0.25s;
-}
-.spec-card:hover {
-  border-color: rgba(240,104,32,0.28);
-  transform: translateY(-3px);
+.svc-card:hover {
+  border-color: rgba(30,64,175,0.3);
   box-shadow: var(--shadow);
 }
-.spec-icon { font-size: 26px; margin-bottom: 14px; display: block; }
-.spec-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--white);
+.svc-dot {
+  width: 6px; height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.svc-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
   line-height: 1.35;
 }
 
-/* ── WHY CALL ── */
-.why-section { background: var(--dark); }
+/* ── WHO WE HELP ── */
+.who-section { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.who-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: 44px;
+}
+.who-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 26px 20px;
+  transition: all 0.22s;
+}
+.who-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+  background: var(--surface);
+}
+.who-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.who-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--navy);
+  line-height: 1.35;
+}
+.who-desc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-top: 6px;
+}
+
+/* ── WHY ── */
+.why-section { background: var(--bg); }
 .why-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
-  margin-top: 52px;
+  gap: 18px;
+  margin-top: 48px;
 }
 .why-card {
-  background: var(--card);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 32px 28px;
-  transition: border-color 0.25s, box-shadow 0.25s;
+  padding: 32px 26px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: var(--shadow-sm);
 }
 .why-card:hover {
-  border-color: rgba(240,104,32,0.28);
-  box-shadow: 0 0 0 1px rgba(240,104,32,0.06), var(--shadow);
+  border-color: rgba(30,64,175,0.25);
+  box-shadow: var(--shadow);
 }
 .why-num {
   font-family: var(--serif);
-  font-size: 38px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--gold);
-  line-height: 1;
+  letter-spacing: 0.1em;
+  color: var(--accent);
   margin-bottom: 12px;
+  text-transform: uppercase;
 }
 .why-title {
   font-size: 16px;
   font-weight: 700;
-  color: var(--white);
+  color: var(--navy);
   margin-bottom: 8px;
+  line-height: 1.3;
 }
 .why-desc { font-size: 14px; color: var(--muted); line-height: 1.65; }
 
 /* ── AREAS ── */
-.areas-section { background: var(--black); }
+.areas-section { background: var(--surface); border-top: 1px solid var(--border); }
 .areas-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 40px;
+  gap: 8px;
+  margin-top: 36px;
 }
 .area-tag {
-  padding: 8px 18px;
-  border: 1px solid var(--border-lt);
+  padding: 7px 16px;
+  border: 1px solid var(--border-md);
   border-radius: 100px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--muted);
-  transition: all 0.2s;
+  background: var(--surface);
+  transition: all 0.18s;
 }
 .area-tag:hover {
-  border-color: rgba(240,104,32,0.35);
-  color: var(--white);
-  background: var(--gold-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(30,64,175,0.05);
 }
 .area-tag.primary {
-  border-color: rgba(240,104,32,0.3);
-  color: var(--white);
-  background: var(--gold-dim);
+  border-color: var(--navy);
+  color: var(--navy);
+  background: var(--navy-dim);
+  font-weight: 600;
 }
 
 /* ── CTA / BOOK ── */
-.book-section { background: var(--dark); }
+.book-section { background: var(--navy); }
 .book-box {
-  background: var(--card);
-  border: 1px solid rgba(240,104,32,0.2);
-  border-radius: 20px;
-  padding: 64px 72px;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 0 60px rgba(240,104,32,0.06), var(--shadow-lg);
-}
-.book-box::before {
-  content: '';
-  position: absolute;
-  top: -120px; right: -120px;
-  width: 450px; height: 450px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(240,104,32,0.07) 0%, transparent 60%);
-  pointer-events: none;
-}
-.book-inner {
+  max-width: 1100px;
+  margin: 0 auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 64px;
   align-items: start;
-  position: relative;
-  z-index: 1;
 }
 .book-left h2 {
   font-family: var(--serif);
   font-size: clamp(26px, 2.8vw, 42px);
   font-weight: 700;
-  color: var(--white);
-  line-height: 1.22;
+  color: #fff;
+  line-height: 1.18;
   letter-spacing: 0.01em;
   margin-bottom: 14px;
 }
-.book-left h2 em { color: var(--gold-lt); font-style: normal; }
+.book-left h2 em { color: rgba(255,255,255,0.65); font-style: normal; }
 .book-left p {
   font-size: 16px;
-  color: var(--muted);
-  line-height: 1.7;
+  color: rgba(255,255,255,0.6);
+  line-height: 1.75;
   margin-bottom: 32px;
   max-width: 400px;
 }
 .cta-options {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
-.btn-gold-lg {
-  font-size: 16px;
+.btn-white {
+  font-size: 15px;
   font-weight: 700;
-  color: var(--black);
-  background: var(--gold);
+  color: var(--navy);
+  background: #fff;
   text-decoration: none;
-  padding: 18px 32px;
+  padding: 17px 30px;
   border-radius: var(--radius);
   text-align: center;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 9px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
 }
-.btn-gold-lg:hover {
-  background: var(--gold-lt);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(240,104,32,0.35);
+.btn-white:hover {
+  background: #f0f4ff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.2);
 }
-.btn-text-lg {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--white);
+.btn-outline-white {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
   background: none;
-  border: 1px solid var(--border-lt);
+  border: 1.5px solid rgba(255,255,255,0.25);
   text-decoration: none;
-  padding: 18px 32px;
+  padding: 17px 30px;
   border-radius: var(--radius);
   text-align: center;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 9px;
 }
-.btn-text-lg:hover {
-  border-color: rgba(255,255,255,0.3);
-  background: rgba(255,255,255,0.05);
+.btn-outline-white:hover {
+  border-color: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.06);
 }
 .cta-divider {
   text-align: center;
-  font-size: 12px;
-  color: var(--muted-lt);
-  letter-spacing: 0.08em;
+  font-size: 11px;
+  color: rgba(255,255,255,0.3);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 4px 0;
+  padding: 2px 0;
 }
 .cta-note {
   font-size: 12px;
-  color: var(--muted-lt);
+  color: rgba(255,255,255,0.35);
   text-align: center;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 .book-right {
-  background: var(--card-lt);
-  border: 1px solid var(--border-lt);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 14px;
   overflow: hidden;
   min-height: 520px;
@@ -541,52 +538,52 @@ nav.scrolled {
 
 /* ── FOOTER ── */
 footer {
-  background: var(--card);
+  background: var(--surface);
   border-top: 1px solid var(--border);
   padding: 48px 52px 32px;
 }
-.footer-inner { max-width: 1180px; margin: 0 auto; }
+.footer-inner { max-width: 1160px; margin: 0 auto; }
 .footer-top {
   display: grid;
   grid-template-columns: 1.6fr 1fr 1fr;
   gap: 48px;
-  padding-bottom: 40px;
-  margin-bottom: 32px;
+  padding-bottom: 36px;
+  margin-bottom: 28px;
   border-bottom: 1px solid var(--border);
 }
 .footer-brand-name {
   font-family: var(--serif);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  color: var(--white);
+  color: var(--navy);
   margin-bottom: 10px;
 }
-.footer-brand-name span { color: var(--gold); }
+.footer-brand-name span { color: var(--accent); }
 .footer-tagline {
   font-size: 14px;
-  color: var(--muted-lt);
+  color: var(--muted);
   line-height: 1.7;
-  max-width: 280px;
-  margin-bottom: 18px;
+  max-width: 270px;
+  margin-bottom: 16px;
 }
 .footer-contact-link {
   font-size: 14px;
   font-weight: 600;
-  color: var(--gold);
+  color: var(--navy);
   text-decoration: none;
   display: flex;
   align-items: center;
   gap: 6px;
   transition: color 0.2s;
 }
-.footer-contact-link:hover { color: var(--gold-lt); }
+.footer-contact-link:hover { color: var(--accent); }
 .footer-col-head {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted-lt);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 .footer-links { list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .footer-links a {
@@ -595,7 +592,7 @@ footer {
   text-decoration: none;
   transition: color 0.2s;
 }
-.footer-links a:hover { color: var(--white); }
+.footer-links a:hover { color: var(--navy); }
 .footer-bottom {
   display: flex;
   justify-content: space-between;
@@ -606,44 +603,46 @@ footer {
 /* ── ANIMATIONS ── */
 .reveal {
   opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
+  transform: translateY(16px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
 }
 .reveal.visible { opacity: 1; transform: translateY(0); }
-.rd1 { transition-delay: 0.08s; }
-.rd2 { transition-delay: 0.16s; }
-.rd3 { transition-delay: 0.24s; }
-.rd4 { transition-delay: 0.32s; }
-.rd5 { transition-delay: 0.40s; }
-.rd6 { transition-delay: 0.48s; }
+.rd1 { transition-delay: 0.07s; }
+.rd2 { transition-delay: 0.14s; }
+.rd3 { transition-delay: 0.21s; }
+.rd4 { transition-delay: 0.28s; }
+.rd5 { transition-delay: 0.35s; }
+.rd6 { transition-delay: 0.42s; }
 
 /* ── RESPONSIVE ── */
 @media (max-width: 1024px) {
   nav { padding: 0 24px; }
   .nav-links { display: none; }
-  .hero { padding: 120px 24px 72px; }
-  .section { padding: 72px 24px; }
-  .proof-strip { gap: 18px; padding: 18px 24px; }
-  .services-head { grid-template-columns: 1fr; gap: 16px; }
+  .hero { padding: 116px 24px 72px; }
+  .section { padding: 68px 24px; }
+  .metrics-strip { padding: 24px; gap: 0; }
+  .metric-item { padding: 0 20px; }
+  .services-head { grid-template-columns: 1fr; gap: 14px; }
   .services-grid { grid-template-columns: repeat(2, 1fr); }
-  .spec-grid { grid-template-columns: repeat(2, 1fr); }
+  .who-grid { grid-template-columns: repeat(2, 1fr); }
   .why-grid { grid-template-columns: 1fr; }
-  .book-box { padding: 48px 32px; }
-  .book-inner { grid-template-columns: 1fr; gap: 40px; }
+  .book-section { padding: 64px 24px; }
+  .book-box { grid-template-columns: 1fr; gap: 40px; }
   .footer-top { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 640px) {
   nav { padding: 0 16px; }
   .btn-nav-text { display: none; }
-  .hero { padding: 100px 16px 56px; }
-  .hero-h1 { font-size: clamp(34px, 9vw, 52px); }
-  .section { padding: 56px 16px; }
-  .proof-strip { padding: 16px; gap: 12px; justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
+  .hero { padding: 96px 16px 52px; }
+  .hero-h1 { font-size: clamp(32px, 9vw, 48px); }
+  .section { padding: 52px 16px; }
+  .metrics-strip { padding: 20px 16px; flex-wrap: wrap; gap: 20px; }
+  .metric-item { border-right: none; max-width: 50%; flex: 0 0 50%; }
   .services-grid { grid-template-columns: 1fr; }
-  .spec-grid { grid-template-columns: 1fr; }
-  .book-box { padding: 32px 20px; }
+  .who-grid { grid-template-columns: 1fr; }
+  .book-section { padding: 52px 16px; }
   footer { padding: 40px 16px 24px; }
-  .footer-top { grid-template-columns: 1fr; gap: 32px; }
+  .footer-top { grid-template-columns: 1fr; gap: 28px; }
   .footer-bottom { flex-direction: column; gap: 8px; text-align: center; }
 }
 </style>
@@ -652,7 +651,7 @@ footer {
 
 <!-- NAV -->
 <nav id="nav">
-  <a href="#" class="nav-brand">RE <span>Management</span></a>
+  <a href="#" class="nav-brand">RE <span>Management</span> Services</a>
   <ul class="nav-links">
     <li><a href="#services">Services</a></li>
     <li><a href="#who">Who We Help</a></li>
@@ -661,32 +660,42 @@ footer {
   </ul>
   <div class="nav-right">
     <a href="sms:8318185680" class="btn-nav-text">Text Us</a>
-    <a href="#book" class="btn-nav-primary">Book a Call →</a>
+    <a href="#book" class="btn-nav-primary">Book a Consultation →</a>
   </div>
 </nav>
 
 <!-- HERO -->
 <section class="hero">
   <div class="hero-inner">
-    <div class="hero-eyebrow">Real Estate Management Services</div>
-    <h1 class="hero-h1">Your build, your budget,<br><em>actually on track.</em></h1>
-    <p class="hero-sub">Professional construction project management and contractor oversight for real estate investors, developers, and owner-builders. <strong>Keep projects on schedule, on budget, and out of trouble.</strong></p>
+    <div class="hero-eyebrow">Construction &amp; Contractor Management</div>
+    <h1 class="hero-h1">Your project runs cleaner<br>when someone <em>manages it.</em></h1>
+    <p class="hero-sub">Professional construction project management and contractor oversight for real estate investors, developers, and owner-builders. <strong>On schedule. On budget. No surprises.</strong></p>
     <div class="hero-actions">
-      <a href="https://calendly.com/flipoclock/15min" target="_blank" class="btn-primary">📅 Book a Free Consultation</a>
-      <a href="sms:8318185680" class="btn-secondary">💬 Text Us — 831-818-5680</a>
+      <a href="https://calendly.com/flipoclock/15min" target="_blank" class="btn-primary">Book a Free Consultation</a>
+      <a href="tel:8318185680" class="btn-secondary">Call 831-818-5680</a>
     </div>
-    <p class="hero-areas">Serving <span>Contra Costa County · Bay Area · Greater Sacramento</span> and surrounding regions</p>
+    <p class="hero-note">Serving <span>Contra Costa County · Bay Area · Greater Sacramento</span></p>
   </div>
 </section>
 
-<!-- PROOF STRIP -->
-<div class="proof-strip">
-  <div class="proof-item"><div class="proof-check">✓</div>Construction project management</div>
-  <div class="proof-item"><div class="proof-check">✓</div>Contractor vetting &amp; oversight</div>
-  <div class="proof-item"><div class="proof-check">✓</div>Budget &amp; schedule tracking</div>
-  <div class="proof-item"><div class="proof-check">✓</div>Fix &amp; flip · ADU · new construction</div>
-  <div class="proof-item"><div class="proof-check">✓</div>Owner's representation</div>
-  <div class="proof-item"><div class="proof-check">✓</div>Free consultation</div>
+<!-- METRICS STRIP -->
+<div class="metrics-strip">
+  <div class="metric-item">
+    <div class="metric-num">100%</div>
+    <div class="metric-label">Investor-first mindset</div>
+  </div>
+  <div class="metric-item">
+    <div class="metric-num">18+</div>
+    <div class="metric-label">Services covered</div>
+  </div>
+  <div class="metric-item">
+    <div class="metric-num">Free</div>
+    <div class="metric-label">Initial consultation</div>
+  </div>
+  <div class="metric-item">
+    <div class="metric-num">Bay Area</div>
+    <div class="metric-label">Service region</div>
+  </div>
 </div>
 
 <!-- SERVICES -->
@@ -694,71 +703,79 @@ footer {
   <div class="section-inner">
     <div class="services-head">
       <div>
-        <div class="eyebrow">Services Available</div>
+        <div class="eyebrow">Services</div>
         <h2 class="section-h2">End-to-end management<br>from bid to <em>closeout.</em></h2>
       </div>
-      <p class="section-sub">Whether you need someone to run the whole project or just keep your GC honest, we step in where you need us most.</p>
+      <p class="section-sub">Step in at any phase — full project oversight, contractor coordination, or just someone to review bids and keep your GC honest.</p>
     </div>
     <div class="services-grid">
-      <div class="svc-card reveal"><div class="svc-check">✓</div><div class="svc-name">Construction Project Management</div></div>
-      <div class="svc-card reveal rd1"><div class="svc-check">✓</div><div class="svc-name">Contractor Vetting &amp; Selection</div></div>
-      <div class="svc-card reveal rd2"><div class="svc-check">✓</div><div class="svc-name">Subcontractor Coordination</div></div>
-      <div class="svc-card reveal rd3"><div class="svc-check">✓</div><div class="svc-name">Construction Schedule Management</div></div>
-      <div class="svc-card reveal rd4"><div class="svc-check">✓</div><div class="svc-name">Budget Tracking &amp; Cost Control</div></div>
-      <div class="svc-card reveal rd5"><div class="svc-check">✓</div><div class="svc-name">Owner's Representation</div></div>
-      <div class="svc-card reveal"><div class="svc-check">✓</div><div class="svc-name">Bid Review &amp; Negotiation</div></div>
-      <div class="svc-card reveal rd1"><div class="svc-check">✓</div><div class="svc-name">Construction Site Oversight</div></div>
-      <div class="svc-card reveal rd2"><div class="svc-check">✓</div><div class="svc-name">Punch List Management</div></div>
-      <div class="svc-card reveal rd3"><div class="svc-check">✓</div><div class="svc-name">Draw Request Management</div></div>
-      <div class="svc-card reveal rd4"><div class="svc-check">✓</div><div class="svc-name">Permit &amp; Inspection Coordination</div></div>
-      <div class="svc-card reveal rd5"><div class="svc-check">✓</div><div class="svc-name">Fix &amp; Flip Project Management</div></div>
-      <div class="svc-card reveal"><div class="svc-check">✓</div><div class="svc-name">ADU Construction Management</div></div>
-      <div class="svc-card reveal rd1"><div class="svc-check">✓</div><div class="svc-name">New Construction Oversight</div></div>
-      <div class="svc-card reveal rd2"><div class="svc-check">✓</div><div class="svc-name">Contractor Communication Systems</div></div>
-      <div class="svc-card reveal rd3"><div class="svc-check">✓</div><div class="svc-name">Scope of Work Development</div></div>
-      <div class="svc-card reveal rd4"><div class="svc-check">✓</div><div class="svc-name">Change Order Management</div></div>
-      <div class="svc-card reveal rd5"><div class="svc-check">✓</div><div class="svc-name">Project Closeout &amp; Documentation</div></div>
+      <div class="svc-card reveal"><div class="svc-dot"></div><div class="svc-name">Construction Project Management</div></div>
+      <div class="svc-card reveal rd1"><div class="svc-dot"></div><div class="svc-name">Contractor Vetting &amp; Selection</div></div>
+      <div class="svc-card reveal rd2"><div class="svc-dot"></div><div class="svc-name">Subcontractor Coordination</div></div>
+      <div class="svc-card reveal rd3"><div class="svc-dot"></div><div class="svc-name">Construction Schedule Management</div></div>
+      <div class="svc-card reveal rd4"><div class="svc-dot"></div><div class="svc-name">Budget Tracking &amp; Cost Control</div></div>
+      <div class="svc-card reveal rd5"><div class="svc-dot"></div><div class="svc-name">Owner's Representation</div></div>
+      <div class="svc-card reveal"><div class="svc-dot"></div><div class="svc-name">Bid Review &amp; Negotiation</div></div>
+      <div class="svc-card reveal rd1"><div class="svc-dot"></div><div class="svc-name">Construction Site Oversight</div></div>
+      <div class="svc-card reveal rd2"><div class="svc-dot"></div><div class="svc-name">Punch List Management</div></div>
+      <div class="svc-card reveal rd3"><div class="svc-dot"></div><div class="svc-name">Draw Request Management</div></div>
+      <div class="svc-card reveal rd4"><div class="svc-dot"></div><div class="svc-name">Permit &amp; Inspection Coordination</div></div>
+      <div class="svc-card reveal rd5"><div class="svc-dot"></div><div class="svc-name">Fix &amp; Flip Project Management</div></div>
+      <div class="svc-card reveal"><div class="svc-dot"></div><div class="svc-name">ADU Construction Management</div></div>
+      <div class="svc-card reveal rd1"><div class="svc-dot"></div><div class="svc-name">New Construction Oversight</div></div>
+      <div class="svc-card reveal rd2"><div class="svc-dot"></div><div class="svc-name">Contractor Communication Systems</div></div>
+      <div class="svc-card reveal rd3"><div class="svc-dot"></div><div class="svc-name">Scope of Work Development</div></div>
+      <div class="svc-card reveal rd4"><div class="svc-dot"></div><div class="svc-name">Change Order Management</div></div>
+      <div class="svc-card reveal rd5"><div class="svc-dot"></div><div class="svc-name">Project Closeout &amp; Documentation</div></div>
     </div>
   </div>
 </section>
 
 <!-- WHO WE HELP -->
-<section class="section specialize-section" id="who">
+<section class="section who-section" id="who">
   <div class="section-inner">
     <div class="eyebrow">Who We Help</div>
-    <h2 class="section-h2">Built for investors and developers<br>who need projects <em>done right.</em></h2>
-    <div class="spec-grid">
-      <div class="spec-card reveal">
-        <span class="spec-icon">🏠</span>
-        <div class="spec-name">Fix &amp; Flip Investors</div>
+    <h2 class="section-h2">Built for the people<br>running <em>real deals.</em></h2>
+    <div class="who-grid">
+      <div class="who-card reveal">
+        <div class="who-label">Investors</div>
+        <div class="who-name">Fix &amp; Flip</div>
+        <div class="who-desc">Keep your rehab on schedule and margin intact from purchase to listing day.</div>
       </div>
-      <div class="spec-card reveal rd1">
-        <span class="spec-icon">🏗️</span>
-        <div class="spec-name">New Construction Projects</div>
+      <div class="who-card reveal rd1">
+        <div class="who-label">Developers</div>
+        <div class="who-name">New Construction</div>
+        <div class="who-desc">Ground-up projects managed with the discipline your lender and your timeline demand.</div>
       </div>
-      <div class="spec-card reveal rd2">
-        <span class="spec-icon">🏡</span>
-        <div class="spec-name">ADU &amp; Addition Projects</div>
+      <div class="who-card reveal rd2">
+        <div class="who-label">Owners</div>
+        <div class="who-name">ADU &amp; Additions</div>
+        <div class="who-desc">Navigate permits, subs, and city inspections without losing months to miscommunication.</div>
       </div>
-      <div class="spec-card reveal rd3">
-        <span class="spec-icon">🔑</span>
-        <div class="spec-name">Rental Property Upgrades</div>
+      <div class="who-card reveal rd3">
+        <div class="who-label">Landlords</div>
+        <div class="who-name">Rental Upgrades</div>
+        <div class="who-desc">Capital improvements done right — on time, on budget, tenants back in fast.</div>
       </div>
-      <div class="spec-card reveal rd4">
-        <span class="spec-icon">📊</span>
-        <div class="spec-name">Real Estate Developers</div>
+      <div class="who-card reveal rd4">
+        <div class="who-label">Developers</div>
+        <div class="who-name">Multi-Unit Renovation</div>
+        <div class="who-desc">Coordinate multiple crews and units without the chaos of unmanaged construction.</div>
       </div>
-      <div class="spec-card reveal">
-        <span class="spec-icon">🔨</span>
-        <div class="spec-name">Owner-Builder Projects</div>
+      <div class="who-card reveal">
+        <div class="who-label">Self-Managing</div>
+        <div class="who-name">Owner-Builder</div>
+        <div class="who-desc">You pulled the permit. Now get someone who knows how to manage the subs.</div>
       </div>
-      <div class="spec-card reveal rd1">
-        <span class="spec-icon">🏢</span>
-        <div class="spec-name">Multi-Unit Renovations</div>
+      <div class="who-card reveal rd1">
+        <div class="who-label">First Time</div>
+        <div class="who-name">New Developers</div>
+        <div class="who-desc">Avoid the expensive mistakes that come with your first development project.</div>
       </div>
-      <div class="spec-card reveal rd2">
-        <span class="spec-icon">📋</span>
-        <div class="spec-name">First-Time Developers</div>
+      <div class="who-card reveal rd2">
+        <div class="who-label">Hands-Off</div>
+        <div class="who-name">Remote Investors</div>
+        <div class="who-desc">Eyes and management on the ground when you can't be there yourself.</div>
       </div>
     </div>
   </div>
@@ -767,38 +784,38 @@ footer {
 <!-- WHY CALL -->
 <section class="section why-section">
   <div class="section-inner">
-    <div class="eyebrow">Why Call</div>
-    <h2 class="section-h2">What it's like having someone<br>who actually <em>manages the build.</em></h2>
+    <div class="eyebrow">Why Work With Us</div>
+    <h2 class="section-h2">What changes when someone<br>actually <em>runs the project.</em></h2>
     <div class="why-grid">
       <div class="why-card reveal">
-        <div class="why-num">01</div>
-        <div class="why-title">Professional PM Background</div>
-        <p class="why-desc">Every project is scoped, scheduled, and tracked with the same discipline you'd expect from a seasoned general contractor — without the GC markup.</p>
+        <div class="why-num">01 — PM Background</div>
+        <div class="why-title">Professional Discipline Applied</div>
+        <p class="why-desc">Every project is scoped, scheduled, and tracked with the same rigor you'd expect from an experienced GC — without the GC markup on every decision.</p>
       </div>
       <div class="why-card reveal rd1">
-        <div class="why-num">02</div>
-        <div class="why-title">Contractor Vetting That Protects You</div>
-        <p class="why-desc">We know which subs deliver and which ones disappear. Bids get reviewed, licenses get checked, and you don't get handed a problem contractor.</p>
+        <div class="why-num">02 — Contractor Vetting</div>
+        <div class="why-title">The Right People on Your Job</div>
+        <p class="why-desc">Bids get reviewed, licenses get checked, and references actually get called. You don't get handed a problem contractor who disappears at 60% complete.</p>
       </div>
       <div class="why-card reveal rd2">
-        <div class="why-num">03</div>
-        <div class="why-title">On-Time, On-Budget Focus</div>
-        <p class="why-desc">Schedule slippage and cost overruns kill deals. We track both in real time and intervene early — before small delays become big problems.</p>
+        <div class="why-num">03 — Budget Control</div>
+        <div class="why-title">Costs Tracked in Real Time</div>
+        <p class="why-desc">Schedule slippage and cost overruns kill deal margins. We track both from day one and flag issues before they compound into budget-breaking problems.</p>
       </div>
       <div class="why-card reveal rd3">
-        <div class="why-num">04</div>
-        <div class="why-title">Weekly Updates, No Surprises</div>
-        <p class="why-desc">You'll always know where the project stands. Clear progress reports, budget status, and next steps — no chasing people for answers.</p>
+        <div class="why-num">04 — Communication</div>
+        <div class="why-title">Weekly Updates, No Chasing</div>
+        <p class="why-desc">Clear progress reports, current budget status, and next steps — every week. You'll always know exactly where your project stands.</p>
       </div>
       <div class="why-card reveal rd4">
-        <div class="why-num">05</div>
-        <div class="why-title">Investor-First Mindset</div>
-        <p class="why-desc">Your margin matters. Every decision gets weighed against the deal — not contractor convenience, not scope creep, not unnecessary upgrades.</p>
+        <div class="why-num">05 — Investor Mindset</div>
+        <div class="why-title">Your Margin, Not Their Convenience</div>
+        <p class="why-desc">Every decision gets weighed against the deal. Not contractor convenience, not scope creep, not gold-plating that doesn't move the needle on your exit.</p>
       </div>
       <div class="why-card reveal rd5">
-        <div class="why-num">06</div>
-        <div class="why-title">Free Consultation</div>
-        <p class="why-desc">Walk us through your project — site, scope, timeline, and goals. We'll tell you exactly how we can help and what it would cost. No obligation.</p>
+        <div class="why-num">06 — No Obligation</div>
+        <div class="why-title">Free Consultation to Start</div>
+        <p class="why-desc">Walk us through your project — site, scope, timeline, goals, and current contractor situation. We'll tell you exactly how we can help and what it costs.</p>
       </div>
     </div>
   </div>
@@ -808,8 +825,8 @@ footer {
 <section class="section areas-section" id="areas">
   <div class="section-inner">
     <div class="eyebrow">Service Area</div>
-    <h2 class="section-h2">Based in Contra Costa County,<br><em>serving the greater Bay Area.</em></h2>
-    <p class="section-sub">Available for projects throughout the Bay Area and Greater Sacramento. Remote consultation and oversight available statewide.</p>
+    <h2 class="section-h2">Based in Contra Costa County,<br>available across the <em>Bay Area.</em></h2>
+    <p class="section-sub">On-site project management throughout the Bay Area and Greater Sacramento. Remote consultation and oversight available statewide.</p>
     <div class="areas-grid">
       <span class="area-tag primary">Concord</span>
       <span class="area-tag primary">Walnut Creek</span>
@@ -833,31 +850,27 @@ footer {
 
 <!-- BOOK / CTA -->
 <section class="section book-section" id="book">
-  <div class="section-inner">
-    <div class="book-box">
-      <div class="book-inner">
-        <div class="book-left">
-          <h2>Ready to get your<br>project <em>under control?</em></h2>
-          <p>Book a free 15-minute call to walk through your project — scope, timeline, contractors, and goals. No obligation. Just a straight conversation about what you need.</p>
-          <div class="cta-options">
-            <a href="https://calendly.com/flipoclock/15min" target="_blank" class="btn-gold-lg">
-              📅 Book a Free Consultation
-            </a>
-            <div class="cta-divider">— or —</div>
-            <a href="sms:8318185680" class="btn-text-lg">
-              💬 Text 831-818-5680
-            </a>
-            <a href="tel:8318185680" class="btn-text-lg" style="margin-top:-2px;">
-              📞 Call 831-818-5680
-            </a>
-            <p class="cta-note">Free consultation · Contra Costa County &amp; Bay Area</p>
-          </div>
-        </div>
-        <div class="book-right">
-          <div class="calendly-inline-widget" data-url="https://calendly.com/flipoclock/15min?hide_gdpr_banner=1&background_color=1e2a62&text_color=f5f4f0&primary_color=f06820"></div>
-          <script type="text/javascript" src="https://assets.calendly.com/assets/external/widget.js" async></script>
-        </div>
+  <div class="book-box">
+    <div class="book-left">
+      <h2>Ready to get your<br>project <em>under control?</em></h2>
+      <p>Book a free 15-minute consultation to walk through your project — scope, timeline, contractors, and goals. Straight conversation, no obligation.</p>
+      <div class="cta-options">
+        <a href="https://calendly.com/flipoclock/15min" target="_blank" class="btn-white">
+          Book a Free Consultation
+        </a>
+        <div class="cta-divider">— or reach out directly —</div>
+        <a href="sms:8318185680" class="btn-outline-white">
+          Text 831-818-5680
+        </a>
+        <a href="tel:8318185680" class="btn-outline-white" style="margin-top:-2px;">
+          Call 831-818-5680
+        </a>
+        <p class="cta-note">Free consultation · Contra Costa County &amp; Bay Area</p>
       </div>
+    </div>
+    <div class="book-right">
+      <div class="calendly-inline-widget" data-url="https://calendly.com/flipoclock/15min?hide_gdpr_banner=1&background_color=141d45&text_color=f8fafc&primary_color=2563eb"></div>
+      <script type="text/javascript" src="https://assets.calendly.com/assets/external/widget.js" async></script>
     </div>
   </div>
 </section>
@@ -869,14 +882,14 @@ footer {
       <div>
         <div class="footer-brand-name">RE <span>Management</span> Services</div>
         <p class="footer-tagline">Construction project management and contractor oversight for real estate investors and developers throughout the Bay Area.</p>
-        <a href="tel:8318185680" class="footer-contact-link">📞 831-818-5680</a>
+        <a href="tel:8318185680" class="footer-contact-link">831-818-5680</a>
       </div>
       <div>
         <div class="footer-col-head">Services</div>
         <ul class="footer-links">
           <li><a href="#services">Project Management</a></li>
           <li><a href="#services">Contractor Oversight</a></li>
-          <li><a href="#services">Budget &amp; Schedule Tracking</a></li>
+          <li><a href="#services">Budget &amp; Schedule</a></li>
           <li><a href="#services">Owner's Representation</a></li>
           <li><a href="#services">Fix &amp; Flip Management</a></li>
         </ul>
@@ -892,8 +905,8 @@ footer {
       </div>
     </div>
     <div class="footer-bottom">
-      <span class="footer-copy">© 2026 RE Management Services — Contra Costa County</span>
-      <span class="footer-copy">Free consultation · Call or text anytime</span>
+      <span class="footer-copy">© 2026 RE Management Services</span>
+      <span class="footer-copy">Contra Costa County · Bay Area</span>
     </div>
   </div>
 </footer>
