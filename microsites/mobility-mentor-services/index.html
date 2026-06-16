@@ -112,8 +112,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 1: three col — campaign meta / notes / main TD -->
-<div class="three-col">
+<!-- SEC 1: two col — campaign meta / unique opportunity -->
+<div class="two-col">
   <div class="col">
     <h2>Campaign</h2>
     <div class="content">
@@ -131,15 +131,47 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="body-text" id="r-uniqueopportunity" style="white-space:pre-wrap;min-height:40px;"></div>
     </div>
   </div>
+</div>
+
+<!-- SEC 2: two col — main TD / platforms -->
+<div class="two-col">
   <div class="col">
     <h2>Main TD <button class="td-add-btn-inline" onclick="openTdModal()" title="Add task">+</button></h2>
     <div class="content">
       <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
+  <div class="col">
+    <h2>Platforms <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
+    <div class="content">
+      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
 </div>
 
-<!-- SEC 2: keywords + SM trends + news feed — three col -->
+<!-- SEC 3: three col — SM posts / development titles / publish titles -->
+<div class="three-col">
+  <div class="col">
+    <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Run research">&#x25B6;</button></h2>
+    <div class="content">
+      <div id="smPostsBox"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Development Titles <button class="td-add-btn-inline" onclick="openAddTitleModal()" title="Add title">+</button></h2>
+    <div class="content">
+      <div class="title-list" id="devTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Publish Titles</h2>
+    <div class="content">
+      <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 4: three col — keywords / SM trends / news feed -->
 <div class="three-col">
   <div class="col">
     <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
@@ -167,7 +199,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 3: three col — product ideas / tiktok shop / kdp best sellers -->
+<!-- SEC 5: three col — product ideas / tiktok shop / kdp best sellers -->
 <div class="three-col">
   <div class="col">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -203,38 +235,6 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </h2>
     <div class="content">
       <div id="r-kdp"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- SEC 4: two col — SM posts / platforms -->
-<div class="two-col">
-  <div class="col">
-    <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Run research">&#x25B6;</button></h2>
-    <div class="content">
-      <div id="smPostsBox"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2>Platforms <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
-    <div class="content">
-      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- SEC 5: two col — development titles / publish titles -->
-<div class="two-col">
-  <div class="col">
-    <h2>Development Titles <button class="td-add-btn-inline" onclick="openAddTitleModal()" title="Add title">+</button></h2>
-    <div class="content">
-      <div class="title-list" id="devTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2>Publish Titles</h2>
-    <div class="content">
-      <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
