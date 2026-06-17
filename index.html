@@ -5270,26 +5270,36 @@ function renderTable() {
     const changedLabel = latestChanged ? relTime(latestChanged) : '—';
     const changedFull  = latestChanged ? new Date(latestChanged).toLocaleString() : '';
 
-    // Site header row
+    // Site header row — cells aligned to columns
     const siteRow = document.createElement('tr');
     siteRow.className = 'site-group-row';
     siteRow.onclick = () => toggleSite(site);
-    const siteTd = document.createElement('td');
-    siteTd.colSpan = totalCols;
     const arrow = collapsed ? '▶' : '▾';
     const subCount = camps.reduce((n, c) => n + sorted.filter(s => parentOf[s.id] === c.id).length, 0);
     const total = camps.length + subCount;
-    siteTd.innerHTML =
-      '<span class="site-arrow">' + arrow + '</span>' +
-      '<span class="site-name">' + esc(site) + '</span>' +
-      '<span class="site-count">' + total + '</span>' +
-      '<span class="site-stats">' +
-        (sumTd  ? '<span class="site-stat site-stat-td">'  + sumTd  + ' td</span>'  : '') +
-        (sumDev ? '<span class="site-stat site-stat-dev">' + sumDev + ' dev</span>' : '') +
-        (sumPub ? '<span class="site-stat site-stat-pub">' + sumPub + ' pub</span>' : '') +
-        (latestChanged ? '<span class="site-stat site-stat-date" title="' + changedFull + '">' + changedLabel + '</span>' : '') +
-      '</span>';
-    siteRow.appendChild(siteTd);
+    // Name cell spans first 5 text columns (Site, Campaign, Grouping, Key Message, Products)
+    const nameTd = document.createElement('td');
+    nameTd.colSpan = 5;
+    nameTd.innerHTML = '<span class="site-arrow">' + arrow + '</span><span class="site-name">' + esc(site) + '</span><span class="site-count">' + total + '</span>';
+    siteRow.appendChild(nameTd);
+    // TD, Dev, Pub, Changed — one cell each aligned to their column
+    const mkStatTd = (val, title) => {
+      const td = document.createElement('td');
+      td.className = 'num';
+      td.style.cssText = 'font-size:11px;font-weight:600;color:var(--text3);';
+      td.textContent = val || '—';
+      if (title) td.title = title;
+      return td;
+    };
+    siteRow.appendChild(mkStatTd(sumTd  || ''));
+    siteRow.appendChild(mkStatTd(sumDev || ''));
+    siteRow.appendChild(mkStatTd(sumPub || ''));
+    const dateTd = mkStatTd(changedLabel, changedFull);
+    siteRow.appendChild(dateTd);
+    // Remaining link columns (HL DB STE LVE ROI)
+    const linkTd = document.createElement('td');
+    linkTd.colSpan = 5;
+    siteRow.appendChild(linkTd);
     tbody.appendChild(siteRow);
 
     if (!collapsed) {
