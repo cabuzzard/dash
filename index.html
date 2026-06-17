@@ -2947,7 +2947,7 @@ function buildAssetChipsHtml(asset) {
   return chips.join('');
 }
 
-async function showTitleAssets(titleId, titleName) {
+async function showTitleAssets(titleId, titleName, campId) {
   // Switch to Publishing tab
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -3022,6 +3022,36 @@ async function showTitleAssets(titleId, titleName) {
         el.appendChild(row);
       });
     });
+    // ── Generate new assets section ──
+    const genSection = document.createElement('div');
+    genSection.style.cssText = 'margin-top:24px;padding-top:16px;border-top:1px solid var(--border);';
+
+    const genLabel = document.createElement('div');
+    genLabel.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;';
+    genLabel.textContent = 'Generate New Asset';
+    genSection.appendChild(genLabel);
+
+    const PUBLISH_ASSET_TYPES = [
+      { icon: '🎬', label: 'TikTok Video',    platformName: 'TikTok',    assetType: 'Post',      promptFn: (t, r) => buildTikTokPrompt(t, r) },
+      { icon: '🖼️', label: 'Instagram Carousel', platformName: 'Instagram', assetType: 'Post',   promptFn: (t, r) => buildCarouselPrompt(t, r) },
+    ];
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+
+    PUBLISH_ASSET_TYPES.forEach(at => {
+      const btn = document.createElement('button');
+      btn.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600;color:var(--text2);';
+      btn.innerHTML = '<span>' + at.icon + '</span><span>' + at.label + '</span>';
+      btn.onmouseover = () => { btn.style.borderColor = 'var(--accent)'; btn.style.color = 'var(--accent)'; };
+      btn.onmouseout  = () => { btn.style.borderColor = 'var(--border)'; btn.style.color = 'var(--text2)'; };
+      btn.onclick = () => openAssetGenModal(titleName, titleId, campId, at);
+      btnRow.appendChild(btn);
+    });
+
+    genSection.appendChild(btnRow);
+    el.appendChild(genSection);
+
   } catch(e) {
     el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
   }
@@ -6266,7 +6296,7 @@ function renderDev() {
               ab.className = 'assets-btn';
               ab.textContent = 'Assets →';
               ab.style.cssText = 'font-size:10px;font-weight:700;color:#005522;background:#00ff88;border-radius:4px;padding:2px 7px;cursor:pointer;flex-shrink:0;';
-              ab.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); showTitleAssets(t.id, t.title); };
+              ab.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); showTitleAssets(t.id, t.title, camp.campId); };
               tRow.insertBefore(ab, statusBadge);
             } else if (newStatus !== 'Publish') {
               const ab = tRow.querySelector('.assets-btn');
@@ -6339,7 +6369,7 @@ function renderDev() {
             assetsBtn.className = 'assets-btn';
             assetsBtn.textContent = 'Assets →';
             assetsBtn.style.cssText = 'font-size:10px;font-weight:700;color:#005522;background:#00ff88;border-radius:4px;padding:2px 7px;cursor:pointer;flex-shrink:0;';
-            assetsBtn.onclick = e => { e.preventDefault(); e.stopPropagation(); showTitleAssets(t.id, t.title); };
+            assetsBtn.onclick = e => { e.preventDefault(); e.stopPropagation(); showTitleAssets(t.id, t.title, camp.campId); };
             tRow.appendChild(assetsBtn);
           }
 
@@ -6363,62 +6393,7 @@ function renderDev() {
           };
           tRow.appendChild(delBtn);
 
-          // ── Asset strip toggle button ──
-          const assetToggleBtn = document.createElement('span');
-          assetToggleBtn.textContent = '▤';
-          assetToggleBtn.title = 'Toggle assets';
-          assetToggleBtn.style.cssText = 'font-size:11px;cursor:pointer;flex-shrink:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:var(--surface2);color:var(--text3);border-radius:4px;border:1px solid var(--border);';
-          tRow.appendChild(assetToggleBtn);
-
-          // ── Asset strip ──
-          const ASSET_TYPES = [
-            { key: 'tiktok',   icon: '🎬', label: 'TikTok Video',    platformName: 'TikTok',    assetType: 'Post',      promptFn: (title, r) => buildTikTokPrompt(title, r) },
-            { key: 'carousel', icon: '🖼️', label: 'Carousel',        platformName: 'Instagram', assetType: 'Post',      promptFn: (title, r) => buildCarouselPrompt(title, r) },
-            { key: 'linkedin', icon: '💼', label: 'LinkedIn Article', platformName: 'LinkedIn',  assetType: 'Body Text', promptFn: (title, r) => buildLinkedInPrompt(title, r) },
-          ];
-
-          const assetStrip = document.createElement('div');
-          assetStrip.style.cssText = 'display:none;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:#0d0d0d;';
-
-          ASSET_TYPES.forEach((at, ai) => {
-            const isLast = ai === ASSET_TYPES.length - 1;
-            const aRow = document.createElement('div');
-            aRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px 6px 36px;' + (isLast ? '' : 'border-bottom:1px solid var(--border);');
-
-            const iconEl = document.createElement('span');
-            iconEl.style.cssText = 'font-size:13px;flex-shrink:0;';
-            iconEl.textContent = at.icon;
-
-            const labelEl = document.createElement('span');
-            labelEl.style.cssText = 'font-size:11px;color:var(--text3);flex:1;';
-            labelEl.textContent = at.label;
-
-            const genBtn = document.createElement('span');
-            genBtn.textContent = 'Generate';
-            genBtn.style.cssText = 'font-size:10px;font-weight:700;color:#000;background:var(--accent);border-radius:4px;padding:2px 8px;cursor:pointer;flex-shrink:0;';
-            genBtn.onmouseover = () => genBtn.style.opacity = '.8';
-            genBtn.onmouseout  = () => genBtn.style.opacity = '1';
-            genBtn.onclick = e => {
-              e.preventDefault(); e.stopPropagation();
-              openAssetGenModal(t.title, t.id, camp.campId, at);
-            };
-
-            aRow.appendChild(iconEl);
-            aRow.appendChild(labelEl);
-            aRow.appendChild(genBtn);
-            assetStrip.appendChild(aRow);
-          });
-
-          assetToggleBtn.onclick = e => {
-            e.preventDefault(); e.stopPropagation();
-            const open = assetStrip.style.display !== 'none';
-            assetStrip.style.display = open ? 'none' : 'block';
-            assetToggleBtn.style.color = open ? 'var(--text3)' : 'var(--accent)';
-            assetToggleBtn.style.borderColor = open ? 'var(--border)' : 'var(--accent)';
-          };
-
           titlesEl.appendChild(tRow);
-          titlesEl.appendChild(assetStrip);
         });
       });
 
