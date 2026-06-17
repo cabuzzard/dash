@@ -5002,9 +5002,7 @@ function renderTable() {
     { label: 'Grouping',    key: 'grouping',         type: 'rel' },
     { label: 'Key Message', key: 'keyMessage',       type: 'str' },
     { label: 'Products',    key: 'campaignProducts', type: 'rel' },
-    { label: 'Methods',     key: 'campaignMethods',  type: 'rel' },
-    { label: 'Platforms',   key: 'platforms',        type: 'rel' },
-    { label: 'TD',          key: 'openTd',           type: 'num' },
+{ label: 'TD',          key: 'openTd',           type: 'num' },
     { label: 'Dev',         key: 'devTitles',        type: 'num' },
     { label: 'Pub',         key: 'pubTitles',        type: 'num' },
     { label: 'Changed',     key: 'lastChanged',      type: 'date' },
@@ -5140,36 +5138,8 @@ function renderTable() {
     cpCell.onclick = () => openRelModal('products', c, renderCpCell);
     tr.appendChild(cpCell);
 
-    // Campaign Methods cell
-    const cmCell = document.createElement('td');
-    cmCell.style.cssText = 'cursor:pointer;';
-    cmCell.title = 'Click to edit';
-    const renderCmCell = () => {
-      const items = c.campaignMethods || [];
-      cmCell.innerHTML = items.length
-        ? items.map(m => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(m.name) + '</span>').join('')
-        : '<span style="font-size:11px;color:var(--text3);">—</span>';
-    };
-    renderCmCell();
-    cmCell.onclick = () => openRelModal('methods', c, renderCmCell);
     // Highlight row if "this week" in grouping
     const isThisWeek = c.status === 'Active';
-
-    tr.appendChild(cmCell);
-
-    // Logins cell
-    const lgCell = document.createElement('td');
-    lgCell.style.cursor = 'pointer';
-    lgCell.title = 'Click to edit';
-    const renderPlatformCell = () => {
-      const items = c.platforms || [];
-      lgCell.innerHTML = items.length
-        ? items.map(p => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(typeof p === 'object' ? (p.name || '') : p) + '</span>').join('')
-        : '<span style="font-size:11px;color:var(--text3);">—</span>';
-    };
-    renderPlatformCell();
-    lgCell.onclick = () => openRelModal('platforms', c, renderPlatformCell);
-    tr.appendChild(lgCell);
 
     const changedLabel = relTime(c.lastChanged);
     const changedFull  = c.lastChanged ? new Date(c.lastChanged).toLocaleString() : '';
