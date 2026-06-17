@@ -2171,8 +2171,8 @@
 </div>
 
 <!-- Prompt Add/Edit Modal -->
-<div class="modal-bg" id="claudeModal" onclick="if(event.target===this)closeClaudeModal()">
-  <div class="modal" style="max-width:560px;">
+<div id="claudeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)closeClaudeModal()">
+  <div class="modal" style="max-width:560px;transform:none;border-radius:var(--radius);margin:0;width:100%;">
     <div class="modal-title">✦ Ask Claude</div>
     <div style="font-size:11px;color:var(--text3);margin:-8px 0 14px;padding:0 2px;" id="claudeModalContext"></div>
     <div class="modal-field">
@@ -2188,8 +2188,8 @@
 </div>
 
 <!-- Asset Generate Modal -->
-<div class="modal-bg" id="assetGenModal" onclick="if(event.target===this)closeAssetGenModal()">
-  <div class="modal" style="max-width:620px;">
+<div id="assetGenModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;" onclick="if(event.target===this)closeAssetGenModal()">
+  <div class="modal" style="max-width:620px;transform:none;border-radius:var(--radius);margin:auto;width:100%;">
     <div class="modal-title" id="assetGenModalTitle">Generate Asset</div>
     <div style="font-size:11px;color:var(--text3);margin:-8px 0 14px;padding:0 2px;" id="assetGenContext"></div>
 
@@ -7547,11 +7547,11 @@ function openClaudeModal(titleName, titleId) {
   document.getElementById('claudeResponse').textContent = '';
   document.getElementById('claudeSendBtn').disabled = false;
   document.getElementById('claudeSendBtn').textContent = 'Send';
-  document.getElementById('claudeModal').classList.add('active');
+  document.getElementById('claudeModal').style.display = 'flex';
   setTimeout(() => document.getElementById('claudePromptInput').focus(), 80);
 }
 function closeClaudeModal() {
-  document.getElementById('claudeModal').classList.remove('active');
+  document.getElementById('claudeModal').style.display = 'none';
 }
 
 // ── ASSET GENERATE MODAL ─────────────────────────────────────────────
@@ -7643,7 +7643,7 @@ async function openAssetGenModal(titleName, titleId, campId, assetType) {
   document.getElementById('assetGenResponse').style.display = 'none';
   document.getElementById('assetGenResponseText').textContent = '';
   document.getElementById('assetGenResearchNote').style.display = 'none';
-  document.getElementById('assetGenModal').classList.add('open');
+  document.getElementById('assetGenModal').style.display = 'flex';
 
   // Fetch research — cached per campaign
   let research = _assetResearchCache[campId];
@@ -7669,7 +7669,7 @@ let _savedAssetId = null;
 let _videoPollInterval = null;
 
 function closeAssetGenModal() {
-  document.getElementById('assetGenModal').classList.remove('open');
+  document.getElementById('assetGenModal').style.display = 'none';
   if (_videoPollInterval) { clearInterval(_videoPollInterval); _videoPollInterval = null; }
   document.getElementById('assetStage2').style.display = 'none';
   document.getElementById('assetVideoSection').style.display = 'none';
