@@ -2209,6 +2209,42 @@
         <button class="btn btn-secondary" style="flex:0;padding:0 16px;font-size:12px;" id="assetSaveBtn" onclick="saveAssetToNotion()">Save to Notion</button>
         <button class="btn btn-primary" style="font-size:12px;" onclick="generateAnotherAsset()">Regenerate</button>
       </div>
+      <!-- TikTok video generation (shown after script saved) -->
+      <div id="assetVideoSection" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:14px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;">Generate Faceless Video (Kie.ai)</div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:160px;">
+            <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">Aspect Ratio</label>
+            <select id="videoAspectRatio" class="modal-input" style="padding:6px 10px;font-size:12px;">
+              <option value="9:16" selected>9:16 — TikTok vertical</option>
+              <option value="16:9">16:9 — Landscape</option>
+              <option value="1:1">1:1 — Square</option>
+            </select>
+          </div>
+          <div style="flex:1;min-width:120px;">
+            <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">Duration</label>
+            <select id="videoDuration" class="modal-input" style="padding:6px 10px;font-size:12px;">
+              <option value="5" selected>5 seconds</option>
+              <option value="10">10 seconds</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">Video Prompt <span style="font-weight:400;">(auto-extracted from script — edit freely)</span></label>
+          <textarea id="videoPromptInput" class="modal-input" rows="4" style="font-size:12px;line-height:1.5;resize:vertical;font-family:'DM Mono',monospace;"></textarea>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-primary" id="videoGenBtn" onclick="generateKieVideo()" style="font-size:12px;">🎬 Generate Video</button>
+          <div id="videoGenStatus" style="font-size:12px;color:var(--text3);display:none;">Submitting…</div>
+        </div>
+        <div id="videoGenResult" style="display:none;margin-top:12px;padding:10px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border);">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">Video ready:</div>
+          <a id="videoResultLink" href="#" target="_blank" style="font-size:13px;color:var(--accent);word-break:break-all;"></a>
+          <div style="margin-top:8px;">
+            <button class="btn btn-secondary" id="videoSaveAssetBtn" style="font-size:12px;" onclick="saveVideoUrlToAsset()">Save URL to Notion Asset</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -7621,6 +7657,10 @@ async function openAssetGenModal(titleName, titleId, campId, assetType) {
 
 function closeAssetGenModal() {
   document.getElementById('assetGenModal').classList.remove('active');
+  if (_videoPollInterval) { clearInterval(_videoPollInterval); _videoPollInterval = null; }
+  const sec = document.getElementById('assetVideoSection');
+  if (sec) sec.style.display = 'none';
+  _savedAssetId = null;
 }
 
 async function sendAssetGen() {
@@ -7665,15 +7705,116 @@ async function saveAssetToNotion() {
       assetType:    _assetGenMeta.assetType,
       content,
     });
+    _savedAssetId = data.id || null;
     btn.textContent = 'Saved ✓';
     showToast('Asset saved to Notion ✓', 'success');
     if (data.id) {
       btn.onclick = () => window.open('https://www.notion.so/' + data.id, '_blank');
       btn.title = 'Open in Notion';
     }
+    // Show video generation section for TikTok assets
+    if (_assetGenMeta.platformName === 'TikTok') {
+      showVideoSection(content);
+    }
   } catch(e) {
     showToast('Save failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save to Notion';
+  }
+}
+
+let _savedAssetId = null; // Notion asset page id after save, used for video URL update
+
+async function saveAssetToNotion_original() {} // kept for reference — replaced below
+
+// Extract a compact visual scene prompt from the TikTok script for Kie.ai
+function extractVideoPrompt(script) {
+  // Pull the hook line + a visual scene description from the script
+  const lines = script.split('\n').map(l => l.trim()).filter(Boolean);
+  // Look for HOOK or first meaningful line
+  let hook = '';
+  for (const l of lines) {
+    if (/hook|scene|visual|b-?roll/i.test(l)) { hook = l.replace(/^[*_#\-]+|[*_#]+$/g,'').trim(); break; }
+  }
+  if (!hook) hook = lines.slice(0, 3).join(' ');
+  // Trim to 500 chars and append visual style
+  return (hook.slice(0, 400) + ' — cinematic faceless video, high quality, trending style, no text overlays').slice(0, 900);
+}
+
+function showVideoSection(script) {
+  const sec = document.getElementById('assetVideoSection');
+  if (!sec) return;
+  sec.style.display = 'block';
+  document.getElementById('videoPromptInput').value = extractVideoPrompt(script);
+  document.getElementById('videoGenResult').style.display = 'none';
+  document.getElementById('videoGenStatus').style.display = 'none';
+  const btn = document.getElementById('videoGenBtn');
+  btn.disabled = false; btn.textContent = '🎬 Generate Video';
+}
+
+let _videoPollInterval = null;
+
+async function generateKieVideo() {
+  const prompt = document.getElementById('videoPromptInput').value.trim();
+  if (!prompt) { showToast('Enter a video prompt', 'error'); return; }
+  const aspectRatio = document.getElementById('videoAspectRatio').value;
+  const duration    = document.getElementById('videoDuration').value;
+
+  const btn = document.getElementById('videoGenBtn');
+  const statusEl = document.getElementById('videoGenStatus');
+  btn.disabled = true; btn.textContent = '🎬 Submitting…';
+  statusEl.style.display = 'block'; statusEl.textContent = 'Sending to Kie.ai…';
+  document.getElementById('videoGenResult').style.display = 'none';
+
+  try {
+    const data = await call('generateVideo', { prompt, aspectRatio, duration });
+    if (!data.taskId) throw new Error(data.error || 'No taskId returned');
+    statusEl.textContent = `Task ${data.taskId} — polling…`;
+    _videoPollInterval = setInterval(() => pollVideoTask(data.taskId, btn, statusEl), 6000);
+  } catch(e) {
+    showToast('Video submit error: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = '🎬 Generate Video';
+    statusEl.style.display = 'none';
+  }
+}
+
+async function pollVideoTask(taskId, btn, statusEl) {
+  try {
+    const data = await call('getVideoTask', { taskId });
+    const state = (data.state || '').toLowerCase();
+    statusEl.textContent = `State: ${state}${data.progress != null ? ' (' + data.progress + '%)' : ''}`;
+    if (state === 'success' && data.videoUrl) {
+      clearInterval(_videoPollInterval);
+      btn.disabled = false; btn.textContent = '🎬 Regenerate';
+      statusEl.style.display = 'none';
+      const resultEl = document.getElementById('videoGenResult');
+      const linkEl   = document.getElementById('videoResultLink');
+      linkEl.href = data.videoUrl; linkEl.textContent = data.videoUrl;
+      resultEl.style.display = 'block';
+      showToast('Video ready! ✓', 'success');
+    } else if (state === 'fail') {
+      clearInterval(_videoPollInterval);
+      btn.disabled = false; btn.textContent = '🎬 Retry';
+      showToast('Video generation failed. Try again.', 'error');
+      statusEl.textContent = 'Failed — retry above';
+    }
+  } catch(e) {
+    // keep polling on transient errors
+    statusEl.textContent = 'Polling… (network retry)';
+  }
+}
+
+async function saveVideoUrlToAsset() {
+  const url = document.getElementById('videoResultLink').href;
+  if (!url || !_savedAssetId) { showToast('Save script to Notion first', 'error'); return; }
+  const btn = document.getElementById('videoSaveAssetBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await call('updateAssetVideoUrl', { assetId: _savedAssetId, videoUrl: url });
+    btn.textContent = 'Saved ✓';
+    showToast('Video URL saved to Notion ✓', 'success');
+  } catch(e) {
+    showToast('Save error: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save URL to Notion Asset';
   }
 }
 
