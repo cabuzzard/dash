@@ -2187,6 +2187,31 @@
   </div>
 </div>
 
+<!-- Asset Generate Modal -->
+<div class="modal-bg" id="assetGenModal" onclick="if(event.target===this)closeAssetGenModal()">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-title" id="assetGenModalTitle">Generate Asset</div>
+    <div style="font-size:11px;color:var(--text3);margin:-8px 0 14px;padding:0 2px;" id="assetGenContext"></div>
+    <div class="modal-field">
+      <label class="modal-label">Prompt <span style="font-size:10px;color:var(--text3);font-weight:400;">(pre-filled from research — edit freely)</span></label>
+      <textarea class="modal-input" id="assetGenPrompt" rows="8" style="resize:vertical;line-height:1.6;font-size:12px;font-family:'DM Mono',monospace;"></textarea>
+    </div>
+    <div id="assetGenResearchNote" style="display:none;font-size:11px;color:var(--text3);margin:-8px 0 12px;padding:6px 10px;background:var(--surface2);border-radius:4px;border-left:2px solid var(--border2);">Loading research...</div>
+    <div class="modal-actions" style="margin-bottom:0;">
+      <button class="btn btn-secondary" onclick="closeAssetGenModal()">Cancel</button>
+      <button class="btn btn-primary" id="assetGenSendBtn" onclick="sendAssetGen()">Generate</button>
+    </div>
+    <div id="assetGenResponse" style="display:none;margin-top:16px;">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Output</div>
+      <div id="assetGenResponseText" style="padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;max-height:360px;overflow-y:auto;"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn btn-secondary" style="flex:0;padding:0 16px;font-size:12px;" onclick="copyAssetOutput()">Copy</button>
+        <button class="btn btn-primary" style="font-size:12px;" onclick="generateAnotherAsset()">Regenerate</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="promptModal" onclick="if(event.target===this)closePromptModal()">
   <div class="modal">
     <div class="modal-title" id="promptModalTitle">Add Prompt</div>
@@ -6300,7 +6325,63 @@ function renderDev() {
             } catch(err) { showToast('Failed: ' + err.message, 'error'); }
           };
           tRow.appendChild(delBtn);
+
+          // ── Asset strip toggle button ──
+          const assetToggleBtn = document.createElement('span');
+          assetToggleBtn.textContent = '▤';
+          assetToggleBtn.title = 'Toggle assets';
+          assetToggleBtn.style.cssText = 'font-size:11px;cursor:pointer;flex-shrink:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:var(--surface2);color:var(--text3);border-radius:4px;border:1px solid var(--border);';
+          tRow.appendChild(assetToggleBtn);
+
+          // ── Asset strip ──
+          const ASSET_TYPES = [
+            { key: 'tiktok',    icon: '🎬', label: 'TikTok Video',      promptFn: (title, r) => buildTikTokPrompt(title, r) },
+            { key: 'carousel',  icon: '🖼️', label: 'Carousel',          promptFn: (title, r) => buildCarouselPrompt(title, r) },
+            { key: 'linkedin',  icon: '💼', label: 'LinkedIn Article',   promptFn: (title, r) => buildLinkedInPrompt(title, r) },
+          ];
+
+          const assetStrip = document.createElement('div');
+          assetStrip.style.cssText = 'display:none;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:#0d0d0d;';
+
+          ASSET_TYPES.forEach((at, ai) => {
+            const isLast = ai === ASSET_TYPES.length - 1;
+            const aRow = document.createElement('div');
+            aRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px 6px 36px;' + (isLast ? '' : 'border-bottom:1px solid var(--border);');
+
+            const iconEl = document.createElement('span');
+            iconEl.style.cssText = 'font-size:13px;flex-shrink:0;';
+            iconEl.textContent = at.icon;
+
+            const labelEl = document.createElement('span');
+            labelEl.style.cssText = 'font-size:11px;color:var(--text3);flex:1;';
+            labelEl.textContent = at.label;
+
+            const genBtn = document.createElement('span');
+            genBtn.textContent = 'Generate';
+            genBtn.style.cssText = 'font-size:10px;font-weight:700;color:#000;background:var(--accent);border-radius:4px;padding:2px 8px;cursor:pointer;flex-shrink:0;';
+            genBtn.onmouseover = () => genBtn.style.opacity = '.8';
+            genBtn.onmouseout  = () => genBtn.style.opacity = '1';
+            genBtn.onclick = e => {
+              e.preventDefault(); e.stopPropagation();
+              openAssetGenModal(t.title, t.id, camp.campId, at);
+            };
+
+            aRow.appendChild(iconEl);
+            aRow.appendChild(labelEl);
+            aRow.appendChild(genBtn);
+            assetStrip.appendChild(aRow);
+          });
+
+          assetToggleBtn.onclick = e => {
+            e.preventDefault(); e.stopPropagation();
+            const open = assetStrip.style.display !== 'none';
+            assetStrip.style.display = open ? 'none' : 'block';
+            assetToggleBtn.style.color = open ? 'var(--text3)' : 'var(--accent)';
+            assetToggleBtn.style.borderColor = open ? 'var(--border)' : 'var(--accent)';
+          };
+
           titlesEl.appendChild(tRow);
+          titlesEl.appendChild(assetStrip);
         });
       });
 
@@ -7425,6 +7506,141 @@ function openClaudeModal(titleName, titleId) {
 function closeClaudeModal() {
   document.getElementById('claudeModal').classList.remove('active');
 }
+
+// ── ASSET GENERATE MODAL ─────────────────────────────────────────────
+let _assetGenTitle = '';
+let _assetGenPromptFn = null;
+let _assetResearchCache = {};
+
+function buildTikTokPrompt(title, r) {
+  return `You are writing a TikTok video script for a content creator who builds AI content systems for business owners.
+
+TITLE: ${title}
+
+CAMPAIGN CONTEXT:
+Key Message: ${r.keyMessage || '—'}
+TikTok Trends: ${r.tiktokTrends || '—'}
+Pain Points: ${r.painPoints || '—'}
+Keywords: ${r.keywords || '—'}
+
+Write a TikTok video script (45–60 seconds when read aloud). Structure:
+- Hook (first 2 seconds — pattern interrupt, bold statement, or question)
+- Body (3 punchy points, no fluff)
+- CTA (follow, comment, or book audit)
+
+Voice: direct, confident, conversational. No jargon. Write as spoken word, not an essay.
+Output the script only. No preamble.`;
+}
+
+function buildCarouselPrompt(title, r) {
+  return `You are writing an Instagram/LinkedIn carousel for a content creator who builds AI content systems for business owners.
+
+TITLE: ${title}
+
+CAMPAIGN CONTEXT:
+Key Message: ${r.keyMessage || '—'}
+Pain Points: ${r.painPoints || '—'}
+Keywords: ${r.keywords || '—'}
+Trend Intelligence: ${r.trendIntelligence || '—'}
+
+Write a 6-slide carousel. Each slide: bold header (max 6 words) + body (max 25 words).
+Slide 1: Hook — stop-scroll statement or bold question
+Slides 2–5: one insight or step each
+Slide 6: CTA — "Save this. Follow for more. Book a free audit."
+
+Output format:
+SLIDE 1: [header] / [body]
+SLIDE 2: [header] / [body]
+...and so on. No preamble.`;
+}
+
+function buildLinkedInPrompt(title, r) {
+  return `You are writing a LinkedIn post for a content creator who builds AI content systems for business owners.
+
+TITLE: ${title}
+
+CAMPAIGN CONTEXT:
+Key Message: ${r.keyMessage || '—'}
+Pain Points: ${r.painPoints || '—'}
+Campaign Goal: ${r.campaignGoal || '—'}
+News Feed: ${(r.newsFeed || '').slice(0, 400) || '—'}
+Keywords: ${r.keywords || '—'}
+
+Write a LinkedIn post (1000–1500 characters). Structure:
+- Hook line (no "I" opener, bold claim or question)
+- 2–3 short paragraphs with one clear insight each
+- Bullet list (3–5 points max)
+- CTA: "Book a free 20-min Content OS audit."
+
+Voice: professional but human, first-person, no corporate speak.
+Output the post only. No preamble.`;
+}
+
+async function openAssetGenModal(titleName, titleId, campId, assetType) {
+  _assetGenTitle = titleName;
+  _assetGenPromptFn = assetType.promptFn;
+
+  document.getElementById('assetGenModalTitle').textContent = assetType.icon + '  Generate — ' + assetType.label;
+  document.getElementById('assetGenContext').textContent = '📋 ' + titleName;
+  document.getElementById('assetGenPrompt').value = 'Loading research…';
+  document.getElementById('assetGenPrompt').disabled = true;
+  document.getElementById('assetGenSendBtn').disabled = true;
+  document.getElementById('assetGenResponse').style.display = 'none';
+  document.getElementById('assetGenResponseText').textContent = '';
+  document.getElementById('assetGenResearchNote').style.display = 'none';
+  document.getElementById('assetGenModal').classList.add('active');
+
+  // Fetch research — cached per campaign
+  let research = _assetResearchCache[campId];
+  if (!research) {
+    try {
+      const data = await call('getResearch', { campaignId: campId });
+      research = data.research || {};
+      _assetResearchCache[campId] = research;
+    } catch(e) {
+      research = {};
+      document.getElementById('assetGenResearchNote').style.display = 'block';
+      document.getElementById('assetGenResearchNote').textContent = '⚠ Could not load research — prompt uses title only.';
+    }
+  }
+
+  const prompt = assetType.promptFn(titleName, research);
+  document.getElementById('assetGenPrompt').value = prompt;
+  document.getElementById('assetGenPrompt').disabled = false;
+  document.getElementById('assetGenSendBtn').disabled = false;
+}
+
+function closeAssetGenModal() {
+  document.getElementById('assetGenModal').classList.remove('active');
+}
+
+async function sendAssetGen() {
+  const prompt = document.getElementById('assetGenPrompt').value.trim();
+  if (!prompt) return;
+  const btn = document.getElementById('assetGenSendBtn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  document.getElementById('assetGenResponse').style.display = 'none';
+  try {
+    const data = await call('sendPrompt', { prompt });
+    document.getElementById('assetGenResponseText').textContent = data.text || '(no response)';
+    document.getElementById('assetGenResponse').style.display = 'block';
+    btn.textContent = 'Generate'; btn.disabled = false;
+  } catch(e) {
+    showToast('Generate error: ' + e.message, 'error');
+    btn.textContent = 'Generate'; btn.disabled = false;
+  }
+}
+
+function copyAssetOutput() {
+  const text = document.getElementById('assetGenResponseText').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('Copied ✓', 'success')).catch(() => showToast('Copy failed', 'error'));
+}
+
+function generateAnotherAsset() {
+  document.getElementById('assetGenResponse').style.display = 'none';
+  sendAssetGen();
+}
+
 async function sendClaudePrompt() {
   const prompt = document.getElementById('claudePromptInput').value.trim();
   if (!prompt) return;
