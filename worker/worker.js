@@ -1914,7 +1914,33 @@ Rules:
         return json({ text });
       }
 
-      // Î“Ã¶Ã‡Î“Ã¶Ã‡ CAMPAIGN ADMIN: updateResearch Î“Ã¶Ã‡Î“Ã¶Ã‡
+      // ── createAsset ──────────────────────────────────────────────────
+      if (body.action === “createAsset”) {
+        const { titleId, campId, assetTitle, platformName, assetType, content } = body;
+        if (!titleId || !assetTitle) return json({ error: “titleId and assetTitle required” }, 400);
+        const dash = id => id.replace(/-/g,””).replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, “$1-$2-$3-$4-$5”);
+
+        const properties = {
+          “Asset Title”: { title: [{ text: { content: assetTitle } }] },
+          “Asset Status”: { select: { name: “Development” } },
+          “Body”: { rich_text: [{ text: { content: (content || “”).slice(0, 2000) } }] },
+          “Content Strategy”: { relation: [{ id: dash(titleId) }] },
+        };
+        if (platformName) properties[“Platform Name”] = { select: { name: platformName } };
+        if (assetType)    properties[“Asset Type”]    = { select: { name: assetType } };
+        if (campId)       properties[“Campaign”]      = { relation: [{ id: dash(campId) }] };
+
+        const resp = await fetch(“https://api.notion.com/v1/pages”, {
+          method: “POST”,
+          headers: { “Authorization”: “Bearer “ + NOTION_TOKEN, “Notion-Version”: NOTION_VERSION, “Content-Type”: “application/json” },
+          body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties })
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || “Create failed” }, resp.status);
+        return json({ id: result.id?.replace(/-/g,””) || “”, url: result.url || “” });
+      }
+
+      // ── CAMPAIGN ADMIN: updateResearch ──────────────────────────────
       if (body.action === "updateResearch") {
         const { researchId, field, value } = body;
         if (!researchId || !field) return json({ error: "researchId and field required" }, 400);

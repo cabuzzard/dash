@@ -2206,6 +2206,7 @@
       <div id="assetGenResponseText" style="padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;max-height:360px;overflow-y:auto;"></div>
       <div style="display:flex;gap:8px;margin-top:10px;">
         <button class="btn btn-secondary" style="flex:0;padding:0 16px;font-size:12px;" onclick="copyAssetOutput()">Copy</button>
+        <button class="btn btn-secondary" style="flex:0;padding:0 16px;font-size:12px;" id="assetSaveBtn" onclick="saveAssetToNotion()">Save to Notion</button>
         <button class="btn btn-primary" style="font-size:12px;" onclick="generateAnotherAsset()">Regenerate</button>
       </div>
     </div>
@@ -6335,9 +6336,9 @@ function renderDev() {
 
           // ── Asset strip ──
           const ASSET_TYPES = [
-            { key: 'tiktok',    icon: '🎬', label: 'TikTok Video',      promptFn: (title, r) => buildTikTokPrompt(title, r) },
-            { key: 'carousel',  icon: '🖼️', label: 'Carousel',          promptFn: (title, r) => buildCarouselPrompt(title, r) },
-            { key: 'linkedin',  icon: '💼', label: 'LinkedIn Article',   promptFn: (title, r) => buildLinkedInPrompt(title, r) },
+            { key: 'tiktok',   icon: '🎬', label: 'TikTok Video',    platformName: 'TikTok',    assetType: 'Post',      promptFn: (title, r) => buildTikTokPrompt(title, r) },
+            { key: 'carousel', icon: '🖼️', label: 'Carousel',        platformName: 'Instagram', assetType: 'Post',      promptFn: (title, r) => buildCarouselPrompt(title, r) },
+            { key: 'linkedin', icon: '💼', label: 'LinkedIn Article', platformName: 'LinkedIn',  assetType: 'Body Text', promptFn: (title, r) => buildLinkedInPrompt(title, r) },
           ];
 
           const assetStrip = document.createElement('div');
@@ -7511,6 +7512,7 @@ function closeClaudeModal() {
 let _assetGenTitle = '';
 let _assetGenPromptFn = null;
 let _assetResearchCache = {};
+let _assetGenMeta = {}; // { titleId, campId, platformName, assetType, assetLabel }
 
 function buildTikTokPrompt(title, r) {
   return `You are writing a TikTok video script for a content creator who builds AI content systems for business owners.
@@ -7579,6 +7581,13 @@ Output the post only. No preamble.`;
 async function openAssetGenModal(titleName, titleId, campId, assetType) {
   _assetGenTitle = titleName;
   _assetGenPromptFn = assetType.promptFn;
+  _assetGenMeta = {
+    titleId,
+    campId,
+    platformName: assetType.platformName,
+    assetType: assetType.assetType,
+    assetLabel: assetType.label,
+  };
 
   document.getElementById('assetGenModalTitle').textContent = assetType.icon + '  Generate — ' + assetType.label;
   document.getElementById('assetGenContext').textContent = '📋 ' + titleName;
@@ -7639,6 +7648,33 @@ function copyAssetOutput() {
 function generateAnotherAsset() {
   document.getElementById('assetGenResponse').style.display = 'none';
   sendAssetGen();
+}
+
+async function saveAssetToNotion() {
+  const content = document.getElementById('assetGenResponseText').textContent.trim();
+  if (!content) return;
+  const btn = document.getElementById('assetSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const assetTitle = _assetGenMeta.assetLabel + ' — ' + _assetGenTitle;
+    const data = await call('createAsset', {
+      titleId:      _assetGenMeta.titleId,
+      campId:       _assetGenMeta.campId,
+      assetTitle,
+      platformName: _assetGenMeta.platformName,
+      assetType:    _assetGenMeta.assetType,
+      content,
+    });
+    btn.textContent = 'Saved ✓';
+    showToast('Asset saved to Notion ✓', 'success');
+    if (data.id) {
+      btn.onclick = () => window.open('https://www.notion.so/' + data.id, '_blank');
+      btn.title = 'Open in Notion';
+    }
+  } catch(e) {
+    showToast('Save failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save to Notion';
+  }
 }
 
 async function sendClaudePrompt() {
