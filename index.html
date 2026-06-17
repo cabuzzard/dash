@@ -7633,7 +7633,7 @@ async function openAssetGenModal(titleName, titleId, campId, assetType) {
   document.getElementById('assetGenResponse').style.display = 'none';
   document.getElementById('assetGenResponseText').textContent = '';
   document.getElementById('assetGenResearchNote').style.display = 'none';
-  document.getElementById('assetGenModal').classList.add('active');
+  document.getElementById('assetGenModal').classList.add('open');
 
   // Fetch research — cached per campaign
   let research = _assetResearchCache[campId];
@@ -7656,7 +7656,7 @@ async function openAssetGenModal(titleName, titleId, campId, assetType) {
 }
 
 function closeAssetGenModal() {
-  document.getElementById('assetGenModal').classList.remove('active');
+  document.getElementById('assetGenModal').classList.remove('open');
   if (_videoPollInterval) { clearInterval(_videoPollInterval); _videoPollInterval = null; }
   const sec = document.getElementById('assetVideoSection');
   if (sec) sec.style.display = 'none';
