@@ -154,7 +154,7 @@ async function getCampaigns() {
     const id = t.id.replace(/-/g,"");
     todoById[id] = t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled";
     const prio = (t.properties.priority?.multi_select || []).map(s => s.name);
-    todoIsOpen[id] = prio.includes("get") && !prio.includes("got") && !prio.includes("done");
+    todoIsOpen[id] = !prio.includes("got") && !prio.includes("done");
   });
 
   const productById = {};
