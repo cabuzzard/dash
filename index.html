@@ -5190,9 +5190,10 @@ function renderTable() {
     cpCell.title = 'Click to edit';
     const renderCpCell = () => {
       const items = c.campaignProducts || [];
+      cpCell.className = 'num';
       cpCell.innerHTML = items.length
-        ? items.map(p => '<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);margin:1px 2px;white-space:nowrap;">' + esc(p.name) + '</span>').join('')
-        : '<span style="font-size:11px;color:var(--text3);">—</span>';
+        ? '<span style="color:var(--text2);font-weight:600;">' + items.length + '</span>'
+        : '<span style="color:var(--text3);">—</span>';
     };
     renderCpCell();
     cpCell.onclick = () => openRelModal('products', c, renderCpCell);
