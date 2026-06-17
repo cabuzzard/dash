@@ -1104,6 +1104,40 @@ export default {
         return json({ success: true });
       }
 
+      if (body.action === "addCampaignTd") {
+        const { campaignId, title } = body;
+        if (!campaignId || !title) return json({ error: "campaignId and title required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
+        // Create the TD item
+        const createResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: MAIN_TD_DB },
+            properties: { Title: { title: [{ type: "text", text: { content: title } }] } }
+          })
+        });
+        const created = await createResp.json();
+        if (!createResp.ok) return json({ error: created.message || "Create failed" }, createResp.status);
+        const newTdId = created.id;
+        // Fetch existing relation
+        const campResp = await fetch("https://api.notion.com/v1/pages/" + dashId(campaignId), {
+          headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }
+        });
+        const campPage = await campResp.json();
+        const existing = (campPage.properties?.["Associated To Do"]?.relation || []).map(r => ({ id: r.id }));
+        existing.push({ id: newTdId });
+        // Patch campaign relation
+        const patchResp = await fetch("https://api.notion.com/v1/pages/" + dashId(campaignId), {
+          method: "PATCH",
+          headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Associated To Do": { relation: existing } } })
+        });
+        const patched = await patchResp.json();
+        if (!patchResp.ok) return json({ error: patched.message || "Link failed" }, patchResp.status);
+        return json({ success: true, tdId: newTdId.replace(/-/g,"") });
+      }
+
       if (body.action === "updateCampaignTodos") {
         const { campaignId, todoIds } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);

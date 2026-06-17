@@ -2043,6 +2043,22 @@
   </div>
 </div>
 
+<!-- Add Campaign TD Modal -->
+<div id="addCampTdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)closeAddCampTdModal()">
+  <div class="modal" style="max-width:420px;transform:none;border-radius:var(--radius);margin:0;width:100%;">
+    <div class="modal-title">Add TD Item</div>
+    <div style="font-size:11px;color:var(--text3);margin:-8px 0 14px;" id="addCampTdCampaignName"></div>
+    <div class="modal-field">
+      <label class="modal-label">Title</label>
+      <input class="modal-input" id="addCampTdInput" type="text" placeholder="What needs to be done..." style="font-size:14px;" onkeydown="if(event.key==='Enter')submitAddCampTd()">
+    </div>
+    <div class="modal-actions" style="margin-bottom:0;">
+      <button class="btn btn-secondary" onclick="closeAddCampTdModal()">Cancel</button>
+      <button class="btn btn-primary" id="addCampTdBtn" onclick="submitAddCampTd()">Add</button>
+    </div>
+  </div>
+</div>
+
 <!-- Duplicate Asset Modal -->
 <div class="modal-overlay" id="dupAssetModal" style="display:none;" onclick="if(event.target===this)closeDupAssetModal()">
   <div class="modal" style="width:440px;max-width:95vw;">
@@ -5146,7 +5162,7 @@ function renderTable() {
     const changedAge   = c.lastChanged ? (Date.now() - new Date(c.lastChanged).getTime()) : Infinity;
     const changedColor = changedAge < 86400000 ? 'var(--accent)' : changedAge < 604800000 ? 'var(--text2)' : 'var(--text3)';
     tr.insertAdjacentHTML('beforeend',
-      '<td class="num' + (c.openTd === 0 ? ' zero' : '') + '" style="' + (c.openTd > 0 ? 'color:var(--accent);font-weight:700;' : '') + '">' + (c.openTd || 0) + '</td>' +
+      '<td class="num" style="white-space:nowrap;' + (c.openTd > 0 ? 'color:var(--accent);font-weight:700;' : 'color:var(--text3);') + '"><span>' + (c.openTd || 0) + '</span> <button onclick="openAddCampTdModal(\'' + c.id + '\',\'' + esc(c.name).replace(/'/g,"\\'") + '\',this)" style="background:none;border:1px solid var(--border2);border-radius:10px;color:var(--text3);font-size:10px;line-height:1;padding:1px 5px;cursor:pointer;margin-left:3px;">+</button></td>' +
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '" style="cursor:' + (c.devTitles > 0 ? 'pointer' : 'default') + ';" onclick="' + (c.devTitles > 0 ? 'jumpToDev(\'' + c.id + '\')' : '') + '">' + c.devTitles + '</td>' +
       '<td class="num pub-cell' + (c.pubTitles === 0 ? ' zero' : '') + '" data-cid="' + c.id + '">' + c.pubTitles + '</td>' +
       '<td class="num" title="' + changedFull + '" style="color:' + changedColor + ';font-size:11px;font-weight:600;">' + changedLabel + '</td>'
@@ -7259,6 +7275,52 @@ function renderTdTab(items) {
     el.appendChild(hdrRow);
     el.appendChild(body);
   });
+}
+
+// ── ADD CAMPAIGN TD (from overview table) ────────────────────────────
+let _addCampTdId = null;
+let _addCampTdCountEl = null;
+let _addCampTdCount = 0;
+
+function openAddCampTdModal(campId, campName, btn) {
+  _addCampTdId = campId;
+  _addCampTdCountEl = btn.closest('td').querySelector('span');
+  _addCampTdCount = parseInt(_addCampTdCountEl.textContent) || 0;
+  document.getElementById('addCampTdCampaignName').textContent = campName;
+  document.getElementById('addCampTdInput').value = '';
+  document.getElementById('addCampTdBtn').disabled = false;
+  document.getElementById('addCampTdBtn').textContent = 'Add';
+  document.getElementById('addCampTdModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('addCampTdInput').focus(), 60);
+}
+
+function closeAddCampTdModal() {
+  document.getElementById('addCampTdModal').style.display = 'none';
+  _addCampTdId = null;
+}
+
+async function submitAddCampTd() {
+  const title = document.getElementById('addCampTdInput').value.trim();
+  if (!title) return;
+  const btn = document.getElementById('addCampTdBtn');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  try {
+    await call('addCampaignTd', { campaignId: _addCampTdId, title });
+    if (_addCampTdCountEl) {
+      const newCount = _addCampTdCount + 1;
+      _addCampTdCountEl.textContent = newCount;
+      const td = _addCampTdCountEl.closest('td');
+      td.style.color = 'var(--accent)';
+      td.style.fontWeight = '700';
+    }
+    showToast('TD added ✓', 'success');
+    closeAddCampTdModal();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Add';
+  }
 }
 
 // ── ADD TD MODAL ─────────────────────────────────────────────────────
