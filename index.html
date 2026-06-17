@@ -2054,6 +2054,23 @@
   </div>
 </div>
 
+<!-- Edit Campaign Site Modal -->
+<div id="editSiteModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)closeEditSiteModal()">
+  <div class="modal" style="max-width:380px;transform:none;border-radius:var(--radius);margin:0;width:100%;">
+    <div class="modal-title">Edit Site</div>
+    <div style="font-size:11px;color:var(--text3);margin:-8px 0 14px;" id="editSiteCampaignName"></div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Site name</label>
+      <input class="modal-input" id="editSiteInput" type="text" placeholder="e.g. cabuzzard.com" autocomplete="off" style="font-size:14px;" oninput="filterSiteDropdown()" onfocus="filterSiteDropdown()" onkeydown="if(event.key==='Enter')saveEditSite()">
+      <div id="editSiteDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);z-index:10;max-height:160px;overflow-y:auto;margin-top:2px;"></div>
+    </div>
+    <div class="modal-actions" style="margin-bottom:0;">
+      <button class="btn btn-secondary" onclick="closeEditSiteModal()">Cancel</button>
+      <button class="btn btn-primary" id="editSiteBtn" onclick="saveEditSite()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Add Campaign TD Modal -->
 <div id="addCampTdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)closeAddCampTdModal()">
   <div class="modal" style="max-width:420px;transform:none;border-radius:var(--radius);margin:0;width:100%;">
@@ -5155,7 +5172,14 @@ function renderTable() {
     renderGrpCell();
     grpCell.onclick = () => openGrpModal(c, renderGrpCell);
 
-    tr.innerHTML = '<td class="site">' + esc(c.site || '—') + '</td>';
+    const siteTd = document.createElement('td');
+    siteTd.className = 'site';
+    siteTd.style.cssText = 'cursor:pointer;';
+    siteTd.title = 'Click to edit site';
+    const renderSiteCell = () => { siteTd.textContent = c.site || '—'; };
+    renderSiteCell();
+    siteTd.onclick = () => openEditSiteModal(c, renderSiteCell);
+    tr.appendChild(siteTd);
     tr.appendChild(nameCell);
     tr.appendChild(grpCell);
     tr.appendChild(kmCell);
@@ -5227,6 +5251,18 @@ function renderTable() {
       '<td class="link">' + (c.campaignPage ? '<a href="' + c.campaignPage + '" target="_blank" title="Live Site">↗</a>' : '') + '</td>' +
       '<td class="link">' + (c.research ? '<a href="https://www.notion.so/' + c.research.id + '" target="_blank" title="ROI Notes">↗</a>' : '') + '</td>'
     );
+
+    const delTd = document.createElement('td');
+    delTd.className = 'link';
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '🗑';
+    delBtn.title = 'Delete campaign';
+    delBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:13px;opacity:.35;padding:0;transition:opacity .15s;';
+    delBtn.onmouseover = () => delBtn.style.opacity = '1';
+    delBtn.onmouseout  = () => delBtn.style.opacity = '.35';
+    delBtn.onclick = () => confirmDeleteCampaign(c, tr);
+    delTd.appendChild(delBtn);
+    tr.appendChild(delTd);
 
     return { tr, isThisWeek };
   }
@@ -7353,6 +7389,82 @@ function renderTdTab(items) {
     el.appendChild(hdrRow);
     el.appendChild(body);
   });
+}
+
+// ── EDIT CAMPAIGN SITE ───────────────────────────────────────────────
+let _editSiteCampaign = null;
+let _editSiteRenderCb = null;
+
+function openEditSiteModal(campaign, renderCb) {
+  _editSiteCampaign = campaign;
+  _editSiteRenderCb = renderCb;
+  document.getElementById('editSiteCampaignName').textContent = campaign.name;
+  document.getElementById('editSiteInput').value = campaign.site && campaign.site !== 'Other' ? campaign.site : '';
+  document.getElementById('editSiteBtn').disabled = false;
+  document.getElementById('editSiteBtn').textContent = 'Save';
+  document.getElementById('editSiteDropdown').style.display = 'none';
+  document.getElementById('editSiteModal').style.display = 'flex';
+  setTimeout(() => { document.getElementById('editSiteInput').focus(); filterSiteDropdown(); }, 60);
+}
+
+function closeEditSiteModal() {
+  document.getElementById('editSiteModal').style.display = 'none';
+  document.getElementById('editSiteDropdown').style.display = 'none';
+  _editSiteCampaign = null;
+  _editSiteRenderCb = null;
+}
+
+function filterSiteDropdown() {
+  const q = document.getElementById('editSiteInput').value.trim().toLowerCase();
+  const dd = document.getElementById('editSiteDropdown');
+  const sites = [...new Set((ovData || []).map(c => c.site).filter(s => s && s !== 'Other'))].sort();
+  const filtered = q ? sites.filter(s => s.toLowerCase().includes(q)) : sites;
+  if (!filtered.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = '';
+  filtered.forEach(s => {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;';
+    div.textContent = s;
+    div.onmousedown = () => {
+      document.getElementById('editSiteInput').value = s;
+      dd.style.display = 'none';
+    };
+    div.onmouseover = () => div.style.background = 'var(--surface)';
+    div.onmouseout  = () => div.style.background = '';
+    dd.appendChild(div);
+  });
+  dd.style.display = 'block';
+}
+
+async function saveEditSite() {
+  const val = document.getElementById('editSiteInput').value.trim();
+  const btn = document.getElementById('editSiteBtn');
+  if (!val) return;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await call('updateCampaignSite', { campaignId: _editSiteCampaign.id, site: val });
+    _editSiteCampaign.site = val;
+    if (_editSiteRenderCb) _editSiteRenderCb();
+    showToast('Site updated ✓', 'success');
+    closeEditSiteModal();
+    renderTable();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── DELETE CAMPAIGN ──────────────────────────────────────────────────
+async function confirmDeleteCampaign(campaign, tr) {
+  if (!confirm('Delete "' + campaign.name + '"? This archives it in Notion and cannot be easily undone.')) return;
+  try {
+    await call('deleteCampaign', { campaignId: campaign.id });
+    tr.remove();
+    ovData = ovData.filter(c => c.id !== campaign.id);
+    showToast('Campaign deleted ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
 }
 
 // ── ADD CAMPAIGN TD (from overview table) ────────────────────────────
