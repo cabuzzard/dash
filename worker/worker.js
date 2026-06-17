@@ -1986,6 +1986,59 @@ Rules:
         return json({ state: data.state, progress: data.progress, videoUrl: videoUrl, raw: data });
       }
 
+      // -- generateImage (Kie.ai flux-2 text-to-image) ---------------------------------
+      if (body.action === "generateImage") {
+        const { prompt, aspectRatio } = body;
+        if (!prompt) return json({ error: "prompt required" }, 400);
+        const KIE_KEY = (env.KIE_API_KEY || "").trim();
+        if (!KIE_KEY) return json({ error: "KIE_API_KEY not configured" }, 500);
+        const resp = await fetch("https://api.kie.ai/api/v1/jobs/createTask", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + KIE_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "flux-2/pro-text-to-image",
+            input: {
+              prompt: prompt.slice(0, 5000),
+              aspect_ratio: aspectRatio || "4:5",
+              resolution: "1K",
+              nsfw_checker: false
+            }
+          })
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || result.msg || "Kie.ai error" }, resp.status);
+        return json({ taskId: result.data && result.data.taskId ? result.data.taskId : result.taskId });
+      }
+
+      // -- getImageTask (Kie.ai poll image task status) ---------------------------------
+      if (body.action === "getImageTask") {
+        const { taskId } = body;
+        if (!taskId) return json({ error: "taskId required" }, 400);
+        const KIE_KEY = (env.KIE_API_KEY || "").trim();
+        if (!KIE_KEY) return json({ error: "KIE_API_KEY not configured" }, 500);
+        const resp = await fetch("https://api.kie.ai/api/v1/jobs/recordInfo?taskId=" + encodeURIComponent(taskId), {
+          headers: { "Authorization": "Bearer " + KIE_KEY }
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || result.msg || "Kie.ai error" }, resp.status);
+        const data = result.data || {};
+        let imageUrls = [];
+        if (data.resultJson) {
+          try {
+            const rj = typeof data.resultJson === "string" ? JSON.parse(data.resultJson) : data.resultJson;
+            if (Array.isArray(rj)) {
+              imageUrls = rj.map(function(item) { return item.url || item.resource || item; }).filter(Boolean);
+            } else if (rj.images) {
+              imageUrls = rj.images.map(function(item) { return item.url || item; }).filter(Boolean);
+            } else if (rj.url) {
+              imageUrls = [rj.url];
+            } else if (rj.works) {
+              imageUrls = rj.works.map(function(w) { return w.resource && w.resource.resource ? w.resource.resource : null; }).filter(Boolean);
+            }
+          } catch(e2) {}
+        }
+        return json({ state: data.state, imageUrls: imageUrls, raw: data });
+      }
       // -- updateAssetVideoUrl (save Kie.ai video URL to Notion) -----------------------
       if (body.action === "updateAssetVideoUrl") {
         const { assetId, videoUrl } = body;
