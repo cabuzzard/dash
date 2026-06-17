@@ -4974,6 +4974,22 @@ function syncStickyThead(cols, sortState, rerender) {
   updateStickyPos();
 }
 
+function relTime(iso) {
+  if (!iso) return '—';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 60)  return m <= 1 ? 'now' : m + 'm';
+  const h = Math.floor(m / 60);
+  if (h < 24)  return h + 'h';
+  const d = Math.floor(h / 24);
+  if (d < 7)   return d + 'd';
+  const w = Math.floor(d / 7);
+  if (w < 5)   return w + 'w';
+  const mo = Math.floor(d / 30);
+  if (mo < 12) return mo + 'mo';
+  return Math.floor(mo / 12) + 'y';
+}
+
 function renderTable() {
   const el = document.getElementById('ovContent');
   el.innerHTML = '';
@@ -4990,6 +5006,7 @@ function renderTable() {
     { label: 'Platforms',   key: 'platforms',        type: 'rel' },
     { label: 'Dev',         key: 'devTitles',        type: 'num' },
     { label: 'Pub',         key: 'pubTitles',        type: 'num' },
+    { label: 'Changed',     key: 'lastChanged',      type: 'date' },
   ];
 
   // Sort data — true flat sort, no site grouping
@@ -5000,6 +5017,10 @@ function renderTable() {
     if (col.type === 'num') {
       av = a[col.key] ?? 0;
       bv = b[col.key] ?? 0;
+      return ovSort.asc ? av - bv : bv - av;
+    } else if (col.type === 'date') {
+      av = a[col.key] ? new Date(a[col.key]).getTime() : 0;
+      bv = b[col.key] ? new Date(b[col.key]).getTime() : 0;
       return ovSort.asc ? av - bv : bv - av;
     } else if (col.type === 'rel') {
       av = (a[col.key]?.[0]?.name || a[col.key]?.[0] || '');
@@ -5149,9 +5170,14 @@ function renderTable() {
     lgCell.onclick = () => openRelModal('platforms', c, renderPlatformCell);
     tr.appendChild(lgCell);
 
+    const changedLabel = relTime(c.lastChanged);
+    const changedFull  = c.lastChanged ? new Date(c.lastChanged).toLocaleString() : '';
+    const changedAge   = c.lastChanged ? (Date.now() - new Date(c.lastChanged).getTime()) : Infinity;
+    const changedColor = changedAge < 86400000 ? 'var(--accent)' : changedAge < 604800000 ? 'var(--text2)' : 'var(--text3)';
     tr.insertAdjacentHTML('beforeend',
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '" style="cursor:' + (c.devTitles > 0 ? 'pointer' : 'default') + ';" onclick="' + (c.devTitles > 0 ? 'jumpToDev(\'' + c.id + '\')' : '') + '">' + c.devTitles + '</td>' +
-      '<td class="num pub-cell' + (c.pubTitles === 0 ? ' zero' : '') + '" data-cid="' + c.id + '">' + c.pubTitles + '</td>'
+      '<td class="num pub-cell' + (c.pubTitles === 0 ? ' zero' : '') + '" data-cid="' + c.id + '">' + c.pubTitles + '</td>' +
+      '<td class="num" title="' + changedFull + '" style="color:' + changedColor + ';font-size:11px;font-weight:600;">' + changedLabel + '</td>'
     );
 
     // ★ Active/Planning highlight toggle
