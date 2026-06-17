@@ -210,7 +210,14 @@
   .site-group-row td { padding: 5px 10px; background: var(--surface2); border-top: 2px solid var(--border2); border-bottom: 1px solid var(--border); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text2); cursor: pointer; user-select: none; }
   .site-group-row:hover td { color: var(--text); }
   .site-arrow { display: inline-block; width: 14px; font-size: 11px; color: var(--text3); }
+  .site-name { }
   .site-count { font-weight: 400; color: var(--text3); margin-left: 6px; font-size: 10px; }
+  .site-stats { margin-left: 14px; display: inline-flex; gap: 6px; align-items: center; }
+  .site-stat { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 10px; letter-spacing: .04em; }
+  .site-stat-td   { background: rgba(99,102,241,.15); color: #a5b4fc; }
+  .site-stat-dev  { background: rgba(255,255,255,.07); color: var(--text2); }
+  .site-stat-pub  { background: rgba(52,211,153,.12); color: #6ee7b7; }
+  .site-stat-date { background: none; color: var(--text3); font-weight: 400; }
   .ov-table tbody tr.sub-campaign-row { background: var(--surface); }
   .ov-table tbody tr.sub-campaign-row td.name { font-weight: 400; color: var(--text2); font-size: 12px; }
   .ov-table tbody tr.sub-campaign-row td { font-size: 12px; }
@@ -4932,7 +4939,8 @@ let siteCollapsed = {};
 try { siteCollapsed = JSON.parse(localStorage.getItem('ovSiteCollapsed') || '{}'); } catch(e) {}
 
 function toggleSite(site) {
-  siteCollapsed[site] = !siteCollapsed[site];
+  // default is collapsed, so open = false, closed = true (or missing = collapsed)
+  siteCollapsed[site] = siteCollapsed[site] === false ? true : false;
   try { localStorage.setItem('ovSiteCollapsed', JSON.stringify(siteCollapsed)); } catch(e) {}
   renderTable();
 }
@@ -5251,7 +5259,16 @@ function renderTable() {
   const totalCols = cols.length + 5; // data cols + HL DB STE LVE ROI
   siteOrder.forEach(site => {
     const camps = bySite[site];
-    const collapsed = !!siteCollapsed[site];
+    const collapsed = siteCollapsed[site] !== false; // default collapsed
+
+    // Aggregate stats for this site
+    const allCamps = camps.concat(sorted.filter(s => camps.some(c => parentOf[s.id] === c.id)));
+    const sumDev = allCamps.reduce((n, c) => n + (c.devTitles || 0), 0);
+    const sumPub = allCamps.reduce((n, c) => n + (c.pubTitles || 0), 0);
+    const sumTd  = allCamps.reduce((n, c) => n + (c.openTd  || 0), 0);
+    const latestChanged = allCamps.reduce((mx, c) => (!c.lastChanged ? mx : !mx || c.lastChanged > mx ? c.lastChanged : mx), null);
+    const changedLabel = latestChanged ? relTime(latestChanged) : '—';
+    const changedFull  = latestChanged ? new Date(latestChanged).toLocaleString() : '';
 
     // Site header row
     const siteRow = document.createElement('tr');
@@ -5262,7 +5279,16 @@ function renderTable() {
     const arrow = collapsed ? '▶' : '▾';
     const subCount = camps.reduce((n, c) => n + sorted.filter(s => parentOf[s.id] === c.id).length, 0);
     const total = camps.length + subCount;
-    siteTd.innerHTML = '<span class="site-arrow">' + arrow + '</span>' + esc(site) + '<span class="site-count">' + total + '</span>';
+    siteTd.innerHTML =
+      '<span class="site-arrow">' + arrow + '</span>' +
+      '<span class="site-name">' + esc(site) + '</span>' +
+      '<span class="site-count">' + total + '</span>' +
+      '<span class="site-stats">' +
+        (sumTd  ? '<span class="site-stat site-stat-td">'  + sumTd  + ' td</span>'  : '') +
+        (sumDev ? '<span class="site-stat site-stat-dev">' + sumDev + ' dev</span>' : '') +
+        (sumPub ? '<span class="site-stat site-stat-pub">' + sumPub + ' pub</span>' : '') +
+        (latestChanged ? '<span class="site-stat site-stat-date" title="' + changedFull + '">' + changedLabel + '</span>' : '') +
+      '</span>';
     siteRow.appendChild(siteTd);
     tbody.appendChild(siteRow);
 
