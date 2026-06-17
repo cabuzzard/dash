@@ -207,6 +207,10 @@
   /* ── STATUS ROW HIGHLIGHTS ── */
   .ov-table tbody tr.status-active td { background: #00cc66; color: #000 !important; }
   .ov-table tbody tr.status-active .status-select { background: #00aa55; border-color: #007733; color: #000; }
+  .site-group-row td { padding: 5px 10px; background: var(--surface2); border-top: 2px solid var(--border2); border-bottom: 1px solid var(--border); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text2); cursor: pointer; user-select: none; }
+  .site-group-row:hover td { color: var(--text); }
+  .site-arrow { display: inline-block; width: 14px; font-size: 11px; color: var(--text3); }
+  .site-count { font-weight: 400; color: var(--text3); margin-left: 6px; font-size: 10px; }
   .ov-table tbody tr.sub-campaign-row { background: var(--surface); }
   .ov-table tbody tr.sub-campaign-row td.name { font-weight: 400; color: var(--text2); font-size: 12px; }
   .ov-table tbody tr.sub-campaign-row td { font-size: 12px; }
@@ -4924,6 +4928,14 @@ function renderRunsPanel(panel, runs) {
 
 let ovData = [];
 let ovSort = { col: null, asc: true };
+let siteCollapsed = {};
+try { siteCollapsed = JSON.parse(localStorage.getItem('ovSiteCollapsed') || '{}'); } catch(e) {}
+
+function toggleSite(site) {
+  siteCollapsed[site] = !siteCollapsed[site];
+  try { localStorage.setItem('ovSiteCollapsed', JSON.stringify(siteCollapsed)); } catch(e) {}
+  renderTable();
+}
 
 async function loadOverview() {
   const el = document.getElementById('ovContent');
@@ -5226,12 +5238,42 @@ function renderTable() {
     }
   }
 
+  // Group by site, preserving sort order within each group
+  const siteOrder = [];
+  const bySite = {};
   sorted.forEach(c => {
-    if (childIds.has(c.id)) return; // rendered nested under its main campaign below
-    appendRow(c, false);
-    sorted.forEach(sub => {
-      if (parentOf[sub.id] === c.id) appendRow(sub, true);
-    });
+    if (childIds.has(c.id)) return;
+    const site = c.site || 'Other';
+    if (!bySite[site]) { bySite[site] = []; siteOrder.push(site); }
+    bySite[site].push(c);
+  });
+
+  const totalCols = cols.length + 5; // data cols + HL DB STE LVE ROI
+  siteOrder.forEach(site => {
+    const camps = bySite[site];
+    const collapsed = !!siteCollapsed[site];
+
+    // Site header row
+    const siteRow = document.createElement('tr');
+    siteRow.className = 'site-group-row';
+    siteRow.onclick = () => toggleSite(site);
+    const siteTd = document.createElement('td');
+    siteTd.colSpan = totalCols;
+    const arrow = collapsed ? '▶' : '▾';
+    const subCount = camps.reduce((n, c) => n + sorted.filter(s => parentOf[s.id] === c.id).length, 0);
+    const total = camps.length + subCount;
+    siteTd.innerHTML = '<span class="site-arrow">' + arrow + '</span>' + esc(site) + '<span class="site-count">' + total + '</span>';
+    siteRow.appendChild(siteTd);
+    tbody.appendChild(siteRow);
+
+    if (!collapsed) {
+      camps.forEach(c => {
+        appendRow(c, false);
+        sorted.forEach(sub => {
+          if (parentOf[sub.id] === c.id) appendRow(sub, true);
+        });
+      });
+    }
   });
   table.appendChild(tbody);
   const wrap = document.createElement('div');
