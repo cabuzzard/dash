@@ -58,6 +58,7 @@
       <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
       <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/34b1f7d3a4bb81b6a8a8fee04df94807" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Key Message</div><div class="field-value" id="r-camp-keymessage" style="font-style:italic;color:#aaa;">—</div></div>
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
     </div>
   </div>
@@ -324,6 +325,8 @@ async function loadResearch() {
     const sc = r.status ? r.status.toLowerCase() : 'draft';
     statusEl.innerHTML = `<span class="badge ${sc}">${r.status || '—'}</span>`;
     document.getElementById('r-date').textContent = r.lastUpdated || '—';
+    const kmEl = document.getElementById('r-camp-keymessage');
+    if (kmEl) { kmEl.textContent = r.campaignKeyMessage || '—'; kmEl.style.color = r.campaignKeyMessage ? '' : '#aaa'; }
 
     // Store raw values for editing
     RESEARCH_ID_LIVE = r.id || '';

@@ -1903,6 +1903,7 @@ export default {
             uniqueOpportunity: props["Unique Opportunity"]?.rich_text?.map(t => t.plain_text).join("") || "",
             campaignGoal: cp["Campaign Goal"]?.rich_text?.map(t => t.plain_text).join("") || "",
             painPoints: cp["Pain Points"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            campaignKeyMessage: cp["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
           }
         });
       }
