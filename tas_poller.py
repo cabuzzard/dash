@@ -140,6 +140,14 @@ def process_trade(token, trade):
             patch["contract_max_high_time"] = now
             patch["contract_max_low"]       = contract
             patch["contract_max_low_time"]  = now
+        elif trade.get("contract_captured") and trade.get("contract_max_high") is None:
+            # Picker pre-filled entry_contract but max_high/low were never initialized
+            init_c = contract if contract is not None else trade.get("entry_contract")
+            if init_c is not None:
+                patch["contract_max_high"]      = init_c
+                patch["contract_max_high_time"] = now
+                patch["contract_max_low"]       = init_c
+                patch["contract_max_low_time"]  = now
         print(f"  ✓ {ticker}: entry captured — underlying ${current}, contract ${contract}")
     else:
         entry = trade.get("entry_price", current)
@@ -175,6 +183,15 @@ def process_trade(token, trade):
                     patch["contract_max_low"]      = contract
                     patch["contract_max_low_time"] = now
                     print(f"  ↓ {ticker}: new contract max low ${contract}")
+        elif trade.get("contract_captured") and trade.get("contract_max_high") is None:
+            # Contract fetch failed this cycle but we have entry_contract — seed the baseline
+            init_c = trade.get("entry_contract")
+            if init_c is not None:
+                patch["contract_max_high"]      = init_c
+                patch["contract_max_high_time"] = trade.get("entry_time", now)
+                patch["contract_max_low"]       = init_c
+                patch["contract_max_low_time"]  = trade.get("entry_time", now)
+                print(f"  ~ {ticker}: contract max_high/low seeded from entry ${init_c}")
 
         # Strike reached?
         if not trade.get("strike_reached"):

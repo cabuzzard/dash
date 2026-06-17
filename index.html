@@ -885,7 +885,11 @@
     <div id="tradesListView">
       <div class="trades-hdr">
         <div class="trades-hdr-title">Trades</div>
-        <button class="tr-add-btn" onclick="openNewTradeModal()">+ New Trade</button>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span id="tradesLastSync" style="font-size:11px;color:var(--text3);"></span>
+          <button class="tr-add-btn" onclick="refreshTrades()" style="padding:6px 12px;font-size:11px;">↻ Refresh</button>
+          <button class="tr-add-btn" onclick="openNewTradeModal()">+ New Trade</button>
+        </div>
       </div>
       <div class="tr-table-wrap">
         <table class="tr-table">
@@ -7754,6 +7758,12 @@ async function saveTradeManual() {
   }
 }
 
+async function refreshTrades() {
+  tradesLoaded = false;
+  await loadTrades();
+  await loadWatchlist();
+}
+
 async function loadTrades() {
   const tbody = document.getElementById('tradesTableBody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text3);padding:20px 10px;">Loading…</td></tr>';
@@ -7761,6 +7771,11 @@ async function loadTrades() {
     const data = await call('getTrades');
     tradesCache = data.trades || [];
     renderTradeTable();
+    const syncEl = document.getElementById('tradesLastSync');
+    if (syncEl) {
+      const now = new Date();
+      syncEl.textContent = 'Synced ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
   } catch(e) {
     if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="error-msg">' + e.message + '</td></tr>';
   }
