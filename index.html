@@ -5004,6 +5004,7 @@ function renderTable() {
     { label: 'Products',    key: 'campaignProducts', type: 'rel' },
     { label: 'Methods',     key: 'campaignMethods',  type: 'rel' },
     { label: 'Platforms',   key: 'platforms',        type: 'rel' },
+    { label: 'TD',          key: 'openTd',           type: 'num' },
     { label: 'Dev',         key: 'devTitles',        type: 'num' },
     { label: 'Pub',         key: 'pubTitles',        type: 'num' },
     { label: 'Changed',     key: 'lastChanged',      type: 'date' },
@@ -5175,6 +5176,7 @@ function renderTable() {
     const changedAge   = c.lastChanged ? (Date.now() - new Date(c.lastChanged).getTime()) : Infinity;
     const changedColor = changedAge < 86400000 ? 'var(--accent)' : changedAge < 604800000 ? 'var(--text2)' : 'var(--text3)';
     tr.insertAdjacentHTML('beforeend',
+      '<td class="num' + (c.openTd === 0 ? ' zero' : '') + '" style="' + (c.openTd > 0 ? 'color:var(--accent);font-weight:700;' : '') + '">' + (c.openTd || 0) + '</td>' +
       '<td class="num' + (c.devTitles === 0 ? ' zero' : '') + '" style="cursor:' + (c.devTitles > 0 ? 'pointer' : 'default') + ';" onclick="' + (c.devTitles > 0 ? 'jumpToDev(\'' + c.id + '\')' : '') + '">' + c.devTitles + '</td>' +
       '<td class="num pub-cell' + (c.pubTitles === 0 ? ' zero' : '') + '" data-cid="' + c.id + '">' + c.pubTitles + '</td>' +
       '<td class="num" title="' + changedFull + '" style="color:' + changedColor + ';font-size:11px;font-weight:600;">' + changedLabel + '</td>'

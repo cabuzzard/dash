@@ -149,8 +149,12 @@ async function getCampaigns() {
 
   // Build lookups by id
   const todoById = {};
+  const todoIsOpen = {};
   todoRows.forEach(t => {
-    todoById[t.id.replace(/-/g,"")] = t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled";
+    const id = t.id.replace(/-/g,"");
+    todoById[id] = t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled";
+    const prio = (t.properties.priority?.multi_select || []).map(s => s.name);
+    todoIsOpen[id] = prio.includes("get") && !prio.includes("got") && !prio.includes("done");
   });
 
   const productById = {};
@@ -179,6 +183,17 @@ async function getCampaigns() {
       const cid = r.id.replace(/-/g,"");
       if (!campaignToLogins[cid]) campaignToLogins[cid] = [];
       campaignToLogins[cid].push({ id: lid, name: lname, status: lstatus });
+    });
+  });
+
+  // Most recently edited title per campaign
+  const titleLastEdited = {};
+  titleRows.forEach(t => {
+    const te = t.last_edited_time;
+    if (!te) return;
+    (t.properties.Campaign?.relation || []).forEach(r => {
+      const id = r.id.replace(/-/g, "");
+      if (!titleLastEdited[id] || te > titleLastEdited[id]) titleLastEdited[id] = te;
     });
   });
 
@@ -263,10 +278,12 @@ async function getCampaigns() {
         name: campaignNameById[r.id.replace(/-/g,"")] || "Untitled",
       })),
       campaignPage: c.properties["live site"]?.url || null,
+      openTd: (c.properties["Associated To Do"]?.relation || []).filter(r => todoIsOpen[r.id.replace(/-/g,"")]).length,
       devTitles:  devCount[id]  || 0,
       pubTitles:  pubCount[id]  || 0,
       pubTitleData: pubTitleMap[id] || [],
       products:   prodCount[id] || 0,
+      lastChanged: titleLastEdited[id] || c.last_edited_time || null,
     };
   });
 
