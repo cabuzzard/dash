@@ -1,6 +1,7 @@
 name = "jolly-darkness-5dcc"
 main = "worker.js"
 compatibility_date = "2024-01-01"
+no_bundle = true
 
 [[kv_namespaces]]
 binding = "TRADES"

@@ -1915,34 +1915,34 @@ Rules:
       }
 
       // ── createAsset ──────────────────────────────────────────────────
-      if (body.action === “createAsset”) {
+      if (body.action === "createAsset") {
         const { titleId, campId, assetTitle, platformName, assetType, content } = body;
-        if (!titleId || !assetTitle) return json({ error: “titleId and assetTitle required” }, 400);
-        const dash = id => id.replace(/-/g,””).replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, “$1-$2-$3-$4-$5”);
+        if (!titleId || !assetTitle) return json({ error: "titleId and assetTitle required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
 
         const properties = {
-          “Asset Title”: { title: [{ text: { content: assetTitle } }] },
-          “Asset Status”: { select: { name: “Development” } },
-          “Body”: { rich_text: [{ text: { content: (content || “”).slice(0, 2000) } }] },
-          “Content Strategy”: { relation: [{ id: dash(titleId) }] },
+          "Asset Title": { title: [{ text: { content: assetTitle } }] },
+          "Asset Status": { select: { name: "Development" } },
+          "Body": { rich_text: [{ text: { content: (content || "").slice(0, 2000) } }] },
+          "Content Strategy": { relation: [{ id: dash(titleId) }] },
         };
-        if (platformName) properties[“Platform Name”] = { select: { name: platformName } };
-        if (assetType)    properties[“Asset Type”]    = { select: { name: assetType } };
-        if (campId)       properties[“Campaign”]      = { relation: [{ id: dash(campId) }] };
+        if (platformName) properties["Platform Name"] = { select: { name: platformName } };
+        if (assetType)    properties["Asset Type"]    = { select: { name: assetType } };
+        if (campId)       properties["Campaign"]      = { relation: [{ id: dash(campId) }] };
 
-        const resp = await fetch(“https://api.notion.com/v1/pages”, {
-          method: “POST”,
-          headers: { “Authorization”: “Bearer “ + NOTION_TOKEN, “Notion-Version”: NOTION_VERSION, “Content-Type”: “application/json” },
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties })
         });
         const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || “Create failed” }, resp.status);
-        return json({ id: result.id?.replace(/-/g,””) || “”, url: result.url || “” });
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ id: result.id?.replace(/-/g,"") || "", url: result.url || "" });
       }
 
-      // ── generateVideo (Kie.ai text-to-video) ─────────────────────────
+      // -- generateVideo (Kie.ai text-to-video) ----------------------------------------
       if (body.action === "generateVideo") {
-        const { prompt, aspectRatio, duration, callBackUrl } = body;
+        const { prompt, aspectRatio, duration } = body;
         if (!prompt) return json({ error: "prompt required" }, 400);
         const KIE_KEY = (env.KIE_API_KEY || "").trim();
         if (!KIE_KEY) return json({ error: "KIE_API_KEY not configured" }, 500);
@@ -1951,7 +1951,6 @@ Rules:
           headers: { "Authorization": "Bearer " + KIE_KEY, "Content-Type": "application/json" },
           body: JSON.stringify({
             model: "kling-2.6/text-to-video",
-            callBackUrl: callBackUrl || undefined,
             input: {
               prompt: prompt.slice(0, 1000),
               sound: false,
@@ -1961,51 +1960,49 @@ Rules:
           })
         });
         const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || result.msg || "Kie.ai error", detail: result }, resp.status);
-        return json({ taskId: result.data?.taskId || result.taskId || result.data });
+        if (!resp.ok) return json({ error: result.message || result.msg || "Kie.ai error" }, resp.status);
+        return json({ taskId: result.data && result.data.taskId ? result.data.taskId : result.taskId });
       }
 
-      // ── getVideoTask (Kie.ai poll task status) ────────────────────────
+      // -- getVideoTask (Kie.ai poll task status) ---------------------------------------
       if (body.action === "getVideoTask") {
         const { taskId } = body;
         if (!taskId) return json({ error: "taskId required" }, 400);
         const KIE_KEY = (env.KIE_API_KEY || "").trim();
         if (!KIE_KEY) return json({ error: "KIE_API_KEY not configured" }, 500);
-        const resp = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
+        const resp = await fetch("https://api.kie.ai/api/v1/jobs/recordInfo?taskId=" + encodeURIComponent(taskId), {
           headers: { "Authorization": "Bearer " + KIE_KEY }
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || result.msg || "Kie.ai error" }, resp.status);
         const data = result.data || {};
-        // resultJson is a JSON string — parse to extract video URL
         let videoUrl = null;
         if (data.resultJson) {
           try {
             const rj = typeof data.resultJson === "string" ? JSON.parse(data.resultJson) : data.resultJson;
-            videoUrl = rj?.works?.[0]?.resource?.resource || rj?.url || rj?.videoUrl || null;
-          } catch(_) {}
+            videoUrl = (rj.works && rj.works[0] && rj.works[0].resource) ? rj.works[0].resource.resource : (rj.url || rj.videoUrl || null);
+          } catch(e2) {}
         }
-        return json({ state: data.state, progress: data.progress, videoUrl, raw: data });
+        return json({ state: data.state, progress: data.progress, videoUrl: videoUrl, raw: data });
       }
 
-      // ── updateAssetVideoUrl (save Kie.ai video URL to Notion asset) ───
+      // -- updateAssetVideoUrl (save Kie.ai video URL to Notion) -----------------------
       if (body.action === "updateAssetVideoUrl") {
         const { assetId, videoUrl } = body;
         if (!assetId || !videoUrl) return json({ error: "assetId and videoUrl required" }, 400);
-        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+        const dash2 = function(id) { var s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
+        const resp = await fetch("https://api.notion.com/v1/pages/" + dash2(assetId), {
           method: "PATCH",
           headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: {
             "Body": { rich_text: [{ text: { content: videoUrl.slice(0, 2000) } }] },
-            "Asset Status": { select: { name: "Development" } },
+            "Asset Status": { select: { name: "Development" } }
           }})
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
-        return json({ ok: true, url: result.url });
+        return json({ ok: true, url: result.url || "" });
       }
-
       // ── CAMPAIGN ADMIN: updateResearch ──────────────────────────────
       if (body.action === "updateResearch") {
         const { researchId, field, value } = body;
