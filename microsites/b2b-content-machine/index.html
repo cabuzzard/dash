@@ -1,7 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="X-Frame-Options" content="DENY">
 <link rel="stylesheet" href="../style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Webguy — B2B Content Machine</title>
@@ -19,6 +21,66 @@
 .status-opt-btn:hover:not(:disabled) { transform: scale(1.05); }
 .status-opt-btn.active { opacity: .35; cursor: default; }
 .status-opt-btn:disabled { cursor: default; }
+/* LOGIN LIST */
+.login-platform-group { margin-bottom: 14px; }
+.login-platform-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #555; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; margin-bottom: 6px; }
+.login-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.login-row:last-child { border-bottom: none; }
+.login-meta { flex: 1; min-width: 0; }
+.login-name { font-size: 13px; color: #c9c9c9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.login-sub  { font-size: 11px; color: #555; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.login-cat  { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; letter-spacing: .04em; }
+.cat-personal     { color: #378ADD; border: 1px solid #378ADD44; background: #378ADD11; }
+.cat-company-page { color: #1D9E75; border: 1px solid #1D9E7544; background: #1D9E7511; }
+.cat-client       { color: #7F77DD; border: 1px solid #7F77DD44; background: #7F77DD11; }
+.cat-shared       { color: #BA7517; border: 1px solid #BA751744; background: #BA751711; }
+.cat-affiliate    { color: #D85A30; border: 1px solid #D85A3044; background: #D85A3011; }
+.ls-active   { font-size: 10px; padding: 2px 6px; color: #5ec95e; border: 1px solid #1e5c1e; flex-shrink: 0; }
+.ls-planning { font-size: 10px; padding: 2px 6px; color: #c9a800; border: 1px solid #6b5a00; flex-shrink: 0; }
+.ls-paused   { font-size: 10px; padding: 2px 6px; color: #888;    border: 1px solid #444;    flex-shrink: 0; }
+.ls-inactive { font-size: 10px; padding: 2px 6px; color: #555;    border: 1px solid #333;    flex-shrink: 0; }
+/* MODAL — lighter background, scrollable body */
+.modal-overlay { background: rgba(0,0,0,0.35) !important; }
+.modal { background: #3a3a3a !important; max-height: 90vh; display: flex; flex-direction: column; }
+.modal-body { overflow-y: auto; flex: 1; }
+/* Thin fields — must override min-height:160px set in style.css */
+input.modal-ta  { height: 32px !important; min-height: 0 !important; padding: 4px 10px !important; font-size: 13px !important; box-sizing: border-box; }
+select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 8px !important;   font-size: 13px !important; box-sizing: border-box; }
+/* Field labels inside modals */
+.lm-label { display: block; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #666; margin: 0 0 4px; }
+/* Platform autocomplete dropdown */
+.plat-dd-item { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #c9c9c9; border-bottom: 1px solid #1e1e1e; }
+.plat-dd-item:hover { background: #393939; }
+.plat-dd-create { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #e8ff47; border-bottom: 1px solid #1e1e1e; font-style: italic; }
+.plat-dd-create:hover { background: #393939; }
+/* SM POSTS APPROVAL */
+.smp-section-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #555; padding: 4px 0 6px; border-bottom: 1px solid #1a1a1a; margin-bottom: 6px; }
+.smp-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.04); transition: opacity .2s; }
+.smp-row:last-child { border-bottom: none; }
+.smp-info { flex: 1; min-width: 0; }
+.smp-title { font-size: 13px; color: #c9c9c9; line-height: 1.3; }
+.smp-copy  { font-size: 11px; color: #555; margin-top: 3px; line-height: 1.4; }
+.smp-plats { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.smp-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; color: #888; border: 1px solid #2a2a2a; background: #1a1a1a; }
+.smp-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; padding-top: 1px; }
+.smp-approve { background: none; border: 1px solid #1e5c1e; color: #5ec95e; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
+.smp-approve:hover { background: rgba(94,201,94,.15); }
+.smp-delete  { background: none; border: 1px solid #5c1e1e; color: #c95e5e; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
+.smp-delete:hover  { background: rgba(201,94,94,.15); }
+.smp-link { font-size: 13px; color: #555; text-decoration: none; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; transition: color .15s; }
+.smp-link:hover { color: #c9c9c9; }
+.smp-approved .smp-title { color: #666; }
+.smp-edit   { background: none; border: 1px solid #3a3a2a; color: #9e9e5e; font-size: 13px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
+.smp-edit:hover   { background: rgba(158,158,94,.15); }
+.smp-image  { background: none; border: 1px solid #2a4a3a; color: #5ec99e; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
+.smp-image:hover  { background: rgba(94,201,158,.15); }
+.smp-bgpath { font-size: 10px; color: #3a6a4a; margin-top: 3px; font-family: monospace; word-break: break-all; }
+.smp-render { background: none; border: 1px solid #2a3a5a; color: #5e8ec9; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
+.smp-render:hover { background: rgba(94,142,201,.15); }
+.smp-localpath { font-size: 10px; color: #444; margin-top: 3px; font-family: monospace; word-break: break-all; }
+.smp-topvids { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+.smp-topvid  { font-size: 10px; color: #4a7ab5; text-decoration: none; border: 1px solid #2a3a5a; padding: 1px 6px; white-space: nowrap; transition: color .15s; }
+.smp-topvid:hover { color: #7aaee0; border-color: #4a7ab5; }
 </style>
 </head>
 <body>
@@ -50,7 +112,7 @@
   </div>
 </div>
 
-<!-- SEC 1: two col — campaign meta / main TD -->
+<!-- SEC 1: two col — campaign meta / unique opportunity -->
 <div class="two-col">
   <div class="col">
     <h2>Campaign</h2>
@@ -58,92 +120,45 @@
       <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
       <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/35c1f7d3a4bb81568338f64d95ef3a36" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/36d1f7d3a4bb81968c91c98e86e444d9" target="_blank" class="notion-link">↗ Research</a></div></div>
-      <div class="field"><div class="field-label">Key Message</div><div class="field-value" id="r-camp-keymessage" style="font-style:italic;color:#aaa;">—</div></div>
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
+      <div class="field"><div class="field-label">Microsite</div><div class="field-value" id="r-microsite"></div></div>
+      <div class="field"><div class="field-label">Live Site</div><div class="field-value" id="r-livesite"></div></div>
     </div>
   </div>
+  <div class="col">
+    <h2>Unique Opportunity <button class="td-add-btn-inline" onclick="openFieldResearchModal('uniqueOpportunity')" title="Generate with AI">&#x25B6;</button></h2>
+    <div class="content">
+      <div class="body-text" id="r-uniqueopportunity" style="white-space:pre-wrap;min-height:40px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 2: two col — main TD / platforms -->
+<div class="two-col">
   <div class="col">
     <h2>Main TD <button class="td-add-btn-inline" onclick="openTdModal()" title="Add task">+</button></h2>
     <div class="content">
       <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
+  <div class="col">
+    <h2>Platforms <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
+    <div class="content">
+      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
 </div>
 
-<!-- SEC 2: three col — keywords / key message / main problem -->
+<!-- SEC 3: three col — SM posts / development titles / publish titles -->
 <div class="three-col">
   <div class="col">
-    <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
+    <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Run research">&#x25B6;</button></h2>
     <div class="content">
-      <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div id="smPostsBox"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
-    <h2 class="editable" onclick="openModal('keyMessage')">Key Message</h2>
-    <div class="content">
-      <div class="body-text" id="r-keymessage"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 class="editable" onclick="openModal('mainProblem')">Main Problem</h2>
-    <div class="content">
-      <div class="body-text" id="r-problem"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- SEC 3: two col — product ideas / recommended actions -->
-<div class="two-col">
-  <div class="col">
-    <h2 class="editable" onclick="openModal('productIdeas')">Product Ideas</h2>
-    <div class="content">
-      <div class="body-text" id="r-products"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 class="editable" onclick="openModal('actions')">Recommended Actions</h2>
-    <div class="content">
-      <div class="body-text" id="r-actions"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- SEC 4: two col — platforms / methods -->
-<div class="two-col">
-  <div class="col">
-    <h2 class="editable" onclick="openModal('platforms')">Platforms</h2>
-    <div class="content">
-      <div class="body-text" id="r-platforms"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 class="editable" onclick="openModal('methods')">Methods</h2>
-    <div class="content">
-      <div class="body-text" id="r-methods"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- SEC 5: two col — news feed / tiktok trends -->
-<div class="two-col">
-  <div class="col">
-    <h2>News Feed</h2>
-    <div class="content">
-      <div class="body-text" id="r-news"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2>TikTok Trends</h2>
-    <div class="content">
-      <div class="body-text" id="r-tiktok"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- SEC 6: two col — development titles / publish titles -->
-<div class="two-col">
-  <div class="col">
-    <h2>Development Titles</h2>
+    <h2>Development Titles <button class="td-add-btn-inline" onclick="openAddTitleModal()" title="Add title">+</button></h2>
     <div class="content">
       <div class="title-list" id="devTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -152,6 +167,74 @@
     <h2>Publish Titles</h2>
     <div class="content">
       <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 4: three col — keywords / SM trends / news feed -->
+<div class="three-col">
+  <div class="col">
+    <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
+    <div class="content">
+      <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>SM Trends</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="smTrendsKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="smTrendsBtn" onclick="runSMTrends()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-smtrends"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>News Feed <button class="td-add-btn-inline" onclick="openFieldResearchModal('newsFeed')" title="Generate with AI">&#x25B6;</button></h2>
+    <div class="content">
+      <div class="body-text" id="r-news"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 5: three col — product ideas / tiktok shop / kdp best sellers -->
+<div class="three-col">
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>Product Ideas</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="prodIdeasKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="prodIdeasBtn" onclick="runProductIdeas()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-prodideas"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>TikTok Shop</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="ttShopKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="ttShopBtn" onclick="runTikTokShop()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-ttshop"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>KDP Best Sellers</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="kdpKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="kdpBtn" onclick="runKDPBestSellers()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-kdp"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
@@ -175,6 +258,101 @@
   </div>
 </div>
 
+<!-- LOGIN ADD MODAL -->
+<div class="modal-overlay" id="loginModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Login</div>
+      <button class="modal-close" onclick="closeLoginModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Creates a login in Notion linked to this campaign — appears in Hermes platform matrix at campaign × platform</div>
+      <label class="lm-label">Name</label>
+      <input class="modal-ta" id="lm-name" type="text" placeholder="Login name…" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Platform <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— type to search, or type a new name to create</span></label>
+      <div style="position:relative;margin-bottom:12px;" id="lm-plat-wrap">
+        <input class="modal-ta" id="lm-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:32px;padding:5px 10px;" autocomplete="off"
+          oninput="filterLmPlatforms()" onfocus="filterLmPlatforms()" />
+        <input type="hidden" id="lm-plat-id" value="" />
+        <div id="lm-plat-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
+      </div>
+      <label class="lm-label">Category <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
+      <select class="modal-ta" id="lm-category" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+        <option value="">— Category —</option>
+        <option value="Personal">Personal</option>
+        <option value="Company Page">Company Page</option>
+        <option value="Client">Client</option>
+        <option value="Shared">Shared</option>
+        <option value="Affiliate">Affiliate</option>
+      </select>
+      <label class="lm-label">Status</label>
+      <select class="modal-ta" id="lm-login-status" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+        <option value="Planning">Planning</option>
+        <option value="Active">Active</option>
+        <option value="Paused">Paused</option>
+        <option value="Inactive">Inactive</option>
+      </select>
+      <label class="lm-label">Username / handle</label>
+      <input class="modal-ta" id="lm-usr" type="text" placeholder="@handle or email…" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Account URL</label>
+      <input class="modal-ta" id="lm-url" type="text" placeholder="https://…" style="height:32px;padding:5px 10px;margin-bottom:4px;" autocomplete="off" />
+      <div class="modal-status" id="lm-status-msg"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeLoginModal()">Cancel</button>
+      <button class="modal-btn save" id="lm-save" onclick="addLoginFromModal()">Add Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN EDIT MODAL -->
+<div class="modal-overlay" id="loginEditModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="le-modal-title">Edit Login</div>
+      <button class="modal-close" onclick="closeLoginEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label">Name</label>
+      <input class="modal-ta" id="le-name" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Platform <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— type to search, or create new</span></label>
+      <div style="position:relative;margin-bottom:12px;" id="le-plat-wrap">
+        <input class="modal-ta" id="le-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:32px;padding:5px 10px;" autocomplete="off"
+          oninput="filterLePlatforms()" onfocus="filterLePlatforms()" />
+        <input type="hidden" id="le-plat-id" value="" />
+        <div id="le-plat-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
+      </div>
+      <label class="lm-label">Category <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
+      <select class="modal-ta" id="le-category" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+        <option value="">— Category —</option>
+        <option value="Personal">Personal</option>
+        <option value="Company Page">Company Page</option>
+        <option value="Client">Client</option>
+        <option value="Shared">Shared</option>
+        <option value="Affiliate">Affiliate</option>
+      </select>
+      <label class="lm-label">Status</label>
+      <select class="modal-ta" id="le-status" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+        <option value="Planning">Planning</option>
+        <option value="Active">Active</option>
+        <option value="Paused">Paused</option>
+        <option value="Inactive">Inactive</option>
+      </select>
+      <label class="lm-label">Username / handle</label>
+      <input class="modal-ta" id="le-usr" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Account URL</label>
+      <input class="modal-ta" id="le-url" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <div style="font-size:11px;color:#555;margin-bottom:4px;">To change platform or campaign relations, open the full record in Notion:</div>
+      <a id="le-notion-link" href="#" target="_blank" class="notion-link" style="font-size:12px;">↗ Open in Notion</a>
+      <div class="modal-status" id="le-status-msg"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeLoginEditModal()">Cancel</button>
+      <button class="modal-btn save" id="le-save" onclick="saveLoginEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- TD ADD MODAL -->
 <div class="modal-overlay" id="tdModal">
   <div class="modal">
@@ -184,7 +362,7 @@
     </div>
     <div class="modal-body">
       <div class="modal-hint">Task will be created in Main TD and linked to this campaign</div>
-      <input class="modal-ta" id="td-modal-input" type="text" placeholder="Task name…" style="height:44px;padding:10px 14px;resize:none;" />
+      <input class="modal-ta" id="td-modal-input" type="text" placeholder="Task name…" style="height:32px;padding:5px 10px;resize:none;" />
       <div class="modal-status" id="tdModalStatus"></div>
     </div>
     <div class="modal-foot">
@@ -212,14 +390,157 @@
     </div>
   </div>
 </div>
+
+<!-- BACKGROUND IMAGE MODAL -->
+<div class="modal-overlay" id="imageModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="imageModalTitle">Background Image</div>
+      <button class="modal-close" onclick="closeImageModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Copy the prompt below, then click <strong>Open ChatGPT</strong>. Generate the image, right-click → <em>Save As</em> → save directly to the path shown, then click <strong>Save Path to Notion</strong>.</div>
+      <label class="lm-label" style="margin-top:14px;">Image Prompt <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit before copying</span></label>
+      <textarea class="modal-ta" id="imagePromptTa" rows="6" style="resize:vertical;font-size:12px;line-height:1.5;"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="modal-btn save" style="flex:1;" onclick="copyImagePromptAndOpen()">Copy Prompt &amp; Open ChatGPT</button>
+      </div>
+      <label class="lm-label" style="margin-top:14px;">Save image here <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— right-click → Save As in ChatGPT</span></label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input class="modal-ta" id="imageSavePath" type="text" style="height:32px;padding:5px 10px;font-size:11px;font-family:monospace;flex:1;" readonly />
+        <button class="modal-btn cancel" style="flex:0 0 auto;padding:0 10px;" onclick="copyImageSavePath()">Copy</button>
+      </div>
+      <label class="lm-label" style="margin-top:14px;">Saved path <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit if you saved elsewhere</span></label>
+      <input class="modal-ta" id="imageActualPath" type="text" style="height:32px;padding:5px 10px;font-size:11px;font-family:monospace;" placeholder="C:\Users\18318\dash\images\..." />
+      <label class="lm-label" style="margin-top:14px;">Image Style DNA <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— style spec from ChatGPT for this image</span></label>
+      <textarea class="modal-ta" id="imageStyleDna" rows="4" placeholder="Paste image style DNA from ChatGPT..." style="font-size:11px;line-height:1.5;resize:vertical;"></textarea>
+      <div class="modal-status" id="imageModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeImageModal()">Close</button>
+      <button class="modal-btn save" id="imageModalSave" onclick="saveImagePath()">Save to Notion</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCRIPT EDIT MODAL -->
+<div class="modal-overlay" id="scriptModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="scriptModalTitle">Edit Script</div>
+      <button class="modal-close" onclick="closeScriptModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Edit the voiceover script. Saved directly to Notion — the render modal will use the updated version.</div>
+      <textarea class="modal-ta" id="scriptModalTa" rows="10" style="resize:vertical;font-size:13px;line-height:1.6;"></textarea>
+      <div class="modal-status" id="scriptModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeScriptModal()">Cancel</button>
+      <button class="modal-btn save" id="scriptModalSave" onclick="saveScript()">Save to Notion</button>
+    </div>
+  </div>
+</div>
+
+<!-- RENDER VIDEO MODAL -->
+<div class="modal-overlay" id="renderModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="renderModalTitle">Render Video</div>
+      <button class="modal-close" onclick="closeRenderModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Review script, voice, and style — then <strong>Copy Command</strong> and paste into PowerShell. Settings are saved to Notion automatically.</div>
+      <label class="lm-label" style="margin-top:14px;">Voiceover Script</label>
+      <textarea class="modal-ta" id="renderScriptTa" rows="7" style="resize:vertical;font-size:12px;line-height:1.5;font-family:monospace;"></textarea>
+      <div style="margin-top:10px;">
+        <label class="lm-label">Voice ID <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— ElevenLabs voice ID</span></label>
+        <input class="modal-ta" id="renderVoiceId" type="text" placeholder="pNInz6obpgDQGcFmaJgB" style="height:32px;padding:5px 10px;font-size:12px;font-family:monospace;" autocomplete="off" />
+      </div>
+      <div style="margin-top:10px;">
+        <label class="lm-label">Caption Style Spec <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— JSON from ChatGPT</span></label>
+        <textarea class="modal-ta" id="renderCaptionStyle" rows="3" placeholder='{"presetName":"Zen Documentary","fontSize":78,"highlightColor":"#9CC7A3",...}' style="font-size:11px;font-family:monospace;resize:vertical;"></textarea>
+      </div>
+      <div style="margin-top:10px;">
+        <label class="lm-label">Voice Settings <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— ElevenLabs params + optional masterVoicePrompt for script generation</span></label>
+        <textarea class="modal-ta" id="renderVoiceSettings" rows="2" placeholder='{"stability":70,"similarity":90,"styleExaggeration":15,"speed":0.92,"masterVoicePrompt":"Warm, grounded naturalist..."}' style="font-size:11px;font-family:monospace;resize:vertical;"></textarea>
+      </div>
+      <div id="renderCmdStatus" style="font-size:11px;color:#888;margin-top:8px;min-height:16px;word-break:break-all;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeRenderModal()">Close</button>
+      <button class="modal-btn" style="background:#3a5a6a;" onclick="saveRenderSettings()">Save Settings</button>
+      <button class="modal-btn save" onclick="copyRenderCommand()">Copy Command</button>
+    </div>
+  </div>
+</div>
+
+<!-- SM POSTS PROMPT MODAL -->
+<div class="modal-overlay" id="smPromptModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div class="modal-title">SM Posts — Run Research</div>
+      <button class="modal-close" onclick="closeSmPromptModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Scrapes TikTok + YouTube for trending content around these keywords, then uses Claude to generate 5 script ideas. Each idea is added to the SM Posts box as a Draft.</div>
+      <label class="lm-label" for="smResearchKws" style="margin-top:14px;">Keywords <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— one per line, or comma-separated</span></label>
+      <textarea class="modal-ta" id="smResearchKws" rows="5" placeholder="keyword 1&#10;keyword 2&#10;keyword 3" style="resize:vertical;"></textarea>
+      <div id="smPromptStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeSmPromptModal()">Close</button>
+      <button class="modal-btn save" id="smPromptSendBtn" onclick="runSmResearch()">Run Research</button>
+    </div>
+  </div>
+</div>
+<!-- FIELD RESEARCH MODAL -->
+<div class="modal-overlay" id="fieldResearchModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="fieldResearchTitle">Generate Field</div>
+      <button class="modal-close" onclick="closeFieldResearchModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="fieldResearchHint"></div>
+      <label class="lm-label" for="fieldResearchPrompt" style="margin-top:14px;">Prompt <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit before running</span></label>
+      <textarea class="modal-ta" id="fieldResearchPrompt" rows="8" style="resize:vertical;min-height:160px!important;"></textarea>
+      <div id="fieldResearchStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeFieldResearchModal()">Close</button>
+      <button class="modal-btn save" id="fieldResearchRunBtn" onclick="runFieldResearch()">&#x25B6; Generate</button>
+    </div>
+  </div>
+</div>
+<!-- ADD TITLE MODAL -->
+<div class="modal-overlay" id="addTitleModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head">
+      <div class="modal-title">Add Development Title</div>
+      <button class="modal-close" onclick="closeAddTitleModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label">Title <span style="color:var(--danger,#e05);">*</span></label>
+      <input class="modal-ta" id="addTitleInput" type="text" placeholder="Title text…" autocomplete="off" style="margin-bottom:12px;" />
+      <div id="addTitleStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeAddTitleModal()">Cancel</button>
+      <button class="modal-btn save" id="addTitleSaveBtn" onclick="submitAddTitle()">Create</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "35c1f7d3a4bb81568338f64d95ef3a36"; // b2b-content-machine
-const RESEARCH_ID = "36d1f7d3a4bb81968c91c98e86e444d9"; // research
+const RESEARCH_ID = "36d1f7d3a4bb81968c91c98e86e444d9"; // b2b-content-machine research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/b2b-content-machine/";
 let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
 let pin = '';
 
+// Auto-restore session if a valid token exists from this browser session
 if (SESSION_TOKEN) {
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pinScreen').classList.add('hidden');
@@ -227,15 +548,24 @@ if (SESSION_TOKEN) {
   });
 }
 
+function pinReset(msg, isErr) {
+  pin = '';
+  const dots = document.querySelectorAll('.pin-dot');
+  dots.forEach(d => d.classList.remove('filled'));
+  if (isErr) dots.forEach(d => d.classList.add('error'));
+  document.getElementById('pinError').textContent = msg;
+  setTimeout(() => { dots.forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; }, 900);
+}
 async function pp(d) {
   if (pin.length >= 4) return;
   pin += d;
   document.getElementById('d' + (pin.length-1)).classList.add('filled');
   if (pin.length === 4) {
     const attemptPin = pin;
+    pin = ''; // free immediately so DEL/re-entry works during inflight request
     try {
       const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 8000);
+      const tid  = setTimeout(() => ctrl.abort(), 6000); // 6s timeout
       const resp = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -250,14 +580,10 @@ async function pp(d) {
         document.getElementById('pinScreen').classList.add('hidden');
         init();
       } else {
-        document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
-        document.getElementById('pinError').textContent = data.error || 'incorrect code';
-        setTimeout(() => { document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; pin = ''; }, 800);
+        pinReset('incorrect code', true);
       }
     } catch(e) {
-      document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
-      document.getElementById('pinError').textContent = 'connection error';
-      setTimeout(() => { document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; pin = ''; }, 1200);
+      pinReset(e.name === 'AbortError' ? 'timeout — retry' : 'connection error', true);
     }
   }
 }
@@ -295,6 +621,11 @@ async function w(action, extra = {}) {
   return d;
 }
 
+// Escape HTML special characters
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // Strip HTML tags to plain text
 function stripHtml(raw) {
   return raw ? raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : '';
@@ -325,16 +656,146 @@ async function condense(label, raw) {
   const plain = stripHtml(raw);
   if (!plain) return '<p>—</p>';
   try {
-    const resp = await fetch(WORKER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'condense', token: SESSION_TOKEN, label, text: plain })
-    });
-    const data = await resp.json();
-    if (data.error) throw new Error(data.error);
+    const data = await w('condense', { label, text: plain });
     return parseToHtml(data.text || '');
   } catch(e) {
     return '<p>—</p>';
+  }
+}
+
+function renderSMTrends(text) {
+  const el = document.getElementById('r-smtrends');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No trends yet — press ⟳ search to generate.</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    const niche = line.slice(0, colonIdx).trim();
+    const desc  = line.slice(colonIdx + 1).trim();
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${niche}</span><span class="sm-trend-body">${desc}</span></div>`;
+  }).join('');
+}
+
+async function runSMTrends() {
+  const btn = document.getElementById('smTrendsBtn');
+  const el  = document.getElementById('r-smtrends');
+  const kwOverride = (document.getElementById('smTrendsKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
+  try {
+    const data = await w('getSMTrends', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderSMTrends(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
+
+function renderProductIdeas(text) {
+  const el = document.getElementById('r-prodideas');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No ideas yet — press ⟳ search to generate.</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    const name = line.slice(0, colonIdx).trim();
+    const desc = line.slice(colonIdx + 1).trim();
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
+  }).join('');
+}
+
+function renderKDPBestSellers(text) {
+  const el = document.getElementById('r-kdp');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No results yet — press ⟳ search to find KDP bestsellers.</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    const title = line.slice(0, colonIdx).trim();
+    const desc  = line.slice(colonIdx + 1).trim();
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${title}</span><span class="sm-trend-body">${desc}</span></div>`;
+  }).join('');
+}
+
+async function runKDPBestSellers() {
+  const btn = document.getElementById('kdpBtn');
+  const el  = document.getElementById('r-kdp');
+  const kwOverride = (document.getElementById('kdpKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching Amazon KDP…</div>';
+  try {
+    const data = await w('getKDPBestSellers', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderKDPBestSellers(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
+
+function renderTikTokShop(text) {
+  const el = document.getElementById('r-ttshop');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No results yet — press ⟳ search to find trending products.</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    const name = line.slice(0, colonIdx).trim();
+    const desc = line.slice(colonIdx + 1).trim();
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
+  }).join('');
+}
+
+async function runTikTokShop() {
+  const btn = document.getElementById('ttShopBtn');
+  const el  = document.getElementById('r-ttshop');
+  const kwOverride = (document.getElementById('ttShopKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching TikTok Shop…</div>';
+  try {
+    const data = await w('getTikTokShopProducts', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderTikTokShop(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
+
+async function runProductIdeas() {
+  const btn = document.getElementById('prodIdeasBtn');
+  const el  = document.getElementById('r-prodideas');
+  const kwOverride = (document.getElementById('prodIdeasKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
+  try {
+    const data = await w('getProductIdeas', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderProductIdeas(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
   }
 }
 
@@ -344,10 +805,8 @@ async function loadResearch() {
     const r = data.research;
     if (!r) {
       document.getElementById('r-name').textContent = 'No research record — add one in Notion to populate this page.';
-      ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
-      });
+      const newsEl = document.getElementById('r-news');
+      if (newsEl) newsEl.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
       const kwEl = document.getElementById('r-keywords');
       if (kwEl) kwEl.innerHTML = '<span class="empty">—</span>';
       return;
@@ -359,20 +818,20 @@ async function loadResearch() {
     const sc = r.status ? r.status.toLowerCase() : 'draft';
     statusEl.innerHTML = `<span class="badge ${sc}">${r.status || '—'}</span>`;
     document.getElementById('r-date').textContent = r.lastUpdated || '—';
-    const kmEl = document.getElementById('r-camp-keymessage');
-    if (kmEl) { kmEl.textContent = r.campaignKeyMessage || '—'; kmEl.style.color = r.campaignKeyMessage ? '' : '#aaa'; }
+    const liveSiteEl = document.getElementById('r-livesite');
+    if (liveSiteEl) {
+      if (r.liveSiteUrl) {
+        liveSiteEl.innerHTML = '<a href="' + r.liveSiteUrl + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + r.liveSiteUrl.replace(/^https?:\/\//, '') + '</a>';
+      } else { liveSiteEl.innerHTML = '<span class="empty">—</span>'; }
+    }
+    // Unique Opportunity — render directly in SEC 1 panel
+    const uoEl = document.getElementById('r-uniqueopportunity');
+    if (uoEl) uoEl.textContent = r.uniqueOpportunity || '';
 
     // Store raw values for editing
     RESEARCH_ID_LIVE = r.id || '';
-    const pmSplitRaw = (r.platforms || '').replace(/<br\s*\/?>/gi,'\n').split(/ACTIVE METHODS:/i);
     RAW = {
-      keywords:     r.keywords || '',
-      productIdeas: r.productIdeas || '',
-      notes:        r.notes || '',
-      keyMessage:   r.keyMessage || '',
-      painPoints:   r.painPoints || '',
-      rawPlatforms: pmSplitRaw[0].replace(/ACTIVE PLATFORMS:\s*/i,'').replace(/<br\s*\/?>/gi,'\n').trim(),
-      rawMethods:   pmSplitRaw.length > 1 ? pmSplitRaw[1].replace(/<br\s*\/?>/gi,'\n').trim() : '',
+      keywords: r.keywords || '',
     };
 
     // SEC 2 — keywords as pills
@@ -382,42 +841,24 @@ async function loadResearch() {
     } else {
       kwEl.innerHTML = '<span class="empty">—</span>';
     }
-    // Condense all fields in parallel via Claude
-    const loading = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-    ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
-      document.getElementById(id).innerHTML = loading;
-    });
 
-    // Split platforms & methods from the combined field
-    const rawPm = stripHtml(r.platforms) || '';
-    const pmSplit = rawPm.split(/ACTIVE METHODS:/i);
-    const rawPlatforms = pmSplit[0].replace(/ACTIVE PLATFORMS:\s*/i, '').trim();
-    const rawMethods   = pmSplit.length > 1 ? pmSplit[1].trim() : '';
+    // SEC 2 — SM trends from Trend Intelligence field
+    renderSMTrends(r.trendIntelligence || '');
 
-    // Split notes into problem statement + recommended actions
-    const rawNotes = stripHtml(r.notes) || '';
-    const problemInput = (r.campaignGoal || '') + '\n' + (r.painPoints || '') + '\n' + rawNotes.split(/ROI-RANKED|RECOMMENDED|BOTTOM LINE/i)[0];
-    const actionsInput = rawNotes;
+    // SEC 3 — Product Ideas field
+    renderProductIdeas(r.productIdeas || '');
 
-    const [problem, keymessage, products, actions, platforms, methods, news, tiktok] = await Promise.all([
-      condense('This campaign does X for customer Y — state the core problem this campaign solves in one sentence then list pain points', problemInput),
-      condense('Key Message', r.keyMessage),
-      condense('Product Ideas', r.productIdeas),
-      condense('Recommended Actions — prioritised by ROI, what to do next', actionsInput),
-      condense('Platforms', rawPlatforms),
-      condense('Methods', rawMethods),
-      condense('News Feed', r.newsFeed),
-      condense('TikTok Trends', r.tiktokTrends),
-    ]);
+    // SEC 3 — TikTok Shop Products field
+    renderTikTokShop(r.tikTokShopProducts || '');
 
-    document.getElementById('r-problem').innerHTML    = problem;
-    document.getElementById('r-keymessage').innerHTML = keymessage;
-    document.getElementById('r-products').innerHTML   = products;
-    document.getElementById('r-actions').innerHTML  = actions;
-    document.getElementById('r-platforms').innerHTML = platforms;
-    document.getElementById('r-methods').innerHTML   = methods;
-    document.getElementById('r-news').innerHTML      = news;
-    document.getElementById('r-tiktok').innerHTML    = tiktok;
+    // SEC 3 — KDP Best Sellers field
+    renderKDPBestSellers(r.kdpBestSellers || '');
+
+    // News Feed — condense via Claude
+    const newsEl = document.getElementById('r-news');
+    if (newsEl) newsEl.innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
+    const news = await condense('News Feed', r.newsFeed);
+    if (newsEl) newsEl.innerHTML = news;
 
   } catch(e) {
     document.getElementById('r-name').textContent = 'Error: ' + e.message;
@@ -461,13 +902,7 @@ let RESEARCH_ID_LIVE = '';
 
 // Modal config per field
 const MODAL_CFG = {
-  keywords:     { title: 'Keywords',            hint: 'Comma-separated keywords for this campaign', target: 'campaign' },
-  keyMessage:   { title: 'Key Message',         hint: 'Core positioning statement for this campaign', target: 'research', field: 'keyMessage' },
-  mainProblem:  { title: 'Main Problem',        hint: 'Pain points this campaign addresses', target: 'campaignField', field: 'painPoints' },
-  productIdeas: { title: 'Product Ideas',        hint: 'Describe product ideas, offers, and pipeline', target: 'research', field: 'productIdeas' },
-  actions:      { title: 'Recommended Actions',  hint: 'ROI-ranked actions and next steps', target: 'research', field: 'notes' },
-  platforms:    { title: 'Platforms',            hint: 'Active and planned platforms for this campaign', target: 'research', field: 'platforms', combined: true },
-  methods:      { title: 'Methods',              hint: 'Active and planned methods for this campaign', target: 'research', field: 'platforms', combined: true },
+  keywords: { title: 'Keywords', hint: 'Comma-separated keywords for this campaign', target: 'campaign' },
 };
 
 let activeField = null;
@@ -484,13 +919,7 @@ function openModal(field) {
 
   // Pre-fill with raw value
   let val = '';
-  if (field === 'keywords')     val = RAW.keywords || '';
-  if (field === 'keyMessage')   val = RAW.keyMessage || '';
-  if (field === 'mainProblem')  val = RAW.painPoints || '';
-  if (field === 'productIdeas') val = RAW.productIdeas || '';
-  if (field === 'actions')      val = RAW.notes || '';
-  if (field === 'platforms')    val = RAW.rawPlatforms || '';
-  if (field === 'methods')      val = RAW.rawMethods || '';
+  if (field === 'keywords') val = RAW.keywords || '';
   document.getElementById('modalTa').value = val;
 
   document.getElementById('editModal').classList.add('open');
@@ -519,44 +948,11 @@ async function saveModal() {
     if (cfg.target === 'campaign') {
       await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, value: val });
       RAW.keywords = val;
-      // Re-render keywords pills
       const kwEl = document.getElementById('r-keywords');
       kwEl.innerHTML = val ? val.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('') : '<span class="empty">—</span>';
-    } else if (cfg.target === 'campaignField') {
-      await w('updateCampaignField', { campaignId: CAMPAIGN_ID, field: cfg.field, value: val });
-      RAW[cfg.field] = val;
-      // Re-condense display
-      status.textContent = 'Saved. Updating display…';
-      const displayId = { painPoints: 'r-problem' }[cfg.field];
-      const label = { painPoints: 'Main Problem' }[cfg.field];
-      if (displayId) {
-        document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-        const html = await condense(label, val);
-        document.getElementById(displayId).innerHTML = html;
-      }
     } else {
-      // For platforms/methods — need to combine back into one field
-      if (activeField === 'platforms') {
-        RAW.rawPlatforms = val;
-        const combined = 'ACTIVE PLATFORMS: ' + val + (RAW.rawMethods ? '\nACTIVE METHODS: ' + RAW.rawMethods : '');
-        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: 'platforms', value: combined });
-      } else if (activeField === 'methods') {
-        RAW.rawMethods = val;
-        const combined = 'ACTIVE PLATFORMS: ' + (RAW.rawPlatforms || '') + '\nACTIVE METHODS: ' + val;
-        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: 'platforms', value: combined });
-      } else {
-        await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
-        RAW[cfg.field] = val;
-      }
-      // Re-condense the display
-      status.textContent = 'Saved. Updating display…';
-      const displayId = { keyMessage:'r-keymessage', productIdeas:'r-products', actions:'r-actions', platforms:'r-platforms', methods:'r-methods' }[activeField];
-      const label = { keyMessage:'Key Message', productIdeas:'Product Ideas', actions:'Recommended Actions — prioritised by ROI', platforms:'Platforms', methods:'Methods' }[activeField];
-      if (displayId) {
-        document.getElementById(displayId).innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-        const html = await condense(label, val);
-        document.getElementById(displayId).innerHTML = html;
-      }
+      await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
+      RAW[cfg.field] = val;
     }
     status.textContent = 'Saved ✓';
     status.className = 'modal-status ok';
@@ -579,7 +975,8 @@ function renderTd() {
   TD_ITEMS.forEach(t => {
     const row = document.createElement('div');
     row.className = 'td-row';
-    row.innerHTML = `<span class="td-name">${t.name}</span><button class="td-del" onclick="deleteTodo('${t.id}', this)" title="Remove">✕</button>`;
+    const nid = t.id.replace(/-/g,'');
+    row.innerHTML = `<a class="td-name" href="https://www.notion.so/${nid}" target="_blank" rel="noopener">${t.name}</a><button class="td-del" onclick="deleteTodo('${t.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }
@@ -614,6 +1011,7 @@ document.getElementById('tdModal').addEventListener('click', function(e) {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.activeElement === document.getElementById('td-modal-input')) addTodoFromModal();
+  if (e.key === 'Enter' && document.activeElement === document.getElementById('login-modal-input')) addLoginFromModal();
 });
 
 async function addTodoFromModal() {
@@ -650,6 +1048,352 @@ async function deleteTodo(id, btn) {
     alert('Error: ' + e.message);
   }
 }
+
+// ── PLATFORM LOGINS ──────────────────────────────────────────────────
+let LOGIN_ITEMS  = [];
+let ALL_PLATFORMS = [];
+
+const CAT_CLASS = {
+  'Personal':     'cat-personal',
+  'Company Page': 'cat-company-page',
+  'Client':       'cat-client',
+  'Shared':       'cat-shared',
+  'Affiliate':    'cat-affiliate',
+};
+const LS_CLASS = {
+  'Active':   'ls-active',
+  'Planning': 'ls-planning',
+  'Paused':   'ls-paused',
+  'Inactive': 'ls-inactive',
+  'development': 'ls-paused',
+};
+
+function renderLogins() {
+  const el = document.getElementById('login-list');
+  el.innerHTML = '';
+  if (!LOGIN_ITEMS.length) { el.innerHTML = '<div class="empty">No logins yet.</div>'; return; }
+
+  // Build platform name lookup
+  const platName = {};
+  ALL_PLATFORMS.forEach(p => { platName[p.id] = p.name; });
+
+  // Group by first platformId
+  const grouped = {};
+  const ungrouped = [];
+  LOGIN_ITEMS.forEach(l => {
+    const pid = (l.platformIds || [])[0];
+    if (pid) {
+      if (!grouped[pid]) grouped[pid] = [];
+      grouped[pid].push(l);
+    } else {
+      ungrouped.push(l);
+    }
+  });
+
+  const renderRow = (l) => {
+    const div = document.createElement('div');
+    div.className = 'login-row';
+    div.style.cursor = 'pointer';
+    const cat = l.category || '';
+    const catCls = CAT_CLASS[cat] || '';
+    const stCls  = LS_CLASS[l.status] || 'ls-planning';
+    const sub = [l.usr, l.accountUrl].filter(Boolean).join(' · ');
+    div.innerHTML =
+      (cat ? `<span class="login-cat ${catCls}">${cat}</span>` : '<span class="login-cat" style="opacity:.3;border:1px solid #333;color:#555;">—</span>') +
+      `<div class="login-meta">
+        <div class="login-name">${l.name}</div>
+        ${sub ? `<div class="login-sub">${sub}</div>` : ''}
+      </div>` +
+      `<span class="${stCls}">${l.status || 'Planning'}</span>` +
+      `<a class="title-link" href="https://www.notion.so/${l.id}" target="_blank" onclick="event.stopPropagation()">↗</a>`;
+    // Click row → open edit modal
+    div.onclick = () => openLoginEditModal(l);
+    return div;
+  };
+
+  // Render grouped by platform
+  const sortedPlatIds = Object.keys(grouped).sort((a,b) => (platName[a]||'').localeCompare(platName[b]||''));
+  sortedPlatIds.forEach(pid => {
+    const grp = document.createElement('div');
+    grp.className = 'login-platform-group';
+    const lbl = document.createElement('div');
+    lbl.className = 'login-platform-label';
+    lbl.textContent = platName[pid] || 'Unknown Platform';
+    grp.appendChild(lbl);
+    grouped[pid].forEach(l => grp.appendChild(renderRow(l)));
+    el.appendChild(grp);
+  });
+
+  // Ungrouped at bottom
+  if (ungrouped.length) {
+    const grp = document.createElement('div');
+    grp.className = 'login-platform-group';
+    const lbl = document.createElement('div');
+    lbl.className = 'login-platform-label';
+    lbl.textContent = 'No Platform';
+    grp.appendChild(lbl);
+    ungrouped.forEach(l => grp.appendChild(renderRow(l)));
+    el.appendChild(grp);
+  }
+}
+
+async function loadLogins() {
+  const el = document.getElementById('login-list');
+  try {
+    const [loginData, platData] = await Promise.all([
+      w('getLogins'),
+      w('getPlatforms'),
+    ]);
+    ALL_PLATFORMS = platData.platforms || [];
+    // Filter to logins whose campaign relation includes this campaign
+    LOGIN_ITEMS = (loginData.logins || []).filter(l =>
+      (l.campaignIds || []).includes(CAMPAIGN_ID)
+    );
+    renderLogins();
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
+  }
+}
+
+// ── PLATFORM AUTOCOMPLETE ─────────────────────────────────────────────
+function filterLmPlatforms() {
+  const query  = (document.getElementById('lm-plat-input').value || '').trim();
+  const queryL = query.toLowerCase();
+  const dd = document.getElementById('lm-plat-dd');
+  dd.innerHTML = '';
+
+  const matches = ALL_PLATFORMS.filter(p =>
+    !query || p.name.toLowerCase().includes(queryL)
+  ).slice(0, 12);
+
+  matches.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-item';
+    div.textContent = p.name;
+    div.onmousedown = () => selectLmPlatform(p.id, p.name);
+    dd.appendChild(div);
+  });
+
+  // "+ Create" row if typed something that doesn't exactly exist
+  const exact = ALL_PLATFORMS.some(p => p.name.toLowerCase() === queryL);
+  if (query && !exact) {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-create';
+    div.textContent = '+ Create "' + query + '"';
+    div.onmousedown = async () => {
+      div.textContent = 'Creating…';
+      const saveBtn = document.getElementById('lm-save');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Creating platform…'; }
+      try {
+        const res = await w('createPlatform', { title: query, status: 'Publish' });
+        const newP = { id: res.id, name: query, status: 'Publish' };
+        ALL_PLATFORMS.push(newP);
+        selectLmPlatform(res.id, query);
+      } catch(e) {
+        div.textContent = 'Error: ' + e.message;
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Add Login'; }
+      }
+    };
+    dd.appendChild(div);
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+function selectLmPlatform(id, name) {
+  document.getElementById('lm-plat-input').value = name;
+  document.getElementById('lm-plat-id').value   = id;
+  document.getElementById('lm-plat-dd').style.display = 'none';
+}
+
+// Close platform picker when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('#lm-plat-wrap')) {
+    const dd = document.getElementById('lm-plat-dd');
+    if (dd) dd.style.display = 'none';
+  }
+  if (!e.target.closest('#le-plat-wrap')) {
+    const dd = document.getElementById('le-plat-dd');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+// ── PLATFORM AUTOCOMPLETE (EDIT MODAL) ────────────────────────────────
+function filterLePlatforms() {
+  const query  = (document.getElementById('le-plat-input').value || '').trim();
+  const queryL = query.toLowerCase();
+  const dd = document.getElementById('le-plat-dd');
+  dd.innerHTML = '';
+
+  const matches = ALL_PLATFORMS.filter(p =>
+    !query || p.name.toLowerCase().includes(queryL)
+  ).slice(0, 12);
+
+  matches.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-item';
+    div.textContent = p.name;
+    div.onmousedown = () => selectLePlatform(p.id, p.name);
+    dd.appendChild(div);
+  });
+
+  const exact = ALL_PLATFORMS.some(p => p.name.toLowerCase() === queryL);
+  if (query && !exact) {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-create';
+    div.textContent = '+ Create "' + query + '"';
+    div.onmousedown = async () => {
+      div.textContent = 'Creating…';
+      const saveBtn = document.getElementById('le-save');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Creating platform…'; }
+      try {
+        const res = await w('createPlatform', { title: query, status: 'Publish' });
+        const newP = { id: res.id, name: query, status: 'Publish' };
+        ALL_PLATFORMS.push(newP);
+        selectLePlatform(res.id, query);
+      } catch(e) {
+        div.textContent = 'Error: ' + e.message;
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+      }
+    };
+    dd.appendChild(div);
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+function selectLePlatform(id, name) {
+  document.getElementById('le-plat-input').value = name;
+  document.getElementById('le-plat-id').value   = id;
+  document.getElementById('le-plat-dd').style.display = 'none';
+}
+
+// ── ADD LOGIN ─────────────────────────────────────────────────────────
+function openLoginModal() {
+  document.getElementById('lm-name').value          = '';
+  document.getElementById('lm-plat-input').value    = '';
+  document.getElementById('lm-plat-id').value       = '';
+  document.getElementById('lm-plat-dd').style.display = 'none';
+  document.getElementById('lm-category').value      = '';
+  document.getElementById('lm-login-status').value  = 'Planning';
+  document.getElementById('lm-usr').value           = '';
+  document.getElementById('lm-url').value           = '';
+  document.getElementById('lm-status-msg').textContent = '';
+  document.getElementById('lm-status-msg').className   = 'modal-status';
+  document.getElementById('lm-save').disabled       = false;
+  document.getElementById('lm-save').textContent    = 'Add Login';
+  document.getElementById('loginModal').classList.add('open');
+  setTimeout(() => document.getElementById('lm-name').focus(), 100);
+}
+
+function closeLoginModal() {
+  document.getElementById('loginModal').classList.remove('open');
+}
+
+document.getElementById('loginModal').addEventListener('click', function(e) {
+  if (e.target === this) closeLoginModal();
+});
+
+async function addLoginFromModal() {
+  const name = document.getElementById('lm-name').value.trim();
+  if (!name) { document.getElementById('lm-name').focus(); return; }
+  const btn = document.getElementById('lm-save');
+  const msg = document.getElementById('lm-status-msg');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  msg.textContent = '';
+  try {
+    const res = await w('createLoginFull', {
+      name,
+      campaignId: CAMPAIGN_ID,
+      platformId: document.getElementById('lm-plat-id').value   || undefined,
+      category:   document.getElementById('lm-category').value  || undefined,
+      status:     document.getElementById('lm-login-status').value || 'Planning',
+      usr:        document.getElementById('lm-usr').value.trim() || undefined,
+      accountUrl: document.getElementById('lm-url').value.trim() || undefined,
+    });
+    LOGIN_ITEMS.push(res.login);
+    renderLogins();
+    msg.textContent = 'Added ✓';
+    msg.className = 'modal-status ok';
+    setTimeout(closeLoginModal, 700);
+  } catch(e) {
+    msg.textContent = 'Error: ' + e.message;
+    msg.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Add Login';
+  }
+}
+
+// ── EDIT LOGIN ────────────────────────────────────────────────────────
+let LE_LOGIN_ID = '';
+
+function openLoginEditModal(login) {
+  LE_LOGIN_ID = login.id;
+  document.getElementById('le-modal-title').textContent = login.name || 'Edit Login';
+  document.getElementById('le-name').value     = login.name     || '';
+  // Populate platform field
+  const platId = (login.platformIds || [])[0] || '';
+  const platObj = ALL_PLATFORMS.find(p => p.id === platId);
+  document.getElementById('le-plat-id').value    = platId;
+  document.getElementById('le-plat-input').value = platObj ? platObj.name : '';
+  document.getElementById('le-plat-dd').style.display = 'none';
+  document.getElementById('le-category').value = login.category || '';
+  document.getElementById('le-status').value   = login.status   || 'Planning';
+  document.getElementById('le-usr').value      = login.usr      || '';
+  document.getElementById('le-url').value      = login.accountUrl || '';
+  document.getElementById('le-notion-link').href = 'https://www.notion.so/' + login.id;
+  document.getElementById('le-status-msg').textContent = '';
+  document.getElementById('le-status-msg').className   = 'modal-status';
+  document.getElementById('le-save').disabled   = false;
+  document.getElementById('le-save').textContent = 'Save';
+  document.getElementById('loginEditModal').classList.add('open');
+  setTimeout(() => document.getElementById('le-name').focus(), 100);
+}
+
+function closeLoginEditModal() {
+  document.getElementById('loginEditModal').classList.remove('open');
+}
+
+document.getElementById('loginEditModal').addEventListener('click', function(e) {
+  if (e.target === this) closeLoginEditModal();
+});
+
+async function saveLoginEdit() {
+  const btn = document.getElementById('le-save');
+  const msg = document.getElementById('le-status-msg');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  msg.textContent = '';
+  try {
+    const platId = document.getElementById('le-plat-id').value || undefined;
+    const updated = {
+      name:       document.getElementById('le-name').value.trim(),
+      platformId: platId,
+      category:   document.getElementById('le-category').value || undefined,
+      status:     document.getElementById('le-status').value   || undefined,
+      usr:        document.getElementById('le-usr').value.trim() || undefined,
+      accountUrl: document.getElementById('le-url').value.trim() || undefined,
+    };
+    await w('updateLoginFull', { loginId: LE_LOGIN_ID, ...updated });
+    // Update local cache
+    const idx = LOGIN_ITEMS.findIndex(l => l.id === LE_LOGIN_ID);
+    if (idx !== -1) LOGIN_ITEMS[idx] = { ...LOGIN_ITEMS[idx], ...updated, platformIds: platId ? [platId] : [] };
+    renderLogins();
+    msg.textContent = 'Saved ✓';
+    msg.className = 'modal-status ok';
+    setTimeout(closeLoginEditModal, 700);
+  } catch(e) {
+    msg.textContent = 'Error: ' + e.message;
+    msg.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
+}
+
+// Login status changes are now handled via the edit modal (openLoginEditModal)
 
 // ── STATUS CHANGE MODAL ───────────────────────────────────────
 const ALL_STAGES = ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'];
@@ -701,9 +1445,607 @@ async function applyStatusChange(titleId, newStage) {
 }
 
 function init() {
+  const micrositeEl = document.getElementById('r-microsite');
+  if (micrositeEl) {
+    if (typeof SITE_URL !== 'undefined' && SITE_URL) {
+      const display = SITE_URL.replace('https://cabuzzard.github.io/dash/','').replace(/\/$/,'');
+      micrositeEl.innerHTML = '<a href="' + SITE_URL + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + display + '</a>';
+    } else { micrositeEl.innerHTML = '<span class="empty">—</span>'; }
+  }
   loadResearch();
   loadTitles();
   loadTodos();
+  loadLogins();
+  loadSmPosts();
+}
+
+// ── SM POSTS ──────────────────────────────────────────────────────────
+let SMP_DATA = {}; // id → { title, script }
+
+async function loadSmPosts() {
+  const box = document.getElementById('smPostsBox');
+  if (!box) return;
+  box.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  try {
+    const data    = await w('getSmPosts', { campaignId: CAMPAIGN_ID });
+    const posts   = data.posts || [];
+    const pending  = posts.filter(p => ['Draft','Review'].includes(p.status));
+    const approved = posts.filter(p => ['Publish','Published'].includes(p.status));
+
+    if (!pending.length && !approved.length) {
+      box.innerHTML = '<div class="empty">No posts yet — click ▶ to run research.</div>';
+      return;
+    }
+
+    let html = '';
+    if (pending.length) {
+      html += '<div class="smp-section-label">Pending Approval</div>';
+      pending.forEach(p => {
+        const badges = (p.platforms || []).map(pl => `<span class="smp-badge">${esc(pl)}</span>`).join('');
+        const preview = p.copy.length > 100 ? p.copy.slice(0, 100) + '…' : p.copy;
+        const topVidLinks = (p.topVideos || '').split('\n').filter(u => u.startsWith('http')).slice(0, 3)
+          .map((u, i) => `<a class="smp-topvid" href="${esc(u)}" target="_blank" rel="noopener">▶ Vid ${i+1}</a>`).join('');
+        html += `<div class="smp-row" id="smp-${p.id}">
+          <div class="smp-info">
+            <div class="smp-title">${esc(p.title)}</div>
+            ${preview ? `<div class="smp-copy">${esc(preview)}</div>` : ''}
+            ${badges ? `<div class="smp-plats">${badges}</div>` : ''}
+            ${topVidLinks ? `<div class="smp-topvids">${topVidLinks}</div>` : ''}
+          </div>
+          <div class="smp-actions">
+            <button class="smp-approve" onclick="approveSmPost('${p.id}')" title="Approve">✓</button>
+            <button class="smp-delete"  onclick="deleteSmPost('${p.id}')"  title="Delete">✕</button>
+          </div>
+        </div>`;
+      });
+    }
+
+    if (approved.length) {
+      html += `<div class="smp-section-label" style="margin-top:${pending.length?'12px':'0'};">Approved</div>`;
+      approved.forEach(p => {
+        SMP_DATA[p.id] = { title: p.title, script: p.script || '', voiceId: p.voiceId || '', captionStyle: p.captionStyle || '', backgroundImage: p.backgroundImage || '', voiceSettings: p.voiceSettings || '', imageStyleDna: p.imageStyleDna || '' };
+        const badges = (p.platforms || []).map(pl => `<span class="smp-badge">${esc(pl)}</span>`).join('');
+        const hasScript = !!p.script;
+        html += `<div class="smp-row smp-approved" id="smp-${p.id}">
+          <div class="smp-info">
+            <div class="smp-title">${esc(p.title)}</div>
+            ${badges ? `<div class="smp-plats">${badges}</div>` : ''}
+            ${p.backgroundImage ? `<div class="smp-bgpath">🖼 ${esc(p.backgroundImage)}</div>` : ''}
+            ${p.videoUrl ? `<div class="smp-localpath"><a href="${esc(p.videoUrl)}" target="_blank" style="color:#6ec6a0;font-size:11px;text-decoration:none;">▶ ${esc(p.videoUrl)}</a></div>` : ''}
+          </div>
+          <div class="smp-actions">
+            <button class="smp-image"  onclick="openImageModal('${p.id}')"  title="Background image">⬛</button>
+            <button class="smp-edit"   onclick="openScriptModal('${p.id}')" title="Edit script">✎</button>
+            ${hasScript ? `<button class="smp-render" onclick="openRenderModal('${p.id}')" title="Render video">▶</button>` : ''}
+            <a href="#" onclick="openChatGPT('${esc(p.title)}');return false;" class="smp-link" title="Open ChatGPT with style prompt">AI</a>
+            <a href="https://www.notion.so/${p.id}" target="_blank" class="smp-link" title="Open in Notion">↗</a>
+            <button class="smp-delete" onclick="deleteSmPost('${p.id}')" title="Delete">✕</button>
+          </div>
+        </div>`;
+      });
+    }
+
+    box.innerHTML = html;
+  } catch(e) {
+    box.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`;
+  }
+}
+
+async function approveSmPost(id) {
+  const row = document.getElementById('smp-' + id);
+  if (row) {
+    row.style.opacity = '0.4';
+    row.style.pointerEvents = 'none';
+    const actionsEl = row.querySelector('.smp-actions');
+    if (actionsEl) actionsEl.innerHTML = '<span style="font-size:11px;color:#888;">Writing script…</span>';
+  }
+  try {
+    await w('approveSmPost', { id, campaignId: CAMPAIGN_ID });
+    await loadSmPosts();
+  } catch(e) {
+    if (row) { row.style.opacity = ''; row.style.pointerEvents = ''; }
+    alert('Error: ' + e.message);
+  }
+}
+
+async function deleteSmPost(id) {
+  const row = document.getElementById('smp-' + id);
+  if (row) { row.style.opacity = '0.4'; row.style.pointerEvents = 'none'; }
+  try {
+    await w('deleteSmPost', { id });
+    if (row) row.remove();
+    if (!document.querySelector('#smPostsBox .smp-row')) await loadSmPosts();
+  } catch(e) {
+    if (row) { row.style.opacity = ''; row.style.pointerEvents = ''; }
+    alert('Error: ' + e.message);
+  }
+}
+
+// ── SM POSTS MODAL ────────────────────────────────────────────────────
+const SM_PROMPT_TEMPLATE = `Use Apify to research short-form script ideas for these keywords: [KEYWORDS]. For each keyword, run the TikTok Scraper and YouTube Shorts Scraper. Return the top 10 videos per platform per keyword, sorted by views. For each video include: title/caption, view count, and any hashtags. Then summarize the top 3 recurring themes or angles across all results — these are my script ideas.
+
+When done, write your full output to Notion: update the "TikTok Trends" property on Research page [RESEARCH_ID] with the complete text. Use the Notion MCP notion-update-page tool, command update_properties, property name "TikTok Trends". Do not abbreviate.`;
+
+function openSmPromptModal() {
+  const saved = localStorage.getItem('smResearchPrompt_' + CAMPAIGN_ID);
+  document.getElementById('smResearchKws').value = saved || SM_PROMPT_TEMPLATE;
+  document.getElementById('smPromptStatus').textContent = '';
+  document.getElementById('smPromptStatus').style.color = '#888';
+  const btn = document.getElementById('smPromptSendBtn');
+  btn.disabled = false;
+  btn.textContent = 'Run Research';
+  document.getElementById('smPromptModal').classList.add('open');
+}
+
+function closeSmPromptModal() {
+  document.getElementById('smPromptModal').classList.remove('open');
+}
+
+document.getElementById('smPromptModal').addEventListener('click', function(e) {
+  if (e.target === this) closeSmPromptModal();
+});
+
+// ── FIELD RESEARCH (Unique Opportunity / News Feed) ──────────────────
+const FIELD_META = {
+  uniqueOpportunity: {
+    title: 'Unique Opportunity — Generate',
+    hint:  'Claude will analyse the campaign keywords and write a Unique Opportunity statement (2–4 paragraphs). The result is saved back to Notion.',
+    promptFn: kws => `You are a campaign strategist. Based on these campaign keywords: ${kws}\n\nWrite a "Unique Opportunity" statement. Identify the specific market gap, timing advantage, or competitive differentiator that makes this campaign uniquely positioned right now. Write 2–3 short paragraphs. Each paragraph must be 2 sentences maximum — keep every sentence tight and punchy. No headers, no bullets — flowing prose only. Total response must be under 120 words.`,
+    notionField: 'uniqueOpportunity',
+    renderId: 'r-uniqueopportunity',
+    renderFn: text => { const el = document.getElementById('r-uniqueopportunity'); if (el) el.textContent = text; },
+  },
+  newsFeed: {
+    title: 'News Feed — Generate',
+    hint:  'Claude will write 5–8 relevant news items / trends based on the campaign keywords and save them to Notion.',
+    promptFn: kws => `You are a content researcher. Based on these campaign keywords: ${kws}\n\nGenerate a "News Feed" of 5–8 current news items, trends, or insights relevant to this campaign. Format each entry as:\nHEADLINE: brief context (max 25 words)\n\nKeep each entry tight and actionable. Output only the entries, no preamble.`,
+    notionField: 'newsFeed',
+    renderId: 'r-news',
+    renderFn: async text => { const el = document.getElementById('r-news'); if (el) { el.innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>'; el.innerHTML = await condense('News Feed', text); } },
+  },
+};
+
+let FIELD_RESEARCH_ACTIVE = null;
+
+function openFieldResearchModal(field) {
+  const meta = FIELD_META[field];
+  if (!meta) return;
+  FIELD_RESEARCH_ACTIVE = field;
+  const kws = (RAW && RAW.keywords) ? RAW.keywords : '';
+  document.getElementById('fieldResearchTitle').textContent = meta.title;
+  document.getElementById('fieldResearchHint').textContent  = meta.hint;
+  document.getElementById('fieldResearchPrompt').value      = meta.promptFn(kws || '[keywords not loaded yet]');
+  document.getElementById('fieldResearchStatus').textContent = '';
+  document.getElementById('fieldResearchStatus').style.color = '#888';
+  const btn = document.getElementById('fieldResearchRunBtn');
+  btn.disabled    = false;
+  btn.textContent = '▶ Generate';
+  document.getElementById('fieldResearchModal').classList.add('open');
+}
+
+function closeFieldResearchModal() {
+  document.getElementById('fieldResearchModal').classList.remove('open');
+  FIELD_RESEARCH_ACTIVE = null;
+}
+
+document.getElementById('fieldResearchModal').addEventListener('click', function(e) {
+  if (e.target === this) closeFieldResearchModal();
+});
+
+async function runFieldResearch() {
+  const field = FIELD_RESEARCH_ACTIVE;
+  const meta  = field && FIELD_META[field];
+  if (!meta) return;
+  const prompt = document.getElementById('fieldResearchPrompt').value.trim();
+  if (!prompt) return;
+  const btn    = document.getElementById('fieldResearchRunBtn');
+  const status = document.getElementById('fieldResearchStatus');
+  btn.disabled    = true;
+  btn.textContent = 'Running…';
+  status.textContent = 'Generating with Claude…';
+  status.style.color = '#888';
+  try {
+    const res = await w('sendPrompt', { prompt });
+    if (res.error) throw new Error(res.error);
+    const text = (res.text || '').trim();
+    // Save back to Notion
+    status.textContent = 'Saving to Notion…';
+    const rid = RESEARCH_ID_LIVE || RESEARCH_ID;
+    await w('updateResearch', { researchId: rid, field: meta.notionField, value: text });
+    // Re-render section
+    await meta.renderFn(text);
+    status.textContent = '✓ Done — section updated.';
+    status.style.color = '#5ec95e';
+    btn.textContent = '▶ Generate';
+    btn.disabled = false;
+    setTimeout(() => closeFieldResearchModal(), 1400);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#ff6b6b';
+    btn.disabled    = false;
+    btn.textContent = '▶ Generate';
+  }
+}
+
+async function runSmResearch() {
+  const kwsRaw = document.getElementById('smResearchKws').value.trim();
+  if (!kwsRaw) return;
+  // Extract keywords: look for "these keywords: X, Y, Z" pattern first, fallback to splitting whole text
+  const kwMatch = kwsRaw.match(/(?:these keywords?:)\s*([^\n.]+)/i);
+  const kwStr   = kwMatch ? kwMatch[1] : kwsRaw;
+  const kws     = kwStr.split(/[,]+/).map(s => s.trim()).filter(Boolean);
+  localStorage.setItem('smResearchPrompt_' + CAMPAIGN_ID, kwsRaw);
+  const btn    = document.getElementById('smPromptSendBtn');
+  const status = document.getElementById('smPromptStatus');
+
+  btn.disabled    = true;
+  btn.textContent = 'Running…';
+  status.textContent = 'Scraping TikTok + YouTube, then generating ideas with Claude…';
+  status.style.color = '#888';
+
+  try {
+    const res = await w('runSmResearch', { campaignId: CAMPAIGN_ID, keywords: kws });
+    if (res.error) throw new Error(res.error);
+    const n = res.count || 0;
+    status.textContent = `✓ ${n} idea${n !== 1 ? 's' : ''} created. Refreshing…`;
+    status.style.color = '#5ec95e';
+    setTimeout(async () => {
+      closeSmPromptModal();
+      await loadSmPosts();
+    }, 1200);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#ff6b6b';
+    btn.disabled    = false;
+    btn.textContent = 'Run Research';
+  }
+}
+
+// ── CHATGPT STYLE PROMPT ─────────────────────────────────────────────
+function openChatGPT(title) {
+  const prompt = `I'm building short-form vertical videos (1080×1920, TikTok/Reels format) rendered in Remotion (a React video renderer). The caption system shows a rolling window of words synced to audio, with the active spoken word highlighted in a different colour. I control exactly 4 parameters:
+
+- highlightColor — hex colour of the active (currently spoken) word
+- fontSize — pixel size at full 1080px canvas width (68px = standard)
+- captionBottom — pixels from the bottom of the frame (180 = above phone nav bar)
+- windowSize — how many words visible at once (1 = karaoke, 4 = standard, 6 = more context)
+
+Font is always Montserrat Black (900 weight), white base, heavy black text shadow. Canvas renders at 720×1280.
+
+Current presets:
+- Standard: #FFD700, 68px, 180px, 4 words
+- Karaoke: #FFD700, 88px, 140px, 1 word
+- Cinematic: #FFFFFF, 58px, 220px, 6 words
+- Energy: #FF4500, 76px, 160px, 3 words
+
+Suggest a caption style for a video titled: "${title}"
+
+Return exactly 4 values: highlightColor, fontSize, captionBottom, windowSize. Then briefly explain the vibe.`;
+  window.open('https://chatgpt.com/?q=' + encodeURIComponent(prompt), '_blank');
+}
+
+// ── BACKGROUND IMAGE MODAL ───────────────────────────────────────────
+let IMAGE_POST_ID   = '';
+let IMAGE_SAVE_PATH = '';
+
+function openImageModal(id) {
+  const d = SMP_DATA[id] || {};
+  IMAGE_POST_ID   = id;
+  IMAGE_SAVE_PATH = 'C:\\Users\\18318\\dash\\images\\' + slugify(d.title || id) + '.jpg';
+
+  const titleShort = (d.title || '').length > 42 ? (d.title || '').slice(0, 42) + '…' : (d.title || 'Post');
+  document.getElementById('imageModalTitle').textContent = 'Background — ' + titleShort;
+
+  // Use masterPrompt from Image Style DNA if available, otherwise auto-generate
+  let prompt = '';
+  if (d.imageStyleDna) {
+    try {
+      const dna = JSON.parse(d.imageStyleDna);
+      if (dna.masterPrompt) {
+        prompt = dna.masterPrompt + (d.title ? `\n\nSubject/theme: ${d.title}` : '');
+      }
+    } catch(e) {}
+  }
+  if (!prompt) {
+    const scriptSnippet = (d.script || '').split(/(?<=[.!?])\s+/).slice(0, 2).join(' ').slice(0, 200);
+    prompt = `A cinematic vertical (9:16 portrait) background image for a short-form social media video titled "${d.title || ''}".${scriptSnippet ? '\n\nThe video is about: ' + scriptSnippet : ''}\n\nStyle: photographic, atmospheric, dramatic lighting, no text, no people, high visual contrast, suitable as a dark moody background with white text overlay. TikTok/Instagram Reels format. Ultra high quality.`;
+  }
+
+  document.getElementById('imagePromptTa').value = prompt;
+  document.getElementById('imageSavePath').value  = IMAGE_SAVE_PATH;
+  document.getElementById('imageActualPath').value = d.backgroundImage || IMAGE_SAVE_PATH;
+  document.getElementById('imageStyleDna').value   = d.imageStyleDna || '';
+  document.getElementById('imageModalStatus').textContent = '';
+  document.getElementById('imageModalStatus').className   = 'modal-status';
+  document.getElementById('imageModalSave').disabled = false;
+  document.getElementById('imageModalSave').textContent = 'Save to Notion';
+  document.getElementById('imageModal').classList.add('open');
+}
+
+function closeImageModal() {
+  document.getElementById('imageModal').classList.remove('open');
+}
+
+document.getElementById('imageModal').addEventListener('click', function(e) {
+  if (e.target === this) closeImageModal();
+});
+
+async function copyImagePromptAndOpen() {
+  const prompt = document.getElementById('imagePromptTa').value.trim();
+  try {
+    await navigator.clipboard.writeText(prompt);
+  } catch(e) { /* silent — still open the tab */ }
+  window.open('https://chatgpt.com', '_blank');
+}
+
+async function copyImageSavePath() {
+  const path = document.getElementById('imageSavePath').value;
+  try {
+    await navigator.clipboard.writeText(path);
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  } catch(e) {}
+}
+
+async function saveImagePath() {
+  const path         = document.getElementById('imageActualPath').value.trim();
+  const imageStyleDna = document.getElementById('imageStyleDna').value.trim();
+  const btn          = document.getElementById('imageModalSave');
+  const status       = document.getElementById('imageModalStatus');
+  if (!path) { status.textContent = 'Enter the path where you saved the image.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    await w('updateSmPostSettings', { id: IMAGE_POST_ID, backgroundImage: path, imageStyleDna });
+    if (SMP_DATA[IMAGE_POST_ID]) {
+      SMP_DATA[IMAGE_POST_ID].backgroundImage = path;
+      SMP_DATA[IMAGE_POST_ID].imageStyleDna   = imageStyleDna;
+    }
+    // Update the display in the approved list
+    const row = document.getElementById('smp-' + IMAGE_POST_ID);
+    if (row) {
+      let bgEl = row.querySelector('.smp-bgpath');
+      if (!bgEl) {
+        bgEl = document.createElement('div');
+        bgEl.className = 'smp-bgpath';
+        row.querySelector('.smp-info').appendChild(bgEl);
+      }
+      bgEl.textContent = '🖼 ' + path;
+    }
+    status.textContent = 'Saved ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeImageModal, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Save to Notion';
+  }
+}
+
+// ── SCRIPT EDIT MODAL ────────────────────────────────────────────────
+let SCRIPT_EDIT_ID = '';
+
+function openScriptModal(id) {
+  const d = SMP_DATA[id] || {};
+  SCRIPT_EDIT_ID = id;
+  const titleShort = (d.title || '').length > 42 ? (d.title || '').slice(0, 42) + '…' : (d.title || 'Post');
+  document.getElementById('scriptModalTitle').textContent = 'Script — ' + titleShort;
+  document.getElementById('scriptModalTa').value = d.script || '';
+  document.getElementById('scriptModalStatus').textContent = '';
+  document.getElementById('scriptModalStatus').className = 'modal-status';
+  document.getElementById('scriptModalSave').disabled = false;
+  document.getElementById('scriptModalSave').textContent = 'Save to Notion';
+  document.getElementById('scriptModal').classList.add('open');
+  setTimeout(() => document.getElementById('scriptModalTa').focus(), 100);
+}
+
+function closeScriptModal() {
+  document.getElementById('scriptModal').classList.remove('open');
+}
+
+document.getElementById('scriptModal').addEventListener('click', function(e) {
+  if (e.target === this) closeScriptModal();
+});
+
+async function saveScript() {
+  const script = document.getElementById('scriptModalTa').value.trim();
+  const btn    = document.getElementById('scriptModalSave');
+  const status = document.getElementById('scriptModalStatus');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    await w('updateSmPostScript', { id: SCRIPT_EDIT_ID, script });
+    // Update in-memory store so render modal picks up the change immediately
+    if (SMP_DATA[SCRIPT_EDIT_ID]) {
+      SMP_DATA[SCRIPT_EDIT_ID].script = script;
+      // Also show/hide the render button without a full reload
+      const row = document.getElementById('smp-' + SCRIPT_EDIT_ID);
+      if (row) {
+        const renderBtn = row.querySelector('.smp-render');
+        const editBtn   = row.querySelector('.smp-edit');
+        if (script && !renderBtn && editBtn) {
+          const btn2 = document.createElement('button');
+          btn2.className = 'smp-render';
+          btn2.title = 'Render video';
+          btn2.textContent = '▶';
+          btn2.onclick = () => openRenderModal(SCRIPT_EDIT_ID);
+          editBtn.insertAdjacentElement('afterend', btn2);
+        }
+      }
+    }
+    status.textContent = 'Saved ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeScriptModal, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Save to Notion';
+  }
+}
+
+// ── RENDER VIDEO MODAL ────────────────────────────────────────────────
+let RENDER_POST_ID = '';
+let RENDER_SLUG    = '';
+
+function slugify(s) {
+  return (s || '').toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 80);
+}
+
+async function openRenderModal(id) {
+  const d = SMP_DATA[id] || {};
+  RENDER_POST_ID = id;
+  RENDER_SLUG    = slugify(d.title || '');
+  const titleShort = (d.title || '').length > 40 ? (d.title || '').slice(0, 40) + '…' : (d.title || '');
+  document.getElementById('renderModalTitle').textContent = 'Render — ' + titleShort;
+  // Populate immediately from cached SMP_DATA for fast UX
+  document.getElementById('renderScriptTa').value      = d.script || '';
+  document.getElementById('renderVoiceId').value        = d.voiceId || '';
+  document.getElementById('renderVoiceSettings').value  = d.voiceSettings || '';
+  document.getElementById('renderCaptionStyle').value   = d.captionStyle || '';
+  document.getElementById('renderCmdStatus').textContent = '';
+  document.getElementById('renderCmdStatus').style.color = '#888';
+  document.getElementById('renderModal').classList.add('open');
+  setTimeout(() => document.getElementById('renderScriptTa').focus(), 100);
+
+  // Fetch fresh data from Notion to get latest values (avoids stale SMP_DATA cache)
+  try {
+    const fresh = await w('getSmPost', { id });
+    if (fresh && !fresh.error) {
+      document.getElementById('renderScriptTa').value      = fresh.script || '';
+      document.getElementById('renderVoiceId').value        = fresh.voiceId || '';
+      document.getElementById('renderVoiceSettings').value  = fresh.voiceSettings || '';
+      document.getElementById('renderCaptionStyle').value   = fresh.captionStyle || '';
+      // Update local cache
+      if (SMP_DATA[id]) Object.assign(SMP_DATA[id], {
+        script: fresh.script, voiceId: fresh.voiceId,
+        voiceSettings: fresh.voiceSettings, captionStyle: fresh.captionStyle
+      });
+    }
+  } catch(e) { /* silent — modal shows cached data if fetch fails */ }
+}
+
+function closeRenderModal() {
+  document.getElementById('renderModal').classList.remove('open');
+}
+
+document.getElementById('renderModal').addEventListener('click', function(e) {
+  if (e.target === this) closeRenderModal();
+});
+
+async function saveRenderSettings() {
+  const voiceId       = document.getElementById('renderVoiceId').value.trim();
+  const captionStyle  = document.getElementById('renderCaptionStyle').value.trim();
+  const voiceSettings = document.getElementById('renderVoiceSettings').value.trim();
+  const statusEl      = document.getElementById('renderCmdStatus');
+  if (!RENDER_POST_ID) { statusEl.textContent = 'No post selected.'; return; }
+
+  // Validate JSON fields independently — bad JSON is skipped, not a blocker for saving voiceId
+  const warnings = [];
+  let saveCaptionStyle  = captionStyle  || undefined;
+  let saveVoiceSettings = voiceSettings || undefined;
+  if (captionStyle)  { try { JSON.parse(captionStyle);  } catch(e) { saveCaptionStyle  = undefined; warnings.push('Caption Style skipped (invalid JSON)'); } }
+  if (voiceSettings) { try { JSON.parse(voiceSettings); } catch(e) { saveVoiceSettings = undefined; warnings.push('Voice Settings skipped (invalid JSON)'); } }
+
+  statusEl.style.color = '#888';
+  statusEl.textContent = 'Saving…';
+  try {
+    const payload = { id: RENDER_POST_ID, voiceId };
+    if (saveCaptionStyle  !== undefined) payload.captionStyle  = saveCaptionStyle;
+    if (saveVoiceSettings !== undefined) payload.voiceSettings = saveVoiceSettings;
+    await w('updateSmPostSettings', payload);
+    if (SMP_DATA[RENDER_POST_ID]) Object.assign(SMP_DATA[RENDER_POST_ID], { voiceId, captionStyle, voiceSettings });
+    const note = warnings.length ? ' (' + warnings.join('; ') + ')' : '';
+    statusEl.style.color = warnings.length ? '#f0a500' : '#5ec95e';
+    statusEl.textContent = `✓ Saved — Voice: ${voiceId || 'none'}${note}`;
+  } catch(e) {
+    statusEl.style.color = '#ff6b6b';
+    statusEl.textContent = 'Save failed — ' + (e.message || 'unknown error');
+  }
+}
+
+async function copyRenderCommand() {
+  const script        = document.getElementById('renderScriptTa').value.trim();
+  const voiceId       = document.getElementById('renderVoiceId').value.trim();
+  const captionStyle  = document.getElementById('renderCaptionStyle').value.trim();
+  const voiceSettings = document.getElementById('renderVoiceSettings').value.trim();
+  const statusEl      = document.getElementById('renderCmdStatus');
+
+  if (!RENDER_POST_ID || !RENDER_SLUG) { statusEl.textContent = 'No post selected.'; return; }
+
+  // Validate JSON independently — skip invalid fields but don't block save
+  let saveCaptionStyle  = captionStyle  || undefined;
+  let saveVoiceSettings = voiceSettings || undefined;
+  if (captionStyle)  { try { JSON.parse(captionStyle);  } catch(e) { saveCaptionStyle  = undefined; } }
+  if (voiceSettings) { try { JSON.parse(voiceSettings); } catch(e) { saveVoiceSettings = undefined; } }
+
+  // Save everything to Notion FIRST (script + settings)
+  statusEl.style.color = '#888';
+  statusEl.textContent = 'Saving…';
+  try {
+    const payload = { id: RENDER_POST_ID, voiceId };
+    if (script)               payload.script        = script;
+    if (saveCaptionStyle  !== undefined) payload.captionStyle  = saveCaptionStyle;
+    if (saveVoiceSettings !== undefined) payload.voiceSettings = saveVoiceSettings;
+    await w('updateSmPostSettings', payload);
+    if (SMP_DATA[RENDER_POST_ID]) Object.assign(SMP_DATA[RENDER_POST_ID], { voiceId, captionStyle, voiceSettings, script });
+  } catch(e) {
+    statusEl.style.color = '#ff6b6b';
+    statusEl.textContent = 'Save failed — ' + (e.message || 'unknown error');
+    return;
+  }
+
+  // Simple command — script + settings all come from Notion automatically
+  const cmd = `Set-ExecutionPolicy Bypass -Scope Process -Force; & 'C:\\Users\\18318\\dash\\render-video.ps1' -PostId '${RENDER_POST_ID}' -Slug '${RENDER_SLUG}' -Token '${SESSION_TOKEN || ''}'`;
+  try {
+    await navigator.clipboard.writeText(cmd);
+    statusEl.style.color = '#5ec95e';
+    statusEl.textContent = `✓ Saved & copied — paste into PowerShell`;
+  } catch(e) {
+    statusEl.style.color = '#f0a500';
+    statusEl.textContent = '✓ Saved to Notion — clipboard blocked, command in console.';
+    console.log('Render command:', cmd);
+  }
+}
+
+// ── ADD TITLE MODAL ──────────────────────────────────────────────────
+function openAddTitleModal() {
+  document.getElementById('addTitleInput').value = '';
+  document.getElementById('addTitleStatus').textContent = '';
+  document.getElementById('addTitleSaveBtn').disabled = false;
+  document.getElementById('addTitleSaveBtn').textContent = 'Create';
+  document.getElementById('addTitleModal').classList.add('open');
+  setTimeout(() => document.getElementById('addTitleInput').focus(), 200);
+}
+function closeAddTitleModal() {
+  document.getElementById('addTitleModal').classList.remove('open');
+}
+document.getElementById('addTitleModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAddTitleModal();
+});
+async function submitAddTitle() {
+  const title = document.getElementById('addTitleInput').value.trim();
+  if (!title) { document.getElementById('addTitleInput').focus(); return; }
+  const btn = document.getElementById('addTitleSaveBtn');
+  const status = document.getElementById('addTitleStatus');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  status.textContent = '';
+  try {
+    await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, status: 'Development' });
+    closeAddTitleModal();
+    loadTitles();
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Create';
+  }
 }
 </script>
 </body>
