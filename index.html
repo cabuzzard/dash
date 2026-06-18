@@ -3880,18 +3880,6 @@ function renderPlatformMatrix() {
     siteMap[site].push(c);
   });
 
-  // Build global main/sub lookups via Parent Campaign (same hierarchy as Overview)
-  const platById = {};
-  platCampaigns.forEach(c => { platById[c.id] = c; });
-  const platChildIds = new Set();
-  const platParentOf = {};
-  platCampaigns.forEach(c => {
-    if (c.parentCampaignId && platById[c.parentCampaignId] && c.parentCampaignId !== c.id) {
-      platChildIds.add(c.id);
-      platParentOf[c.id] = c.parentCampaignId;
-    }
-  });
-
   // Wrap in horizontal scroll container
   const wrap = document.createElement('div');
   wrap.style.cssText = 'overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:24px;';
@@ -4121,20 +4109,10 @@ function renderPlatformMatrix() {
       return tr;
     }
 
-    // Main campaigns for this site = those not globally claimed as a sub-campaign elsewhere
-    const mainCamps = camps.filter(c => !platChildIds.has(c.id));
-    [...mainCamps].sort((a, b) => (b.devTitles || 0) - (a.devTitles || 0)).forEach(c => {
+    [...camps].sort((a, b) => (b.devTitles || 0) - (a.devTitles || 0)).forEach(c => {
       const tr = buildCampRow(c, false);
       campRowEls.push(tr);
       tbody.appendChild(tr);
-
-      // Render this campaign's niche/sub-campaigns immediately below, nested
-      platCampaigns.forEach(sub => {
-        if (platParentOf[sub.id] !== c.id) return;
-        const subTr = buildCampRow(sub, true);
-        campRowEls.push(subTr);
-        tbody.appendChild(subTr);
-      });
     });
 
     siteRow.onclick = () => {
@@ -5119,22 +5097,10 @@ function renderTable() {
 
   // Body
   const tbody = document.createElement('tbody');
-  // Build lookups for main/sub campaign nesting via "Associated Campaigns"
-  const byId = {};
-  ovData.forEach(c => { byId[c.id] = c; });
-  const childIds = new Set();
-  const parentOf = {};
-  ovData.forEach(c => {
-    if (c.parentCampaignId && byId[c.parentCampaignId] && c.parentCampaignId !== c.id) {
-      childIds.add(c.id);
-      parentOf[c.id] = c.parentCampaignId;
-    }
-  });
 
-  function buildRow(c, isSub) {
+  function buildRow(c) {
     const notionUrl = 'https://www.notion.so/' + c.id;
     const tr = document.createElement('tr');
-    if (isSub) tr.classList.add('sub-campaign-row');
 
     // Key message cell — clickable to edit
     const kmCell = document.createElement('td');
@@ -5149,14 +5115,7 @@ function renderTable() {
     nameCell.className = 'name';
     nameCell.style.cssText = 'cursor:pointer;';
     nameCell.title = 'Click to edit';
-    if (isSub) {
-      nameCell.innerHTML = '<span class="sub-branch">↳</span>' + esc(c.name) + '<span class="niche-tag">niche</span>';
-    } else {
-      nameCell.textContent = c.name;
-      if (!isSub && ovData.some(x => parentOf[x.id] === c.id)) {
-        nameCell.innerHTML = esc(c.name) + '<span class="niche-tag">main</span>';
-      }
-    }
+    nameCell.textContent = c.name;
     nameCell.onclick = () => openNameModal(c, nameCell);
 
     // Grouping cell — shows tags, click to edit
@@ -5268,8 +5227,8 @@ function renderTable() {
     return { tr, isThisWeek };
   }
 
-  function appendRow(c, isSub) {
-    const { tr, isThisWeek } = buildRow(c, isSub);
+  function appendRow(c) {
+    const { tr, isThisWeek } = buildRow(c);
     tbody.appendChild(tr);
     // Make pub cell clickable
     const pubTd = tr.querySelector('td.pub-cell:not(.zero)');
@@ -5287,7 +5246,6 @@ function renderTable() {
   const siteOrder = [];
   const bySite = {};
   sorted.forEach(c => {
-    if (childIds.has(c.id)) return;
     const site = c.site || 'Other';
     if (!bySite[site]) { bySite[site] = []; siteOrder.push(site); }
     bySite[site].push(c);
@@ -5299,11 +5257,10 @@ function renderTable() {
     const collapsed = siteCollapsed[site] !== false; // default collapsed
 
     // Aggregate stats for this site
-    const allCamps = camps.concat(sorted.filter(s => camps.some(c => parentOf[s.id] === c.id)));
-    const sumDev = allCamps.reduce((n, c) => n + (c.devTitles || 0), 0);
-    const sumPub = allCamps.reduce((n, c) => n + (c.pubTitles || 0), 0);
-    const sumTd  = allCamps.reduce((n, c) => n + (c.openTd  || 0), 0);
-    const latestChanged = allCamps.reduce((mx, c) => (!c.lastChanged ? mx : !mx || c.lastChanged > mx ? c.lastChanged : mx), null);
+    const sumDev = camps.reduce((n, c) => n + (c.devTitles || 0), 0);
+    const sumPub = camps.reduce((n, c) => n + (c.pubTitles || 0), 0);
+    const sumTd  = camps.reduce((n, c) => n + (c.openTd  || 0), 0);
+    const latestChanged = camps.reduce((mx, c) => (!c.lastChanged ? mx : !mx || c.lastChanged > mx ? c.lastChanged : mx), null);
     const changedLabel = latestChanged ? relTime(latestChanged) : '—';
     const changedFull  = latestChanged ? new Date(latestChanged).toLocaleString() : '';
 
@@ -5312,12 +5269,10 @@ function renderTable() {
     siteRow.className = 'site-group-row';
     siteRow.onclick = () => toggleSite(site);
     const arrow = collapsed ? '▶' : '▾';
-    const subCount = camps.reduce((n, c) => n + sorted.filter(s => parentOf[s.id] === c.id).length, 0);
-    const total = camps.length + subCount;
     // Name cell spans first 5 text columns (Site, Campaign, Grouping, Key Message, Products)
     const nameTd = document.createElement('td');
     nameTd.colSpan = 5;
-    nameTd.innerHTML = '<span class="site-arrow">' + arrow + '</span><span class="site-name">' + esc(site) + '</span><span class="site-count">' + total + '</span>';
+    nameTd.innerHTML = '<span class="site-arrow">' + arrow + '</span><span class="site-name">' + esc(site) + '</span><span class="site-count">' + camps.length + '</span>';
     siteRow.appendChild(nameTd);
     // TD, Dev, Pub, Changed — one cell each aligned to their column
     const mkStatTd = (val, title) => {
@@ -5340,12 +5295,7 @@ function renderTable() {
     tbody.appendChild(siteRow);
 
     if (!collapsed) {
-      camps.forEach(c => {
-        appendRow(c, false);
-        sorted.forEach(sub => {
-          if (parentOf[sub.id] === c.id) appendRow(sub, true);
-        });
-      });
+      camps.forEach(c => appendRow(c));
     }
   });
   table.appendChild(tbody);
@@ -6299,28 +6249,6 @@ function renderDev() {
   el.innerHTML = '';
   if (!devData.length) { el.innerHTML = '<div class="empty">No titles found.</div>'; return; }
 
-  // Build main/sub lookup via Parent Campaign
-  const devById = {};
-  devData.forEach(camp => { devById[camp.campId] = camp; });
-  const devChildIds = new Set();
-  const devParentOf = {};
-  devData.forEach(camp => {
-    if (camp.parentCampaignId && devById[camp.parentCampaignId] && camp.parentCampaignId !== camp.campId) {
-      devChildIds.add(camp.campId);
-      devParentOf[camp.campId] = camp.parentCampaignId;
-    }
-  });
-
-  // Flat list: main campaigns each followed by their niche subs
-  const displayList = [];
-  devData.forEach(camp => {
-    if (devChildIds.has(camp.campId)) return;
-    displayList.push(camp);
-    devData.forEach(sub => {
-      if (devParentOf[sub.campId] === camp.campId) displayList.push(Object.assign({}, sub, { isSub: true }));
-    });
-  });
-
   const DEV_STATUSES = ['Development','Writing','Review','Approved','Publish','Done'];
   const DEV_STATUS_STYLE = {
     'Development': { bg:'#ffffff', clr:'#000', badgeClr:'#444',    label:'DEV' },
@@ -6331,9 +6259,9 @@ function renderDev() {
     'Done':        { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#555', label:'DNE' },
   };
 
-  displayList.forEach(camp => {
+  devData.forEach(camp => {
       const campRow = document.createElement('div');
-      campRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 12px 9px ' + (camp.isSub ? '36px' : '20px') + ';background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;' + (camp.isSub ? 'opacity:.85;' : '');
+      campRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 12px 9px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;';
       campRow.dataset.campid = camp.campId || camp.id || '';
       const campChev = document.createElement('span');
       campChev.style.cssText = 'font-size:10px;color:var(--text3);transition:transform .2s;flex-shrink:0;';
@@ -6342,11 +6270,7 @@ function renderDev() {
       campRow.appendChild(campChev);
       const nameSpan = document.createElement('span');
       nameSpan.style.cssText = 'font-size:12px;font-weight:600;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-      if (camp.isSub) {
-        nameSpan.innerHTML = '<span style="display:inline-block;color:var(--text3);margin-right:6px;font-family:\'DM Mono\',monospace;">↳</span>' + esc(camp.name) + '<span style="display:inline-block;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);margin-left:6px;vertical-align:middle;">niche</span>';
-      } else {
-        nameSpan.textContent = camp.name;
-      }
+      nameSpan.textContent = camp.name;
       campRow.appendChild(nameSpan);
 
       // Fixed-width columns for counts
