@@ -9031,40 +9031,90 @@ function renderMorningTdRow(t, container) {
   container.appendChild(row);
 }
 
+let _pubAssets = [];
+let _pubSort = { col: 'date', dir: -1 }; // default: newest first
+
 async function loadPublishedAssets() {
   const el = document.getElementById('publishedAssetsList');
   if (!el) return;
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
     const data = await call('getPublishedAssets');
-    const assets = data.assets || [];
-    if (!assets.length) {
-      el.innerHTML = '<div class="empty" style="margin-top:32px;text-align:center;">No published assets yet.</div>';
-      return;
-    }
-    el.innerHTML = '';
-    assets.forEach(a => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);';
-
-      const date = a.lastEdited ? new Date(a.lastEdited).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '—';
-
-      row.innerHTML =
-        '<div style="flex:1;min-width:0;">' +
-          '<div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(a.title) + '</div>' +
-          '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">' +
-            (a.campaignName ? '<span style="font-size:11px;color:var(--text3);">' + esc(a.campaignName) + '</span>' : '') +
-            (a.platform     ? '<span style="font-size:10px;font-weight:600;color:var(--accent);padding:1px 6px;border:1px solid var(--border2);border-radius:4px;">' + esc(a.platform) + '</span>' : '') +
-            (a.loginName    ? '<span style="font-size:11px;color:#a78bfa;">🔑 ' + esc(a.loginName) + '</span>' : '') +
-          '</div>' +
-        '</div>' +
-        '<div style="font-size:11px;color:var(--text3);white-space:nowrap;flex-shrink:0;padding-top:2px;">' + date + '</div>' +
-        '<a href="https://www.notion.so/' + a.id + '" target="_blank" style="font-size:10px;font-weight:600;color:var(--text3);text-decoration:none;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;flex-shrink:0;">↗</a>';
-      el.appendChild(row);
-    });
+    _pubAssets = data.assets || [];
+    renderPublishedTable();
   } catch(e) {
     el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
   }
+}
+
+function sortPublishedBy(col) {
+  if (_pubSort.col === col) {
+    _pubSort.dir *= -1;
+  } else {
+    _pubSort.col = col;
+    _pubSort.dir = col === 'date' ? -1 : 1;
+  }
+  renderPublishedTable();
+}
+
+function renderPublishedTable() {
+  const el = document.getElementById('publishedAssetsList');
+  if (!el) return;
+  if (!_pubAssets.length) {
+    el.innerHTML = '<div class="empty" style="margin-top:32px;text-align:center;">No published assets yet.</div>';
+    return;
+  }
+
+  const sorted = [..._pubAssets].sort((a, b) => {
+    let av, bv;
+    if (_pubSort.col === 'date')     { av = a.lastEdited || ''; bv = b.lastEdited || ''; }
+    else if (_pubSort.col === 'platform') { av = (a.platform || '').toLowerCase(); bv = (b.platform || '').toLowerCase(); }
+    else if (_pubSort.col === 'login')    { av = (a.loginName || '').toLowerCase(); bv = (b.loginName || '').toLowerCase(); }
+    else if (_pubSort.col === 'campaign') { av = (a.campaignName || '').toLowerCase(); bv = (b.campaignName || '').toLowerCase(); }
+    else                              { av = (a.title || '').toLowerCase(); bv = (b.title || '').toLowerCase(); }
+    return av < bv ? -_pubSort.dir : av > bv ? _pubSort.dir : 0;
+  });
+
+  const colHdr = (key, label, flex, align) => {
+    const active = _pubSort.col === key;
+    const arrow = active ? (_pubSort.dir === 1 ? ' ↑' : ' ↓') : '';
+    return '<div onclick="sortPublishedBy(\'' + key + '\')" style="flex:' + flex + ';min-width:0;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + (active ? 'var(--accent)' : 'var(--text3)') + ';cursor:pointer;user-select:none;padding:7px 8px;' + (align ? 'text-align:' + align + ';' : '') + '">' + label + arrow + '</div>';
+  };
+
+  const hdrRow = '<div style="display:flex;align-items:center;border-bottom:2px solid var(--border2);margin-bottom:2px;">' +
+    colHdr('platform', 'Platform', '0 0 90px') +
+    colHdr('login',    'Login',    '0 0 110px') +
+    colHdr('date',     'Date',     '0 0 90px') +
+    colHdr('campaign', 'Campaign', '1') +
+    colHdr('title',    'Title',    '2') +
+    '<div style="width:28px;flex-shrink:0;"></div>' +
+  '</div>';
+
+  const rowsHtml = sorted.map(a => {
+    const date = a.lastEdited ? new Date(a.lastEdited).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
+    return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:36px;">' +
+      '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;">' +
+        (a.platform ? '<span style="font-size:10px;font-weight:600;color:var(--accent);padding:1px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">' + esc(a.platform) + '</span>' : '<span style="color:var(--text3);font-size:11px;">—</span>') +
+      '</div>' +
+      '<div style="flex:0 0 110px;min-width:0;padding:6px 8px;overflow:hidden;">' +
+        '<span style="font-size:11px;color:#a78bfa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.loginName || '—') + '</span>' +
+      '</div>' +
+      '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;">' +
+        '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
+      '</div>' +
+      '<div style="flex:1;min-width:0;padding:6px 8px;overflow:hidden;">' +
+        '<span style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.campaignName || '—') + '</span>' +
+      '</div>' +
+      '<div style="flex:2;min-width:0;padding:6px 8px;overflow:hidden;">' +
+        '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.title) + '</span>' +
+      '</div>' +
+      '<div style="width:28px;flex-shrink:0;padding:6px 4px;">' +
+        '<a href="https://www.notion.so/' + a.id + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  el.innerHTML = hdrRow + rowsHtml;
 }
 
 // Legacy morning view code (kept for reference)
