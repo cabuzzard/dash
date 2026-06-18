@@ -216,21 +216,47 @@ const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "3831f7d3a4bb81e1b1dcf6de96bca6d9"; // hike-updates
 const RESEARCH_ID = ""; // populated dynamically via getResearch
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/hike-updates/";
-const CORRECT_PIN = '1246';
+let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
 let pin = '';
 
-function pp(d) {
+if (SESSION_TOKEN) {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('pinScreen').classList.add('hidden');
+    init();
+  });
+}
+
+async function pp(d) {
   if (pin.length >= 4) return;
   pin += d;
   document.getElementById('d' + (pin.length-1)).classList.add('filled');
   if (pin.length === 4) {
-    if (pin === CORRECT_PIN) {
-      document.getElementById('pinScreen').classList.add('hidden');
-      init();
-    } else {
+    const attemptPin = pin;
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 8000);
+      const resp = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'auth', pin: attemptPin }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(tid);
+      const data = await resp.json();
+      if (data.token) {
+        SESSION_TOKEN = data.token;
+        sessionStorage.setItem('hermes_token', SESSION_TOKEN);
+        document.getElementById('pinScreen').classList.add('hidden');
+        init();
+      } else {
+        document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
+        document.getElementById('pinError').textContent = data.error || 'incorrect code';
+        setTimeout(() => { document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; pin = ''; }, 800);
+      }
+    } catch(e) {
       document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
-      document.getElementById('pinError').textContent = 'incorrect code';
-      setTimeout(() => { document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; pin = ''; }, 800);
+      document.getElementById('pinError').textContent = 'connection error';
+      setTimeout(() => { document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; pin = ''; }, 1200);
     }
   }
 }
@@ -240,6 +266,8 @@ function pd() {
   pin = pin.slice(0,-1);
 }
 function lockApp() {
+  SESSION_TOKEN = null;
+  sessionStorage.removeItem('hermes_token');
   pin = '';
   document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error'));
   document.getElementById('pinError').textContent = '';
@@ -254,8 +282,14 @@ function tick() {
 setInterval(tick, 1000); tick();
 
 async function w(action, extra = {}) {
-  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, pin: CORRECT_PIN, ...extra }) });
+  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, token: SESSION_TOKEN, ...extra }) });
   const d = await r.json();
+  if (r.status === 401) {
+    SESSION_TOKEN = null;
+    sessionStorage.removeItem('hermes_token');
+    document.getElementById('pinScreen').classList.remove('hidden');
+    throw new Error('Session expired — please re-enter your code');
+  }
   if (d.error) throw new Error(d.error);
   return d;
 }
