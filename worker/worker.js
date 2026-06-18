@@ -2092,8 +2092,10 @@ Rules:
           })
         });
         const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || result.msg || "Kie.ai error" }, resp.status);
-        return json({ taskId: result.data && result.data.taskId ? result.data.taskId : result.taskId });
+        if (!resp.ok) return json({ error: result.message || result.msg || "Kie.ai error", _raw: result }, resp.status);
+        const taskId = result.data?.taskId || result.data?.task_id || result.taskId || result.task_id || result.id;
+        if (!taskId) return json({ error: "No taskId in response", _raw: result });
+        return json({ taskId });
       }
 
       // -- getVideoTask (Kie.ai poll task status) ---------------------------------------
