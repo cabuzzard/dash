@@ -6299,16 +6299,7 @@ function renderDev() {
   el.innerHTML = '';
   if (!devData.length) { el.innerHTML = '<div class="empty">No titles found.</div>'; return; }
 
-  // devData is now campaigns[], each with { name, site, titles[], devCount, pubCount, parentCampaignId }
-  // Group campaigns by site, already sorted by devCount desc within site
-  const siteMap = {};
-  devData.forEach(camp => {
-    const site = camp.site || 'Other';
-    if (!siteMap[site]) siteMap[site] = [];
-    siteMap[site].push(camp);
-  });
-
-  // Build main/sub lookup via Parent Campaign — same hierarchy as Overview/Platforms
+  // Build main/sub lookup via Parent Campaign
   const devById = {};
   devData.forEach(camp => { devById[camp.campId] = camp; });
   const devChildIds = new Set();
@@ -6320,41 +6311,27 @@ function renderDev() {
     }
   });
 
-  const SITE_ICONS = {
-    'Affiliates':'💰','Webguy Business Services':'🖥️','Mountainwize Coaching':'⛰️',
-    'Mobility Mentor':'♿','Trading':'📈','Hermes':'🤖','Main Business':'🏠','Other':'🌐',
+  // Flat list: main campaigns each followed by their niche subs
+  const displayList = [];
+  devData.forEach(camp => {
+    if (devChildIds.has(camp.campId)) return;
+    displayList.push(camp);
+    devData.forEach(sub => {
+      if (devParentOf[sub.campId] === camp.campId) displayList.push(Object.assign({}, sub, { isSub: true }));
+    });
+  });
+
+  const DEV_STATUSES = ['Development','Writing','Review','Approved','Publish','Done'];
+  const DEV_STATUS_STYLE = {
+    'Development': { bg:'#ffffff', clr:'#000', badgeClr:'#444',    label:'DEV' },
+    'Writing':     { bg:'#ff8c00', clr:'#000', badgeClr:'#5a2e00', label:'WRI' },
+    'Review':      { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#888', label:'REV' },
+    'Approved':    { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#888', label:'APR' },
+    'Publish':     { bg:'#00cc66', clr:'#000', badgeClr:'#005522', label:'PUB' },
+    'Done':        { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#555', label:'DNE' },
   };
 
-  Object.keys(siteMap).sort().forEach(site => {
-    // ── Site row ──
-    const siteRow = document.createElement('div');
-    siteRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);margin-bottom:4px;cursor:pointer;user-select:none;';
-    const siteChev = document.createElement('span');
-    siteChev.style.cssText = 'font-size:11px;color:var(--text3);transition:transform .2s;';
-    siteChev.textContent = '▶';
-    siteRow.innerHTML = '<span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text);">' + (SITE_ICONS[site]||'🌐') + '  ' + esc(site) + '</span>';
-    siteRow.appendChild(siteChev);
-
-    const siteBody = document.createElement('div');
-    siteBody.style.cssText = 'display:none;margin-bottom:4px;';
-    siteBody.dataset.sitebody = '1';
-
-    siteRow.onclick = () => {
-      const open = siteBody.style.display !== 'none';
-      siteBody.style.display = open ? 'none' : 'block';
-      siteChev.style.transform = open ? '' : 'rotate(90deg)';
-    };
-
-    // ── Campaigns under this site (main campaigns, each followed by its niche/sub-campaigns) ──
-    const displayList = [];
-    siteMap[site].forEach(camp => {
-      if (devChildIds.has(camp.campId)) return; // rendered nested under its parent instead
-      displayList.push(camp);
-      devData.forEach(sub => {
-        if (devParentOf[sub.campId] === camp.campId) displayList.push(Object.assign({}, sub, { isSub: true }));
-      });
-    });
-    displayList.forEach(camp => {
+  displayList.forEach(camp => {
       const campRow = document.createElement('div');
       campRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 12px 9px ' + (camp.isSub ? '36px' : '20px') + ';background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;' + (camp.isSub ? 'opacity:.85;' : '');
       campRow.dataset.campid = camp.campId || camp.id || '';
@@ -6386,40 +6363,8 @@ function renderDev() {
       const titlesEl = document.createElement('div');
       titlesEl.style.cssText = 'display:none;';
 
-      // Sub-group by Grouping field
-      const grpMap = {};
-      camp.titles.forEach(t => {
-        const g = t.grouping || '—';
-        if (!grpMap[g]) grpMap[g] = [];
-        grpMap[g].push(t);
-      });
-      const grpKeys = Object.keys(grpMap).sort((a, b) => {
-        if (a === '—') return 1; if (b === '—') return -1; return a.localeCompare(b);
-      });
-
-      grpKeys.forEach((grpKey, gi) => {
-        const isLastGrp = gi === grpKeys.length - 1;
-
-        // Sub-header (only if there are named groups)
-        if (grpKeys.length > 1 || grpKey !== '—') {
-          const subHdr = document.createElement('div');
-          subHdr.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:7px 14px 5px 36px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--surface2);';
-          subHdr.textContent = grpKey;
-          titlesEl.appendChild(subHdr);
-        }
-
-        const DEV_STATUSES = ['Development','Writing','Review','Approved','Publish','Done'];
-        const DEV_STATUS_STYLE = {
-          'Development': { bg:'#ffffff', clr:'#000', badgeClr:'#444',    label:'DEV' },
-          'Writing':     { bg:'#ff8c00', clr:'#000', badgeClr:'#5a2e00', label:'WRI' },
-          'Review':      { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#888', label:'REV' },
-          'Approved':    { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#888', label:'APR' },
-          'Publish':     { bg:'#00cc66', clr:'#000', badgeClr:'#005522', label:'PUB' },
-          'Done':        { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#555', label:'DNE' },
-        };
-
-        grpMap[grpKey].forEach((t, idx) => {
-          const isLast = isLastGrp && idx === grpMap[grpKey].length - 1;
+      camp.titles.forEach((t, idx) => {
+          const isLast = idx === camp.titles.length - 1;
           const isPub = t.status === 'Publish';
           const sty = DEV_STATUS_STYLE[t.status] || { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#ff6a00', label:'↗' };
           const br  = isLast ? '0 0 var(--radius-sm) var(--radius-sm)' : '0';
@@ -6558,7 +6503,6 @@ function renderDev() {
           tRow.appendChild(delBtn);
 
           titlesEl.appendChild(tRow);
-        });
       });
 
       campRow.onclick = () => {
@@ -6568,12 +6512,8 @@ function renderDev() {
         campRow.style.borderRadius = open ? 'var(--radius-sm)' : 'var(--radius-sm) var(--radius-sm) 0 0';
       };
 
-      siteBody.appendChild(campRow);
-      siteBody.appendChild(titlesEl);
-    });
-
-    el.appendChild(siteRow);
-    el.appendChild(siteBody);
+      el.appendChild(campRow);
+      el.appendChild(titlesEl);
   });
 }
 
