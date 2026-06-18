@@ -2978,6 +2978,10 @@ async function showTitleAssets(titleId, titleName, campId) {
       return;
     }
 
+    // Store assets by id for later lookup (avoids encoding issues in onclick)
+    window._pubAssetMap = {};
+    assets.forEach(a => { window._pubAssetMap[a.id] = a; });
+
     // Group by platform
     const platformMap = {};
     assets.forEach(a => {
@@ -3021,6 +3025,7 @@ async function showTitleAssets(titleId, titleName, campId) {
             (a.type ? '<div style="font-size:11px;color:var(--text3);margin-top:2px;">' + esc(a.type) + '</div>' : '') +
           '</div>' +
           '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">' +
+            '<span onclick="openVideoGenForAsset(\'' + a.id + '\',event)" style="font-size:10px;font-weight:600;color:#f97316;cursor:pointer;padding:2px 6px;border:1px solid rgba(249,115,22,.4);border-radius:4px;white-space:nowrap;">🎬 Video</span>' +
             '<a href="https://www.notion.so/' + a.id + '" target="_blank" style="font-size:10px;font-weight:600;color:var(--text3);text-decoration:none;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Notion ↗</a>' +
             '<span onclick="showAssetFiles(\'' + a.id + '\',\'' + esc(a.title).replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:var(--accent);cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">Files</span>' +
             '<span onclick="showAssetDesignModal(\'' + a.id + '\',\'' + esc(a.title).replace(/'/g,"\\'") + '\',\'' + (a.designLink||'').replace(/'/g,"\\'") + '\',event)" style="font-size:10px;font-weight:600;color:' + (a.designLink ? '#a78bfa' : 'var(--text3)') + ';cursor:pointer;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">' + (a.designLink ? 'Design ↗' : 'Design') + '</span>' +
@@ -7799,21 +7804,30 @@ async function saveAssetToNotion() {
   const btn = document.getElementById('assetSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const assetTitle = _assetGenMeta.assetLabel + ' — ' + _assetGenTitle;
-    const data = await call('createAsset', {
-      titleId:      _assetGenMeta.titleId,
-      campId:       _assetGenMeta.campId,
-      assetTitle,
-      platformName: _assetGenMeta.platformName,
-      assetType:    _assetGenMeta.assetType,
-      content,
-    });
-    _savedAssetId = data.id || null;
-    btn.textContent = 'Saved ✓';
-    showToast('Script saved to Notion ✓', 'success');
-    if (data.id) {
-      btn.onclick = () => window.open('https://www.notion.so/' + data.id, '_blank');
-      btn.title = 'Open in Notion';
+    let assetId = _savedAssetId;
+    if (assetId) {
+      // Asset already exists — update the script body only
+      await call('updateAssetBody', { assetId, content });
+      btn.textContent = 'Saved ✓';
+      showToast('Script updated in Notion ✓', 'success');
+    } else {
+      // Create new asset
+      const assetTitle = _assetGenMeta.assetLabel + ' — ' + _assetGenTitle;
+      const data = await call('createAsset', {
+        titleId:      _assetGenMeta.titleId,
+        campId:       _assetGenMeta.campId,
+        assetTitle,
+        platformName: _assetGenMeta.platformName,
+        assetType:    _assetGenMeta.assetType,
+        content,
+      });
+      _savedAssetId = data.id || null;
+      btn.textContent = 'Saved ✓';
+      showToast('Script saved to Notion ✓', 'success');
+      if (data.id) {
+        btn.onclick = () => window.open('https://www.notion.so/' + data.id, '_blank');
+        btn.title = 'Open in Notion';
+      }
     }
   } catch(e) {
     showToast('Save failed: ' + e.message, 'error');
@@ -7839,6 +7853,28 @@ function extractCarouselImagePrompt(script) {
   return (hook.slice(0, 300) + ' — clean modern Instagram carousel slide, bold typography, minimal background, on-brand visuals').slice(0, 900);
 }
 
+// ── Open video gen modal from an existing asset row ──────────────────────────
+function openVideoGenForAsset(assetId, event) {
+  if (event) event.stopPropagation();
+  const body = (window._pubAssetMap && window._pubAssetMap[assetId]) ? window._pubAssetMap[assetId].body : '';
+  _savedAssetId = assetId;
+  // Open the asset gen modal directly to the video stage
+  const modal = document.getElementById('assetGenModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  document.getElementById('assetGenModalTitle').textContent = '🎬  Generate Video';
+  document.getElementById('assetStage1').style.display = 'none';
+  document.getElementById('assetStage2').style.display = 'none';
+  document.getElementById('assetCarouselSection').style.display = 'none';
+  const videoSection = document.getElementById('assetVideoSection');
+  videoSection.style.display = 'block';
+  document.getElementById('videoPromptInput').value = body ? extractVideoPrompt(body) : '';
+  document.getElementById('videoGenResult').style.display = 'none';
+  document.getElementById('videoGenStatus').style.display = 'none';
+  const vBtn = document.getElementById('videoGenBtn');
+  vBtn.disabled = false; vBtn.textContent = '🎬 Generate Video';
+}
+
 // ── TikTok video generation ──────────────────────────────────────────────────
 async function generateKieVideo() {
   const prompt = document.getElementById('videoPromptInput').value.trim();
@@ -7852,8 +7888,12 @@ async function generateKieVideo() {
   document.getElementById('videoGenResult').style.display = 'none';
   try {
     const data = await call('generateVideo', { prompt, aspectRatio, duration });
-    if (!data.taskId) throw new Error((data.error || 'No taskId returned') + (data._raw ? ' — ' + JSON.stringify(data._raw) : ''));
+    if (!data.taskId) { console.error('Kie.ai generateVideo raw response:', data._raw || data); throw new Error((data.error || 'No taskId returned') + (data._raw ? ' — ' + JSON.stringify(data._raw) : '')); }
     statusEl.textContent = 'Queued — checking every 6s…';
+    // Immediately persist taskId so job is tracked even if modal closes
+    if (_savedAssetId) {
+      call('updateAssetVideoTaskId', { assetId: _savedAssetId, taskId: data.taskId }).catch(() => {});
+    }
     _videoPollInterval = setInterval(() => pollVideoTask(data.taskId, btn, statusEl), 6000);
   } catch(e) {
     showToast('Video error: ' + e.message, 'error');
@@ -7875,6 +7915,10 @@ async function pollVideoTask(taskId, btn, statusEl) {
       const linkEl = document.getElementById('videoResultLink');
       linkEl.href = data.videoUrl; linkEl.textContent = data.videoUrl;
       document.getElementById('videoGenResult').style.display = 'block';
+      // Auto-save video URL to Notion asset
+      if (_savedAssetId) {
+        call('updateAssetVideoUrl', { assetId: _savedAssetId, videoUrl: data.videoUrl }).catch(() => {});
+      }
       // Show persistent bar so result is visible even if modal was closed
       const bar = document.getElementById('videoReadyBar');
       const barLink = document.getElementById('videoReadyLink');
@@ -9107,8 +9151,8 @@ function renderPublishedTable() {
       '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;">' +
         (a.platform ? '<span style="font-size:10px;font-weight:600;color:var(--accent);padding:1px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">' + esc(a.platform) + '</span>' : '<span style="color:var(--text3);font-size:11px;">—</span>') +
       '</div>' +
-      '<div style="flex:0 0 110px;min-width:0;padding:6px 8px;overflow:hidden;">' +
-        '<span style="font-size:11px;color:#a78bfa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.loginName || '—') + '</span>' +
+      '<div style="flex:0 0 110px;min-width:0;padding:6px 8px;overflow:hidden;position:relative;" onclick="openPubLoginPicker(\'' + a.id + '\',this)" title="Click to change login">' +
+        '<span style="font-size:11px;color:#a78bfa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;cursor:pointer;border-bottom:1px dashed rgba(167,139,250,.35);" id="pubLoginLabel-' + a.id + '">' + esc(a.loginName || '+ login') + '</span>' +
       '</div>' +
       '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;">' +
         '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
@@ -9128,6 +9172,112 @@ function renderPublishedTable() {
   el.innerHTML = hdrRow + rowsHtml;
 }
 
+
+// ── Published Assets — inline login picker ────────────────────────────────────
+let _pubLoginPickerAssetId = null;
+
+function openPubLoginPicker(assetId, cellEl) {
+  // Remove any existing picker
+  const existing = document.getElementById('pubLoginPicker');
+  if (existing) existing.remove();
+  if (_pubLoginPickerAssetId === assetId) { _pubLoginPickerAssetId = null; return; }
+  _pubLoginPickerAssetId = assetId;
+
+  const picker = document.createElement('div');
+  picker.id = 'pubLoginPicker';
+  picker.style.cssText = 'position:fixed;z-index:500;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.4);width:220px;padding:6px;';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Search or create login…';
+  input.style.cssText = 'width:100%;box-sizing:border-box;padding:5px 8px;font-size:12px;border:1px solid var(--border2);border-radius:4px;background:var(--surface);color:var(--text);outline:none;margin-bottom:4px;';
+  picker.appendChild(input);
+
+  const drop = document.createElement('div');
+  drop.style.cssText = 'max-height:180px;overflow-y:auto;';
+  picker.appendChild(drop);
+
+  document.body.appendChild(picker);
+
+  // Position below the cell
+  const rect = cellEl.getBoundingClientRect();
+  picker.style.left = Math.min(rect.left, window.innerWidth - 230) + 'px';
+  picker.style.top  = (rect.bottom + 2) + 'px';
+
+  // Get the asset
+  const asset = _pubAssets.find(a => a.id === assetId);
+
+  async function renderDrop(q) {
+    if (!_eaAllLogins.length) {
+      try { const d = await call('getLogins', {}); _eaAllLogins = d.logins || []; } catch(e) {}
+    }
+    const query = (q || '').toLowerCase();
+    const scoped = asset && asset.campaignId
+      ? _eaAllLogins.filter(l => (l.campaignIds || []).includes(asset.campaignId))
+      : _eaAllLogins;
+    const pool = scoped.length ? scoped : _eaAllLogins;
+    const matches = pool.filter(l => l.name.toLowerCase().includes(query)).slice(0, 10);
+    const exact = pool.find(l => l.name.toLowerCase() === query);
+
+    drop.innerHTML = '';
+
+    if (query && !exact) {
+      const row = document.createElement('div');
+      row.className = 'camp-option';
+      row.style.cssText = 'color:var(--accent);font-style:italic;font-size:12px;';
+      row.textContent = '+ Create "' + q + '"';
+      row.onmousedown = async () => {
+        picker.remove(); _pubLoginPickerAssetId = null;
+        try {
+          const res = await call('createLoginFull', { name: q, campaignId: asset ? asset.campaignId : undefined });
+          _eaAllLogins.push(res.login);
+          await call('setAssetLogin', { assetId, loginId: res.login.id });
+          const a = _pubAssets.find(x => x.id === assetId);
+          if (a) { a.loginId = res.login.id; a.loginName = res.login.name; }
+          const lbl = document.getElementById('pubLoginLabel-' + assetId);
+          if (lbl) lbl.textContent = res.login.name;
+          showToast('Login created & linked', 'success');
+        } catch(e) { showToast('Failed: ' + e.message, true); }
+      };
+      drop.appendChild(row);
+    }
+
+    matches.forEach(l => {
+      const row = document.createElement('div');
+      row.className = 'camp-option';
+      row.style.cssText = 'font-size:12px;';
+      row.textContent = l.name;
+      row.onmousedown = async () => {
+        picker.remove(); _pubLoginPickerAssetId = null;
+        try {
+          await call('setAssetLogin', { assetId, loginId: l.id });
+          const a = _pubAssets.find(x => x.id === assetId);
+          if (a) { a.loginId = l.id; a.loginName = l.name; }
+          const lbl = document.getElementById('pubLoginLabel-' + assetId);
+          if (lbl) lbl.textContent = l.name;
+          showToast('Login linked', 'success');
+        } catch(e) { showToast('Failed: ' + e.message, true); }
+      };
+      drop.appendChild(row);
+    });
+
+    if (!drop.children.length) {
+      drop.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:6px 8px;">No logins found</div>';
+    }
+  }
+
+  input.addEventListener('input', () => renderDrop(input.value));
+  renderDrop('');
+  setTimeout(() => input.focus(), 50);
+}
+
+document.addEventListener('click', e => {
+  const picker = document.getElementById('pubLoginPicker');
+  if (picker && !picker.contains(e.target) && !e.target.closest('[onclick*="openPubLoginPicker"]')) {
+    picker.remove();
+    _pubLoginPickerAssetId = null;
+  }
+}, true);
 
 function _renderScanSections(briefing) {
   if (!briefing) return;

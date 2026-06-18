@@ -199,8 +199,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 5: three col — product ideas / tiktok shop / kdp best sellers -->
-<div class="three-col">
+<!-- SEC 5a: two col — product ideas / tiktok shop -->
+<div class="two-col">
   <div class="col">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <span>Product Ideas</span>
@@ -225,6 +225,10 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div id="r-ttshop"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
+</div>
+
+<!-- SEC 5b: two col — kdp best sellers / youtube outliers -->
+<div class="two-col">
   <div class="col">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <span>KDP Best Sellers</span>
@@ -235,6 +239,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </h2>
     <div class="content">
       <div id="r-kdp"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>YouTube Outliers</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="ytOutliersKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="ytOutliersBtn" onclick="runYouTubeOutliers()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-ytoutliers"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
@@ -853,6 +869,9 @@ async function loadResearch() {
 
     // SEC 3 — KDP Best Sellers field
     renderKDPBestSellers(r.kdpBestSellers || '');
+
+    // SEC 5b — YouTube Outliers field
+    renderYouTubeOutliers(r.youtubeOutliers || '');
 
     // News Feed — condense via Claude
     const newsEl = document.getElementById('r-news');
