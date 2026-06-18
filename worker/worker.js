@@ -998,6 +998,75 @@ export default {
         }
       }
 
+      if (body.action === "getPublishedAssets") {
+        try {
+          const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+          // Query Assets DB filtered by Asset Status = Published, sorted by last_edited desc
+          let assets = [], cursor = undefined;
+          do {
+            const body2 = {
+              filter: { property: "Asset Status", select: { equals: "Published" } },
+              sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
+              page_size: 100,
+            };
+            if (cursor) body2.start_cursor = cursor;
+            const resp = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB + "/query", {
+              method: "POST",
+              headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+              body: JSON.stringify(body2),
+            });
+            const d = await resp.json();
+            (d.results || []).forEach(pg => {
+              const p = pg.properties || {};
+              const loginRel = p["Login"]?.relation || [];
+              const campRel  = p["Campaign"]?.relation || [];
+              assets.push({
+                id: pg.id.replace(/-/g,""),
+                title: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
+                platform: p["Platform Name"]?.select?.name || "",
+                type: p["Asset Type"]?.select?.name || "",
+                loginId: loginRel[0]?.id?.replace(/-/g,"") || "",
+                campaignId: campRel[0]?.id?.replace(/-/g,"") || "",
+                lastEdited: pg.last_edited_time || "",
+              });
+            });
+            cursor = d.has_more ? d.next_cursor : undefined;
+          } while (cursor);
+
+          // Resolve login names + campaign names in parallel
+          const loginIds   = [...new Set(assets.map(a => a.loginId).filter(Boolean))];
+          const campaignIds = [...new Set(assets.map(a => a.campaignId).filter(Boolean))];
+          const loginMap = {}, campMap = {};
+          await Promise.all([
+            ...loginIds.map(async lid => {
+              try {
+                const r = await fetch("https://api.notion.com/v1/pages/" + dash(lid), { headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION } });
+                const pg = await r.json();
+                const p = pg.properties || {};
+                loginMap[lid] = p["Name"]?.title?.map(t=>t.plain_text).join("") || p["Login Name"]?.title?.map(t=>t.plain_text).join("") || lid;
+              } catch(e) {}
+            }),
+            ...campaignIds.map(async cid => {
+              try {
+                const r = await fetch("https://api.notion.com/v1/pages/" + dash(cid), { headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION } });
+                const pg = await r.json();
+                const p = pg.properties || {};
+                campMap[cid] = p["Campaign Name"]?.title?.map(t=>t.plain_text).join("") || p["Name"]?.title?.map(t=>t.plain_text).join("") || cid;
+              } catch(e) {}
+            }),
+          ]);
+
+          assets = assets.map(a => ({
+            ...a,
+            loginName: loginMap[a.loginId] || "",
+            campaignName: campMap[a.campaignId] || "",
+          }));
+          return json({ assets });
+        } catch(e) {
+          return json({ error: e.message, assets: [] });
+        }
+      }
+
       if (body.action === "searchLogins") {
         const { query } = body;
         const rows = await notionQuery(LOGINS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
@@ -1059,6 +1128,34 @@ export default {
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "updateCampaignSite") {
+        const { campaignId, site } = body;
+        if (!campaignId || !site) return json({ error: "campaignId and site required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "site": { select: { name: site } } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "deleteCampaign") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Delete failed" }, resp.status);
         return json({ success: true });
       }
 

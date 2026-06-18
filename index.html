@@ -1891,123 +1891,12 @@
 </div>
 
 <div class="view" id="viewMorning" style="display:none;">
-  <div class="morning-view">
-    <div class="morning-day" id="morningDayLabel"></div>
-    <div class="morning-heading" id="morningHeading"></div>
-
-    <div class="morning-section-label">Phase 1 — before screen</div>
-    <div class="morning-block">
-      <div class="morning-block-header">
-        <span class="morning-time-badge badge-teal">First 15 min</span>
-        <span class="morning-block-title">Trail time — voice capture</span>
-      </div>
-      <div class="morning-block-sub">The trail is the office. Voice memo before you open anything.</div>
-      <ul class="morning-task-list">
-        <li class="morning-task"><span class="morning-task-dot"></span>One voice memo — an observation, question, or tension from yesterday. Feeds Trail Notes + AI workflow content simultaneously.</li>
-        <li class="morning-task"><span class="morning-task-dot"></span>One spontaneous thought about your audience's pain (purpose crisis, content overwhelm, fundraising anxiety) — raw material for posts.</li>
-      </ul>
-      <div class="morning-tags">
-        <span class="morning-tag tag-teal">Trail Notes</span>
-        <span class="morning-tag tag-purple">B2B AI Workflows</span>
-      </div>
+  <div style="padding:16px 0 80px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Published Assets</div>
+      <span class="refresh-link" onclick="loadPublishedAssets()">↻ refresh</span>
     </div>
-
-    <div class="morning-section-label">Phase 2 — intake</div>
-    <div class="morning-block">
-      <div class="morning-block-header">
-        <span class="morning-time-badge badge-amber">15 min</span>
-        <span class="morning-block-title">Trend scan</span>
-      </div>
-      <div class="morning-block-sub">TikTok Creative Center → X Explore → Google Trends. One tab each.</div>
-      <ul class="morning-task-list">
-        <li class="morning-task"><span class="morning-task-dot"></span>TikTok Creative Center — self-actualization, AI productivity, coaching, business systems</li>
-        <li class="morning-task"><span class="morning-task-dot"></span>X Explore — what are founders complaining about or celebrating today?</li>
-        <li class="morning-task"><span class="morning-task-dot"></span>Google Trends — 2 min check on your campaign keywords</li>
-      </ul>
-      <div class="morning-tags">
-        <span class="morning-tag tag-teal">Trail Notes</span>
-        <span class="morning-tag tag-blue">B2C Content OS</span>
-        <span class="morning-tag tag-coral">Mobility Mentor</span>
-      </div>
-    </div>
-
-    <div class="morning-section-label">Phase 3 — create (peak window)</div>
-    <div class="morning-block" id="morningCreateBlock">
-      <div class="morning-block-header">
-        <span class="morning-time-badge badge-purple">60 min</span>
-        <span class="morning-block-title" id="morningCreateTitle">One deep creation task</span>
-      </div>
-      <div class="morning-block-sub" id="morningCreateSub">Loading today's task...</div>
-      <ul class="morning-task-list" id="morningCreateTasks"></ul>
-      <div class="morning-tags" id="morningCreateTags"></div>
-    </div>
-
-    <div class="morning-section-label">Phase 4 — deploy</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="morning-block">
-        <div class="morning-block-header">
-          <span class="morning-time-badge badge-blue">20 min</span>
-        </div>
-        <div class="morning-block-title" style="font-size:13px;margin-bottom:6px">Publish / schedule</div>
-        <ul class="morning-task-list">
-          <li class="morning-task"><span class="morning-task-dot"></span>Push yesterday's creation to its platform</li>
-          <li class="morning-task"><span class="morning-task-dot"></span>Schedule any queued SM posts</li>
-        </ul>
-      </div>
-      <div class="morning-block">
-        <div class="morning-block-header">
-          <span class="morning-time-badge badge-coral">10 min</span>
-        </div>
-        <div class="morning-block-title" style="font-size:13px;margin-bottom:6px">Notion triage</div>
-        <ul class="morning-task-list">
-          <li class="morning-task"><span class="morning-task-dot"></span>Clear MAIN TO DO</li>
-          <li class="morning-task"><span class="morning-task-dot"></span>Update campaign status or titles</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="morning-section-label">Live todos</div>
-    <div class="level-header" style="margin-bottom:8px">
-      <div class="section-label" style="font-size:10px"></div>
-      <span class="refresh-link" onclick="loadMorningTodos()">↻ refresh</span>
-    </div>
-    <div id="morningTodoList"><div style="font-size:13px;color:var(--text3);font-style:italic">Loading...</div></div>
-
-    <!-- Scan status + manual trigger -->
-    <div class="level-header" style="margin-top:20px;margin-bottom:4px">
-      <div class="morning-section-label" style="margin:0">Activity scan</div>
-      <span class="refresh-link" id="scanNowBtn" onclick="triggerManualScan()">⟳ scan now</span>
-    </div>
-    <div id="morningScanStatus" style="font-size:11px;color:var(--text3);margin-bottom:10px"></div>
-
-    <!-- What changed -->
-    <div id="morningDiffSection" style="display:none">
-      <div class="morning-section-label">What changed</div>
-      <div id="morningDiffList"></div>
-    </div>
-
-    <!-- Cooling -->
-    <details id="morningCoolingSection" style="display:none;margin-top:12px">
-      <summary style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
-        <span>Cooling</span><span id="morningCoolingCount" style="font-size:10px;background:var(--border);padding:1px 6px;border-radius:8px"></span>
-        <span style="margin-left:auto;font-size:10px;color:var(--text3)">7–30 days quiet ▾</span>
-      </summary>
-      <div id="morningCoolingList" style="margin-top:8px"></div>
-    </details>
-
-    <!-- Orphaned -->
-    <details id="morningOrphanedSection" style="display:none;margin-top:8px">
-      <summary style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;opacity:.6">
-        <span>Orphaned</span><span id="morningOrphanedCount" style="font-size:10px;background:var(--border);padding:1px 6px;border-radius:8px"></span>
-        <span style="margin-left:auto;font-size:10px;color:var(--text3)">30+ days quiet ▾</span>
-      </summary>
-      <div id="morningOrphanedList" style="margin-top:8px;opacity:.7"></div>
-    </details>
-
-    <div class="morning-section-label" style="margin-top:20px">Principles</div>
-    <div class="morning-principle">The trail is not time away from the business. It <em>is</em> the business. Voice memo on every walk — that's content for three campaigns.</div>
-    <div class="morning-principle">One creation task per morning, finished. Splitting between campaigns before noon kills both.</div>
-    <div class="morning-principle">Trail Notes publishes Thursday. The essay must be written by Wednesday morning. Tuesday's block is the safety net — use it.</div>
+    <div id="publishedAssetsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
   </div>
 </div>
 
@@ -9037,10 +8926,48 @@ function switchBottomTab(tab) {
   }
 }
 
-// ── Morning view ─────────────────────────────────────────────────────────────
-// Day themes are static structure; tasks are injected live from Notion via
-// getMorningBriefing. Each day maps to campaign name keywords — active campaigns
-// matching those keywords surface their real next queued titles as tasks.
+// ── Morning view — Published Assets ──────────────────────────────────────────
+async function renderMorning() {
+  loadPublishedAssets();
+}
+
+async function loadPublishedAssets() {
+  const el = document.getElementById('publishedAssetsList');
+  if (!el) return;
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getPublishedAssets');
+    const assets = data.assets || [];
+    if (!assets.length) {
+      el.innerHTML = '<div class="empty" style="margin-top:32px;text-align:center;">No published assets yet.</div>';
+      return;
+    }
+    el.innerHTML = '';
+    assets.forEach(a => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);';
+
+      const date = a.lastEdited ? new Date(a.lastEdited).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '—';
+
+      row.innerHTML =
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(a.title) + '</div>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">' +
+            (a.campaignName ? '<span style="font-size:11px;color:var(--text3);">' + esc(a.campaignName) + '</span>' : '') +
+            (a.platform     ? '<span style="font-size:10px;font-weight:600;color:var(--accent);padding:1px 6px;border:1px solid var(--border2);border-radius:4px;">' + esc(a.platform) + '</span>' : '') +
+            (a.loginName    ? '<span style="font-size:11px;color:#a78bfa;">🔑 ' + esc(a.loginName) + '</span>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--text3);white-space:nowrap;flex-shrink:0;padding-top:2px;">' + date + '</div>' +
+        '<a href="https://www.notion.so/' + a.id + '" target="_blank" style="font-size:10px;font-weight:600;color:var(--text3);text-decoration:none;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;flex-shrink:0;">↗</a>';
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
+  }
+}
+
+// Legacy morning view code (kept for reference)
 const DAY_THEMES = {
   0: { label: 'Sunday — offline',   title: 'No output today',   sub: 'Rest is part of the system. The machine runs Monday. Use today to capture a voice note if something comes up on trail.', campaigns: [], fallbackTasks: ['One voice memo max — capture, don\'t produce', 'Check nothing is broken in Hermes or Notion'], tags: [['Rest Day','tag-teal']] },
   1: { label: 'Monday — B2B content machine',   title: 'One LinkedIn post',   sub: 'Monday is the B2B face. Pick the next queued title from Content Command Center or B2B Content OS and write it.', campaigns: ['content command center','b2b content os'], fallbackTasks: ['Open Notion Dev Titles — Content Command Center or B2B Content OS', 'Pick highest sequence title, write using post-writer skill', 'Publish or schedule — upload-post.com → LinkedIn'], tags: [['Content Command Center','tag-amber'],['B2B Content OS','tag-purple']] },
