@@ -2175,6 +2175,7 @@
           oninput="eaFilterLogins()" onfocus="eaFilterLogins()" />
         <input type="hidden" id="eaLoginId" />
         <div id="eaLoginDrop" class="camp-dropdown" style="display:none;"></div>
+        <a id="eaLoginNotionLink" href="#" target="_blank" style="display:none;font-size:11px;color:#a78bfa;margin-top:6px;text-decoration:none;">↗ Open login in Notion</a>
       </div>
 
       <!-- Components -->
@@ -2827,9 +2828,21 @@ async function openEditAssetModal(asset) {
     const l = _eaAllLogins.find(x => x.id === asset.loginId);
     document.getElementById('eaLoginInput').value = l ? l.name : '';
   }
+  updateEaLoginNotionLink(asset.loginId || null);
 
   renderEaComponents();
   document.getElementById('editAssetModal').style.display = 'flex';
+}
+
+function updateEaLoginNotionLink(loginId) {
+  const link = document.getElementById('eaLoginNotionLink');
+  if (!link) return;
+  if (loginId) {
+    link.href = 'https://www.notion.so/' + loginId.replace(/-/g,'');
+    link.style.display = 'inline';
+  } else {
+    link.style.display = 'none';
+  }
 }
 
 function closeEditAssetModal() {
@@ -2892,6 +2905,7 @@ async function eaFilterLogins() {
       document.getElementById('eaLoginInput').value = l.name;
       document.getElementById('eaLoginId').value = l.id;
       drop.style.display = 'none';
+      updateEaLoginNotionLink(l.id);
       try {
         await call('setAssetLogin', { assetId: _eaAsset.id, loginId: l.id });
         _eaAsset.loginId = l.id;
@@ -3069,10 +3083,23 @@ async function showTitleAssets(titleId, titleName, campId) {
       try { const ld = await call('getLogins', {}); _eaAllLogins = ld.logins || []; } catch(e) {}
     }
 
+    const PLATFORM_URLS = {
+      tiktok:'https://www.tiktok.com', instagram:'https://www.instagram.com',
+      linkedin:'https://www.linkedin.com', substack:'https://substack.com',
+      youtube:'https://www.youtube.com', facebook:'https://www.facebook.com',
+      twitter:'https://twitter.com', x:'https://x.com',
+      pinterest:'https://www.pinterest.com', reddit:'https://www.reddit.com',
+      threads:'https://www.threads.net', amazon:'https://www.amazon.com',
+      etsy:'https://www.etsy.com', shopify:'https://www.shopify.com',
+      'google':'https://www.google.com', 'medium':'https://medium.com',
+      'wordpress':'https://wordpress.com', 'beehiiv':'https://www.beehiiv.com',
+    };
+
     Object.keys(platformMap).sort().forEach(platform => {
+      const platUrl = PLATFORM_URLS[platform.toLowerCase()] || null;
       const platHdr = document.createElement('div');
-      platHdr.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:16px 0 6px;padding:4px 0;border-bottom:1px solid var(--border);';
-      platHdr.textContent = platform;
+      platHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:16px 0 6px;padding:4px 0;border-bottom:1px solid var(--border);';
+      platHdr.innerHTML = '<span>' + esc(platform) + '</span>' + (platUrl ? '<a href="' + platUrl + '" target="_blank" style="font-size:10px;color:var(--text3);text-decoration:none;letter-spacing:0;text-transform:none;font-weight:600;padding:1px 8px;border:1px solid var(--border2);border-radius:4px;" onclick="event.stopPropagation()">↗</a>' : '');
       el.appendChild(platHdr);
 
       platformMap[platform].forEach(a => {
