@@ -699,6 +699,19 @@ export default {
         return json({ success: true, id: result.id.replace(/-/g,"") });
       }
 
+      if (body.action === "getMorningTdItems") {
+        const rows = await notionQuery(MAIN_TD_DB, {
+          filter: { property: "priority", multi_select: { contains: "morning" } },
+          sorts: [{ property: "Title", direction: "ascending" }],
+        });
+        const items = rows.map(t => ({
+          id:       t.id.replace(/-/g,""),
+          name:     t.properties.Title?.title?.map(x => x.plain_text).join("") || "Untitled",
+          priority: t.properties.priority?.multi_select?.map(s => s.name) || [],
+        }));
+        return json({ items });
+      }
+
       if (body.action === "searchTodos") {
         const { query } = body;
         const rows = await notionQuery(MAIN_TD_DB, {
@@ -1000,67 +1013,37 @@ export default {
 
       if (body.action === "getPublishedAssets") {
         try {
-          const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-          // Query Assets DB filtered by Asset Status = Published, sorted by last_edited desc
-          let assets = [], cursor = undefined;
-          do {
-            const body2 = {
+          const [assetRows, loginRows, campRows] = await Promise.all([
+            notionQuery(ASSETS_DB, {
               filter: { property: "Asset Status", select: { equals: "Published" } },
               sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
-              page_size: 100,
-            };
-            if (cursor) body2.start_cursor = cursor;
-            const resp = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB + "/query", {
-              method: "POST",
-              headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-              body: JSON.stringify(body2),
-            });
-            const d = await resp.json();
-            (d.results || []).forEach(pg => {
-              const p = pg.properties || {};
-              const loginRel = p["Login"]?.relation || [];
-              const campRel  = p["Campaign"]?.relation || [];
-              assets.push({
-                id: pg.id.replace(/-/g,""),
-                title: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
-                platform: p["Platform Name"]?.select?.name || "",
-                type: p["Asset Type"]?.select?.name || "",
-                loginId: loginRel[0]?.id?.replace(/-/g,"") || "",
-                campaignId: campRel[0]?.id?.replace(/-/g,"") || "",
-                lastEdited: pg.last_edited_time || "",
-              });
-            });
-            cursor = d.has_more ? d.next_cursor : undefined;
-          } while (cursor);
-
-          // Resolve login names + campaign names in parallel
-          const loginIds   = [...new Set(assets.map(a => a.loginId).filter(Boolean))];
-          const campaignIds = [...new Set(assets.map(a => a.campaignId).filter(Boolean))];
-          const loginMap = {}, campMap = {};
-          await Promise.all([
-            ...loginIds.map(async lid => {
-              try {
-                const r = await fetch("https://api.notion.com/v1/pages/" + dash(lid), { headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION } });
-                const pg = await r.json();
-                const p = pg.properties || {};
-                loginMap[lid] = p["Name"]?.title?.map(t=>t.plain_text).join("") || p["Login Name"]?.title?.map(t=>t.plain_text).join("") || lid;
-              } catch(e) {}
             }),
-            ...campaignIds.map(async cid => {
-              try {
-                const r = await fetch("https://api.notion.com/v1/pages/" + dash(cid), { headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION } });
-                const pg = await r.json();
-                const p = pg.properties || {};
-                campMap[cid] = p["Campaign Name"]?.title?.map(t=>t.plain_text).join("") || p["Name"]?.title?.map(t=>t.plain_text).join("") || cid;
-              } catch(e) {}
-            }),
+            notionQuery(LOGINS_DB, {}),
+            notionQuery(CAMPAIGNS_DB, {}),
           ]);
-
-          assets = assets.map(a => ({
-            ...a,
-            loginName: loginMap[a.loginId] || "",
-            campaignName: campMap[a.campaignId] || "",
-          }));
+          const loginMap = {};
+          loginRows.forEach(l => {
+            loginMap[l.id.replace(/-/g,"")] = l.properties.Name?.title?.map(t=>t.plain_text).join("") || "";
+          });
+          const campMap = {};
+          campRows.forEach(c => {
+            campMap[c.id.replace(/-/g,"")] = c.properties.Name?.title?.map(t=>t.plain_text).join("") || "";
+          });
+          const assets = assetRows.map(pg => {
+            const p = pg.properties || {};
+            const loginId  = (p["Login"]?.relation || [])[0]?.id?.replace(/-/g,"") || "";
+            const campId   = (p["Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || "";
+            return {
+              id: pg.id.replace(/-/g,""),
+              title: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
+              platform: p["Platform Name"]?.select?.name || "",
+              type: p["Asset Type"]?.select?.name || "",
+              loginId, campaignId: campId,
+              loginName: loginMap[loginId] || "",
+              campaignName: campMap[campId] || "",
+              lastEdited: pg.last_edited_time || "",
+            };
+          });
           return json({ assets });
         } catch(e) {
           return json({ error: e.message, assets: [] });

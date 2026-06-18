@@ -1642,6 +1642,7 @@
         <option value="daily content">Daily Content</option>
         <option value="daily household">Daily Household</option>
         <option value="trading">Trading</option>
+        <option value="morning">Morning</option>
       </select>
     </div>
     <div class="modal-actions">
@@ -1892,11 +1893,23 @@
 
 <div class="view" id="viewMorning" style="display:none;">
   <div style="padding:16px 0 80px;">
+
+    <!-- Morning TDs -->
+    <div style="margin-bottom:24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Morning TDs</div>
+        <button onclick="openAddTdModalMorning()" style="font-size:11px;font-weight:600;padding:3px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ Add TD</button>
+      </div>
+      <div id="morningTdList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+    </div>
+
+    <!-- Published Assets -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
       <div style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Published Assets</div>
       <span class="refresh-link" onclick="loadPublishedAssets()">↻ refresh</span>
     </div>
     <div id="publishedAssetsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+
   </div>
 </div>
 
@@ -7325,8 +7338,12 @@ async function submitAddTd() {
     await call('createTdItem', { title, grouping });
     closeAddTdModal();
     showToast('To do created ✓', 'success');
-    tdTabLoaded = false;
-    loadTdTab();
+    if (grouping === 'morning') {
+      loadMorningTdItems();
+    } else {
+      tdTabLoaded = false;
+      loadTdTab();
+    }
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Create';
@@ -8926,9 +8943,92 @@ function switchBottomTab(tab) {
   }
 }
 
-// ── Morning view — Published Assets ──────────────────────────────────────────
+// ── Morning view ──────────────────────────────────────────────────────────────
 async function renderMorning() {
+  loadMorningTdItems();
   loadPublishedAssets();
+}
+
+function openAddTdModalMorning() {
+  document.getElementById('addTdTitle').value = '';
+  document.getElementById('addTdGrouping').value = 'morning';
+  document.getElementById('addTdSubmitBtn').disabled = false;
+  document.getElementById('addTdSubmitBtn').textContent = 'Create';
+  document.getElementById('addTdModal').classList.add('open');
+  setTimeout(() => document.getElementById('addTdTitle').focus(), 280);
+}
+
+async function loadMorningTdItems() {
+  const el = document.getElementById('morningTdList');
+  if (!el) return;
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getMorningTdItems');
+    const items = data.items || [];
+    if (!items.length) {
+      el.innerHTML = '<div class="empty" style="text-align:center;padding:12px 0;">No morning TDs yet.</div>';
+      return;
+    }
+    el.innerHTML = '';
+    items.forEach(t => renderMorningTdRow(t, el));
+  } catch(e) {
+    el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
+  }
+}
+
+function renderMorningTdRow(t, container) {
+  const isDone = (t.priority || []).some(p => p === 'done' || p === 'got');
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:4px;background:' + (isDone ? 'var(--surface)' : 'var(--bg)') + ';';
+
+  let doneState = isDone;
+
+  const chk = document.createElement('button');
+  chk.style.cssText = 'width:18px;height:18px;border:1.5px solid ' + (isDone ? 'var(--accent)' : 'var(--border2)') + ';border-radius:4px;background:' + (isDone ? 'var(--accent)' : 'transparent') + ';cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;padding:0;transition:all .15s;';
+  chk.textContent = isDone ? '✓' : '';
+  chk.onclick = async () => {
+    chk.disabled = true;
+    const newDone = !doneState;
+    const base = (t.priority || []).filter(p => p !== 'done' && p !== 'got' && p !== 'morning');
+    base.push('morning');
+    if (newDone) base.push('done');
+    try {
+      await call('updateTdPriority', { itemId: t.id, priority: base });
+      doneState = newDone;
+      t.priority = base;
+      chk.textContent = newDone ? '✓' : '';
+      chk.style.borderColor = newDone ? 'var(--accent)' : 'var(--border2)';
+      chk.style.background  = newDone ? 'var(--accent)' : 'transparent';
+      label.style.textDecoration = newDone ? 'line-through' : 'none';
+      label.style.color = newDone ? 'var(--text3)' : 'var(--text)';
+      row.style.background = newDone ? 'var(--surface)' : 'var(--bg)';
+    } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+    chk.disabled = false;
+  };
+
+  const label = document.createElement('span');
+  label.style.cssText = 'flex:1;font-size:13px;color:' + (isDone ? 'var(--text3)' : 'var(--text)') + ';text-decoration:' + (isDone ? 'line-through' : 'none') + ';';
+  label.textContent = t.name;
+
+  const delBtn = document.createElement('button');
+  delBtn.textContent = '🗑';
+  delBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:14px;padding:0 2px;color:var(--text3);flex-shrink:0;';
+  delBtn.onclick = async () => {
+    delBtn.textContent = '⏳';
+    try {
+      await call('deleteTdItem', { itemId: t.id });
+      row.remove();
+      showToast('Deleted ✓', 'success');
+    } catch(e) {
+      delBtn.textContent = '🗑';
+      showToast('Failed: ' + e.message, 'error');
+    }
+  };
+
+  row.appendChild(chk);
+  row.appendChild(label);
+  row.appendChild(delBtn);
+  container.appendChild(row);
 }
 
 async function loadPublishedAssets() {
