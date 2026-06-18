@@ -7852,7 +7852,7 @@ async function generateKieVideo() {
   document.getElementById('videoGenResult').style.display = 'none';
   try {
     const data = await call('generateVideo', { prompt, aspectRatio, duration });
-    if (!data.taskId) throw new Error(data.error || 'No taskId returned');
+    if (!data.taskId) throw new Error((data.error || 'No taskId returned') + (data._raw ? ' — ' + JSON.stringify(data._raw) : ''));
     statusEl.textContent = 'Queued — checking every 6s…';
     _videoPollInterval = setInterval(() => pollVideoTask(data.taskId, btn, statusEl), 6000);
   } catch(e) {
