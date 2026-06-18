@@ -322,7 +322,7 @@ async function condense(label, raw) {
     const resp = await fetch(WORKER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'condense', pin: CORRECT_PIN, label, text: plain })
+      body: JSON.stringify({ action: 'condense', token: SESSION_TOKEN, label, text: plain })
     });
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
