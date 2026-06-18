@@ -2094,9 +2094,10 @@ Rules:
         const result = await resp.json();
         console.log("KIE generateVideo response:", JSON.stringify(result));
         if (!resp.ok) return json({ error: result.message || result.msg || "Kie.ai error", _raw: result }, resp.status);
-        const taskId = result.data?.taskId || result.data?.task_id || result.taskId || result.task_id || result.id
+        const taskId = result.data?.taskId || result.data?.task_id || result.data?.id
+          || result.taskId || result.task_id || result.id
           || (Array.isArray(result.data) ? result.data[0]?.taskId || result.data[0]?.task_id || result.data[0]?.id : null);
-        if (!taskId) return json({ error: "No taskId in response", _raw: result });
+        if (!taskId) return json({ error: "No taskId — raw: " + JSON.stringify(result).slice(0, 300) });
         return json({ taskId });
       }
 
