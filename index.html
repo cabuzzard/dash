@@ -1914,6 +1914,11 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="videoReadyBar" style="display:none;position:fixed;top:0;left:0;right:0;z-index:600;background:#1a1a2e;border-bottom:2px solid var(--accent);padding:10px 16px;display:none;align-items:center;gap:10px;">
+  <span style="font-size:12px;color:var(--text2);">🎬 Video ready —</span>
+  <a id="videoReadyLink" href="#" target="_blank" style="font-size:12px;color:var(--accent);word-break:break-all;flex:1;"></a>
+  <button onclick="document.getElementById('videoReadyBar').style.display='none'" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;flex-shrink:0;">✕</button>
+</div>
 
 <!-- Asset Overlay -->
 <div class="modal-overlay" id="assetOverlay" style="display:none;">
@@ -7724,7 +7729,7 @@ let _videoPollInterval = null;
 
 function closeAssetGenModal() {
   document.getElementById('assetGenModal').style.display = 'none';
-  if (_videoPollInterval) { clearInterval(_videoPollInterval); _videoPollInterval = null; }
+  // Keep _videoPollInterval running if a video is still generating — result shown in videoReadyBar
   document.getElementById('assetStage2').style.display = 'none';
   document.getElementById('assetVideoSection').style.display = 'none';
   document.getElementById('assetCarouselSection').style.display = 'none';
@@ -7864,14 +7869,20 @@ async function pollVideoTask(taskId, btn, statusEl) {
     statusEl.textContent = 'State: ' + state + (data.progress != null ? ' (' + data.progress + '%)' : '');
     if (state === 'success' && data.videoUrl) {
       clearInterval(_videoPollInterval);
+      _videoPollInterval = null;
       btn.disabled = false; btn.textContent = '🎬 Regenerate';
       statusEl.style.display = 'none';
       const linkEl = document.getElementById('videoResultLink');
       linkEl.href = data.videoUrl; linkEl.textContent = data.videoUrl;
       document.getElementById('videoGenResult').style.display = 'block';
-      showToast('Video ready ✓', 'success');
+      // Show persistent bar so result is visible even if modal was closed
+      const bar = document.getElementById('videoReadyBar');
+      const barLink = document.getElementById('videoReadyLink');
+      barLink.href = data.videoUrl; barLink.textContent = data.videoUrl;
+      bar.style.display = 'flex';
     } else if (state === 'fail') {
       clearInterval(_videoPollInterval);
+      _videoPollInterval = null;
       btn.disabled = false; btn.textContent = '🎬 Retry';
       statusEl.textContent = 'Failed — retry above';
       showToast('Video generation failed', 'error');
