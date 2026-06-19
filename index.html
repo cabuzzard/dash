@@ -1906,10 +1906,43 @@
     <!-- Published Assets -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
       <div style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Published Assets</div>
-      <span class="refresh-link" onclick="loadPublishedAssets()">↻ refresh</span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button onclick="openNewAssetModal()" style="font-size:11px;font-weight:600;padding:3px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ New Asset</button>
+        <span class="refresh-link" onclick="loadPublishedAssets()">↻ refresh</span>
+      </div>
     </div>
     <div id="publishedAssetsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
 
+  </div>
+</div>
+
+<!-- New Asset Modal -->
+<div class="modal-bg" id="newAssetModal" onclick="if(event.target===this)closeNewAssetModal()">
+  <div class="modal">
+    <div class="modal-title">New Asset</div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Title (Content Strategy)</label>
+      <input class="modal-input" id="newAssetTitleInput" type="text" placeholder="Search titles..." autocomplete="off" oninput="filterNewAssetTitles()" onfocus="filterNewAssetTitles()" />
+      <div id="newAssetTitleDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);z-index:200;max-height:180px;overflow-y:auto;margin-top:2px;"></div>
+      <input type="hidden" id="newAssetTitleId" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Asset Title</label>
+      <input class="modal-input" id="newAssetAssetTitle" type="text" placeholder="Name of this asset..." />
+    </div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Asset Type</label>
+      <input class="modal-input" id="newAssetTypeInput" type="text" placeholder="e.g. Post, Reel, Story..." autocomplete="off" oninput="filterNewAssetTypeDropdown()" onfocus="filterNewAssetTypeDropdown()" />
+      <div id="newAssetTypeDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);z-index:200;max-height:140px;overflow-y:auto;margin-top:2px;"></div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Platform Name</label>
+      <input class="modal-input" id="newAssetPlatform" type="text" placeholder="e.g. TikTok, Instagram..." />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeNewAssetModal()">Cancel</button>
+      <button class="btn btn-primary" id="newAssetSubmitBtn" onclick="submitNewAsset()">Create</button>
+    </div>
   </div>
 </div>
 
@@ -9443,6 +9476,112 @@ function _renderMorningTasks(theme, briefing) {
 
   // Always append the process reminder as the last task
   addTask('Update title status in Notion when done (Writing → Review)');
+}
+
+// ── New Asset Modal ────────────────────────────────────────────────────────────
+let _newAssetTitles = [];
+let _newAssetTypes  = [];
+
+async function openNewAssetModal() {
+  document.getElementById('newAssetTitleInput').value = '';
+  document.getElementById('newAssetTitleId').value = '';
+  document.getElementById('newAssetAssetTitle').value = '';
+  document.getElementById('newAssetTypeInput').value = '';
+  document.getElementById('newAssetPlatform').value = '';
+  document.getElementById('newAssetTitleDropdown').style.display = 'none';
+  document.getElementById('newAssetTypeDropdown').style.display = 'none';
+  document.getElementById('newAssetSubmitBtn').disabled = false;
+  document.getElementById('newAssetSubmitBtn').textContent = 'Create';
+  document.getElementById('newAssetModal').classList.add('open');
+  setTimeout(() => document.getElementById('newAssetTitleInput').focus(), 280);
+
+  // Load titles and known asset types in parallel
+  try {
+    const [titlesData] = await Promise.all([
+      call('getTitles', { stages: ['Review', 'Publish', 'Published'] }),
+    ]);
+    _newAssetTitles = titlesData.titles || [];
+  } catch(e) { _newAssetTitles = []; }
+
+  // Collect unique asset types from already-loaded published assets
+  _newAssetTypes = [...new Set((_pubAssets || []).map(a => a.type).filter(Boolean))].sort();
+}
+
+function closeNewAssetModal() {
+  document.getElementById('newAssetModal').classList.remove('open');
+  document.getElementById('newAssetTitleDropdown').style.display = 'none';
+  document.getElementById('newAssetTypeDropdown').style.display = 'none';
+}
+
+function filterNewAssetTitles() {
+  const q = document.getElementById('newAssetTitleInput').value.toLowerCase();
+  const dd = document.getElementById('newAssetTitleDropdown');
+  const matches = _newAssetTitles.filter(t => !q || t.title.toLowerCase().includes(q));
+  if (!matches.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = matches.slice(0, 30).map(t =>
+    '<div style="padding:8px 12px;font-size:13px;cursor:pointer;color:var(--text);border-bottom:1px solid var(--border);" ' +
+    'onmousedown="selectNewAssetTitle(\'' + t.id + '\',\'' + t.title.replace(/'/g,"\\'") + '\')">' +
+    esc(t.title) + '<span style="font-size:10px;color:var(--text3);margin-left:6px;">' + esc(t.stage || '') + '</span></div>'
+  ).join('');
+  dd.style.display = 'block';
+}
+
+function selectNewAssetTitle(id, title) {
+  document.getElementById('newAssetTitleId').value = id;
+  document.getElementById('newAssetTitleInput').value = title;
+  document.getElementById('newAssetTitleDropdown').style.display = 'none';
+}
+
+function filterNewAssetTypeDropdown() {
+  const q = document.getElementById('newAssetTypeInput').value.toLowerCase();
+  const dd = document.getElementById('newAssetTypeDropdown');
+  const matches = _newAssetTypes.filter(t => !q || t.toLowerCase().includes(q));
+  if (!matches.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = matches.map(t =>
+    '<div style="padding:8px 12px;font-size:13px;cursor:pointer;color:var(--text);border-bottom:1px solid var(--border);" ' +
+    'onmousedown="document.getElementById(\'newAssetTypeInput\').value=\'' + t.replace(/'/g,"\\'") + '\';document.getElementById(\'newAssetTypeDropdown\').style.display=\'none\'">' +
+    esc(t) + '</div>'
+  ).join('');
+  dd.style.display = 'block';
+}
+
+async function submitNewAsset() {
+  const titleId     = document.getElementById('newAssetTitleId').value.trim();
+  const titleInput  = document.getElementById('newAssetTitleInput').value.trim();
+  const assetTitle  = document.getElementById('newAssetAssetTitle').value.trim();
+  const assetType   = document.getElementById('newAssetTypeInput').value.trim();
+  const platform    = document.getElementById('newAssetPlatform').value.trim();
+
+  if (!titleInput) { showToast('Select a content strategy title', 'error'); return; }
+  if (!assetTitle) { showToast('Asset title is required', 'error'); return; }
+
+  const btn = document.getElementById('newAssetSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating…';
+
+  try {
+    // If a title was typed but not selected from dropdown, try to match by name
+    let resolvedTitleId = titleId;
+    if (!resolvedTitleId && titleInput) {
+      const match = _newAssetTitles.find(t => t.title.toLowerCase() === titleInput.toLowerCase());
+      if (match) resolvedTitleId = match.id;
+    }
+    if (!resolvedTitleId) { showToast('Please select a title from the list', 'error'); btn.disabled = false; btn.textContent = 'Create'; return; }
+
+    await call('createAsset', {
+      titleId:      resolvedTitleId,
+      assetTitle,
+      assetType:    assetType || undefined,
+      platformName: platform || undefined,
+    });
+    showToast('Asset created ✓', 'success');
+    closeNewAssetModal();
+    loadPublishedAssets();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Create';
+  }
 }
 
 async function loadMorningTodos() {
