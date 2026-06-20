@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Sites</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0a0f; --surface: #0d0d14;
+    --border: rgba(255,255,255,0.06);
+    --text: #e8e8f8; --muted: #4a4a6a;
+    --mono: 'DM Mono', monospace; --sans: 'Sora', sans-serif;
+  }
+  html, body { background: var(--bg); min-height: 100vh; font-family: var(--sans); color: var(--text); -webkit-font-smoothing: antialiased; }
+  .app { max-width: 430px; margin: 0 auto; min-height: 100vh; background: var(--surface); display: flex; flex-direction: column; }
+
+  .header { padding: 52px 24px 20px; border-bottom: 1px solid var(--border); }
+  .header-row { display: flex; justify-content: space-between; align-items: flex-start; }
+  .label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; color: var(--muted); margin-bottom: 6px; }
+  .title { font-size: 32px; font-weight: 700; letter-spacing: -0.5px; color: #f0f0ff; }
+  .refresh-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; color: #888; width: 40px; height: 40px; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 4px; }
+  .refresh-btn:active { background: rgba(255,255,255,0.12); }
+  .timestamp { font-family: var(--mono); font-size: 11px; color: #2a2a3a; margin-top: 10px; }
+
+  #home { display: flex; flex-direction: column; }
+  .card-list { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .site-card { border-radius: 16px; overflow: hidden; cursor: pointer; display: flex; opacity: 0; transform: translateY(14px); animation: slideUp 0.35s ease forwards; }
+  .site-card:active { transform: scale(0.97); }
+  .accent-bar { width: 4px; flex-shrink: 0; opacity: 0.75; }
+  .card-body { display: flex; align-items: center; padding: 20px 18px; gap: 14px; flex: 1; }
+  .card-emoji { font-size: 30px; flex-shrink: 0; }
+  .card-text { flex: 1; }
+  .card-title { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; margin-bottom: 3px; color: #e8e8f8; }
+  .card-tagline { font-size: 12px; font-family: var(--mono); letter-spacing: 0.04em; opacity: 0.85; }
+  .card-arrow { font-size: 20px; flex-shrink: 0; opacity: 0.6; }
+
+  #detail { display: none; flex-direction: column; }
+  .back-btn { padding: 20px 24px 0; cursor: pointer; color: var(--muted); font-size: 13px; font-family: var(--mono); letter-spacing: 0.06em; background: none; border: none; text-align: left; width: fit-content; }
+  .back-btn:active { opacity: 0.6; }
+  .detail-hero { padding: 16px 24px 20px; border-bottom: 1px solid var(--border); }
+  .detail-emoji { font-size: 36px; margin-bottom: 8px; }
+  .detail-title { font-size: 24px; font-weight: 700; letter-spacing: -0.4px; }
+  .detail-tagline { font-size: 12px; font-family: var(--mono); letter-spacing: 0.06em; margin-top: 4px; opacity: 0.7; }
+
+  .priority-section { padding: 20px 24px; flex: 1; }
+  .priority-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; color: var(--muted); margin-bottom: 14px; }
+  .priority-content { font-size: 14px; line-height: 1.75; color: #c8c8e0; }
+  .priority-content p { margin-bottom: 10px; }
+  .priority-content strong { color: var(--text); font-weight: 600; }
+  .priority-content ul, .priority-content ol { padding-left: 18px; margin-bottom: 10px; }
+  .priority-content li { margin-bottom: 6px; }
+  .priority-content blockquote { border-left: 3px solid rgba(255,255,255,0.15); padding-left: 14px; font-style: italic; opacity: 0.75; margin: 12px 0; }
+  .priority-content h2, .priority-content h3 { font-size: 14px; font-weight: 600; color: var(--text); margin: 16px 0 8px; }
+  .priority-content a { color: inherit; text-decoration: underline; opacity: 0.7; }
+  .priority-content hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
+  .empty-state { padding: 48px 0; text-align: center; color: var(--muted); font-family: var(--mono); font-size: 13px; line-height: 1.9; }
+  .notion-link { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 24px 32px; padding: 14px; border-radius: 12px; border: 1px solid var(--border); color: var(--muted); font-size: 12px; font-family: var(--mono); text-decoration: none; }
+  .notion-link:active { opacity: 0.7; }
+  .loading-msg { padding: 48px 0; text-align: center; font-family: var(--mono); font-size: 13px; color: var(--muted); animation: pulse 1.4s ease-in-out infinite; }
+  .error-msg { padding: 24px; font-family: var(--mono); font-size: 12px; color: #884444; text-align: center; line-height: 1.9; }
+  .footer { margin-top: auto; padding: 28px 0 20px; text-align: center; font-family: var(--mono); font-size: 11px; color: #1e1e2e; letter-spacing: 0.08em; }
+
+  @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+  @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinning { animation: spin 0.7s linear infinite; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="home">
+    <div class="header">
+      <div class="header-row">
+        <div>
+          <div class="label">YOUR WORKSPACE</div>
+          <h1 class="title">Sites</h1>
+        </div>
+        <button class="refresh-btn" id="refreshBtn" onclick="loadSites(true)">↻</button>
+      </div>
+      <div class="timestamp" id="timestamp"></div>
+    </div>
+    <div class="card-list" id="cardList">
+      <div class="loading-msg">Loading sites…</div>
+    </div>
+    <div class="footer" id="footer"></div>
+  </div>
+
+  <div id="detail">
+    <div class="header">
+      <button class="back-btn" onclick="showHome()">← Back</button>
+      <div class="detail-hero">
+        <div class="detail-emoji" id="detailEmoji"></div>
+        <div class="detail-title" id="detailTitle"></div>
+        <div class="detail-tagline" id="detailTagline"></div>
+      </div>
+    </div>
+    <div class="priority-section">
+      <div class="priority-label">HIGHEST PRIORITY</div>
+      <div id="priorityContent"></div>
+    </div>
+    <a class="notion-link" id="notionLink" target="_blank">↗ Open in Notion</a>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  CONFIG — update PROXY_URL if you put proxy.php in a subfolder
+// ============================================================
+const PROXY_URL    = "proxy.php";
+const NOTION_TOKEN = "ntn_C8452809915b7aOiGkLvtkgHnmAA5v1Dt4OCeEXtHCU6FS";
+const SITES_PAGE_ID = "3341f7d3-a4bb-815d-ac80-d2977ee68dfe";
+const EXCLUDE = ["master platform list", "contractor database"];
+// ============================================================
+
+const PALETTES = [
+  { color: "#1a3a2e", accent: "#4ade80" },
+  { color: "#1a2a3e", accent: "#60a5fa" },
+  { color: "#2d1a3e", accent: "#c084fc" },
+  { color: "#3a2a1a", accent: "#fb923c" },
+  { color: "#1a2e3a", accent: "#22d3ee" },
+  { color: "#2e1a2a", accent: "#f472b6" },
+  { color: "#2a3a1a", accent: "#a3e635" },
+  { color: "#3a1a1a", accent: "#f87171" },
+];
+
+let sitesCache = null;
+const priorityCache = {};
+
+function getPalette(id) {
+  let map = {};
+  try { map = JSON.parse(localStorage.getItem("siteColors") || "{}"); } catch(e) {}
+  if (map[id] === undefined) {
+    map[id] = Object.keys(map).length % PALETTES.length;
+    try { localStorage.setItem("siteColors", JSON.stringify(map)); } catch(e) {}
+  }
+  return PALETTES[map[id]];
+}
+
+// Call proxy with action
+async function proxy(payload) {
+  const r = await fetch(PROXY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// Fetch Notion page blocks
+async function getNotionBlocks(pageId) {
+  return proxy({ action: "get_page", page_id: pageId, notion_token: NOTION_TOKEN });
+}
+
+// Ask Claude to process text
+async function askClaude(system, userMsg) {
+  const data = await proxy({
+    action: "ask_claude",
+    system,
+    messages: [{ role: "user", content: userMsg }]
+  });
+  return data.content?.filter(b => b.type === "text").map(b => b.text).join("") || "";
+}
+
+// Convert Notion blocks to plain text
+function blocksToText(blocks) {
+  if (!blocks || !blocks.results) return "";
+  return blocks.results.map(block => {
+    const type = block.type;
+    const rich = block[type]?.rich_text || [];
+    const text = rich.map(t => t.plain_text).join("");
+    if (type === "child_page") return `[PAGE: ${block.child_page?.title}] [ID: ${block.id}]`;
+    if (type === "heading_1" || type === "heading_2" || type === "heading_3") return `## ${text}`;
+    if (type === "bulleted_list_item") return `• ${text}`;
+    if (type === "numbered_list_item") return `1. ${text}`;
+    if (type === "quote") return `> ${text}`;
+    if (type === "divider") return `---`;
+    return text;
+  }).filter(Boolean).join("\n");
+}
+
+// ── LOAD SITES ────────────────────────────────────────────
+async function loadSites(force = false) {
+  const btn = document.getElementById("refreshBtn");
+  btn.innerHTML = '<span class="spinning">↻</span>';
+
+  if (!force && sitesCache) {
+    renderCards(sitesCache);
+    btn.innerHTML = "↻";
+    return;
+  }
+
+  document.getElementById("cardList").innerHTML = '<div class="loading-msg">Loading sites…</div>';
+
+  try {
+    // 1. Fetch the Sites page blocks directly from Notion
+    const blocks = await getNotionBlocks(SITES_PAGE_ID);
+    const pageText = blocksToText(blocks);
+
+    // 2. Ask Claude to extract the site list from the raw block text
+    const json = await askClaude(
+      `You are a data extractor. Given raw Notion page content, extract the list of business/brand site pages.
+Return ONLY a valid JSON array, nothing else.
+Each object must have:
+  - id: the page UUID (from "[ID: ...]" markers)
+  - title: clean page name (strip emoji prefix)
+  - emoji: leading emoji or "🌐"
+  - url: "https://www.notion.so/" + id without dashes
+Exclude pages whose titles match (case-insensitive): ${EXCLUDE.join(", ")}
+Only include genuine business/brand site pages.`,
+      `Here is the Notion page content:\n\n${pageText}`
+    );
+
+    const match = json.match(/\[[\s\S]*?\]/);
+    if (!match) throw new Error("Could not parse site list");
+
+    // 3. For each site, check if it has a Next Steps child page
+    const sites = JSON.parse(match[0]);
+    await Promise.all(sites.map(async site => {
+      try {
+        const children = await getNotionBlocks(site.id.replace(/-/g, ""));
+        const childText = blocksToText(children);
+        // Look for a child_page with "Next Steps" or "Priority" in title
+        const match = childText.match(/\[PAGE: ([^\]]*(?:Next Steps|Priority)[^\]]*)\] \[ID: ([^\]]+)\]/i);
+        site.nextStepsId = match ? match[2].replace(/-/g, "") : null;
+      } catch(e) {
+        site.nextStepsId = null;
+      }
+    }));
+
+    sitesCache = sites;
+    renderCards(sites);
+
+  } catch(err) {
+    document.getElementById("cardList").innerHTML =
+      `<div class="error-msg">Couldn't load sites.<br>Check connection and try again.<br><br><small>${err.message}</small></div>`;
+  }
+
+  btn.innerHTML = "↻";
+}
+
+// ── RENDER CARDS ─────────────────────────────────────────
+function renderCards(sites) {
+  const list = document.getElementById("cardList");
+  list.innerHTML = "";
+  sites.forEach((site, i) => {
+    const pal = getPalette(site.id);
+    const card = document.createElement("div");
+    card.className = "site-card";
+    card.style.cssText = `background:${pal.color}; animation-delay:${i * 0.07}s`;
+    card.innerHTML = `
+      <div class="accent-bar" style="background:${pal.accent}"></div>
+      <div class="card-body">
+        <div class="card-emoji">${site.emoji || "🌐"}</div>
+        <div class="card-text">
+          <div class="card-title">${site.title}</div>
+          <div class="card-tagline" style="color:${pal.accent}">Tap for priorities</div>
+        </div>
+        <div class="card-arrow" style="color:${pal.accent}">→</div>
+      </div>`;
+    card.onclick = () => showDetail(site, pal);
+    list.appendChild(card);
+  });
+  const now = new Date();
+  document.getElementById("timestamp").textContent =
+    "Updated " + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  document.getElementById("footer").textContent =
+    `🗺️  ${sites.length} site${sites.length !== 1 ? "s" : ""} in workspace`;
+}
+
+// ── DETAIL VIEW ──────────────────────────────────────────
+async function showDetail(site, pal) {
+  document.getElementById("home").style.display = "none";
+  document.getElementById("detail").style.display = "flex";
+  document.getElementById("detailEmoji").textContent = site.emoji || "🌐";
+  document.getElementById("detailTitle").textContent = site.title;
+  document.getElementById("detailTagline").textContent = "Highest Priority";
+  document.getElementById("detailTagline").style.color = pal.accent;
+  const link = document.getElementById("notionLink");
+  link.href = site.url;
+  link.style.color = pal.accent;
+  link.style.borderColor = pal.accent + "33";
+
+  const content = document.getElementById("priorityContent");
+
+  if (!site.nextStepsId) {
+    content.className = "";
+    content.innerHTML = `<div class="empty-state">◦<br><br>No priorities set yet.<br>Tell Claude what to add here.</div>`;
+    return;
+  }
+
+  if (priorityCache[site.id]) {
+    content.className = "priority-content";
+    content.innerHTML = priorityCache[site.id];
+    return;
+  }
+
+  content.className = "";
+  content.innerHTML = '<div class="loading-msg">Loading priorities…</div>';
+
+  try {
+    const blocks = await getNotionBlocks(site.nextStepsId);
+    const rawText = blocksToText(blocks);
+
+    const html = await askClaude(
+      `You are a content formatter for a mobile app.
+Convert the given plain text into clean HTML for display.
+Rules:
+- Return ONLY HTML, no preamble, no markdown fences
+- Allowed tags: p, strong, em, ul, ol, li, h2, h3, blockquote, hr
+- Focus on actionable priorities and next steps
+- Be concise — max ~350 words
+- Do not include the page title`,
+      rawText
+    );
+
+    priorityCache[site.id] = html.replace(/```html|```/g, "").trim() || "<p>No content found.</p>";
+    content.innerHTML = priorityCache[site.id];
+    content.className = "priority-content";
+
+  } catch(err) {
+    content.innerHTML = `<div class="error-msg">Failed to load priorities.<br><small>${err.message}</small></div>`;
+  }
+}
+
+function showHome() {
+  document.getElementById("detail").style.display = "none";
+  document.getElementById("home").style.display = "flex";
+}
+
+loadSites();
+</script>
+</body>
+</html>

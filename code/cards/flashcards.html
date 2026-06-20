@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>CA Contractor Exam</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0a0f; --surface: #0d0d14; --border: rgba(255,255,255,0.07);
+    --text: #e8e8f8; --muted: #4a4a6a; --accent: #f59e0b;
+    --correct: #4ade80; --wrong: #f87171;
+    --mono: 'DM Mono', monospace; --sans: 'Sora', sans-serif;
+  }
+  html, body { background: var(--bg); min-height: 100vh; font-family: var(--sans); color: var(--text); -webkit-font-smoothing: antialiased; }
+  .app { max-width: 430px; margin: 0 auto; min-height: 100vh; background: var(--surface); display: flex; flex-direction: column; }
+
+  /* HEADER */
+  .header { padding: 48px 24px 16px; border-bottom: 1px solid var(--border); }
+  .label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; color: var(--muted); margin-bottom: 6px; }
+  .title { font-size: 24px; font-weight: 700; letter-spacing: -0.4px; color: #f0f0ff; }
+  .progress-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+  .progress-bar-wrap { flex: 1; height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
+  .progress-bar { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.4s ease; }
+  .progress-label { font-family: var(--mono); font-size: 11px; color: var(--muted); flex-shrink: 0; }
+
+  /* PART BADGE */
+  .part-badge { margin: 16px 24px 0; display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2);
+    border-radius: 20px; padding: 4px 12px; font-family: var(--mono); font-size: 11px; color: var(--accent); }
+
+  /* CARD AREA */
+  .card-area { padding: 20px 20px 0; flex: 1; display: flex; flex-direction: column; }
+  .scene { width: 100%; perspective: 1000px; cursor: pointer; }
+  .card { width: 100%; min-height: 240px; position: relative; transform-style: preserve-3d; transition: transform 0.5s ease; }
+  .card.flipped { transform: rotateY(180deg); }
+  .face { position: absolute; width: 100%; min-height: 240px; backface-visibility: hidden; border-radius: 18px; padding: 24px; display: flex; flex-direction: column; }
+  .front { background: #13132a; border: 1px solid rgba(255,255,255,0.08); }
+  .back  { background: #0f2318; border: 1px solid rgba(74,222,128,0.2); transform: rotateY(180deg); }
+  .face-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; color: var(--muted); margin-bottom: 14px; }
+  .question-text { font-size: 15px; line-height: 1.6; color: #dde; flex: 1; }
+  .answer-text { font-size: 18px; font-weight: 700; color: var(--correct); margin-bottom: 10px; }
+  .explanation-text { font-size: 13px; line-height: 1.6; color: #9998bb; flex: 1; }
+  .tap-hint { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 14px; text-align: center; letter-spacing: 0.1em; }
+
+  /* OPTIONS */
+  .options { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .option-btn {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; padding: 14px 16px; text-align: left; cursor: pointer;
+    font-family: var(--sans); font-size: 14px; color: #c8c8e0;
+    display: flex; align-items: center; gap: 12px; transition: all 0.15s;
+  }
+  .option-btn:active { transform: scale(0.98); }
+  .option-btn.correct { background: rgba(74,222,128,0.12); border-color: var(--correct); color: var(--correct); }
+  .option-btn.wrong   { background: rgba(248,113,113,0.12); border-color: var(--wrong); color: var(--wrong); }
+  .option-btn.reveal  { background: rgba(74,222,128,0.06); border-color: rgba(74,222,128,0.2); }
+  .option-key { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 18px; flex-shrink: 0; }
+
+  /* NAV */
+  .nav { display: flex; gap: 10px; padding: 20px; }
+  .nav-btn {
+    flex: 1; padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04); color: var(--muted); font-family: var(--sans);
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  }
+  .nav-btn.primary { background: var(--accent); border-color: var(--accent); color: #000; }
+  .nav-btn:active { transform: scale(0.97); }
+
+  /* SCORE */
+  .score-row { display: flex; gap: 12px; padding: 0 20px 4px; }
+  .score-chip { flex: 1; text-align: center; padding: 10px; border-radius: 10px; font-family: var(--mono); font-size: 12px; }
+  .score-chip.right { background: rgba(74,222,128,0.08); color: var(--correct); border: 1px solid rgba(74,222,128,0.2); }
+  .score-chip.wrong  { background: rgba(248,113,113,0.08); color: var(--wrong); border: 1px solid rgba(248,113,113,0.2); }
+
+  /* COMPLETE SCREEN */
+  .complete { display: none; flex-direction: column; align-items: center; justify-content: center; flex: 1; padding: 40px 24px; text-align: center; }
+  .complete-emoji { font-size: 56px; margin-bottom: 20px; }
+  .complete-title { font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+  .complete-sub { font-size: 14px; color: var(--muted); margin-bottom: 32px; font-family: var(--mono); }
+  .complete-stats { display: flex; gap: 16px; margin-bottom: 32px; }
+  .stat { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 14px; padding: 16px 24px; }
+  .stat-num { font-size: 28px; font-weight: 700; }
+  .stat-label { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.1em; margin-top: 2px; }
+  .restart-btn { background: var(--accent); border: none; border-radius: 14px; padding: 16px 40px; font-family: var(--sans); font-size: 16px; font-weight: 700; color: #000; cursor: pointer; }
+  .reset-btn { background: transparent; border: 1px solid rgba(248,113,113,0.3); border-radius: 14px; padding: 12px 28px; font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--wrong); cursor: pointer; margin-top: 12px; }
+  .reset-btn:active { opacity: 0.7; }
+
+  .footer { padding: 16px 0 20px; text-align: center; font-family: var(--mono); font-size: 10px; color: #1e1e2e; letter-spacing: 0.08em; }
+
+  @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.04)} 100%{transform:scale(1)} }
+  .pop { animation: pop 0.2s ease; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="label">CALIFORNIA GENERAL CONTRACTOR</div>
+    <div class="title">Exam Prep 📋</div>
+    <div class="progress-row">
+      <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+      <div class="progress-label" id="progressLabel">0 / 0</div>
+    </div>
+  </div>
+
+  <div id="quizArea" style="display:flex;flex-direction:column;flex:1;">
+    <div class="part-badge" id="partBadge">Part —</div>
+
+    <div class="card-area">
+      <div class="scene" onclick="flipCard()">
+        <div class="card" id="card">
+          <div class="face front">
+            <div class="face-label">QUESTION</div>
+            <div class="question-text" id="questionText"></div>
+            <div class="tap-hint">tap to reveal answer</div>
+          </div>
+          <div class="face back">
+            <div class="face-label">ANSWER</div>
+            <div class="answer-text" id="answerText"></div>
+            <div class="explanation-text" id="explanationText"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="options" id="optionsArea"></div>
+    </div>
+
+    <div class="score-row">
+      <div class="score-chip right">✓ <span id="correctCount">0</span> correct</div>
+      <div class="score-chip wrong">✗ <span id="wrongCount">0</span> wrong</div>
+    </div>
+
+    <div class="nav">
+      <button class="nav-btn" onclick="prevCard()">← Prev</button>
+      <button class="nav-btn primary" onclick="nextCard()">Next →</button>
+    </div>
+  </div>
+
+  <div class="complete" id="completeScreen">
+    <div class="complete-emoji">🏆</div>
+    <div class="complete-title">Deck Complete!</div>
+    <div class="complete-sub" id="completeSub"></div>
+    <div class="complete-stats">
+      <div class="stat"><div class="stat-num" id="finalCorrect" style="color:var(--correct)"></div><div class="stat-label">CORRECT</div></div>
+      <div class="stat"><div class="stat-num" id="finalWrong" style="color:var(--wrong)"></div><div class="stat-label">WRONG</div></div>
+      <div class="stat"><div class="stat-num" id="finalPct" style="color:var(--accent)"></div><div class="stat-label">SCORE</div></div>
+    </div>
+    <button class="restart-btn" onclick="restart()">Study Again</button>
+    <button class="reset-btn" onclick="resetProgress()">Reset All Progress</button>
+  </div>
+
+  <div class="footer">CA Contractor Exam Prep</div>
+</div>
+
+<script>
+const QUESTIONS = [
+  {part:"Part 15 — Math",q:"What is the formula for calculating the area of a rectangular-shaped room?",opts:{A:"Length × Width",B:"Length ÷ Width",C:"(Length + Width) × 2",D:"Length + Width"},ans:"A",exp:"The formula for calculating the area of a rectangular-shaped room is Length × Width."},
+  {part:"Part 15 — Math",q:"If a construction project has a budget of $50,000 and the actual expenses are $37,500, what is the percentage of the budget spent?",opts:{A:"25%",B:"50%",C:"75%",D:"150%"},ans:"C",exp:"The percentage spent is calculated as (Actual Expenses / Budget) × 100, so (37,500 / 50,000) × 100 = 75%."},
+  {part:"Part 15 — Math",q:"A construction material supplier offers a discount of 15% on bulk purchases. If the original cost is $10,000, what is the discounted price?",opts:{A:"$8,500",B:"$8,000",C:"$9,000",D:"$9,500"},ans:"A",exp:"The discounted price is calculated as Original Cost - (Original Cost × Discount Percentage), so $10,000 - ($10,000 × 0.15) = $8,500."},
+  {part:"Part 15 — Math",q:"What is the formula for calculating the volume of a rectangular prism (box)?",opts:{A:"Length × Width",B:"Length + Width + Height",C:"Length × Width × Height",D:"(Length + Width) × Height"},ans:"C",exp:"The formula for calculating the volume of a rectangular prism is Length × Width × Height."},
+  {part:"Part 15 — Math",q:"If the hourly wage for a construction worker is $20, and they work 40 hours in a week, what is their weekly earnings?",opts:{A:"$400",B:"$500",C:"$600",D:"$800"},ans:"A",exp:"Weekly earnings are calculated as Hourly Wage × Hours Worked, so $20 × 40 = $400."},
+  {part:"Part 15 — Math",q:"A construction project requires pouring concrete for a slab with dimensions 20 feet by 30 feet at a depth of 6 inches. What is the volume of concrete needed in cubic yards?",opts:{A:"5",B:"7.5",C:"10",D:"15"},ans:"B",exp:"The volume is calculated as (Length × Width × Depth) ÷ 27, so (20 × 30 × 0.5) ÷ 27 = 7.5 cubic yards."},
+  {part:"Part 15 — Math",q:"If the cost of roofing material is $2.50 per square foot, how much would it cost to roof a house with a total roof area of 2,000 square feet?",opts:{A:"$4,000",B:"$5,000",C:"$6,000",D:"$7,500"},ans:"B",exp:"The cost is calculated as Cost per Square Foot × Total Roof Area, so $2.50 × 2,000 = $5,000."},
+  {part:"Part 15 — Math",q:"What is the formula for calculating the perimeter of a rectangular area in linear feet?",opts:{A:"Length + Width",B:"2 × (Length + Width)",C:"2 × Length × Width",D:"Length × Width"},ans:"B",exp:"The formula for calculating the perimeter of a rectangular area in linear feet is 2 × (Length + Width)."},
+  {part:"Part 15 — Math",q:"What is the formula for calculating the slope of a roof given the rise and run?",opts:{A:"Slope = Rise ÷ Run",B:"Slope = Run ÷ Rise",C:"Slope = Rise × Run",D:"Slope = Rise + Run"},ans:"A",exp:"The formula for calculating the slope of a roof is Slope = Rise ÷ Run."},
+  {part:"Part 15 — Math",q:"If a construction project has a completion date of June 30 and it is currently March 15, how many days are left until the project is due?",opts:{A:"45 days",B:"75 days",C:"105 days",D:"115 days"},ans:"C",exp:"The number of days left is calculated as Total Days - Current Days, so 120 - 15 = 105 days."},
+  {part:"Part 15 — Math",q:"If a construction project has a total of 500 labor hours and 10% of the hours are overtime, how many hours are overtime?",opts:{A:"50 hours",B:"100 hours",C:"25 hours",D:"75 hours"},ans:"A",exp:"Overtime hours are calculated as Total Hours × Overtime Percentage, so 500 × 0.10 = 50 hours."},
+  {part:"Part 15 — Math",q:"A construction project requires pouring concrete for a circular column with a radius of 3 feet and a height of 10 feet. What is the volume of concrete needed in cubic feet?",opts:{A:"90π",B:"270π",C:"900π",D:"2,700π"},ans:"B",exp:"The volume is calculated as π × Radius² × Height, so π × (3²) × 10 = 270π cubic feet."},
+  {part:"Part 15 — Math",q:"If the markup on construction materials is 20%, and the cost of materials is $8,000, what is the selling price?",opts:{A:"$9,000",B:"$9,600",C:"$10,000",D:"$10,400"},ans:"B",exp:"The selling price is calculated as Cost + (Cost × Markup Percentage), so $8,000 + ($8,000 × 0.20) = $9,600."},
+  {part:"Part 15 — Math",q:"What is the formula for calculating the circumference of a circle given the radius?",opts:{A:"Circumference = π × Radius",B:"Circumference = 2 × π × Radius",C:"Circumference = Radius² × π",D:"Circumference = π × (Radius²)"},ans:"B",exp:"The formula for calculating the circumference of a circle is Circumference = 2 × π × Radius."},
+  {part:"Part 15 — Math",q:"If a construction project requires 500 bricks and each brick costs $0.75, what is the total cost?",opts:{A:"$250",B:"$375",C:"$500",D:"$625"},ans:"B",exp:"The total cost is calculated as Quantity × Cost per Unit, so 500 × $0.75 = $375."},
+  {part:"Part 15 — Math",q:"What is the formula for calculating the hypotenuse of a right-angled triangle given the lengths of the other two sides (a and b)?",opts:{A:"Hypotenuse = a + b",B:"Hypotenuse = a × b",C:"Hypotenuse = √(a² + b²)",D:"Hypotenuse = a - b"},ans:"C",exp:"The formula for calculating the hypotenuse of a right-angled triangle is Hypotenuse = √(a² + b²)."},
+  {part:"Part 15 — Math",q:"If the cost of carpeting is $25 per square yard, how much would it cost to carpet a room with dimensions 15 feet by 20 feet?",opts:{A:"$500",B:"$750",C:"$1,000",D:"$1,250"},ans:"A",exp:"The cost is calculated as Cost per Square Yard × Total Area (converted to sq yards), so $25 × (15 × 20 ÷ 9) = $500."},
+  {part:"Part 15 — Math",q:"A construction project has a total duration of 8 weeks. If the project is currently in week 3, how many days are left until completion?",opts:{A:"29 days",B:"35 days",C:"42 days",D:"49 days"},ans:"B",exp:"The number of days left is calculated as (Total Weeks - Current Week) × 7, so (8 - 3) × 7 = 35 days."},
+  {part:"Part 15 — Math",q:"What is the formula for calculating the average of a set of numbers?",opts:{A:"Average = Sum ÷ Count",B:"Average = Sum + Count",C:"Average = Sum × Count",D:"Average = Sum - Count"},ans:"A",exp:"The formula for calculating the average of a set of numbers is Average = Sum of Numbers ÷ Number of Numbers."},
+  {part:"Part 15 — Math",q:"What is the formula for calculating the area of a triangle given the base (b) and height (h)?",opts:{A:"Area = b × h",B:"Area = b + h",C:"Area = b ÷ h",D:"Area = (b × h) ÷ 2"},ans:"D",exp:"The formula for calculating the area of a triangle is Area = (b × h) ÷ 2."},
+  {part:"Part 15 — Math",q:"If the interest rate on a construction loan is 5%, and the loan amount is $100,000, what is the annual interest payment?",opts:{A:"$5,000",B:"$7,500",C:"$10,000",D:"$15,000"},ans:"A",exp:"The annual interest payment is calculated as Loan Amount × Interest Rate, so $100,000 × 0.05 = $5,000."},
+  {part:"Part 15 — Math",q:"A construction project has a total budget of $120,000. If the project is 60% complete, how much money has been spent so far?",opts:{A:"$60,000",B:"$72,000",C:"$84,000",D:"$96,000"},ans:"B",exp:"The amount spent is calculated as Total Budget × Percentage Completed, so $120,000 × 0.60 = $72,000."},
+  {part:"Part 15 — Math",q:"What is the formula for calculating the diagonal of a square given the length of one side (s)?",opts:{A:"Diagonal = s × 2",B:"Diagonal = s ÷ 2",C:"Diagonal = √(s² + s²)",D:"Diagonal = s + s"},ans:"C",exp:"The formula for calculating the diagonal of a square is Diagonal = √(s² + s²)."},
+  {part:"Part 15 — Math",q:"If a construction project has a contingency budget of $15,000 (10% of the total budget), what is the total budget for the project?",opts:{A:"$75,000",B:"$120,000",C:"$150,000",D:"$165,000"},ans:"C",exp:"The total budget is calculated as Contingency Budget ÷ Contingency Percentage, so $15,000 ÷ 0.10 = $150,000."},
+  {part:"Part 15 — Math",q:"What is the formula for calculating the average speed of a construction vehicle given total distance (d) and total time (t)?",opts:{A:"Speed = d × t",B:"Speed = d ÷ t",C:"Speed = d + t",D:"Speed = t ÷ d"},ans:"B",exp:"The formula for calculating average speed is Speed = Total Distance ÷ Total Time."},
+  {part:"Part 14 — Future Outlook",q:"What is a primary factor influencing the future outlook of the construction industry in California?",opts:{A:"Statewide fashion trends",B:"Changing demographics",C:"Entertainment industry growth",D:"Agricultural production"},ans:"B",exp:"Changing demographics, including population growth and urbanization, significantly influence the future outlook of the construction industry in California."},
+  {part:"Part 14 — Future Outlook",q:"How does the state's commitment to environmental sustainability impact the future of construction projects?",opts:{A:"It accelerates project timelines",B:"It increases material costs",C:"It has no impact",D:"It promotes non-renewable resources"},ans:"B",exp:"The state's commitment to environmental sustainability may increase material costs as projects incorporate eco-friendly materials and practices."},
+  {part:"Part 14 — Future Outlook",q:"What role does technology play in shaping the future of construction in California?",opts:{A:"It has no impact",B:"It accelerates project timelines",C:"It promotes innovation and efficiency",D:"It increases reliance on manual labor"},ans:"C",exp:"Technology plays a crucial role by promoting innovation and efficiency through tools like BIM and construction management software."},
+  {part:"Part 14 — Future Outlook",q:"How does the demand for affordable housing impact the future of the construction industry in California?",opts:{A:"It decreases demand",B:"It leads to a surplus of luxury housing",C:"It increases demand for new construction",D:"It has no impact"},ans:"C",exp:"The demand for affordable housing increases the need for new construction projects in California."},
+  {part:"Part 14 — Future Outlook",q:"What regulatory changes are anticipated to impact construction practices in California in the coming years?",opts:{A:"Loosening of building codes",B:"Stricter environmental regulations",C:"Decreased safety standards",D:"Elimination of permitting requirements"},ans:"B",exp:"Anticipated regulatory changes include stricter environmental regulations, which may impact construction practices in California."},
+  {part:"Part 13 — Professional Organizations",q:"Which professional organization in California primarily supports individuals in the technology and innovation sectors?",opts:{A:"California Medical Association (CMA)",B:"California Bar Association (CBA)",C:"TechNet",D:"CalCPA"},ans:"C",exp:"TechNet is a professional organization in California that primarily supports individuals in the technology and innovation sectors."},
+  {part:"Part 13 — Professional Organizations",q:"For professionals in the legal field in California, which organization provides resources, networking, and professional development?",opts:{A:"California Medical Association (CMA)",B:"State Bar of California",C:"California Society of Engineers (CSE)",D:"California Association of Realtors (CAR)"},ans:"B",exp:"The State Bar of California is known for providing resources, networking, and professional development opportunities for legal professionals."},
+  {part:"Part 13 — Professional Organizations",q:"Which organization in California focuses on advancing the interests of certified public accountants?",opts:{A:"California Bar Association (CBA)",B:"California Society of Certified Public Accountants (CalCPA)",C:"California Nurses Association (CNA)",D:"California Association of Realtors (CAR)"},ans:"B",exp:"The California Society of Certified Public Accountants (CalCPA) focuses on advancing the interests of certified public accountants and accounting professionals."},
+  {part:"Part 13 — Professional Organizations",q:"Professionals in the healthcare sector in California may benefit from membership in which organization?",opts:{A:"TechNet",B:"California Nurses Association (CNA)",C:"State Bar of California",D:"California Association of Realtors (CAR)"},ans:"B",exp:"The California Nurses Association (CNA) advocates for healthcare policy and practices."},
+  {part:"Part 13 — Professional Organizations",q:"Which organization in California promotes the interests and advancement of engineers?",opts:{A:"California Society of Engineers (CSE)",B:"State Bar of California",C:"California Nurses Association (CNA)",D:"TechNet"},ans:"A",exp:"The California Society of Engineers (CSE) is known for promoting the interests and advancement of engineers in the state."},
+  {part:"Part 13 — Professional Organizations",q:"Professionals in the construction and building industry in California may benefit from which organization?",opts:{A:"CalCPA",B:"California Association of General Contractors (AGC)",C:"ISSA - Los Angeles Chapter",D:"TechNet"},ans:"B",exp:"The California Association of General Contractors (AGC) provides resources and promotes industry standards for professionals in the construction and building industry."},
+  {part:"Part 13 — Professional Organizations",q:"Which organization in California supports the interests of architects?",opts:{A:"American Institute of Architects (AIA) - California Chapters",B:"State Bar of California",C:"Financial Planning Association of California (FPA)",D:"California Nurses Association (CNA)"},ans:"A",exp:"The AIA - California Chapters supports the interests of architects and provides resources for professional development and industry advocacy."},
+  {part:"Part 13 — Professional Organizations",q:"Which organization in California focuses on promoting environmental sustainability for construction professionals?",opts:{A:"California Society of Engineers (CSE)",B:"State Bar of California",C:"Green Building Council of California (USGBC)",D:"California Nurses Association (CNA)"},ans:"C",exp:"The Green Building Council of California (USGBC) focuses on promoting environmental sustainability and providing resources for professionals in the environmental sector."},
+];
+
+// Shuffle
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+const SAVE_KEY = 'ca_contractor_progress';
+
+function saveProgress() {
+  localStorage.setItem(SAVE_KEY, JSON.stringify({ deck, idx, correct, wrong }));
+}
+
+function loadProgress() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+let deck, idx, flipped, answered, correct, wrong;
+
+function init() {
+  const saved = loadProgress();
+  if (saved && saved.deck && saved.deck.length === QUESTIONS.length) {
+    deck = saved.deck;
+    idx = saved.idx || 0;
+    correct = saved.correct || 0;
+    wrong = saved.wrong || 0;
+  } else {
+    deck = shuffle([...QUESTIONS]);
+    idx = 0; correct = 0; wrong = 0;
+  }
+  flipped = false; answered = false;
+  document.getElementById('completeScreen').style.display = 'none';
+  document.getElementById('quizArea').style.display = 'flex';
+  showCard();
+}
+
+function resetProgress() {
+  if (!confirm('Clear all saved progress and start fresh?')) return;
+  localStorage.removeItem(SAVE_KEY);
+  deck = shuffle([...QUESTIONS]);
+  idx = 0; correct = 0; wrong = 0; flipped = false; answered = false;
+  document.getElementById('completeScreen').style.display = 'none';
+  document.getElementById('quizArea').style.display = 'flex';
+  showCard();
+}
+
+function showCard() {
+  const q = deck[idx];
+  flipped = false; answered = false;
+
+  // Reset card
+  const card = document.getElementById('card');
+  card.classList.remove('flipped');
+
+  document.getElementById('partBadge').textContent = q.part;
+  document.getElementById('questionText').textContent = q.q;
+  document.getElementById('answerText').textContent = `Answer: ${q.ans} — ${q.opts[q.ans]}`;
+  document.getElementById('explanationText').textContent = q.exp;
+
+  // Progress
+  const pct = ((idx) / deck.length) * 100;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = `${idx + 1} / ${deck.length}`;
+
+  // Scores
+  document.getElementById('correctCount').textContent = correct;
+  document.getElementById('wrongCount').textContent = wrong;
+
+  // Options
+  const area = document.getElementById('optionsArea');
+  area.innerHTML = '';
+  Object.entries(q.opts).forEach(([key, val]) => {
+    if (!val) return;
+    const btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.innerHTML = `<span class="option-key">${key}</span><span>${val}</span>`;
+    btn.onclick = (e) => { e.stopPropagation(); selectOption(key, btn); };
+    area.appendChild(btn);
+  });
+}
+
+function flipCard() {
+  const card = document.getElementById('card');
+  flipped = !flipped;
+  card.classList.toggle('flipped', flipped);
+}
+
+function selectOption(key, btn) {
+  if (answered) return;
+  answered = true;
+  const q = deck[idx];
+  const allBtns = document.querySelectorAll('.option-btn');
+
+  if (key === q.ans) {
+    btn.classList.add('correct');
+    correct++;
+  } else {
+    btn.classList.add('wrong');
+    wrong++;
+    // Show correct answer
+    allBtns.forEach(b => {
+      if (b.querySelector('.option-key').textContent === q.ans) {
+        b.classList.add('reveal');
+      }
+    });
+  }
+
+  document.getElementById('correctCount').textContent = correct;
+  document.getElementById('wrongCount').textContent = wrong;
+  saveProgress();
+
+  // Auto flip to show explanation
+  setTimeout(() => {
+    if (!flipped) flipCard();
+  }, 600);
+}
+
+function nextCard() {
+  if (idx < deck.length - 1) {
+    idx++;
+    saveProgress();
+    showCard();
+  } else {
+    showComplete();
+  }
+}
+
+function prevCard() {
+  if (idx > 0) { idx--; saveProgress(); showCard(); }
+}
+
+function showComplete() {
+  document.getElementById('quizArea').style.display = 'none';
+  const cs = document.getElementById('completeScreen');
+  cs.style.display = 'flex';
+  const total = correct + wrong;
+  const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+  document.getElementById('finalCorrect').textContent = correct;
+  document.getElementById('finalWrong').textContent = wrong;
+  document.getElementById('finalPct').textContent = pct + '%';
+  document.getElementById('completeSub').textContent = `${deck.length} questions · ${pct >= 70 ? 'Great work! 🎉' : 'Keep studying 💪'}`;
+}
+
+function restart() { init(); }
+init();
+</script>
+</body>
+</html>
