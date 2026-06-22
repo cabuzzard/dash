@@ -1,4 +1,4 @@
-// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET are set as Cloudflare Worker secrets (env vars).
+﻿// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET are set as Cloudflare Worker secrets (env vars).
 // They are loaded from env at the start of each request  -  never hardcoded here.
 let NOTION_TOKEN = ""; // set per-request from env.NOTION_TOKEN
 const NOTION_VERSION     = "2022-06-28";
@@ -1038,6 +1038,7 @@ export default {
               title: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
               platform: p["Platform Name"]?.select?.name || "",
               type: p["Asset Type"]?.select?.name || "",
+              status: p["Asset Status"]?.select?.name || "",
               loginId, campaignId: campId,
               loginName: loginMap[loginId] || "",
               campaignName: campMap[campId] || "",
@@ -2512,6 +2513,63 @@ Rules:
         return json({ success: true, text: result });
       }
 
+      // ── getEtsyProducts ──
+      if (body.action === "getEtsyProducts") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const { researchId, kwOverride } = body;
+        if (!researchId) return json({ error: "researchId required" }, 400);
+
+        const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+
+        let keywords = (kwOverride || "").trim();
+        if (!keywords) {
+          try {
+            const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+            });
+            const resData = await resResp.json();
+            keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+          } catch {}
+        }
+        if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
+
+        const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY || '', 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5',
+            max_tokens: 1200,
+            system: `You are an Etsy market research specialist who knows the platform deeply. Given campaign keywords, identify the 15 top-selling and trending Etsy product opportunities that fit this niche. Draw on your knowledge of Etsy bestseller categories, high-review-count listings, and currently trending searches. Prioritize products with proven demand: digital downloads, personalized items, handmade goods, printables, and niche SVG/craft files that consistently rank in Etsy search.
+
+FORMAT — output exactly 15 lines, one per product:
+PRODUCT NAME: why it sells on Etsy · price range · product type (digital/physical/printable)
+
+Rules:
+- PRODUCT NAME is 2-6 words, title case
+- After the colon: lead with the strongest selling reason (max 10 words), then · price range (e.g. $5–$25), then · type
+- Prioritize products with 500+ realistic review potential, strong gift or impulse-buy appeal, and low barrier to entry
+- Mix digital downloads and physical/handmade where relevant to the niche
+- No bullets, no numbering, no markdown, no preamble or closing remarks
+- Output only the 15 lines, nothing else`,
+            messages: [{ role: 'user', content: `Campaign keywords: ${keywords}` }]
+          })
+        });
+        const claudeData = await claudeResp.json();
+        if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error' }, 502);
+        const result = (claudeData.content?.[0]?.text || '').trim();
+
+        const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+          method: 'PATCH',
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Etsy Products": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+        });
+        if (!patch.ok) {
+          const pe = await patch.json();
+          return json({ error: pe.message || "Notion write failed" }, patch.status);
+        }
+        return json({ success: true, text: result });
+      }
+
       // ── getYouTubeOutliers ──
       if (body.action === "getYouTubeOutliers") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
@@ -2651,6 +2709,43 @@ Rules:
       }
 
       // â"€â"€ MICROSITE: getCampaignTodos â"€â"€
+            // ── MICROSITE: getAllSiteTodos ──
+      if (body.action === "getAllSiteTodos") {
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+
+        const campRows = await notionQuery(CAMPAIGNS_DB, {
+          filter: { property: "Associated To Do", relation: { is_not_empty: true } },
+          sorts: [{ property: "Name", direction: "ascending" }],
+        });
+
+        if (!campRows.length) return json({ todos: [] });
+
+        const entries = [];
+        campRows.forEach(c => {
+          const campaignName = c.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
+          const campaignId   = c.id.replace(/-/g,"");
+          (c.properties?.["Associated To Do"]?.relation || []).forEach(r => {
+            entries.push({ todoId: r.id.replace(/-/g,""), campaignName, campaignId });
+          });
+        });
+
+        const seen = new Set();
+        const unique = entries.filter(e => { if (seen.has(e.todoId)) return false; seen.add(e.todoId); return true; });
+
+        const todos = await Promise.all(unique.map(async e => {
+          try {
+            const r = await fetch(`https://api.notion.com/v1/pages/${dashId(e.todoId)}`, {
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+            });
+            const p = await r.json();
+            const name = p.properties?.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
+            return { id: e.todoId, name, campaignName: e.campaignName, campaignId: e.campaignId };
+          } catch { return null; }
+        }));
+
+        return json({ todos: todos.filter(Boolean) });
+      }
+
       if (body.action === "getCampaignTodos") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -7235,6 +7235,73 @@ function renderTdTab(items) {
     el.appendChild(hdrRow);
     el.appendChild(body);
   });
+
+  // 4th accordion — Site TDs
+  const siteTdHdr = document.createElement('div');
+  siteTdHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;margin-top:12px;';
+  const siteChev = document.createElement('span');
+  siteChev.style.cssText = 'font-size:10px;color:var(--text3);transition:transform .2s;';
+  siteChev.textContent = '▶';
+  siteTdHdr.innerHTML = '<span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#cc88ff;">Site TDs</span>';
+  siteTdHdr.appendChild(siteChev);
+
+  const siteTdBody = document.createElement('div');
+  siteTdBody.style.display = 'none';
+
+  siteTdHdr.onclick = () => {
+    const open = siteTdBody.style.display !== 'none';
+    siteTdBody.style.display = open ? 'none' : 'block';
+    siteChev.style.transform = open ? '' : 'rotate(90deg)';
+    siteTdHdr.style.borderRadius = open ? 'var(--radius-sm)' : 'var(--radius-sm) var(--radius-sm) 0 0';
+    if (!open) loadSiteTds(siteTdBody);
+  };
+
+  el.appendChild(siteTdHdr);
+  el.appendChild(siteTdBody);
+}
+
+// ── SITE TDs (4th accordion on TD tab) ──────────────────────────────
+let siteTdLoaded = false;
+
+async function loadSiteTds(body, chev) {
+  if (siteTdLoaded) return;
+  body.innerHTML = '<div style="padding:10px 14px 10px 24px;border:1px solid var(--border);border-top:none;"><div class="loading-wrap" style="margin:0;padding:4px 0;"><div class="spinner"></div>Loading…</div></div>';
+  try {
+    const data = await call('getAllSiteTodos');
+    siteTdLoaded = true;
+    renderSiteTds(body, data.todos || []);
+  } catch(e) {
+    body.innerHTML = '<div style="padding:10px 14px 10px 24px;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);"><span class="error-msg">Could not load: ' + esc(e.message) + '</span></div>';
+  }
+}
+
+function renderSiteTds(body, todos) {
+  body.innerHTML = '';
+  if (!todos.length) {
+    body.innerHTML = '<div style="padding:10px 14px 10px 24px;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);"><span class="empty">No site TDs found.</span></div>';
+    return;
+  }
+  todos.forEach((t, idx) => {
+    const isLast = idx === todos.length - 1;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px 24px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--bg);' + (isLast ? 'border-radius:0 0 var(--radius-sm) var(--radius-sm);' : '');
+    row.onmouseover = () => row.style.background = 'var(--surface)';
+    row.onmouseout  = () => row.style.background = 'var(--bg)';
+
+    const link = document.createElement('a');
+    link.href = 'https://www.notion.so/' + t.id;
+    link.target = '_blank';
+    link.style.cssText = 'flex:1;text-decoration:none;display:flex;align-items:center;gap:10px;min-width:0;';
+    link.innerHTML = '<span style="font-size:13px;color:var(--text);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(t.name) + '</span>';
+
+    const badge = document.createElement('span');
+    badge.textContent = t.campaignName;
+    badge.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);white-space:nowrap;flex-shrink:0;padding:2px 7px;border:1px solid var(--border);border-radius:4px;';
+
+    row.appendChild(link);
+    row.appendChild(badge);
+    body.appendChild(row);
+  });
 }
 
 // ── EDIT CAMPAIGN SITE ───────────────────────────────────────────────
@@ -9176,6 +9243,7 @@ function renderPublishedTable() {
     colHdr('platform', 'Platform', '0 0 90px') +
     colHdr('login',    'Login',    '0 0 110px') +
     colHdr('date',     'Date',     '0 0 90px') +
+    colHdr('status',   'Status',   '0 0 90px') +
     colHdr('campaign', 'Campaign', '1') +
     colHdr('title',    'Title',    '2') +
     '<div style="width:28px;flex-shrink:0;"></div>' +
@@ -9192,6 +9260,9 @@ function renderPublishedTable() {
       '</div>' +
       '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;">' +
         '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
+      '</div>' +
+      '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;">' +
+        (a.status ? '<span style="font-size:10px;font-weight:600;color:#4ade80;padding:1px 6px;border:1px solid rgba(74,222,128,.3);border-radius:4px;white-space:nowrap;">' + esc(a.status) + '</span>' : '<span style="color:var(--text3);font-size:11px;">—</span>') +
       '</div>' +
       '<div style="flex:1;min-width:0;padding:6px 8px;overflow:hidden;">' +
         '<span style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.campaignName || '—') + '</span>' +

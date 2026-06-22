@@ -199,8 +199,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 5a: two col — product ideas / tiktok shop -->
-<div class="two-col">
+<!-- SEC 5a: three col — product ideas / tiktok shop / etsy products -->
+<div class="three-col">
   <div class="col">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <span>Product Ideas</span>
@@ -225,7 +225,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div id="r-ttshop"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
-</div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>Etsy Products</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="etsyKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="etsyBtn" onclick="runEtsyProducts()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-etsy"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div></div>
 
 <!-- SEC 5b: two col — kdp best sellers / youtube outliers -->
 <div class="two-col">
@@ -798,6 +809,39 @@ async function runTikTokShop() {
   }
 }
 
+function renderEtsyProducts(text) {
+  const el = document.getElementById('r-etsy');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No results yet — press ⟳ search to find trending Etsy products.</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${line.trim().replace(/"/g,'&quot;')}"><span class="sm-trend-body">${line}</span></div>`;
+    const name = line.slice(0, colonIdx).trim();
+    const desc = line.slice(colonIdx + 1).trim();
+    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${name.replace(/"/g,'&quot;')}"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
+  }).join('');
+}
+
+async function runEtsyProducts() {
+  const btn = document.getElementById('etsyBtn');
+  const el  = document.getElementById('r-etsy');
+  const kwOverride = (document.getElementById('etsyKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching Etsy…</div>';
+  try {
+    const data = await w('getEtsyProducts', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderEtsyProducts(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
 async function runProductIdeas() {
   const btn = document.getElementById('prodIdeasBtn');
   const el  = document.getElementById('r-prodideas');
@@ -866,6 +910,9 @@ async function loadResearch() {
 
     // SEC 3 — TikTok Shop Products field
     renderTikTokShop(r.tikTokShopProducts || '');
+
+    // SEC 5a — Etsy Products field
+    renderEtsyProducts(r.etsyProducts || '');
 
     // SEC 3 — KDP Best Sellers field
     renderKDPBestSellers(r.kdpBestSellers || '');
