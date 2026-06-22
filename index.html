@@ -7252,6 +7252,7 @@ function renderTdTab(items) {
   pubInner.id = 'publishedAssetsList';
   pubInner.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   pubBody.appendChild(pubInner);
+  _pubAssetsEl = pubInner;
 
   pubHdr.onclick = () => {
     const open = pubBody.style.display !== 'none';
@@ -7286,29 +7287,110 @@ function renderSiteTds(body, todos) {
     body.innerHTML = '<div style="padding:10px 14px 10px 24px;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);"><span class="empty">No site TDs found.</span></div>';
     return;
   }
-  todos.forEach((t, idx) => {
-    const isLast = idx === todos.length - 1;
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px 24px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--bg);' + (isLast ? 'border-radius:0 0 var(--radius-sm) var(--radius-sm);' : '');
-    row.onmouseover = () => row.style.background = 'var(--surface)';
-    row.onmouseout  = () => row.style.background = 'var(--bg)';
 
-    const link = document.createElement('a');
-    link.href = 'https://www.notion.so/' + t.id;
-    link.target = '_blank';
-    link.style.cssText = 'flex:1;text-decoration:none;display:flex;align-items:center;gap:10px;min-width:0;';
-    link.innerHTML = '<span style="font-size:13px;color:var(--text);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(t.name) + '</span>';
+  // Group by campaign
+  const groups = {};
+  const order  = [];
+  todos.forEach(t => {
+    if (!groups[t.campaignName]) { groups[t.campaignName] = []; order.push(t.campaignName); }
+    groups[t.campaignName].push(t);
+  });
 
-    const badge = document.createElement('span');
-    badge.textContent = t.campaignName;
-    badge.style.cssText = 'font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);white-space:nowrap;flex-shrink:0;padding:2px 7px;border:1px solid var(--border);border-radius:4px;';
+  order.forEach((campName, gi) => {
+    const items  = groups[campName];
+    const isLastGrp = gi === order.length - 1;
 
-    row.appendChild(link);
-    row.appendChild(badge);
-    body.appendChild(row);
+    // Group header
+    const grpHdr = document.createElement('div');
+    grpHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:7px 14px 7px 14px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--surface);cursor:pointer;user-select:none;';
+    const grpChev = document.createElement('span');
+    grpChev.style.cssText = 'font-size:9px;color:var(--text3);transition:transform .15s;margin-left:6px;';
+    grpChev.textContent = '▶';
+    grpHdr.innerHTML = '<span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#cc88ff;">' + esc(campName) + '</span><span style="font-size:10px;color:var(--text3);margin-left:auto;margin-right:4px;">' + items.length + '</span>';
+    grpHdr.appendChild(grpChev);
+
+    const grpBody = document.createElement('div');
+    grpBody.style.display = 'none';
+
+    grpHdr.onclick = () => {
+      const open = grpBody.style.display !== 'none';
+      grpBody.style.display = open ? 'none' : 'block';
+      grpChev.style.transform = open ? '' : 'rotate(90deg)';
+    };
+
+    items.forEach((t, idx) => {
+      const isLast = idx === items.length - 1 && isLastGrp;
+      const isDone = (t.priority || []).some(p => p === 'done' || p === 'got');
+      let doneState = isDone;
+
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 10px 8px 28px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:' + (isDone ? '#1a1a1a' : 'var(--bg)') + ';' + (isLast ? 'border-radius:0 0 var(--radius-sm) var(--radius-sm);' : '');
+      row.onmouseover = () => { if (!doneState) row.style.background = 'var(--surface)'; };
+      row.onmouseout  = () => row.style.background = doneState ? '#1a1a1a' : 'var(--bg)';
+
+      const link = document.createElement('a');
+      link.href = 'https://www.notion.so/' + t.id;
+      link.target = '_blank';
+      link.style.cssText = 'flex:1;text-decoration:none;min-width:0;overflow:hidden;';
+      link.innerHTML = '<span style="font-size:13px;color:' + (isDone ? 'var(--text3)' : 'var(--text)') + ';line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;text-decoration:' + (isDone ? 'line-through' : 'none') + ';">' + esc(t.name) + '</span>';
+
+      // ★ highlight button
+      const hlBtn = document.createElement('button');
+      hlBtn.title = doneState ? 'Mark undone' : 'Mark done';
+      hlBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:16px;padding:0 5px;flex-shrink:0;color:' + (doneState ? 'var(--accent)' : 'var(--text3)') + ';transition:color .15s;';
+      hlBtn.textContent = doneState ? '★' : '☆';
+      hlBtn.onmouseover = () => hlBtn.style.color = 'var(--accent)';
+      hlBtn.onmouseout  = () => hlBtn.style.color = doneState ? 'var(--accent)' : 'var(--text3)';
+      hlBtn.onclick = async () => {
+        hlBtn.disabled = true;
+        const newDone = !doneState;
+        const base = (t.priority || []).filter(p => p !== 'done' && p !== 'got');
+        if (newDone) base.push('done');
+        try {
+          await call('updateTdPriority', { itemId: t.id, priority: base });
+          doneState = newDone;
+          t.priority = base;
+          hlBtn.textContent = newDone ? '★' : '☆';
+          hlBtn.style.color = newDone ? 'var(--accent)' : 'var(--text3)';
+          hlBtn.title = newDone ? 'Mark undone' : 'Mark done';
+          const sp = link.querySelector('span');
+          sp.style.color = newDone ? 'var(--text3)' : 'var(--text)';
+          sp.style.textDecoration = newDone ? 'line-through' : 'none';
+          row.style.background = newDone ? '#1a1a1a' : 'var(--bg)';
+          showToast(newDone ? 'Marked done ✓' : 'Unmarked ✓', 'success');
+        } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+        hlBtn.disabled = false;
+      };
+
+      // 🗑 delete button
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '🗑';
+      delBtn.title = 'Delete todo';
+      delBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:14px;padding:0 4px;flex-shrink:0;color:var(--text3);transition:color .15s;';
+      delBtn.onmouseover = () => delBtn.style.color = '#ff4444';
+      delBtn.onmouseout  = () => delBtn.style.color = 'var(--text3)';
+      delBtn.onclick = async () => {
+        delBtn.textContent = '⏳';
+        try {
+          await call('deleteTdItem', { itemId: t.id });
+          row.remove();
+          showToast('Deleted ✓', 'success');
+        } catch(e) {
+          delBtn.textContent = '🗑';
+          showToast('Failed: ' + e.message, 'error');
+        }
+      };
+
+      row.appendChild(link);
+      row.appendChild(hlBtn);
+      row.appendChild(delBtn);
+      grpBody.appendChild(row);
+    });
+
+    body.appendChild(grpHdr);
+    body.appendChild(grpBody);
   });
 }
-
 // ── EDIT CAMPAIGN SITE ───────────────────────────────────────────────
 let _editSiteCampaign = null;
 let _editSiteRenderCb = null;
@@ -9089,6 +9171,99 @@ async function enrichWithSentiment(tickers) {
 
 
 
+
+
+// ── Published Assets — load + render ─────────────────────────────────────────
+let _pubAssetsEl = null;
+let _pubAssets   = [];
+let _pubSort     = { col: 'date', dir: -1 };
+
+async function loadPublishedAssets() {
+  const el = _pubAssetsEl || document.getElementById('publishedAssetsList');
+  if (!el) return;
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getPublishedAssets');
+    _pubAssets = data.assets || [];
+    renderPublishedTable();
+  } catch(e) {
+    el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
+  }
+}
+
+function sortPublishedBy(col) {
+  if (_pubSort.col === col) {
+    _pubSort.dir *= -1;
+  } else {
+    _pubSort.col = col;
+    _pubSort.dir = col === 'date' ? -1 : 1;
+  }
+  renderPublishedTable();
+}
+
+function renderPublishedTable() {
+  const el = _pubAssetsEl || document.getElementById('publishedAssetsList');
+  if (!el) return;
+  if (!_pubAssets.length) {
+    el.innerHTML = '<div class="empty" style="margin-top:32px;text-align:center;">No published assets yet.</div>';
+    return;
+  }
+
+  const sorted = [..._pubAssets].sort((a, b) => {
+    let av, bv;
+    if (_pubSort.col === 'date')         { av = a.lastEdited || ''; bv = b.lastEdited || ''; }
+    else if (_pubSort.col === 'platform') { av = (a.platform || '').toLowerCase(); bv = (b.platform || '').toLowerCase(); }
+    else if (_pubSort.col === 'login')    { av = (a.loginName || '').toLowerCase(); bv = (b.loginName || '').toLowerCase(); }
+    else if (_pubSort.col === 'campaign') { av = (a.campaignName || '').toLowerCase(); bv = (b.campaignName || '').toLowerCase(); }
+    else                                  { av = (a.title || '').toLowerCase(); bv = (b.title || '').toLowerCase(); }
+    return av < bv ? -_pubSort.dir : av > bv ? _pubSort.dir : 0;
+  });
+
+  const colHdr = (key, label, flex, align) => {
+    const active = _pubSort.col === key;
+    const arrow  = active ? (_pubSort.dir === 1 ? ' ↑' : ' ↓') : '';
+    return '<div onclick="sortPublishedBy(\'' + key + '\')" style="flex:' + flex + ';min-width:0;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + (active ? 'var(--accent)' : 'var(--text3)') + ';cursor:pointer;user-select:none;padding:7px 8px;' + (align ? 'text-align:' + align + ';' : '') + '">' + label + arrow + '</div>';
+  };
+
+  const hdrRow = '<div style="display:flex;align-items:center;border-bottom:2px solid var(--border2);margin-bottom:2px;">' +
+    colHdr('platform', 'Platform', '0 0 90px') +
+    colHdr('login',    'Login',    '0 0 110px') +
+    colHdr('date',     'Date',     '0 0 90px') +
+    colHdr('status',   'Status',   '0 0 90px') +
+    colHdr('campaign', 'Campaign', '1') +
+    colHdr('title',    'Title',    '2') +
+    '<div style="width:28px;flex-shrink:0;"></div>' +
+  '</div>';
+
+  const rowsHtml = sorted.map(a => {
+    const date = a.lastEdited ? new Date(a.lastEdited).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
+    return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:36px;">' +
+      '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;">' +
+        (a.platform ? '<span style="font-size:10px;font-weight:600;color:var(--accent);padding:1px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">' + esc(a.platform) + '</span>' : '<span style="color:var(--text3);font-size:11px;">—</span>') +
+      '</div>' +
+      '<div style="flex:0 0 110px;min-width:0;padding:6px 8px;overflow:hidden;position:relative;" onclick="openPubLoginPicker(\'' + a.id + '\',this)" title="Click to change login">' +
+        '<span style="font-size:11px;color:#a78bfa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;cursor:pointer;border-bottom:1px dashed rgba(167,139,250,.35);" id="pubLoginLabel-' + a.id + '">' + esc(a.loginName || '+ login') + '</span>' +
+      '</div>' +
+      '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;">' +
+        '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
+      '</div>' +
+      '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;">' +
+        (a.status ? '<span style="font-size:10px;font-weight:600;color:#4ade80;padding:1px 6px;border:1px solid rgba(74,222,128,.3);border-radius:4px;white-space:nowrap;">' + esc(a.status) + '</span>' : '<span style="color:var(--text3);font-size:11px;">—</span>') +
+      '</div>' +
+      '<div style="flex:1;min-width:0;padding:6px 8px;overflow:hidden;">' +
+        '<span style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.campaignName || '—') + '</span>' +
+      '</div>' +
+      '<div style="flex:2;min-width:0;padding:6px 8px;overflow:hidden;">' +
+        '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.title) + '</span>' +
+      '</div>' +
+      '<div style="width:28px;flex-shrink:0;padding:6px 4px;">' +
+        '<a href="https://www.notion.so/' + a.id + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  el.innerHTML = hdrRow + rowsHtml;
+}
 // ── Published Assets — inline login picker ────────────────────────────────────
 let _pubLoginPickerAssetId = null;
 
