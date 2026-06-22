@@ -2737,8 +2737,9 @@ Rules:
         campRows.forEach(c => {
           const campaignName = c.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
           const campaignId   = c.id.replace(/-/g,"");
+          const siteUrl      = c.properties?.["microsite"]?.url || null;
           (c.properties?.["Associated To Do"]?.relation || []).forEach(r => {
-            entries.push({ todoId: r.id.replace(/-/g,""), campaignName, campaignId });
+            entries.push({ todoId: r.id.replace(/-/g,""), campaignName, campaignId, siteUrl });
           });
         });
 
@@ -2752,7 +2753,7 @@ Rules:
             });
             const p = await r.json();
             const name = p.properties?.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
-            return { id: e.todoId, name, campaignName: e.campaignName, campaignId: e.campaignId };
+            return { id: e.todoId, name, campaignName: e.campaignName, campaignId: e.campaignId, siteUrl: e.siteUrl };
           } catch { return null; }
         }));
 

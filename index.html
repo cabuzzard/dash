@@ -7306,7 +7306,10 @@ function renderSiteTds(body, todos) {
     const grpChev = document.createElement('span');
     grpChev.style.cssText = 'font-size:9px;color:var(--text3);transition:transform .15s;margin-left:6px;';
     grpChev.textContent = '▶';
-    grpHdr.innerHTML = '<span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#cc88ff;">' + esc(campName) + '</span><span style="font-size:10px;color:var(--text3);margin-left:auto;margin-right:4px;">' + items.length + '</span>';
+    const siteUrl = items[0].siteUrl || null;
+    grpHdr.innerHTML = '<span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#cc88ff;">' + esc(campName) + '</span>' +
+      (siteUrl ? '<a href="' + siteUrl + '" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:var(--text3);text-decoration:none;margin-left:7px;opacity:.6;border-bottom:1px dashed var(--text3);line-height:1;" title="Open microsite">↗</a>' : '') +
+      '<span style="font-size:10px;color:var(--text3);margin-left:auto;margin-right:4px;">' + items.length + '</span>';
     grpHdr.appendChild(grpChev);
 
     const grpBody = document.createElement('div');
