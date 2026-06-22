@@ -7328,11 +7328,42 @@ function renderSiteTds(body, todos) {
       row.onmouseover = () => { if (!doneState) row.style.background = 'var(--surface)'; };
       row.onmouseout  = () => row.style.background = doneState ? '#1a1a1a' : 'var(--bg)';
 
-      const link = document.createElement('a');
-      link.href = 'https://www.notion.so/' + t.id;
-      link.target = '_blank';
-      link.style.cssText = 'flex:1;text-decoration:none;min-width:0;overflow:hidden;';
-      link.innerHTML = '<span style="font-size:13px;color:' + (isDone ? 'var(--text3)' : 'var(--text)') + ';line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;text-decoration:' + (isDone ? 'line-through' : 'none') + ';">' + esc(t.name) + '</span>';
+      // name — single-click = Notion link, double-click = edit inline
+      const nameWrap = document.createElement('div');
+      nameWrap.style.cssText = 'flex:1;min-width:0;overflow:hidden;cursor:pointer;';
+      const nameSpan = document.createElement('span');
+      nameSpan.style.cssText = 'font-size:13px;color:' + (isDone ? 'var(--text3)' : 'var(--text)') + ';line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;text-decoration:' + (isDone ? 'line-through' : 'none') + ';';
+      nameSpan.textContent = t.name;
+      nameSpan.title = 'Click to open in Notion · Double-click to rename';
+      let clickTimer = null;
+      nameSpan.onclick = () => {
+        clickTimer = setTimeout(() => { window.open('https://www.notion.so/' + t.id, '_blank'); }, 220);
+      };
+      nameSpan.ondblclick = () => {
+        clearTimeout(clickTimer);
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.value = t.name;
+        inp.style.cssText = 'width:100%;font-size:13px;padding:1px 4px;border:1px solid var(--accent);border-radius:3px;background:var(--surface2);color:var(--text);outline:none;box-sizing:border-box;';
+        nameWrap.replaceChild(inp, nameSpan);
+        inp.focus(); inp.select();
+        const save = async () => {
+          const val = inp.value.trim();
+          if (val && val !== t.name) {
+            try {
+              await call('renameTodoItem', { itemId: t.id, title: val });
+              t.name = val;
+              nameSpan.textContent = val;
+              showToast('Renamed ✓', 'success');
+            } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+          }
+          nameWrap.replaceChild(nameSpan, inp);
+        };
+        inp.onblur = save;
+        inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } if (e.key === 'Escape') { inp.value = t.name; inp.blur(); } };
+      };
+      nameWrap.appendChild(nameSpan);
+      const link = nameWrap; // alias so row.appendChild(link) works below unchanged
 
       // ★ highlight button
       const hlBtn = document.createElement('button');

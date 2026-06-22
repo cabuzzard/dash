@@ -632,6 +632,19 @@ export default {
         return json({ success: true, id: result.id.replace(/-/g,"") });
       }
 
+      if (body.action === "renameTodoItem") {
+        const { itemId, title } = body;
+        if (!itemId || !title?.trim()) return json({ error: "itemId and title required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(itemId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Title: { title: [{ type: "text", text: { content: title.trim() } }] } } })
+        });
+        if (!resp.ok) { const e = await resp.json(); return json({ error: e.message || "Rename failed" }, resp.status); }
+        return json({ success: true });
+      }
+
       if (body.action === "deleteTdItem") {
         const { itemId } = body;
         if (!itemId) return json({ error: "itemId required" }, 400);
