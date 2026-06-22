@@ -440,12 +440,7 @@
   .scr-score-bar { display:inline-block; height:6px; border-radius:3px; background:#44cc88; vertical-align:middle; margin-right:6px; }
   .scr-err { color:var(--text3); font-size:11px; font-style:italic; }
 
-  /* ── BOTTOM NAV + MORNING VIEW ── */
-  .view { display: none; padding: 16px; padding-bottom: 72px; }
-  .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 56px; background: var(--bg); border-top: 1px solid var(--border); display: flex; z-index: 150; }
-  .nav-tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; color: var(--text3); font-size: 10px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; transition: color 0.15s; -webkit-tap-highlight-color: transparent; }
-  .nav-tab.active { color: var(--text); }
-  .nav-tab-icon { font-size: 20px; line-height: 1; }
+
   .view-wrap { padding-bottom: 64px; }
   .morning-view { padding: 16px; padding-bottom: 80px; }
   .morning-day { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); margin-bottom: 4px; }
@@ -1645,8 +1640,7 @@
         <option value="daily content">Daily Content</option>
         <option value="daily household">Daily Household</option>
         <option value="trading">Trading</option>
-        <option value="morning">Morning</option>
-      </select>
+              </select>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeAddTdModal()">Cancel</button>
@@ -1894,30 +1888,6 @@
   </div>
 </div>
 
-<div class="view" id="viewMorning" style="display:none;">
-  <div style="padding:16px 0 80px;">
-
-    <!-- Morning TDs -->
-    <div style="margin-bottom:24px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Morning TDs</div>
-        <button onclick="openAddTdModalMorning()" style="font-size:11px;font-weight:600;padding:3px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ Add TD</button>
-      </div>
-      <div id="morningTdList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
-    </div>
-
-    <!-- Published Assets -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <div style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Published Assets</div>
-      <div style="display:flex;align-items:center;gap:10px;">
-        <button onclick="openNewAssetModal()" style="font-size:11px;font-weight:600;padding:3px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ New Asset</button>
-        <span class="refresh-link" onclick="loadPublishedAssets()">↻ refresh</span>
-      </div>
-    </div>
-    <div id="publishedAssetsList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
-
-  </div>
-</div>
 
 <!-- New Asset Modal -->
 <div class="modal-bg" id="newAssetModal" onclick="if(event.target===this)closeNewAssetModal()">
@@ -7258,6 +7228,41 @@ function renderTdTab(items) {
 
   el.appendChild(siteTdHdr);
   el.appendChild(siteTdBody);
+
+  // 5th accordion — Published Assets
+  let pubAssetsLoaded = false;
+  const pubHdr = document.createElement('div');
+  pubHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;margin-top:12px;';
+  const pubChev = document.createElement('span');
+  pubChev.style.cssText = 'font-size:10px;color:var(--text3);transition:transform .2s;';
+  pubChev.textContent = '▶';
+  const pubLeft = document.createElement('span');
+  pubLeft.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#4ade80;';
+  pubLeft.textContent = 'Published Assets';
+  const pubActions = document.createElement('span');
+  pubActions.style.cssText = 'display:flex;align-items:center;gap:10px;margin-left:auto;margin-right:8px;';
+  pubActions.innerHTML = '<button onclick="event.stopPropagation();openNewAssetModal()" style="font-size:11px;font-weight:600;padding:3px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ New Asset</button><span class="refresh-link" onclick="event.stopPropagation();pubAssetsLoaded=false;loadPublishedAssets();">↻ refresh</span>';
+  pubHdr.appendChild(pubLeft);
+  pubHdr.appendChild(pubActions);
+  pubHdr.appendChild(pubChev);
+
+  const pubBody = document.createElement('div');
+  pubBody.style.cssText = 'display:none;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);padding:8px 12px 12px;overflow-x:auto;';
+  const pubInner = document.createElement('div');
+  pubInner.id = 'publishedAssetsList';
+  pubInner.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  pubBody.appendChild(pubInner);
+
+  pubHdr.onclick = () => {
+    const open = pubBody.style.display !== 'none';
+    pubBody.style.display = open ? 'none' : 'block';
+    pubChev.style.transform = open ? '' : 'rotate(90deg)';
+    pubHdr.style.borderRadius = open ? 'var(--radius-sm)' : 'var(--radius-sm) var(--radius-sm) 0 0';
+    if (!open && !pubAssetsLoaded) { pubAssetsLoaded = true; loadPublishedAssets(); }
+  };
+
+  el.appendChild(pubHdr);
+  el.appendChild(pubBody);
 }
 
 // ── SITE TDs (4th accordion on TD tab) ──────────────────────────────
@@ -7451,9 +7456,7 @@ async function submitAddTd() {
     await call('createTdItem', { title, grouping });
     closeAddTdModal();
     showToast('To do created ✓', 'success');
-    if (grouping === 'morning') {
-      loadMorningTdItems();
-    } else {
+    {
       tdTabLoaded = false;
       loadTdTab();
     }
@@ -9085,200 +9088,6 @@ async function enrichWithSentiment(tickers) {
 }
 
 
-// ── Bottom nav ──────────────────────────────────────────────────────────────
-function switchBottomTab(tab) {
-  if (tab === 'dash') {
-    document.getElementById('navDash').classList.add('active');
-    document.getElementById('navMorning').classList.remove('active');
-    document.getElementById('viewMain').style.display = '';
-    document.getElementById('viewMorning').style.display = 'none';
-  } else {
-    document.getElementById('navMorning').classList.add('active');
-    document.getElementById('navDash').classList.remove('active');
-    document.getElementById('viewMain').style.display = 'none';
-    document.getElementById('viewMorning').style.display = 'block';
-    renderMorning();
-  }
-}
-
-// ── Morning view ──────────────────────────────────────────────────────────────
-async function renderMorning() {
-  loadMorningTdItems();
-  loadPublishedAssets();
-}
-
-function openAddTdModalMorning() {
-  document.getElementById('addTdTitle').value = '';
-  document.getElementById('addTdGrouping').value = 'morning';
-  document.getElementById('addTdSubmitBtn').disabled = false;
-  document.getElementById('addTdSubmitBtn').textContent = 'Create';
-  document.getElementById('addTdModal').classList.add('open');
-  setTimeout(() => document.getElementById('addTdTitle').focus(), 280);
-}
-
-async function loadMorningTdItems() {
-  const el = document.getElementById('morningTdList');
-  if (!el) return;
-  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
-  try {
-    const data = await call('getMorningTdItems');
-    const items = data.items || [];
-    if (!items.length) {
-      el.innerHTML = '<div class="empty" style="text-align:center;padding:12px 0;">No morning TDs yet.</div>';
-      return;
-    }
-    el.innerHTML = '';
-    items.forEach(t => renderMorningTdRow(t, el));
-  } catch(e) {
-    el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
-  }
-}
-
-function renderMorningTdRow(t, container) {
-  const isDone = (t.priority || []).some(p => p === 'done' || p === 'got');
-  const row = document.createElement('div');
-  row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:4px;background:' + (isDone ? 'var(--surface)' : 'var(--bg)') + ';';
-
-  let doneState = isDone;
-
-  const chk = document.createElement('button');
-  chk.style.cssText = 'width:18px;height:18px;border:1.5px solid ' + (isDone ? 'var(--accent)' : 'var(--border2)') + ';border-radius:4px;background:' + (isDone ? 'var(--accent)' : 'transparent') + ';cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;padding:0;transition:all .15s;';
-  chk.textContent = isDone ? '✓' : '';
-  chk.onclick = async () => {
-    chk.disabled = true;
-    const newDone = !doneState;
-    const base = (t.priority || []).filter(p => p !== 'done' && p !== 'got' && p !== 'morning');
-    base.push('morning');
-    if (newDone) base.push('done');
-    try {
-      await call('updateTdPriority', { itemId: t.id, priority: base });
-      doneState = newDone;
-      t.priority = base;
-      chk.textContent = newDone ? '✓' : '';
-      chk.style.borderColor = newDone ? 'var(--accent)' : 'var(--border2)';
-      chk.style.background  = newDone ? 'var(--accent)' : 'transparent';
-      label.style.textDecoration = newDone ? 'line-through' : 'none';
-      label.style.color = newDone ? 'var(--text3)' : 'var(--text)';
-      row.style.background = newDone ? 'var(--surface)' : 'var(--bg)';
-    } catch(e) { showToast('Failed: ' + e.message, 'error'); }
-    chk.disabled = false;
-  };
-
-  const label = document.createElement('span');
-  label.style.cssText = 'flex:1;font-size:13px;color:' + (isDone ? 'var(--text3)' : 'var(--text)') + ';text-decoration:' + (isDone ? 'line-through' : 'none') + ';';
-  label.textContent = t.name;
-
-  const delBtn = document.createElement('button');
-  delBtn.textContent = '🗑';
-  delBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:14px;padding:0 2px;color:var(--text3);flex-shrink:0;';
-  delBtn.onclick = async () => {
-    delBtn.textContent = '⏳';
-    try {
-      await call('deleteTdItem', { itemId: t.id });
-      row.remove();
-      showToast('Deleted ✓', 'success');
-    } catch(e) {
-      delBtn.textContent = '🗑';
-      showToast('Failed: ' + e.message, 'error');
-    }
-  };
-
-  row.appendChild(chk);
-  row.appendChild(label);
-  row.appendChild(delBtn);
-  container.appendChild(row);
-}
-
-let _pubAssets = [];
-let _pubSort = { col: 'date', dir: -1 }; // default: newest first
-
-async function loadPublishedAssets() {
-  const el = document.getElementById('publishedAssetsList');
-  if (!el) return;
-  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
-  try {
-    const data = await call('getPublishedAssets');
-    _pubAssets = data.assets || [];
-    renderPublishedTable();
-  } catch(e) {
-    el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
-  }
-}
-
-function sortPublishedBy(col) {
-  if (_pubSort.col === col) {
-    _pubSort.dir *= -1;
-  } else {
-    _pubSort.col = col;
-    _pubSort.dir = col === 'date' ? -1 : 1;
-  }
-  renderPublishedTable();
-}
-
-function renderPublishedTable() {
-  const el = document.getElementById('publishedAssetsList');
-  if (!el) return;
-  if (!_pubAssets.length) {
-    el.innerHTML = '<div class="empty" style="margin-top:32px;text-align:center;">No published assets yet.</div>';
-    return;
-  }
-
-  const sorted = [..._pubAssets].sort((a, b) => {
-    let av, bv;
-    if (_pubSort.col === 'date')     { av = a.lastEdited || ''; bv = b.lastEdited || ''; }
-    else if (_pubSort.col === 'platform') { av = (a.platform || '').toLowerCase(); bv = (b.platform || '').toLowerCase(); }
-    else if (_pubSort.col === 'login')    { av = (a.loginName || '').toLowerCase(); bv = (b.loginName || '').toLowerCase(); }
-    else if (_pubSort.col === 'campaign') { av = (a.campaignName || '').toLowerCase(); bv = (b.campaignName || '').toLowerCase(); }
-    else                              { av = (a.title || '').toLowerCase(); bv = (b.title || '').toLowerCase(); }
-    return av < bv ? -_pubSort.dir : av > bv ? _pubSort.dir : 0;
-  });
-
-  const colHdr = (key, label, flex, align) => {
-    const active = _pubSort.col === key;
-    const arrow = active ? (_pubSort.dir === 1 ? ' ↑' : ' ↓') : '';
-    return '<div onclick="sortPublishedBy(\'' + key + '\')" style="flex:' + flex + ';min-width:0;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + (active ? 'var(--accent)' : 'var(--text3)') + ';cursor:pointer;user-select:none;padding:7px 8px;' + (align ? 'text-align:' + align + ';' : '') + '">' + label + arrow + '</div>';
-  };
-
-  const hdrRow = '<div style="display:flex;align-items:center;border-bottom:2px solid var(--border2);margin-bottom:2px;">' +
-    colHdr('platform', 'Platform', '0 0 90px') +
-    colHdr('login',    'Login',    '0 0 110px') +
-    colHdr('date',     'Date',     '0 0 90px') +
-    colHdr('status',   'Status',   '0 0 90px') +
-    colHdr('campaign', 'Campaign', '1') +
-    colHdr('title',    'Title',    '2') +
-    '<div style="width:28px;flex-shrink:0;"></div>' +
-  '</div>';
-
-  const rowsHtml = sorted.map(a => {
-    const date = a.lastEdited ? new Date(a.lastEdited).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
-    return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:36px;">' +
-      '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;">' +
-        (a.platform ? '<span style="font-size:10px;font-weight:600;color:var(--accent);padding:1px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">' + esc(a.platform) + '</span>' : '<span style="color:var(--text3);font-size:11px;">—</span>') +
-      '</div>' +
-      '<div style="flex:0 0 110px;min-width:0;padding:6px 8px;overflow:hidden;position:relative;" onclick="openPubLoginPicker(\'' + a.id + '\',this)" title="Click to change login">' +
-        '<span style="font-size:11px;color:#a78bfa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;cursor:pointer;border-bottom:1px dashed rgba(167,139,250,.35);" id="pubLoginLabel-' + a.id + '">' + esc(a.loginName || '+ login') + '</span>' +
-      '</div>' +
-      '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;">' +
-        '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
-      '</div>' +
-      '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;">' +
-        (a.status ? '<span style="font-size:10px;font-weight:600;color:#4ade80;padding:1px 6px;border:1px solid rgba(74,222,128,.3);border-radius:4px;white-space:nowrap;">' + esc(a.status) + '</span>' : '<span style="color:var(--text3);font-size:11px;">—</span>') +
-      '</div>' +
-      '<div style="flex:1;min-width:0;padding:6px 8px;overflow:hidden;">' +
-        '<span style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.campaignName || '—') + '</span>' +
-      '</div>' +
-      '<div style="flex:2;min-width:0;padding:6px 8px;overflow:hidden;">' +
-        '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.title) + '</span>' +
-      '</div>' +
-      '<div style="width:28px;flex-shrink:0;padding:6px 4px;">' +
-        '<a href="https://www.notion.so/' + a.id + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' +
-      '</div>' +
-    '</div>';
-  }).join('');
-
-  el.innerHTML = hdrRow + rowsHtml;
-}
-
 
 // ── Published Assets — inline login picker ────────────────────────────────────
 let _pubLoginPickerAssetId = null;
@@ -9691,15 +9500,5 @@ async function loadMorningTodos() {
 
 </script>
 
-<div class="bottom-nav" id="bottomNav">
-  <div class="nav-tab active" id="navDash" onclick="switchBottomTab('dash')">
-    <div class="nav-tab-icon">🗂</div>
-    <div>Dash</div>
-  </div>
-  <div class="nav-tab" id="navMorning" onclick="switchBottomTab('morning')">
-    <div class="nav-tab-icon">🌅</div>
-    <div>Morning</div>
-  </div>
-</div>
 </body>
 </html>
