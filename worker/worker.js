@@ -2722,42 +2722,82 @@ Rules:
       }
 
       // â"€â"€ MICROSITE: getCampaignTodos â"€â"€
+            // ── MICROSITE: getMicrositeList ──
+      if (body.action === "getMicrositeList") {
+        const rows = await notionQuery(CAMPAIGNS_DB, {
+          filter: { property: "Status", select: { does_not_equal: "Delete" } },
+          sorts: [{ property: "Name", direction: "ascending" }],
+        });
+        const sites = rows
+          .map(c => ({
+            name: c.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+            url:  c.properties?.["microsite"]?.url || null,
+          }))
+          .filter(s => s.url);
+        return json({ sites });
+      }
+
             // ── MICROSITE: getAllSiteTodos ──
       if (body.action === "getAllSiteTodos") {
         const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
 
+        // Use Status filter — same as getCampaigns(), which is proven to work
         const campRows = await notionQuery(CAMPAIGNS_DB, {
-          filter: { property: "Associated To Do", relation: { is_not_empty: true } },
+          filter: { property: "Status", select: { does_not_equal: "Delete" } },
           sorts: [{ property: "Name", direction: "ascending" }],
         });
 
-        if (!campRows.length) return json({ todos: [] });
+        if (!campRows.length) return json({ todos: [], _debug: "campRows empty" });
 
-        const entries = [];
-        campRows.forEach(c => {
+        // For each campaign, fetch the page directly (same as getCampaignTodos) to get full relation list
+        const campPages = await Promise.all(campRows.map(async c => {
           const campaignName = c.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
           const campaignId   = c.id.replace(/-/g,"");
           const siteUrl      = c.properties?.["microsite"]?.url || null;
-          (c.properties?.["Associated To Do"]?.relation || []).forEach(r => {
-            entries.push({ todoId: r.id.replace(/-/g,""), campaignName, campaignId, siteUrl });
-          });
+          try {
+            const r = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+            });
+            const page = await r.json();
+            const todoIds = (page.properties?.["Associated To Do"]?.relation || []).map(r2 => r2.id.replace(/-/g,""));
+            return { campaignName, campaignId, siteUrl, todoIds };
+          } catch(err) { return { campaignName, campaignId, siteUrl, todoIds: [], _err: String(err) }; }
+        }));
+
+        // Flatten — skip campaigns with no todos
+        const entries = [];
+        campPages.forEach(({ campaignName, campaignId, siteUrl, todoIds }) => {
+          todoIds.forEach(todoId => entries.push({ todoId, campaignName, campaignId, siteUrl }));
         });
+
+        if (!entries.length) return json({ todos: [], _debug: { campCount: campPages.length, campNames: campPages.map(c => c.campaignName), todoIdCounts: campPages.map(c => c.todoIds?.length ?? -1), errs: campPages.filter(c=>c._err).map(c=>c._err) } });
 
         const seen = new Set();
         const unique = entries.filter(e => { if (seen.has(e.todoId)) return false; seen.add(e.todoId); return true; });
 
+        // Fetch each todo — same as getCampaignTodos
+        const firstErr = { msg: null };
         const todos = await Promise.all(unique.map(async e => {
           try {
-            const r = await fetch(`https://api.notion.com/v1/pages/${dashId(e.todoId)}`, {
+            const url = `https://api.notion.com/v1/pages/${dashId(e.todoId)}`;
+            const r = await fetch(url, {
               headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
             });
+            if (!r.ok) {
+              const body2 = await r.text();
+              if (!firstErr.msg) firstErr.msg = `HTTP ${r.status} for ${e.todoId}: ${body2.slice(0,200)}`;
+              return null;
+            }
             const p = await r.json();
             const name = p.properties?.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
             return { id: e.todoId, name, campaignName: e.campaignName, campaignId: e.campaignId, siteUrl: e.siteUrl };
-          } catch { return null; }
+          } catch(err) {
+            if (!firstErr.msg) firstErr.msg = String(err);
+            return null;
+          }
         }));
 
-        return json({ todos: todos.filter(Boolean) });
+        return json({ todos: todos.filter(Boolean), _debug: { campCount: campPages.length, entryCount: entries.length, firstErr: firstErr.msg } });
       }
 
       if (body.action === "getCampaignTodos") {
