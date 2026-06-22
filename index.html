@@ -589,6 +589,181 @@
 
 
 
+  <div class="tab-panel" id="tabDomains">
+    <div style="padding:20px 4px 8px;">
+
+      <div class="dom-stat-bar">
+        <div class="dom-stat">
+          <div class="dom-stat-label">Emails</div>
+          <div class="dom-stat-val">16</div>
+        </div>
+        <div class="dom-stat">
+          <div class="dom-stat-label">Domains</div>
+          <div class="dom-stat-val">62</div>
+        </div>
+        <div class="dom-stat">
+          <div class="dom-stat-label">Google Accs</div>
+          <div class="dom-stat-val">4</div>
+        </div>
+        <div class="dom-stat">
+          <div class="dom-stat-label">YT Channels</div>
+          <div class="dom-stat-val">17</div>
+        </div>
+        <div class="dom-stat" id="domExpiryCard">
+          <div class="dom-stat-label" id="domExpiryLabel">Expiring ≤60d</div>
+          <div class="dom-stat-val" id="domExpiryVal">—</div>
+        </div>
+      </div>
+
+      <!-- EMAIL ACCOUNTS -->
+      <div class="dom-collapse">
+        <div class="dom-col-hdr" onclick="domToggle('emailsBody','emailsArrow')">
+          <span class="dom-col-title">Email Accounts</span>
+          <span class="dom-col-count" id="emailsCount">—</span>
+          <button onclick="event.stopPropagation();openEmailModal()" style="font-size:11px;padding:3px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);cursor:pointer;margin-left:auto;margin-right:8px;">+ Add Row</button>
+          <span class="dom-col-arrow" id="emailsArrow">▼</span>
+        </div>
+        <div class="dom-col-body open" id="emailsBody">
+          <table class="dtable">
+            <thead><tr><th>Email</th><th>Domain</th><th style="width:40px;"></th></tr></thead>
+            <tbody id="emailsTbody">
+              <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:16px;">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- DOMAINS -->
+      <div class="dom-collapse">
+        <div class="dom-col-hdr" onclick="domToggle('domsBody','domsArrow')">
+          <span class="dom-col-title">Domains</span>
+          <span class="dom-col-count" id="domsCount">62</span>
+          <button onclick="event.stopPropagation();openDomainModal()" style="font-size:11px;padding:3px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);cursor:pointer;margin-left:auto;margin-right:8px;">+ Add Row</button>
+          <span class="dom-col-arrow" id="domsArrow">▼</span>
+        </div>
+        <div class="dom-col-body open" id="domsBody">
+          <table class="dtable">
+            <thead><tr><th>Domain</th><th>Expires</th><th>Days</th><th>Host</th><th>Account</th><th style="width:40px;"></th></tr></thead>
+            <tbody id="domsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- GOOGLE ACCOUNTS -->
+      <div class="dom-collapse">
+        <div class="dom-col-hdr" onclick="domToggle('gAccsBody','gAccsArrow')">
+          <span class="dom-col-title">Google Accounts</span>
+          <span class="dom-col-count" id="gAccsCount">4 accounts · 17 brand channels</span>
+          <button onclick="event.stopPropagation();openGaccModal()" style="font-size:11px;padding:3px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);cursor:pointer;margin-left:auto;margin-right:8px;">+ Add Channel</button>
+          <span class="dom-col-arrow" id="gAccsArrow">▼</span>
+        </div>
+        <div class="dom-col-body open" id="gAccsBody" style="padding:12px 14px;display:block;">
+
+          <!-- flipoclock -->
+          <div class="gacc-block">
+            <div class="gacc-hdr" onclick="domToggle('gAcc0','gAcc0Arr')">
+              <span class="gacc-icon">G</span>
+              <span class="gacc-name">flipoclock</span>
+              <span class="gacc-meta">13 brand channels</span>
+              <span class="dom-col-arrow" id="gAcc0Arr" style="margin-left:auto;">▼</span>
+            </div>
+            <div class="gacc-body open" id="gAcc0">
+              <div class="gacc-row"><span class="gacc-ch-name">Evan Raymond Music &amp; Mindset</span><span class="gacc-handle">@evanraymondmusicandmindset2603</span><span class="gacc-subs">5 subs</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">10 Minute Practice</span><span class="gacc-handle">@10minutepactice27</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Assembly World Furniture</span><span class="gacc-handle">@AssemblyWorldFurniture-io6tz</span><span class="gacc-subs">11 subs</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Creative Flow Guitar</span><span class="gacc-handle">@creativeflowguitar1851</span><span class="gacc-subs">9 subs</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Web Guy</span><span class="gacc-handle">@webguy7975</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Eat Free Keto</span><span class="gacc-handle">@EatFreeKeto-re6tm</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Mountainwize Coaching</span><span class="gacc-handle">@mountainwizecoaching2693</span><span class="gacc-subs">5 subs</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Smart Modern Money</span><span class="gacc-handle">@smartmodernmoney1712</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">New Homes Investing</span><span class="gacc-handle">@newhomesinvesting2987</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Mobile Millionaires</span><span class="gacc-handle">@mobilemillionaires8029</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Derelict</span><span class="gacc-handle">@Derelict-kq8kw</span><span class="gacc-subs">1 sub</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Fluid Communication</span><span class="gacc-handle">@fluidcommunication789</span><span class="gacc-subs gacc-zero">—</span></div>
+              <div class="gacc-row"><span class="gacc-ch-name">Trail Notes</span><span class="gacc-handle">@forestspells5201</span><span class="gacc-subs gacc-zero">—</span></div>
+            </div>
+          </div>
+
+          <!-- veeray -->
+          <div class="gacc-block">
+            <div class="gacc-hdr" onclick="domToggle('gAcc1','gAcc1Arr')">
+              <span class="gacc-icon">G</span>
+              <span class="gacc-name">veeray</span>
+              <span class="gacc-meta">1 brand channel</span>
+              <span class="dom-col-arrow" id="gAcc1Arr" style="margin-left:auto;">▼</span>
+            </div>
+            <div class="gacc-body open" id="gAcc1">
+              <div class="gacc-row"><span class="gacc-ch-name">Vee Ray</span><span class="gacc-handle">@evraymond</span><span class="gacc-subs">11 subs</span></div>
+            </div>
+          </div>
+
+          <!-- cabuzzard -->
+          <div class="gacc-block">
+            <div class="gacc-hdr" onclick="domToggle('gAcc2','gAcc2Arr')">
+              <span class="gacc-icon">G</span>
+              <span class="gacc-name">cabuzzard</span>
+              <span class="gacc-meta">1 brand channel</span>
+              <span class="dom-col-arrow" id="gAcc2Arr" style="margin-left:auto;">▼</span>
+            </div>
+            <div class="gacc-body open" id="gAcc2">
+              <div class="gacc-row"><span class="gacc-ch-name">ca buzzard</span><span class="gacc-handle">@cabuzzard</span><span class="gacc-subs">5 subs</span></div>
+            </div>
+          </div>
+
+          <!-- web guy -->
+          <div class="gacc-block">
+            <div class="gacc-hdr" onclick="domToggle('gAcc3','gAcc3Arr')">
+              <span class="gacc-icon">G</span>
+              <span class="gacc-name">web guy</span>
+              <span class="gacc-meta">1 brand channel</span>
+              <span class="dom-col-arrow" id="gAcc3Arr" style="margin-left:auto;">▼</span>
+            </div>
+            <div class="gacc-body open" id="gAcc3">
+              <div class="gacc-row"><span class="gacc-ch-name">Webguy</span><span class="gacc-handle">@Webguyleadgen</span><span class="gacc-subs">1 sub</span></div>
+            </div>
+          </div>
+
+          <div id="gAccsAdditions"></div>
+        </div>
+      </div>
+
+      <!-- SM ACCOUNTS -->
+      <div class="dom-collapse">
+        <div class="dom-col-hdr" onclick="smAccsToggle()">
+          <span class="dom-col-title">SM Accounts</span>
+          <span class="dom-col-count" id="smAccsCount">—</span>
+          <span class="dom-col-arrow" id="smAccsArrow">▼</span>
+        </div>
+        <div class="dom-col-body open" id="smAccsBody">
+          <div style="padding:10px 14px 8px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);">
+            <span style="font-size:11px;color:var(--text3);">Login credentials mapped to platform accounts</span>
+            <button onclick="openSmModal(null)" style="font-size:11px;padding:4px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text2);cursor:pointer;">+ Add Row</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="dtable" id="smAccsTable">
+              <thead>
+                <tr>
+                  <th>SM Account</th>
+                  <th>Type</th>
+                  <th>Login</th>
+                  <th>Username</th>
+                  <th>Email</th>
+                  <th>Platform</th>
+                  <th>Campaign</th>
+                  <th style="width:56px;"></th>
+                </tr>
+              </thead>
+              <tbody id="smAccsTbody">
+                <tr><td colspan="8" style="text-align:center;color:var(--text3);padding:20px;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- ── TRADES TAB ───────────────────────────────────────────────────── -->
   <div class="tab-panel" id="tabTrades">
 
