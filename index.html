@@ -596,6 +596,16 @@
       </div>
     </div>
 
+    <div id="siteTdsSection" style="margin-top:24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="toggleSiteTdsSection()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">🌐 Site TDs</span>
+        <span id="siteTdsToggleIcon" style="font-size:11px;color:var(--text3);">▾</span>
+      </div>
+      <div id="siteTdsList">
+        <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+      </div>
+    </div>
+
     <div id="podcastSection" style="margin-top:24px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="togglePodcastSection()">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">🎙 Podcast</span>
@@ -7186,6 +7196,49 @@ async function loadPodcastItems() {
   }
 }
 
+// ── SITE TDs ─────────────────────────────────────────────────────────
+let siteTdsCollapsed = false;
+
+function toggleSiteTdsSection() {
+  siteTdsCollapsed = !siteTdsCollapsed;
+  document.getElementById('siteTdsList').style.display = siteTdsCollapsed ? 'none' : '';
+  document.getElementById('siteTdsToggleIcon').textContent = siteTdsCollapsed ? '▸' : '▾';
+}
+
+async function loadSiteTds() {
+  const el = document.getElementById('siteTdsList');
+  try {
+    const data = await call('getAllSiteTodos', {});
+    const todos = (data.todos || []).filter(t => !t.done);
+    if (!todos.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No open site TDs.</div>'; return; }
+    // Group by campaign
+    const byCamp = {};
+    const campOrder = [];
+    todos.forEach(t => {
+      if (!byCamp[t.campaignName]) { byCamp[t.campaignName] = { siteUrl: t.siteUrl, items: [] }; campOrder.push(t.campaignName); }
+      byCamp[t.campaignName].items.push(t);
+    });
+    el.innerHTML = '';
+    campOrder.forEach(campName => {
+      const { siteUrl, items } = byCamp[campName];
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0 4px;border-top:1px solid var(--border2);margin-top:6px;';
+      hdr.innerHTML = `<span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);flex:1;">${esc(campName)}</span>` +
+        (siteUrl ? `<a href="${esc(siteUrl)}" target="_blank" style="font-size:10px;color:var(--text3);text-decoration:none;opacity:.7;">↗ site</a>` : '');
+      el.appendChild(hdr);
+      items.forEach(t => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0 5px 8px;border-bottom:1px solid var(--border);cursor:pointer;';
+        row.innerHTML = `<span style="font-size:13px;color:var(--text);flex:1;">${esc(t.name)}</span>`;
+        row.onclick = () => openTdModalById(t.id, t.name);
+        el.appendChild(row);
+      });
+    });
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message}</div>`;
+  }
+}
+
 // ── TD TAB ───────────────────────────────────────────────────────────
 const TD_GROUPS = [
   { key: 'get',             doneKey: 'got',  label: 'Get',             color: '#ff8844' },
@@ -7204,6 +7257,7 @@ async function loadTdTab() {
   }
   loadPodcastItems();
   loadTodayCampaigns();
+  loadSiteTds();
 }
 
 function renderTdTab(items) {
