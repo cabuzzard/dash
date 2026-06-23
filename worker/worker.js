@@ -1992,6 +1992,8 @@ export default {
             kdpBestSellers: props["KDP Best Sellers"]?.rich_text?.map(t => t.plain_text).join("") || "",
             tiktokTrends: props["TikTok Trends"]?.rich_text?.map(t => t.plain_text).join("") || "",
             trendIntelligence: props["Trend Intelligence"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            etsyProducts:      props["Etsy Products"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            youtubeOutliers:   props["YouTube Outliers"]?.rich_text?.map(t => t.plain_text).join("") || "",
             keyMessage: props["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
             webPageUrl: props["Web Page URL"]?.url || "",
             uniqueOpportunity: props["Unique Opportunity"]?.rich_text?.map(t => t.plain_text).join("") || "",
