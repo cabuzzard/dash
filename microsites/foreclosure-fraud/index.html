@@ -1027,7 +1027,7 @@ async function saveModal() {
   const cfg = MODAL_CFG[activeField];
   try {
     if (cfg.target === 'campaign') {
-      await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, value: val });
+      await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID_LIVE || RESEARCH_ID, value: val });
       renderKeywordPills(val);
     } else {
       await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
@@ -2229,7 +2229,7 @@ function renderKeywordPills(kwStr) {
 async function saveKeywordsFromArray(kws) {
   const val = kws.join(', ');
   if (RAW) RAW.keywords = val;
-  try { await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, value: val }); }
+  try { await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID_LIVE || RESEARCH_ID, value: val }); }
   catch(e) { console.error('Failed to save keywords:', e); }
 }
 
@@ -2259,7 +2259,7 @@ async function kwModalRegen() {
   status.textContent = 'Regenerating with AI…';
   status.className = 'modal-status';
   try {
-    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, currentKeywords: ta.value.trim() });
+    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID_LIVE || RESEARCH_ID, currentKeywords: ta.value.trim() });
     if (r.error) throw new Error(r.error);
     ta.value = r.keywords || '';
     await saveKeywordsFromArray(ta.value.split(',').map(k => k.trim()).filter(Boolean));
