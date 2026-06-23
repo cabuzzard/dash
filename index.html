@@ -586,6 +586,16 @@
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
 
+    <div id="todaySection" style="margin-top:24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="toggleTodaySection()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);" id="todaySectionLabel">Today</span>
+        <span id="todayToggleIcon" style="font-size:11px;color:var(--text3);">▾</span>
+      </div>
+      <div id="todayList">
+        <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+      </div>
+    </div>
+
     <div id="podcastSection" style="margin-top:24px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="togglePodcastSection()">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">🎙 Podcast</span>
@@ -7090,6 +7100,39 @@ function saveProcesses() {
   setTimeout(() => { btn.textContent = 'Save'; btn.style.color = ''; btn.style.display = 'none'; }, 1500);
 }
 
+// ── TODAY ────────────────────────────────────────────────────────────
+let todayCollapsed = false;
+
+function toggleTodaySection() {
+  todayCollapsed = !todayCollapsed;
+  document.getElementById('todayList').style.display = todayCollapsed ? 'none' : '';
+  document.getElementById('todayToggleIcon').textContent = todayCollapsed ? '▸' : '▾';
+}
+
+async function loadTodayCampaigns() {
+  const el = document.getElementById('todayList');
+  const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
+  document.getElementById('todaySectionLabel').textContent = `Today — ${dayName}`;
+  try {
+    const data = await call('getTodayCampaigns', { day: dayName });
+    const campaigns = data.campaigns || [];
+    if (!campaigns.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No campaigns scheduled today.</div>'; return; }
+    el.innerHTML = '';
+    campaigns.forEach(c => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);';
+      const nid = c.id.replace(/-/g,'');
+      row.innerHTML = `
+        <a href="https://www.notion.so/${nid}" target="_blank" rel="noopener" style="font-size:13px;color:var(--text);text-decoration:none;flex:1;">${c.name}</a>
+        ${c.status ? `<span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:2px 6px;border:1px solid var(--border2);color:var(--text3);border-radius:3px;">${c.status}</span>` : ''}
+      `;
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message}</div>`;
+  }
+}
+
 // ── PODCAST ──────────────────────────────────────────────────────────
 let podcastCollapsed = false;
 
@@ -7138,6 +7181,7 @@ async function loadTdTab() {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
   loadPodcastItems();
+  loadTodayCampaigns();
 }
 
 function renderTdTab(items) {

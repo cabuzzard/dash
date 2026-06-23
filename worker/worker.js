@@ -2695,23 +2695,20 @@ Rules:
         if (!claudeResp.ok) return json({ error: claudeData.error?.message || "Claude error" }, 502);
         const result = (claudeData.content?.[0]?.text || "").trim();
 
-        // 6. Save to Notion
-        const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+        // 6. Save to Notion (best-effort — don't block on failure)
+        await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "YouTube Outliers": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
-        });
-        if (!patch.ok) {
-          const pe = await patch.json();
-          return json({ error: pe.message || "Notion write failed" }, patch.status);
-        }
+        }).catch(() => {});
         return json({ success: true, text: result });
       }
 
       // Î"Ã¶Ã‡Î"Ã¶Ã‡ CAMPAIGN ADMIN: updateCampaignKeywords Î"Ã¶Ã‡Î"Ã¶Ã‡
       if (body.action === "regenerateKeywords") {
-        const { campaignId, currentKeywords } = body;
-        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const { campaignId, researchId, currentKeywords } = body;
+        const pageId = researchId || campaignId;
+        if (!pageId) return json({ error: "researchId required" }, 400);
         const prompt = `You are a keyword research specialist. Given these existing campaign keywords: "${currentKeywords || 'none provided'}"
 
 Research and generate an expanded, optimized list of 15-20 highly relevant keywords for this campaign niche. Include long-tail variations, related search terms, problem-aware and solution-aware terms, and high-intent buyer keywords.
@@ -2719,12 +2716,12 @@ Research and generate an expanded, optimized list of 15-20 highly relevant keywo
 Return ONLY a comma-separated list of keywords, nothing else. No numbering, no explanations, no line breaks. Just: keyword1, keyword2, keyword3`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: { "x-api-key": CLAUDE_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 400, messages: [{ role: "user", content: prompt }] })
         });
         const aiData = await aiResp.json();
         const keywords = (aiData.content?.[0]?.text || '').trim().replace(/\n/g, ', ');
-        const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const dashed = pageId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
         await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -2734,9 +2731,10 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       }
 
       if (body.action === "updateCampaignKeywords") {
-        const { campaignId, value } = body;
-        if (!campaignId) return json({ error: "campaignId required" }, 400);
-        const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const { campaignId, researchId, value } = body;
+        const pageId = researchId || campaignId;
+        if (!pageId) return json({ error: "researchId required" }, 400);
+        const dashed = pageId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -2745,6 +2743,95 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
         return json({ success: true });
+      }
+
+      // ── getTodayCampaigns ──
+      if (body.action === "getTodayCampaigns") {
+        const { day } = body;
+        if (!day) return json({ error: "day required" }, 400);
+        const rows = await notionQuery(CAMPAIGNS_DB, {
+          filter: { and: [
+            { property: "Schedule Day", select: { equals: day } },
+            { property: "Status", select: { does_not_equal: "Delete" } },
+          ]},
+          sorts: [{ property: "Name", direction: "ascending" }],
+        });
+        const campaigns = rows.map(r => ({
+          id: r.id.replace(/-/g, ""),
+          name: r.properties?.Name?.title?.map(t => t.plain_text).join("") || "",
+          status: r.properties?.Status?.select?.name || "",
+        }));
+        return json({ campaigns });
+      }
+
+      // ── addToPodcast ──
+      if (body.action === "addToPodcast") {
+        const { text, campaignName } = body;
+        if (!text) return json({ error: "text required" }, 400);
+        const title = `[PODCAST · ${campaignName || "Unknown"}] ${text}`;
+        const createResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: MAIN_TD_DB }, properties: { Title: { title: [{ type: "text", text: { content: title } }] } } }),
+        });
+        const created = await createResp.json();
+        if (!createResp.ok) return json({ error: created.message || "Create failed" }, createResp.status);
+        return json({ success: true, id: created.id.replace(/-/g,"") });
+      }
+
+      // ── getPodcastItems ──
+      if (body.action === "getPodcastItems") {
+        const rows = await notionQuery(MAIN_TD_DB, {
+          filter: { property: "title", title: { starts_with: "[PODCAST" } },
+          sorts: [{ timestamp: "created_time", direction: "descending" }],
+        });
+        const items = rows.map(r => {
+          const raw = r.properties?.Title?.title?.map(t => t.plain_text).join("") || "";
+          const match = raw.match(/^\[PODCAST · (.+?)\] (.+)$/s);
+          return {
+            id: r.id.replace(/-/g,""),
+            campaignName: match ? match[1] : "Unknown",
+            text: match ? match[2] : raw,
+            createdTime: r.created_time || "",
+          };
+        });
+        return json({ items });
+      }
+
+      // ── distributeScheduleDays ──
+      if (body.action === "distributeScheduleDays") {
+        const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+        const offset = parseInt(body.offset || 0);
+        const batchSize = 40;
+
+        // Fetch all (one query, up to 100)
+        let rows = [];
+        let cursor;
+        do {
+          const resp = await fetch(`https://api.notion.com/v1/databases/${CAMPAIGNS_DB}/query`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Status", select: { does_not_equal: "Delete" } }, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) }),
+          });
+          const d = await resp.json();
+          rows = rows.concat(d.results || []);
+          cursor = d.has_more ? d.next_cursor : null;
+        } while (cursor);
+
+        const total = rows.length;
+        const batch = rows.slice(offset, offset + batchSize);
+
+        for (const [i, r] of batch.entries()) {
+          const day = days[(offset + i) % days.length];
+          await fetch(`https://api.notion.com/v1/pages/${r.id}`, {
+            method: "PATCH",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Schedule Day": { select: { name: day } } } }),
+          });
+        }
+
+        const done = offset + batch.length;
+        return json({ success: true, total, done, more: done < total });
       }
 
       // â"€â"€ MICROSITE: getCampaignTodos â"€â"€
