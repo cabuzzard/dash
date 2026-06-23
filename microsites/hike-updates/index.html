@@ -2116,8 +2116,7 @@ function renderYouTubeOutliers(text) {
     el.innerHTML = '<span class="empty">No results yet — press &#x27F3; search to find outliers.</span>';
     return;
   }
-  const lines = text.trim().split('
-').filter(l => l.trim());
+  const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
     if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
