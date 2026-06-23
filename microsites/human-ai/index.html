@@ -1116,6 +1116,26 @@ async function addTodoFromModal() {
   }
 }
 
+async function addToPodcastFromModal() {
+  const input = document.getElementById('td-modal-input');
+  const text = input.value.trim();
+  if (!text) return;
+  const btn = document.getElementById('tdModalPodcast');
+  const status = document.getElementById('tdModalStatus');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  const campaignName = SITE_URL.replace(/\/$/, '').split('/').pop().replace(/-/g, ' ').replace(/\w/g, c => c.toUpperCase());
+  try {
+    await w('addToPodcast', { text, campaignName });
+    status.textContent = 'Added to Podcast ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeTdModal, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false; btn.textContent = '+ Podcast';
+  }
+}
+
 async function deleteTodo(id, btn) {
   btn.disabled = true;
   try {

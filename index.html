@@ -585,6 +585,16 @@
     <div id="tdTabContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
+
+    <div id="podcastSection" style="margin-top:24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="togglePodcastSection()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">🎙 Podcast</span>
+        <span id="podcastToggleIcon" style="font-size:11px;color:var(--text3);">▾</span>
+      </div>
+      <div id="podcastList">
+        <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+      </div>
+    </div>
   </div>
 
   <div class="tab-panel" id="tabPlatforms">
@@ -7080,6 +7090,37 @@ function saveProcesses() {
   setTimeout(() => { btn.textContent = 'Save'; btn.style.color = ''; btn.style.display = 'none'; }, 1500);
 }
 
+// ── PODCAST ──────────────────────────────────────────────────────────
+let podcastCollapsed = false;
+
+function togglePodcastSection() {
+  podcastCollapsed = !podcastCollapsed;
+  document.getElementById('podcastList').style.display = podcastCollapsed ? 'none' : '';
+  document.getElementById('podcastToggleIcon').textContent = podcastCollapsed ? '▸' : '▾';
+}
+
+async function loadPodcastItems() {
+  const el = document.getElementById('podcastList');
+  try {
+    const data = await call('getPodcastItems', {});
+    const items = data.items || [];
+    if (!items.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No podcast items yet.</div>'; return; }
+    el.innerHTML = '';
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);';
+      const nid = item.id.replace(/-/g,'');
+      row.innerHTML = `
+        <span style="font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border:1px solid #6644cc44;color:#aa88ff;background:#6644cc11;border-radius:3px;white-space:nowrap;flex-shrink:0;margin-top:2px;">${item.campaignName}</span>
+        <a href="https://www.notion.so/${nid}" target="_blank" rel="noopener" style="font-size:13px;color:var(--text);text-decoration:none;flex:1;line-height:1.4;">${item.text}</a>
+      `;
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message}</div>`;
+  }
+}
+
 // ── TD TAB ───────────────────────────────────────────────────────────
 const TD_GROUPS = [
   { key: 'get',             doneKey: 'got',  label: 'Get',             color: '#ff8844' },
@@ -7096,6 +7137,7 @@ async function loadTdTab() {
   } catch(e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
+  loadPodcastItems();
 }
 
 function renderTdTab(items) {
