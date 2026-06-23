@@ -285,6 +285,26 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- KEYWORD REGEN MODAL -->
+<div class="modal-overlay" id="kwRegenModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Keywords — Edit &amp; Regenerate</div>
+      <button class="modal-close" onclick="closeKwModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Edit the keywords below, then press Regenerate to get an expanded AI-researched list — or Save to keep your edits as-is.</div>
+      <textarea class="modal-ta" id="kwModalTa" rows="6" placeholder="keyword1, keyword2, keyword3…" style="min-height:120px;margin-top:8px;"></textarea>
+      <div class="modal-status" id="kwModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn save" id="kwModalRegenBtn" onclick="kwModalRegen()">&#8635; Regenerate</button>
+      <button class="modal-btn cancel" id="kwModalSaveBtn" onclick="kwModalSave()">Save</button>
+      <button class="modal-btn cancel" onclick="closeKwModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- LOGIN ADD MODAL -->
 <div class="modal-overlay" id="loginModal">
   <div class="modal">
@@ -2212,20 +2232,50 @@ async function saveKeywordsFromArray(kws) {
   catch(e) { console.error('Failed to save keywords:', e); }
 }
 
-async function runRegenKeywords() {
-  const btn = document.getElementById('kwRegenBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
-  const kwEl = document.getElementById('r-keywords');
-  kwEl.innerHTML = '<div class="loading"><div class="spinner"></div>Researching…</div>';
-  try {
-    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, currentKeywords: (RAW && RAW.keywords) || '' });
-    renderKeywordPills(r.keywords || '');
-  } catch(e) {
-    renderKeywordPills((RAW && RAW.keywords) || '');
-    alert('Regen failed: ' + e.message);
-  }
-  if (btn) { btn.disabled = false; btn.textContent = '蘵 regen'; }
+function openKwModal() {
+  document.getElementById('kwModalTa').value = (RAW && RAW.keywords) || '';
+  document.getElementById('kwModalStatus').textContent = '';
+  document.getElementById('kwModalStatus').className = 'modal-status';
+  document.getElementById('kwRegenModal').classList.add('open');
 }
+function closeKwModal() {
+  document.getElementById('kwRegenModal').classList.remove('open');
+}
+async function kwModalSave() {
+  const val = document.getElementById('kwModalTa').value.trim();
+  const kws = val.split(',').map(k => k.trim()).filter(Boolean);
+  await saveKeywordsFromArray(kws);
+  renderKeywordPills(kws.join(', '));
+  closeKwModal();
+}
+async function kwModalRegen() {
+  const regenBtn = document.getElementById('kwModalRegenBtn');
+  const saveBtn  = document.getElementById('kwModalSaveBtn');
+  const status   = document.getElementById('kwModalStatus');
+  const ta       = document.getElementById('kwModalTa');
+  regenBtn.disabled = true; regenBtn.textContent = '…';
+  saveBtn.disabled  = true;
+  status.textContent = 'Regenerating with AI…';
+  status.className = 'modal-status';
+  try {
+    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, currentKeywords: ta.value.trim() });
+    if (r.error) throw new Error(r.error);
+    ta.value = r.keywords || '';
+    await saveKeywordsFromArray(ta.value.split(',').map(k => k.trim()).filter(Boolean));
+    renderKeywordPills(ta.value);
+    status.textContent = 'Done — keywords saved.';
+    status.className = 'modal-status ok';
+    setTimeout(closeKwModal, 1200);
+  } catch(e) {
+    status.textContent = 'Failed: ' + e.message;
+    status.className = 'modal-status err';
+  } finally {
+    regenBtn.disabled = false; regenBtn.textContent = '⟳ Regenerate';
+    saveBtn.disabled  = false;
+  }
+}
+async function runRegenKeywords() { openKwModal(); }
+
 
 </script>
 </body>
