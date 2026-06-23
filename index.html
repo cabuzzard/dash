@@ -7198,13 +7198,15 @@ async function loadPodcastItems() {
 let siteTdsCollapsed = true;
 let siteTdsLoaded = false;
 
-async function toggleSiteTdsSection() {
+function toggleSiteTdsSection() {
   siteTdsCollapsed = !siteTdsCollapsed;
-  document.getElementById('siteTdsList').style.display = siteTdsCollapsed ? 'none' : '';
-  document.getElementById('siteTdsToggleIcon').textContent = siteTdsCollapsed ? '▸' : '▾';
+  const list = document.getElementById('siteTdsList');
+  const icon = document.getElementById('siteTdsToggleIcon');
+  if (list) list.style.display = siteTdsCollapsed ? 'none' : '';
+  if (icon) icon.textContent = siteTdsCollapsed ? '▸' : '▾';
   if (!siteTdsCollapsed && !siteTdsLoaded) {
     siteTdsLoaded = true;
-    await loadSiteTds();
+    loadSiteTds();
   }
 }
 
