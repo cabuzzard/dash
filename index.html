@@ -7290,30 +7290,7 @@ function renderTdTab(items) {
     el.appendChild(body);
   });
 
-  // 4th accordion — Site TDs
-  const siteTdHdr = document.createElement('div');
-  siteTdHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;margin-top:12px;';
-  const siteChev = document.createElement('span');
-  siteChev.style.cssText = 'font-size:10px;color:var(--text3);transition:transform .2s;';
-  siteChev.textContent = '▶';
-  siteTdHdr.innerHTML = '<span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#cc88ff;">Site TDs</span>';
-  siteTdHdr.appendChild(siteChev);
-
-  const siteTdBody = document.createElement('div');
-  siteTdBody.style.display = 'none';
-
-  siteTdHdr.onclick = () => {
-    const open = siteTdBody.style.display !== 'none';
-    siteTdBody.style.display = open ? 'none' : 'block';
-    siteChev.style.transform = open ? '' : 'rotate(90deg)';
-    siteTdHdr.style.borderRadius = open ? 'var(--radius-sm)' : 'var(--radius-sm) var(--radius-sm) 0 0';
-    if (!open) loadSiteTds(siteTdBody);
-  };
-
-  el.appendChild(siteTdHdr);
-  el.appendChild(siteTdBody);
-
-  // 5th accordion — Published Assets
+  // 4th accordion — Published Assets
   let pubAssetsLoaded = false;
   const pubHdr = document.createElement('div');
   pubHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;margin-top:12px;';
