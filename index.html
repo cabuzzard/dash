@@ -4941,6 +4941,7 @@ function renderTable() {
 { label: 'TD',          key: 'openTd',           type: 'num' },
     { label: 'Dev',         key: 'devTitles',        type: 'num' },
     { label: 'Pub',         key: 'pubTitles',        type: 'num' },
+    { label: 'Day',         key: 'scheduleDay',      type: 'str' },
     { label: 'Changed',     key: 'lastChanged',      type: 'date' },
   ];
 
@@ -5047,6 +5048,27 @@ function renderTable() {
     tr.appendChild(nameCell);
     tr.appendChild(grpCell);
     tr.appendChild(kmCell);
+
+    // Schedule Day cell — click to cycle Mon–Fri
+    const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+    const dayCell = document.createElement('td');
+    dayCell.style.cssText = 'cursor:pointer;font-size:11px;white-space:nowrap;';
+    dayCell.title = 'Click to change day';
+    const renderDayCell = () => {
+      const d = c.scheduleDay || '';
+      dayCell.innerHTML = d
+        ? `<span style="padding:2px 7px;border-radius:3px;border:1px solid var(--border2);color:var(--text2);">${d.slice(0,3)}</span>`
+        : `<span style="color:var(--text3);">—</span>`;
+    };
+    renderDayCell();
+    dayCell.onclick = async () => {
+      const cycle = ['', ...DAYS];
+      c.scheduleDay = cycle[(cycle.indexOf(c.scheduleDay || '') + 1) % cycle.length];
+      renderDayCell();
+      try { await call('updateScheduleDay', { campaignId: c.id, day: c.scheduleDay }); }
+      catch(e) { console.error('scheduleDay update failed', e); }
+    };
+    tr.appendChild(dayCell);
 
     // Campaign Products cell
     const cpCell = document.createElement('td');

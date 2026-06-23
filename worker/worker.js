@@ -256,6 +256,7 @@ async function getCampaigns() {
       status:           c.properties.Status?.select?.name || "",
       grouping:         (c.properties["Grouping"]?.multi_select || []).map(g => g.name),
       keyMessage:       c.properties["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
+      scheduleDay:      (c.properties["Schedule Day"]?.multi_select || []).map(g => g.name)[0] || "",
       research:         campaignToResearch[id] || null,
       siteUrl:          c.properties["microsite"]?.url || campaignToSiteUrl[id] || null,
       mainTd:           (c.properties["Associated To Do"]?.relation || []).map(r => ({
@@ -2730,6 +2731,19 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         return json({ keywords });
       }
 
+      if (body.action === "updateScheduleDay") {
+        const { campaignId, day } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Schedule Day": { multi_select: day ? [{ name: day }] : [] } } }),
+        });
+        if (!resp.ok) { const e = await resp.json(); return json({ error: e.message || "Update failed" }, resp.status); }
+        return json({ success: true });
+      }
+
       if (body.action === "updateCampaignKeywords") {
         const { campaignId, researchId, value } = body;
         const pageId = researchId || campaignId;
@@ -2751,7 +2765,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         if (!day) return json({ error: "day required" }, 400);
         const rows = await notionQuery(CAMPAIGNS_DB, {
           filter: { and: [
-            { property: "Schedule Day", select: { equals: day } },
+            { property: "Schedule Day", multi_select: { contains: day } },
             { property: "Status", select: { does_not_equal: "Delete" } },
           ]},
           sorts: [{ property: "Name", direction: "ascending" }],
@@ -2826,7 +2840,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
           await fetch(`https://api.notion.com/v1/pages/${r.id}`, {
             method: "PATCH",
             headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Schedule Day": { select: { name: day } } } }),
+            body: JSON.stringify({ properties: { "Schedule Day": { multi_select: [{ name: day }] } } }),
           });
         }
 
@@ -2845,8 +2859,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
           .map(c => ({
             name: c.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
             url:  c.properties?.["microsite"]?.url || null,
-          }))
-          .filter(s => s.url);
+          }));
         return json({ sites });
       }
 
