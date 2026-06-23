@@ -599,11 +599,9 @@
     <div id="siteTdsSection" style="margin-top:24px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="toggleSiteTdsSection()">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">🌐 Site TDs</span>
-        <span id="siteTdsToggleIcon" style="font-size:11px;color:var(--text3);">▾</span>
+        <span id="siteTdsToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
       </div>
-      <div id="siteTdsList">
-        <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
-      </div>
+      <div id="siteTdsList" style="display:none;"></div>
     </div>
 
     <div id="podcastSection" style="margin-top:24px;">
@@ -7197,21 +7195,27 @@ async function loadPodcastItems() {
 }
 
 // ── SITE TDs ─────────────────────────────────────────────────────────
-let siteTdsCollapsed = false;
+let siteTdsCollapsed = true;
+let siteTdsLoaded = false;
 
-function toggleSiteTdsSection() {
+async function toggleSiteTdsSection() {
   siteTdsCollapsed = !siteTdsCollapsed;
   document.getElementById('siteTdsList').style.display = siteTdsCollapsed ? 'none' : '';
   document.getElementById('siteTdsToggleIcon').textContent = siteTdsCollapsed ? '▸' : '▾';
+  if (!siteTdsCollapsed && !siteTdsLoaded) {
+    siteTdsLoaded = true;
+    await loadSiteTds();
+  }
 }
 
 async function loadSiteTds() {
   const el = document.getElementById('siteTdsList');
+  if (!el) return;
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
     const data = await call('getAllSiteTodos', {});
-    const todos = (data.todos || []).filter(t => !t.done);
+    const todos = (data.todos || []);
     if (!todos.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No open site TDs.</div>'; return; }
-    // Group by campaign
     const byCamp = {};
     const campOrder = [];
     todos.forEach(t => {
@@ -7228,14 +7232,13 @@ async function loadSiteTds() {
       el.appendChild(hdr);
       items.forEach(t => {
         const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0 5px 8px;border-bottom:1px solid var(--border);cursor:pointer;';
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0 5px 8px;border-bottom:1px solid var(--border);';
         row.innerHTML = `<span style="font-size:13px;color:var(--text);flex:1;">${esc(t.name)}</span>`;
-        row.onclick = () => openTdModalById(t.id, t.name);
         el.appendChild(row);
       });
     });
   } catch(e) {
-    el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message}</div>`;
+    if (el) el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message || 'Failed to load'}</div>`;
   }
 }
 
@@ -7257,7 +7260,6 @@ async function loadTdTab() {
   }
   loadPodcastItems();
   loadTodayCampaigns();
-  loadSiteTds();
 }
 
 function renderTdTab(items) {
