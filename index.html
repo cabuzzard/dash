@@ -1612,6 +1612,22 @@
   </div>
 </div>
 
+<!-- Site TD Edit Modal -->
+<div class="modal-bg" id="siteTdEditModal" style="display:none;" onclick="if(event.target===this)closeSiteTdEditModal()">
+  <div class="modal">
+    <div class="modal-title">Edit TD</div>
+    <input type="hidden" id="siteTdEditId" />
+    <div class="modal-field">
+      <label class="modal-label">Title</label>
+      <input class="modal-input" id="siteTdEditInput" type="text" placeholder="TD title…" onkeydown="if(event.key==='Enter')submitSiteTdEdit()" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeSiteTdEditModal()">Cancel</button>
+      <button class="btn btn-primary" id="siteTdEditBtn" onclick="submitSiteTdEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Grouping Modal -->
 <div class="modal-bg" id="grpModal" onclick="if(event.target===this)closeGrpModal()">
   <div class="modal">
@@ -7197,6 +7213,7 @@ async function loadPodcastItems() {
 // ── SITE TDs ─────────────────────────────────────────────────────────
 let siteTdsCollapsed = true;
 let siteTdsLoaded = false;
+const siteTdsCampCollapsed = {};
 
 function toggleSiteTdsSection() {
   siteTdsCollapsed = !siteTdsCollapsed;
@@ -7210,6 +7227,15 @@ function toggleSiteTdsSection() {
   }
 }
 
+function toggleSiteTdsCamp(campName) {
+  siteTdsCampCollapsed[campName] = !siteTdsCampCollapsed[campName];
+  const safe = CSS.escape(campName);
+  const body = document.getElementById('stdc-' + campName);
+  const icon = document.getElementById('stdci-' + campName);
+  if (body) body.style.display = siteTdsCampCollapsed[campName] ? 'none' : '';
+  if (icon) icon.textContent = siteTdsCampCollapsed[campName] ? '▸' : '▾';
+}
+
 async function loadSiteTds() {
   const el = document.getElementById('siteTdsList');
   if (!el) return;
@@ -7221,26 +7247,117 @@ async function loadSiteTds() {
     const byCamp = {};
     const campOrder = [];
     todos.forEach(t => {
-      if (!byCamp[t.campaignName]) { byCamp[t.campaignName] = { siteUrl: t.siteUrl, items: [] }; campOrder.push(t.campaignName); }
+      if (!byCamp[t.campaignName]) { byCamp[t.campaignName] = { siteUrl: t.siteUrl, campaignId: t.campaignId, items: [] }; campOrder.push(t.campaignName); }
       byCamp[t.campaignName].items.push(t);
     });
     el.innerHTML = '';
     campOrder.forEach(campName => {
       const { siteUrl, items } = byCamp[campName];
+      if (!(campName in siteTdsCampCollapsed)) siteTdsCampCollapsed[campName] = true;
+      const collapsed = siteTdsCampCollapsed[campName];
+
+      const section = document.createElement('div');
+      section.style.cssText = 'margin-top:6px;border-top:1px solid var(--border2);';
+
+      // Campaign header row (clickable)
       const hdr = document.createElement('div');
-      hdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0 4px;border-top:1px solid var(--border2);margin-top:6px;';
-      hdr.innerHTML = `<span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);flex:1;">${esc(campName)}</span>` +
-        (siteUrl ? `<a href="${esc(siteUrl)}" target="_blank" style="font-size:10px;color:var(--text3);text-decoration:none;opacity:.7;">↗ site</a>` : '');
-      el.appendChild(hdr);
+      hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 0 4px;cursor:pointer;user-select:none;';
+      hdr.onclick = () => toggleSiteTdsCamp(campName);
+      const iconEl = document.createElement('span');
+      iconEl.id = 'stdci-' + campName;
+      iconEl.style.cssText = 'font-size:10px;color:var(--text3);width:10px;flex-shrink:0;';
+      iconEl.textContent = collapsed ? '▸' : '▾';
+      const nameEl = document.createElement('span');
+      nameEl.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);flex:1;';
+      nameEl.textContent = campName;
+      hdr.appendChild(iconEl);
+      hdr.appendChild(nameEl);
+      if (siteUrl) {
+        const a = document.createElement('a');
+        a.href = siteUrl;
+        a.target = '_blank';
+        a.textContent = '↗ site';
+        a.style.cssText = 'font-size:10px;color:var(--text3);text-decoration:none;opacity:.7;';
+        a.onclick = e => e.stopPropagation();
+        hdr.appendChild(a);
+      }
+      const cnt = document.createElement('span');
+      cnt.style.cssText = 'font-size:10px;color:var(--text3);margin-left:4px;';
+      cnt.textContent = items.length;
+      hdr.appendChild(cnt);
+      section.appendChild(hdr);
+
+      // Item list
+      const body = document.createElement('div');
+      body.id = 'stdc-' + campName;
+      body.style.display = collapsed ? 'none' : '';
       items.forEach(t => {
         const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0 5px 8px;border-bottom:1px solid var(--border);';
-        row.innerHTML = `<span style="font-size:13px;color:var(--text);flex:1;">${esc(t.name)}</span>`;
-        el.appendChild(row);
+        row.id = 'std-row-' + t.id;
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 0 5px 14px;border-bottom:1px solid var(--border);';
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = 'font-size:13px;color:var(--text);flex:1;cursor:pointer;';
+        nameSpan.textContent = t.name;
+        nameSpan.title = 'Click to edit';
+        nameSpan.onclick = () => openSiteTdEditModal(t.id, t.name, row, nameSpan);
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '×';
+        delBtn.title = 'Delete';
+        delBtn.style.cssText = 'background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px;line-height:1;opacity:.5;flex-shrink:0;';
+        delBtn.onmouseover = () => delBtn.style.opacity = '1';
+        delBtn.onmouseout = () => delBtn.style.opacity = '.5';
+        delBtn.onclick = () => deleteSiteTd(t.id, row);
+        row.appendChild(nameSpan);
+        row.appendChild(delBtn);
+        body.appendChild(row);
       });
+      section.appendChild(body);
+      el.appendChild(section);
     });
   } catch(e) {
     if (el) el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message || 'Failed to load'}</div>`;
+  }
+}
+
+function openSiteTdEditModal(id, currentName, row, nameSpan) {
+  document.getElementById('siteTdEditId').value = id;
+  document.getElementById('siteTdEditInput').value = currentName;
+  document.getElementById('siteTdEditBtn').disabled = false;
+  document.getElementById('siteTdEditBtn').textContent = 'Save';
+  document.getElementById('siteTdEditModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('siteTdEditInput').select(), 50);
+  document.getElementById('siteTdEditModal')._row = row;
+  document.getElementById('siteTdEditModal')._nameSpan = nameSpan;
+}
+
+function closeSiteTdEditModal() {
+  document.getElementById('siteTdEditModal').style.display = 'none';
+}
+
+async function submitSiteTdEdit() {
+  const modal = document.getElementById('siteTdEditModal');
+  const id = document.getElementById('siteTdEditId').value;
+  const title = document.getElementById('siteTdEditInput').value.trim();
+  if (!title) return;
+  const btn = document.getElementById('siteTdEditBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await call('renameTodoItem', { itemId: id, title });
+    if (modal._nameSpan) modal._nameSpan.textContent = title;
+    closeSiteTdEditModal();
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'Save';
+    alert(e.message || 'Failed to save');
+  }
+}
+
+async function deleteSiteTd(id, row) {
+  if (!confirm('Delete this TD?')) return;
+  try {
+    await call('deleteTdItem', { itemId: id });
+    row.remove();
+  } catch(e) {
+    alert(e.message || 'Failed to delete');
   }
 }
 
