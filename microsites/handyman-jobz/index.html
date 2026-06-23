@@ -2130,7 +2130,7 @@ function renderYouTubeOutliers(text) {
 async function runYouTubeOutliers() {
   const btn = document.getElementById('ytOutliersBtn');
   const el  = document.getElementById('r-ytoutliers');
-  const kwOverride = (document.getElementById('ytOutliersKwInput')?.value || '').trim();
+  const kwOverride = (document.getElementById('ytOutliersKwInput')?.value || '').trim() || (RAW.keywords || '');
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching YouTube…</div>';
   try {
