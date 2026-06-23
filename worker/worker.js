@@ -2707,6 +2707,30 @@ Rules:
       }
 
       // Î"Ã¶Ã‡Î"Ã¶Ã‡ CAMPAIGN ADMIN: updateCampaignKeywords Î"Ã¶Ã‡Î"Ã¶Ã‡
+      if (body.action === "regenerateKeywords") {
+        const { campaignId, currentKeywords } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const prompt = `You are a keyword research specialist. Given these existing campaign keywords: "${currentKeywords || 'none provided'}"
+
+Research and generate an expanded, optimized list of 15-20 highly relevant keywords for this campaign niche. Include long-tail variations, related search terms, problem-aware and solution-aware terms, and high-intent buyer keywords.
+
+Return ONLY a comma-separated list of keywords, nothing else. No numbering, no explanations, no line breaks. Just: keyword1, keyword2, keyword3`;
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": CLAUDE_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 400, messages: [{ role: "user", content: prompt }] })
+        });
+        const aiData = await aiResp.json();
+        const keywords = (aiData.content?.[0]?.text || '').trim().replace(/\n/g, ', ');
+        const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Keywords: { rich_text: [{ type: "text", text: { content: keywords } }] } } })
+        });
+        return json({ keywords });
+      }
+
       if (body.action === "updateCampaignKeywords") {
         const { campaignId, value } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
