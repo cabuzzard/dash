@@ -7407,53 +7407,7 @@ function renderTdTab(items) {
   el.appendChild(pubBody);
 }
 
-// ── SITE TDs (4th accordion on TD tab) ──────────────────────────────
-let siteTdLoaded = false;
 
-async function loadSiteTds(body) {
-  if (siteTdLoaded) return;
-  body.innerHTML = '<div style="padding:10px 14px 10px 24px;border:1px solid var(--border);border-top:none;"><div class="loading-wrap" style="margin:0;padding:4px 0;"><div class="spinner"></div>Loading…</div></div>';
-  try {
-    const data = await call('getMicrositeList');
-    siteTdLoaded = true;
-    renderSiteTds(body, data.sites || []);
-  } catch(e) {
-    body.innerHTML = '<div style="padding:10px 14px 10px 24px;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);"><span class="error-msg">Could not load: ' + esc(e.message) + '</span></div>';
-  }
-}
-
-function renderSiteTds(body, sites) {
-  body.innerHTML = '';
-  if (!sites.length) {
-    body.innerHTML = '<div style="padding:10px 14px 10px 24px;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);"><span class="empty">No microsites found.</span></div>';
-    return;
-  }
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);overflow:hidden;';
-  sites.forEach((s, i) => {
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;padding:9px 14px;background:var(--bg);border-bottom:' + (i < sites.length - 1 ? '1px solid var(--border)' : 'none') + ';';
-    row.onmouseover = () => row.style.background = 'var(--surface)';
-    row.onmouseout  = () => row.style.background = 'var(--bg)';
-    const name = document.createElement('span');
-    name.style.cssText = 'font-size:13px;color:var(--text);flex:1;';
-    name.textContent = s.name;
-    row.appendChild(name);
-    if (s.url) {
-      const a = document.createElement('a');
-      a.href = s.url;
-      a.target = '_blank';
-      a.textContent = '↗';
-      a.title = s.url;
-      a.style.cssText = 'font-size:13px;color:var(--text3);text-decoration:none;padding:0 4px;opacity:.7;';
-      a.onmouseover = () => a.style.opacity = '1';
-      a.onmouseout  = () => a.style.opacity = '.7';
-      row.appendChild(a);
-    }
-    wrap.appendChild(row);
-  });
-  body.appendChild(wrap);
-}
 // ── EDIT CAMPAIGN SITE ───────────────────────────────────────────────
 let _editSiteCampaign = null;
 let _editSiteRenderCb = null;
