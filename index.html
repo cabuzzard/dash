@@ -574,6 +574,13 @@
   </div>
 
   <div class="tab-panel" id="tabTd">
+    <div id="processesSection" style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Processes</span>
+        <button id="processesSaveBtn" onclick="saveProcesses()" style="font-size:11px;font-weight:600;padding:3px 12px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;display:none;">Save</button>
+      </div>
+      <textarea id="processesTextarea" placeholder="Document your processes here…" oninput="document.getElementById('processesSaveBtn').style.display='inline-block'" style="width:100%;min-height:100px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;line-height:1.6;padding:10px 12px;resize:vertical;outline:none;box-sizing:border-box;font-family:inherit;"></textarea>
+    </div>
     <a class="add-link" onclick="openAddTdModal()">+ Add to do item</a>
     <div id="tdTabContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
@@ -7055,6 +7062,22 @@ async function saveKm() {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Save';
   }
+}
+
+// ── PROCESSES ────────────────────────────────────────────────────────
+const PROCESSES_KEY = 'hermes_processes';
+(function initProcesses() {
+  const ta = document.getElementById('processesTextarea');
+  if (!ta) return;
+  ta.value = localStorage.getItem(PROCESSES_KEY) || '';
+})();
+function saveProcesses() {
+  const val = document.getElementById('processesTextarea').value;
+  localStorage.setItem(PROCESSES_KEY, val);
+  const btn = document.getElementById('processesSaveBtn');
+  btn.textContent = 'Saved ✓';
+  btn.style.color = '#4ade80';
+  setTimeout(() => { btn.textContent = 'Save'; btn.style.color = ''; btn.style.display = 'none'; }, 1500);
 }
 
 // ── TD TAB ───────────────────────────────────────────────────────────
