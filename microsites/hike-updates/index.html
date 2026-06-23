@@ -789,7 +789,7 @@ async function runKDPBestSellers() {
     if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
     renderKDPBestSellers(data.text || '');
   } catch(e) {
-    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+    el.innerHTML = `<span class="empty" style="color:#c0392b">${e.message || 'Search failed — try again.'}</span>`;
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
   }
