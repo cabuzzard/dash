@@ -3840,6 +3840,12 @@ function renderPlatformMatrix() {
   thNotes.style.cssText = 'text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 8px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:140px;';
   hrow.appendChild(thNotes);
 
+  // Domain col header
+  const thDomain = document.createElement('th');
+  thDomain.textContent = 'Domain';
+  thDomain.style.cssText = 'text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 8px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:140px;';
+  hrow.appendChild(thDomain);
+
   // Platform col headers — draggable to reorder
   let platDragSrcIdx = null;
   platPlatforms.forEach((p, idx) => {
@@ -3916,7 +3922,7 @@ function renderPlatformMatrix() {
     const siteRow = document.createElement('tr');
     siteRow.style.cssText = 'cursor:pointer;user-select:none;';
     const siteTd = document.createElement('td');
-    siteTd.colSpan = platPlatforms.length + 5;
+    siteTd.colSpan = platPlatforms.length + 6;
     siteTd.style.cssText = 'padding:10px 0 4px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);border-top:1px solid #444;border-bottom:1px solid #444;';
     const chev = document.createElement('span');
     chev.style.cssText = 'display:inline-block;margin-right:4px;font-size:9px;';
@@ -4003,6 +4009,30 @@ function renderPlatformMatrix() {
         notesTd.onmouseout  = () => notesTd.style.background = '';
       }
       tr.appendChild(notesTd);
+
+      // Domain cell (inline editable, stored in localStorage)
+      const domainTd = document.createElement('td');
+      domainTd.style.cssText = 'padding:4px 6px;border-left:1px solid #444;font-size:11px;min-width:140px;display:flex;align-items:center;gap:4px;';
+      const domainInput = document.createElement('input');
+      domainInput.type = 'text';
+      domainInput.value = c.domain || '';
+      domainInput.placeholder = 'domain.com';
+      domainInput.style.cssText = 'width:100%;background:transparent;border:none;border-bottom:1px solid transparent;color:var(--text2);font-size:11px;font-family:inherit;padding:2px 2px;outline:none;box-sizing:border-box;';
+      domainInput.onmouseover = () => domainInput.style.borderBottomColor = 'var(--border2)';
+      domainInput.onmouseout  = () => { if (document.activeElement !== domainInput) domainInput.style.borderBottomColor = 'transparent'; };
+      domainInput.onfocus = () => domainInput.style.borderBottomColor = 'var(--accent)';
+      domainInput.onblur  = async () => {
+        domainInput.style.borderBottomColor = 'transparent';
+        const v = domainInput.value.trim();
+        if (v === (c.domain || '')) return;
+        c.domain = v;
+        try { await call('updateCampaignDomain', { campaignId: c.id, domain: v || null }); }
+        catch(e) { console.error('domain save failed', e); }
+      };
+      domainInput.onclick = e => e.stopPropagation();
+      domainInput.onkeydown = e => { if (e.key === 'Enter') domainInput.blur(); };
+      domainTd.appendChild(domainInput);
+      tr.appendChild(domainTd);
 
       // Platform cells
       platPlatforms.forEach(p => {
