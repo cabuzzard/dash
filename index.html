@@ -3857,6 +3857,12 @@ function renderPlatformMatrix() {
     hrow.appendChild(th);
   });
 
+  // Site col header
+  const thSite = document.createElement('th');
+  thSite.textContent = 'Site';
+  thSite.style.cssText = 'text-align:center;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 8px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;width:36px;min-width:36px;';
+  hrow.appendChild(thSite);
+
   // Notes col header
   const thNotes = document.createElement('th');
   thNotes.textContent = 'Notes';
@@ -3945,7 +3951,7 @@ function renderPlatformMatrix() {
     const siteRow = document.createElement('tr');
     siteRow.style.cssText = 'cursor:pointer;user-select:none;';
     const siteTd = document.createElement('td');
-    siteTd.colSpan = platPlatforms.length + 6;
+    siteTd.colSpan = platPlatforms.length + 7;
     siteTd.style.cssText = 'padding:10px 0 4px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);border-top:1px solid #444;border-bottom:1px solid #444;';
     const chev = document.createElement('span');
     chev.style.cssText = 'display:inline-block;margin-right:4px;font-size:9px;';
@@ -3979,9 +3985,6 @@ function renderPlatformMatrix() {
       } else if (platCampaigns.some(x => platParentOf[x.id] === c.id)) {
         nameHtml += '<span style="display:inline-block;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);margin-left:6px;vertical-align:middle;">main</span>';
       }
-      if (c.siteUrl) {
-        nameHtml += ' <a href="' + c.siteUrl + '" target="_blank" onclick="event.stopPropagation()" title="Open microsite" style="font-size:10px;color:var(--text3);text-decoration:none;vertical-align:middle;opacity:.7;flex-shrink:0;">↗</a>';
-      }
       nameTd.innerHTML = nameHtml;
       tr.appendChild(nameTd);
 
@@ -4005,6 +4008,16 @@ function renderPlatformMatrix() {
         }
         tr.appendChild(td);
       });
+
+      // Site cell
+      const siteTd = document.createElement('td');
+      siteTd.style.cssText = 'text-align:center;padding:6px 4px;border-left:1px solid #444;width:36px;min-width:36px;';
+      if (c.siteUrl) {
+        siteTd.innerHTML = '<a href="' + c.siteUrl + '" target="_blank" onclick="event.stopPropagation()" title="Open microsite" style="font-size:13px;color:var(--text3);text-decoration:none;opacity:.7;" onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'.7\'">↗</a>';
+      } else {
+        siteTd.innerHTML = '<span style="color:var(--border2);">—</span>';
+      }
+      tr.appendChild(siteTd);
 
       // Notes cell
       const notesTd = document.createElement('td');
