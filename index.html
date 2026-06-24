@@ -3670,6 +3670,29 @@ document.addEventListener('click', e => {
 });
 
 // ── PLATFORM MATRIX ───────────────────────────────────────────────────
+// All known domains (populated from the Domains tab hardcoded list + localStorage)
+const allDomainsPool = [
+  'accessyourpassion.com','barefoothike.com','bayareaoriginalmusic.com','bestoutdoorsandals.com',
+  'bestrealestateliquidation.com','blankslatebranding.site','brandingminicourse.com',
+  'buildtosuitinvestment.com','buildtosuitinvestment.online','cabuzzard.com','cabuzzard.online',
+  'creativeflowguitar.com','energyfocuscoaching.com','energyfocuscoaching.online','facttracking.com',
+  'focusingenergycoaching.com','focusingenergycoaching.online','foundationfuturesllc.com',
+  'foundationfuturesllc.online','generalservice2020.com','generalservices2020.com',
+  'growthcoachmindset.com','growthcoachmindset.online','homepondaquarium.com','homepondaquarium.online',
+  'homestructionconsulting.com','homestructionconsulting.online','intentionwarrior.com',
+  'intentionwarrior.online','introdatevert.com','liketotallydude.com','liketotallydude.online',
+  'maiandros-investments.com','modernactivehome.com','mountainwize.com','naturalanxietyrelief.info',
+  'naturalspirithealing.com','naturalspiritualscience.com','naturebasedcoach.com',
+  'naturebasedcoach.online','naturewellnesscoach.com','naturewellnesscoach.online',
+  'online-personalcoach.com','outsidesessions.com','personalcoach-ca.com','petrichorpodcast.com',
+  'rad80schild.com','rad80schild.online','relievestressquick.com','rockrgear.com','roi-systems.com',
+  'sellhousefastagent.com','somaticspirit.com','spiritual-energy-coach.com',
+  'spiritual-energy-coach.online','stablehomefoundation.com','stablehomefoundation.online',
+  'sustainableaquarium.com','theuniversoulgame-exchange.com','theuniversoulgame-exchange.online',
+  'thirdpathcoaching.com','webguyleadgeneration.com',
+  ...(() => { try { return JSON.parse(localStorage.getItem('hermes_domain_additions')||'[]').map(d=>d.domain); } catch(e){return[];} })(),
+];
+
 let platMatrixLoaded = false;
 let platCampaigns    = [];   // full campaign list from getCampaigns
 let platPlatforms    = [];   // Publish-status platforms only
@@ -4012,7 +4035,7 @@ function renderPlatformMatrix() {
 
       // Domain cell (inline editable, stored in localStorage)
       const domainTd = document.createElement('td');
-      domainTd.style.cssText = 'padding:4px 6px;border-left:1px solid #444;font-size:11px;min-width:140px;display:flex;align-items:center;gap:4px;';
+      domainTd.style.cssText = 'padding:4px 6px;border-left:1px solid #444;font-size:11px;min-width:140px;';
       const domainInput = document.createElement('input');
       domainInput.type = 'text';
       domainInput.value = c.domain || '';
@@ -4020,8 +4043,36 @@ function renderPlatformMatrix() {
       domainInput.style.cssText = 'width:100%;background:transparent;border:none;border-bottom:1px solid transparent;color:var(--text2);font-size:11px;font-family:inherit;padding:2px 2px;outline:none;box-sizing:border-box;';
       domainInput.onmouseover = () => domainInput.style.borderBottomColor = 'var(--border2)';
       domainInput.onmouseout  = () => { if (document.activeElement !== domainInput) domainInput.style.borderBottomColor = 'transparent'; };
-      domainInput.onfocus = () => domainInput.style.borderBottomColor = 'var(--accent)';
-      domainInput.onblur  = async () => {
+      domainInput.onclick = e => e.stopPropagation();
+      domainInput.onkeydown = e => { if (e.key === 'Enter') { domainDrop.style.display='none'; domainInput.blur(); } if (e.key === 'Escape') domainDrop.style.display='none'; };
+
+      // Autocomplete dropdown
+      const domainDrop = document.createElement('div');
+      domainDrop.style.cssText = 'position:absolute;top:100%;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;z-index:100;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.4);display:none;';
+      domainInput.oninput = () => {
+        const q = domainInput.value.toLowerCase();
+        const matches = allDomainsPool.filter(d => d.includes(q)).slice(0, 10);
+        domainDrop.innerHTML = '';
+        if (!q || !matches.length) { domainDrop.style.display = 'none'; return; }
+        matches.forEach(d => {
+          const item = document.createElement('div');
+          item.textContent = d;
+          item.style.cssText = 'padding:6px 10px;font-size:11px;cursor:pointer;color:var(--text2);';
+          item.onmouseover = () => item.style.background = 'var(--surface)';
+          item.onmouseout  = () => item.style.background = '';
+          item.onmousedown = e => {
+            e.preventDefault();
+            domainInput.value = d;
+            domainDrop.style.display = 'none';
+            domainInput.blur();
+          };
+          domainDrop.appendChild(item);
+        });
+        domainDrop.style.display = 'block';
+      };
+      domainInput.onfocus = () => { domainInput.style.borderBottomColor = 'var(--accent)'; if (domainInput.value) domainInput.oninput(); };
+      domainInput.onblur = async () => {
+        setTimeout(() => domainDrop.style.display = 'none', 150);
         domainInput.style.borderBottomColor = 'transparent';
         const v = domainInput.value.trim();
         if (v === (c.domain || '')) return;
@@ -4029,9 +4080,12 @@ function renderPlatformMatrix() {
         try { await call('updateCampaignDomain', { campaignId: c.id, domain: v || null }); }
         catch(e) { console.error('domain save failed', e); }
       };
-      domainInput.onclick = e => e.stopPropagation();
-      domainInput.onkeydown = e => { if (e.key === 'Enter') domainInput.blur(); };
-      domainTd.appendChild(domainInput);
+
+      const domainWrap = document.createElement('div');
+      domainWrap.style.cssText = 'position:relative;width:100%;';
+      domainWrap.appendChild(domainInput);
+      domainWrap.appendChild(domainDrop);
+      domainTd.appendChild(domainWrap);
       tr.appendChild(domainTd);
 
       // Platform cells
