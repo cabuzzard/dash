@@ -285,6 +285,7 @@ async function getCampaigns() {
       pubTitleData: pubTitleMap[id] || [],
       products:   prodCount[id] || 0,
       lastChanged: titleLastEdited[id] || c.last_edited_time || null,
+      domain: c.properties["Domain"]?.url || c.properties["Domain"]?.rich_text?.map(t => t.plain_text).join("") || "",
     };
   });
 
@@ -1029,7 +1030,10 @@ export default {
         try {
           const [assetRows, loginRows, campRows] = await Promise.all([
             notionQuery(ASSETS_DB, {
-              filter: { property: "Asset Status", select: { equals: "Published" } },
+              filter: { or: [
+                { property: "Asset Status", select: { equals: "Published" } },
+                { property: "Asset Status", select: { equals: "Publish" } },
+              ]},
               sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
             }),
             notionQuery(LOGINS_DB, {}),
@@ -1123,6 +1127,50 @@ export default {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "Grouping": { multi_select: (grouping || []).map(name => ({ name })) } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "checkDomains") {
+        const { keywords } = body;
+        if (!keywords) return json({ error: "keywords required" }, 400);
+        const words = keywords.split(',')
+          .map(k => k.trim().toLowerCase().replace(/[^a-z0-9]/g, ''))
+          .filter(w => w.length >= 3);
+        const unique = [...new Set(words)];
+        const tlds = ['.com', '.net', '.online', '.info'];
+        const candidates = new Set();
+        // single words
+        unique.slice(0, 6).forEach(w => tlds.forEach(t => candidates.add(w + t)));
+        // two-word combos (.com only)
+        for (let i = 0; i < Math.min(unique.length, 4); i++) {
+          for (let j = 0; j < Math.min(unique.length, 4); j++) {
+            if (i !== j) candidates.add(unique[i] + unique[j] + '.com');
+          }
+        }
+        const list = [...candidates].slice(0, 30);
+        const results = await Promise.all(list.map(async domain => {
+          try {
+            const r = await fetch(`https://rdap.org/domain/${domain}`, { headers: { Accept: 'application/json' } });
+            return { domain, available: r.status === 404 };
+          } catch(e) {
+            return { domain, available: null };
+          }
+        }));
+        return json({ results });
+      }
+
+      if (body.action === "updateCampaignDomain") {
+        const { campaignId, domain } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const propVal = domain ? { url: domain } : { url: null };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Domain": propVal } }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
@@ -2354,58 +2402,32 @@ Rules:
         }
         if (!keywords) return json({ error: "No keywords found — add keywords or enter them manually" }, 400);
 
-        const APIFY_KEY = (env.APIFY_TOKEN || env.APIFY_KEY || "").trim();
-        if (!APIFY_KEY) return json({ error: "APIFY_TOKEN secret not set on worker" }, 500);
-
-        // Search Amazon KDP ebooks via Apify KDP Niche Analyzer
-        const searchTerm = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3).join(" ");
-        const apifyResp = await fetch(
-          `https://api.apify.com/v2/acts/sarginstudio~kdp-amazon-book-niche-analyzer/run-sync-get-dataset-items?token=${APIFY_KEY}&timeout=90&maxItems=20`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ searchTerm })
-          }
-        );
-
-        if (!apifyResp.ok) {
-          const ae = await apifyResp.text();
-          return json({ error: `Apify error: ${ae.slice(0, 200)}` }, 502);
-        }
-
-        const results = await apifyResp.json();
-        // Actor returns [{searchTerm, totalBooks, books:[...]}] or direct array
-        const resultObj = Array.isArray(results) ? results[0] : results;
-        const books = (resultObj?.books || []).slice(0, 20);
-        if (!books.length) return json({ error: "No results from Amazon — try different keywords" }, 404);
-
-        // Format top results for Claude to clean up
-        const raw = books.map(b =>
-          `${b.title} | ${b.price || "N/A"} | ${b.rating || "?"}★ | ${b.reviewCount || 0} reviews | score:${b.nicheScore || "?"}`
-        ).join("\n");
-
         const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
           body: JSON.stringify({
             model: "claude-haiku-4-5",
-            max_tokens: 1000,
-            system: `You are a KDP publishing analyst. Format these Amazon Kindle ebook bestseller results into a clean, scannable list.
+            max_tokens: 1200,
+            system: `You are a KDP publishing market researcher with deep knowledge of Amazon Kindle bestseller lists. Given campaign keywords, identify 15 top-selling and trending Kindle ebook opportunities in that niche. Draw on your knowledge of what actually sells well on Amazon KDP — proven sub-niches, high-review-count categories, and titles with consistent demand.
 
-FORMAT — output one line per book:
-TITLE (shortened to 5 words max): price · stars★ · review count reviews — one-line insight about why it sells
+FORMAT — output exactly 15 lines, one per book opportunity:
+TITLE CONCEPT (5 words max): realistic price · estimated stars★ · niche appeal — one-line insight about why it sells
 
 Rules:
-- Title in title case, max 5 words, truncate with … if needed
+- TITLE CONCEPT is a realistic Kindle book title idea, title case, max 5 words
+- Price range typical for the niche (e.g. $2.99–$9.99)
+- Stars based on typical bestsellers in this category
+- Insight is max 10 words — what makes books like this sell
+- Mix sub-niches: how-to guides, workbooks, planners, inspirational, reference
 - No bullets, no numbering, no markdown, no preamble
-- Insight is max 10 words — what makes it a bestseller
-- Output only the formatted lines, nothing else`,
-            messages: [{ role: "user", content: `Kindle ebook bestsellers for keywords "${keywords}":\n\n${raw}` }]
+- Output only the 15 lines, nothing else`,
+            messages: [{ role: "user", content: `Find top KDP Kindle ebook opportunities for these campaign keywords: ${keywords}` }]
           })
         });
         const claudeData = await claudeResp.json();
         if (!claudeResp.ok) return json({ error: claudeData.error?.message || "Claude error" }, 502);
         const result = (claudeData.content?.[0]?.text || "").trim();
+        if (!result) return json({ error: "No results — try again" }, 500);
 
         const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
           method: "PATCH",
@@ -2731,6 +2753,19 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         return json({ keywords });
       }
 
+      if (body.action === "linkResearchToCampaign") {
+        const { researchId, campaignId } = body;
+        const dashId = id => { const s=id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Campaign": { relation: [{ id: dashId(campaignId) }] } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Link failed" }, resp.status);
+        return json({ success: true });
+      }
+
       if (body.action === "updateScheduleDay") {
         const { campaignId, day } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
@@ -2865,65 +2900,47 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
 
             // ── MICROSITE: getAllSiteTodos ──
       if (body.action === "getAllSiteTodos") {
-        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        // 2-subrequest approach: batch-query campaigns + batch-query open todos, join in memory
+        const [campRows, todoRows] = await Promise.all([
+          notionQuery(CAMPAIGNS_DB, {
+            filter: { property: "Status", select: { does_not_equal: "Delete" } },
+            sorts: [{ property: "Name", direction: "ascending" }],
+          }),
+          notionQuery(MAIN_TD_DB, {
+            filter: { and: [
+              { property: "priority", multi_select: { does_not_contain: "got" } },
+              { property: "priority", multi_select: { does_not_contain: "done" } },
+            ]},
+          }),
+        ]);
 
-        // Use Status filter — same as getCampaigns(), which is proven to work
-        const campRows = await notionQuery(CAMPAIGNS_DB, {
-          filter: { property: "Status", select: { does_not_equal: "Delete" } },
-          sorts: [{ property: "Name", direction: "ascending" }],
+        // Build todo lookup by id
+        const todoById = {};
+        todoRows.forEach(t => {
+          const id = t.id.replace(/-/g,"");
+          const name = t.properties?.Title?.title?.map(x => x.plain_text).join("") || "Untitled";
+          const prio = (t.properties?.priority?.multi_select || []).map(s => s.name);
+          const done = prio.includes("got") || prio.includes("done");
+          todoById[id] = { id, name, done, prio };
         });
 
-        if (!campRows.length) return json({ todos: [], _debug: "campRows empty" });
-
-        // For each campaign, fetch the page directly (same as getCampaignTodos) to get full relation list
-        const campPages = await Promise.all(campRows.map(async c => {
+        // Build campaign todo entries from inline relation data (no extra fetches)
+        const todos = [];
+        const seen = new Set();
+        campRows.forEach(c => {
           const campaignName = c.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
           const campaignId   = c.id.replace(/-/g,"");
           const siteUrl      = c.properties?.["microsite"]?.url || null;
-          try {
-            const r = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
-            });
-            const page = await r.json();
-            const todoIds = (page.properties?.["Associated To Do"]?.relation || []).map(r2 => r2.id.replace(/-/g,""));
-            return { campaignName, campaignId, siteUrl, todoIds };
-          } catch(err) { return { campaignName, campaignId, siteUrl, todoIds: [], _err: String(err) }; }
-        }));
-
-        // Flatten — skip campaigns with no todos
-        const entries = [];
-        campPages.forEach(({ campaignName, campaignId, siteUrl, todoIds }) => {
-          todoIds.forEach(todoId => entries.push({ todoId, campaignName, campaignId, siteUrl }));
+          const todoIds      = (c.properties?.["Associated To Do"]?.relation || []).map(r => r.id.replace(/-/g,""));
+          todoIds.forEach(todoId => {
+            if (seen.has(todoId)) return;
+            seen.add(todoId);
+            const td = todoById[todoId];
+            if (td) todos.push({ ...td, campaignName, campaignId, siteUrl });
+          });
         });
 
-        if (!entries.length) return json({ todos: [], _debug: { campCount: campPages.length, campNames: campPages.map(c => c.campaignName), todoIdCounts: campPages.map(c => c.todoIds?.length ?? -1), errs: campPages.filter(c=>c._err).map(c=>c._err) } });
-
-        const seen = new Set();
-        const unique = entries.filter(e => { if (seen.has(e.todoId)) return false; seen.add(e.todoId); return true; });
-
-        // Fetch each todo — same as getCampaignTodos
-        const firstErr = { msg: null };
-        const todos = await Promise.all(unique.map(async e => {
-          try {
-            const url = `https://api.notion.com/v1/pages/${dashId(e.todoId)}`;
-            const r = await fetch(url, {
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
-            });
-            if (!r.ok) {
-              const body2 = await r.text();
-              if (!firstErr.msg) firstErr.msg = `HTTP ${r.status} for ${e.todoId}: ${body2.slice(0,200)}`;
-              return null;
-            }
-            const p = await r.json();
-            const name = p.properties?.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
-            return { id: e.todoId, name, campaignName: e.campaignName, campaignId: e.campaignId, siteUrl: e.siteUrl };
-          } catch(err) {
-            if (!firstErr.msg) firstErr.msg = String(err);
-            return null;
-          }
-        }));
-
-        return json({ todos: todos.filter(Boolean), _debug: { campCount: campPages.length, entryCount: entries.length, firstErr: firstErr.msg } });
+        return json({ todos });
       }
 
       if (body.action === "getCampaignTodos") {

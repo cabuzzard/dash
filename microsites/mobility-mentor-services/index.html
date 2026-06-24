@@ -238,8 +238,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div></div>
 
-<!-- SEC 5b: two col — kdp best sellers / youtube outliers -->
-<div class="two-col">
+<!-- SEC 5b: three col — kdp best sellers / youtube outliers / domain search -->
+<div class="three-col">
   <div class="col">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <span>KDP Best Sellers</span>
@@ -262,6 +262,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </h2>
     <div class="content">
       <div id="r-ytoutliers"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>Domain Search</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="domainKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="domainSearchBtn" onclick="runDomainSearch()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-domains"><span class="empty">Press ⟳ search to check domain availability from keywords.</span></div>
     </div>
   </div>
 </div>
@@ -2176,6 +2188,39 @@ async function runYouTubeOutliers() {
     const data = await w('getYouTubeOutliers', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
     if (data.error) { if (el) el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
     renderYouTubeOutliers(data.text || '');
+  } catch(e) {
+    if (el) el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
+
+// ── DOMAIN SEARCH ─────────────────────────────────────────────────────
+function renderDomainResults(results) {
+  const el = document.getElementById('r-domains');
+  if (!el) return;
+  if (!results || !results.length) { el.innerHTML = '<span class="empty">No results.</span>'; return; }
+  const avail   = results.filter(r => r.available === true);
+  const taken   = results.filter(r => r.available === false);
+  const unknown = results.filter(r => r.available === null);
+  let html = '';
+  avail.forEach(r =>   { html += `<div class="sm-trend-row"><span style="color:#5ec95e;font-weight:700;margin-right:6px;font-size:12px;">✓</span><span class="sm-trend-niche" style="color:#5ec95e;">${r.domain}</span></div>`; });
+  taken.forEach(r =>   { html += `<div class="sm-trend-row"><span style="color:#555;margin-right:6px;font-size:12px;">✗</span><span class="sm-trend-body" style="color:#555;text-decoration:line-through;">${r.domain}</span></div>`; });
+  unknown.forEach(r => { html += `<div class="sm-trend-row"><span style="color:#555;margin-right:6px;">?</span><span class="sm-trend-body" style="color:#555;">${r.domain}</span></div>`; });
+  el.innerHTML = html || '<span class="empty">No results.</span>';
+}
+
+async function runDomainSearch() {
+  const btn = document.getElementById('domainSearchBtn');
+  const el  = document.getElementById('r-domains');
+  const kwOverride = (document.getElementById('domainKwInput')?.value || '').trim() || (RAW.keywords || '');
+  if (!kwOverride) { if (el) el.innerHTML = '<span class="empty">No keywords loaded yet.</span>'; return; }
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>Checking availability…</div>';
+  try {
+    const data = await w('checkDomains', { keywords: kwOverride });
+    if (data.error) { if (el) el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderDomainResults(data.results || []);
   } catch(e) {
     if (el) el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
   } finally {
