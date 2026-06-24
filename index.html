@@ -4051,9 +4051,9 @@ function renderPlatformMatrix() {
       domainDrop.style.cssText = 'position:absolute;top:100%;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;z-index:100;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.4);display:none;';
       domainInput.oninput = () => {
         const q = domainInput.value.toLowerCase();
-        const matches = allDomainsPool.filter(d => d.includes(q)).slice(0, 10);
+        const matches = allDomainsPool.filter(d => !q || d.includes(q)).slice(0, 20);
         domainDrop.innerHTML = '';
-        if (!q || !matches.length) { domainDrop.style.display = 'none'; return; }
+        if (!matches.length) { domainDrop.style.display = 'none'; return; }
         matches.forEach(d => {
           const item = document.createElement('div');
           item.textContent = d;
@@ -4070,7 +4070,7 @@ function renderPlatformMatrix() {
         });
         domainDrop.style.display = 'block';
       };
-      domainInput.onfocus = () => { domainInput.style.borderBottomColor = 'var(--accent)'; if (domainInput.value) domainInput.oninput(); };
+      domainInput.onfocus = () => { domainInput.style.borderBottomColor = 'var(--accent)'; domainInput.oninput(); };
       domainInput.onblur = async () => {
         setTimeout(() => domainDrop.style.display = 'none', 150);
         domainInput.style.borderBottomColor = 'transparent';
