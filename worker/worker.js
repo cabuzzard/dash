@@ -2065,7 +2065,7 @@ export default {
             'anthropic-version': '2023-06-01',
           },
           body: JSON.stringify({
-            model: 'claude-haiku-4-5',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 500,
             system: `You are a content ops assistant. Rewrite the input as structured entries.
 
@@ -2350,7 +2350,7 @@ Rules:
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY || '', 'anthropic-version': '2023-06-01' },
           body: JSON.stringify({
-            model: 'claude-haiku-4-5',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 1200,
             system: `You are a short-form video niche researcher. Given campaign keywords, identify the 15 most underserved niches and trends on TikTok and YouTube Shorts. Focus on niches with high audience demand but low quality content supply — real gaps where a creator can win quickly.
 
@@ -2465,7 +2465,7 @@ Rules:
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY || '', 'anthropic-version': '2023-06-01' },
           body: JSON.stringify({
-            model: 'claude-haiku-4-5',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 1200,
             system: `You are a TikTok Shop product researcher. Given campaign keywords, identify the 15 best-fit products currently trending on TikTok Shop Seller Central that this audience would buy. Focus on products with high GMV, strong creator adoption, and viral potential — real products a seller can source and promote today.
 
@@ -2520,7 +2520,7 @@ Rules:
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY || '', 'anthropic-version': '2023-06-01' },
           body: JSON.stringify({
-            model: 'claude-haiku-4-5',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 1200,
             system: `You are a product strategist. Given campaign keywords, identify 15 specific product or offer ideas that would sell well to this audience. Focus on digital products, info products, services, or physical products that directly address the audience's pain points and desires.
 
@@ -2575,7 +2575,7 @@ Rules:
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY || '', 'anthropic-version': '2023-06-01' },
           body: JSON.stringify({
-            model: 'claude-haiku-4-5',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 1200,
             system: `You are an Etsy market research specialist who knows the platform deeply. Given campaign keywords, identify the 15 top-selling and trending Etsy product opportunities that fit this niche. Draw on your knowledge of Etsy bestseller categories, high-review-count listings, and currently trending searches. Prioritize products with proven demand: digital downloads, personalized items, handmade goods, printables, and niche SVG/craft files that consistently rank in Etsy search.
 
