@@ -2489,7 +2489,7 @@ function renderKeywordPills(kwStr) {
 async function saveKeywordsFromArray(kws) {
   const val = kws.join(', ');
   if (RAW) RAW.keywords = val;
-  try { await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, value: val }); }
+  try { await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID_LIVE || RESEARCH_ID, value: val }); }
   catch(e) { console.error('Failed to save keywords:', e); }
 }
 
@@ -2499,7 +2499,7 @@ async function runRegenKeywords() {
   const kwEl = document.getElementById('r-keywords');
   kwEl.innerHTML = '<div class="loading"><div class="spinner"></div>Researching…</div>';
   try {
-    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, currentKeywords: (RAW && RAW.keywords) || '' });
+    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID_LIVE || RESEARCH_ID, currentKeywords: (RAW && RAW.keywords) || '' });
     renderKeywordPills(r.keywords || '');
   } catch(e) {
     renderKeywordPills((RAW && RAW.keywords) || '');
