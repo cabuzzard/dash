@@ -743,10 +743,10 @@ function renderSMTrends(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${t}"><span class="sm-trend-body">${line}</span></div>`; }
     const niche = line.slice(0, colonIdx).trim();
     const desc  = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row"><span class="sm-trend-niche">${niche}</span><span class="sm-trend-body">${desc}</span></div>`;
+    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${niche.replace(/"/g,'&quot;')}"><span class="sm-trend-niche">${niche}</span><span class="sm-trend-body">${desc}</span></div>`;
   }).join('');
 }
 
@@ -777,10 +777,10 @@ function renderProductIdeas(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${t}"><span class="sm-trend-body">${line}</span></div>`; }
     const name = line.slice(0, colonIdx).trim();
     const desc = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
+    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${name.replace(/"/g,'&quot;')}"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
   }).join('');
 }
 
@@ -794,10 +794,10 @@ function renderKDPBestSellers(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${t}"><span class="sm-trend-body">${line}</span></div>`; }
     const title = line.slice(0, colonIdx).trim();
     const desc  = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row"><span class="sm-trend-niche">${title}</span><span class="sm-trend-body">${desc}</span></div>`;
+    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${title.replace(/"/g,'&quot;')}"><span class="sm-trend-niche">${title}</span><span class="sm-trend-body">${desc}</span></div>`;
   }).join('');
 }
 
@@ -828,10 +828,10 @@ function renderTikTokShop(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${t}"><span class="sm-trend-body">${line}</span></div>`; }
     const name = line.slice(0, colonIdx).trim();
     const desc = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
+    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${name.replace(/"/g,'&quot;')}"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
   }).join('');
 }
 
@@ -1059,13 +1059,14 @@ async function loadTodos() {
   }
 }
 
-function openTdModal() {
-  document.getElementById('td-modal-input').value = '';
+function openTdModal(prefill = '') {
+  document.getElementById('td-modal-input').value = prefill || '';
   document.getElementById('tdModalStatus').textContent = '';
   document.getElementById('tdModalSave').disabled = false;
   document.getElementById('tdModalSave').textContent = 'Add Task';
   document.getElementById('tdModal').classList.add('open');
-  setTimeout(() => document.getElementById('td-modal-input').focus(), 100);
+  const inp = document.getElementById('td-modal-input');
+  setTimeout(() => { inp.focus(); if (prefill) { inp.select(); } }, 100);
 }
 
 function closeTdModal() {
