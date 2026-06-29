@@ -1285,7 +1285,7 @@ function renderProducts() {
   PRODUCT_ITEMS.forEach(p => {
     const row = document.createElement('div');
     row.className = 'product-row';
-    row.innerHTML = `<span class="product-name">${p.name}</span><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+    row.innerHTML = `<a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }
