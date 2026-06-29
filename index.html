@@ -4955,9 +4955,7 @@ function renderRunsPanel(panel, runs) {
 }
 
 let ovData = [];
-let ovSort = { col: null, asc: true };
-let siteCollapsed = {};
-try { siteCollapsed = JSON.parse(localStorage.getItem('ovSiteCollapsed') || '{}'); } catch(e) {}
+let ovSort = { primary: { col: null, asc: true }, secondary: { col: null, asc: true } };
 
 function toggleSite(site) {
   // default is collapsed, so open = false, closed = true (or missing = collapsed)
@@ -4986,11 +4984,20 @@ function syncStickyThead(cols, sortState, rerender) {
   cols.forEach((col, i) => {
     const th = document.createElement('th');
     if (col.type === 'num') th.className = 'num';
-    const arrow = sortState.col === i ? (sortState.asc ? '▲' : '▼') : '⬍';
+    const isPrimary   = sortState.primary.col === i;
+    const isSecondary = sortState.secondary.col === i;
+    const dir = isPrimary ? sortState.primary.asc : sortState.secondary.asc;
+    const arrow = isPrimary   ? (dir ? '▲' : '▼') + '<sup style="font-size:8px;vertical-align:super;opacity:.8;margin-left:1px;">1</sup>'
+                : isSecondary ? (dir ? '▲' : '▼') + '<sup style="font-size:8px;vertical-align:super;opacity:.5;margin-left:1px;">2</sup>'
+                : '⬍';
     th.innerHTML = col.label + ' <span style="opacity:.4;font-style:normal;margin-left:4px;">' + arrow + '</span>';
     th.onclick = () => {
-      if (sortState.col === i) sortState.asc = !sortState.asc;
-      else { sortState.col = i; sortState.asc = col.type === 'num' ? false : true; }
+      if (sortState.primary.col === i) {
+        sortState.primary.asc = !sortState.primary.asc;
+      } else {
+        sortState.secondary = { col: sortState.primary.col, asc: sortState.primary.asc };
+        sortState.primary = { col: i, asc: col.type === 'num' || col.type === 'date' ? false : true };
+      }
       rerender();
     };
     stickyRow.appendChild(th);
@@ -5066,28 +5073,29 @@ function renderTable() {
     { label: 'Changed',     key: 'lastChanged',      type: 'date' },
   ];
 
-  // Sort data — true flat sort, no site grouping
+  const sortVal = (c, col) => {
+    if (col.type === 'num')  return c[col.key] ?? 0;
+    if (col.type === 'date') return c[col.key] ? new Date(c[col.key]).getTime() : 0;
+    if (col.type === 'rel')  return (c[col.key]?.[0]?.name || c[col.key]?.[0] || '').toLowerCase();
+    return (c[col.key] || '').toLowerCase();
+  };
+  const cmpVals = (av, bv, col, asc) => {
+    const c = (col.type === 'num' || col.type === 'date') ? (av - bv) : String(av).localeCompare(String(bv));
+    return asc ? c : -c;
+  };
   const sorted = [...ovData].sort((a, b) => {
-    if (ovSort.col === null) return 0;
-    const col = cols[ovSort.col];
-    let av, bv;
-    if (col.type === 'num') {
-      av = a[col.key] ?? 0;
-      bv = b[col.key] ?? 0;
-      return ovSort.asc ? av - bv : bv - av;
-    } else if (col.type === 'date') {
-      av = a[col.key] ? new Date(a[col.key]).getTime() : 0;
-      bv = b[col.key] ? new Date(b[col.key]).getTime() : 0;
-      return ovSort.asc ? av - bv : bv - av;
-    } else if (col.type === 'rel') {
-      av = (a[col.key]?.[0]?.name || a[col.key]?.[0] || '');
-      bv = (b[col.key]?.[0]?.name || b[col.key]?.[0] || '');
-    } else {
-      av = a[col.key] || '';
-      bv = b[col.key] || '';
+    const p = ovSort.primary;
+    if (p.col !== null) {
+      const col = cols[p.col];
+      const c1 = cmpVals(sortVal(a, col), sortVal(b, col), col, p.asc);
+      if (c1 !== 0) return c1;
     }
-    const cmp = String(av).localeCompare(String(bv));
-    return ovSort.asc ? cmp : -cmp;
+    const s = ovSort.secondary;
+    if (s.col !== null) {
+      const col = cols[s.col];
+      return cmpVals(sortVal(a, col), sortVal(b, col), col, s.asc);
+    }
+    return 0;
   });
 
   const table = document.createElement('table');
@@ -5099,12 +5107,21 @@ function renderTable() {
   cols.forEach((col, i) => {
     const th = document.createElement('th');
     if (col.type === 'num') th.className = 'num';
-    if (i === ovSort.col) th.classList.add('sorted');
-    const arrow = ovSort.col === i ? (ovSort.asc ? '▲' : '▼') : '⬍';
+    const isPrimary   = ovSort.primary.col === i;
+    const isSecondary = ovSort.secondary.col === i;
+    if (isPrimary || isSecondary) th.classList.add('sorted');
+    const dir = isPrimary ? ovSort.primary.asc : ovSort.secondary.asc;
+    const arrow = isPrimary   ? (dir ? '▲' : '▼') + '<sup style="font-size:8px;vertical-align:super;opacity:.8;margin-left:1px;">1</sup>'
+                : isSecondary ? (dir ? '▲' : '▼') + '<sup style="font-size:8px;vertical-align:super;opacity:.5;margin-left:1px;">2</sup>'
+                : '⬍';
     th.innerHTML = col.label + ' <span class="sort-arrow">' + arrow + '</span>';
     th.onclick = () => {
-      if (ovSort.col === i) ovSort.asc = !ovSort.asc;
-      else { ovSort.col = i; ovSort.asc = col.type === 'num' ? false : true; }
+      if (ovSort.primary.col === i) {
+        ovSort.primary.asc = !ovSort.primary.asc;
+      } else {
+        ovSort.secondary = { col: ovSort.primary.col, asc: ovSort.primary.asc };
+        ovSort.primary = { col: i, asc: col.type === 'num' || col.type === 'date' ? false : true };
+      }
       renderTable();
     };
     hrow.appendChild(th);
@@ -5290,62 +5307,7 @@ function renderTable() {
     }
   }
 
-  // Group by site, preserving sort order within each group
-  const siteOrder = [];
-  const bySite = {};
-  sorted.forEach(c => {
-    const site = c.site || 'Other';
-    if (!bySite[site]) { bySite[site] = []; siteOrder.push(site); }
-    bySite[site].push(c);
-  });
-
-  const totalCols = cols.length + 5; // data cols + HL DB STE LVE ROI
-  siteOrder.forEach(site => {
-    const camps = bySite[site];
-    const collapsed = siteCollapsed[site] !== false; // default collapsed
-
-    // Aggregate stats for this site
-    const sumDev = camps.reduce((n, c) => n + (c.devTitles || 0), 0);
-    const sumPub = camps.reduce((n, c) => n + (c.pubTitles || 0), 0);
-    const sumTd  = camps.reduce((n, c) => n + (c.openTd  || 0), 0);
-    const latestChanged = camps.reduce((mx, c) => (!c.lastChanged ? mx : !mx || c.lastChanged > mx ? c.lastChanged : mx), null);
-    const changedLabel = latestChanged ? relTime(latestChanged) : '—';
-    const changedFull  = latestChanged ? new Date(latestChanged).toLocaleString() : '';
-
-    // Site header row — cells aligned to columns
-    const siteRow = document.createElement('tr');
-    siteRow.className = 'site-group-row';
-    siteRow.onclick = () => toggleSite(site);
-    const arrow = collapsed ? '▶' : '▾';
-    // Name cell spans first 5 text columns (Site, Campaign, Grouping, Key Message, Products)
-    const nameTd = document.createElement('td');
-    nameTd.colSpan = 5;
-    nameTd.innerHTML = '<span class="site-arrow">' + arrow + '</span><span class="site-name">' + esc(site) + '</span><span class="site-count">' + camps.length + '</span>';
-    siteRow.appendChild(nameTd);
-    // TD, Dev, Pub, Changed — one cell each aligned to their column
-    const mkStatTd = (val, title) => {
-      const td = document.createElement('td');
-      td.className = 'num';
-      td.style.cssText = 'font-size:11px;font-weight:600;color:var(--text3);';
-      td.textContent = val || '—';
-      if (title) td.title = title;
-      return td;
-    };
-    siteRow.appendChild(mkStatTd(sumTd  || ''));
-    siteRow.appendChild(mkStatTd(sumDev || ''));
-    siteRow.appendChild(mkStatTd(sumPub || ''));
-    const dateTd = mkStatTd(changedLabel, changedFull);
-    siteRow.appendChild(dateTd);
-    // Remaining link columns (HL DB STE LVE ROI)
-    const linkTd = document.createElement('td');
-    linkTd.colSpan = 5;
-    siteRow.appendChild(linkTd);
-    tbody.appendChild(siteRow);
-
-    if (!collapsed) {
-      camps.forEach(c => appendRow(c));
-    }
-  });
+  sorted.forEach(c => appendRow(c));
   table.appendChild(tbody);
   const wrap = document.createElement('div');
   wrap.className = 'table-wrap';
