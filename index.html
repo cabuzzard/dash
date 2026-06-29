@@ -579,9 +579,13 @@
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Processes</span>
         <button id="processesSaveBtn" onclick="saveProcesses()" style="font-size:11px;font-weight:600;padding:3px 12px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;display:none;">Save</button>
       </div>
-      <select id="methodsDropdown" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text2);font-size:12px;padding:6px 8px;margin-bottom:8px;font-family:inherit;outline:none;">
-        <option value="">— Methods —</option>
-      </select>
+      <div style="margin-bottom:8px;border:1px solid var(--border);border-radius:var(--radius-sm);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--border);">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Methods</span>
+          <button onclick="openAddMethodPrompt()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
+        </div>
+        <div id="methodsList" style="max-height:180px;overflow-y:auto;"></div>
+      </div>
       <textarea id="processesTextarea" placeholder="Document your processes here…" oninput="document.getElementById('processesSaveBtn').style.display='inline-block'" style="width:100%;min-height:100px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;line-height:1.6;padding:10px 12px;resize:vertical;outline:none;box-sizing:border-box;font-family:inherit;"></textarea>
     </div>
     <a class="add-link" onclick="openAddTdModal()">+ Add to do item</a>
@@ -7202,14 +7206,42 @@ const PROCESSES_KEY = 'hermes_processes';
 })();
 
 async function loadMethodsDropdown() {
-  const sel = document.getElementById('methodsDropdown');
-  if (!sel) return;
+  const el = document.getElementById('methodsList');
+  if (!el) return;
   try {
     const data = await call('searchMethods', { query: '' });
-    const methods = data.methods || [];
-    sel.innerHTML = '<option value="">— Methods —</option>' +
-      methods.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+    renderMethodsList(data.methods || []);
   } catch(e) { console.error('Failed to load methods:', e); }
+}
+
+function renderMethodsList(methods) {
+  const el = document.getElementById('methodsList');
+  if (!el) return;
+  if (!methods.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);font-style:italic;padding:8px 10px;">No methods.</div>'; return; }
+  el.innerHTML = methods.map(m => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);">
+      <a href="https://www.notion.so/${m.id}" target="_blank" rel="noopener" style="flex:1;font-size:13px;color:var(--text2);text-decoration:none;">${m.name}</a>
+      <button onclick="deleteMethodRow('${m.id}', this)" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:2px 6px;font-family:inherit;">✕</button>
+    </div>
+  `).join('');
+}
+
+async function openAddMethodPrompt() {
+  const name = prompt('Method name:');
+  if (!name || !name.trim()) return;
+  try {
+    await call('createMethod', { title: name.trim() });
+    loadMethodsDropdown();
+  } catch(e) { showToast('Failed to add method: ' + e.message, 'error'); }
+}
+
+async function deleteMethodRow(methodId, btn) {
+  if (!confirm('Remove this method?')) return;
+  const row = btn.closest('div');
+  try {
+    await call('deleteMethod', { methodId });
+    row.remove();
+  } catch(e) { showToast('Failed to delete method: ' + e.message, 'error'); }
 }
 function saveProcesses() {
   const val = document.getElementById('processesTextarea').value;

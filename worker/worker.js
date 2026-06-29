@@ -840,6 +840,19 @@ export default {
         return json({ success: true, id: result.id.replace(/-/g,""), name: title, status: platStatus });
       }
 
+      if (body.action === "deleteMethod") {
+        const { methodId } = body;
+        if (!methodId) return json({ error: "methodId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Delete failed" }, resp.status); }
+        return json({ success: true });
+      }
+
       if (body.action === "searchMethods") {
         const { query } = body;
         const rows = await notionQuery(METHODS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
