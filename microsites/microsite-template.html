@@ -112,8 +112,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 1: two col — campaign meta / unique opportunity -->
-<div class="two-col">
+<!-- SEC 1: three col — campaign meta / statement / unique opportunity -->
+<div class="three-col">
   <div class="col">
     <h2>Campaign</h2>
     <div class="content">
@@ -123,6 +123,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Microsite</div><div class="field-value" id="r-microsite"></div></div>
       <div class="field"><div class="field-label">Live Site</div><div class="field-value" id="r-livesite"></div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Statement <button class="td-add-btn-inline" onclick="openFieldResearchModal('statement')" title="Generate with AI">&#x25B6;</button></h2>
+    <div class="content">
+      <div class="body-text" id="r-statement" style="white-space:pre-wrap;min-height:40px;"></div>
     </div>
   </div>
   <div class="col">
@@ -824,6 +830,10 @@ async function loadResearch() {
         liveSiteEl.innerHTML = '<a href="' + r.liveSiteUrl + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + r.liveSiteUrl.replace(/^https?:\/\//, '') + '</a>';
       } else { liveSiteEl.innerHTML = '<span class="empty">—</span>'; }
     }
+    // Statement — render directly in SEC 1 panel
+    const stEl = document.getElementById('r-statement');
+    if (stEl) stEl.textContent = r.statement || '';
+
     // Unique Opportunity — render directly in SEC 1 panel
     const uoEl = document.getElementById('r-uniqueopportunity');
     if (uoEl) uoEl.textContent = r.uniqueOpportunity || '';
@@ -1587,6 +1597,14 @@ document.getElementById('smPromptModal').addEventListener('click', function(e) {
 
 // ── FIELD RESEARCH (Unique Opportunity / News Feed) ──────────────────
 const FIELD_META = {
+  statement: {
+    title: 'Statement — Generate',
+    hint:  'Claude will generate a campaign Statement based on the research and save it to Notion.',
+    promptFn: kws => `You are a campaign strategist. Based on these campaign keywords: ${kws}\n\nWrite a "Statement" — a single clear declaration of what this campaign stands for, who it serves, and what it promises. Write 2–3 sentences maximum. No headers, no bullets — direct, confident prose only.`,
+    notionField: 'statement',
+    renderId: 'r-statement',
+    renderFn: text => { const el = document.getElementById('r-statement'); if (el) el.textContent = text; },
+  },
   uniqueOpportunity: {
     title: 'Unique Opportunity — Generate',
     hint:  'Claude will analyse the campaign keywords and write a Unique Opportunity statement (2–4 paragraphs). The result is saved back to Notion.',

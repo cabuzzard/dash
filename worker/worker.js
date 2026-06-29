@@ -2054,6 +2054,7 @@ export default {
             youtubeOutliers:   props["YouTube Outliers"]?.rich_text?.map(t => t.plain_text).join("") || "",
             keyMessage: props["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
             webPageUrl: props["Web Page URL"]?.url || "",
+            statement:         props["Statement"]?.rich_text?.map(t => t.plain_text).join("") || "",
             uniqueOpportunity: props["Unique Opportunity"]?.rich_text?.map(t => t.plain_text).join("") || "",
             campaignGoal: cp["Campaign Goal"]?.rich_text?.map(t => t.plain_text).join("") || "",
             painPoints: cp["Pain Points"]?.rich_text?.map(t => t.plain_text).join("") || "",
@@ -2313,6 +2314,7 @@ Rules:
           keyMessage:        "Key Message",
           thoughts:          "Thoughts",
           uniqueOpportunity: "Unique Opportunity",
+          statement:         "Statement",
         };
         const notionField = fieldMap[field];
         if (!notionField) return json({ error: "Unknown field: " + field }, 400);

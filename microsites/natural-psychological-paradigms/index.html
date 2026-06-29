@@ -6,7 +6,7 @@
 <meta http-equiv="X-Frame-Options" content="DENY">
 <link rel="stylesheet" href="../style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Webguy — Natural Psychological Paradigms</title>
+<title>Webguy — AI Content Management</title>
 <style>
 /* STATUS CHANGE BUTTON */
 .title-status-btn {
@@ -174,7 +174,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 <!-- SEC 4: three col — keywords / SM trends / news feed -->
 <div class="three-col">
   <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span class="editable" onclick="openModal('keywords')">Keywords</span><button id="kwRegenBtn" onclick="runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid var(--border,#ddd);border-radius:4px;background:transparent;color:var(--text3,#888);cursor:pointer;white-space:nowrap;">&#8635; regen</button></h2>
+    <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
     <div class="content">
       <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -199,7 +199,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 5a: three col — product ideas / tiktok shop / etsy products -->
+<!-- SEC 5: three col — product ideas / tiktok shop / kdp best sellers -->
 <div class="three-col">
   <div class="col">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -227,21 +227,6 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
   <div class="col">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>Etsy Products</span>
-      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <input id="etsyKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
-        <button id="etsyBtn" onclick="runEtsyProducts()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
-      </span>
-    </h2>
-    <div class="content">
-      <div id="r-etsy"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div></div>
-
-<!-- SEC 5b: three col — kdp best sellers / youtube outliers / domain search -->
-<div class="three-col">
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <span>KDP Best Sellers</span>
       <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <input id="kdpKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
@@ -250,30 +235,6 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </h2>
     <div class="content">
       <div id="r-kdp"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>YouTube Outliers</span>
-      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <input id="ytOutliersKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
-        <button id="ytOutliersBtn" onclick="runYouTubeOutliers()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
-      </span>
-    </h2>
-    <div class="content">
-      <div id="r-ytoutliers"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>Domain Search</span>
-      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <input id="domainKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
-        <button id="domainSearchBtn" onclick="runDomainSearch()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
-      </span>
-    </h2>
-    <div class="content">
-      <div id="r-domains"><span class="empty">Press ⟳ search to check domain availability from keywords.</span></div>
     </div>
   </div>
 </div>
@@ -293,26 +254,6 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeStatusModal()">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- KEYWORD REGEN MODAL -->
-<div class="modal-overlay" id="kwRegenModal">
-  <div class="modal">
-    <div class="modal-head">
-      <div class="modal-title">Keywords — Edit &amp; Regenerate</div>
-      <button class="modal-close" onclick="closeKwModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="modal-hint">Edit the keywords below, then press Regenerate to get an expanded AI-researched list — or Save to keep your edits as-is.</div>
-      <textarea class="modal-ta" id="kwModalTa" rows="6" placeholder="keyword1, keyword2, keyword3…" style="min-height:120px;margin-top:8px;"></textarea>
-      <div class="modal-status" id="kwModalStatus"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="modal-btn save" id="kwModalRegenBtn" onclick="kwModalRegen()">&#8635; Regenerate</button>
-      <button class="modal-btn cancel" id="kwModalSaveBtn" onclick="kwModalSave()">Save</button>
-      <button class="modal-btn cancel" onclick="closeKwModal()">Cancel</button>
     </div>
   </div>
 </div>
@@ -593,8 +534,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-const CAMPAIGN_ID = "35c1f7d3a4bb81c1a6a9c378e0c776fa"; // natural-psychological-paradigms
-const RESEARCH_ID = "36d1f7d3a4bb8143993fc4776ead9a81"; // natural-psychological-paradigms research
+const CAMPAIGN_ID = "35c1f7d3a4bb81c1a6a9c378e0c776fa"; // mobility-mentor-fundraising
+const RESEARCH_ID = "36d1f7d3a4bb8143993fc4776ead9a81"; // research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/natural-psychological-paradigms/";
 let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
 let pin = '';
@@ -732,10 +673,10 @@ function renderSMTrends(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${line.trim().replace(/\"/g,'&quot;')}"><span class="sm-trend-body">${line}</span></div>`;
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
     const niche = line.slice(0, colonIdx).trim();
     const desc  = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${niche.replace(/\"/g,'&quot;')}"><span class="sm-trend-niche">${niche}</span><span class="sm-trend-body">${desc}</span></div>`;
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${niche}</span><span class="sm-trend-body">${desc}</span></div>`;
   }).join('');
 }
 
@@ -766,10 +707,10 @@ function renderProductIdeas(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${line.trim().replace(/\"/g,'&quot;')}"><span class="sm-trend-body">${line}</span></div>`;
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
     const name = line.slice(0, colonIdx).trim();
     const desc = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${name.replace(/\"/g,'&quot;')}"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
   }).join('');
 }
 
@@ -783,10 +724,10 @@ function renderKDPBestSellers(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${line.trim().replace(/\"/g,'&quot;')}"><span class="sm-trend-body">${line}</span></div>`;
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
     const title = line.slice(0, colonIdx).trim();
     const desc  = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${title.replace(/\"/g,'&quot;')}"><span class="sm-trend-niche">${title}</span><span class="sm-trend-body">${desc}</span></div>`;
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${title}</span><span class="sm-trend-body">${desc}</span></div>`;
   }).join('');
 }
 
@@ -801,7 +742,7 @@ async function runKDPBestSellers() {
     if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
     renderKDPBestSellers(data.text || '');
   } catch(e) {
-    el.innerHTML = `<span class="empty" style="color:#c0392b">${e.message || 'Search failed — try again.'}</span>`;
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
   }
@@ -817,10 +758,10 @@ function renderTikTokShop(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${line.trim().replace(/\"/g,'&quot;')}"><span class="sm-trend-body">${line}</span></div>`;
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
     const name = line.slice(0, colonIdx).trim();
     const desc = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${name.replace(/\"/g,'&quot;')}"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
   }).join('');
 }
 
@@ -841,39 +782,6 @@ async function runTikTokShop() {
   }
 }
 
-function renderEtsyProducts(text) {
-  const el = document.getElementById('r-etsy');
-  if (!el) return;
-  if (!text || !text.trim()) {
-    el.innerHTML = '<span class="empty">No results yet — press ⟳ search to find trending Etsy products.</span>';
-    return;
-  }
-  const lines = text.trim().split('\n').filter(l => l.trim());
-  el.innerHTML = lines.map(line => {
-    const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${line.trim().replace(/"/g,'&quot;')}"><span class="sm-trend-body">${line}</span></div>`;
-    const name = line.slice(0, colonIdx).trim();
-    const desc = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${name.replace(/"/g,'&quot;')}"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
-  }).join('');
-}
-
-async function runEtsyProducts() {
-  const btn = document.getElementById('etsyBtn');
-  const el  = document.getElementById('r-etsy');
-  const kwOverride = (document.getElementById('etsyKwInput')?.value || '').trim();
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
-  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching Etsy…</div>';
-  try {
-    const data = await w('getEtsyProducts', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
-    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
-    renderEtsyProducts(data.text || '');
-  } catch(e) {
-    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
-  }
-}
 async function runProductIdeas() {
   const btn = document.getElementById('prodIdeasBtn');
   const el  = document.getElementById('r-prodideas');
@@ -927,7 +835,12 @@ async function loadResearch() {
     };
 
     // SEC 2 — keywords as pills
-    renderKeywordPills(r.keywords || '');
+    const kwEl = document.getElementById('r-keywords');
+    if (r.keywords) {
+      kwEl.innerHTML = r.keywords.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('');
+    } else {
+      kwEl.innerHTML = '<span class="empty">—</span>';
+    }
 
     // SEC 2 — SM trends from Trend Intelligence field
     renderSMTrends(r.trendIntelligence || '');
@@ -938,14 +851,8 @@ async function loadResearch() {
     // SEC 3 — TikTok Shop Products field
     renderTikTokShop(r.tikTokShopProducts || '');
 
-    // SEC 5a — Etsy Products field
-    renderEtsyProducts(r.etsyProducts || '');
-
     // SEC 3 — KDP Best Sellers field
     renderKDPBestSellers(r.kdpBestSellers || '');
-
-    // SEC 5b — YouTube Outliers field
-    renderYouTubeOutliers(r.youtubeOutliers || '');
 
     // News Feed — condense via Claude
     const newsEl = document.getElementById('r-news');
@@ -1039,8 +946,10 @@ async function saveModal() {
   const cfg = MODAL_CFG[activeField];
   try {
     if (cfg.target === 'campaign') {
-      await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID_LIVE || RESEARCH_ID, value: val });
-      renderKeywordPills(val);
+      await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, value: val });
+      RAW.keywords = val;
+      const kwEl = document.getElementById('r-keywords');
+      kwEl.innerHTML = val ? val.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('') : '<span class="empty">—</span>';
     } else {
       await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
       RAW[cfg.field] = val;
@@ -1083,13 +992,13 @@ async function loadTodos() {
   }
 }
 
-function openTdModal(prefill = '') {
-  document.getElementById('td-modal-input').value = prefill || '';
+function openTdModal() {
+  document.getElementById('td-modal-input').value = '';
   document.getElementById('tdModalStatus').textContent = '';
   document.getElementById('tdModalSave').disabled = false;
   document.getElementById('tdModalSave').textContent = 'Add Task';
   document.getElementById('tdModal').classList.add('open');
-  setTimeout(() => { const inp = document.getElementById('td-modal-input'); inp.focus(); if (prefill) inp.select(); }, 100);
+  setTimeout(() => document.getElementById('td-modal-input').focus(), 100);
 }
 
 function closeTdModal() {
@@ -1125,26 +1034,6 @@ async function addTodoFromModal() {
     status.className = 'modal-status err';
     btn.disabled = false;
     btn.textContent = 'Add Task';
-  }
-}
-
-async function addToPodcastFromModal() {
-  const input = document.getElementById('td-modal-input');
-  const text = input.value.trim();
-  if (!text) return;
-  const btn = document.getElementById('tdModalPodcast');
-  const status = document.getElementById('tdModalStatus');
-  btn.disabled = true; btn.textContent = 'Adding…';
-  const campaignName = SITE_URL.replace(/\/$/, '').split('/').pop().replace(/-/g, ' ').replace(/\w/g, c => c.toUpperCase());
-  try {
-    await w('addToPodcast', { text, campaignName });
-    status.textContent = 'Added to Podcast ✓';
-    status.className = 'modal-status ok';
-    setTimeout(closeTdModal, 700);
-  } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-    status.className = 'modal-status err';
-    btn.disabled = false; btn.textContent = '+ Podcast';
   }
 }
 
@@ -2158,190 +2047,6 @@ async function submitAddTitle() {
     btn.disabled = false; btn.textContent = 'Create';
   }
 }
-
-
-// ── YOUTUBE OUTLIERS ─────────────────────────────────────────────────
-function renderYouTubeOutliers(text) {
-  const el = document.getElementById('r-ytoutliers');
-  if (!el) return;
-  if (!text || !text.trim()) {
-    el.innerHTML = '<span class="empty">No results yet — press &#x27F3; search to find outliers.</span>';
-    return;
-  }
-  const lines = text.trim().split('\n').filter(l => l.trim());
-  el.innerHTML = lines.map(line => {
-    const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
-    const title = line.slice(0, colonIdx).trim();
-    const desc  = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row"><span class="sm-trend-niche">${title}</span><span class="sm-trend-body">${desc}</span></div>`;
-  }).join('');
-}
-
-async function runYouTubeOutliers() {
-  const btn = document.getElementById('ytOutliersBtn');
-  const el  = document.getElementById('r-ytoutliers');
-  const kwOverride = (document.getElementById('ytOutliersKwInput')?.value || '').trim() || (RAW.keywords || '');
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
-  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching YouTube…</div>';
-  try {
-    const data = await w('getYouTubeOutliers', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
-    if (data.error) { if (el) el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
-    renderYouTubeOutliers(data.text || '');
-  } catch(e) {
-    if (el) el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
-  }
-}
-
-// ── DOMAIN SEARCH ─────────────────────────────────────────────────────
-function renderDomainResults(results) {
-  const el = document.getElementById('r-domains');
-  if (!el) return;
-  if (!results || !results.length) { el.innerHTML = '<span class="empty">No results.</span>'; return; }
-  const avail   = results.filter(r => r.available === true);
-  const taken   = results.filter(r => r.available === false);
-  const unknown = results.filter(r => r.available === null);
-  let html = '';
-  avail.forEach(r =>   { html += `<div class="sm-trend-row"><span style="color:#5ec95e;font-weight:700;margin-right:6px;font-size:12px;">✓</span><span class="sm-trend-niche" style="color:#5ec95e;">${r.domain}</span></div>`; });
-  taken.forEach(r =>   { html += `<div class="sm-trend-row"><span style="color:#555;margin-right:6px;font-size:12px;">✗</span><span class="sm-trend-body" style="color:#555;text-decoration:line-through;">${r.domain}</span></div>`; });
-  unknown.forEach(r => { html += `<div class="sm-trend-row"><span style="color:#555;margin-right:6px;">?</span><span class="sm-trend-body" style="color:#555;">${r.domain}</span></div>`; });
-  el.innerHTML = html || '<span class="empty">No results.</span>';
-}
-
-async function runDomainSearch() {
-  const btn = document.getElementById('domainSearchBtn');
-  const el  = document.getElementById('r-domains');
-  const kwOverride = (document.getElementById('domainKwInput')?.value || '').trim() || (RAW.keywords || '');
-  if (!kwOverride) { if (el) el.innerHTML = '<span class="empty">No keywords loaded yet.</span>'; return; }
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
-  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>Checking availability…</div>';
-  try {
-    const data = await w('checkDomains', { keywords: kwOverride });
-    if (data.error) { if (el) el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
-    renderDomainResults(data.results || []);
-  } catch(e) {
-    if (el) el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
-  }
-}
-
-// ── KEYWORDS — interactive pills ─────────────────────────────────────
-function renderKeywordPills(kwStr) {
-  const kwEl = document.getElementById('r-keywords');
-  kwEl.innerHTML = '';
-  const kws = kwStr ? kwStr.split(',').map(k => k.trim()).filter(Boolean) : [];
-  if (RAW) RAW.keywords = kws.join(', ');
-  if (!kws.length) { kwEl.innerHTML = '<span class="empty">—</span>'; return; }
-  kws.forEach((kw, i) => {
-    const pill = document.createElement('span');
-    pill.className = 'kw';
-    pill.style.cssText = 'display:inline-flex;align-items:center;gap:3px;';
-    const label = document.createElement('span');
-    label.textContent = kw;
-    label.title = 'Double-click to edit';
-    label.ondblclick = () => {
-      const inp = document.createElement('input');
-      inp.type = 'text'; inp.value = kw;
-      inp.style.cssText = 'font-size:12px;width:90px;background:#111;border:1px solid #555;color:#fff;padding:1px 4px;outline:none;border-radius:2px;';
-      pill.replaceChild(inp, label);
-      inp.focus(); inp.select();
-      const commit = () => {
-        const val = inp.value.trim();
-        if (val) kws[i] = val; else kws.splice(i, 1);
-        saveKeywordsFromArray(kws);
-        renderKeywordPills(kws.join(', '));
-      };
-      inp.onblur = commit;
-      inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.value = kw; inp.blur(); } };
-    };
-    const del = document.createElement('span');
-    del.textContent = '×';
-    del.title = 'Remove';
-    del.style.cssText = 'cursor:pointer;opacity:.4;font-size:14px;line-height:1;padding:0 1px;';
-    del.onmouseover = () => del.style.opacity = '1';
-    del.onmouseout  = () => del.style.opacity = '.4';
-    del.onclick = () => { kws.splice(i, 1); saveKeywordsFromArray(kws); renderKeywordPills(kws.join(', ')); };
-    pill.appendChild(label); pill.appendChild(del);
-    kwEl.appendChild(pill);
-  });
-  // + add button
-  const addBtn = document.createElement('span');
-  addBtn.textContent = '+';
-  addBtn.title = 'Add keyword';
-  addBtn.style.cssText = 'font-size:12px;cursor:pointer;color:#777;padding:2px 7px;border:1px dashed #333;border-radius:4px;opacity:.7;';
-  addBtn.onmouseover = () => addBtn.style.opacity = '1';
-  addBtn.onmouseout  = () => addBtn.style.opacity = '.7';
-  addBtn.onclick = () => {
-    const inp = document.createElement('input');
-    inp.type = 'text'; inp.placeholder = 'new keyword';
-    inp.style.cssText = 'font-size:12px;width:110px;background:#111;border:1px solid #555;color:#fff;padding:2px 6px;outline:none;border-radius:4px;';
-    addBtn.replaceWith(inp); inp.focus();
-    const commit = () => {
-      const val = inp.value.trim();
-      if (val) { kws.push(val); saveKeywordsFromArray(kws); }
-      renderKeywordPills(kws.join(', '));
-    };
-    inp.onblur = commit;
-    inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.value = ''; inp.blur(); } };
-  };
-  kwEl.appendChild(addBtn);
-}
-
-async function saveKeywordsFromArray(kws) {
-  const val = kws.join(', ');
-  if (RAW) RAW.keywords = val;
-  try { await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID_LIVE || RESEARCH_ID, value: val }); }
-  catch(e) { console.error('Failed to save keywords:', e); }
-}
-
-function openKwModal() {
-  document.getElementById('kwModalTa').value = (RAW && RAW.keywords) || '';
-  document.getElementById('kwModalStatus').textContent = '';
-  document.getElementById('kwModalStatus').className = 'modal-status';
-  document.getElementById('kwRegenModal').classList.add('open');
-}
-function closeKwModal() {
-  document.getElementById('kwRegenModal').classList.remove('open');
-}
-async function kwModalSave() {
-  const val = document.getElementById('kwModalTa').value.trim();
-  const kws = val.split(',').map(k => k.trim()).filter(Boolean);
-  await saveKeywordsFromArray(kws);
-  renderKeywordPills(kws.join(', '));
-  closeKwModal();
-}
-async function kwModalRegen() {
-  const regenBtn = document.getElementById('kwModalRegenBtn');
-  const saveBtn  = document.getElementById('kwModalSaveBtn');
-  const status   = document.getElementById('kwModalStatus');
-  const ta       = document.getElementById('kwModalTa');
-  regenBtn.disabled = true; regenBtn.textContent = '…';
-  saveBtn.disabled  = true;
-  status.textContent = 'Regenerating with AI…';
-  status.className = 'modal-status';
-  try {
-    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID_LIVE || RESEARCH_ID, currentKeywords: ta.value.trim() });
-    if (r.error) throw new Error(r.error);
-    ta.value = r.keywords || '';
-    await saveKeywordsFromArray(ta.value.split(',').map(k => k.trim()).filter(Boolean));
-    renderKeywordPills(ta.value);
-    status.textContent = 'Done — keywords saved.';
-    status.className = 'modal-status ok';
-    setTimeout(closeKwModal, 1200);
-  } catch(e) {
-    status.textContent = 'Failed: ' + e.message;
-    status.className = 'modal-status err';
-  } finally {
-    regenBtn.disabled = false; regenBtn.textContent = '⟳ Regenerate';
-    saveBtn.disabled  = false;
-  }
-}
-async function runRegenKeywords() { openKwModal(); }
-
-
 </script>
 </body>
 </html>
