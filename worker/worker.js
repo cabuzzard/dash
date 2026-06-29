@@ -2818,6 +2818,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
           id: r.id.replace(/-/g, ""),
           name: r.properties?.Name?.title?.map(t => t.plain_text).join("") || "",
           status: r.properties?.Status?.select?.name || "",
+          siteUrl: r.properties?.["microsite"]?.url || null,
         }));
         return json({ campaigns });
       }
