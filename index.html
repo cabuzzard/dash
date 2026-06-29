@@ -579,14 +579,14 @@
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Processes</span>
         <button id="processesSaveBtn" onclick="saveProcesses()" style="font-size:11px;font-weight:600;padding:3px 12px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;display:none;">Save</button>
       </div>
-      <div style="margin-bottom:8px;border:1px solid var(--border);border-radius:var(--radius-sm);">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--border);">
-          <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Methods</span>
-          <button onclick="openAddMethodPrompt()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
+      <textarea id="processesTextarea" placeholder="Document your processes here…" oninput="document.getElementById('processesSaveBtn').style.display='inline-block'" style="width:100%;min-height:100px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;line-height:1.6;padding:10px 12px;resize:vertical;outline:none;box-sizing:border-box;font-family:inherit;margin-bottom:8px;"></textarea>
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;cursor:pointer;" onclick="toggleMethodsList()">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Methods <span id="methodsToggleIcon" style="opacity:.5;">▶</span></span>
+          <button onclick="event.stopPropagation();openAddMethodPrompt()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
         </div>
-        <div id="methodsList" style="max-height:180px;overflow-y:auto;"></div>
+        <div id="methodsList" style="max-height:200px;overflow-y:auto;display:none;"></div>
       </div>
-      <textarea id="processesTextarea" placeholder="Document your processes here…" oninput="document.getElementById('processesSaveBtn').style.display='inline-block'" style="width:100%;min-height:100px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;line-height:1.6;padding:10px 12px;resize:vertical;outline:none;box-sizing:border-box;font-family:inherit;"></textarea>
     </div>
     <a class="add-link" onclick="openAddTdModal()">+ Add to do item</a>
     <div id="tdTabContent">
@@ -2304,7 +2304,6 @@ async function checkPin() {
       document.getElementById('pinScreen').classList.add('hidden');
       if (!ovLoaded) { ovLoaded = true; loadOverview(); }
       call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
-      loadMethodsDropdown();
     } else {
       document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
       document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
@@ -7205,6 +7204,15 @@ const PROCESSES_KEY = 'hermes_processes';
   ta.value = localStorage.getItem(PROCESSES_KEY) || '';
 })();
 
+function toggleMethodsList() {
+  const el = document.getElementById('methodsList');
+  const icon = document.getElementById('methodsToggleIcon');
+  const collapsed = el.style.display === 'none';
+  el.style.display = collapsed ? 'block' : 'none';
+  icon.textContent = collapsed ? '▾' : '▶';
+  if (collapsed && !el.dataset.loaded) { el.dataset.loaded = '1'; loadMethodsDropdown(); }
+}
+
 async function loadMethodsDropdown() {
   const el = document.getElementById('methodsList');
   if (!el) return;
@@ -7810,7 +7818,6 @@ if (SESSION_TOKEN) {
   document.getElementById('pinScreen').classList.add('hidden');
   if (!ovLoaded) { ovLoaded = true; loadOverview(); }
   call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
-  loadMethodsDropdown();
 }
 
 
