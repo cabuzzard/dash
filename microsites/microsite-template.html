@@ -1599,8 +1599,8 @@ document.getElementById('smPromptModal').addEventListener('click', function(e) {
 const FIELD_META = {
   statement: {
     title: 'Statement — Generate',
-    hint:  'Claude will generate a campaign Statement based on the research and save it to Notion.',
-    promptFn: kws => `You are a campaign strategist. Based on these campaign keywords: ${kws}\n\nWrite a "Statement" — a single clear declaration of what this campaign stands for, who it serves, and what it promises. Write 2–3 sentences maximum. No headers, no bullets — direct, confident prose only.`,
+    hint:  'Generates three value statements in order of relevance and market opportunity, using the format: I help [type of person] to have [type of benefit].',
+    promptFn: kws => `Given the keywords of this campaign: ${kws}\n\nGenerate three value statements for the campaign in order of relevance and market opportunity.\n\nEach statement must follow this exact format:\nI help [type of person] to have [type of benefit]\n\nOutput only the three statements, one per line, numbered 1–3. No extra commentary.`,
     notionField: 'statement',
     renderId: 'r-statement',
     renderFn: text => { const el = document.getElementById('r-statement'); if (el) el.textContent = text; },
