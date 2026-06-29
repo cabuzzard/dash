@@ -788,6 +788,22 @@ export default {
         return json({ success: true, id: newTodoId, name });
       }
 
+      if (body.action === "createProduct") {
+        const { title } = body;
+        if (!title) return json({ error: "title required" }, 400);
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: PRODUCTS_DB },
+            properties: { Name: { title: [{ type: "text", text: { content: title } }] } }
+          }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,""), name: title });
+      }
+
       if (body.action === "createMethod") {
         const { title } = body;
         if (!title) return json({ error: "title required" }, 400);
@@ -846,6 +862,79 @@ export default {
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
         return json({ success: true });
+      }
+
+      if (body.action === "getCampaignProducts") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const campPage = await campResp.json();
+        const productRels = campPage.properties?.["Products"]?.relation || [];
+        if (!productRels.length) return json({ products: [] });
+        const productPages = await Promise.all(productRels.map(r =>
+          fetch(`https://api.notion.com/v1/pages/${r.id}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+          }).then(res => res.json())
+        ));
+        const products = productPages.map(p => ({
+          id:   p.id.replace(/-/g,""),
+          name: p.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+        }));
+        return json({ products });
+      }
+
+      if (body.action === "addCampaignProduct") {
+        const { campaignId, productId } = body;
+        if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const campPage = await campResp.json();
+        const existing = (campPage.properties?.["Products"]?.relation || []).map(r => ({ id: r.id }));
+        if (!existing.some(r => r.id.replace(/-/g,"") === productId.replace(/-/g,""))) existing.push({ id: dashId(productId) });
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Products": { relation: existing } } }),
+        });
+        const result = await patchResp.json();
+        if (!patchResp.ok) return json({ error: result.message || "Update failed" }, patchResp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "removeCampaignProduct") {
+        const { campaignId, productId } = body;
+        if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const campPage = await campResp.json();
+        const filtered = (campPage.properties?.["Products"]?.relation || [])
+          .filter(r => r.id.replace(/-/g,"") !== productId.replace(/-/g,""))
+          .map(r => ({ id: r.id }));
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Products": { relation: filtered } } }),
+        });
+        const result = await patchResp.json();
+        if (!patchResp.ok) return json({ error: result.message || "Update failed" }, patchResp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "searchProducts") {
+        const { query } = body;
+        const rows = await notionQuery(PRODUCTS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
+        const products = rows.map(p => ({
+          id:   p.id.replace(/-/g,""),
+          name: p.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
+        })).filter(p => !query || p.name.toLowerCase().includes(query.toLowerCase()));
+        return json({ products: products.slice(0, 50) });
       }
 
       if (body.action === "updateCampaignMethods") {

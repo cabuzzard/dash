@@ -54,6 +54,19 @@ h2 {
   border-right: none;
 }
 
+/* FOUR COL SECTION */
+.four-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  border-bottom: 1px solid #161616;
+}
+.four-col .col {
+  border-right: 1px solid #161616;
+}
+.four-col .col:last-child {
+  border-right: none;
+}
+
 /* ONE COL SECTION */
 .one-col {
   border-bottom: 1px solid #161616;
