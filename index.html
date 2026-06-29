@@ -480,6 +480,24 @@
 </head>
 <body>
 
+<!-- METHOD BODY MODAL -->
+<div class="modal-overlay" id="methodBodyModal" style="display:none;" onclick="if(event.target===this)closeMethodBodyModal()">
+  <div class="modal" style="max-width:560px;display:flex;flex-direction:column;max-height:80vh;">
+    <div class="modal-head">
+      <div class="modal-title" id="methodBodyModalTitle">Method</div>
+      <button class="modal-close" onclick="closeMethodBodyModal()">✕</button>
+    </div>
+    <div class="modal-body" style="flex:1;overflow-y:auto;">
+      <textarea id="methodBodyTa" style="width:100%;min-height:260px;background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:inherit;font-size:13px;line-height:1.7;padding:10px 12px;resize:vertical;outline:none;box-sizing:border-box;"></textarea>
+      <div id="methodBodyStatus" style="font-size:11px;min-height:16px;margin-top:6px;color:var(--text3);"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeMethodBodyModal()">Cancel</button>
+      <button class="modal-btn save" id="methodBodySaveBtn" onclick="saveMethodBody()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- PIN -->
 <div class="pin-screen" id="pinScreen">
   <div class="pin-logo">Hermes7</div>
@@ -7228,10 +7246,52 @@ function renderMethodsList(methods) {
   if (!methods.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);font-style:italic;padding:8px 10px;">No methods.</div>'; return; }
   el.innerHTML = methods.map(m => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);">
-      <a href="https://www.notion.so/${m.id}" target="_blank" rel="noopener" style="flex:1;font-size:13px;color:var(--text2);text-decoration:none;">${m.name}</a>
+      <span onclick="openMethodBodyModal('${m.id}','${m.name.replace(/'/g,"\\'")}',this)" style="flex:1;font-size:13px;color:var(--text2);cursor:pointer;" title="Edit body">${m.name}</span>
+      <a href="https://www.notion.so/${m.id}" target="_blank" rel="noopener" style="font-size:10px;color:var(--text3);text-decoration:none;border:1px solid var(--border);padding:1px 5px;" title="Open in Notion">↗</a>
       <button onclick="deleteMethodRow('${m.id}', this)" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:2px 6px;font-family:inherit;">✕</button>
     </div>
   `).join('');
+}
+
+let methodBodyActiveId = '';
+
+async function openMethodBodyModal(id, name) {
+  methodBodyActiveId = id;
+  document.getElementById('methodBodyModalTitle').textContent = name;
+  document.getElementById('methodBodyTa').value = '';
+  document.getElementById('methodBodyStatus').textContent = 'Loading…';
+  document.getElementById('methodBodySaveBtn').disabled = true;
+  document.getElementById('methodBodyModal').style.display = 'flex';
+  try {
+    const data = await call('getPageBody', { pageId: id });
+    document.getElementById('methodBodyTa').value = data.text || '';
+    document.getElementById('methodBodyStatus').textContent = '';
+    document.getElementById('methodBodySaveBtn').disabled = false;
+    setTimeout(() => document.getElementById('methodBodyTa').focus(), 80);
+  } catch(e) {
+    document.getElementById('methodBodyStatus').textContent = 'Failed to load: ' + e.message;
+  }
+}
+
+function closeMethodBodyModal() {
+  document.getElementById('methodBodyModal').style.display = 'none';
+  methodBodyActiveId = '';
+}
+
+async function saveMethodBody() {
+  const text = document.getElementById('methodBodyTa').value;
+  const btn = document.getElementById('methodBodySaveBtn');
+  const status = document.getElementById('methodBodyStatus');
+  btn.disabled = true;
+  status.textContent = 'Saving…';
+  try {
+    await call('updatePageBody', { pageId: methodBodyActiveId, text });
+    status.textContent = 'Saved ✓';
+    setTimeout(closeMethodBodyModal, 800);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    btn.disabled = false;
+  }
 }
 
 async function openAddMethodPrompt() {

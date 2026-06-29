@@ -840,6 +840,50 @@ export default {
         return json({ success: true, id: result.id.replace(/-/g,""), name: title, status: platStatus });
       }
 
+      if (body.action === "getPageBody") {
+        const { pageId } = body;
+        if (!pageId) return json({ error: "pageId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/blocks/${dash(pageId)}/children?page_size=100`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+        });
+        const data = await resp.json();
+        const text = (data.results || [])
+          .filter(b => b.type === "paragraph")
+          .map(b => b.paragraph?.rich_text?.map(t => t.plain_text).join("") || "")
+          .join("\n\n");
+        return json({ text });
+      }
+
+      if (body.action === "updatePageBody") {
+        const { pageId, text } = body;
+        if (!pageId) return json({ error: "pageId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const dashed = dash(pageId);
+        // Archive existing children first by fetching and deleting
+        const existing = await fetch(`https://api.notion.com/v1/blocks/${dashed}/children?page_size=100`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+        }).then(r => r.json());
+        await Promise.all((existing.results || []).map(b =>
+          fetch(`https://api.notion.com/v1/blocks/${b.id}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+          })
+        ));
+        // Write new paragraphs (chunk by 2000 chars per block, max 100 blocks per request)
+        const paragraphs = (text || "").split(/\n\n+/).filter(p => p.trim());
+        const children = paragraphs.length
+          ? paragraphs.map(p => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: p.slice(0, 2000) } }] } }))
+          : [{ object: "block", type: "paragraph", paragraph: { rich_text: [] } }];
+        const resp = await fetch(`https://api.notion.com/v1/blocks/${dashed}/children`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ children })
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Update failed" }, resp.status); }
+        return json({ success: true });
+      }
+
       if (body.action === "deleteMethod") {
         const { methodId } = body;
         if (!methodId) return json({ error: "methodId required" }, 400);
