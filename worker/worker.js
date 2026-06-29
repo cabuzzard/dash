@@ -433,6 +433,15 @@ export default {
           },
         });
       }
+      if (url.pathname === "/ping-claude") {
+        const testResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 10, messages: [{ role: "user", content: "hi" }] })
+        });
+        const testData = await testResp.json();
+        return json({ http_status: testResp.status, ok: testResp.ok, response: testData });
+      }
       return json({ status: "ok", version: "2026-06-01-01" });
     }
     if (request.method !== "POST")    return json({ error: "POST only" }, 405);
@@ -2366,7 +2375,7 @@ Rules:
           })
         });
         const claudeData = await claudeResp.json();
-        if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error' }, 502);
+        if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error', type: claudeData.error?.type, status: claudeResp.status }, 502);
         const result = (claudeData.content?.[0]?.text || '').trim();
 
         // Write to Notion Research DB → Trend Intelligence field
@@ -2406,7 +2415,7 @@ Rules:
           method: "POST",
           headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
           body: JSON.stringify({
-            model: "claude-haiku-4-5",
+            model: "claude-haiku-4-5-20251001",
             max_tokens: 1200,
             system: `You are a KDP publishing market researcher with deep knowledge of Amazon Kindle bestseller lists. Given campaign keywords, identify 15 top-selling and trending Kindle ebook opportunities in that niche. Draw on your knowledge of what actually sells well on Amazon KDP — proven sub-niches, high-review-count categories, and titles with consistent demand.
 
@@ -2425,7 +2434,7 @@ Rules:
           })
         });
         const claudeData = await claudeResp.json();
-        if (!claudeResp.ok) return json({ error: claudeData.error?.message || "Claude error" }, 502);
+        if (!claudeResp.ok) return json({ error: claudeData.error?.message || "Claude error", type: claudeData.error?.type, status: claudeResp.status }, 502);
         const result = (claudeData.content?.[0]?.text || "").trim();
         if (!result) return json({ error: "No results — try again" }, 500);
 
@@ -2481,7 +2490,7 @@ Rules:
           })
         });
         const claudeData = await claudeResp.json();
-        if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error' }, 502);
+        if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error', type: claudeData.error?.type, status: claudeResp.status }, 502);
         const result = (claudeData.content?.[0]?.text || '').trim();
 
         const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
@@ -2536,7 +2545,7 @@ Rules:
           })
         });
         const claudeData = await claudeResp.json();
-        if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error' }, 502);
+        if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error', type: claudeData.error?.type, status: claudeResp.status }, 502);
         const result = (claudeData.content?.[0]?.text || '').trim();
 
         const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
@@ -2593,7 +2602,7 @@ Rules:
           })
         });
         const claudeData = await claudeResp.json();
-        if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error' }, 502);
+        if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error', type: claudeData.error?.type, status: claudeResp.status }, 502);
         const result = (claudeData.content?.[0]?.text || '').trim();
 
         const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
@@ -2699,7 +2708,7 @@ Rules:
           method: "POST",
           headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
           body: JSON.stringify({
-            model: "claude-haiku-4-5",
+            model: "claude-haiku-4-5-20251001",
             max_tokens: 1000,
             system: `You are a YouTube content strategist. Format these outlier videos (small channel, outsized views) into a clean scannable list.
 
@@ -2715,7 +2724,7 @@ Rules:
           })
         });
         const claudeData = await claudeResp.json();
-        if (!claudeResp.ok) return json({ error: claudeData.error?.message || "Claude error" }, 502);
+        if (!claudeResp.ok) return json({ error: claudeData.error?.message || "Claude error", type: claudeData.error?.type, status: claudeResp.status }, 502);
         const result = (claudeData.content?.[0]?.text || "").trim();
 
         // 6. Save to Notion (best-effort — don't block on failure)

@@ -7268,6 +7268,7 @@ async function loadTodayCampaigns() {
       row.innerHTML = `
         <a href="https://www.notion.so/${nid}" target="_blank" rel="noopener" style="font-size:13px;color:var(--text);text-decoration:none;flex:1;">${c.name}</a>
         ${c.status ? `<span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:2px 6px;border:1px solid var(--border2);color:var(--text3);border-radius:3px;">${c.status}</span>` : ''}
+        ${c.siteUrl ? `<a href="${c.siteUrl}" target="_blank" rel="noopener" title="Open microsite" style="font-size:12px;color:var(--text3);text-decoration:none;opacity:.7;flex-shrink:0;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.7'">↗</a>` : ''}
       `;
       el.appendChild(row);
     });
