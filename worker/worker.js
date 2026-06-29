@@ -862,6 +862,70 @@ export default {
         return json({ success: true });
       }
 
+      if (body.action === "getCampaignMethods") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const campPage = await campResp.json();
+        const methodRels = campPage.properties?.["Methods"]?.relation || [];
+        if (!methodRels.length) return json({ methods: [] });
+        const methodPages = await Promise.all(methodRels.map(r =>
+          fetch(`https://api.notion.com/v1/pages/${r.id}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+          }).then(res => res.json())
+        ));
+        const methods = methodPages.map(p => ({
+          id:   p.id.replace(/-/g,""),
+          name: p.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+        }));
+        return json({ methods });
+      }
+
+      if (body.action === "addCampaignMethod") {
+        const { campaignId, methodId } = body;
+        if (!campaignId || !methodId) return json({ error: "campaignId and methodId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const campPage = await campResp.json();
+        const existing = (campPage.properties?.["Methods"]?.relation || []).map(r => ({ id: r.id }));
+        const alreadyLinked = existing.some(r => r.id.replace(/-/g,"") === methodId.replace(/-/g,""));
+        if (!alreadyLinked) existing.push({ id: dashId(methodId) });
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Methods": { relation: existing } } }),
+        });
+        const result = await patchResp.json();
+        if (!patchResp.ok) return json({ error: result.message || "Update failed" }, patchResp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "removeCampaignMethod") {
+        const { campaignId, methodId } = body;
+        if (!campaignId || !methodId) return json({ error: "campaignId and methodId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const campPage = await campResp.json();
+        const filtered = (campPage.properties?.["Methods"]?.relation || [])
+          .filter(r => r.id.replace(/-/g,"") !== methodId.replace(/-/g,""))
+          .map(r => ({ id: r.id }));
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Methods": { relation: filtered } } }),
+        });
+        const result = await patchResp.json();
+        if (!patchResp.ok) return json({ error: result.message || "Update failed" }, patchResp.status);
+        return json({ success: true });
+      }
+
       if (body.action === "deleteTitle") {
         const { titleId } = body;
         if (!titleId) return json({ error: "titleId required" }, 400);

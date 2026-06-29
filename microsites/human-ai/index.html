@@ -26,6 +26,10 @@
 .login-platform-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #555; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; margin-bottom: 6px; }
 .login-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .login-row:last-child { border-bottom: none; }
+/* METHOD LIST */
+.method-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.method-row:last-child { border-bottom: none; }
+.method-name { flex: 1; font-size: 13px; color: #c9c9c9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .login-meta { flex: 1; min-width: 0; }
 .login-name { font-size: 13px; color: #c9c9c9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .login-sub  { font-size: 11px; color: #555; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -139,12 +143,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 2: two col — main TD / platforms -->
-<div class="two-col">
+<!-- SEC 2: three col — main TD / methods / platforms -->
+<div class="three-col">
   <div class="col">
     <h2>Main TD <button class="td-add-btn-inline" onclick="openTdModal()" title="Add task">+</button></h2>
     <div class="content">
       <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Methods <button class="td-add-btn-inline" onclick="openMethodModal()" title="Add method">+</button></h2>
+    <div class="content">
+      <div class="method-list" id="method-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
@@ -355,6 +365,28 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeLoginEditModal()">Cancel</button>
       <button class="modal-btn save" id="le-save" onclick="saveLoginEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- METHOD ADD MODAL -->
+<div class="modal-overlay" id="methodModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Method</div>
+      <button class="modal-close" onclick="closeMethodModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Search existing methods or type a new name to create one</div>
+      <div style="position:relative;margin-bottom:4px;" id="method-modal-wrap">
+        <input class="modal-ta" id="method-modal-input" type="text" placeholder="Method name…" style="height:32px;padding:5px 10px;" autocomplete="off" oninput="filterMethodDd()" onfocus="filterMethodDd()" />
+        <div id="method-modal-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
+      </div>
+      <div class="modal-status" id="methodModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeMethodModal()">Cancel</button>
+      <button class="modal-btn save" id="methodModalSave" onclick="addMethodFromModal()">Add</button>
     </div>
   </div>
 </div>
@@ -1059,6 +1091,157 @@ async function deleteTodo(id, btn) {
   }
 }
 
+// ── METHODS ───────────────────────────────────────────────────────────
+let METHOD_ITEMS = [];
+let ALL_METHODS  = [];
+
+function renderMethods() {
+  const el = document.getElementById('method-list');
+  el.innerHTML = '';
+  if (!METHOD_ITEMS.length) { el.innerHTML = '<div class="empty">No methods yet.</div>'; return; }
+  METHOD_ITEMS.forEach(m => {
+    const row = document.createElement('div');
+    row.className = 'method-row';
+    row.innerHTML = `<span class="method-name">${m.name}</span><button class="td-del" onclick="removeMethod('${m.id}', this)" title="Remove">✕</button>`;
+    el.appendChild(row);
+  });
+}
+
+async function loadMethods() {
+  const el = document.getElementById('method-list');
+  try {
+    const [campData, allData] = await Promise.all([
+      w('getCampaignMethods', { campaignId: CAMPAIGN_ID }),
+      w('searchMethods', { query: '' }),
+    ]);
+    METHOD_ITEMS = campData.methods || [];
+    ALL_METHODS  = allData.methods || [];
+    renderMethods();
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
+  }
+}
+
+async function removeMethod(methodId, btn) {
+  btn.disabled = true;
+  try {
+    await w('removeCampaignMethod', { campaignId: CAMPAIGN_ID, methodId });
+    METHOD_ITEMS = METHOD_ITEMS.filter(m => m.id !== methodId);
+    renderMethods();
+  } catch(e) {
+    btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+}
+
+let methodModalSelectedId = null;
+
+function openMethodModal() {
+  document.getElementById('method-modal-input').value = '';
+  document.getElementById('method-modal-dd').style.display = 'none';
+  document.getElementById('methodModalStatus').textContent = '';
+  document.getElementById('methodModalStatus').className = 'modal-status';
+  document.getElementById('methodModalSave').disabled = false;
+  document.getElementById('methodModalSave').textContent = 'Add';
+  methodModalSelectedId = null;
+  document.getElementById('methodModal').classList.add('open');
+  setTimeout(() => document.getElementById('method-modal-input').focus(), 100);
+}
+
+function closeMethodModal() {
+  document.getElementById('methodModal').classList.remove('open');
+  methodModalSelectedId = null;
+}
+
+document.getElementById('methodModal').addEventListener('click', function(e) {
+  if (e.target === this) closeMethodModal();
+});
+
+function filterMethodDd() {
+  const query  = (document.getElementById('method-modal-input').value || '').trim();
+  const queryL = query.toLowerCase();
+  const dd = document.getElementById('method-modal-dd');
+  dd.innerHTML = '';
+  methodModalSelectedId = null;
+
+  const matches = ALL_METHODS.filter(m =>
+    !query || m.name.toLowerCase().includes(queryL)
+  ).slice(0, 12);
+
+  matches.forEach(m => {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-item';
+    div.textContent = m.name;
+    div.onmousedown = () => { methodModalSelectedId = m.id; document.getElementById('method-modal-input').value = m.name; dd.style.display = 'none'; };
+    dd.appendChild(div);
+  });
+
+  const exact = ALL_METHODS.some(m => m.name.toLowerCase() === queryL);
+  if (query && !exact) {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-create';
+    div.textContent = '+ Create "' + query + '"';
+    div.onmousedown = async () => {
+      div.textContent = 'Creating…';
+      const saveBtn = document.getElementById('methodModalSave');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Creating…'; }
+      try {
+        const res = await w('createMethod', { title: query });
+        ALL_METHODS.push({ id: res.id, name: query });
+        methodModalSelectedId = res.id;
+        document.getElementById('method-modal-input').value = query;
+        dd.style.display = 'none';
+      } catch(e) {
+        div.textContent = 'Error: ' + e.message;
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Add'; }
+      }
+    };
+    dd.appendChild(div);
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#method-modal-wrap')) {
+    const dd = document.getElementById('method-modal-dd');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+async function addMethodFromModal() {
+  const name = document.getElementById('method-modal-input').value.trim();
+  if (!name) return;
+  const btn    = document.getElementById('methodModalSave');
+  const status = document.getElementById('methodModalStatus');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  status.textContent = '';
+  try {
+    let methodId = methodModalSelectedId;
+    if (!methodId) {
+      // create new
+      const res = await w('createMethod', { title: name });
+      methodId = res.id;
+      ALL_METHODS.push({ id: methodId, name });
+    }
+    await w('addCampaignMethod', { campaignId: CAMPAIGN_ID, methodId });
+    if (!METHOD_ITEMS.some(m => m.id === methodId)) {
+      METHOD_ITEMS.push({ id: methodId, name });
+    }
+    renderMethods();
+    status.textContent = 'Added ✓';
+    status.className = 'modal-status ok';
+    setTimeout(closeMethodModal, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+    btn.textContent = 'Add';
+  }
+}
+
 // ── PLATFORM LOGINS ──────────────────────────────────────────────────
 let LOGIN_ITEMS  = [];
 let ALL_PLATFORMS = [];
@@ -1465,6 +1648,7 @@ function init() {
   loadResearch();
   loadTitles();
   loadTodos();
+  loadMethods();
   loadLogins();
   loadSmPosts();
 }
