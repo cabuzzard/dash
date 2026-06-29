@@ -1015,7 +1015,7 @@ async function saveModal() {
   const cfg = MODAL_CFG[activeField];
   try {
     if (cfg.target === 'campaign') {
-      await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, value: val });
+      await w('updateResearch', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, field: 'keywords', value: val });
       renderKeywordPills(val);
     } else {
       await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
@@ -2489,7 +2489,7 @@ function renderKeywordPills(kwStr) {
 async function saveKeywordsFromArray(kws) {
   const val = kws.join(', ');
   if (RAW) RAW.keywords = val;
-  try { await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID_LIVE || RESEARCH_ID, value: val }); }
+  try { await w('updateResearch', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, field: 'keywords', value: val }); }
   catch(e) { console.error('Failed to save keywords:', e); }
 }
 

@@ -2458,6 +2458,7 @@ Rules:
         const { researchId, field, value } = body;
         if (!researchId || !field) return json({ error: "researchId and field required" }, 400);
         const fieldMap = {
+          keywords:          "Keywords",
           productIdeas:      "Product Ideas",
           notes:             "Notes",
           platforms:         "Platforms & Methods",
