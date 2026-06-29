@@ -2300,6 +2300,7 @@ async function checkPin() {
       document.getElementById('pinScreen').classList.add('hidden');
       if (!ovLoaded) { ovLoaded = true; loadOverview(); }
       call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
+      loadMethodsDropdown();
     } else {
       document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
       document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
@@ -7204,17 +7205,12 @@ async function loadMethodsDropdown() {
   const sel = document.getElementById('methodsDropdown');
   if (!sel) return;
   try {
-    const data = await fetch(WORKER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'searchMethods', query: '' })
-    }).then(r => r.json());
+    const data = await call('searchMethods', { query: '' });
     const methods = data.methods || [];
     sel.innerHTML = '<option value="">— Methods —</option>' +
       methods.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
   } catch(e) { console.error('Failed to load methods:', e); }
 }
-loadMethodsDropdown();
 function saveProcesses() {
   const val = document.getElementById('processesTextarea').value;
   localStorage.setItem(PROCESSES_KEY, val);
@@ -7782,6 +7778,7 @@ if (SESSION_TOKEN) {
   document.getElementById('pinScreen').classList.add('hidden');
   if (!ovLoaded) { ovLoaded = true; loadOverview(); }
   call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
+  loadMethodsDropdown();
 }
 
 
