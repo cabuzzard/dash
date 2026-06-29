@@ -200,7 +200,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 <!-- SEC 4: three col — keywords / SM trends / news feed -->
 <div class="three-col">
   <div class="col">
-    <h2 class="editable" onclick="openModal('keywords')">Keywords</h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span class="editable" onclick="openModal('keywords')">Keywords</span><button id="kwRegenBtn" onclick="runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #2a2a2a;background:transparent;color:#555;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button></h2>
     <div class="content">
       <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -908,13 +908,8 @@ async function loadResearch() {
       keywords: r.keywords || '',
     };
 
-    // SEC 2 — keywords as pills
-    const kwEl = document.getElementById('r-keywords');
-    if (r.keywords) {
-      kwEl.innerHTML = r.keywords.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('');
-    } else {
-      kwEl.innerHTML = '<span class="empty">—</span>';
-    }
+    // SEC 2 — keywords as interactive pills
+    renderKeywordPills(r.keywords || '');
 
     // SEC 2 — SM trends from Trend Intelligence field
     renderSMTrends(r.trendIntelligence || '');
@@ -1021,9 +1016,7 @@ async function saveModal() {
   try {
     if (cfg.target === 'campaign') {
       await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, value: val });
-      RAW.keywords = val;
-      const kwEl = document.getElementById('r-keywords');
-      kwEl.innerHTML = val ? val.split(',').map(k => `<span class="kw">${k.trim()}</span>`).join('') : '<span class="empty">—</span>';
+      renderKeywordPills(val);
     } else {
       await w('updateResearch', { researchId: RESEARCH_ID_LIVE, field: cfg.field, value: val });
       RAW[cfg.field] = val;
@@ -2431,6 +2424,88 @@ async function submitAddTitle() {
     status.textContent = 'Error: ' + e.message;
     btn.disabled = false; btn.textContent = 'Create';
   }
+}
+
+// ── KEYWORDS — interactive pills ─────────────────────────────────────
+function renderKeywordPills(kwStr) {
+  const kwEl = document.getElementById('r-keywords');
+  kwEl.innerHTML = '';
+  const kws = kwStr ? kwStr.split(',').map(k => k.trim()).filter(Boolean) : [];
+  if (RAW) RAW.keywords = kws.join(', ');
+  if (!kws.length) { kwEl.innerHTML = '<span class="empty">—</span>'; return; }
+  kws.forEach((kw, i) => {
+    const pill = document.createElement('span');
+    pill.className = 'kw';
+    pill.style.cssText = 'display:inline-flex;align-items:center;gap:3px;';
+    const label = document.createElement('span');
+    label.textContent = kw;
+    label.title = 'Double-click to edit';
+    label.ondblclick = () => {
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.value = kw;
+      inp.style.cssText = 'font-size:13px;width:110px;background:#111;border:1px solid #555;color:#fff;padding:2px 6px;outline:none;';
+      label.replaceWith(inp); inp.focus(); inp.select();
+      const commit = () => {
+        const val = inp.value.trim();
+        if (val) kws[i] = val; else kws.splice(i, 1);
+        saveKeywordsFromArray(kws);
+        renderKeywordPills(kws.join(', '));
+      };
+      inp.onblur = commit;
+      inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.value = kw; inp.blur(); } };
+    };
+    const del = document.createElement('span');
+    del.textContent = '×';
+    del.title = 'Remove';
+    del.style.cssText = 'cursor:pointer;opacity:.4;font-size:14px;line-height:1;padding:0 1px;';
+    del.onmouseover = () => del.style.opacity = '1';
+    del.onmouseout  = () => del.style.opacity = '.4';
+    del.onclick = () => { kws.splice(i, 1); saveKeywordsFromArray(kws); renderKeywordPills(kws.join(', ')); };
+    pill.appendChild(label); pill.appendChild(del);
+    kwEl.appendChild(pill);
+  });
+  const addBtn = document.createElement('span');
+  addBtn.textContent = '+';
+  addBtn.title = 'Add keyword';
+  addBtn.style.cssText = 'font-size:12px;cursor:pointer;color:#777;padding:2px 7px;border:1px dashed #333;opacity:.7;';
+  addBtn.onmouseover = () => addBtn.style.opacity = '1';
+  addBtn.onmouseout  = () => addBtn.style.opacity = '.7';
+  addBtn.onclick = () => {
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.placeholder = 'new keyword';
+    inp.style.cssText = 'font-size:12px;width:110px;background:#111;border:1px solid #555;color:#fff;padding:2px 6px;outline:none;';
+    addBtn.replaceWith(inp); inp.focus();
+    const commit = () => {
+      const val = inp.value.trim();
+      if (val) { kws.push(val); saveKeywordsFromArray(kws); }
+      renderKeywordPills(kws.join(', '));
+    };
+    inp.onblur = commit;
+    inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.value = ''; inp.blur(); } };
+  };
+  kwEl.appendChild(addBtn);
+}
+
+async function saveKeywordsFromArray(kws) {
+  const val = kws.join(', ');
+  if (RAW) RAW.keywords = val;
+  try { await w('updateCampaignKeywords', { campaignId: CAMPAIGN_ID, value: val }); }
+  catch(e) { console.error('Failed to save keywords:', e); }
+}
+
+async function runRegenKeywords() {
+  const btn = document.getElementById('kwRegenBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  const kwEl = document.getElementById('r-keywords');
+  kwEl.innerHTML = '<div class="loading"><div class="spinner"></div>Researching…</div>';
+  try {
+    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, currentKeywords: (RAW && RAW.keywords) || '' });
+    renderKeywordPills(r.keywords || '');
+  } catch(e) {
+    renderKeywordPills((RAW && RAW.keywords) || '');
+    alert('Regen failed: ' + e.message);
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '⟳ regen'; }
 }
 </script>
 </body>
