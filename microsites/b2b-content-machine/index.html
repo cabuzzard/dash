@@ -1263,11 +1263,8 @@ function openMethodGenModal(methodId, methodName) {
   document.getElementById('mgm-status').textContent = '';
   document.getElementById('mgm-go').disabled = true;
   const el = document.getElementById('mgm-products');
-  if (!PRODUCT_ITEMS.length) {
-    el.innerHTML = '<div style="color:#888;font-size:12px">No products in this campaign yet. Add products first.</div>';
-  } else {
-    el.innerHTML = PRODUCT_ITEMS.map(p => `<label class="mgp-option"><input type="radio" name="mgp" value="${p.id}" onchange="MGM_PRODUCT_ID=this.value;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false"> ${p.name}</label>`).join('');
-  }
+  const noneOpt = `<label class="mgp-option"><input type="radio" name="mgp" value="__none__" onchange="MGM_PRODUCT_ID='__none__';document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false"> <em style="color:#666">Campaign-level (no product)</em></label>`;
+  el.innerHTML = noneOpt + PRODUCT_ITEMS.map(p => `<label class="mgp-option"><input type="radio" name="mgp" value="${p.id}" onchange="MGM_PRODUCT_ID=this.value;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false"> ${p.name}</label>`).join('');
   document.getElementById('method-gen-modal').classList.add('open');
 }
 

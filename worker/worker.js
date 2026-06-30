@@ -2142,28 +2142,29 @@ export default {
       // ── generateMethodTitles ──
       if (body.action === "generateMethodTitles") {
         const { campaignId, methodId, productId } = body;
-        if (!campaignId || !methodId || !productId) return json({ error: "campaignId, methodId, productId required" }, 400);
+        if (!campaignId || !methodId) return json({ error: "campaignId and methodId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const hasProduct = productId && productId !== '__none__';
 
-        // Fetch research, method page+body, product in parallel
-        const [researchRaw, campRaw, methodPage, productPage] = await Promise.all([
+        // Fetch research, method page+body, and optionally product in parallel
+        const fetches = [
           fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
           }).then(r => r.json()),
           fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
           fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, { headers: hdr }).then(r => r.json()),
-          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
-        ]);
-
-        // Also fetch method body blocks
+          hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
+        ];
+        const [researchRaw, campRaw, methodPage, productPage] = await Promise.all(fetches);
         const methodBlocks = await fetch(`https://api.notion.com/v1/blocks/${dash(methodId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
 
         // Extract research
         const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
         const cp = campRaw.properties || {};
+        const campaignName = (cp.Name?.title || cp["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
         const research = {
           keywords:          rt(researchRaw, "Keywords"),
           statement:         rt(researchRaw, "Statement"),
@@ -2187,24 +2188,26 @@ export default {
         }).filter(Boolean).join("\n");
         const methodBody = extractText(methodBlocks);
 
-        // Extract product strategy
-        const pp = productPage.properties || {};
-        const ptxt = prop => (pp[prop]?.rich_text || []).map(x => x.plain_text).join("") || "";
-        const productName    = (pp.Name?.title || []).map(x => x.plain_text).join("") || "Unknown Product";
-        const productStrategy = {
-          avatar:         ptxt("Avatar"),
-          transformation: ptxt("Transformation"),
-          offerStructure: ptxt("Offer Structure"),
-          price:          ptxt("Price"),
-          spots:          pp.Spots?.number ?? null,
-          proofPoints:    ptxt("Proof Points"),
-          objections:     ptxt("Objections"),
-          uniqueAngle:    ptxt("Unique Angle"),
-        };
+        // Extract product strategy (optional)
+        let productSection = "No product — this is a campaign-level page.";
+        if (hasProduct && productPage) {
+          const pp = productPage.properties || {};
+          const ptxt = prop => (pp[prop]?.rich_text || []).map(x => x.plain_text).join("") || "";
+          const productName = (pp.Name?.title || []).map(x => x.plain_text).join("") || "Unknown Product";
+          productSection = `PRODUCT: ${productName}
+Avatar: ${ptxt("Avatar")}
+Transformation: ${ptxt("Transformation")}
+Offer Structure: ${ptxt("Offer Structure")}
+Price: ${ptxt("Price")}
+Proof Points: ${ptxt("Proof Points")}
+Objections: ${ptxt("Objections")}
+Unique Angle: ${ptxt("Unique Angle")}`;
+        }
 
         // Call Claude to generate titles
-        const prompt = `You are a content strategist. Generate all content titles for a campaign method, grounded in the campaign research and product strategy.
+        const prompt = `You are a content strategist. Generate all deliverable titles for a method, grounded in the campaign research${hasProduct ? " and product strategy" : ""}.
 
+CAMPAIGN: ${campaignName}
 CAMPAIGN RESEARCH:
 Keywords: ${research.keywords}
 Statement: ${research.statement}
@@ -2215,28 +2218,19 @@ Pain Points: ${research.painPoints}
 
 METHOD: ${methodName}
 METHOD FRAMEWORK:
-${methodBody || "(No framework defined — infer groupings from method name and best practices)"}
+${methodBody || "(No framework defined — infer phases and groupings from method name and best practices)"}
 
-PRODUCT: ${productName}
-Avatar: ${productStrategy.avatar}
-Transformation: ${productStrategy.transformation}
-Offer Structure: ${productStrategy.offerStructure}
-Price: ${productStrategy.price}
-Proof Points: ${productStrategy.proofPoints}
-Objections: ${productStrategy.objections}
-Unique Angle: ${productStrategy.uniqueAngle}
+${productSection}
 
 INSTRUCTIONS:
-- Read the method framework carefully. Each section/phase/heading in the framework is a Grouping.
-- Generate titles for EVERY grouping defined in the framework.
-- Each title must be specific to this product and grounded in the research — no generic titles.
-- Titles should be punchy, direct, and feel like real content pieces someone would actually make.
-- Aim for 3–6 titles per grouping unless the framework specifies otherwise.
+- Read the method framework carefully. Each Phase heading in the framework is a Phase. Each Grouping heading is a Grouping.
+- Generate titles for EVERY phase and grouping defined in the framework.
+- Each title must be specific to this campaign${hasProduct ? " and product" : ""} — use real names, real keywords, real positioning language. No generic titles.
+- Titles are deliverable names (things to produce), not content post headlines.
+- Aim for 2–3 titles per grouping unless the framework specifies otherwise.
 
-Return ONLY a JSON array. Each item: { "title": "...", "phase": "Setup|Week 1|Week 2|Evergreen|etc", "grouping": "subgroup within that phase" }
-
-Phase is the high-level sequence bucket (Setup, Week 1, Week 2, Week 3, Week 4, Evergreen, Launch, etc.).
-Grouping is the content type or sub-category within that phase (Bio, Pinned Post, Reel, Carousel, DM Script, etc.).
+Return ONLY a JSON array. Each item: { "title": "...", "phase": "exact phase name from framework", "grouping": "exact grouping name from framework" }
+No other text. No markdown fences.
 If the framework has no clear phases, use the framework section names as phase and content types as grouping.
 No other text. No markdown fences.`;
 
