@@ -2104,19 +2104,33 @@ export default {
           filter,
           sorts: [{ property: "Sequence Order", direction: "ascending" }],
         });
-        return json({
-          titles: results.map(page => {
-            const props = page.properties;
-            return {
-              id: page.id.replace(/-/g, ""),
-              title: props.Title?.title?.map(t => t.plain_text).join("") || "Untitled",
-              stage: props.Status?.select?.name || "",
-              cohort: props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "Uncategorized",
-              sequence: props["Sequence Order"]?.number || 999,
-              scheduled: props["Scheduled Date"]?.date?.start || "",
-            };
-          })
+        const titleList = results.map(page => {
+          const props = page.properties;
+          return {
+            id:        page.id.replace(/-/g, ""),
+            title:     props.Title?.title?.map(t => t.plain_text).join("") || "Untitled",
+            stage:     props.Status?.select?.name || "",
+            grouping:  props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "",
+            cohort:    props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "",
+            sequence:  props["Sequence Order"]?.number || 999,
+            scheduled: props["Scheduled Date"]?.date?.start || "",
+            productId: (props.product?.relation || [])[0]?.id?.replace(/-/g,"") || "__none__",
+            methodId:  (props.method?.relation  || [])[0]?.id?.replace(/-/g,"") || "__none__",
+          };
         });
+        // Resolve product + method names
+        const pIds = [...new Set(titleList.map(t => t.productId).filter(x => x !== '__none__'))];
+        const mIds = [...new Set(titleList.map(t => t.methodId).filter(x => x !== '__none__'))];
+        const dashify = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const fetchName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?" }; } catch(e) { return { id, name: "?" }; } };
+        const [prodPages, methPages] = await Promise.all([Promise.all(pIds.map(fetchName)), Promise.all(mIds.map(fetchName))]);
+        const pNames = Object.fromEntries(prodPages.map(p => [p.id, p.name]));
+        const mNames = Object.fromEntries(methPages.map(p => [p.id, p.name]));
+        titleList.forEach(t => {
+          t.productName = t.productId === '__none__' ? 'No Product' : (pNames[t.productId] || '?');
+          t.methodName  = t.methodId  === '__none__' ? 'No Method'  : (mNames[t.methodId]  || '?');
+        });
+        return json({ titles: titleList });
       }
 
       // ── generateMethodTitles ──
