@@ -2076,9 +2076,9 @@ function openFileUploadModal() {
   document.getElementById('fum-file').value = '';
   document.getElementById('fum-status').textContent = '';
   document.getElementById('fum-save').disabled = true;
-  document.getElementById('fileUploadModal').style.display = 'flex';
+  document.getElementById('fileUploadModal').classList.add('open');
 }
-function closeFileUploadModal() { document.getElementById('fileUploadModal').style.display = 'none'; }
+function closeFileUploadModal() { document.getElementById('fileUploadModal').classList.remove('open'); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFileUploadModal(); });
 function fumCheckReady() {
   const hasFile = document.getElementById('fum-file').files.length > 0;
@@ -2798,7 +2798,7 @@ async function runRegenKeywords() {
     <div class="method-gen-status" id="mgm-status"></div>
   </div>
 </div>
-<div class="modal-overlay" id="fileUploadModal" style="display:none" onclick="if(event.target===this)closeFileUploadModal()">
+<div class="modal-overlay" id="fileUploadModal" onclick="if(event.target===this)closeFileUploadModal()">
   <div class="modal-box" style="max-width:380px">
     <div class="modal-title">Upload File</div>
     <button class="modal-close" onclick="closeFileUploadModal()">✕</button>
