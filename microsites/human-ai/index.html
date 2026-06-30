@@ -1417,8 +1417,10 @@ function renderProducts() {
   if (!PRODUCT_ITEMS.length) { el.innerHTML = '<div class="empty">No products yet.</div>'; return; }
   PRODUCT_ITEMS.forEach(p => {
     const row = document.createElement('div');
-    row.className = 'product-row';
-    row.innerHTML = `<a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a><button class="gen-strategy-btn" onclick="generateProductStrategy('${p.id}', this)" title="Generate strategy from campaign research">⚡ Generate</button><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+    const isActive = p.status === 'Active';
+    row.className = 'product-row ' + (isActive ? 'is-active' : 'is-development');
+    row.dataset.productId = p.id;
+    row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a><button class="gen-strategy-btn" onclick="generateProductStrategy('${p.id}', this)" title="${isActive ? 'Regenerate strategy' : 'Generate strategy from campaign research'}">${isActive ? '↺ Regen' : '⚡ Generate'}</button><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }
@@ -2664,5 +2666,17 @@ async function runRegenKeywords() {
   if (btn) { btn.disabled = false; btn.textContent = '⟳ regen'; }
 }
 </script>
+<div id="method-gen-modal" onclick="if(event.target===this)closeMethodGenModal()">
+  <div class="method-gen-box">
+    <h3 id="mgm-title">Generate Titles</h3>
+    <div class="method-gen-subtitle">Select a product to generate content titles for this method</div>
+    <div class="method-gen-products" id="mgm-products"></div>
+    <div class="method-gen-actions">
+      <button class="method-gen-cancel" onclick="closeMethodGenModal()">Cancel</button>
+      <button class="method-gen-go" id="mgm-go" onclick="runMethodGenerate()" disabled>Generate</button>
+    </div>
+    <div class="method-gen-status" id="mgm-status"></div>
+  </div>
+</div>
 </body>
 </html>
