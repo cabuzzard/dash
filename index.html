@@ -6532,11 +6532,11 @@ function renderDev() {
           const gTitles = byGroup[gk];
           const gHdr = document.createElement('div');
           gHdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 12px;background:var(--bg);border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);cursor:pointer;user-select:none;';
-          const gArrow = document.createElement('span'); gArrow.textContent = '▾'; gArrow.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;';
+          const gArrow = document.createElement('span'); gArrow.textContent = '▶'; gArrow.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;';
           const gLabel = document.createElement('span'); gLabel.style.cssText = 'font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;flex:1;'; gLabel.textContent = gk;
           const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:var(--text3);'; gCount.textContent = gTitles.length;
           gHdr.appendChild(gArrow); gHdr.appendChild(gLabel); gHdr.appendChild(gCount);
-          const gBody = document.createElement('div');
+          const gBody = document.createElement('div'); gBody.style.display = 'none';
           gTitles.forEach(t => gBody.appendChild(makeTitleRow(t)));
           gHdr.onclick = () => { const o = gBody.style.display !== 'none'; gBody.style.display = o ? 'none' : 'block'; gArrow.textContent = o ? '▶' : '▾'; };
           container.appendChild(gHdr); container.appendChild(gBody);
@@ -6558,11 +6558,11 @@ function renderDev() {
           if (methOrder.length === 1 && mk.startsWith('__none__')) { renderGroupingLevel(meth.titles, container); return; }
           const mHdr = document.createElement('div');
           mHdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--surface);border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);cursor:pointer;user-select:none;';
-          const mArrow = document.createElement('span'); mArrow.textContent = '▾'; mArrow.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;';
+          const mArrow = document.createElement('span'); mArrow.textContent = '▶'; mArrow.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;';
           const mLabel = document.createElement('span'); mLabel.style.cssText = 'font-size:11px;font-weight:600;color:var(--text2);flex:1;'; mLabel.textContent = meth.name;
           const mCount = document.createElement('span'); mCount.style.cssText = 'font-size:10px;color:var(--text3);'; mCount.textContent = meth.titles.length;
           mHdr.appendChild(mArrow); mHdr.appendChild(mLabel); mHdr.appendChild(mCount);
-          const mBody = document.createElement('div');
+          const mBody = document.createElement('div'); mBody.style.display = 'none';
           renderGroupingLevel(meth.titles, mBody);
           mHdr.onclick = () => { const o = mBody.style.display !== 'none'; mBody.style.display = o ? 'none' : 'block'; mArrow.textContent = o ? '▶' : '▾'; };
           container.appendChild(mHdr); container.appendChild(mBody);
