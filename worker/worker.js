@@ -598,9 +598,12 @@ export default {
           const camp    = campById[campId] || { name: "?", site: "Other" };
 
           if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", titles: [] };
+          const rawGrouping = props.Grouping?.rich_text?.map(x => x.plain_text).join("") || "";
+          const gtParts = rawGrouping.split(" > ");
           campTitles[campId].titles.push({
             id, title, status,
-            grouping:   props.Grouping?.rich_text?.map(x => x.plain_text).join("") || "",
+            phase:      gtParts.length > 1 ? gtParts[0].trim() : "",
+            grouping:   gtParts.length > 1 ? gtParts.slice(1).join(" > ").trim() : rawGrouping,
             productId:  (props.product?.relation || [])[0]?.id?.replace(/-/g,"") || "__none__",
             methodId:   (props.method?.relation  || [])[0]?.id?.replace(/-/g,"") || "__none__",
           });
@@ -2110,8 +2113,7 @@ export default {
             id:        page.id.replace(/-/g, ""),
             title:     props.Title?.title?.map(t => t.plain_text).join("") || "Untitled",
             stage:     props.Status?.select?.name || "",
-            grouping:  props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "",
-            cohort:    props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "",
+            _rawGrouping: props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "",
             sequence:  props["Sequence Order"]?.number || 999,
             scheduled: props["Scheduled Date"]?.date?.start || "",
             productId: (props.product?.relation || [])[0]?.id?.replace(/-/g,"") || "__none__",
@@ -2129,6 +2131,10 @@ export default {
         titleList.forEach(t => {
           t.productName = t.productId === '__none__' ? 'No Product' : (pNames[t.productId] || '?');
           t.methodName  = t.methodId  === '__none__' ? 'No Method'  : (mNames[t.methodId]  || '?');
+          const parts = (t._rawGrouping || '').split(' > ');
+          t.phase    = parts.length > 1 ? parts[0].trim() : '';
+          t.grouping = parts.length > 1 ? parts.slice(1).join(' > ').trim() : (t._rawGrouping || '');
+          delete t._rawGrouping;
         });
         return json({ titles: titleList });
       }
@@ -2227,7 +2233,11 @@ INSTRUCTIONS:
 - Titles should be punchy, direct, and feel like real content pieces someone would actually make.
 - Aim for 3–6 titles per grouping unless the framework specifies otherwise.
 
-Return ONLY a JSON array. Each item: { "title": "...", "grouping": "exact grouping name from framework" }
+Return ONLY a JSON array. Each item: { "title": "...", "phase": "Setup|Week 1|Week 2|Evergreen|etc", "grouping": "subgroup within that phase" }
+
+Phase is the high-level sequence bucket (Setup, Week 1, Week 2, Week 3, Week 4, Evergreen, Launch, etc.).
+Grouping is the content type or sub-category within that phase (Bio, Pinned Post, Reel, Carousel, DM Script, etc.).
+If the framework has no clear phases, use the framework section names as phase and content types as grouping.
 No other text. No markdown fences.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -2272,7 +2282,7 @@ No other text. No markdown fences.`;
               properties: {
                 "Title":    { title: rtBlock(t.title) },
                 "Status":   { select: { name: "Development" } },
-                "Grouping": { rich_text: rtBlock(t.grouping || "") },
+                "Grouping": { rich_text: rtBlock(t.phase ? `${t.phase} > ${t.grouping || ''}` : (t.grouping || "")) },
                 "Campaign": { relation: [{ id: dash(campaignId) }] },
                 "method":   { relation: [{ id: dash(methodId) }] },
                 "product":  { relation: [{ id: dash(productId) }] },

@@ -1002,9 +1002,33 @@ async function loadTitles() {
         container.appendChild(gHdr); container.appendChild(gBody);
       });
     }
+    function renderPhaseLevel(titles, container) {
+      const hasPhase = titles.some(t => t.phase);
+      if (!hasPhase) { renderGroupingLevel(titles, container); return; }
+      const phaseOrder = [], byPhase = {};
+      titles.forEach(t => {
+        const pk = t.phase || '';
+        if (!byPhase[pk]) { byPhase[pk] = []; phaseOrder.push(pk); }
+        byPhase[pk].push(t);
+      });
+      phaseOrder.forEach(pk => {
+        const pTitles = byPhase[pk];
+        if (!pk) { renderGroupingLevel(pTitles, container); return; }
+        const pH = document.createElement('div');
+        pH.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 14px;background:rgba(139,92,246,.08);border-left:2px solid rgba(139,92,246,.4);border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;user-select:none;';
+        const pA = document.createElement('span'); pA.textContent = '▶'; pA.style.cssText = 'font-size:8px;color:#7c5cbf;flex-shrink:0;';
+        const pL = document.createElement('span'); pL.style.cssText = 'flex:1;font-size:11px;color:#a78bfa;font-weight:600;letter-spacing:.3px;'; pL.textContent = pk;
+        const pC = document.createElement('span'); pC.style.cssText = 'font-size:10px;color:#555;'; pC.textContent = pTitles.length;
+        pH.appendChild(pA); pH.appendChild(pL); pH.appendChild(pC);
+        const pB = document.createElement('div'); pB.style.display = 'none';
+        renderGroupingLevel(pTitles, pB);
+        pH.onclick = () => { const o = pB.style.display !== 'none'; pB.style.display = o ? 'none' : 'block'; pA.textContent = o ? '▶' : '▾'; };
+        container.appendChild(pH); container.appendChild(pB);
+      });
+    }
     function renderMethodLevel(titles, container) {
       const hasMeth = titles.some(t => t.methodId && t.methodId !== '__none__');
-      if (!hasMeth) { renderGroupingLevel(titles, container); return; }
+      if (!hasMeth) { renderPhaseLevel(titles, container); return; }
       const methOrder = [], byMeth = {};
       titles.forEach(t => {
         const mk = (t.methodId || '__none__') + '||' + (t.methodName || 'No Method');
@@ -1022,7 +1046,7 @@ async function loadTitles() {
         const mCount = document.createElement('span'); mCount.style.cssText = 'font-size:10px;color:#555;'; mCount.textContent = mTitles.length;
         mHdr.appendChild(mArrow); mHdr.appendChild(mLabel); mHdr.appendChild(mCount);
         const mBody = document.createElement('div'); mBody.style.display = 'none';
-        renderGroupingLevel(mTitles, mBody);
+        renderPhaseLevel(mTitles, mBody);
         mHdr.onclick = () => { const o = mBody.style.display !== 'none'; mBody.style.display = o ? 'none' : 'block'; mArrow.textContent = o ? '▶' : '▾'; };
         container.appendChild(mHdr); container.appendChild(mBody);
       });
