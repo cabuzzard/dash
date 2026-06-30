@@ -29,7 +29,24 @@
 /* METHOD LIST */
 .method-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .method-row:last-child { border-bottom: none; }
-.method-name { flex: 1; font-size: 13px; color: #c9c9c9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.method-name { flex: 1; font-size: 13px; color: #c9c9c9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.method-name:hover { color: #fff; text-decoration: underline; }
+/* METHOD GENERATE MODAL */
+#method-gen-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000; align-items:center; justify-content:center; }
+#method-gen-modal.open { display:flex; }
+.method-gen-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:24px; width:360px; max-width:92vw; }
+.method-gen-box h3 { margin:0 0 4px; font-size:15px; color:#fff; }
+.method-gen-subtitle { font-size:12px; color:#666; margin-bottom:16px; }
+.method-gen-products { display:flex; flex-direction:column; gap:6px; margin-bottom:16px; max-height:200px; overflow-y:auto; }
+.mgp-option { display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid #333; border-radius:6px; cursor:pointer; font-size:13px; color:#c9c9c9; transition:border-color .15s,background .15s; }
+.mgp-option:hover { border-color:#555; background:rgba(255,255,255,.04); }
+.mgp-option.selected { border-color:#63b3ed; background:rgba(99,179,237,.1); color:#fff; }
+.mgp-option input[type=radio] { accent-color:#63b3ed; }
+.method-gen-actions { display:flex; gap:8px; justify-content:flex-end; }
+.method-gen-go { padding:6px 16px; background:#63b3ed; color:#000; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
+.method-gen-go:disabled { opacity:.5; cursor:default; }
+.method-gen-cancel { padding:6px 12px; background:transparent; color:#888; border:1px solid #333; border-radius:6px; font-size:13px; cursor:pointer; }
+.method-gen-status { font-size:12px; color:#888; margin-top:10px; text-align:center; min-height:16px; }
 /* PRODUCT LIST */
 .product-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .product-row:last-child { border-bottom: none; }
@@ -135,7 +152,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="content">
       <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
-      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/34b1f7d3a4bb81b6a8a8fee04df94807" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/3661f7d3a4bb81adaaadc2ce80784112" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/REPLACE_CAMPAIGN_ID" target="_blank" class="notion-link">↗ Campaign</a></div></div>
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Microsite</div><div class="field-value" id="r-microsite"></div></div>
       <div class="field"><div class="field-label">Live Site</div><div class="field-value" id="r-livesite"></div></div>
@@ -176,15 +193,15 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2>Logins <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
+    <h2>Deliverables</h2>
     <div class="content">
-      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div class="deliverable-list" id="deliverable-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
 
-<!-- SEC 3: three col — SM posts / development titles / publish titles -->
-<div class="three-col">
+<!-- SEC 3: four col — SM posts / development titles / publish titles / logins -->
+<div class="four-col">
   <div class="col">
     <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Run research">&#x25B6;</button></h2>
     <div class="content">
@@ -201,6 +218,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <h2>Publish Titles</h2>
     <div class="content">
       <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Logins <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
+    <div class="content">
+      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
@@ -612,9 +635,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-const CAMPAIGN_ID = "34b1f7d3a4bb81b6a8a8fee04df94807"; // mobility-mentor-fundraising
-const RESEARCH_ID = "3661f7d3a4bb81adaaadc2ce80784112"; // research
-const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/mobility-mentor-fundraising/";
+const CAMPAIGN_ID = "REPLACE_CAMPAIGN_ID"; // replace with campaign Notion page ID (no dashes)
+const RESEARCH_ID = "REPLACE_CAMPAIGN_ID"; // same as CAMPAIGN_ID unless separate research page
+const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/REPLACE_SLUG/";
 let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
 let pin = '';
 
@@ -955,18 +978,115 @@ async function loadTitles() {
       .filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage))
       .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
     const pub = titles.filter(t => ['Publish','Published','Done'].includes(t.stage));
-    function render(arr, el) {
-      el.innerHTML = '';
-      if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
-      arr.forEach(t => {
-        const div = document.createElement('div');
-        div.className = 'title-row';
-        div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><span class="title-group">${t.cohort||''}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
-        el.appendChild(div);
+    function makeTitleRow(t) {
+      const div = document.createElement('div');
+      div.className = 'title-row';
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+      return div;
+    }
+    function renderGroupingLevel(titles, container) {
+      const groupOrder = [], byGroup = {};
+      titles.forEach(t => {
+        const gk = t.grouping || 'Ungrouped';
+        if (!byGroup[gk]) { byGroup[gk] = []; groupOrder.push(gk); }
+        byGroup[gk].push(t);
+      });
+      if (groupOrder.length === 1 && groupOrder[0] === 'Ungrouped') {
+        titles.forEach(t => container.appendChild(makeTitleRow(t))); return;
+      }
+      groupOrder.forEach(gk => {
+        const gTitles = byGroup[gk];
+        const gHdr = document.createElement('div');
+        gHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;user-select:none;';
+        const gArrow = document.createElement('span'); gArrow.textContent = '▶'; gArrow.style.cssText = 'font-size:8px;color:#555;flex-shrink:0;';
+        const gLabel = document.createElement('span'); gLabel.style.cssText = 'flex:1;font-size:11px;color:#888;'; gLabel.textContent = gk;
+        const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:#555;'; gCount.textContent = gTitles.length;
+        gHdr.appendChild(gArrow); gHdr.appendChild(gLabel); gHdr.appendChild(gCount);
+        const gBody = document.createElement('div'); gBody.style.display = 'none';
+        gTitles.forEach(t => gBody.appendChild(makeTitleRow(t)));
+        gHdr.onclick = () => { const o = gBody.style.display !== 'none'; gBody.style.display = o ? 'none' : 'block'; gArrow.textContent = o ? '▶' : '▾'; };
+        container.appendChild(gHdr); container.appendChild(gBody);
       });
     }
-    render(dev, devEl);
-    render(pub, pubEl);
+    function renderPhaseLevel(titles, container) {
+      const hasPhase = titles.some(t => t.phase);
+      if (!hasPhase) { renderGroupingLevel(titles, container); return; }
+      const phaseOrder = [], byPhase = {};
+      titles.forEach(t => {
+        const pk = t.phase || '';
+        if (!byPhase[pk]) { byPhase[pk] = []; phaseOrder.push(pk); }
+        byPhase[pk].push(t);
+      });
+      phaseOrder.forEach(pk => {
+        const pTitles = byPhase[pk];
+        if (!pk) { renderGroupingLevel(pTitles, container); return; }
+        const pH = document.createElement('div');
+        pH.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 14px;background:rgba(139,92,246,.08);border-left:2px solid rgba(139,92,246,.4);border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;user-select:none;';
+        const pA = document.createElement('span'); pA.textContent = '▶'; pA.style.cssText = 'font-size:8px;color:#7c5cbf;flex-shrink:0;';
+        const pL = document.createElement('span'); pL.style.cssText = 'flex:1;font-size:11px;color:#a78bfa;font-weight:600;letter-spacing:.3px;'; pL.textContent = pk;
+        const pC = document.createElement('span'); pC.style.cssText = 'font-size:10px;color:#555;'; pC.textContent = pTitles.length;
+        pH.appendChild(pA); pH.appendChild(pL); pH.appendChild(pC);
+        const pB = document.createElement('div'); pB.style.display = 'none';
+        renderGroupingLevel(pTitles, pB);
+        pH.onclick = () => { const o = pB.style.display !== 'none'; pB.style.display = o ? 'none' : 'block'; pA.textContent = o ? '▶' : '▾'; };
+        container.appendChild(pH); container.appendChild(pB);
+      });
+    }
+    function renderMethodLevel(titles, container) {
+      const hasMeth = titles.some(t => t.methodId && t.methodId !== '__none__');
+      if (!hasMeth) { renderPhaseLevel(titles, container); return; }
+      const methOrder = [], byMeth = {};
+      titles.forEach(t => {
+        const mk = (t.methodId || '__none__') + '||' + (t.methodName || 'No Method');
+        if (!byMeth[mk]) { byMeth[mk] = []; methOrder.push(mk); }
+        byMeth[mk].push(t);
+      });
+      methOrder.forEach(mk => {
+        const mTitles = byMeth[mk];
+        const methName = mk.split('||')[1];
+        if (methOrder.length === 1 && mk.startsWith('__none__')) { renderGroupingLevel(mTitles, container); return; }
+        const mHdr = document.createElement('div');
+        mHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px;background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.07);cursor:pointer;user-select:none;';
+        const mArrow = document.createElement('span'); mArrow.textContent = '▶'; mArrow.style.cssText = 'font-size:8px;color:#666;flex-shrink:0;';
+        const mLabel = document.createElement('span'); mLabel.style.cssText = 'flex:1;font-size:12px;color:#aaa;'; mLabel.textContent = methName;
+        const mCount = document.createElement('span'); mCount.style.cssText = 'font-size:10px;color:#555;'; mCount.textContent = mTitles.length;
+        mHdr.appendChild(mArrow); mHdr.appendChild(mLabel); mHdr.appendChild(mCount);
+        const mBody = document.createElement('div'); mBody.style.display = 'none';
+        renderPhaseLevel(mTitles, mBody);
+        mHdr.onclick = () => { const o = mBody.style.display !== 'none'; mBody.style.display = o ? 'none' : 'block'; mArrow.textContent = o ? '▶' : '▾'; };
+        container.appendChild(mHdr); container.appendChild(mBody);
+      });
+    }
+    function renderTitlesNested(arr, el) {
+      el.innerHTML = '';
+      if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
+      const hasProd = arr.some(t => t.productId && t.productId !== '__none__');
+      if (!hasProd) { renderMethodLevel(arr, el); return; }
+      const prodOrder = [], byProd = {};
+      arr.forEach(t => {
+        const pk = (t.productId || '__none__') + '||' + (t.productName || 'No Product');
+        if (!byProd[pk]) { byProd[pk] = []; prodOrder.push(pk); }
+        byProd[pk].push(t);
+      });
+      prodOrder.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
+      prodOrder.forEach(pk => {
+        const pTitles = byProd[pk];
+        const prodName = pk.split('||')[1];
+        if (prodOrder.length === 1 && pk.startsWith('__none__')) { renderMethodLevel(pTitles, el); return; }
+        const pHdr = document.createElement('div');
+        pHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);cursor:pointer;user-select:none;';
+        const pArrow = document.createElement('span'); pArrow.textContent = '▶'; pArrow.style.cssText = 'font-size:8px;color:#777;flex-shrink:0;';
+        const pLabel = document.createElement('span'); pLabel.style.cssText = 'flex:1;font-size:12px;color:#c9c9c9;font-weight:600;'; pLabel.textContent = prodName;
+        const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:#666;'; pCount.textContent = pTitles.length;
+        pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
+        const pBody = document.createElement('div'); pBody.style.display = 'none';
+        renderMethodLevel(pTitles, pBody);
+        pHdr.onclick = () => { const o = pBody.style.display !== 'none'; pBody.style.display = o ? 'none' : 'block'; pArrow.textContent = o ? '▶' : '▾'; };
+        el.appendChild(pHdr); el.appendChild(pBody);
+      });
+    }
+    renderTitlesNested(dev, devEl);
+    renderTitlesNested(pub, pubEl);
   } catch(e) {
     devEl.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
     pubEl.innerHTML = '<div class="empty">—</div>';
@@ -1136,11 +1256,57 @@ function renderMethods() {
   METHOD_ITEMS.forEach(m => {
     const row = document.createElement('div');
     row.className = 'method-row';
-    row.innerHTML = `<span class="method-name">${m.name}</span><button class="td-del" onclick="removeMethod('${m.id}', this)" title="Remove">✕</button>`;
+    row.innerHTML = `<span class="method-name" onclick="openMethodGenModal('${m.id}','${m.name}')" title="Generate titles for this method">${m.name}</span><button class="td-del" onclick="removeMethod('${m.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }
 
+let MGM_METHOD_ID = null, MGM_METHOD_NAME = '', MGM_PRODUCT_ID = null;
+
+function openMethodGenModal(methodId, methodName) {
+  MGM_METHOD_ID = methodId; MGM_METHOD_NAME = methodName; MGM_PRODUCT_ID = null;
+  document.getElementById('mgm-title').textContent = 'Generate: ' + methodName;
+  document.getElementById('mgm-status').textContent = '';
+  document.getElementById('mgm-go').disabled = true;
+  const el = document.getElementById('mgm-products');
+  const noneOpt = `<label class="mgp-option"><input type="radio" name="mgp" value="${CAMPAIGN_ID}" onchange="MGM_PRODUCT_ID=CAMPAIGN_ID;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false"> <em style="color:#a78bfa">&#9670; Campaign</em></label>`;
+  el.innerHTML = noneOpt + PRODUCT_ITEMS.map(p => `<label class="mgp-option"><input type="radio" name="mgp" value="${p.id}" onchange="MGM_PRODUCT_ID=this.value;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false"> ${p.name}</label>`).join('');
+  document.getElementById('method-gen-modal').classList.add('open');
+}
+
+function closeMethodGenModal() {
+  document.getElementById('method-gen-modal').classList.remove('open');
+  MGM_METHOD_ID = null; MGM_PRODUCT_ID = null;
+}
+
+async function runMethodGenerate() {
+  if (!MGM_METHOD_ID || !MGM_PRODUCT_ID) return;
+  const btn = document.getElementById('mgm-go');
+  const status = document.getElementById('mgm-status');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  status.textContent = 'Reading method framework and product strategy…';
+  status.style.color = '#888';
+  try {
+    const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
+    if (data.error) throw new Error(data.error);
+    const titles = data.titles || [];
+    let saved = 0;
+    for (let i = 0; i < titles.length; i += 10) {
+      status.textContent = 'Saving ' + Math.min(i + 10, titles.length) + ' / ' + titles.length + ' titles…';
+      const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
+      if (r.error) throw new Error(r.error);
+      saved += r.created;
+    }
+    status.textContent = '✓ Created ' + saved + ' titles';
+    status.style.color = '#68d391';
+    btn.textContent = 'Done';
+    setTimeout(closeMethodGenModal, 1800);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Generate';
+  }
+}
 async function loadMethods() {
   const el = document.getElementById('method-list');
   try {
@@ -1286,8 +1452,10 @@ function renderProducts() {
   if (!PRODUCT_ITEMS.length) { el.innerHTML = '<div class="empty">No products yet.</div>'; return; }
   PRODUCT_ITEMS.forEach(p => {
     const row = document.createElement('div');
-    row.className = 'product-row';
-    row.innerHTML = `<a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a><button class="gen-strategy-btn" onclick="generateProductStrategy('${p.id}', this)" title="Generate strategy from campaign research">⚡ Generate</button><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+    const isActive = p.status === 'Active';
+    row.className = 'product-row ' + (isActive ? 'is-active' : 'is-development');
+    row.dataset.productId = p.id;
+    row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a><button class="gen-strategy-btn" onclick="generateProductStrategy('${p.id}', this)" title="${isActive ? 'Regenerate strategy' : 'Generate strategy from campaign research'}">${isActive ? '↺ Regen' : '⚡ Generate'}</button><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }
@@ -1298,9 +1466,10 @@ async function generateProductStrategy(productId, btn) {
   try {
     const data = await w('generateProductStrategy', { productId, campaignId: CAMPAIGN_ID });
     if (data.error) { alert('Error: ' + data.error); return; }
-    btn.textContent = '✓ Done';
+    const row = btn.closest('.product-row');
+    if (row) { row.className = 'product-row is-active'; btn.textContent = '↺ Regen'; btn.title = 'Regenerate strategy'; }
     btn.style.color = '#68d391';
-    setTimeout(() => { btn.textContent = orig; btn.style.color = ''; btn.disabled = false; }, 3000);
+    setTimeout(() => { btn.style.color = ''; btn.disabled = false; }, 2000);
   } catch(e) {
     alert('Error: ' + e.message);
     btn.textContent = orig; btn.disabled = false;
@@ -1851,6 +2020,46 @@ function init() {
   loadProducts();
   loadLogins();
   loadSmPosts();
+  loadDeliverables();
+}
+
+// ── DELIVERABLES ─────────────────────────────────────────────────────
+async function loadDeliverables() {
+  const el = document.getElementById('deliverable-list');
+  if (!el) return;
+  try {
+    const data = await w('getDeliverables', { campaignId: CAMPAIGN_ID });
+    const items = data.deliverables || [];
+    if (!items.length) { el.innerHTML = '<div class="empty">No deliverables yet.</div>'; return; }
+    // Group by product
+    const byProduct = {}, productOrder = [];
+    items.forEach(d => {
+      if (!byProduct[d.productId]) { byProduct[d.productId] = { name: d.productName, items: [] }; productOrder.push(d.productId); }
+      byProduct[d.productId].items.push(d);
+    });
+    el.innerHTML = '';
+    const statusColor = { Draft: '#718096', Review: '#c9a800', Final: '#68d391' };
+    productOrder.forEach(pid => {
+      const group = byProduct[pid];
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;user-select:none;';
+      const arrow = document.createElement('span'); arrow.textContent = '▶'; arrow.style.cssText = 'font-size:8px;color:#555;flex-shrink:0;';
+      const label = document.createElement('span'); label.style.cssText = 'flex:1;font-size:12px;color:#aaa;font-weight:600;'; label.textContent = group.name;
+      const count = document.createElement('span'); count.style.cssText = 'font-size:10px;color:#555;'; count.textContent = group.items.length;
+      hdr.appendChild(arrow); hdr.appendChild(label); hdr.appendChild(count);
+      const body = document.createElement('div'); body.style.display = 'none';
+      group.items.forEach(d => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid rgba(255,255,255,.04);';
+        row.innerHTML = `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${d.type||'—'}</span><span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.name}</span><span style="font-size:10px;color:${statusColor[d.status]||'#555'};flex-shrink:0;">${d.status}</span><a href="https://www.notion.so/${d.id}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">↗</a>`;
+        body.appendChild(row);
+      });
+      hdr.onclick = () => { const o = body.style.display !== 'none'; body.style.display = o ? 'none' : 'block'; arrow.textContent = o ? '▶' : '▾'; };
+      el.appendChild(hdr); el.appendChild(body);
+    });
+  } catch(e) {
+    el.innerHTML = '<div class="empty" style="color:#f87171;">Error: ' + e.message + '</div>';
+  }
 }
 
 // ── SM POSTS ──────────────────────────────────────────────────────────
@@ -2532,5 +2741,17 @@ async function runRegenKeywords() {
   if (btn) { btn.disabled = false; btn.textContent = '⟳ regen'; }
 }
 </script>
+<div id="method-gen-modal" onclick="if(event.target===this)closeMethodGenModal()">
+  <div class="method-gen-box">
+    <h3 id="mgm-title">Generate Titles</h3>
+    <div class="method-gen-subtitle">Select a product to generate content titles for this method</div>
+    <div class="method-gen-products" id="mgm-products"></div>
+    <div class="method-gen-actions">
+      <button class="method-gen-cancel" onclick="closeMethodGenModal()">Cancel</button>
+      <button class="method-gen-go" id="mgm-go" onclick="runMethodGenerate()" disabled>Generate</button>
+    </div>
+    <div class="method-gen-status" id="mgm-status"></div>
+  </div>
+</div>
 </body>
 </html>
