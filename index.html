@@ -6376,13 +6376,12 @@ function renderDev() {
       const titlesEl = document.createElement('div');
       titlesEl.style.cssText = 'display:none;';
 
-      camp.titles.forEach((t, idx) => {
-          const isLast = idx === camp.titles.length - 1;
+      // ── Title row builder ────────────────────────────────────────────
+      const makeTitleRow = t => {
           const isPub = t.status === 'Publish';
           const sty = DEV_STATUS_STYLE[t.status] || { bg:'var(--bg)', clr:'var(--text2)', badgeClr:'#ff6a00', label:'↗' };
-          const br  = isLast ? '0 0 var(--radius-sm) var(--radius-sm)' : '0';
           const tRow = document.createElement('div');
-          tRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 10px 7px 28px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:'+sty.bg+';border-radius:'+br+';';
+          tRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 10px 7px 28px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:'+sty.bg+';';
 
           // Title name — clickable link
           const titleLink = document.createElement('a');
@@ -6514,9 +6513,89 @@ function renderDev() {
             } catch(err) { showToast('Failed: ' + err.message, 'error'); }
           };
           tRow.appendChild(delBtn);
+          return tRow;
+      }; // end makeTitleRow
 
-          titlesEl.appendChild(tRow);
-      });
+      // ── Grouping level ───────────────────────────────────────────────
+      const renderGroupingLevel = (titles, container) => {
+        const groupOrder = [], byGroup = {};
+        titles.forEach(t => {
+          const gk = t.grouping || 'Ungrouped';
+          if (!byGroup[gk]) { byGroup[gk] = []; groupOrder.push(gk); }
+          byGroup[gk].push(t);
+        });
+        if (groupOrder.length === 1 && groupOrder[0] === 'Ungrouped') {
+          titles.forEach(t => container.appendChild(makeTitleRow(t)));
+          return;
+        }
+        groupOrder.forEach(gk => {
+          const gTitles = byGroup[gk];
+          const gHdr = document.createElement('div');
+          gHdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 12px;background:var(--bg);border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);cursor:pointer;user-select:none;';
+          const gArrow = document.createElement('span'); gArrow.textContent = '▾'; gArrow.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;';
+          const gLabel = document.createElement('span'); gLabel.style.cssText = 'font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;flex:1;'; gLabel.textContent = gk;
+          const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:var(--text3);'; gCount.textContent = gTitles.length;
+          gHdr.appendChild(gArrow); gHdr.appendChild(gLabel); gHdr.appendChild(gCount);
+          const gBody = document.createElement('div');
+          gTitles.forEach(t => gBody.appendChild(makeTitleRow(t)));
+          gHdr.onclick = () => { const o = gBody.style.display !== 'none'; gBody.style.display = o ? 'none' : 'block'; gArrow.textContent = o ? '▶' : '▾'; };
+          container.appendChild(gHdr); container.appendChild(gBody);
+        });
+      };
+
+      // ── Method level ─────────────────────────────────────────────────
+      const renderMethodLevel = (titles, container) => {
+        const hasMeth = titles.some(t => t.methodId && t.methodId !== '__none__');
+        if (!hasMeth) { renderGroupingLevel(titles, container); return; }
+        const methOrder = [], byMeth = {};
+        titles.forEach(t => {
+          const mk = (t.methodId || '__none__') + '||' + (t.methodName || 'No Method');
+          if (!byMeth[mk]) { byMeth[mk] = { name: t.methodName || 'No Method', titles: [] }; methOrder.push(mk); }
+          byMeth[mk].titles.push(t);
+        });
+        methOrder.forEach(mk => {
+          const meth = byMeth[mk];
+          if (methOrder.length === 1 && mk.startsWith('__none__')) { renderGroupingLevel(meth.titles, container); return; }
+          const mHdr = document.createElement('div');
+          mHdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--surface);border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);cursor:pointer;user-select:none;';
+          const mArrow = document.createElement('span'); mArrow.textContent = '▾'; mArrow.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;';
+          const mLabel = document.createElement('span'); mLabel.style.cssText = 'font-size:11px;font-weight:600;color:var(--text2);flex:1;'; mLabel.textContent = meth.name;
+          const mCount = document.createElement('span'); mCount.style.cssText = 'font-size:10px;color:var(--text3);'; mCount.textContent = meth.titles.length;
+          mHdr.appendChild(mArrow); mHdr.appendChild(mLabel); mHdr.appendChild(mCount);
+          const mBody = document.createElement('div');
+          renderGroupingLevel(meth.titles, mBody);
+          mHdr.onclick = () => { const o = mBody.style.display !== 'none'; mBody.style.display = o ? 'none' : 'block'; mArrow.textContent = o ? '▶' : '▾'; };
+          container.appendChild(mHdr); container.appendChild(mBody);
+        });
+      };
+
+      // ── Product level ────────────────────────────────────────────────
+      const hasProd = camp.titles.some(t => t.productId && t.productId !== '__none__');
+      if (!hasProd) {
+        renderMethodLevel(camp.titles, titlesEl);
+      } else {
+        const prodOrder = [], byProd = {};
+        camp.titles.forEach(t => {
+          const pk = (t.productId || '__none__') + '||' + (t.productName || 'No Product');
+          if (!byProd[pk]) { byProd[pk] = { name: t.productName || 'No Product', titles: [] }; prodOrder.push(pk); }
+          byProd[pk].titles.push(t);
+        });
+        prodOrder.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
+        prodOrder.forEach(pk => {
+          const prod = byProd[pk];
+          if (prodOrder.length === 1 && pk.startsWith('__none__')) { renderMethodLevel(prod.titles, titlesEl); return; }
+          const pHdr = document.createElement('div');
+          pHdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--surface2);border-left:1px solid var(--border2);border-right:1px solid var(--border2);border-bottom:1px solid var(--border2);cursor:pointer;user-select:none;';
+          const pArrow = document.createElement('span'); pArrow.textContent = '▶'; pArrow.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;';
+          const pLabel = document.createElement('span'); pLabel.style.cssText = 'font-size:11px;font-weight:700;color:var(--text2);flex:1;'; pLabel.textContent = prod.name;
+          const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:var(--text3);'; pCount.textContent = prod.titles.length;
+          pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
+          const pBody = document.createElement('div'); pBody.style.display = 'none';
+          renderMethodLevel(prod.titles, pBody);
+          pHdr.onclick = () => { const o = pBody.style.display !== 'none'; pBody.style.display = o ? 'none' : 'block'; pArrow.textContent = o ? '▶' : '▾'; };
+          titlesEl.appendChild(pHdr); titlesEl.appendChild(pBody);
+        });
+      }
 
       campRow.onclick = () => {
         const open = titlesEl.style.display !== 'none';

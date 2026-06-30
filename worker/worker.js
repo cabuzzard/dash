@@ -598,13 +598,43 @@ export default {
           const camp    = campById[campId] || { name: "?", site: "Other" };
 
           if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", titles: [] };
-          campTitles[campId].titles.push({ id, title, status, grouping: props.Grouping?.rich_text?.map(x => x.plain_text).join("") || "" });
+          campTitles[campId].titles.push({
+            id, title, status,
+            grouping:   props.Grouping?.rich_text?.map(x => x.plain_text).join("") || "",
+            productId:  (props.product?.relation || [])[0]?.id?.replace(/-/g,"") || "__none__",
+            methodId:   (props.method?.relation  || [])[0]?.id?.replace(/-/g,"") || "__none__",
+          });
         });
 
-        // Add all campaigns Î"Ã‡Ã¶ even those with no titles
+        // Add all campaigns — even those with no titles
         Object.entries(campById).forEach(([campId, camp]) => {
           if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", titles: [] };
         });
+
+        // Resolve product and method names
+        const prodIdSet = new Set(), methIdSet = new Set();
+        Object.values(campTitles).forEach(c => c.titles.forEach(t => {
+          if (t.productId !== '__none__') prodIdSet.add(t.productId);
+          if (t.methodId  !== '__none__') methIdSet.add(t.methodId);
+        }));
+        const dashify = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const fetchPgName = async id => {
+          try {
+            const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
+            const p = await r.json();
+            return { id, name: (p.properties?.Name?.title || p.properties?.title?.title || []).map(x => x.plain_text).join("") || "?" };
+          } catch(e) { return { id, name: "?" }; }
+        };
+        const [prodPages2, methPages2] = await Promise.all([
+          Promise.all([...prodIdSet].map(fetchPgName)),
+          Promise.all([...methIdSet].map(fetchPgName)),
+        ]);
+        const pNames = Object.fromEntries(prodPages2.map(p => [p.id, p.name]));
+        const mNames = Object.fromEntries(methPages2.map(p => [p.id, p.name]));
+        Object.values(campTitles).forEach(c => c.titles.forEach(t => {
+          t.productName = t.productId === '__none__' ? 'No Product' : (pNames[t.productId] || '?');
+          t.methodName  = t.methodId  === '__none__' ? 'No Method'  : (mNames[t.methodId]  || '?');
+        }));
 
         const campaigns = Object.entries(campTitles).map(([campId, camp]) => {
           const devCount  = camp.titles.filter(t => t.status === "Development").length;
