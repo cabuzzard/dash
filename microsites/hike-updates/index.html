@@ -1226,7 +1226,7 @@ function renderMethods() {
   METHOD_ITEMS.forEach(m => {
     const row = document.createElement('div');
     row.className = 'method-row';
-    row.innerHTML = `<span class="method-name">${m.name}</span><button class="td-del" onclick="removeMethod('${m.id}', this)" title="Remove">✕</button>`;
+    row.innerHTML = `<span class="method-name" onclick="openMethodGenModal('${m.id}','${m.name}')" title="Generate titles for this method">${m.name}</span><button class="td-del" onclick="removeMethod('${m.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }
