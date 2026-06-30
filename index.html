@@ -912,12 +912,13 @@
               <th id="thExpiry" style="cursor:pointer;user-select:none;" onclick="toggleTradesSort()">Expiry <span id="trSortArrow"></span></th>
               <th>Max High</th>
               <th>Max Low</th>
+              <th>Max Day</th>
               <th>Current</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody id="tradesTableBody">
-            <tr><td colspan="9" style="color:var(--text3);font-style:italic;padding:20px 10px;">Loading…</td></tr>
+            <tr><td colspan="10" style="color:var(--text3);font-style:italic;padding:20px 10px;">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -9026,7 +9027,7 @@ function renderTradeTable() {
   const tbody = document.getElementById('tradesTableBody');
   if (!tbody) return;
   if (!tradesCache.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text3);font-style:italic;padding:20px 10px;">No trades yet. Tap + New Trade to log your first call.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text3);font-style:italic;padding:20px 10px;">No trades yet. Tap + New Trade to log your first call.</td></tr>';
     return;
   }
   let rows = [...tradesCache];
@@ -9080,6 +9081,12 @@ function renderTradeTable() {
     const currentCell =
       `<span style="color:${curColor};">${curP}</span> <span style="font-size:11px;">${curPct}</span>` +
       `<br><span style="color:${curCColor};font-size:11px;">${curC} <span style="font-size:10px;">${curCPct}</span></span>`;
+    const maxDayPct = t.max_daily_range_pct != null ? t.max_daily_range_pct.toFixed(1) + '%' : null;
+    const maxDayDate = t.max_daily_range_date ? t.max_daily_range_date.slice(5) : null; // MM-DD
+    const maxDayCell = maxDayPct
+      ? `<span style="color:var(--text);">${maxDayPct}</span><br><span style="font-size:10px;color:var(--text3);">${maxDayDate}</span>`
+      : '<span style="color:var(--text3);">—</span>';
+
     let badge;
     if (t.archive_failed)       badge = `<span class="tr-badge-exp" style="background:#3a1a00;color:#ff8844;border-color:#ff884466;cursor:pointer;" onclick="event.stopPropagation();retryArchive('${t.id}')" title="Notion archive failed — tap to retry\n${t.archive_error||''}">⚠ Retry Archive</span>`;
     else if (t.expired)         badge = '<span class="tr-badge-exp">Expired</span>';
@@ -9094,6 +9101,7 @@ function renderTradeTable() {
       <td class="tr-mono">${fmtExpiry(t.expiry)}</td>
       <td class="tr-mono" style="line-height:1.8;">${maxH}<br>${maxHC}</td>
       <td class="tr-mono" style="line-height:1.8;">${maxL}<br>${maxLC}</td>
+      <td class="tr-mono">${maxDayCell}</td>
       <td class="tr-mono" style="line-height:1.8;">${currentCell}</td>
       <td>${badge}</td>
     </tr>`;

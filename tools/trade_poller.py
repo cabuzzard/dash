@@ -90,6 +90,51 @@ def fetch_price(ticker: str) -> float | None:
         print(f"  [yfinance error] {ticker}: {e}")
     return None
 
+def fetch_max_daily_range(ticker: str, start_date: str) -> dict | None:
+    """
+    Scan daily OHLC since start_date and return the day with the largest
+    high-low span as a % of that day's open.
+    Returns {'range_pct', 'date', 'high', 'low'} or None on failure.
+    """
+    try:
+        t = yf.Ticker(ticker)
+        hist = t.history(start=start_date, interval="1d")
+        if hist.empty:
+            return None
+        hist = hist.dropna(subset=["High", "Low", "Open"])
+        hist["range_pct"] = (hist["High"] - hist["Low"]) / hist["Open"] * 100
+        idx = hist["range_pct"].idxmax()
+        row = hist.loc[idx]
+        return {
+            "range_pct": round(float(row["range_pct"]), 4),
+            "date":      str(idx.date()),
+            "high":      round(float(row["High"]), 4),
+            "low":       round(float(row["Low"]), 4),
+        }
+    except Exception as e:
+        print(f"  [range error] {ticker}: {e}")
+    return None
+
+def fetch_contract_price(ticker: str, strike: float, expiry_yyyymmdd: str, direction: str) -> float | None:
+    """Get the last price for a specific option contract via yfinance."""
+    if not expiry_yyyymmdd or len(expiry_yyyymmdd) < 8:
+        return None
+    try:
+        exp_date = f"{expiry_yyyymmdd[:4]}-{expiry_yyyymmdd[4:6]}-{expiry_yyyymmdd[6:8]}"
+        t = yf.Ticker(ticker)
+        chain = t.option_chain(exp_date)
+        df = chain.calls if direction in ("C", "CALL") else chain.puts
+        row = df[df["strike"] == float(strike)]
+        if row.empty:
+            # Nearest strike fallback
+            row = df.iloc[(df["strike"] - float(strike)).abs().argsort()[:1]]
+        last = row["lastPrice"].iloc[0]
+        if last and last > 0:
+            return round(float(last), 4)
+    except Exception as e:
+        print(f"  [contract error] {ticker} {strike} {expiry_yyyymmdd}: {e}")
+    return None
+
 def update_trade(trade_id: str, fields: dict):
     """Push updated fields to the worker."""
     return call("updateTrade", {"id": trade_id, **fields})
@@ -173,11 +218,66 @@ def poll_once():
                 updates["strike_reached"]      = True
                 updates["strike_reached_time"] = now
 
+        # Max daily range (underlying)
+        entry_time = trade.get("entry_time", "")
+        entry_date = entry_time[:10] if entry_time else None  # YYYY-MM-DD
+        if entry_date:
+            stored_range = trade.get("max_daily_range_pct")
+            if stored_range is None:
+                # First time — scan full history since entry
+                dr = fetch_max_daily_range(ticker, entry_date)
+            else:
+                # Check only yesterday's completed candle
+                from datetime import date, timedelta
+                yesterday = str((date.today() - timedelta(days=1)))
+                dr = fetch_max_daily_range(ticker, yesterday)
+            if dr and (stored_range is None or dr["range_pct"] > stored_range):
+                updates["max_daily_range_pct"]  = dr["range_pct"]
+                updates["max_daily_range_date"] = dr["date"]
+                updates["max_daily_range_high"] = dr["high"]
+                updates["max_daily_range_low"]  = dr["low"]
+
+        # Option contract price
+        contract_price = fetch_contract_price(ticker, strike, trade.get("expiry", ""), direction)
+        if contract_price is not None:
+            updates["current_contract"] = contract_price
+
+            if not trade.get("contract_captured") or trade.get("entry_contract") is None:
+                updates["entry_contract"]    = contract_price
+                updates["contract_captured"] = True
+
+            entry_contract = trade.get("entry_contract") or contract_price
+            updates["contract_pct"] = round((contract_price - entry_contract) / entry_contract * 100, 4)
+
+            # contract_max_high must be >= entry_contract (you always had entry as
+            # a baseline). Correct a stored value that's below entry — it means
+            # the poller was initialized mid-trade after the price had dropped.
+            prev_ch = trade.get("contract_max_high")
+            if prev_ch is None or prev_ch < entry_contract:
+                prev_ch = entry_contract
+            if contract_price > prev_ch:
+                updates["contract_max_high"]      = contract_price
+                updates["contract_max_high_time"] = now
+            else:
+                updates["contract_max_high"] = prev_ch  # write corrected floor if needed
+
+            # contract_max_low must be <= entry_contract for a losing trade, but
+            # don't force it — only correct None. Current price is the best low we know.
+            prev_cl = trade.get("contract_max_low")
+            if prev_cl is None or prev_cl > entry_contract:
+                prev_cl = entry_contract
+            if contract_price < prev_cl:
+                updates["contract_max_low"]      = contract_price
+                updates["contract_max_low_time"] = now
+            else:
+                updates["contract_max_low"] = prev_cl
+
         try:
             update_trade(tid, updates)
             pct = updates["current_pct"]
             sign = "+" if pct >= 0 else ""
-            print(f"${price:.2f} ({sign}{pct:.2f}%)")
+            contract_str = f" | contract ${contract_price:.2f}" if contract_price is not None else " | contract n/a"
+            print(f"${price:.2f} ({sign}{pct:.2f}%){contract_str}")
         except Exception as e:
             print(f"update error: {e}")
 
