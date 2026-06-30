@@ -1028,6 +1028,42 @@ export default {
         return json({ products: products.slice(0, 50) });
       }
 
+      if (body.action === "uploadProductFile") {
+        const { productId, fileName, contentType, fileData } = body;
+        if (!productId || !fileName || !contentType || !fileData) return json({ error: "productId, fileName, contentType, fileData required" }, 400);
+        const dashId = s => { const r = s.replace(/-/g,""); return r.slice(0,8)+'-'+r.slice(8,12)+'-'+r.slice(12,16)+'-'+r.slice(16,20)+'-'+r.slice(20); };
+        const dashed = dashId(productId);
+        const binary = atob(fileData);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const createResp = await fetch("https://api.notion.com/v1/file_uploads", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ content_type: contentType, mode: "single_part" }),
+        });
+        const createData = await createResp.json();
+        if (!createResp.ok) return json({ error: createData.message || "File upload init failed" }, createResp.status);
+        const { id: uploadId, upload_url: uploadUrl } = createData;
+        if (!uploadId) return json({ error: "File upload init returned no ID" }, 500);
+        const formData = new FormData();
+        formData.append("file", new Blob([bytes], { type: contentType }), fileName);
+        const putResp = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+          body: formData,
+        });
+        if (!putResp.ok) return json({ error: "File upload failed: " + (await putResp.text()).slice(0, 200) }, putResp.status);
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Files": { files: [{ type: "file_upload", name: fileName, file_upload: { id: uploadId } }] } } }),
+        });
+        const patchData = await patchResp.json();
+        if (!patchResp.ok) return json({ error: patchData.message || "Failed to attach file to product" }, patchResp.status);
+        const fileUrl = patchData.properties?.["Files"]?.files?.[0]?.file?.url || null;
+        return json({ success: true, fileName, fileUrl });
+      }
+
       if (body.action === "updateCampaignMethods") {
         const { campaignId, methodIds } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);

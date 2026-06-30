@@ -1455,7 +1455,7 @@ function renderProducts() {
     const isActive = p.status === 'Active';
     row.className = 'product-row ' + (isActive ? 'is-active' : 'is-development');
     row.dataset.productId = p.id;
-    row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a><button class="gen-strategy-btn" onclick="generateProductStrategy('${p.id}', this)" title="${isActive ? 'Regenerate strategy' : 'Generate strategy from campaign research'}">${isActive ? '↺ Regen' : '⚡ Generate'}</button><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+    row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a><button class="gen-strategy-btn" onclick="generateProductStrategy('${p.id}', this)" title="${isActive ? 'Regenerate strategy' : 'Generate strategy from campaign research'}">${isActive ? '↺ Regen' : '⚡ Generate'}</button><button class="td-add-btn-inline" onclick="triggerProductUpload('${p.id}')" title="Upload file">↑</button><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }
@@ -2059,6 +2059,32 @@ async function loadDeliverables() {
     });
   } catch(e) {
     el.innerHTML = '<div class="empty" style="color:#f87171;">Error: ' + e.message + '</div>';
+  }
+}
+
+// ── PRODUCT FILE UPLOAD ──────────────────────────────────────────────
+let _uploadProductId = null;
+function triggerProductUpload(productId) {
+  _uploadProductId = productId;
+  document.getElementById('product-file-input').value = '';
+  document.getElementById('product-file-input').click();
+}
+async function handleProductFileUpload(input) {
+  const file = input.files[0];
+  if (!file || !_uploadProductId) return;
+  const productId = _uploadProductId;
+  const btn = document.querySelector(`.product-row[data-product-id="${productId}"] button[title="Upload file"]`);
+  const origText = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = '…'; btn.disabled = true; }
+  try {
+    const reader = new FileReader();
+    const b64 = await new Promise((res, rej) => { reader.onload = e => res(e.target.result.split(',')[1]); reader.onerror = rej; reader.readAsDataURL(file); });
+    const data = await w('uploadProductFile', { productId, fileName: file.name, contentType: file.type || 'application/octet-stream', fileData: b64 });
+    if (data.error) throw new Error(data.error);
+    if (btn) { btn.textContent = '✓'; btn.style.color = '#68d391'; setTimeout(() => { btn.textContent = origText; btn.style.color = ''; btn.disabled = false; }, 2000); }
+  } catch(e) {
+    alert('Upload failed: ' + e.message);
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
   }
 }
 
@@ -2753,5 +2779,6 @@ async function runRegenKeywords() {
     <div class="method-gen-status" id="mgm-status"></div>
   </div>
 </div>
+<input type="file" id="product-file-input" style="display:none" accept="image/*,application/pdf,.zip,.png,.jpg,.jpeg,.gif,.webp" onchange="handleProductFileUpload(this)">
 </body>
 </html>
