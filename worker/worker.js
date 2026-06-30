@@ -967,8 +967,9 @@ export default {
           }).then(res => res.json())
         ));
         const products = productPages.map(p => ({
-          id:   p.id.replace(/-/g,""),
-          name: p.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+          id:     p.id.replace(/-/g,""),
+          name:   p.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+          status: p.properties?.Status?.select?.name || "In Development",
         }));
         return json({ products });
       }
@@ -2116,6 +2117,310 @@ export default {
             };
           })
         });
+      }
+
+      // ── generateMethodTitles ──
+      if (body.action === "generateMethodTitles") {
+        const { campaignId, methodId, productId } = body;
+        if (!campaignId || !methodId || !productId) return json({ error: "campaignId, methodId, productId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        // Fetch research, method page+body, product in parallel
+        const [researchRaw, campRaw, methodPage, productPage] = await Promise.all([
+          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+        ]);
+
+        // Also fetch method body blocks
+        const methodBlocks = await fetch(`https://api.notion.com/v1/blocks/${dash(methodId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+
+        // Extract research
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const cp = campRaw.properties || {};
+        const research = {
+          keywords:          rt(researchRaw, "Keywords"),
+          statement:         rt(researchRaw, "Statement"),
+          uniqueOpportunity: rt(researchRaw, "Unique Opportunity"),
+          keyMessage:        rt(researchRaw, "Key Message"),
+          campaignGoal:      (cp["Campaign Goal"]?.rich_text || []).map(t => t.plain_text).join(""),
+          painPoints:        (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join(""),
+        };
+
+        // Extract method info
+        const methodName = (methodPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Unknown Method";
+        const extractText = blocks => (blocks.results || []).map(b => {
+          const type = b.type;
+          const rich = b[type]?.rich_text || [];
+          const text = rich.map(t => t.plain_text).join("");
+          if (type === "heading_1" || type === "heading_2" || type === "heading_3") return `\n## ${text}`;
+          if (type === "bulleted_list_item") return `- ${text}`;
+          if (type === "numbered_list_item") return `${text}`;
+          if (type === "paragraph" && text) return text;
+          return "";
+        }).filter(Boolean).join("\n");
+        const methodBody = extractText(methodBlocks);
+
+        // Extract product strategy
+        const pp = productPage.properties || {};
+        const ptxt = prop => (pp[prop]?.rich_text || []).map(x => x.plain_text).join("") || "";
+        const productName    = (pp.Name?.title || []).map(x => x.plain_text).join("") || "Unknown Product";
+        const productStrategy = {
+          avatar:         ptxt("Avatar"),
+          transformation: ptxt("Transformation"),
+          offerStructure: ptxt("Offer Structure"),
+          price:          ptxt("Price"),
+          spots:          pp.Spots?.number ?? null,
+          proofPoints:    ptxt("Proof Points"),
+          objections:     ptxt("Objections"),
+          uniqueAngle:    ptxt("Unique Angle"),
+        };
+
+        // Call Claude to generate titles
+        const prompt = `You are a content strategist. Generate all content titles for a campaign method, grounded in the campaign research and product strategy.
+
+CAMPAIGN RESEARCH:
+Keywords: ${research.keywords}
+Statement: ${research.statement}
+Unique Opportunity: ${research.uniqueOpportunity}
+Key Message: ${research.keyMessage}
+Campaign Goal: ${research.campaignGoal}
+Pain Points: ${research.painPoints}
+
+METHOD: ${methodName}
+METHOD FRAMEWORK:
+${methodBody || "(No framework defined — infer groupings from method name and best practices)"}
+
+PRODUCT: ${productName}
+Avatar: ${productStrategy.avatar}
+Transformation: ${productStrategy.transformation}
+Offer Structure: ${productStrategy.offerStructure}
+Price: ${productStrategy.price}
+Proof Points: ${productStrategy.proofPoints}
+Objections: ${productStrategy.objections}
+Unique Angle: ${productStrategy.uniqueAngle}
+
+INSTRUCTIONS:
+- Read the method framework carefully. Each section/phase/heading in the framework is a Grouping.
+- Generate titles for EVERY grouping defined in the framework.
+- Each title must be specific to this product and grounded in the research — no generic titles.
+- Titles should be punchy, direct, and feel like real content pieces someone would actually make.
+- Aim for 3–6 titles per grouping unless the framework specifies otherwise.
+
+Return ONLY a JSON array. Each item: { "title": "...", "grouping": "exact grouping name from framework" }
+No other text. No markdown fences.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+
+        let titles;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          titles = JSON.parse(raw.replace(/```json\n?|\n?```/g, "").trim());
+        } catch(e) {
+          return json({ error: "Failed to parse titles JSON", raw: aiData.content?.[0]?.text }, 500);
+        }
+
+        // Save titles to Content Strategy DB in batches
+        const rtBlock = text => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        let created = 0;
+        for (let i = 0; i < titles.length; i += 5) {
+          await Promise.all(titles.slice(i, i + 5).map(t =>
+            fetch("https://api.notion.com/v1/pages", {
+              method: "POST",
+              headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                parent: { database_id: CONTENT_STRATEGY_DB },
+                properties: {
+                  "Title":    { title: rtBlock(t.title) },
+                  "Status":   { select: { name: "Development" } },
+                  "Grouping": { rich_text: rtBlock(t.grouping || "") },
+                  "Campaign": { relation: [{ id: dash(campaignId) }] },
+                  "method":   { relation: [{ id: dash(methodId) }] },
+                  "product":  { relation: [{ id: dash(productId) }] },
+                },
+              }),
+            })
+          ));
+          created += Math.min(5, titles.length - i);
+        }
+
+        return json({ created, titles });
+      }
+
+      // ── deleteTitlesByProduct ──
+      if (body.action === "deleteTitlesByProduct") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        // Query all titles for this product
+        let results = [], cursor;
+        do {
+          const r = await fetch(`https://api.notion.com/v1/databases/${CONTENT_STRATEGY_DB}/query`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ page_size: 100, filter: { property: "product", relation: { contains: dash(productId) } }, ...(cursor ? { start_cursor: cursor } : {}) }),
+          });
+          const page = await r.json();
+          results = results.concat(page.results || []);
+          cursor = page.has_more ? page.next_cursor : undefined;
+        } while (cursor);
+        // Archive all in parallel batches of 10
+        let deleted = 0;
+        for (let i = 0; i < results.length; i += 10) {
+          await Promise.all(results.slice(i, i + 10).map(p =>
+            fetch(`https://api.notion.com/v1/pages/${p.id}`, {
+              method: "PATCH",
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+              body: JSON.stringify({ archived: true }),
+            })
+          ));
+          deleted += Math.min(10, results.length - i);
+        }
+        return json({ deleted });
+      }
+
+      // ── getProduct ──
+      if (body.action === "getProduct") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const r = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+        });
+        const p = await r.json();
+        if (!r.ok) return json({ error: p.message || "Not found" }, r.status);
+        const props = p.properties;
+        const txt = prop => (props[prop]?.rich_text || []).map(x => x.plain_text).join("") || "";
+        return json({
+          id: productId,
+          name:           (props.Name?.title || []).map(x => x.plain_text).join("") || "",
+          avatar:         txt("Avatar"),
+          transformation: txt("Transformation"),
+          offerStructure: txt("Offer Structure"),
+          price:          txt("Price"),
+          spots:          props.Spots?.number ?? null,
+          proofPoints:    txt("Proof Points"),
+          objections:     txt("Objections"),
+          uniqueAngle:    txt("Unique Angle"),
+          description:    txt("Description"),
+          notes:          txt("Notes"),
+        });
+      }
+
+      // ── generateProductStrategy ──
+      if (body.action === "generateProductStrategy") {
+        const { productId, campaignId } = body;
+        if (!productId || !campaignId) return json({ error: "productId and campaignId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const notionHdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        // Fetch product + campaign research in parallel
+        const [prodResp, researchResults, campResp] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: notionHdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...notionHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: notionHdr }).then(r => r.json()),
+        ]);
+
+        const productName = (prodResp.properties?.Name?.title || []).map(x => x.plain_text).join("") || "Unknown Product";
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const cp = campResp.properties || {};
+        const research = {
+          keywords:          rt(researchResults, "Keywords"),
+          statement:         rt(researchResults, "Statement"),
+          uniqueOpportunity: rt(researchResults, "Unique Opportunity"),
+          productIdeas:      rt(researchResults, "Product Ideas"),
+          thoughts:          rt(researchResults, "Thoughts"),
+          keyMessage:        rt(researchResults, "Key Message"),
+          campaignGoal:      (cp["Campaign Goal"]?.rich_text || []).map(t => t.plain_text).join(""),
+          painPoints:        (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join(""),
+        };
+
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY secret not configured" }, 500);
+
+        const prompt = `You are a direct-response copywriter and product strategist. Given campaign research and a product name, derive a complete product strategy profile.
+
+CAMPAIGN RESEARCH:
+Keywords: ${research.keywords}
+Statement: ${research.statement}
+Unique Opportunity: ${research.uniqueOpportunity}
+Key Message: ${research.keyMessage}
+Campaign Goal: ${research.campaignGoal}
+Pain Points: ${research.painPoints}
+Product Ideas context: ${research.productIdeas}
+Thoughts: ${research.thoughts}
+
+PRODUCT NAME: ${productName}
+
+Derive the product strategy profile. Be specific, concrete, and grounded in the research — not generic.
+
+Return ONLY a JSON object with these exact keys:
+{
+  "avatar": "Who this is for — specific situation, pain, identity (2-3 sentences)",
+  "transformation": "Before state → After state. What changes and how life looks different (2-3 sentences)",
+  "offerStructure": "What's included, format, duration, delivery method (2-4 sentences)",
+  "price": "Suggested price with one-sentence rationale",
+  "spots": <integer number of spots, or null>,
+  "proofPoints": "3-5 bullet points of the kind of proof/results this product should build toward. Be specific.",
+  "objections": "Top 3 objections and the honest answer to each. Format: Objection → Answer",
+  "uniqueAngle": "One sentence that separates this from every other offer in this space"
+}`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1500, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+
+        let strategy;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          strategy = JSON.parse(raw.replace(/```json\n?|\n?```/g, "").trim());
+        } catch(e) {
+          return json({ error: "Failed to parse strategy JSON", raw: aiData.content?.[0]?.text }, 500);
+        }
+
+        // Write strategy fields back to the product page
+        const asStr = v => Array.isArray(v) ? v.join("\n") : (typeof v === "string" ? v : String(v ?? ""));
+        const rtBlock = text => { const s = asStr(text); return s ? [{ type: "text", text: { content: s, link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : []; };
+        const updateResp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+          method: "PATCH",
+          headers: { ...notionHdr, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            properties: {
+              "Avatar":         { rich_text: rtBlock(strategy.avatar) },
+              "Transformation": { rich_text: rtBlock(strategy.transformation) },
+              "Offer Structure":{ rich_text: rtBlock(strategy.offerStructure) },
+              "Price":          { rich_text: rtBlock(strategy.price) },
+              "Proof Points":   { rich_text: rtBlock(strategy.proofPoints) },
+              "Objections":     { rich_text: rtBlock(strategy.objections) },
+              "Unique Angle":   { rich_text: rtBlock(strategy.uniqueAngle) },
+              ...(strategy.spots != null ? { "Spots": { number: strategy.spots } } : {}),
+              "Status": { select: { name: "Active" } },
+            }
+          }),
+        });
+        if (!updateResp.ok) {
+          const err = await updateResp.json();
+          return json({ error: err.message || "Failed to update product" }, 500);
+        }
+        return json({ success: true, strategy });
       }
 
       // ── getContentTitles ──

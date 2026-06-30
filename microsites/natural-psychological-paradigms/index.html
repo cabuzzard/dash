@@ -29,7 +29,24 @@
 /* METHOD LIST */
 .method-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .method-row:last-child { border-bottom: none; }
-.method-name { flex: 1; font-size: 13px; color: #c9c9c9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.method-name { flex: 1; font-size: 13px; color: #c9c9c9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.method-name:hover { color: #fff; text-decoration: underline; }
+/* METHOD GENERATE MODAL */
+#method-gen-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000; align-items:center; justify-content:center; }
+#method-gen-modal.open { display:flex; }
+.method-gen-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:24px; width:360px; max-width:92vw; }
+.method-gen-box h3 { margin:0 0 4px; font-size:15px; color:#fff; }
+.method-gen-subtitle { font-size:12px; color:#666; margin-bottom:16px; }
+.method-gen-products { display:flex; flex-direction:column; gap:6px; margin-bottom:16px; max-height:200px; overflow-y:auto; }
+.mgp-option { display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid #333; border-radius:6px; cursor:pointer; font-size:13px; color:#c9c9c9; transition:border-color .15s,background .15s; }
+.mgp-option:hover { border-color:#555; background:rgba(255,255,255,.04); }
+.mgp-option.selected { border-color:#63b3ed; background:rgba(99,179,237,.1); color:#fff; }
+.mgp-option input[type=radio] { accent-color:#63b3ed; }
+.method-gen-actions { display:flex; gap:8px; justify-content:flex-end; }
+.method-gen-go { padding:6px 16px; background:#63b3ed; color:#000; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
+.method-gen-go:disabled { opacity:.5; cursor:default; }
+.method-gen-cancel { padding:6px 12px; background:transparent; color:#888; border:1px solid #333; border-radius:6px; font-size:13px; cursor:pointer; }
+.method-gen-status { font-size:12px; color:#888; margin-top:10px; text-align:center; min-height:16px; }
 /* PRODUCT LIST */
 .product-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .product-row:last-child { border-bottom: none; }
@@ -1141,6 +1158,47 @@ function renderMethods() {
   });
 }
 
+let MGM_METHOD_ID = null, MGM_METHOD_NAME = '', MGM_PRODUCT_ID = null;
+
+function openMethodGenModal(methodId, methodName) {
+  MGM_METHOD_ID = methodId; MGM_METHOD_NAME = methodName; MGM_PRODUCT_ID = null;
+  document.getElementById('mgm-title').textContent = 'Generate: ' + methodName;
+  document.getElementById('mgm-status').textContent = '';
+  document.getElementById('mgm-go').disabled = true;
+  const el = document.getElementById('mgm-products');
+  if (!PRODUCT_ITEMS.length) {
+    el.innerHTML = '<div style="color:#888;font-size:12px">No products in this campaign yet. Add products first.</div>';
+  } else {
+    el.innerHTML = PRODUCT_ITEMS.map(p => `<label class="mgp-option"><input type="radio" name="mgp" value="${p.id}" onchange="MGM_PRODUCT_ID=this.value;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false"> ${p.name}</label>`).join('');
+  }
+  document.getElementById('method-gen-modal').classList.add('open');
+}
+
+function closeMethodGenModal() {
+  document.getElementById('method-gen-modal').classList.remove('open');
+  MGM_METHOD_ID = null; MGM_PRODUCT_ID = null;
+}
+
+async function runMethodGenerate() {
+  if (!MGM_METHOD_ID || !MGM_PRODUCT_ID) return;
+  const btn = document.getElementById('mgm-go');
+  const status = document.getElementById('mgm-status');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  status.textContent = 'Reading method framework and product strategy…';
+  status.style.color = '#888';
+  try {
+    const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
+    if (data.error) throw new Error(data.error);
+    status.textContent = `✓ Created ${data.created} titles`;
+    status.style.color = '#68d391';
+    btn.textContent = 'Done';
+    setTimeout(closeMethodGenModal, 1800);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Generate';
+  }
+}
 async function loadMethods() {
   const el = document.getElementById('method-list');
   try {
