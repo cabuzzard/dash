@@ -1053,14 +1053,22 @@ export default {
           body: formData,
         });
         if (!putResp.ok) return json({ error: "File upload failed: " + (await putResp.text()).slice(0, 200) }, putResp.status);
+        // Fetch existing files to append rather than overwrite
+        const existingResp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const existingData = await existingResp.json();
+        const existingFiles = (existingData.properties?.["Files"]?.files || []).map(f => ({
+          type: "external", name: f.name, external: { url: f.file?.url || f.external?.url || "" }
+        })).filter(f => f.external.url);
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Files": { files: [{ type: "file_upload", name: fileName, file_upload: { id: uploadId } }] } } }),
+          body: JSON.stringify({ properties: { "Files": { files: [...existingFiles, { type: "file_upload", name: fileName, file_upload: { id: uploadId } }] } } }),
         });
         const patchData = await patchResp.json();
         if (!patchResp.ok) return json({ error: patchData.message || "Failed to attach file to product" }, patchResp.status);
-        const fileUrl = patchData.properties?.["Files"]?.files?.[0]?.file?.url || null;
+        const fileUrl = patchData.properties?.["Files"]?.files?.slice(-1)[0]?.file?.url || null;
         return json({ success: true, fileName, fileUrl });
       }
 
@@ -2339,14 +2347,18 @@ No other text. No markdown fences.`;
         const productNames = {};
         (prodResp.results || []).forEach(p => { productNames[p.id.replace(/-/g,"")] = (p.properties.Name?.title || []).map(t => t.plain_text).join("") || "Unnamed"; });
         if (!productIds.size) return json({ deliverables: [] });
-        // Fetch deliverables for each product (parallel)
+        // Fetch deliverables DB records + product Files in parallel
         const allDeliverables = [];
         await Promise.all([...productIds].map(async pid => {
-          const r = await fetch(`https://api.notion.com/v1/databases/${dash(DELIVERABLES_DB)}/query`, {
-            method: "POST", headers: hdr,
-            body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(pid) } }, page_size: 100 }),
-          }).then(r => r.json());
-          (r.results || []).forEach(d => {
+          const [delResp, prodPage] = await Promise.all([
+            fetch(`https://api.notion.com/v1/databases/${dash(DELIVERABLES_DB)}/query`, {
+              method: "POST", headers: hdr,
+              body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(pid) } }, page_size: 100 }),
+            }).then(r => r.json()),
+            fetch(`https://api.notion.com/v1/pages/${dash(pid)}`, { headers: hdr }).then(r => r.json()),
+          ]);
+          // Deliverables DB records
+          (delResp.results || []).forEach(d => {
             const dp = d.properties || {};
             allDeliverables.push({
               id:          d.id.replace(/-/g,""),
@@ -2356,6 +2368,22 @@ No other text. No markdown fences.`;
               productId:   pid,
               productName: productNames[pid] || "",
               url:         d.url || "",
+              isFile:      false,
+            });
+          });
+          // Product-level attached files
+          (prodPage.properties?.["Files"]?.files || []).forEach(f => {
+            const fileUrl = f.file?.url || f.external?.url || "";
+            if (!fileUrl) return;
+            allDeliverables.push({
+              id:          pid + "_" + encodeURIComponent(f.name || "file"),
+              name:        f.name || "File",
+              type:        "File",
+              status:      "",
+              productId:   pid,
+              productName: productNames[pid] || "",
+              url:         fileUrl,
+              isFile:      true,
             });
           });
         }));

@@ -2051,7 +2051,9 @@ async function loadDeliverables() {
       group.items.forEach(d => {
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid rgba(255,255,255,.04);';
-        row.innerHTML = `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${d.type||'—'}</span><span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.name}</span><span style="font-size:10px;color:${statusColor[d.status]||'#555'};flex-shrink:0;">${d.status}</span><a href="https://www.notion.so/${d.id}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">↗</a>`;
+        const linkHref = d.isFile ? d.url : `https://www.notion.so/${d.id}`;
+        const linkLabel = d.isFile ? '⬇' : '↗';
+        row.innerHTML = `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${d.type||'—'}</span><span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.name}</span>${d.status ? `<span style="font-size:10px;color:${statusColor[d.status]||'#555'};flex-shrink:0;">${d.status}</span>` : ''}<a href="${linkHref}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">${linkLabel}</a>`;
         body.appendChild(row);
       });
       hdr.onclick = () => { const o = body.style.display !== 'none'; body.style.display = o ? 'none' : 'block'; arrow.textContent = o ? '▶' : '▾'; };
