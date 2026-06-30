@@ -1262,7 +1262,15 @@ async function runMethodGenerate() {
   try {
     const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
     if (data.error) throw new Error(data.error);
-    status.textContent = `✓ Created ${data.created} titles`;
+    const titles = data.titles || [];
+    let saved = 0;
+    for (let i = 0; i < titles.length; i += 10) {
+      status.textContent = 'Saving ' + Math.min(i + 10, titles.length) + ' / ' + titles.length + ' titles…';
+      const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
+      if (r.error) throw new Error(r.error);
+      saved += r.created;
+    }
+    status.textContent = '✓ Created ' + saved + ' titles';
     status.style.color = '#68d391';
     btn.textContent = 'Done';
     setTimeout(closeMethodGenModal, 1800);

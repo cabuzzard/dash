@@ -2233,7 +2233,7 @@ No other text. No markdown fences.`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: prompt }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
@@ -2241,36 +2241,47 @@ No other text. No markdown fences.`;
         let titles;
         try {
           const raw = aiData.content?.[0]?.text || "";
-          titles = JSON.parse(raw.replace(/```json\n?|\n?```/g, "").trim());
+          const start = raw.indexOf('[');
+          const end = raw.lastIndexOf(']');
+          if (start === -1 || end === -1 || end < start) throw new Error("No JSON array found");
+          titles = JSON.parse(raw.slice(start, end + 1));
+          if (!Array.isArray(titles)) throw new Error("Not an array");
         } catch(e) {
-          return json({ error: "Failed to parse titles JSON", raw: aiData.content?.[0]?.text }, 500);
+          const rawText = aiData.content?.[0]?.text || "";
+          return json({ error: "Failed to parse titles JSON: " + e.message + " | RAW: " + rawText.slice(0, 300) }, 500);
         }
 
-        // Save titles to Content Strategy DB in batches
+        // Return titles to client — client will save in batches via saveMethodTitles
+        return json({ titles });
+      }
+
+      // ── saveMethodTitles ──
+      if (body.action === "saveMethodTitles") {
+        const { titles, campaignId, methodId, productId } = body;
+        if (!titles?.length || !campaignId || !methodId || !productId) return json({ error: "titles, campaignId, methodId, productId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const rtBlock = text => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
         let created = 0;
-        for (let i = 0; i < titles.length; i += 5) {
-          await Promise.all(titles.slice(i, i + 5).map(t =>
-            fetch("https://api.notion.com/v1/pages", {
-              method: "POST",
-              headers: { ...hdr, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                parent: { database_id: CONTENT_STRATEGY_DB },
-                properties: {
-                  "Title":    { title: rtBlock(t.title) },
-                  "Status":   { select: { name: "Development" } },
-                  "Grouping": { rich_text: rtBlock(t.grouping || "") },
-                  "Campaign": { relation: [{ id: dash(campaignId) }] },
-                  "method":   { relation: [{ id: dash(methodId) }] },
-                  "product":  { relation: [{ id: dash(productId) }] },
-                },
-              }),
-            })
-          ));
-          created += Math.min(5, titles.length - i);
+        for (const t of titles) {
+          await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parent: { database_id: CONTENT_STRATEGY_DB },
+              properties: {
+                "Title":    { title: rtBlock(t.title) },
+                "Status":   { select: { name: "Development" } },
+                "Grouping": { rich_text: rtBlock(t.grouping || "") },
+                "Campaign": { relation: [{ id: dash(campaignId) }] },
+                "method":   { relation: [{ id: dash(methodId) }] },
+                "product":  { relation: [{ id: dash(productId) }] },
+              },
+            }),
+          });
+          created++;
         }
-
-        return json({ created, titles });
+        return json({ created });
       }
 
       // ── deleteTitlesByProduct ──
