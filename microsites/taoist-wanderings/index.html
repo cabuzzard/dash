@@ -972,18 +972,91 @@ async function loadTitles() {
       .filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage))
       .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
     const pub = titles.filter(t => ['Publish','Published','Done'].includes(t.stage));
-    function render(arr, el) {
-      el.innerHTML = '';
-      if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
-      arr.forEach(t => {
-        const div = document.createElement('div');
-        div.className = 'title-row';
-        div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><span class="title-group">${t.cohort||''}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
-        el.appendChild(div);
+    function makeTitleRow(t) {
+      const div = document.createElement('div');
+      div.className = 'title-row';
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+      return div;
+    }
+    function renderGroupingLevel(titles, container) {
+      const groupOrder = [], byGroup = {};
+      titles.forEach(t => {
+        const gk = t.grouping || 'Ungrouped';
+        if (!byGroup[gk]) { byGroup[gk] = []; groupOrder.push(gk); }
+        byGroup[gk].push(t);
+      });
+      if (groupOrder.length === 1 && groupOrder[0] === 'Ungrouped') {
+        titles.forEach(t => container.appendChild(makeTitleRow(t))); return;
+      }
+      groupOrder.forEach(gk => {
+        const gTitles = byGroup[gk];
+        const gHdr = document.createElement('div');
+        gHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;user-select:none;';
+        const gArrow = document.createElement('span'); gArrow.textContent = '▶'; gArrow.style.cssText = 'font-size:8px;color:#555;flex-shrink:0;';
+        const gLabel = document.createElement('span'); gLabel.style.cssText = 'flex:1;font-size:11px;color:#888;'; gLabel.textContent = gk;
+        const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:#555;'; gCount.textContent = gTitles.length;
+        gHdr.appendChild(gArrow); gHdr.appendChild(gLabel); gHdr.appendChild(gCount);
+        const gBody = document.createElement('div'); gBody.style.display = 'none';
+        gTitles.forEach(t => gBody.appendChild(makeTitleRow(t)));
+        gHdr.onclick = () => { const o = gBody.style.display !== 'none'; gBody.style.display = o ? 'none' : 'block'; gArrow.textContent = o ? '▶' : '▾'; };
+        container.appendChild(gHdr); container.appendChild(gBody);
       });
     }
-    render(dev, devEl);
-    render(pub, pubEl);
+    function renderMethodLevel(titles, container) {
+      const hasMeth = titles.some(t => t.methodId && t.methodId !== '__none__');
+      if (!hasMeth) { renderGroupingLevel(titles, container); return; }
+      const methOrder = [], byMeth = {};
+      titles.forEach(t => {
+        const mk = (t.methodId || '__none__') + '||' + (t.methodName || 'No Method');
+        if (!byMeth[mk]) { byMeth[mk] = []; methOrder.push(mk); }
+        byMeth[mk].push(t);
+      });
+      methOrder.forEach(mk => {
+        const mTitles = byMeth[mk];
+        const methName = mk.split('||')[1];
+        if (methOrder.length === 1 && mk.startsWith('__none__')) { renderGroupingLevel(mTitles, container); return; }
+        const mHdr = document.createElement('div');
+        mHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px;background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.07);cursor:pointer;user-select:none;';
+        const mArrow = document.createElement('span'); mArrow.textContent = '▶'; mArrow.style.cssText = 'font-size:8px;color:#666;flex-shrink:0;';
+        const mLabel = document.createElement('span'); mLabel.style.cssText = 'flex:1;font-size:12px;color:#aaa;'; mLabel.textContent = methName;
+        const mCount = document.createElement('span'); mCount.style.cssText = 'font-size:10px;color:#555;'; mCount.textContent = mTitles.length;
+        mHdr.appendChild(mArrow); mHdr.appendChild(mLabel); mHdr.appendChild(mCount);
+        const mBody = document.createElement('div'); mBody.style.display = 'none';
+        renderGroupingLevel(mTitles, mBody);
+        mHdr.onclick = () => { const o = mBody.style.display !== 'none'; mBody.style.display = o ? 'none' : 'block'; mArrow.textContent = o ? '▶' : '▾'; };
+        container.appendChild(mHdr); container.appendChild(mBody);
+      });
+    }
+    function renderTitlesNested(arr, el) {
+      el.innerHTML = '';
+      if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
+      const hasProd = arr.some(t => t.productId && t.productId !== '__none__');
+      if (!hasProd) { renderMethodLevel(arr, el); return; }
+      const prodOrder = [], byProd = {};
+      arr.forEach(t => {
+        const pk = (t.productId || '__none__') + '||' + (t.productName || 'No Product');
+        if (!byProd[pk]) { byProd[pk] = []; prodOrder.push(pk); }
+        byProd[pk].push(t);
+      });
+      prodOrder.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
+      prodOrder.forEach(pk => {
+        const pTitles = byProd[pk];
+        const prodName = pk.split('||')[1];
+        if (prodOrder.length === 1 && pk.startsWith('__none__')) { renderMethodLevel(pTitles, el); return; }
+        const pHdr = document.createElement('div');
+        pHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);cursor:pointer;user-select:none;';
+        const pArrow = document.createElement('span'); pArrow.textContent = '▶'; pArrow.style.cssText = 'font-size:8px;color:#777;flex-shrink:0;';
+        const pLabel = document.createElement('span'); pLabel.style.cssText = 'flex:1;font-size:12px;color:#c9c9c9;font-weight:600;'; pLabel.textContent = prodName;
+        const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:#666;'; pCount.textContent = pTitles.length;
+        pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
+        const pBody = document.createElement('div'); pBody.style.display = 'none';
+        renderMethodLevel(pTitles, pBody);
+        pHdr.onclick = () => { const o = pBody.style.display !== 'none'; pBody.style.display = o ? 'none' : 'block'; pArrow.textContent = o ? '▶' : '▾'; };
+        el.appendChild(pHdr); el.appendChild(pBody);
+      });
+    }
+    renderTitlesNested(dev, devEl);
+    renderTitlesNested(pub, pubEl);
   } catch(e) {
     devEl.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
     pubEl.innerHTML = '<div class="empty">—</div>';
