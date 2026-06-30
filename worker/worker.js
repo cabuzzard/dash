@@ -2262,26 +2262,25 @@ No other text. No markdown fences.`;
       // ── saveMethodTitles ──
       if (body.action === "saveMethodTitles") {
         const { titles, campaignId, methodId, productId } = body;
-        if (!titles?.length || !campaignId || !methodId || !productId) return json({ error: "titles, campaignId, methodId, productId required" }, 400);
+        if (!titles?.length || !campaignId || !methodId) return json({ error: "titles, campaignId, methodId required" }, 400);
+        const hasProduct = productId && productId !== '__none__';
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const rtBlock = text => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
         let created = 0;
         for (const t of titles) {
+          const props = {
+            "Title":    { title: rtBlock(t.title) },
+            "Status":   { select: { name: "Development" } },
+            "Grouping": { rich_text: rtBlock(t.phase ? `${t.phase} > ${t.grouping || ''}` : (t.grouping || "")) },
+            "Campaign": { relation: [{ id: dash(campaignId) }] },
+            "method":   { relation: [{ id: dash(methodId) }] },
+          };
+          if (hasProduct) props["product"] = { relation: [{ id: dash(productId) }] };
           await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              parent: { database_id: CONTENT_STRATEGY_DB },
-              properties: {
-                "Title":    { title: rtBlock(t.title) },
-                "Status":   { select: { name: "Development" } },
-                "Grouping": { rich_text: rtBlock(t.phase ? `${t.phase} > ${t.grouping || ''}` : (t.grouping || "")) },
-                "Campaign": { relation: [{ id: dash(campaignId) }] },
-                "method":   { relation: [{ id: dash(methodId) }] },
-                "product":  { relation: [{ id: dash(productId) }] },
-              },
-            }),
+            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props }),
           });
           created++;
         }
