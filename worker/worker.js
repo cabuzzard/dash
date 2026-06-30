@@ -2242,33 +2242,36 @@ export default {
           }).then(r => r.json()).catch(() => null),
         ]);
         if (!results.length) return json({ research: null });
-        const props = results[0].properties;
+        // Merge all matching records — first non-empty value wins per field
+        const rt  = (p, key) => { for (const r of results) { const v = r.properties[key]?.rich_text?.map(t => t.plain_text).join("") || ""; if (v) return v; } return ""; };
+        const sel = (p, key) => { for (const r of results) { const v = r.properties[key]?.select?.name || ""; if (v) return v; } return ""; };
+        const url = (p, key) => { for (const r of results) { const v = r.properties[key]?.url || ""; if (v) return v; } return ""; };
         const cp = campResp?.properties || {};
         return json({
           research: {
             id: results[0].id.replace(/-/g, ""),
-            name: props.Name?.title?.map(t => t.plain_text).join("") || "",
-            status: props.Status?.select?.name || "",
-            lastUpdated: props["date:Last Updated:start"]?.date?.start || "",
-            keywords: props.Keywords?.rich_text?.map(t => t.plain_text).join("") || "",
-            newsFeed: props["News Feed"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            notes: props.Notes?.rich_text?.map(t => t.plain_text).join("") || "",
-            thoughts: props.Thoughts?.rich_text?.map(t => t.plain_text).join("") || "",
-            platforms: props["Platforms & Methods"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            productIdeas: props["Product Ideas"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            tikTokShopProducts: props["TikTok Shop Products"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            kdpBestSellers: props["KDP Best Sellers"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            tiktokTrends: props["TikTok Trends"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            trendIntelligence: props["Trend Intelligence"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            etsyProducts:      props["Etsy Products"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            youtubeOutliers:   props["YouTube Outliers"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            keyMessage: props["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            webPageUrl: props["Web Page URL"]?.url || "",
-            statement:         props["Statement"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            uniqueOpportunity: props["Unique Opportunity"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            campaignGoal: cp["Campaign Goal"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            painPoints: cp["Pain Points"]?.rich_text?.map(t => t.plain_text).join("") || "",
-            campaignKeyMessage: cp["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            name: results[0].properties.Name?.title?.map(t => t.plain_text).join("") || "",
+            status: sel(null, "Status"),
+            lastUpdated: (() => { for (const r of results) { const v = r.properties["date:Last Updated:start"]?.date?.start || ""; if (v) return v; } return ""; })(),
+            keywords:          rt(null, "Keywords"),
+            newsFeed:          rt(null, "News Feed"),
+            notes:             rt(null, "Notes"),
+            thoughts:          rt(null, "Thoughts"),
+            platforms:         rt(null, "Platforms & Methods"),
+            productIdeas:      rt(null, "Product Ideas"),
+            tikTokShopProducts:rt(null, "TikTok Shop Products"),
+            kdpBestSellers:    rt(null, "KDP Best Sellers"),
+            tiktokTrends:      rt(null, "TikTok Trends"),
+            trendIntelligence: rt(null, "Trend Intelligence"),
+            etsyProducts:      rt(null, "Etsy Products"),
+            youtubeOutliers:   rt(null, "YouTube Outliers"),
+            keyMessage:        rt(null, "Key Message"),
+            webPageUrl:        url(null, "Web Page URL"),
+            statement:         rt(null, "Statement"),
+            uniqueOpportunity: rt(null, "Unique Opportunity"),
+            campaignGoal:      cp["Campaign Goal"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            painPoints:        cp["Pain Points"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            campaignKeyMessage:cp["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
           }
         });
       }
