@@ -6594,10 +6594,19 @@ function renderContentTitles(titles) {
     meth.groupings[gk].push(t);
   });
 
+  // Named products first, "No Product" last
+  productOrder.sort((a, b) => {
+    const aIsNone = a.startsWith('__none__');
+    const bIsNone = b.startsWith('__none__');
+    return aIsNone === bIsNone ? 0 : aIsNone ? 1 : -1;
+  });
+
   productOrder.forEach(pk => {
     const prod = byProduct[pk];
     const prodKey = 'p_' + pk;
-    const prodOpen = ctCollapsed[prodKey] !== false; // default open
+    const isNoProduct = pk.startsWith('__none__');
+    // Named products default open, "No Product" default collapsed
+    const prodOpen = prodKey in ctCollapsed ? ctCollapsed[prodKey] !== false : !isNoProduct;
 
     // Product header
     const prodHdr = document.createElement('div');
