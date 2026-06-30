@@ -582,6 +582,13 @@
     <div id="devContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
+    <div id="contentTitlesSection" style="margin-top:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;cursor:pointer;" onclick="toggleContentTitles()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Content Titles <span id="contentTitlesIcon" style="opacity:.5;">▶</span></span>
+        <button onclick="event.stopPropagation();loadContentTitles(true)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit;border-radius:3px;">↺</button>
+      </div>
+      <div id="contentTitlesList" style="display:none;"></div>
+    </div>
   </div>
 
   <div class="tab-panel" id="tabPublishing">
@@ -6527,6 +6534,197 @@ function renderDev() {
 document.addEventListener('click', () => {
   document.querySelectorAll('.status-picker-menu').forEach(m => m.style.display = 'none');
 });
+
+// ── CONTENT TITLES (Product → Method → Grouping) ─────────────────────
+let contentTitlesLoaded = false;
+let contentTitlesOpen   = false;
+let ctCollapsed = {};
+try { ctCollapsed = JSON.parse(localStorage.getItem('ctCollapsed') || '{}'); } catch(e) {}
+
+function saveCTCollapsed() {
+  try { localStorage.setItem('ctCollapsed', JSON.stringify(ctCollapsed)); } catch(e) {}
+}
+
+function toggleContentTitles() {
+  contentTitlesOpen = !contentTitlesOpen;
+  document.getElementById('contentTitlesIcon').textContent = contentTitlesOpen ? '▾' : '▶';
+  const list = document.getElementById('contentTitlesList');
+  list.style.display = contentTitlesOpen ? 'block' : 'none';
+  if (contentTitlesOpen && !contentTitlesLoaded) loadContentTitles();
+}
+
+async function loadContentTitles(force) {
+  if (!force && contentTitlesLoaded) return;
+  const list = document.getElementById('contentTitlesList');
+  list.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getContentTitles', {});
+    contentTitlesLoaded = true;
+    renderContentTitles(data.titles || []);
+  } catch(e) {
+    list.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderContentTitles(titles) {
+  const list = document.getElementById('contentTitlesList');
+  list.innerHTML = '';
+  if (!titles.length) { list.innerHTML = '<div class="empty">No content titles found.</div>'; return; }
+
+  const DEV_STATUS_STYLE = {
+    'Development': { clr:'#888',    label:'DEV' },
+    'Writing':     { clr:'#ff8c00', label:'WRI' },
+    'Review':      { clr:'#4488ff', label:'REV' },
+    'Approved':    { clr:'#44cc88', label:'APR' },
+  };
+
+  // Group: product → method → grouping (preserve insertion order = sequence order)
+  const productOrder = [];
+  const byProduct = {};
+
+  titles.forEach(t => {
+    const pk = t.productId + '||' + t.productName;
+    if (!byProduct[pk]) { byProduct[pk] = { name: t.productName, methods: {}, methodOrder: [] }; productOrder.push(pk); }
+    const prod = byProduct[pk];
+    const mk = t.methodId + '||' + t.methodName;
+    if (!prod.methods[mk]) { prod.methods[mk] = { name: t.methodName, groupings: {}, groupOrder: [] }; prod.methodOrder.push(mk); }
+    const meth = prod.methods[mk];
+    const gk = t.grouping || 'Ungrouped';
+    if (!meth.groupings[gk]) { meth.groupings[gk] = []; meth.groupOrder.push(gk); }
+    meth.groupings[gk].push(t);
+  });
+
+  productOrder.forEach(pk => {
+    const prod = byProduct[pk];
+    const prodKey = 'p_' + pk;
+    const prodOpen = ctCollapsed[prodKey] !== false ? false : true; // default collapsed
+
+    // Product header
+    const prodHdr = document.createElement('div');
+    prodHdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);margin-bottom:2px;cursor:pointer;user-select:none;';
+    const prodArrow = document.createElement('span');
+    prodArrow.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;transition:transform .15s;';
+    prodArrow.textContent = prodOpen ? '▾' : '▶';
+    const prodName = document.createElement('span');
+    prodName.style.cssText = 'font-size:11px;font-weight:700;color:var(--text2);flex:1;';
+    prodName.textContent = prod.name;
+    const prodCount = document.createElement('span');
+    prodCount.style.cssText = 'font-size:10px;color:var(--text3);';
+    prodCount.textContent = titles.filter(t => (t.productId + '||' + t.productName) === pk).length;
+    prodHdr.appendChild(prodArrow); prodHdr.appendChild(prodName); prodHdr.appendChild(prodCount);
+
+    const prodBody = document.createElement('div');
+    prodBody.style.cssText = 'display:' + (prodOpen ? 'block' : 'none') + ';padding-left:10px;margin-bottom:4px;';
+
+    prodHdr.onclick = () => {
+      const open = prodBody.style.display !== 'none';
+      prodBody.style.display = open ? 'none' : 'block';
+      prodArrow.textContent = open ? '▶' : '▾';
+      ctCollapsed[prodKey] = !open;
+      saveCTCollapsed();
+    };
+
+    list.appendChild(prodHdr);
+    list.appendChild(prodBody);
+
+    prod.methodOrder.forEach(mk => {
+      const meth = prod.methods[mk];
+      const methKey = 'p_' + pk + '_m_' + mk;
+      const methOpen = ctCollapsed[methKey] !== false ? false : true; // default collapsed
+
+      // Method header
+      const methHdr = document.createElement('div');
+      methHdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:2px;cursor:pointer;user-select:none;';
+      const methArrow = document.createElement('span');
+      methArrow.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;transition:transform .15s;';
+      methArrow.textContent = methOpen ? '▾' : '▶';
+      const methName = document.createElement('span');
+      methName.style.cssText = 'font-size:11px;font-weight:600;color:var(--text2);flex:1;';
+      methName.textContent = meth.name;
+      const methCount = document.createElement('span');
+      methCount.style.cssText = 'font-size:10px;color:var(--text3);';
+      methCount.textContent = Object.values(meth.groupings).flat().length;
+      methHdr.appendChild(methArrow); methHdr.appendChild(methName); methHdr.appendChild(methCount);
+
+      const methBody = document.createElement('div');
+      methBody.style.cssText = 'display:' + (methOpen ? 'block' : 'none') + ';padding-left:10px;margin-bottom:2px;';
+
+      methHdr.onclick = () => {
+        const open = methBody.style.display !== 'none';
+        methBody.style.display = open ? 'none' : 'block';
+        methArrow.textContent = open ? '▶' : '▾';
+        ctCollapsed[methKey] = !open;
+        saveCTCollapsed();
+      };
+
+      prodBody.appendChild(methHdr);
+      prodBody.appendChild(methBody);
+
+      // Groupings in sequential order (insertion order preserved)
+      meth.groupOrder.forEach(gk => {
+        const groupTitles = meth.groupings[gk];
+        const groupKey = methKey + '_g_' + gk;
+        const groupOpen = ctCollapsed[groupKey] !== false ? false : true; // default collapsed
+
+        // Grouping header
+        const groupHdr = document.createElement('div');
+        groupHdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:2px;cursor:pointer;user-select:none;';
+        const groupArrow = document.createElement('span');
+        groupArrow.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;';
+        groupArrow.textContent = groupOpen ? '▾' : '▶';
+        const groupName = document.createElement('span');
+        groupName.style.cssText = 'font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;flex:1;';
+        groupName.textContent = gk;
+        const groupCount = document.createElement('span');
+        groupCount.style.cssText = 'font-size:10px;color:var(--text3);';
+        groupCount.textContent = groupTitles.length;
+        groupHdr.appendChild(groupArrow); groupHdr.appendChild(groupName); groupHdr.appendChild(groupCount);
+
+        const groupBody = document.createElement('div');
+        groupBody.style.cssText = 'display:' + (groupOpen ? 'block' : 'none') + ';';
+
+        groupHdr.onclick = () => {
+          const open = groupBody.style.display !== 'none';
+          groupBody.style.display = open ? 'none' : 'block';
+          groupArrow.textContent = open ? '▶' : '▾';
+          ctCollapsed[groupKey] = !open;
+          saveCTCollapsed();
+        };
+
+        methBody.appendChild(groupHdr);
+        methBody.appendChild(groupBody);
+
+        groupTitles.forEach((t, idx) => {
+          const isLast = idx === groupTitles.length - 1;
+          const sty = DEV_STATUS_STYLE[t.status] || { clr:'#888', label:'?' };
+          const tRow = document.createElement('div');
+          tRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px 6px 16px;border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--surface);' + (isLast ? 'border-radius:0 0 var(--radius-sm) var(--radius-sm);margin-bottom:2px;' : '');
+
+          const titleLink = document.createElement('a');
+          titleLink.href = 'https://www.notion.so/' + t.id;
+          titleLink.target = '_blank';
+          titleLink.style.cssText = 'font-size:12px;font-weight:500;color:var(--text);line-height:1.4;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;';
+          titleLink.textContent = t.title;
+          tRow.appendChild(titleLink);
+
+          if (t.format) {
+            const fmt = document.createElement('span');
+            fmt.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;white-space:nowrap;';
+            fmt.textContent = t.format;
+            tRow.appendChild(fmt);
+          }
+
+          const badge = document.createElement('span');
+          badge.style.cssText = 'font-size:10px;font-weight:700;width:32px;text-align:center;flex-shrink:0;color:' + sty.clr + ';';
+          badge.textContent = sty.label;
+          tRow.appendChild(badge);
+
+          groupBody.appendChild(tRow);
+        });
+      });
+    });
+  });
+}
 
 // ── TITLE MODAL ──────────────────────────────────────────────────────
 function openTitleModal() {

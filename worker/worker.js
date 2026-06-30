@@ -2088,6 +2088,72 @@ export default {
         });
       }
 
+      // ── getContentTitles ──
+      if (body.action === "getContentTitles") {
+        const { campaignId } = body;
+        const statusFilter = { or: [
+          { property: "Status", select: { equals: "Development" } },
+          { property: "Status", select: { equals: "Writing" } },
+          { property: "Status", select: { equals: "Review" } },
+          { property: "Status", select: { equals: "Approved" } },
+        ]};
+        const filter = campaignId
+          ? { and: [{ property: "Campaign", relation: { contains: campaignId } }, statusFilter] }
+          : statusFilter;
+        const results = await notionQuery(CONTENT_STRATEGY_DB, {
+          filter,
+          sorts: [{ property: "Sequence Order", direction: "ascending" }],
+        });
+        // Collect unique product + method IDs
+        const productIds = new Set();
+        const methodIds  = new Set();
+        results.forEach(page => {
+          const props = page.properties;
+          (props.product?.relation || []).forEach(r => productIds.add(r.id));
+          (props.method?.relation  || []).forEach(r => methodIds.add(r.id));
+        });
+        const fetchName = async id => {
+          try {
+            const r = await fetch(`https://api.notion.com/v1/pages/${id}`, {
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+            });
+            const p = await r.json();
+            const name = p.properties?.Name?.title?.map(t => t.plain_text).join("")
+                      || p.properties?.Title?.title?.map(t => t.plain_text).join("")
+                      || "Unknown";
+            return { id: id.replace(/-/g,""), name };
+          } catch { return { id: id.replace(/-/g,""), name: "Unknown" }; }
+        };
+        const [prodPages, methPages] = await Promise.all([
+          Promise.all([...productIds].map(fetchName)),
+          Promise.all([...methodIds].map(fetchName)),
+        ]);
+        const prodNames = {};
+        prodPages.forEach(p => prodNames[p.id] = p.name);
+        const methNames = {};
+        methPages.forEach(m => methNames[m.id] = m.name);
+        const titles = results.map(page => {
+          const props     = page.properties;
+          const productRel = props.product?.relation || [];
+          const methodRel  = props.method?.relation  || [];
+          const productId  = productRel.length ? productRel[0].id.replace(/-/g,"") : "__none__";
+          const methodId   = methodRel.length  ? methodRel[0].id.replace(/-/g,"")  : "__none__";
+          return {
+            id:          page.id.replace(/-/g,""),
+            title:       props.Title?.title?.map(t => t.plain_text).join("") || "Untitled",
+            status:      props.Status?.select?.name || "",
+            grouping:    props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "Ungrouped",
+            platform:    props.Platform?.select?.name || "",
+            format:      props.Format?.select?.name  || "",
+            productId,
+            productName: productRel.length ? (prodNames[productId] || "Unknown Product") : "No Product",
+            methodId,
+            methodName:  methodRel.length  ? (methNames[methodId]  || "Unknown Method")  : "No Method",
+          };
+        });
+        return json({ titles });
+      }
+
       // Î"Ã¶Ã‡Î"Ã¶Ã‡ CAMPAIGN ADMIN: getTodos Î"Ã¶Ã‡Î"Ã¶Ã‡
       if (body.action === "getTodos") {
         const results = await notionQuery(MAIN_TD_DB, {
