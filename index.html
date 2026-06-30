@@ -386,7 +386,10 @@
     font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
     color:var(--text3); padding:8px 10px; text-align:left;
     border-bottom:1px solid var(--border); white-space:nowrap;
+    cursor:pointer; user-select:none;
   }
+  .tr-table th:hover { color:var(--text); }
+  .tr-table th.drag-over { background:var(--surface2); outline:1px dashed var(--border2); }
   .tr-table td { padding:10px; border-bottom:1px solid var(--border); vertical-align:middle; color:var(--text2); }
   .tr-table tr:last-child td { border-bottom:none; }
   .tr-table tr:hover td { background:var(--surface2); cursor:pointer; }
@@ -904,24 +907,7 @@
       <div class="tr-table-wrap">
         <table class="tr-table">
           <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Date</th>
-              <th>Entry U</th>
-              <th>Entry C</th>
-              <th>Strike</th>
-              <th id="thExpiry" style="cursor:pointer;user-select:none;" onclick="toggleTradesSort()">Expiry <span id="trSortArrow"></span></th>
-              <th>Hi U</th>
-              <th>Lo U</th>
-              <th>Hi C</th>
-              <th>Lo C</th>
-              <th>Max Day</th>
-              <th>Cur U</th>
-              <th>Cur C</th>
-              <th>P/L U</th>
-              <th>P/L C</th>
-              <th>Status</th>
-            </tr>
+            <tr id="tradesTheadRow"></tr>
           </thead>
           <tbody id="tradesTableBody">
             <tr><td colspan="16" style="color:var(--text3);font-style:italic;padding:20px 10px;">Loading…</td></tr>
@@ -9020,110 +9006,129 @@ function pctColor(v) {
   return v >= 0 ? '#00cc66' : '#ff4444';
 }
 
-let tradesSortAsc = null; // null = default, true = asc, false = desc
-
-function toggleTradesSort() {
-  tradesSortAsc = tradesSortAsc === true ? false : true;
-  const arrow = document.getElementById('trSortArrow');
-  if (arrow) arrow.textContent = tradesSortAsc ? ' ↑' : ' ↓';
-  renderTradeTable();
-}
+// ── TRADES COLUMN DEFS ───────────────────────────────────────────────
+const TRADE_COL_DEFS = [
+  { id:'symbol',  label:'Symbol',   sortVal: t => (t.ticker||'')+(t.direction||''),
+    cell: t => { const d=t.direction==='C'?'Call':'Put'; return `<span class="tr-sym">${t.ticker}</span> <span style="font-size:11px;color:var(--text3);">${d}</span>`; } },
+  { id:'date',    label:'Date',     sortVal: t => t.entry_time||'',
+    cell: t => `<span style="font-size:11px;">${t.entry_time?t.entry_time.slice(0,10).slice(5):'—'}</span>` },
+  { id:'entryU',  label:'Entry U',  sortVal: t => t.entry_price??-Infinity,
+    cell: t => t.entry_price!=null?'$'+t.entry_price:'—' },
+  { id:'entryC',  label:'Entry C',  sortVal: t => t.entry_contract??-Infinity,
+    cell: t => t.entry_contract!=null?'$'+t.entry_contract:'—' },
+  { id:'strike',  label:'Strike',   sortVal: t => t.strike??-Infinity,
+    cell: t => t.strike!=null?t.strike:'—' },
+  { id:'expiry',  label:'Expiry',   sortVal: t => t.expiry||'',
+    cell: t => fmtExpiry(t.expiry) },
+  { id:'hiU',     label:'Hi U',     sortVal: t => (t.max_high!=null&&t.entry_price!=null)?(t.max_high-t.entry_price)/t.entry_price*100:-Infinity,
+    cell: t => { if(t.max_high==null)return'—'; const p=t.entry_price!=null?((t.max_high-t.entry_price)/t.entry_price*100):null; return `<span style="color:#00cc66;">${p!=null?(p>=0?'+':'')+p.toFixed(1)+'%':''}</span><br><span style="font-size:10px;color:var(--text3);">$${t.max_high}</span>`; } },
+  { id:'loU',     label:'Lo U',     sortVal: t => (t.max_low!=null&&t.entry_price!=null)?(t.max_low-t.entry_price)/t.entry_price*100:Infinity,
+    cell: t => { if(t.max_low==null)return'—'; const p=t.entry_price!=null?((t.max_low-t.entry_price)/t.entry_price*100):null; return `<span style="color:#ff4444;">${p!=null?(p>=0?'+':'')+p.toFixed(1)+'%':''}</span><br><span style="font-size:10px;color:var(--text3);">$${t.max_low}</span>`; } },
+  { id:'hiC',     label:'Hi C',     sortVal: t => (t.contract_max_high!=null&&t.entry_contract!=null)?(t.contract_max_high-t.entry_contract)/t.entry_contract*100:-Infinity,
+    cell: t => { if(t.contract_max_high==null)return'—'; const p=t.entry_contract!=null?((t.contract_max_high-t.entry_contract)/t.entry_contract*100):null; return `<span style="color:#00cc66;">${p!=null?(p>=0?'+':'')+p.toFixed(1)+'%':''}</span><br><span style="font-size:10px;color:var(--text3);">$${t.contract_max_high}</span>`; } },
+  { id:'loC',     label:'Lo C',     sortVal: t => (t.contract_max_low!=null&&t.entry_contract!=null)?(t.contract_max_low-t.entry_contract)/t.entry_contract*100:Infinity,
+    cell: t => { if(t.contract_max_low==null)return'—'; const p=t.entry_contract!=null?((t.contract_max_low-t.entry_contract)/t.entry_contract*100):null; return `<span style="color:#ff4444;">${p!=null?(p>=0?'+':'')+p.toFixed(1)+'%':''}</span><br><span style="font-size:10px;color:var(--text3);">$${t.contract_max_low}</span>`; } },
+  { id:'maxDay',  label:'Max Day',  sortVal: t => t.max_daily_range_pct??-Infinity,
+    cell: t => t.max_daily_range_pct!=null?`<span>${t.max_daily_range_pct.toFixed(1)}%</span><br><span style="font-size:10px;color:var(--text3);">${(t.max_daily_range_date||'').slice(5)}</span>`:'—' },
+  { id:'curU',    label:'Cur U',    sortVal: t => t.current_price??-Infinity,
+    cell: t => t.current_price!=null?'$'+t.current_price:'—' },
+  { id:'curC',    label:'Cur C',    sortVal: t => t.current_contract??-Infinity,
+    cell: t => t.current_contract!=null?'$'+t.current_contract:'—' },
+  { id:'plU',     label:'P/L U',    sortVal: t => t.current_pct??-Infinity,
+    cell: t => t.current_pct!=null?`<span style="color:${pctColor(t.current_pct)};">${(t.current_pct>=0?'+':'')+t.current_pct.toFixed(1)+'%'}</span>`:'—' },
+  { id:'plC',     label:'P/L C',    sortVal: t => t.contract_pct??-Infinity,
+    cell: t => t.contract_pct!=null?`<span style="color:${pctColor(t.contract_pct)};">${(t.contract_pct>=0?'+':'')+t.contract_pct.toFixed(1)+'%'}</span>`:'—' },
+  { id:'status',  label:'Status',   sortVal: t => t.expired?2:t.strike_reached?1:0,
+    cell: t => { if(t.archive_failed)return`<span class="tr-badge-exp" style="background:#3a1a00;color:#ff8844;border-color:#ff884466;cursor:pointer;" onclick="event.stopPropagation();retryArchive('${t.id}')" title="Notion archive failed\n${t.archive_error||''}">⚠ Retry</span>`; if(t.expired)return'<span class="tr-badge-exp">Expired</span>'; if(t.strike_reached)return'<span class="tr-badge-struck">★ Hit</span>'; return'<span class="tr-badge-open">Open</span>'; } },
+];
+const TRADE_DEFAULT_ORDER = ['symbol','date','entryU','entryC','strike','expiry','hiU','loU','hiC','loC','maxDay','curU','curC','plU','plC','status'];
+let tradeColOrder = JSON.parse(localStorage.getItem('tradeColOrder')||'null') || [...TRADE_DEFAULT_ORDER];
+let tradesSortCol = null;
+let tradesSortDir = 1;
+let _tradeDragSrc = null;
 
 function renderTradeTable() {
-  const tbody = document.getElementById('tradesTableBody');
+  const tbody    = document.getElementById('tradesTableBody');
+  const theadRow = document.getElementById('tradesTheadRow');
   if (!tbody) return;
-  if (!tradesCache.length) {
-    tbody.innerHTML = '<tr><td colspan="16" style="color:var(--text3);font-style:italic;padding:20px 10px;">No trades yet. Tap + New Trade to log your first call.</td></tr>';
-    return;
-  }
-  let rows = [...tradesCache];
-  if (tradesSortAsc !== null) {
-    rows.sort((a, b) => {
-      const ea = a.expiry || '';
-      const eb = b.expiry || '';
-      return tradesSortAsc ? ea.localeCompare(eb) : eb.localeCompare(ea);
+
+  const colMap = Object.fromEntries(TRADE_COL_DEFS.map(c => [c.id, c]));
+  // Patch in any new columns missing from saved order
+  TRADE_DEFAULT_ORDER.forEach(id => { if (!tradeColOrder.includes(id)) tradeColOrder.push(id); });
+  const cols = tradeColOrder.map(id => colMap[id]).filter(Boolean);
+
+  // ── Header ──
+  if (theadRow) {
+    theadRow.innerHTML = '';
+    cols.forEach(col => {
+      const th = document.createElement('th');
+      th.draggable = true;
+      th.dataset.colId = col.id;
+      const isSort = tradesSortCol === col.id;
+      const arrow  = isSort ? (tradesSortDir === 1 ? ' ↑' : ' ↓') : '';
+      th.innerHTML = col.label + `<span style="opacity:.45;font-style:normal;">${arrow}</span>`;
+
+      th.addEventListener('click', () => {
+        if (tradesSortCol === col.id) tradesSortDir = tradesSortDir === 1 ? -1 : 1;
+        else { tradesSortCol = col.id; tradesSortDir = 1; }
+        renderTradeTable();
+      });
+      th.addEventListener('dragstart', e => {
+        _tradeDragSrc = col.id;
+        e.dataTransfer.effectAllowed = 'move';
+        setTimeout(() => th.style.opacity = '0.35', 0);
+      });
+      th.addEventListener('dragend', () => {
+        th.style.opacity = '';
+        theadRow.querySelectorAll('th').forEach(h => h.classList.remove('drag-over'));
+      });
+      th.addEventListener('dragover', e => {
+        e.preventDefault();
+        theadRow.querySelectorAll('th').forEach(h => h.classList.remove('drag-over'));
+        if (_tradeDragSrc !== col.id) th.classList.add('drag-over');
+      });
+      th.addEventListener('drop', e => {
+        e.preventDefault();
+        th.classList.remove('drag-over');
+        if (!_tradeDragSrc || _tradeDragSrc === col.id) return;
+        const si = tradeColOrder.indexOf(_tradeDragSrc);
+        const ti = tradeColOrder.indexOf(col.id);
+        if (si < 0 || ti < 0) return;
+        tradeColOrder.splice(si, 1);
+        tradeColOrder.splice(ti, 0, _tradeDragSrc);
+        localStorage.setItem('tradeColOrder', JSON.stringify(tradeColOrder));
+        _tradeDragSrc = null;
+        renderTradeTable();
+      });
+      theadRow.appendChild(th);
     });
   }
+
+  if (!tradesCache.length) {
+    tbody.innerHTML = `<tr><td colspan="${cols.length}" style="color:var(--text3);font-style:italic;padding:20px 10px;">No trades yet. Tap + New Trade to log your first call.</td></tr>`;
+    return;
+  }
+
+  // ── Sort ──
+  let rows = [...tradesCache];
+  if (tradesSortCol) {
+    const def = colMap[tradesSortCol];
+    if (def) rows.sort((a, b) => {
+      const va = def.sortVal(a), vb = def.sortVal(b);
+      return va < vb ? -tradesSortDir : va > vb ? tradesSortDir : 0;
+    });
+  }
+
+  // ── Rows ──
+  const multiLine = new Set(['hiU','loU','hiC','loC','maxDay']);
   tbody.innerHTML = rows.map(t => {
-    const dir = t.direction === 'C' ? 'Call' : 'Put';
-
-    // Purchase date
-    const purchaseDate = t.entry_time ? t.entry_time.slice(0,10).slice(5) : '—'; // MM-DD
-
-    // Entry prices
-    const entryU = t.entry_price    != null ? '$' + t.entry_price    : '—';
-    const entryC = t.entry_contract != null ? '$' + t.entry_contract : '—';
-
-    // Underlying max high / low with % vs entry
-    const hiUPct = (t.max_high != null && t.entry_price != null)
-      ? ((t.max_high - t.entry_price) / t.entry_price * 100) : null;
-    const loUPct = (t.max_low  != null && t.entry_price != null)
-      ? ((t.max_low  - t.entry_price) / t.entry_price * 100) : null;
-    const hiU = t.max_high != null
-      ? `<span style="color:#00cc66;">${hiUPct != null ? (hiUPct>=0?'+':'')+hiUPct.toFixed(1)+'%' : ''}</span><br><span style="font-size:10px;color:var(--text3);">$${t.max_high}</span>`
-      : '—';
-    const loU = t.max_low != null
-      ? `<span style="color:#ff4444;">${loUPct != null ? (loUPct>=0?'+':'')+loUPct.toFixed(1)+'%' : ''}</span><br><span style="font-size:10px;color:var(--text3);">$${t.max_low}</span>`
-      : '—';
-
-    // Contract max high / low with % vs entry_contract
-    const hiCPct = (t.contract_max_high != null && t.entry_contract != null)
-      ? ((t.contract_max_high - t.entry_contract) / t.entry_contract * 100) : null;
-    const loCPct = (t.contract_max_low  != null && t.entry_contract != null)
-      ? ((t.contract_max_low  - t.entry_contract) / t.entry_contract * 100) : null;
-    const hiC = t.contract_max_high != null
-      ? `<span style="color:#00cc66;">${hiCPct != null ? (hiCPct>=0?'+':'')+hiCPct.toFixed(1)+'%' : ''}</span><br><span style="font-size:10px;color:var(--text3);">$${t.contract_max_high}</span>`
-      : '—';
-    const loC = t.contract_max_low != null
-      ? `<span style="color:#ff4444;">${loCPct != null ? (loCPct>=0?'+':'')+loCPct.toFixed(1)+'%' : ''}</span><br><span style="font-size:10px;color:var(--text3);">$${t.contract_max_low}</span>`
-      : '—';
-
-    // Max daily candle
-    const maxDayCell = t.max_daily_range_pct != null
-      ? `<span style="color:var(--text);">${t.max_daily_range_pct.toFixed(1)}%</span><br><span style="font-size:10px;color:var(--text3);">${(t.max_daily_range_date||'').slice(5)}</span>`
-      : '—';
-
-    // Current underlying
-    const curUColor = pctColor(t.current_pct);
-    const curU = t.current_price != null ? `$${t.current_price}` : '—';
-
-    // Current contract
-    const curCColor = pctColor(t.contract_pct);
-    const curC = t.current_contract != null ? `$${t.current_contract}` : '—';
-
-    // P/L underlying
-    const plUVal = t.current_pct != null ? (t.current_pct>=0?'+':'')+t.current_pct.toFixed(1)+'%' : '—';
-    const plU = `<span style="color:${curUColor};">${plUVal}</span>`;
-
-    // P/L contract
-    const plCVal = t.contract_pct != null ? (t.contract_pct>=0?'+':'')+t.contract_pct.toFixed(1)+'%' : '—';
-    const plC = `<span style="color:${curCColor};">${plCVal}</span>`;
-
-    let badge;
-    if (t.archive_failed)      badge = `<span class="tr-badge-exp" style="background:#3a1a00;color:#ff8844;border-color:#ff884466;cursor:pointer;" onclick="event.stopPropagation();retryArchive('${t.id}')" title="Notion archive failed — tap to retry\n${t.archive_error||''}">⚠ Retry</span>`;
-    else if (t.expired)        badge = '<span class="tr-badge-exp">Expired</span>';
-    else if (t.strike_reached) badge = '<span class="tr-badge-struck">★ Hit</span>';
-    else                       badge = '<span class="tr-badge-open">Open</span>';
-
     const rowClass = t.expired ? 'expired' : '';
-    return `<tr class="${rowClass}" onclick="openTradeDetail('${t.id}')">
-      <td><span class="tr-sym">${t.ticker}</span> <span style="font-size:11px;color:var(--text3);">${dir}</span></td>
-      <td class="tr-mono" style="font-size:11px;">${purchaseDate}</td>
-      <td class="tr-mono">${entryU}</td>
-      <td class="tr-mono">${entryC}</td>
-      <td class="tr-mono">${t.strike}</td>
-      <td class="tr-mono">${fmtExpiry(t.expiry)}</td>
-      <td class="tr-mono" style="line-height:1.7;">${hiU}</td>
-      <td class="tr-mono" style="line-height:1.7;">${loU}</td>
-      <td class="tr-mono" style="line-height:1.7;">${hiC}</td>
-      <td class="tr-mono" style="line-height:1.7;">${loC}</td>
-      <td class="tr-mono" style="line-height:1.7;">${maxDayCell}</td>
-      <td class="tr-mono">${curU}</td>
-      <td class="tr-mono">${curC}</td>
-      <td class="tr-mono">${plU}</td>
-      <td class="tr-mono">${plC}</td>
-      <td>${badge}</td>
-    </tr>`;
+    const cells = cols.map(col => {
+      const mono  = col.id !== 'symbol' && col.id !== 'status' ? ' tr-mono' : '';
+      const style = multiLine.has(col.id) ? ' style="line-height:1.7;"' : '';
+      return `<td class="${mono}"${style}>${col.cell(t)}</td>`;
+    }).join('');
+    return `<tr class="${rowClass}" onclick="openTradeDetail('${t.id}')">${cells}</tr>`;
   }).join('');
 }
 
