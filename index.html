@@ -906,19 +906,25 @@
           <thead>
             <tr>
               <th>Symbol</th>
-              <th>Underlying</th>
-              <th>Contract</th>
+              <th>Date</th>
+              <th>Entry U</th>
+              <th>Entry C</th>
               <th>Strike</th>
               <th id="thExpiry" style="cursor:pointer;user-select:none;" onclick="toggleTradesSort()">Expiry <span id="trSortArrow"></span></th>
-              <th>Max High</th>
-              <th>Max Low</th>
+              <th>Hi U</th>
+              <th>Lo U</th>
+              <th>Hi C</th>
+              <th>Lo C</th>
               <th>Max Day</th>
-              <th>Current</th>
+              <th>Cur U</th>
+              <th>Cur C</th>
+              <th>P/L U</th>
+              <th>P/L C</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody id="tradesTableBody">
-            <tr><td colspan="10" style="color:var(--text3);font-style:italic;padding:20px 10px;">Loading…</td></tr>
+            <tr><td colspan="16" style="color:var(--text3);font-style:italic;padding:20px 10px;">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -9027,7 +9033,7 @@ function renderTradeTable() {
   const tbody = document.getElementById('tradesTableBody');
   if (!tbody) return;
   if (!tradesCache.length) {
-    tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text3);font-style:italic;padding:20px 10px;">No trades yet. Tap + New Trade to log your first call.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="16" style="color:var(--text3);font-style:italic;padding:20px 10px;">No trades yet. Tap + New Trade to log your first call.</td></tr>';
     return;
   }
   let rows = [...tradesCache];
@@ -9039,70 +9045,83 @@ function renderTradeTable() {
     });
   }
   tbody.innerHTML = rows.map(t => {
-    const dir      = t.direction === 'C' ? 'Call' : 'Put';
-    const entryP   = t.entry_price   != null ? '$' + t.entry_price   : '…';
-    const curP     = t.current_price != null ? '$' + t.current_price : '…';
-    const curPct   = t.current_pct   != null ? (t.current_pct >= 0 ? '+' : '') + t.current_pct.toFixed(1) + '%' : '';
-    const curColor = pctColor(t.current_pct);
-    const maxHPctVal = (t.max_high != null && t.entry_price != null)
-      ? ((t.max_high - t.entry_price) / t.entry_price * 100).toFixed(1) : null;
-    const maxLPctVal = (t.max_low != null && t.entry_price != null)
-      ? ((t.max_low - t.entry_price) / t.entry_price * 100).toFixed(1) : null;
-    // Underlying max high / low
-    const maxH = t.max_high != null
-      ? (maxHPctVal != null ? '<span style="color:#00cc66;">+' + maxHPctVal + '%</span>' : '') +
-        '<br><span style="font-size:11px;color:var(--text3);">$' + t.max_high + '</span>'
-      : '…';
-    const maxL = t.max_low != null
-      ? (maxLPctVal != null ? '<span style="color:#ff4444;">' + maxLPctVal + '%</span>' : '') +
-        '<br><span style="font-size:11px;color:var(--text3);">$' + t.max_low + '</span>'
-      : '…';
-    // Contract max high / low
-    const cMaxHPct = (t.contract_max_high != null && t.entry_contract != null)
-      ? ((t.contract_max_high - t.entry_contract) / t.entry_contract * 100).toFixed(1) : null;
-    const cMaxLPct = (t.contract_max_low != null && t.entry_contract != null)
-      ? ((t.contract_max_low - t.entry_contract) / t.entry_contract * 100).toFixed(1) : null;
-    const maxHC = t.contract_max_high != null
-      ? (cMaxHPct != null ? '<span style="color:#00cc66;font-size:10px;">+' + cMaxHPct + '%</span>' : '') +
-        ' <span style="font-size:10px;color:var(--text3);">$' + t.contract_max_high + '</span>'
-      : '<span style="color:var(--text3);font-size:10px;">—</span>';
-    const maxLC = t.contract_max_low != null
-      ? (cMaxLPct != null ? '<span style="color:#ff4444;font-size:10px;">' + cMaxLPct + '%</span>' : '') +
-        ' <span style="font-size:10px;color:var(--text3);">$' + t.contract_max_low + '</span>'
-      : '<span style="color:var(--text3);font-size:10px;">—</span>';
-    // Contract entry/current column
-    const entryC    = t.entry_contract   != null ? '$' + t.entry_contract   : '…';
-    const curC      = t.current_contract != null ? '$' + t.current_contract : '…';
-    const curCPct   = t.contract_pct != null ? (t.contract_pct >= 0 ? '+' : '') + t.contract_pct.toFixed(1) + '%' : '';
+    const dir = t.direction === 'C' ? 'Call' : 'Put';
+
+    // Purchase date
+    const purchaseDate = t.entry_time ? t.entry_time.slice(0,10).slice(5) : '—'; // MM-DD
+
+    // Entry prices
+    const entryU = t.entry_price    != null ? '$' + t.entry_price    : '—';
+    const entryC = t.entry_contract != null ? '$' + t.entry_contract : '—';
+
+    // Underlying max high / low with % vs entry
+    const hiUPct = (t.max_high != null && t.entry_price != null)
+      ? ((t.max_high - t.entry_price) / t.entry_price * 100) : null;
+    const loUPct = (t.max_low  != null && t.entry_price != null)
+      ? ((t.max_low  - t.entry_price) / t.entry_price * 100) : null;
+    const hiU = t.max_high != null
+      ? `<span style="color:#00cc66;">${hiUPct != null ? (hiUPct>=0?'+':'')+hiUPct.toFixed(1)+'%' : ''}</span><br><span style="font-size:10px;color:var(--text3);">$${t.max_high}</span>`
+      : '—';
+    const loU = t.max_low != null
+      ? `<span style="color:#ff4444;">${loUPct != null ? (loUPct>=0?'+':'')+loUPct.toFixed(1)+'%' : ''}</span><br><span style="font-size:10px;color:var(--text3);">$${t.max_low}</span>`
+      : '—';
+
+    // Contract max high / low with % vs entry_contract
+    const hiCPct = (t.contract_max_high != null && t.entry_contract != null)
+      ? ((t.contract_max_high - t.entry_contract) / t.entry_contract * 100) : null;
+    const loCPct = (t.contract_max_low  != null && t.entry_contract != null)
+      ? ((t.contract_max_low  - t.entry_contract) / t.entry_contract * 100) : null;
+    const hiC = t.contract_max_high != null
+      ? `<span style="color:#00cc66;">${hiCPct != null ? (hiCPct>=0?'+':'')+hiCPct.toFixed(1)+'%' : ''}</span><br><span style="font-size:10px;color:var(--text3);">$${t.contract_max_high}</span>`
+      : '—';
+    const loC = t.contract_max_low != null
+      ? `<span style="color:#ff4444;">${loCPct != null ? (loCPct>=0?'+':'')+loCPct.toFixed(1)+'%' : ''}</span><br><span style="font-size:10px;color:var(--text3);">$${t.contract_max_low}</span>`
+      : '—';
+
+    // Max daily candle
+    const maxDayCell = t.max_daily_range_pct != null
+      ? `<span style="color:var(--text);">${t.max_daily_range_pct.toFixed(1)}%</span><br><span style="font-size:10px;color:var(--text3);">${(t.max_daily_range_date||'').slice(5)}</span>`
+      : '—';
+
+    // Current underlying
+    const curUColor = pctColor(t.current_pct);
+    const curU = t.current_price != null ? `$${t.current_price}` : '—';
+
+    // Current contract
     const curCColor = pctColor(t.contract_pct);
-    const contractCell = `<span style="font-size:11px;color:var(--text3);">in</span> ${entryC}<br>` +
-      `<span style="color:${curCColor};font-size:12px;">${curC} <span style="font-size:10px;">${curCPct}</span></span>`;
-    // Current column — underlying + contract stacked
-    const currentCell =
-      `<span style="color:${curColor};">${curP}</span> <span style="font-size:11px;">${curPct}</span>` +
-      `<br><span style="color:${curCColor};font-size:11px;">${curC} <span style="font-size:10px;">${curCPct}</span></span>`;
-    const maxDayPct = t.max_daily_range_pct != null ? t.max_daily_range_pct.toFixed(1) + '%' : null;
-    const maxDayDate = t.max_daily_range_date ? t.max_daily_range_date.slice(5) : null; // MM-DD
-    const maxDayCell = maxDayPct
-      ? `<span style="color:var(--text);">${maxDayPct}</span><br><span style="font-size:10px;color:var(--text3);">${maxDayDate}</span>`
-      : '<span style="color:var(--text3);">—</span>';
+    const curC = t.current_contract != null ? `$${t.current_contract}` : '—';
+
+    // P/L underlying
+    const plUVal = t.current_pct != null ? (t.current_pct>=0?'+':'')+t.current_pct.toFixed(1)+'%' : '—';
+    const plU = `<span style="color:${curUColor};">${plUVal}</span>`;
+
+    // P/L contract
+    const plCVal = t.contract_pct != null ? (t.contract_pct>=0?'+':'')+t.contract_pct.toFixed(1)+'%' : '—';
+    const plC = `<span style="color:${curCColor};">${plCVal}</span>`;
 
     let badge;
-    if (t.archive_failed)       badge = `<span class="tr-badge-exp" style="background:#3a1a00;color:#ff8844;border-color:#ff884466;cursor:pointer;" onclick="event.stopPropagation();retryArchive('${t.id}')" title="Notion archive failed — tap to retry\n${t.archive_error||''}">⚠ Retry Archive</span>`;
-    else if (t.expired)         badge = '<span class="tr-badge-exp">Expired</span>';
-    else if (t.strike_reached)  badge = '<span class="tr-badge-struck">★ Hit</span>';
-    else                        badge = '<span class="tr-badge-open">Open</span>';
+    if (t.archive_failed)      badge = `<span class="tr-badge-exp" style="background:#3a1a00;color:#ff8844;border-color:#ff884466;cursor:pointer;" onclick="event.stopPropagation();retryArchive('${t.id}')" title="Notion archive failed — tap to retry\n${t.archive_error||''}">⚠ Retry</span>`;
+    else if (t.expired)        badge = '<span class="tr-badge-exp">Expired</span>';
+    else if (t.strike_reached) badge = '<span class="tr-badge-struck">★ Hit</span>';
+    else                       badge = '<span class="tr-badge-open">Open</span>';
+
     const rowClass = t.expired ? 'expired' : '';
     return `<tr class="${rowClass}" onclick="openTradeDetail('${t.id}')">
       <td><span class="tr-sym">${t.ticker}</span> <span style="font-size:11px;color:var(--text3);">${dir}</span></td>
-      <td class="tr-mono">${entryP}</td>
-      <td class="tr-mono" style="line-height:1.6;">${contractCell}</td>
+      <td class="tr-mono" style="font-size:11px;">${purchaseDate}</td>
+      <td class="tr-mono">${entryU}</td>
+      <td class="tr-mono">${entryC}</td>
       <td class="tr-mono">${t.strike}</td>
       <td class="tr-mono">${fmtExpiry(t.expiry)}</td>
-      <td class="tr-mono" style="line-height:1.8;">${maxH}<br>${maxHC}</td>
-      <td class="tr-mono" style="line-height:1.8;">${maxL}<br>${maxLC}</td>
-      <td class="tr-mono">${maxDayCell}</td>
-      <td class="tr-mono" style="line-height:1.8;">${currentCell}</td>
+      <td class="tr-mono" style="line-height:1.7;">${hiU}</td>
+      <td class="tr-mono" style="line-height:1.7;">${loU}</td>
+      <td class="tr-mono" style="line-height:1.7;">${hiC}</td>
+      <td class="tr-mono" style="line-height:1.7;">${loC}</td>
+      <td class="tr-mono" style="line-height:1.7;">${maxDayCell}</td>
+      <td class="tr-mono">${curU}</td>
+      <td class="tr-mono">${curC}</td>
+      <td class="tr-mono">${plU}</td>
+      <td class="tr-mono">${plC}</td>
       <td>${badge}</td>
     </tr>`;
   }).join('');
