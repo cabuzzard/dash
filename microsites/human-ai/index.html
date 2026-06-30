@@ -34,6 +34,9 @@
 .product-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .product-row:last-child { border-bottom: none; }
 .product-name { flex: 1; font-size: 13px; color: #c9c9c9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gen-strategy-btn { font-size: 11px; padding: 2px 7px; background: rgba(99,179,237,.15); border: 1px solid rgba(99,179,237,.3); color: #63b3ed; border-radius: 4px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+.gen-strategy-btn:hover { background: rgba(99,179,237,.25); }
+.gen-strategy-btn:disabled { opacity: .5; cursor: default; }
 .login-meta { flex: 1; min-width: 0; }
 .login-name { font-size: 13px; color: #c9c9c9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .login-sub  { font-size: 11px; color: #555; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1279,9 +1282,24 @@ function renderProducts() {
   PRODUCT_ITEMS.forEach(p => {
     const row = document.createElement('div');
     row.className = 'product-row';
-    row.innerHTML = `<a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+    row.innerHTML = `<a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a><button class="gen-strategy-btn" onclick="generateProductStrategy('${p.id}', this)" title="Generate strategy from campaign research">⚡ Generate</button><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
+}
+
+async function generateProductStrategy(productId, btn) {
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const data = await w('generateProductStrategy', { productId, campaignId: CAMPAIGN_ID });
+    if (data.error) { alert('Error: ' + data.error); return; }
+    btn.textContent = '✓ Done';
+    btn.style.color = '#68d391';
+    setTimeout(() => { btn.textContent = orig; btn.style.color = ''; btn.disabled = false; }, 3000);
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.textContent = orig; btn.disabled = false;
+  }
 }
 
 async function loadProducts() {
