@@ -193,15 +193,15 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2>Logins <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
+    <h2>Deliverables</h2>
     <div class="content">
-      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div class="deliverable-list" id="deliverable-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
 
-<!-- SEC 3: three col — SM posts / development titles / publish titles -->
-<div class="three-col">
+<!-- SEC 3: four col — SM posts / development titles / publish titles / logins -->
+<div class="four-col">
   <div class="col">
     <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Run research">&#x25B6;</button></h2>
     <div class="content">
@@ -218,6 +218,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <h2>Publish Titles</h2>
     <div class="content">
       <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Logins <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
+    <div class="content">
+      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
@@ -2014,6 +2020,46 @@ function init() {
   loadProducts();
   loadLogins();
   loadSmPosts();
+  loadDeliverables();
+}
+
+// ── DELIVERABLES ─────────────────────────────────────────────────────
+async function loadDeliverables() {
+  const el = document.getElementById('deliverable-list');
+  if (!el) return;
+  try {
+    const data = await w('getDeliverables', { campaignId: CAMPAIGN_ID });
+    const items = data.deliverables || [];
+    if (!items.length) { el.innerHTML = '<div class="empty">No deliverables yet.</div>'; return; }
+    // Group by product
+    const byProduct = {}, productOrder = [];
+    items.forEach(d => {
+      if (!byProduct[d.productId]) { byProduct[d.productId] = { name: d.productName, items: [] }; productOrder.push(d.productId); }
+      byProduct[d.productId].items.push(d);
+    });
+    el.innerHTML = '';
+    const statusColor = { Draft: '#718096', Review: '#c9a800', Final: '#68d391' };
+    productOrder.forEach(pid => {
+      const group = byProduct[pid];
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;user-select:none;';
+      const arrow = document.createElement('span'); arrow.textContent = '▶'; arrow.style.cssText = 'font-size:8px;color:#555;flex-shrink:0;';
+      const label = document.createElement('span'); label.style.cssText = 'flex:1;font-size:12px;color:#aaa;font-weight:600;'; label.textContent = group.name;
+      const count = document.createElement('span'); count.style.cssText = 'font-size:10px;color:#555;'; count.textContent = group.items.length;
+      hdr.appendChild(arrow); hdr.appendChild(label); hdr.appendChild(count);
+      const body = document.createElement('div'); body.style.display = 'none';
+      group.items.forEach(d => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid rgba(255,255,255,.04);';
+        row.innerHTML = `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${d.type||'—'}</span><span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.name}</span><span style="font-size:10px;color:${statusColor[d.status]||'#555'};flex-shrink:0;">${d.status}</span><a href="https://www.notion.so/${d.id}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">↗</a>`;
+        body.appendChild(row);
+      });
+      hdr.onclick = () => { const o = body.style.display !== 'none'; body.style.display = o ? 'none' : 'block'; arrow.textContent = o ? '▶' : '▾'; };
+      el.appendChild(hdr); el.appendChild(body);
+    });
+  } catch(e) {
+    el.innerHTML = '<div class="empty" style="color:#f87171;">Error: ' + e.message + '</div>';
+  }
 }
 
 // ── SM POSTS ──────────────────────────────────────────────────────────

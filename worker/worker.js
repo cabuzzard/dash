@@ -2287,6 +2287,225 @@ No other text. No markdown fences.`;
         return json({ created });
       }
 
+      // ── getDeliverables ──
+      if (body.action === "getDeliverables") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const DELIVERABLES_DB = "984754dc18434dd4847e0ac1c05550f8";
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        // Fetch all products for this campaign first
+        const prodResp = await fetch(`https://api.notion.com/v1/databases/${PRODUCTS_DB}/query`, {
+          method: "POST", headers: hdr,
+          body: JSON.stringify({ filter: { property: "Campaigns", relation: { contains: dash(campaignId) } }, page_size: 100 }),
+        }).then(r => r.json());
+        const productIds = new Set((prodResp.results || []).map(p => p.id.replace(/-/g,"")));
+        const productNames = {};
+        (prodResp.results || []).forEach(p => { productNames[p.id.replace(/-/g,"")] = (p.properties.Name?.title || []).map(t => t.plain_text).join("") || "Unnamed"; });
+        if (!productIds.size) return json({ deliverables: [] });
+        // Fetch deliverables for each product (parallel)
+        const allDeliverables = [];
+        await Promise.all([...productIds].map(async pid => {
+          const r = await fetch(`https://api.notion.com/v1/databases/${dash(DELIVERABLES_DB)}/query`, {
+            method: "POST", headers: hdr,
+            body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(pid) } }, page_size: 100 }),
+          }).then(r => r.json());
+          (r.results || []).forEach(d => {
+            const dp = d.properties || {};
+            allDeliverables.push({
+              id:          d.id.replace(/-/g,""),
+              name:        (dp.Name?.title || []).map(t => t.plain_text).join("") || "Untitled",
+              type:        dp.Type?.select?.name || "",
+              status:      dp.Status?.select?.name || "Draft",
+              productId:   pid,
+              productName: productNames[pid] || "",
+              url:         d.url || "",
+            });
+          });
+        }));
+        return json({ deliverables: allDeliverables });
+      }
+
+      // ── writeContent: generate and save actual content for a title ──
+      if (body.action === "writeContent") {
+        const { titleId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dashedTitle = dash(titleId);
+
+        // Fetch the title page
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dashedTitle}`, { headers: hdr }).then(r => r.json());
+        const tp = titlePage.properties || {};
+        const titleName    = (tp.Title?.title || []).map(x => x.plain_text).join("") || "Untitled";
+        const rawGrouping  = (tp.Grouping?.rich_text || []).map(x => x.plain_text).join("") || "";
+        const gtParts      = rawGrouping.split(" > ");
+        const phase        = gtParts.length > 1 ? gtParts[0].trim() : "";
+        const grouping     = gtParts.length > 1 ? gtParts.slice(1).join(" > ").trim() : rawGrouping;
+        const methodId     = (tp.method?.relation || [])[0]?.id || "";
+        const campaignId   = (tp.Campaign?.relation || [])[0]?.id || "";
+        const productId    = (tp.product?.relation || [])[0]?.id || "";
+
+        // Parallel fetch method, campaign research, product
+        const [methodPage, researchRaw, campRaw, productPage] = await Promise.all([
+          methodId ? fetch(`https://api.notion.com/v1/pages/${methodId}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
+          campaignId ? fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: campaignId } } }),
+          }).then(r => r.json()) : Promise.resolve({ results: [] }),
+          campaignId ? fetch(`https://api.notion.com/v1/pages/${campaignId}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
+          productId ? fetch(`https://api.notion.com/v1/pages/${productId}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
+        ]);
+
+        // Fetch method body blocks
+        const methodBlocks = methodId
+          ? await fetch(`https://api.notion.com/v1/blocks/${methodId}/children?page_size=100`, { headers: hdr }).then(r => r.json())
+          : { results: [] };
+
+        const extractText = blocks => (blocks.results || []).map(b => {
+          const type = b.type; const rich = b[type]?.rich_text || [];
+          const text = rich.map(t => t.plain_text).join("");
+          if (type === "heading_1" || type === "heading_2" || type === "heading_3") return `\n## ${text}`;
+          if (type === "bulleted_list_item") return `- ${text}`;
+          if (type === "paragraph" && text) return text;
+          return "";
+        }).filter(Boolean).join("\n");
+
+        const methodName = (methodPage?.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Unknown Method";
+        const methodBody = extractText(methodBlocks);
+
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const cp = campRaw?.properties || {};
+        const research = {
+          keywords:          rt(researchRaw, "Keywords"),
+          statement:         rt(researchRaw, "Statement"),
+          uniqueOpportunity: rt(researchRaw, "Unique Opportunity"),
+          keyMessage:        rt(researchRaw, "Key Message"),
+          campaignGoal:      (cp["Campaign Goal"]?.rich_text || []).map(t => t.plain_text).join(""),
+          painPoints:        (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join(""),
+        };
+
+        const pp = productPage?.properties || {};
+        const ptxt = prop => (pp[prop]?.rich_text || []).map(x => x.plain_text).join("") || "";
+        const productName    = (pp.Name?.title || []).map(x => x.plain_text).join("") || "";
+        const offerStructure = ptxt("Offer Structure");
+        const productStrategy = {
+          avatar:         ptxt("Avatar"),
+          transformation: ptxt("Transformation"),
+          offerStructure,
+          price:          ptxt("Price"),
+          proofPoints:    ptxt("Proof Points"),
+          objections:     ptxt("Objections"),
+          uniqueAngle:    ptxt("Unique Angle"),
+        };
+
+        const prompt = `You are an expert content writer. Write the actual content for a specific deliverable in a content system.
+
+METHOD: ${methodName}
+METHOD FRAMEWORK (defines the content format and how to write for this method):
+${methodBody || "(No framework — infer format from method name)"}
+
+DELIVERABLE TO WRITE:
+Title: ${titleName}
+Phase: ${phase || "(none)"}
+Grouping: ${grouping || "(none)"}
+
+CAMPAIGN RESEARCH:
+Keywords: ${research.keywords}
+Positioning: ${research.statement}
+Unique Opportunity: ${research.uniqueOpportunity}
+Key Message: ${research.keyMessage}
+Campaign Goal: ${research.campaignGoal}
+Pain Points: ${research.painPoints}
+
+${productName ? `PRODUCT: ${productName}
+Product Type / Offer Structure: ${offerStructure}
+Avatar: ${productStrategy.avatar}
+Transformation: ${productStrategy.transformation}
+Price: ${productStrategy.price}
+Proof Points: ${productStrategy.proofPoints}
+Objections: ${productStrategy.objections}
+Unique Angle: ${productStrategy.uniqueAngle}` : "No specific product — write for the campaign itself."}
+
+INSTRUCTIONS:
+- The method framework defines WHAT FORMAT to write in (Instagram caption, email body, HTML section, landing page copy, video script, etc.). Follow it exactly.
+- The product type / offer structure tells you WHO this is selling and HOW — a coaching program writes differently than a SaaS tool, a course, or a physical product.
+- Write the actual finished content for the deliverable named above — not an outline, not a plan. The real thing, ready to use.
+- Be specific: use the real campaign keywords, real pain points, real transformation language. No placeholders.
+- Match the voice: direct, confident, specific. No fluff, no buzzwords (no "leverage", "delve", "harness", "unlock", "transformative").
+- Length and format should match what this method and deliverable type calls for.
+
+Write only the content itself. No preamble, no meta-commentary, no "Here's the content:".`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        const content = aiData.content?.[0]?.text || "";
+
+        // Convert content to Notion paragraph blocks (split on double newlines for paragraphs)
+        const paragraphs = content.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
+        const blocks = paragraphs.map(p => ({
+          object: "block", type: "paragraph",
+          paragraph: { rich_text: [{ type: "text", text: { content: p.slice(0, 2000) } }] },
+        }));
+
+        // Append blocks to the title page
+        await fetch(`https://api.notion.com/v1/blocks/${dashedTitle}/children`, {
+          method: "PATCH",
+          headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ children: blocks }),
+        });
+
+        // Update status to Writing
+        await fetch(`https://api.notion.com/v1/pages/${dashedTitle}`, {
+          method: "PATCH",
+          headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Status: { select: { name: "Writing" } } } }),
+        });
+
+        return json({ success: true, chars: content.length });
+      }
+
+      // ── fixOrphanTitles: set product relation to campaignId for titles with no product ──
+      if (body.action === "fixOrphanTitles") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        // Find all titles for this campaign with no product relation
+        let results = [], cursor;
+        do {
+          const r = await fetch(`https://api.notion.com/v1/databases/${CONTENT_STRATEGY_DB}/query`, {
+            method: "POST", headers: hdr,
+            body: JSON.stringify({
+              page_size: 100,
+              filter: { and: [
+                { property: "Campaign", relation: { contains: dash(campaignId) } },
+                { property: "product", relation: { is_empty: true } },
+              ]},
+              ...(cursor ? { start_cursor: cursor } : {}),
+            }),
+          }).then(r => r.json());
+          results = results.concat(r.results || []);
+          cursor = r.has_more ? r.next_cursor : undefined;
+        } while (cursor);
+        // Patch each one
+        let fixed = 0;
+        for (const page of results) {
+          await fetch(`https://api.notion.com/v1/pages/${page.id}`, {
+            method: "PATCH", headers: hdr,
+            body: JSON.stringify({ properties: { "product": { relation: [{ id: dash(campaignId) }] } } }),
+          });
+          fixed++;
+        }
+        return json({ fixed });
+      }
+
       // ── deleteTitlesByProduct ──
       if (body.action === "deleteTitlesByProduct") {
         const { productId } = body;
