@@ -1058,9 +1058,11 @@ export default {
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
         });
         const existingData = await existingResp.json();
-        const existingFiles = (existingData.properties?.["Files"]?.files || []).map(f => ({
-          type: "external", name: f.name, external: { url: f.file?.url || f.external?.url || "" }
-        })).filter(f => f.external.url);
+        const existingFiles = (existingData.properties?.["Files"]?.files || []).flatMap(f => {
+          if (f.type === "file" && f.file?.url) return [{ type: "file", name: f.name, file: { url: f.file.url } }];
+          if (f.type === "external" && f.external?.url) return [{ type: "external", name: f.name, external: { url: f.external.url } }];
+          return [];
+        });
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
