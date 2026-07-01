@@ -5344,15 +5344,95 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         };
       }
 
-      // Fetches daily + weekly charts and returns signals + EMA distances merged
-      async function calcFullSignals(sym) {
-        const [dailyData, weeklyData] = await Promise.all([
+      // ── SECTOR / RRG (Relative Rotation Graph) ───────────────────────────────
+      // Informational only — classifies each stock's sector as Leading / Weakening /
+      // Lagging / Improving relative to SPY, so early-rotation sectors are visible
+      // even before individual stocks show their own accumulation signals.
+      const SECTOR_ETF = {
+        'Technology':             'XLK',
+        'Financial Services':     'XLF',
+        'Energy':                 'XLE',
+        'Healthcare':             'XLV',
+        'Consumer Cyclical':      'XLY',
+        'Consumer Defensive':     'XLP',
+        'Industrials':            'XLI',
+        'Basic Materials':        'XLB',
+        'Utilities':              'XLU',
+        'Real Estate':            'XLRE',
+        'Communication Services': 'XLC',
+      };
+
+      async function fetchSector(sym) {
+        try {
+          const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=assetProfile`;
+          const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          if (!r.ok) return null;
+          const d = await r.json();
+          return d?.quoteSummary?.result?.[0]?.assetProfile?.sector || null;
+        } catch { return null; }
+      }
+
+      // RS-Ratio: sector-vs-SPY relative price, normalised around 100 (its own recent average).
+      // RS-Momentum: trend of that relative ratio over the last 10 weeks, normalised.
+      function calcRrg(etfCloses, spyCloses) {
+        const n = Math.min(etfCloses?.length || 0, spyCloses?.length || 0);
+        if (n < 15) return null;
+        const rel = etfCloses.slice(-n).map((v, i) => v / spyCloses.slice(-n)[i]);
+
+        const recent = rel.slice(-20);
+        const mean   = recent.reduce((a, x) => a + x, 0) / recent.length;
+        const rsRatio = mean ? (recent[recent.length - 1] / mean) * 100 : 100;
+
+        const window = rel.slice(-10);
+        const xBar = (window.length - 1) / 2;
+        const yBar = window.reduce((a, x) => a + x, 0) / window.length;
+        let num = 0, den = 0;
+        window.forEach((y, i) => { num += (i - xBar) * (y - yBar); den += (i - xBar) ** 2; });
+        const slope = den ? num / den : 0;
+        const rsMomentum = yBar ? slope / Math.abs(yBar) : 0;
+
+        let quadrant;
+        if (rsRatio >= 100 && rsMomentum > 0)  quadrant = 'Leading';
+        else if (rsRatio >= 100)                quadrant = 'Weakening';
+        else if (rsMomentum > 0)                quadrant = 'Improving';
+        else                                    quadrant = 'Lagging';
+
+        return { rsRatio: +rsRatio.toFixed(1), rsMomentum: +rsMomentum.toFixed(4), quadrant };
+      }
+
+      // Computed once per scan (not per ticker) — fetches SPY + the 11 sector ETFs.
+      async function buildSectorRrgCache() {
+        const spyData   = await fetchChart('SPY', '1wk', '2y');
+        const spyCloses = spyData?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(c => c != null);
+
+        const cache = {};
+        await Promise.all(Object.entries(SECTOR_ETF).map(async ([sector, etf]) => {
+          try {
+            const etfData   = await fetchChart(etf, '1wk', '2y');
+            const etfCloses = etfData?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(c => c != null);
+            const rrg = calcRrg(etfCloses, spyCloses);
+            if (rrg) cache[sector] = { etf, ...rrg };
+          } catch { /* skip this sector */ }
+        }));
+        return cache;
+      }
+
+      // Fetches daily + weekly charts and returns signals + EMA distances + sector RRG merged
+      async function calcFullSignals(sym, sectorRrgCache) {
+        const [dailyData, weeklyData, sector] = await Promise.all([
           fetchChart(sym),
           fetchChart(sym, '1wk', '5y'),
+          sectorRrgCache ? fetchSector(sym) : Promise.resolve(null),
         ]);
         const s = calcSignals(sym, dailyData);
         if (!s) return null;
         Object.assign(s, calcWeeklyEmaDistances(weeklyData, s.price));
+
+        const rrg = sector && sectorRrgCache?.[sector];
+        s.sector      = sector || null;
+        s.sectorEtf   = rrg ? rrg.etf : null;
+        s.rrgQuadrant = rrg ? rrg.quadrant : null;
+
         return s;
       }
 
@@ -5457,8 +5537,9 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         if (!Array.isArray(tickers) || !tickers.length) return json({ error: 'tickers required' }, 400);
         const list = tickers.slice(0, 40).map(t => t.toUpperCase().trim());
 
+        const sectorRrgCache = await buildSectorRrgCache();
         const results = await Promise.allSettled(
-          list.map(sym => calcFullSignals(sym))
+          list.map(sym => calcFullSignals(sym, sectorRrgCache))
         );
 
         const screened = results
@@ -5479,9 +5560,10 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const tickers = quotes.map(q => q.symbol).filter(Boolean).slice(0, 100);
         if (!tickers.length) return json({ error: 'No tickers from Yahoo screener' }, 502);
 
-        // Step 2: fetch OHLCV for all in parallel (momentum + accumulation signals + EMA distances)
+        // Step 2: fetch OHLCV for all in parallel (momentum + accumulation signals + EMA distances + sector RRG)
+        const sectorRrgCache = await buildSectorRrgCache();
         const results = await Promise.allSettled(
-          tickers.map(sym => calcFullSignals(sym))
+          tickers.map(sym => calcFullSignals(sym, sectorRrgCache))
         );
 
         const all = results
@@ -5591,8 +5673,9 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
 
         const tickers = Object.keys(INSTITUTIONAL_UNIVERSE);
 
+        const sectorRrgCache = await buildSectorRrgCache();
         const results = await Promise.allSettled(
-          tickers.map(sym => calcFullSignals(sym).then(s => {
+          tickers.map(sym => calcFullSignals(sym, sectorRrgCache).then(s => {
             if (s && INSTITUTIONAL_UNIVERSE[sym]) {
               s.funds     = INSTITUTIONAL_UNIVERSE[sym].funds;
               s.fundCount = s.funds.length;
