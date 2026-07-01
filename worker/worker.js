@@ -2991,6 +2991,43 @@ Return ONLY a JSON object with these exact keys:
       }
 
       // Î"Ã¶Ã‡Î"Ã¶Ã‡ CAMPAIGN ADMIN: condense via Claude Î"Ã¶Ã‡Î"Ã¶Ã‡
+      // ── getSourceLinks ──
+      if (body.action === "getSourceLinks") {
+        const { query, keywords } = body;
+        if (!query) return json({ error: "query required" }, 400);
+        const searchQuery = keywords ? `${query} ${keywords}` : query;
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY || '', 'anthropic-version': '2023-06-01', 'anthropic-beta': 'web-search-2025-03-05' },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 1000,
+            tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 1 }],
+            messages: [{ role: 'user', content: `Find 6 real, current web sources about: "${searchQuery}". Return ONLY a plain list: TITLE | URL one per line.` }],
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) return json({ error: data.error?.message || 'Search failed' }, resp.status);
+        const sources = [];
+        for (const block of (data.content || [])) {
+          if (block.type === 'text') {
+            const lines = block.text.split('\n').filter(l => l.includes('|') || l.match(/https?:\/\//));
+            for (const line of lines) {
+              const pipeIdx = line.indexOf('|');
+              if (pipeIdx !== -1) {
+                const title = line.slice(0, pipeIdx).trim().replace(/^[-•*\d+\.\s]+/, '');
+                const url = line.slice(pipeIdx + 1).trim();
+                if (url.match(/^https?:\/\//)) sources.push({ title: title || url, url });
+              } else {
+                const urlMatch = line.match(/https?:\/\/[^\s)>]+/);
+                if (urlMatch) sources.push({ title: urlMatch[0], url: urlMatch[0] });
+              }
+            }
+          }
+        }
+        return json({ sources: sources.slice(0, 8) });
+      }
+
       if (body.action === "condense") {
         const { label, text } = body;
         if (!text) return json({ html: '<p>Î"Ã‡Ã¶</p>' });
@@ -5793,3 +5830,4 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
     ctx.waitUntil(deepScan(env));
   },
 };
+

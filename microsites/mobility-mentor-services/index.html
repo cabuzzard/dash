@@ -738,14 +738,18 @@ function parseToHtml(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   let html = '';
   lines.forEach(line => {
-    // Match "HEADING: body text" pattern
     const match = line.match(/^([A-Z][A-Z0-9\s\/&,'-]+):\s*(.+)$/);
     if (match) {
-      html += '<h3>' + match[1].trim() + '</h3><p>' + match[2].trim() + '</p>';
+      const heading = match[1].trim();
+      const body = match[2].trim();
+      const q = heading.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      html += `<div class="sm-trend-row"><span style="flex:1;cursor:pointer" onclick="openTdModal('${q}')"><span class="sm-trend-niche">${heading}</span><span class="sm-trend-body"> ${body}</span></span><button class="td-add-btn-inline" onclick="openSourcesModal('${q}')" title="Find sources">🔗</button></div>`;
     } else {
-      // Plain line — strip leading dash/bullet
       const clean = line.replace(/^[-•·*\d+\.\s]+/, '').trim();
-      if (clean) html += '<p>' + clean + '</p>';
+      if (clean) {
+        const q = clean.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        html += `<div class="sm-trend-row"><span class="sm-trend-body" style="flex:1;cursor:pointer" onclick="openTdModal('${q}')">${clean}</span><button class="td-add-btn-inline" onclick="openSourcesModal('${q}')" title="Find sources">🔗</button></div>`;
+      }
     }
   });
   return html || '<p>—</p>';
@@ -774,10 +778,11 @@ function renderSMTrends(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${t}"><span class="sm-trend-body">${line}</span></div>`; }
+    const srcQ = colonIdx === -1 ? line.trim() : line.slice(0, colonIdx).trim();
+    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row"><span class="sm-trend-body" style="cursor:pointer;flex:1" onclick="openTdModal('${t.replace(/'/g,"\\'")}')"> ${line}</span><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`; }
     const niche = line.slice(0, colonIdx).trim();
     const desc  = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${niche.replace(/"/g,'&quot;')}"><span class="sm-trend-niche">${niche}</span><span class="sm-trend-body">${desc}</span></div>`;
+    return `<div class="sm-trend-row"><span style="cursor:pointer;flex:1;display:flex;gap:6px;align-items:baseline;min-width:0" onclick="openTdModal('${niche.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')"><span class="sm-trend-niche">${niche}</span><span class="sm-trend-body">${desc}</span></span><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`;
   }).join('');
 }
 
@@ -808,10 +813,11 @@ function renderProductIdeas(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${t}"><span class="sm-trend-body">${line}</span></div>`; }
+    const srcQ = colonIdx === -1 ? line.trim() : line.slice(0, colonIdx).trim();
+    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row"><span class="sm-trend-body" style="cursor:pointer;flex:1" onclick="openTdModal('${t.replace(/'/g,"\\'")}')">${line}</span><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`; }
     const name = line.slice(0, colonIdx).trim();
     const desc = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${name.replace(/"/g,'&quot;')}"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
+    return `<div class="sm-trend-row"><span style="cursor:pointer;flex:1;display:flex;gap:6px;align-items:baseline;min-width:0" onclick="openTdModal('${name.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></span><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`;
   }).join('');
 }
 
@@ -2837,5 +2843,36 @@ async function runRegenKeywords() {
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="sourcesModal" onclick="if(event.target===this)closeSourcesModal()">
+  <div class="modal" style="max-width:500px;padding:20px;">
+    <div class="modal-title">Sources</div>
+    <button class="modal-close" onclick="closeSourcesModal()">✕</button>
+    <div id="sources-query" style="font-size:11px;color:#888;margin:8px 0 12px;"></div>
+    <div id="sources-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <div class="modal-actions" style="margin-top:16px;">
+      <button class="modal-btn cancel" onclick="closeSourcesModal()">Close</button>
+    </div>
+  </div>
+</div>
+<script>
+function closeSourcesModal() { document.getElementById('sourcesModal').classList.remove('open'); }
+async function openSourcesModal(query) {
+  const el = document.getElementById('sources-list');
+  const qEl = document.getElementById('sources-query');
+  qEl.textContent = query;
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
+  document.getElementById('sourcesModal').classList.add('open');
+  try {
+    const kw = (typeof RESEARCH_ID_LIVE !== 'undefined' && window._researchKeywords) ? window._researchKeywords : '';
+    const data = await w('getSourceLinks', { query, keywords: kw });
+    if (data.error) throw new Error(data.error);
+    const sources = data.sources || [];
+    if (!sources.length) { el.innerHTML = '<div style="font-size:12px;color:#888;">No sources found.</div>'; return; }
+    el.innerHTML = sources.map(s => `<a href="${s.url}" target="_blank" rel="noopener" style="display:block;font-size:12px;color:#a78bfa;text-decoration:none;line-height:1.4;word-break:break-all;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${s.title}</a>`).join('');
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#f87171;">${e.message}</div>`;
+  }
+}
+</script>
 </body>
 </html>
