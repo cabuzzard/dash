@@ -881,6 +881,8 @@
                 <th class="r">OBV</th>
                 <th class="r">CMF</th>
                 <th class="r">%K/%D</th>
+                <th class="r" title="% distance of price from 50-week EMA">50w EMA</th>
+                <th class="r" title="% distance of price from 200-week EMA">200w EMA</th>
                 <th>Signals</th>
                 <th>Verdict</th>
                 <th id="scrFundsHeader" style="display:none;">Held By</th>
@@ -9319,7 +9321,7 @@ async function runEdgar() {
     renderScreenerTable(rows, false, true);
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     document.getElementById('scrLastRun').textContent = `Last run ${now}`;
-    status.textContent = `${data.universe} institutional holdings → ${data.passed} passed stoch < 50 filter → top ${rows.length} shown`;
+    status.textContent = `${data.universe} institutional holdings → ranked by momentum + accumulation → top ${rows.length} shown`;
     wrap.style.display = '';
     enrichWithSentiment(rows.filter(r => !r.error).map(r => r.sym));
   } catch(e) {
@@ -9338,7 +9340,7 @@ async function runDiscover() {
 
   btn.disabled = true;
   btn.textContent = 'Scanning…';
-  status.textContent = 'Fetching top 100 most-active stocks, filtering stochastic < 50…';
+  status.textContent = 'Fetching top 100 most-active stocks, ranking momentum + accumulation…';
   wrap.style.display = 'none';
   document.getElementById('scrFundsHeader').style.display = 'none';
 
@@ -9348,7 +9350,7 @@ async function runDiscover() {
     renderScreenerTable(rows, true, false);
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     document.getElementById('scrLastRun').textContent = `Last run ${now}`;
-    status.textContent = `${data.universe} stocks scanned → ${data.passed} passed stoch filter → top ${rows.length} shown`;
+    status.textContent = `${data.universe} stocks scanned → top ${rows.length} shown by momentum + accumulation score`;
     wrap.style.display = '';
     enrichWithSentiment(rows.filter(r => !r.error).map(r => r.sym));
   } catch(e) {
@@ -9394,10 +9396,10 @@ async function runScreener() {
 
 function renderScreenerTable(rows, isDiscover, showFunds) {
   const tbody = document.getElementById('scrTableBody');
-  const cols  = showFunds ? 11 : 10;
+  const cols  = showFunds ? 13 : 12;
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="${cols}" class="scr-err" style="padding:16px 10px;">${isDiscover ? 'No stocks passed the stochastic filter right now.' : 'No results.'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${cols}" class="scr-err" style="padding:16px 10px;">${isDiscover ? 'No stocks scored high enough right now.' : 'No results.'}</td></tr>`;
     return;
   }
 
@@ -9413,6 +9415,8 @@ function renderScreenerTable(rows, isDiscover, showFunds) {
 
     const volStr = `${r.volRatio >= 1.5 ? '+' : ''}${r.volRatio.toFixed(1)}×`;
     const stStr  = `${r.stochK != null ? r.stochK.toFixed(0) : '--'} / ${r.stochD != null ? r.stochD.toFixed(0) : '--'}`;
+    const ema50Str  = r.ema50Dist  != null ? `${r.ema50Dist  > 0 ? '+' : ''}${r.ema50Dist.toFixed(1)}%`  : '--';
+    const ema200Str = r.ema200Dist != null ? `${r.ema200Dist > 0 ? '+' : ''}${r.ema200Dist.toFixed(1)}%` : '--';
 
     const verdictStyle = r.verdict === 'BUY'
       ? 'background:#0d2e1a;color:#44cc88;border:1px solid #44cc8844;'
@@ -9431,6 +9435,8 @@ function renderScreenerTable(rows, isDiscover, showFunds) {
       <td class="scr-mono" style="color:${r.obvSlope>0?'#44cc88':'#ff4444'}">${r.obvSlope>0?'+':''}${r.obvSlope.toFixed(3)}</td>
       <td class="scr-mono" style="color:${r.cmf>0?'#44cc88':'#ff4444'}">${r.cmf>0?'+':''}${r.cmf.toFixed(3)}</td>
       <td class="scr-mono" style="color:${r.stochK<30?'#44cc88':r.stochK<50?'#ffaa33':'#ff4444'}">${stStr}</td>
+      <td class="scr-mono" style="color:${r.ema50Dist>0?'#44cc88':'#ff4444'}">${ema50Str}</td>
+      <td class="scr-mono" style="color:${r.ema200Dist>0?'#44cc88':'#ff4444'}">${ema200Str}</td>
       <td style="white-space:nowrap;">
         <span class="${volDot}" title="Vol"></span>
         <span class="${obvDot}" title="OBV"></span>
@@ -9515,7 +9521,7 @@ async function enrichWithSentiment(tickers) {
 
       // Update verdict cell if changed
       if (newVerdict !== origVerdict) {
-        const verdCell = row.querySelector('td:nth-child(8) span, td:nth-child(9) span');
+        const verdCell = row.querySelector('td:nth-child(10) span');
         if (verdCell) {
           const vStyle = newVerdict === 'BUY'
             ? 'background:#0d2e1a;color:#44cc88;border:1px solid #44cc8844;'

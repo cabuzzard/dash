@@ -5317,11 +5317,43 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       // ── SCREENER ─────────────────────────────────────────────────────────────
 
       // Shared helpers used by screenStocks + discoverStocks
-      async function fetchChart(sym) {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=90d`;
+      async function fetchChart(sym, interval = '1d', range = '90d') {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=${interval}&range=${range}`;
         const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (!r.ok) throw new Error(`${sym}: HTTP ${r.status}`);
         return r.json();
+      }
+
+      // Weekly EMA (50/200) distance — informational only, not used for screening
+      function calcEma(closes, period) {
+        if (!closes || closes.length < period) return null;
+        const k = 2 / (period + 1);
+        let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+        for (let i = period; i < closes.length; i++) ema = closes[i] * k + ema * (1 - k);
+        return ema;
+      }
+
+      function calcWeeklyEmaDistances(weeklyData, price) {
+        const res    = weeklyData?.chart?.result?.[0];
+        const closes = res?.indicators?.quote?.[0]?.close?.filter(c => c != null);
+        const ema50  = calcEma(closes, 50);
+        const ema200 = calcEma(closes, 200);
+        return {
+          ema50Dist:  ema50  != null ? +(((price - ema50)  / ema50)  * 100).toFixed(2) : null,
+          ema200Dist: ema200 != null ? +(((price - ema200) / ema200) * 100).toFixed(2) : null,
+        };
+      }
+
+      // Fetches daily + weekly charts and returns signals + EMA distances merged
+      async function calcFullSignals(sym) {
+        const [dailyData, weeklyData] = await Promise.all([
+          fetchChart(sym),
+          fetchChart(sym, '1wk', '5y'),
+        ]);
+        const s = calcSignals(sym, dailyData);
+        if (!s) return null;
+        Object.assign(s, calcWeeklyEmaDistances(weeklyData, s.price));
+        return s;
       }
 
       function calcSignals(sym, data) {
@@ -5426,7 +5458,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const list = tickers.slice(0, 40).map(t => t.toUpperCase().trim());
 
         const results = await Promise.allSettled(
-          list.map(sym => fetchChart(sym).then(d => calcSignals(sym, d)))
+          list.map(sym => calcFullSignals(sym))
         );
 
         const screened = results
@@ -5447,24 +5479,22 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const tickers = quotes.map(q => q.symbol).filter(Boolean).slice(0, 100);
         if (!tickers.length) return json({ error: 'No tickers from Yahoo screener' }, 502);
 
-        // Step 2: fetch OHLCV for all in parallel
+        // Step 2: fetch OHLCV for all in parallel (momentum + accumulation signals + EMA distances)
         const results = await Promise.allSettled(
-          tickers.map(sym => fetchChart(sym).then(d => calcSignals(sym, d)))
+          tickers.map(sym => calcFullSignals(sym))
         );
 
         const all = results
           .map((r, i) => r.status === 'fulfilled' ? r.value : null)
           .filter(Boolean);
 
-        // Step 3: filter — stochastic %K < 50 (below midline, not yet extended)
-        const filtered = all.filter(s => s.stochK < 50);
-
-        // Step 4: sort by score, return top 15
-        const top = filtered
+        // Step 3: sort by momentum/accumulation score, return top 15
+        // (stochastic and EMA distance are informational columns only — not filtered on)
+        const top = all
           .sort((a, b) => b.score - a.score)
           .slice(0, 15);
 
-        return json({ screened: top, universe: tickers.length, passed: filtered.length });
+        return json({ screened: top, universe: tickers.length });
       }
 
       if (body.action === 'getEdgarPicks') {
@@ -5562,8 +5592,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const tickers = Object.keys(INSTITUTIONAL_UNIVERSE);
 
         const results = await Promise.allSettled(
-          tickers.map(sym => fetchChart(sym).then(d => {
-            const s = calcSignals(sym, d);
+          tickers.map(sym => calcFullSignals(sym).then(s => {
             if (s && INSTITUTIONAL_UNIVERSE[sym]) {
               s.funds     = INSTITUTIONAL_UNIVERSE[sym].funds;
               s.fundCount = s.funds.length;
@@ -5572,11 +5601,12 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           }))
         );
 
-        const all      = results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean);
-        const filtered = all.filter(s => s.stochK < 50);
-        const top      = filtered.sort((a, b) => b.score - a.score).slice(0, 15);
+        // Sorted by momentum/accumulation score — stochastic and EMA distance are
+        // informational columns only — not filtered on
+        const all = results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean);
+        const top = all.sort((a, b) => b.score - a.score).slice(0, 15);
 
-        return json({ screened: top, universe: tickers.length, passed: filtered.length });
+        return json({ screened: top, universe: tickers.length });
       }
 
       // ── SENTIMENT (Reddit WSB + Yahoo Options P/C) ───────────────────────────
