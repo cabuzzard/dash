@@ -1171,9 +1171,25 @@ function renderTd() {
     const row = document.createElement('div');
     row.className = 'td-row';
     const nid = t.id.replace(/-/g,'');
-    row.innerHTML = `<a class="td-name" href="https://www.notion.so/${nid}" target="_blank" rel="noopener">${t.name}</a><button class="td-del" onclick="deleteTodo('${t.id}', this)" title="Remove">✕</button>`;
+    const isPodcast = t.podcast;
+    row.innerHTML = `<a class="td-name" href="https://www.notion.so/${nid}" target="_blank" rel="noopener">${t.name}</a><button class="td-add-btn-inline${isPodcast ? ' podcast-tagged' : ''}" onclick="tagTdPodcast('${t.id}', this)" title="${isPodcast ? 'Tagged for podcast' : 'Add to podcast'}" style="${isPodcast ? 'color:#a78bfa;' : ''}">🎙</button><button class="td-del" onclick="deleteTodo('${t.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
+}
+
+async function tagTdPodcast(tdId, btn) {
+  const wasPodcast = btn.classList.contains('podcast-tagged');
+  if (wasPodcast) return;
+  btn.textContent = '…'; btn.disabled = true;
+  try {
+    const data = await w('tagTdAsPodcast', { tdId });
+    if (data.error) throw new Error(data.error);
+    btn.textContent = '🎙'; btn.style.color = '#a78bfa'; btn.classList.add('podcast-tagged');
+    btn.title = 'Tagged for podcast';
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.textContent = '🎙'; btn.disabled = false;
+  }
 }
 
 async function loadTodos() {

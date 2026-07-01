@@ -3753,6 +3753,25 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         return json({ campaigns });
       }
 
+      // ── tagTdAsPodcast ──
+      if (body.action === "tagTdAsPodcast") {
+        const { tdId } = body;
+        if (!tdId) return json({ error: "tdId required" }, 400);
+        const dashId = s => { const r = s.replace(/-/g,""); return r.slice(0,8)+'-'+r.slice(8,12)+'-'+r.slice(12,16)+'-'+r.slice(16,20)+'-'+r.slice(20); };
+        const dashed = dashId(tdId);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const existing = await fetch(`https://api.notion.com/v1/pages/${dashed}`, { headers: hdr }).then(r => r.json());
+        const currentTags = (existing.properties?.priority?.multi_select || []).map(t => ({ name: t.name }));
+        if (currentTags.some(t => t.name === "podcast")) return json({ success: true, alreadyTagged: true });
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH", headers: hdr,
+          body: JSON.stringify({ properties: { priority: { multi_select: [...currentTags, { name: "podcast" }] } } }),
+        });
+        const patchData = await patchResp.json();
+        if (!patchResp.ok) return json({ error: patchData.message || "Tag failed" }, patchResp.status);
+        return json({ success: true });
+      }
+
       // ── addToPodcast ──
       if (body.action === "addToPodcast") {
         const { text, campaignName } = body;
@@ -3770,20 +3789,33 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
 
       // ── getPodcastItems ──
       if (body.action === "getPodcastItems") {
-        const rows = await notionQuery(MAIN_TD_DB, {
-          filter: { property: "title", title: { starts_with: "[PODCAST" } },
-          sorts: [{ timestamp: "created_time", direction: "descending" }],
-        });
-        const items = rows.map(r => {
+        const [legacyRows, taggedRows] = await Promise.all([
+          notionQuery(MAIN_TD_DB, {
+            filter: { property: "Title", title: { starts_with: "[PODCAST" } },
+            sorts: [{ timestamp: "created_time", direction: "descending" }],
+          }),
+          notionQuery(MAIN_TD_DB, {
+            filter: { property: "priority", multi_select: { contains: "podcast" } },
+            sorts: [{ timestamp: "created_time", direction: "descending" }],
+          }),
+        ]);
+        const seen = new Set();
+        const items = [];
+        for (const r of [...legacyRows, ...taggedRows]) {
+          const id = r.id.replace(/-/g,"");
+          if (seen.has(id)) continue;
+          seen.add(id);
           const raw = r.properties?.Title?.title?.map(t => t.plain_text).join("") || "";
           const match = raw.match(/^\[PODCAST · (.+?)\] (.+)$/s);
-          return {
-            id: r.id.replace(/-/g,""),
-            campaignName: match ? match[1] : "Unknown",
+          const campRel = (r.properties?.campaign?.relation || [])[0]?.id?.replace(/-/g,"") || "";
+          items.push({
+            id,
+            campaignName: match ? match[1] : (r.properties?.["campaign site"]?.rollup?.array?.[0]?.select?.name || ""),
             text: match ? match[2] : raw,
             createdTime: r.created_time || "",
-          };
-        });
+            notionId: id,
+          });
+        }
         return json({ items });
       }
 
