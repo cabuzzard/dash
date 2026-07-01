@@ -7678,6 +7678,19 @@ function togglePodcastSection() {
   document.getElementById('podcastToggleIcon').textContent = podcastCollapsed ? '▸' : '▾';
 }
 
+async function removePodcastItem(nid, btn) {
+  const tdId = nid.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const data = await call('removeFromPodcast', { tdId });
+    if (data.error) throw new Error(data.error);
+    btn.closest('div').remove();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false; btn.textContent = '✕';
+  }
+}
+
 async function loadPodcastItems() {
   const el = document.getElementById('podcastList');
   try {
@@ -7687,11 +7700,12 @@ async function loadPodcastItems() {
     el.innerHTML = '';
     items.forEach(item => {
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);';
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);';
       const nid = item.id.replace(/-/g,'');
       row.innerHTML = `
-        <span style="font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border:1px solid #6644cc44;color:#aa88ff;background:#6644cc11;border-radius:3px;white-space:nowrap;flex-shrink:0;margin-top:2px;">${item.campaignName}</span>
+        <span style="font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border:1px solid #6644cc44;color:#aa88ff;background:#6644cc11;border-radius:3px;white-space:nowrap;flex-shrink:0;">${item.campaignName}</span>
         <a href="https://www.notion.so/${nid}" target="_blank" rel="noopener" style="font-size:13px;color:var(--text);text-decoration:none;flex:1;line-height:1.4;">${item.text}</a>
+        <button onclick="removePodcastItem('${nid}',this)" style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;opacity:.5;" onmouseover="this.style.opacity=1;this.style.color='#f87171'" onmouseout="this.style.opacity=.5;this.style.color='var(--text3)'" title="Remove from podcast">✕</button>
       `;
       el.appendChild(row);
     });

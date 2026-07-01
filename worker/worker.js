@@ -3790,7 +3790,25 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         return json({ campaigns });
       }
 
-      // ── tagTdAsPodcast ──
+      // -- removeFromPodcast --
+      if (body.action === "removeFromPodcast") {
+        const { tdId } = body;
+        if (!tdId) return json({ error: "tdId required" }, 400);
+        const dashId = s => { const r = s.replace(/-/g,""); return r.slice(0,8)+'-'+r.slice(8,12)+'-'+r.slice(12,16)+'-'+r.slice(16,20)+'-'+r.slice(20); };
+        const dashed = dashId(tdId);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const existing = await fetch(`https://api.notion.com/v1/pages/${dashed}`, { headers: hdr }).then(r => r.json());
+        const currentTags = (existing.properties?.priority?.multi_select || []).filter(t => t.name !== "podcast").map(t => ({ name: t.name }));
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH", headers: hdr,
+          body: JSON.stringify({ properties: { priority: { multi_select: currentTags } } }),
+        });
+        const patchData = await patchResp.json();
+        if (!patchResp.ok) return json({ error: patchData.message || "Remove failed" }, patchResp.status);
+        return json({ success: true });
+      }
+
+      // -- tagTdAsPodcast --      // ── tagTdAsPodcast ──
       if (body.action === "tagTdAsPodcast") {
         const { tdId } = body;
         if (!tdId) return json({ error: "tdId required" }, 400);
@@ -5830,4 +5848,5 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
     ctx.waitUntil(deepScan(env));
   },
 };
+
 
