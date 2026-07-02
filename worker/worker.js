@@ -409,6 +409,378 @@ async function deepScan(env) {
   return diff;
 }
 
+// ── SCREENER (shared by the screenStocks/discoverStocks/getEdgarPicks HTTP
+// actions and the scheduled auto-trade scan below) ─────────────────────────
+
+async function fetchChart(sym, interval = '1d', range = '90d') {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=${interval}&range=${range}`;
+  const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (!r.ok) throw new Error(`${sym}: HTTP ${r.status}`);
+  return r.json();
+}
+
+// Weekly EMA (50/200) distance — informational only, not used for screening
+function calcEma(closes, period) {
+  if (!closes || closes.length < period) return null;
+  const k = 2 / (period + 1);
+  let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < closes.length; i++) ema = closes[i] * k + ema * (1 - k);
+  return ema;
+}
+
+function calcWeeklyEmaDistances(weeklyData, price) {
+  const res    = weeklyData?.chart?.result?.[0];
+  const closes = res?.indicators?.quote?.[0]?.close?.filter(c => c != null);
+  const ema50  = calcEma(closes, 50);
+  const ema200 = calcEma(closes, 200);
+  return {
+    ema50Dist:  ema50  != null ? +(((price - ema50)  / ema50)  * 100).toFixed(2) : null,
+    ema200Dist: ema200 != null ? +(((price - ema200) / ema200) * 100).toFixed(2) : null,
+  };
+}
+
+// ── SECTOR / RRG (Relative Rotation Graph) ───────────────────────────────
+// Informational only — classifies each stock's sector as Leading / Weakening /
+// Lagging / Improving relative to SPY, so early-rotation sectors are visible
+// even before individual stocks show their own accumulation signals.
+const SECTOR_ETF = {
+  'Technology':             'XLK',
+  'Financial Services':     'XLF',
+  'Energy':                 'XLE',
+  'Healthcare':             'XLV',
+  'Consumer Cyclical':      'XLY',
+  'Consumer Defensive':     'XLP',
+  'Industrials':            'XLI',
+  'Basic Materials':        'XLB',
+  'Utilities':              'XLU',
+  'Real Estate':            'XLRE',
+  'Communication Services': 'XLC',
+};
+
+async function fetchSector(sym) {
+  try {
+    const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=assetProfile`;
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d?.quoteSummary?.result?.[0]?.assetProfile?.sector || null;
+  } catch { return null; }
+}
+
+// RS-Ratio: sector-vs-SPY relative price, normalised around 100 (its own recent average).
+// RS-Momentum: trend of that relative ratio over the last 10 weeks, normalised.
+function calcRrg(etfCloses, spyCloses) {
+  const n = Math.min(etfCloses?.length || 0, spyCloses?.length || 0);
+  if (n < 15) return null;
+  const rel = etfCloses.slice(-n).map((v, i) => v / spyCloses.slice(-n)[i]);
+
+  const recent = rel.slice(-20);
+  const mean   = recent.reduce((a, x) => a + x, 0) / recent.length;
+  const rsRatio = mean ? (recent[recent.length - 1] / mean) * 100 : 100;
+
+  const window = rel.slice(-10);
+  const xBar = (window.length - 1) / 2;
+  const yBar = window.reduce((a, x) => a + x, 0) / window.length;
+  let num = 0, den = 0;
+  window.forEach((y, i) => { num += (i - xBar) * (y - yBar); den += (i - xBar) ** 2; });
+  const slope = den ? num / den : 0;
+  const rsMomentum = yBar ? slope / Math.abs(yBar) : 0;
+
+  let quadrant;
+  if (rsRatio >= 100 && rsMomentum > 0)  quadrant = 'Leading';
+  else if (rsRatio >= 100)                quadrant = 'Weakening';
+  else if (rsMomentum > 0)                quadrant = 'Improving';
+  else                                    quadrant = 'Lagging';
+
+  return { rsRatio: +rsRatio.toFixed(1), rsMomentum: +rsMomentum.toFixed(4), quadrant };
+}
+
+// Computed once per scan (not per ticker) — fetches SPY + the 11 sector ETFs.
+async function buildSectorRrgCache() {
+  const spyData   = await fetchChart('SPY', '1wk', '2y');
+  const spyCloses = spyData?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(c => c != null);
+
+  const cache = {};
+  await Promise.all(Object.entries(SECTOR_ETF).map(async ([sector, etf]) => {
+    try {
+      const etfData   = await fetchChart(etf, '1wk', '2y');
+      const etfCloses = etfData?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(c => c != null);
+      const rrg = calcRrg(etfCloses, spyCloses);
+      if (rrg) cache[sector] = { etf, ...rrg };
+    } catch { /* skip this sector */ }
+  }));
+  return cache;
+}
+
+// Fetches daily + weekly charts and returns signals + EMA distances + sector RRG merged
+async function calcFullSignals(sym, sectorRrgCache) {
+  const [dailyData, weeklyData, sector] = await Promise.all([
+    fetchChart(sym),
+    fetchChart(sym, '1wk', '5y'),
+    sectorRrgCache ? fetchSector(sym) : Promise.resolve(null),
+  ]);
+  const s = calcSignals(sym, dailyData);
+  if (!s) return null;
+  Object.assign(s, calcWeeklyEmaDistances(weeklyData, s.price));
+
+  const rrg = sector && sectorRrgCache?.[sector];
+  s.sector      = sector || null;
+  s.sectorEtf   = rrg ? rrg.etf : null;
+  s.rrgQuadrant = rrg ? rrg.quadrant : null;
+
+  return s;
+}
+
+function calcSignals(sym, data) {
+  const res = data?.chart?.result?.[0];
+  if (!res) return null;
+  const quotes = res.indicators?.quote?.[0];
+  const closes = quotes?.close;
+  const highs  = quotes?.high;
+  const lows   = quotes?.low;
+  const vols   = quotes?.volume;
+  if (!closes || closes.length < 22) return null;
+
+  const rows = closes.map((c, i) => ({ c, h: highs[i], l: lows[i], v: vols[i] }))
+                     .filter(r => r.c != null && r.v != null && r.h != null && r.l != null);
+  if (rows.length < 22) return null;
+
+  const n    = rows.length;
+  const last = rows[n - 1];
+
+  // Stochastic %K/%D (14-period)
+  const stochK = [];
+  for (let i = 13; i < rows.length; i++) {
+    const window = rows.slice(i - 13, i + 1);
+    const hh = Math.max(...window.map(r => r.h));
+    const ll = Math.min(...window.map(r => r.l));
+    stochK.push(hh === ll ? 50 : ((rows[i].c - ll) / (hh - ll)) * 100);
+  }
+  const recentK = stochK.slice(-3);
+  const stochD  = recentK.reduce((a, b) => a + b, 0) / recentK.length;
+  const kNow    = stochK[stochK.length - 1];
+
+  // Volume vs 20-day avg
+  const vol20    = rows.slice(n - 21, n - 1).reduce((s, r) => s + r.v, 0) / 20;
+  const volRatio = last.v / vol20;
+
+  // OBV trend — linear regression slope over last 20 periods (normalised)
+  const obvArr = [];
+  let obv = 0;
+  for (let i = 1; i < rows.length; i++) {
+    obv += rows[i].c > rows[i-1].c ? rows[i].v : rows[i].c < rows[i-1].c ? -rows[i].v : 0;
+    obvArr.push(obv);
+  }
+  const recentObv = obvArr.slice(-20);
+  const xBar = 9.5, yBar = recentObv.reduce((a, b) => a + b, 0) / 20;
+  let num = 0, den = 0;
+  recentObv.forEach((y, i) => { num += (i - xBar) * (y - yBar); den += (i - xBar) ** 2; });
+  const obvSlope = den ? num / den : 0;
+  const obvNorm  = yBar ? obvSlope / Math.abs(yBar) : 0;
+
+  // Chaikin Money Flow (20-period)
+  const cmfRows = rows.slice(n - 20);
+  let mfvSum = 0, volSum = 0;
+  for (const r of cmfRows) {
+    const hl  = r.h - r.l;
+    const mfm = hl ? ((r.c - r.l) - (r.h - r.c)) / hl : 0;
+    mfvSum += mfm * r.v;
+    volSum += r.v;
+  }
+  const cmf = volSum ? mfvSum / volSum : 0;
+
+  // Score 0–3
+  const volScore = Math.min(volRatio / 2, 1);
+  const obvScore = Math.min(Math.max(obvNorm * 5 + 0.5, 0), 1);
+  const cmfScore = Math.min(Math.max(cmf + 0.5, 0), 1);
+  const score    = volScore + obvScore + cmfScore;
+
+  // Verdict
+  let verdict = 'SKIP';
+  if (score >= 2.4 && obvNorm > 0 && cmf > 0) verdict = 'BUY';
+  else if (score >= 1.6) verdict = 'WATCH';
+
+  return {
+    sym,
+    price:    +last.c.toFixed(2),
+    volRatio: +volRatio.toFixed(2),
+    obvSlope: +obvNorm.toFixed(4),
+    cmf:      +cmf.toFixed(3),
+    stochK:   +kNow.toFixed(1),
+    stochD:   +stochD.toFixed(1),
+    score:    +score.toFixed(2),
+    verdict,
+  };
+}
+
+// ── AUTO-TRADE SCAN (scheduled) ──────────────────────────────────────────
+// Runs on the daily cron alongside deepScan(). Scans the saved watchlist +
+// Yahoo's top-100 most-active tickers; for any BUY verdict with no existing
+// open trade on that ticker, picks a swing-tier call (0.60–0.75 delta,
+// ~28–56 DTE) off the live chain and logs it via the same KV trade record
+// saveTrade uses. This only writes to this app's own trade-tracking KV —
+// it never places a real order or touches a brokerage account.
+
+// Standard normal CDF via Abramowitz-Stegun approximation.
+function normCdf(x) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const d = 0.3989423 * Math.exp(-x * x / 2);
+  let p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return x >= 0 ? 1 - p : p;
+}
+
+// Black-Scholes call delta = N(d1). r is an approximate risk-free rate.
+function callDelta(S, K, T, sigma, r = 0.045) {
+  if (!(S > 0) || !(K > 0) || !(T > 0) || !(sigma > 0)) return null;
+  const d1 = (Math.log(S / K) + (r + sigma * sigma / 2) * T) / (sigma * Math.sqrt(T));
+  return normCdf(d1);
+}
+
+async function fetchYahooOptionsChain(ticker, dateTs) {
+  const YUA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+  const r0 = await fetch('https://finance.yahoo.com/', { headers: { 'User-Agent': YUA, 'Accept': 'text/html' }, redirect: 'follow' });
+  const rawCookies = r0.headers.getAll ? r0.headers.getAll('set-cookie') : [r0.headers.get('set-cookie')];
+  const cookieStr  = rawCookies.filter(Boolean).map(c => c.split(';')[0]).join('; ');
+  const r1 = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', { headers: { 'User-Agent': YUA, 'Cookie': cookieStr } });
+  const crumb = (await r1.text()).trim();
+  let url = `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(ticker.toUpperCase())}?crumb=${encodeURIComponent(crumb)}`;
+  if (dateTs) url += `&date=${dateTs}`;
+  const r = await fetch(url, { headers: { 'User-Agent': YUA, 'Cookie': cookieStr } });
+  if (!r.ok) throw new Error(`Yahoo options ${r.status}`);
+  const data = await r.json();
+  const result = data?.optionChain?.result?.[0];
+  if (!result) throw new Error('No options data for ' + ticker);
+  return {
+    underlying:      result.quote?.regularMarketPrice ?? null,
+    expirationDates: result.expirationDates || [],
+    fetchedDate:     result.options?.[0]?.expirationDate || null,
+    calls:           result.options?.[0]?.calls || [],
+    puts:            result.options?.[0]?.puts  || [],
+  };
+}
+
+// Picks the expiry closest to 42 days out (middle of the 28–56 day swing window),
+// then the call contract whose Black-Scholes delta is closest to 0.675 (the
+// middle of the 0.60–0.75 target band).
+async function pickSwingCallContract(ticker) {
+  const first = await fetchYahooOptionsChain(ticker);
+  if (!first.underlying || !first.expirationDates.length) return null;
+
+  const now = Date.now() / 1000;
+  const targetSecs = 42 * 86400;
+  let bestExpiry = first.expirationDates[0];
+  let bestDiff = Infinity;
+  for (const ts of first.expirationDates) {
+    const diff = Math.abs((ts - now) - targetSecs);
+    if (diff < bestDiff) { bestDiff = diff; bestExpiry = ts; }
+  }
+
+  const chain = bestExpiry === first.fetchedDate ? first : await fetchYahooOptionsChain(ticker, bestExpiry);
+  if (!chain.calls?.length) return null;
+
+  const T = Math.max((bestExpiry - now) / (365 * 86400), 1 / 365);
+  let best = null, bestDeltaDiff = Infinity;
+  for (const c of chain.calls) {
+    const iv = c.impliedVolatility;
+    if (!(iv > 0) || !(c.strike > 0)) continue;
+    const delta = callDelta(chain.underlying, c.strike, T, iv);
+    if (delta == null) continue;
+    const diff = Math.abs(delta - 0.675);
+    if (diff < bestDeltaDiff) { bestDeltaDiff = diff; best = { contract: c, delta }; }
+  }
+  if (!best) return null;
+
+  const c = best.contract;
+  const price = c.lastPrice > 0 ? c.lastPrice : (c.bid > 0 && c.ask > 0 ? (c.bid + c.ask) / 2 : null);
+  const d = new Date(bestExpiry * 1000);
+  const expYYYYMMDD = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+
+  return { ticker, strike: c.strike, expiry: expYYYYMMDD, price, delta: best.delta, dte: Math.round((bestExpiry - now) / 86400) };
+}
+
+async function runAutoTradeScan(env) {
+  // 1. Universe = saved watchlist ∪ Yahoo top-100 most-active
+  const rawWatchlist = await env.TRADES.get('screener:watchlist');
+  const watchlist = rawWatchlist ? JSON.parse(rawWatchlist) : [];
+
+  let mostActive = [];
+  try {
+    const scrUrl = 'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=most_actives&count=100&formatted=false&lang=en-US&region=US';
+    const scrResp = await fetch(scrUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (scrResp.ok) {
+      const scrData = await scrResp.json();
+      mostActive = (scrData?.finance?.result?.[0]?.quotes || []).map(q => q.symbol).filter(Boolean);
+    }
+  } catch { /* skip most-active leg if Yahoo screener fails */ }
+
+  const universe = Array.from(new Set([...watchlist, ...mostActive]));
+  if (!universe.length) return { scanned: 0, created: 0 };
+
+  // 2. Score every ticker
+  const sectorRrgCache = await buildSectorRrgCache();
+  const results = await Promise.allSettled(universe.map(sym => calcFullSignals(sym, sectorRrgCache)));
+  const buys = results
+    .map(r => r.status === 'fulfilled' ? r.value : null)
+    .filter(s => s && s.verdict === 'BUY');
+
+  // 3. Dedup — skip tickers that already have an open (non-expired) trade
+  const tradeKeys = await env.TRADES.list({ prefix: 'trades:' });
+  const openTrades = (await Promise.all(tradeKeys.keys.map(k => env.TRADES.get(k.name, 'json'))))
+    .filter(t => t && !t.expired);
+  const openTickers = new Set(openTrades.map(t => t.ticker));
+
+  const candidates = buys.filter(s => !openTickers.has(s.sym));
+
+  // 4. For each new BUY, pick a swing call off the live chain and log the trade
+  let created = 0;
+  for (const s of candidates) {
+    try {
+      const pick = await pickSwingCallContract(s.sym);
+      if (!pick) continue;
+
+      const now = new Date();
+      const ts  = now.toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
+      const id  = `${s.sym}_${ts}`;
+      const trade = {
+        id,
+        ticker:                 s.sym,
+        strike:                 pick.strike,
+        expiry:                 pick.expiry,
+        direction:              'C',
+        notes:                  `Auto-created by screener — BUY verdict (score ${s.score}, vol ${s.volRatio}×, `
+                                 + `OBV ${s.obvSlope}, CMF ${s.cmf}, stoch %K ${s.stochK}). Swing call, `
+                                 + `~${pick.dte}d DTE, ~${pick.delta.toFixed(2)} delta.`,
+        entry_time:             now.toISOString(),
+        entry_price:            s.price,
+        price_captured:         true,
+        current_price:          null,
+        current_pct:            null,
+        max_high:               null,
+        max_high_time:          null,
+        max_low:                null,
+        max_low_time:           null,
+        strike_reached:         false,
+        strike_reached_time:    null,
+        last_updated:           null,
+        expired:                false,
+        entry_contract:         pick.price,
+        contract_captured:      pick.price != null,
+        current_contract:       null,
+        contract_pct:           null,
+        contract_max_high:      null,
+        contract_max_high_time: null,
+        contract_max_low:       null,
+        contract_max_low_time:  null,
+        auto_created:           true,
+      };
+      await env.TRADES.put(`trades:${id}`, JSON.stringify(trade));
+      created++;
+    } catch { /* skip this ticker on any chain/pricing error, continue scan */ }
+  }
+
+  return { scanned: universe.length, buys: buys.length, created };
+}
+
 export default {
   async fetch(request, env) {
     // Load secrets from environment on every request (.trim() guards against
@@ -5227,38 +5599,11 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       if (body.action === 'getOptionsChain') {
         const { ticker, date } = body;
         if (!ticker) return json({ error: 'ticker required' }, 400);
-
-        const YUA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-
-        // Step 1 — get session cookie from Yahoo Finance
-        const r0 = await fetch('https://finance.yahoo.com/', {
-          headers: { 'User-Agent': YUA, 'Accept': 'text/html' },
-          redirect: 'follow',
-        });
-        const rawCookies = r0.headers.getAll ? r0.headers.getAll('set-cookie') : [r0.headers.get('set-cookie')];
-        const cookieStr  = rawCookies.filter(Boolean).map(c => c.split(';')[0]).join('; ');
-
-        // Step 2 — exchange cookie for crumb
-        const r1 = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', {
-          headers: { 'User-Agent': YUA, 'Cookie': cookieStr },
-        });
-        const crumb = (await r1.text()).trim();
-
-        // Step 3 — fetch options chain
-        let url = `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(ticker.toUpperCase())}?crumb=${encodeURIComponent(crumb)}`;
-        if (date) url += `&date=${date}`;
-        const r = await fetch(url, { headers: { 'User-Agent': YUA, 'Cookie': cookieStr } });
-        if (!r.ok) return json({ error: `Yahoo ${r.status}` }, 502);
-        const data = await r.json();
-        const result = data?.optionChain?.result?.[0];
-        if (!result) return json({ error: 'No options data for ' + ticker }, 404);
-        return json({
-          underlying:      result.quote?.regularMarketPrice ?? null,
-          expirationDates: result.expirationDates || [],
-          fetchedDate:     result.options?.[0]?.expirationDate || null,
-          calls:           result.options?.[0]?.calls || [],
-          puts:            result.options?.[0]?.puts  || [],
-        });
+        try {
+          return json(await fetchYahooOptionsChain(ticker, date));
+        } catch (e) {
+          return json({ error: e.message || 'Failed to fetch options chain' }, 502);
+        }
       }
 
       if (body.action === 'getActiveTrades') {
@@ -5530,208 +5875,9 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       }
 
       // ── SCREENER ─────────────────────────────────────────────────────────────
-
-      // Shared helpers used by screenStocks + discoverStocks
-      async function fetchChart(sym, interval = '1d', range = '90d') {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=${interval}&range=${range}`;
-        const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        if (!r.ok) throw new Error(`${sym}: HTTP ${r.status}`);
-        return r.json();
-      }
-
-      // Weekly EMA (50/200) distance — informational only, not used for screening
-      function calcEma(closes, period) {
-        if (!closes || closes.length < period) return null;
-        const k = 2 / (period + 1);
-        let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
-        for (let i = period; i < closes.length; i++) ema = closes[i] * k + ema * (1 - k);
-        return ema;
-      }
-
-      function calcWeeklyEmaDistances(weeklyData, price) {
-        const res    = weeklyData?.chart?.result?.[0];
-        const closes = res?.indicators?.quote?.[0]?.close?.filter(c => c != null);
-        const ema50  = calcEma(closes, 50);
-        const ema200 = calcEma(closes, 200);
-        return {
-          ema50Dist:  ema50  != null ? +(((price - ema50)  / ema50)  * 100).toFixed(2) : null,
-          ema200Dist: ema200 != null ? +(((price - ema200) / ema200) * 100).toFixed(2) : null,
-        };
-      }
-
-      // ── SECTOR / RRG (Relative Rotation Graph) ───────────────────────────────
-      // Informational only — classifies each stock's sector as Leading / Weakening /
-      // Lagging / Improving relative to SPY, so early-rotation sectors are visible
-      // even before individual stocks show their own accumulation signals.
-      const SECTOR_ETF = {
-        'Technology':             'XLK',
-        'Financial Services':     'XLF',
-        'Energy':                 'XLE',
-        'Healthcare':             'XLV',
-        'Consumer Cyclical':      'XLY',
-        'Consumer Defensive':     'XLP',
-        'Industrials':            'XLI',
-        'Basic Materials':        'XLB',
-        'Utilities':              'XLU',
-        'Real Estate':            'XLRE',
-        'Communication Services': 'XLC',
-      };
-
-      async function fetchSector(sym) {
-        try {
-          const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=assetProfile`;
-          const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-          if (!r.ok) return null;
-          const d = await r.json();
-          return d?.quoteSummary?.result?.[0]?.assetProfile?.sector || null;
-        } catch { return null; }
-      }
-
-      // RS-Ratio: sector-vs-SPY relative price, normalised around 100 (its own recent average).
-      // RS-Momentum: trend of that relative ratio over the last 10 weeks, normalised.
-      function calcRrg(etfCloses, spyCloses) {
-        const n = Math.min(etfCloses?.length || 0, spyCloses?.length || 0);
-        if (n < 15) return null;
-        const rel = etfCloses.slice(-n).map((v, i) => v / spyCloses.slice(-n)[i]);
-
-        const recent = rel.slice(-20);
-        const mean   = recent.reduce((a, x) => a + x, 0) / recent.length;
-        const rsRatio = mean ? (recent[recent.length - 1] / mean) * 100 : 100;
-
-        const window = rel.slice(-10);
-        const xBar = (window.length - 1) / 2;
-        const yBar = window.reduce((a, x) => a + x, 0) / window.length;
-        let num = 0, den = 0;
-        window.forEach((y, i) => { num += (i - xBar) * (y - yBar); den += (i - xBar) ** 2; });
-        const slope = den ? num / den : 0;
-        const rsMomentum = yBar ? slope / Math.abs(yBar) : 0;
-
-        let quadrant;
-        if (rsRatio >= 100 && rsMomentum > 0)  quadrant = 'Leading';
-        else if (rsRatio >= 100)                quadrant = 'Weakening';
-        else if (rsMomentum > 0)                quadrant = 'Improving';
-        else                                    quadrant = 'Lagging';
-
-        return { rsRatio: +rsRatio.toFixed(1), rsMomentum: +rsMomentum.toFixed(4), quadrant };
-      }
-
-      // Computed once per scan (not per ticker) — fetches SPY + the 11 sector ETFs.
-      async function buildSectorRrgCache() {
-        const spyData   = await fetchChart('SPY', '1wk', '2y');
-        const spyCloses = spyData?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(c => c != null);
-
-        const cache = {};
-        await Promise.all(Object.entries(SECTOR_ETF).map(async ([sector, etf]) => {
-          try {
-            const etfData   = await fetchChart(etf, '1wk', '2y');
-            const etfCloses = etfData?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(c => c != null);
-            const rrg = calcRrg(etfCloses, spyCloses);
-            if (rrg) cache[sector] = { etf, ...rrg };
-          } catch { /* skip this sector */ }
-        }));
-        return cache;
-      }
-
-      // Fetches daily + weekly charts and returns signals + EMA distances + sector RRG merged
-      async function calcFullSignals(sym, sectorRrgCache) {
-        const [dailyData, weeklyData, sector] = await Promise.all([
-          fetchChart(sym),
-          fetchChart(sym, '1wk', '5y'),
-          sectorRrgCache ? fetchSector(sym) : Promise.resolve(null),
-        ]);
-        const s = calcSignals(sym, dailyData);
-        if (!s) return null;
-        Object.assign(s, calcWeeklyEmaDistances(weeklyData, s.price));
-
-        const rrg = sector && sectorRrgCache?.[sector];
-        s.sector      = sector || null;
-        s.sectorEtf   = rrg ? rrg.etf : null;
-        s.rrgQuadrant = rrg ? rrg.quadrant : null;
-
-        return s;
-      }
-
-      function calcSignals(sym, data) {
-        const res = data?.chart?.result?.[0];
-        if (!res) return null;
-        const quotes = res.indicators?.quote?.[0];
-        const closes = quotes?.close;
-        const highs  = quotes?.high;
-        const lows   = quotes?.low;
-        const vols   = quotes?.volume;
-        if (!closes || closes.length < 22) return null;
-
-        const rows = closes.map((c, i) => ({ c, h: highs[i], l: lows[i], v: vols[i] }))
-                           .filter(r => r.c != null && r.v != null && r.h != null && r.l != null);
-        if (rows.length < 22) return null;
-
-        const n    = rows.length;
-        const last = rows[n - 1];
-
-        // Stochastic %K/%D (14-period)
-        const stochK = [];
-        for (let i = 13; i < rows.length; i++) {
-          const window = rows.slice(i - 13, i + 1);
-          const hh = Math.max(...window.map(r => r.h));
-          const ll = Math.min(...window.map(r => r.l));
-          stochK.push(hh === ll ? 50 : ((rows[i].c - ll) / (hh - ll)) * 100);
-        }
-        const recentK = stochK.slice(-3);
-        const stochD  = recentK.reduce((a, b) => a + b, 0) / recentK.length;
-        const kNow    = stochK[stochK.length - 1];
-
-        // Volume vs 20-day avg
-        const vol20    = rows.slice(n - 21, n - 1).reduce((s, r) => s + r.v, 0) / 20;
-        const volRatio = last.v / vol20;
-
-        // OBV trend — linear regression slope over last 20 periods (normalised)
-        const obvArr = [];
-        let obv = 0;
-        for (let i = 1; i < rows.length; i++) {
-          obv += rows[i].c > rows[i-1].c ? rows[i].v : rows[i].c < rows[i-1].c ? -rows[i].v : 0;
-          obvArr.push(obv);
-        }
-        const recentObv = obvArr.slice(-20);
-        const xBar = 9.5, yBar = recentObv.reduce((a, b) => a + b, 0) / 20;
-        let num = 0, den = 0;
-        recentObv.forEach((y, i) => { num += (i - xBar) * (y - yBar); den += (i - xBar) ** 2; });
-        const obvSlope = den ? num / den : 0;
-        const obvNorm  = yBar ? obvSlope / Math.abs(yBar) : 0;
-
-        // Chaikin Money Flow (20-period)
-        const cmfRows = rows.slice(n - 20);
-        let mfvSum = 0, volSum = 0;
-        for (const r of cmfRows) {
-          const hl  = r.h - r.l;
-          const mfm = hl ? ((r.c - r.l) - (r.h - r.c)) / hl : 0;
-          mfvSum += mfm * r.v;
-          volSum += r.v;
-        }
-        const cmf = volSum ? mfvSum / volSum : 0;
-
-        // Score 0–3
-        const volScore = Math.min(volRatio / 2, 1);
-        const obvScore = Math.min(Math.max(obvNorm * 5 + 0.5, 0), 1);
-        const cmfScore = Math.min(Math.max(cmf + 0.5, 0), 1);
-        const score    = volScore + obvScore + cmfScore;
-
-        // Verdict
-        let verdict = 'SKIP';
-        if (score >= 2.4 && obvNorm > 0 && cmf > 0) verdict = 'BUY';
-        else if (score >= 1.6) verdict = 'WATCH';
-
-        return {
-          sym,
-          price:    +last.c.toFixed(2),
-          volRatio: +volRatio.toFixed(2),
-          obvSlope: +obvNorm.toFixed(4),
-          cmf:      +cmf.toFixed(3),
-          stochK:   +kNow.toFixed(1),
-          stochD:   +stochD.toFixed(1),
-          score:    +score.toFixed(2),
-          verdict,
-        };
-      }
+      // fetchChart, calcSignals, calcFullSignals, buildSectorRrgCache etc. are
+      // defined at module scope (top of file) so both fetch() and the scheduled()
+      // auto-trade scan can share them.
 
       if (body.action === 'getWatchlist') {
         const raw = await env.TRADES.get('screener:watchlist');
@@ -5973,7 +6119,8 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
   },
 
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(deepScan(env));
+    ctx.waitUntil(deepScan(env).catch(e => console.error('deepScan failed:', e.message)));
+    ctx.waitUntil(runAutoTradeScan(env).catch(e => console.error('runAutoTradeScan failed:', e.message)));
   },
 };
 

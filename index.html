@@ -9033,7 +9033,7 @@ function pctColor(v) {
 // ── TRADES COLUMN DEFS ───────────────────────────────────────────────
 const TRADE_COL_DEFS = [
   { id:'symbol',  label:'Symbol',   sortVal: t => (t.ticker||'')+(t.direction||''),
-    cell: t => { const d=t.direction==='C'?'Call':'Put'; return `<span class="tr-sym">${t.ticker}</span> <span style="font-size:11px;color:var(--text3);">${d}</span>`; } },
+    cell: t => { const d=t.direction==='C'?'Call':'Put'; return `<a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(t.ticker)}" target="_blank" rel="noopener" class="tr-sym" style="text-decoration:none;border-bottom:1px solid #4488ff44;" onclick="event.stopPropagation()" title="Open ${t.ticker} on TradingView">${t.ticker} <span style="font-size:9px;color:#4488ff;vertical-align:middle;">↗</span></a> <span style="font-size:11px;color:var(--text3);">${d}</span>`; } },
   { id:'date',    label:'Date',     sortVal: t => t.entry_time||'',
     cell: t => `<span style="font-size:11px;">${t.entry_time?t.entry_time.slice(0,10).slice(5):'—'}</span>` },
   { id:'entryU',  label:'Entry U',  sortVal: t => t.entry_price??-Infinity,
