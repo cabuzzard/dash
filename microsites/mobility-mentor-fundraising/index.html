@@ -987,7 +987,7 @@ async function loadTitles() {
     function makeTitleRow(t) {
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
       return div;
     }
     function renderGroupingLevel(titles, container) {

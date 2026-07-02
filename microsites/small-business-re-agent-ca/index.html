@@ -635,7 +635,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-const CAMPAIGN_ID = "3731f7d3a4bb816f9d9cd5bffda0549d"; // mobility-mentor-fundraising
+const CAMPAIGN_ID = "3731f7d3a4bb816f9d9cd5bffda0549d"; // small-business-re-agent-ca
 const RESEARCH_ID = "3731f7d3a4bb8117b12ddfb70d5a5ced"; // research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/small-business-re-agent-ca/";
 let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
@@ -987,7 +987,7 @@ async function loadTitles() {
     function makeTitleRow(t) {
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
       return div;
     }
     function renderGroupingLevel(titles, container) {
