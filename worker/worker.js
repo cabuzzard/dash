@@ -2138,7 +2138,7 @@ export default {
         return json({ runs });
       }
       if (body.action === "getTitles") {
-        const { stages, campaignId } = body;
+        const { stages, campaignId, productId } = body;
         const stageFilters = (stages || ["Review", "Publish"]).map(s => ({
           property: "Status",
           select: { equals: s }
@@ -2147,6 +2147,11 @@ export default {
           ? { and: [
               { or: stageFilters },
               { property: "Campaign", relation: { contains: campaignId } }
+            ]}
+          : productId
+          ? { and: [
+              { or: stageFilters },
+              { property: "product", relation: { contains: productId } }
             ]}
           : { or: stageFilters };
         const results = await notionQuery(CONTENT_STRATEGY_DB, {
@@ -2390,6 +2395,46 @@ No other text. No markdown fences.`;
           });
         }));
         return json({ deliverables: allDeliverables });
+      }
+
+      // ── getProductDeliverables ──
+      if (body.action === "getProductDeliverables") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const DELIVERABLES_DB = "984754dc18434dd4847e0ac1c05550f8";
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const [delResp, prodPage] = await Promise.all([
+          fetch(`https://api.notion.com/v1/databases/${dash(DELIVERABLES_DB)}/query`, {
+            method: "POST", headers: hdr,
+            body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } }, page_size: 100 }),
+          }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+        ]);
+        const productName = (prodPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "";
+        const deliverables = [];
+        (delResp.results || []).forEach(d => {
+          const dp = d.properties || {};
+          deliverables.push({
+            id:          d.id.replace(/-/g,""),
+            name:        (dp.Name?.title || []).map(t => t.plain_text).join("") || "Untitled",
+            type:        dp.Type?.select?.name || "",
+            status:      dp.Status?.select?.name || "Draft",
+            productId,   productName,
+            url:         d.url || "",
+            isFile:      false,
+          });
+        });
+        (prodPage.properties?.["Files"]?.files || []).forEach(f => {
+          const fileUrl = f.file?.url || f.external?.url || "";
+          if (!fileUrl) return;
+          deliverables.push({
+            id: productId + "_" + encodeURIComponent(f.name || "file"),
+            name: f.name || "File", type: "File", status: "",
+            productId, productName, url: fileUrl, isFile: true,
+          });
+        });
+        return json({ deliverables });
       }
 
       // ── writeContent: generate and save actual content for a title ──
@@ -2988,6 +3033,64 @@ Return ONLY a JSON object with these exact keys:
             campaignKeyMessage:cp["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
           }
         });
+      }
+
+      // ── getProductResearch ──
+      if (body.action === "getProductResearch") {
+        const { productId, researchId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const fetches = [
+          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+          researchId ? fetch(`https://api.notion.com/v1/pages/${dash(researchId)}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
+        ];
+        const [productPage, researchPage] = await Promise.all(fetches);
+        const pp = productPage.properties || {};
+        const rt = (p, key) => (p[key]?.rich_text || []).map(t => t.plain_text).join("") || "";
+        const campRels = pp["Campaigns"]?.relation || [];
+        const campaigns = await Promise.all(campRels.map(async c => {
+          try {
+            const r = await fetch(`https://api.notion.com/v1/pages/${c.id}`, { headers: hdr }).then(r => r.json());
+            return { id: c.id.replace(/-/g,""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?" };
+          } catch { return null; }
+        }));
+        const product = {
+          name:           (pp.Name?.title || []).map(t => t.plain_text).join("") || "Untitled",
+          status:         pp.Status?.select?.name || "",
+          site:           pp.Site?.select?.name || "",
+          price:          rt(pp, "Price"),
+          spots:          pp.Spots?.number || null,
+          offerStructure: rt(pp, "Offer Structure"),
+          uniqueAngle:    rt(pp, "Unique Angle"),
+          avatar:         rt(pp, "Avatar"),
+          transformation: rt(pp, "Transformation"),
+          proofPoints:    rt(pp, "Proof Points"),
+          objections:     rt(pp, "Objections"),
+          campaigns:      campaigns.filter(Boolean),
+        };
+        let research = null;
+        if (researchPage) {
+          const rp = researchPage.properties || {};
+          research = {
+            id:                 researchPage.id.replace(/-/g,""),
+            keywords:           rt(rp, "Keywords"),
+            statement:          rt(rp, "Statement"),
+            uniqueOpportunity:  rt(rp, "Unique Opportunity"),
+            newsFeed:           rt(rp, "News Feed"),
+            notes:              rt(rp, "Notes"),
+            thoughts:           rt(rp, "Thoughts"),
+            productIdeas:       rt(rp, "Product Ideas"),
+            tikTokShopProducts: rt(rp, "TikTok Shop Products"),
+            kdpBestSellers:     rt(rp, "KDP Best Sellers"),
+            tiktokTrends:       rt(rp, "TikTok Trends"),
+            trendIntelligence:  rt(rp, "Trend Intelligence"),
+            etsyProducts:       rt(rp, "Etsy Products"),
+            youtubeOutliers:    rt(rp, "YouTube Outliers"),
+            keyMessage:         rt(rp, "Key Message"),
+          };
+        }
+        return json({ product, research });
       }
 
       // Î"Ã¶Ã‡Î"Ã¶Ã‡ CAMPAIGN ADMIN: condense via Claude Î"Ã¶Ã‡Î"Ã¶Ã‡
@@ -3979,6 +4082,30 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         });
         const campPage = await campResp.json();
         const todoIds = (campPage.properties?.["Associated To Do"]?.relation || []).map(r => r.id.replace(/-/g,""));
+        if (!todoIds.length) return json({ todos: [] });
+        const todos = await Promise.all(todoIds.map(async id => {
+          try {
+            const r = await fetch(`https://api.notion.com/v1/pages/${dashId(id)}`, {
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+            });
+            const p = await r.json();
+            const name = p.properties?.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
+            return { id, name };
+          } catch { return null; }
+        }));
+        return json({ todos: todos.filter(Boolean) });
+      }
+
+      // ── PRODUCTSITE: getProductTodos ──
+      if (body.action === "getProductTodos") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const prodResp = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const prodPage = await prodResp.json();
+        const todoIds = (prodPage.properties?.["TD Items"]?.relation || []).map(r => r.id.replace(/-/g,""));
         if (!todoIds.length) return json({ todos: [] });
         const todos = await Promise.all(todoIds.map(async id => {
           try {
