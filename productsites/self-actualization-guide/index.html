@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<link rel="stylesheet" href="../style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webguy — Product Admin</title>
+<style>
+/* STATUS CHANGE BUTTON */
+.title-status-btn {
+  font-size: 11px; color: #2a2a2a; background: none; border: 1px solid #1a1a1a;
+  padding: 1px 6px; cursor: pointer; font-family: 'Syne', sans-serif;
+  flex-shrink: 0; transition: all .15s; line-height: 1.4;
+}
+.title-status-btn:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
+.status-option-grid { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 4px; }
+.status-opt-btn { background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; transition: opacity .15s, transform .1s; }
+.status-opt-btn:hover:not(:disabled) { transform: scale(1.05); }
+.status-opt-btn.active { opacity: .35; cursor: default; }
+.status-opt-btn:disabled { cursor: default; }
+/* LOGIN LIST */
+.login-platform-group { margin-bottom: 14px; }
+.login-platform-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #555; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; margin-bottom: 6px; }
+.login-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.login-row:last-child { border-bottom: none; }
+/* TD LIST */
+.td-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.td-row:last-child { border-bottom: none; }
+.td-name { flex: 1; font-size: 13px; color: #c9c9c9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
+.td-name:hover { color: #fff; text-decoration: underline; }
+.td-del { background: none; border: none; color: #444; cursor: pointer; font-size: 11px; padding: 0 2px; flex-shrink: 0; }
+.td-del:hover { color: #e05; }
+/* CAMPAIGN LIST */
+.campaign-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.campaign-row:last-child { border-bottom: none; }
+.campaign-name { flex: 1; font-size: 13px; color: #c9c9c9; }
+</style>
+</head>
+<body>
+
+<!-- PIN SCREEN -->
+<div class="pin-screen" id="pinScreen">
+  <div class="pin-logo">Web<span>guy</span></div>
+  <div class="pin-hint">Enter your access code</div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="d0"></div>
+    <div class="pin-dot" id="d1"></div>
+    <div class="pin-dot" id="d2"></div>
+    <div class="pin-dot" id="d3"></div>
+  </div>
+  <div class="pin-grid">
+    <button class="pin-btn" onclick="pp('1')">1</button><button class="pin-btn" onclick="pp('2')">2</button><button class="pin-btn" onclick="pp('3')">3</button>
+    <button class="pin-btn" onclick="pp('4')">4</button><button class="pin-btn" onclick="pp('5')">5</button><button class="pin-btn" onclick="pp('6')">6</button>
+    <button class="pin-btn" onclick="pp('7')">7</button><button class="pin-btn" onclick="pp('8')">8</button><button class="pin-btn" onclick="pp('9')">9</button>
+    <button class="pin-btn empty"></button><button class="pin-btn" onclick="pp('0')">0</button><button class="pin-btn del" onclick="pd()">DEL</button>
+  </div>
+  <div class="pin-error" id="pinError"></div>
+</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-left">Web<span>guy</span> — Product Admin</div>
+  <div class="topbar-right">
+    <div class="topbar-clock" id="clock">—</div>
+    <div class="topbar-lock" onclick="lockApp()">Lock</div>
+  </div>
+</div>
+
+<!-- SEC 1: three col — product meta / unique angle + avatar / transformation -->
+<div class="three-col">
+  <div class="col">
+    <h2>Product</h2>
+    <div class="content">
+      <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
+      <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
+      <div class="field"><div class="field-label">Site</div><div class="field-value" id="r-site"></div></div>
+      <div class="field"><div class="field-label">Price</div><div class="field-value" id="r-price"></div></div>
+      <div class="field"><div class="field-label">Spots</div><div class="field-value" id="r-spots"></div></div>
+      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3911f7d3a4bb8173ad3fdc762df6ff8a" target="_blank" class="notion-link">↗ Product</a> &nbsp; <a href="https://www.notion.so/3911f7d3a4bb813db206cb60c2438b04" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Productsite</div><div class="field-value" id="r-productsite"></div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Unique Angle + Avatar</h2>
+    <div class="content">
+      <div class="body-text" id="r-uniqueangle" style="white-space:pre-wrap;min-height:40px;margin-bottom:14px;"></div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#555;margin-bottom:6px;">Avatar</div>
+      <div class="body-text" id="r-avatar" style="white-space:pre-wrap;min-height:40px;font-size:12px;color:#888;"></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Transformation</h2>
+    <div class="content">
+      <div class="body-text" id="r-transformation" style="white-space:pre-wrap;min-height:40px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 2: four col — offer structure / proof points / objections / td items -->
+<div class="four-col">
+  <div class="col">
+    <h2>Offer Structure</h2>
+    <div class="content">
+      <div class="body-text" id="r-offerstruct" style="white-space:pre-wrap;font-size:12px;"></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Proof Points</h2>
+    <div class="content">
+      <div class="body-text" id="r-proofpoints" style="white-space:pre-wrap;font-size:12px;"></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Objections</h2>
+    <div class="content">
+      <div class="body-text" id="r-objections" style="white-space:pre-wrap;font-size:12px;"></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>TD Items</h2>
+    <div class="content">
+      <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 3: four col — files / sm posts / dev titles / pub titles -->
+<div class="four-col">
+  <div class="col">
+    <h2>Files</h2>
+    <div class="content">
+      <div class="deliverable-list" id="deliverable-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>SM Posts</h2>
+    <div class="content">
+      <div id="smPostsBox"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Development Titles <button class="td-add-btn-inline" onclick="openAddTitleModal()" title="Add title">+</button></h2>
+    <div class="content">
+      <div class="title-list" id="devTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Publish Titles</h2>
+    <div class="content">
+      <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 4: four col — logins / keywords / sm trends / news feed -->
+<div class="four-col">
+  <div class="col">
+    <h2>Logins <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
+    <div class="content">
+      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span>Keywords</span><button id="kwRegenBtn" onclick="runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #2a2a2a;background:transparent;color:#555;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button></h2>
+    <div class="content">
+      <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>SM Trends</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="smTrendsKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="smTrendsBtn" onclick="runSMTrends()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-smtrends"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>News Feed <button class="td-add-btn-inline" onclick="openFieldResearchModal('newsFeed')" title="Generate with AI">&#x25B6;</button></h2>
+    <div class="content">
+      <div class="body-text" id="r-news"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 5: four col — product ideas / tiktok shop / kdp best sellers / campaigns -->
+<div class="four-col">
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>Product Ideas</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="prodIdeasKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="prodIdeasBtn" onclick="runProductIdeas()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-prodideas"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>TikTok Shop</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="ttShopKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="ttShopBtn" onclick="runTikTokShop()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-ttshop"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>KDP Best Sellers</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="kdpKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="kdpBtn" onclick="runKDPBestSellers()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-kdp"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Campaigns</h2>
+    <div class="content">
+      <div id="campaign-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS CHANGE MODAL -->
+<div class="modal-overlay" id="statusModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="statusModalTitle">Change Status</div>
+      <button class="modal-close" onclick="closeStatusModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="statusModalHint"></div>
+      <div class="status-option-grid" id="statusOptions"></div>
+      <div class="modal-status" id="statusModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeStatusModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN ADD MODAL -->
+<div class="modal-overlay" id="loginModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Login</div>
+      <button class="modal-close" onclick="closeLoginModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Creates a login in Notion linked to this product</div>
+      <label class="lm-label">Name</label>
+      <input class="modal-ta" id="lm-name" type="text" placeholder="Login name…" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Platform</label>
+      <div style="position:relative;margin-bottom:12px;" id="lm-plat-wrap">
+        <input class="modal-ta" id="lm-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:32px;padding:5px 10px;" autocomplete="off" oninput="filterLmPlatforms()" onfocus="filterLmPlatforms()" />
+        <input type="hidden" id="lm-plat-id" value="" />
+        <div id="lm-plat-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
+      </div>
+      <label class="lm-label">Username / handle</label>
+      <input class="modal-ta" id="lm-usr" type="text" placeholder="@handle or email…" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Account URL</label>
+      <input class="modal-ta" id="lm-url" type="text" placeholder="https://…" style="height:32px;padding:5px 10px;margin-bottom:4px;" autocomplete="off" />
+      <div class="modal-status" id="lm-status-msg"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeLoginModal()">Cancel</button>
+      <button class="modal-btn save" id="lm-save" onclick="addLoginFromModal()">Add Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN EDIT MODAL -->
+<div class="modal-overlay" id="loginEditModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="le-modal-title">Edit Login</div>
+      <button class="modal-close" onclick="closeLoginEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label">Name</label>
+      <input class="modal-ta" id="le-name" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Username / handle</label>
+      <input class="modal-ta" id="le-usr" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Account URL</label>
+      <input class="modal-ta" id="le-url" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <a id="le-notion-link" href="#" target="_blank" class="notion-link" style="font-size:12px;">↗ Open in Notion</a>
+      <div class="modal-status" id="le-status-msg"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeLoginEditModal()">Cancel</button>
+      <button class="modal-btn save" id="le-save" onclick="saveLoginEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- TD ADD MODAL -->
+<div class="modal-overlay" id="tdModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Task</div>
+      <button class="modal-close" onclick="closeTdModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Task will be created in Main TD and linked to this product</div>
+      <input class="modal-ta" id="td-modal-input" type="text" placeholder="Task name…" style="height:32px;padding:5px 10px;resize:none;" />
+      <div class="modal-status" id="tdModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeTdModal()">Cancel</button>
+      <button class="modal-btn save" id="tdModalSave" onclick="addTodoFromModal()">Add Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT MODAL (keywords etc.) -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="modalTitle">Edit</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="modalHint"></div>
+      <textarea class="modal-ta" id="modalTa" rows="8"></textarea>
+      <div class="modal-status" id="modalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+      <button class="modal-btn save" id="modalSave" onclick="saveModal()">Save to Notion</button>
+    </div>
+  </div>
+</div>
+
+<!-- FIELD RESEARCH MODAL -->
+<div class="modal-overlay" id="fieldResearchModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="fieldResearchTitle">Generate Field</div>
+      <button class="modal-close" onclick="closeFieldResearchModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="fieldResearchHint"></div>
+      <label class="lm-label" for="fieldResearchPrompt" style="margin-top:14px;">Prompt</label>
+      <textarea class="modal-ta" id="fieldResearchPrompt" rows="8" style="resize:vertical;min-height:160px!important;"></textarea>
+      <div id="fieldResearchStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeFieldResearchModal()">Close</button>
+      <button class="modal-btn save" id="fieldResearchRunBtn" onclick="runFieldResearch()">&#x25B6; Generate</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD TITLE MODAL -->
+<div class="modal-overlay" id="addTitleModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head">
+      <div class="modal-title">Add Development Title</div>
+      <button class="modal-close" onclick="closeAddTitleModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label">Title <span style="color:var(--danger,#e05);">*</span></label>
+      <input class="modal-ta" id="addTitleInput" type="text" placeholder="Title text…" autocomplete="off" style="margin-bottom:12px;" />
+      <div id="addTitleStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeAddTitleModal()">Cancel</button>
+      <button class="modal-btn save" id="addTitleSaveBtn" onclick="submitAddTitle()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- SOURCES MODAL -->
+<div class="modal-overlay" id="sourcesModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div class="modal-title" id="sourcesModalTitle">Source Links</div>
+      <button class="modal-close" onclick="closeSourcesModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="sourcesModalBody" style="font-size:13px;line-height:1.7;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeSourcesModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+const PRODUCT_ID  = "3911f7d3a4bb8173ad3fdc762df6ff8a"; // self-actualization-guide
+const RESEARCH_ID = "3911f7d3a4bb813db206cb60c2438b04"; // research
+const SITE_URL    = "https://cabuzzard.github.io/dash/productsites/self-actualization-guide/";
+let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
+let pin = '';
+
+if (SESSION_TOKEN) {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('pinScreen').classList.add('hidden');
+    init();
+  });
+}
+
+function pinReset(msg, isErr) {
+  pin = '';
+  const dots = document.querySelectorAll('.pin-dot');
+  dots.forEach(d => d.classList.remove('filled'));
+  if (isErr) dots.forEach(d => d.classList.add('error'));
+  document.getElementById('pinError').textContent = msg;
+  setTimeout(() => { dots.forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; }, 900);
+}
+async function pp(d) {
+  if (pin.length >= 4) return;
+  pin += d;
+  document.getElementById('d' + (pin.length-1)).classList.add('filled');
+  if (pin.length === 4) {
+    const attemptPin = pin;
+    pin = '';
+    try {
+      const ctrl = new AbortController();
+      const tid  = setTimeout(() => ctrl.abort(), 6000);
+      const resp = await fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'auth', pin: attemptPin }), signal: ctrl.signal,
+      });
+      clearTimeout(tid);
+      const data = await resp.json();
+      if (data.token) {
+        SESSION_TOKEN = data.token;
+        sessionStorage.setItem('hermes_token', SESSION_TOKEN);
+        document.getElementById('pinScreen').classList.add('hidden');
+        init();
+      } else { pinReset('incorrect code', true); }
+    } catch(e) { pinReset(e.name === 'AbortError' ? 'timeout — retry' : 'connection error', true); }
+  }
+}
+function pd() {
+  if (!pin.length) return;
+  document.getElementById('d' + (pin.length-1)).classList.remove('filled');
+  pin = pin.slice(0,-1);
+}
+function lockApp() {
+  SESSION_TOKEN = null;
+  sessionStorage.removeItem('hermes_token');
+  pin = '';
+  document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error'));
+  document.getElementById('pinError').textContent = '';
+  document.getElementById('pinScreen').classList.remove('hidden');
+}
+
+function tick() {
+  const n = new Date();
+  document.getElementById('clock').textContent =
+    String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0') + ':' + String(n.getSeconds()).padStart(2,'0');
+}
+setInterval(tick, 1000); tick();
+
+async function w(action, extra = {}) {
+  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, token: SESSION_TOKEN, ...extra }) });
+  const d = await r.json();
+  if (r.status === 401) {
+    SESSION_TOKEN = null; sessionStorage.removeItem('hermes_token');
+    document.getElementById('pinScreen').classList.remove('hidden');
+    throw new Error('Session expired — please re-enter your code');
+  }
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
+function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function stripHtml(raw) { return raw ? raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : ''; }
+
+function parseToHtml(text) {
+  if (!text) return '<p>—</p>';
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let html = '';
+  lines.forEach(line => {
+    const match = line.match(/^([A-Z][A-Z0-9\s\/&,'-]+):\s*(.+)$/);
+    if (match) {
+      const heading = match[1].trim();
+      const body = match[2].trim();
+      const q = heading.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      html += `<div class="sm-trend-row"><span style="flex:1;cursor:pointer" onclick="openTdModal('${q}')"><span class="sm-trend-niche">${heading}</span><span class="sm-trend-body"> ${body}</span></span><button class="td-add-btn-inline" onclick="openSourcesModal('${q}')" title="Find sources">🔗</button></div>`;
+    } else {
+      const clean = line.replace(/^[-•·*\d+\.\s]+/, '').trim();
+      if (clean) {
+        const q = clean.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        html += `<div class="sm-trend-row"><span class="sm-trend-body" style="flex:1;cursor:pointer" onclick="openTdModal('${q}')">${clean}</span><button class="td-add-btn-inline" onclick="openSourcesModal('${q}')" title="Find sources">🔗</button></div>`;
+      }
+    }
+  });
+  return html || '<p>—</p>';
+}
+
+async function condense(label, raw) {
+  if (!raw || raw.trim().length < 40) return raw ? `<p>${esc(raw)}</p>` : '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
+  try {
+    const d = await w('condense', { label, text: raw });
+    return d.html || `<p>${esc(raw)}</p>`;
+  } catch { return `<p>${esc(raw)}</p>`; }
+}
+
+// ── keyword pills ──────────────────────────────────────────────────────
+let RAW = { keywords: '' };
+let RESEARCH_ID_LIVE = '';
+let ALL_PLATFORMS = [];
+let LOGIN_ITEMS = [];
+
+function renderKeywordPills(kw) {
+  const el = document.getElementById('r-keywords');
+  if (!el) return;
+  const pills = kw.split(/[,\n]+/).map(k => k.trim()).filter(Boolean);
+  if (!pills.length) { el.innerHTML = '<span class="empty">—</span>'; return; }
+  el.innerHTML = pills.map(k => {
+    const q = k.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    return `<span class="kw-pill" onclick="openTdModal('${q}')" title="Add as TD">${esc(k)}</span>`;
+  }).join('');
+}
+
+function openModal(field) {
+  const cfg = {
+    keywords: { title: 'Keywords', hint: 'Comma or newline separated keywords for this product', val: RAW.keywords, field: 'keywords' },
+  };
+  const c = cfg[field]; if (!c) return;
+  document.getElementById('modalTitle').textContent = c.title;
+  document.getElementById('modalHint').textContent = c.hint;
+  document.getElementById('modalTa').value = c.val || '';
+  document.getElementById('modalStatus').textContent = '';
+  document.getElementById('modalSave').dataset.field = field;
+  document.getElementById('editModal').classList.add('open');
+}
+function closeModal() { document.getElementById('editModal').classList.remove('open'); }
+async function saveModal() {
+  const field = document.getElementById('modalSave').dataset.field;
+  const val = document.getElementById('modalTa').value.trim();
+  const statusEl = document.getElementById('modalStatus');
+  statusEl.textContent = 'Saving…';
+  try {
+    await w('updateResearch', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, field, value: val });
+    RAW.keywords = val;
+    renderKeywordPills(val);
+    statusEl.textContent = 'Saved.';
+    setTimeout(closeModal, 600);
+  } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── SM Trends ──────────────────────────────────────────────────────────
+function renderSMTrends(raw) {
+  const el = document.getElementById('r-smtrends');
+  if (!el) return;
+  el.innerHTML = raw ? parseToHtml(raw) : '<p style="color:#2a2a2a;font-style:italic;">No data. Click ⟳ search to fetch.</p>';
+}
+async function runSMTrends() {
+  const btn = document.getElementById('smTrendsBtn');
+  const kwOverride = document.getElementById('smTrendsKwInput').value.trim() || '';
+  btn.disabled = true; btn.textContent = '…';
+  const el = document.getElementById('r-smtrends');
+  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
+  try {
+    const d = await w('getSMTrends', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    renderSMTrends(d.trendIntelligence || '');
+  } catch(e) { if (el) el.innerHTML = `<p style="color:#e05">${esc(e.message)}</p>`; }
+  finally { btn.disabled = false; btn.textContent = '⟳ search'; }
+}
+
+// ── Product Ideas ──────────────────────────────────────────────────────
+function renderProductIdeas(raw) {
+  const el = document.getElementById('r-prodideas');
+  if (!el) return;
+  el.innerHTML = raw ? parseToHtml(raw) : '<p style="color:#2a2a2a;font-style:italic;">No data. Click ⟳ search to fetch.</p>';
+}
+async function runProductIdeas() {
+  const btn = document.getElementById('prodIdeasBtn');
+  const kwOverride = document.getElementById('prodIdeasKwInput').value.trim() || '';
+  btn.disabled = true; btn.textContent = '…';
+  const el = document.getElementById('r-prodideas');
+  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
+  try {
+    const d = await w('getProductIdeas', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    renderProductIdeas(d.productIdeas || '');
+  } catch(e) { if (el) el.innerHTML = `<p style="color:#e05">${esc(e.message)}</p>`; }
+  finally { btn.disabled = false; btn.textContent = '⟳ search'; }
+}
+
+// ── TikTok Shop ────────────────────────────────────────────────────────
+function renderTikTokShop(raw) {
+  const el = document.getElementById('r-ttshop');
+  if (!el) return;
+  el.innerHTML = raw ? parseToHtml(raw) : '<p style="color:#2a2a2a;font-style:italic;">No data. Click ⟳ search to fetch.</p>';
+}
+async function runTikTokShop() {
+  const btn = document.getElementById('ttShopBtn');
+  const kwOverride = document.getElementById('ttShopKwInput').value.trim() || '';
+  btn.disabled = true; btn.textContent = '…';
+  const el = document.getElementById('r-ttshop');
+  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
+  try {
+    const d = await w('getTikTokShopProducts', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    renderTikTokShop(d.tikTokShopProducts || '');
+  } catch(e) { if (el) el.innerHTML = `<p style="color:#e05">${esc(e.message)}</p>`; }
+  finally { btn.disabled = false; btn.textContent = '⟳ search'; }
+}
+
+// ── KDP Best Sellers ───────────────────────────────────────────────────
+function renderKDPBestSellers(raw) {
+  const el = document.getElementById('r-kdp');
+  if (!el) return;
+  el.innerHTML = raw ? parseToHtml(raw) : '<p style="color:#2a2a2a;font-style:italic;">No data. Click ⟳ search to fetch.</p>';
+}
+async function runKDPBestSellers() {
+  const btn = document.getElementById('kdpBtn');
+  const kwOverride = document.getElementById('kdpKwInput').value.trim() || '';
+  btn.disabled = true; btn.textContent = '…';
+  const el = document.getElementById('r-kdp');
+  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
+  try {
+    const d = await w('getKDPBestSellers', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    renderKDPBestSellers(d.kdpBestSellers || '');
+  } catch(e) { if (el) el.innerHTML = `<p style="color:#e05">${esc(e.message)}</p>`; }
+  finally { btn.disabled = false; btn.textContent = '⟳ search'; }
+}
+
+// ── Keyword regen ──────────────────────────────────────────────────────
+async function runRegenKeywords() {
+  const btn = document.getElementById('kwRegenBtn');
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const d = await w('regenKeywords', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, currentKeywords: RAW.keywords });
+    if (d.keywords) { RAW.keywords = d.keywords; renderKeywordPills(d.keywords); }
+  } catch(e) { alert('Error: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '⟳ regen'; }
+}
+
+// ── loadProduct ────────────────────────────────────────────────────────
+async function loadProduct() {
+  try {
+    const data = await w('getProductResearch', { productId: PRODUCT_ID, researchId: RESEARCH_ID });
+    const p = data.product;
+    const r = data.research;
+
+    // SEC 1 — product meta
+    document.getElementById('r-name').textContent = p.name || '—';
+    const statusEl = document.getElementById('r-status');
+    const sc = (p.status || '').toLowerCase();
+    statusEl.innerHTML = p.status ? `<span class="badge ${sc}">${p.status}</span>` : '<span class="empty">—</span>';
+    document.getElementById('r-site').textContent = p.site || '—';
+    document.getElementById('r-price').textContent = p.price || '—';
+    document.getElementById('r-spots').textContent = p.spots != null ? p.spots : '—';
+
+    // SEC 1 — unique angle + avatar
+    const uaEl = document.getElementById('r-uniqueangle');
+    if (uaEl) uaEl.textContent = p.uniqueAngle || '';
+    const avEl = document.getElementById('r-avatar');
+    if (avEl) avEl.textContent = p.avatar || '';
+
+    // SEC 1 — transformation
+    const trEl = document.getElementById('r-transformation');
+    if (trEl) trEl.textContent = p.transformation || '';
+
+    // SEC 2 — offer structure, proof points, objections
+    const osEl = document.getElementById('r-offerstruct');
+    if (osEl) osEl.textContent = p.offerStructure || '';
+    const ppEl = document.getElementById('r-proofpoints');
+    if (ppEl) ppEl.textContent = p.proofPoints || '';
+    const obEl = document.getElementById('r-objections');
+    if (obEl) obEl.textContent = p.objections || '';
+
+    // SEC 5 — campaigns list
+    const campEl = document.getElementById('campaign-list');
+    if (campEl) {
+      if (!p.campaigns || !p.campaigns.length) {
+        campEl.innerHTML = '<div class="empty">No campaigns linked.</div>';
+      } else {
+        campEl.innerHTML = p.campaigns.map(c =>
+          `<div class="campaign-row"><span class="campaign-name">${esc(c.name)}</span><a href="https://www.notion.so/${c.id}" target="_blank" class="title-link">↗</a></div>`
+        ).join('');
+      }
+    }
+
+    // Research fields
+    if (r) {
+      RESEARCH_ID_LIVE = r.id || '';
+      RAW.keywords = r.keywords || '';
+      renderKeywordPills(r.keywords || '');
+      renderSMTrends(r.trendIntelligence || '');
+      renderProductIdeas(r.productIdeas || '');
+      renderTikTokShop(r.tikTokShopProducts || '');
+      renderKDPBestSellers(r.kdpBestSellers || '');
+
+      const newsEl = document.getElementById('r-news');
+      if (newsEl) newsEl.innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
+      const news = await condense('News Feed', r.newsFeed);
+      if (newsEl) newsEl.innerHTML = news;
+    } else {
+      document.getElementById('r-keywords').innerHTML = '<span class="empty">—</span>';
+      document.getElementById('r-smtrends').innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No research record.</p>';
+      document.getElementById('r-news').innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No research record.</p>';
+    }
+
+  } catch(e) {
+    document.getElementById('r-name').textContent = 'Error: ' + e.message;
+  }
+}
+
+// ── loadTitles ─────────────────────────────────────────────────────────
+const SC = { Development:'ts-write', Writing:'ts-write', Review:'ts-review', Approved:'ts-appr', Publish:'ts-pub', Published:'ts-done', Done:'ts-done', Explode:'ts-explode' };
+
+async function loadTitles() {
+  const devEl = document.getElementById('devTitles');
+  const pubEl = document.getElementById('pubTitles');
+  try {
+    const data = await w('getTitles', { stages: ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'], productId: PRODUCT_ID });
+    const titles = data.titles || [];
+    const DEV_ORDER = { Explode:0, Approved:1, Review:2, Writing:3, Development:4 };
+    const dev = titles.filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage))
+                      .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
+    const pub = titles.filter(t => ['Publish','Published','Done'].includes(t.stage));
+    function makeTitleRow(t) {
+      const div = document.createElement('div');
+      div.className = 'title-row';
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${esc(t.title)}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+      return div;
+    }
+    devEl.innerHTML = ''; pubEl.innerHTML = '';
+    if (!dev.length) devEl.innerHTML = '<div class="empty">No development titles.</div>';
+    else dev.forEach(t => devEl.appendChild(makeTitleRow(t)));
+    if (!pub.length) pubEl.innerHTML = '<div class="empty">No publish titles.</div>';
+    else pub.forEach(t => pubEl.appendChild(makeTitleRow(t)));
+  } catch(e) {
+    devEl.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`;
+    pubEl.innerHTML = '';
+  }
+}
+
+// ── Status modal ───────────────────────────────────────────────────────
+let STATUS_TITLE_ID = '', STATUS_CURRENT = '';
+const STAGES = ['Development','Writing','Review','Approved','Explode','Publish','Published','Done'];
+const STAGE_COLORS = { Development:'#718096', Writing:'#63b3ed', Review:'#f6ad55', Approved:'#68d391', Explode:'#a78bfa', Publish:'#fc8181', Published:'#4fd1c5', Done:'#a0aec0' };
+
+function openStatusModal(id, title, current) {
+  STATUS_TITLE_ID = id; STATUS_CURRENT = current;
+  document.getElementById('statusModalTitle').textContent = 'Change Status';
+  document.getElementById('statusModalHint').textContent = title;
+  const grid = document.getElementById('statusOptions');
+  grid.innerHTML = STAGES.map(s => {
+    const color = STAGE_COLORS[s] || '#888';
+    const isActive = s === current;
+    return `<button class="status-opt-btn${isActive?' active':''}" onclick="setTitleStatus('${s}')" ${isActive?'disabled':''} style="opacity:${isActive?.4:1}"><span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;background:${color}22;color:${color};border:1px solid ${color}55;">${s}</span></button>`;
+  }).join('');
+  document.getElementById('statusModalStatus').textContent = '';
+  document.getElementById('statusModal').classList.add('open');
+}
+function closeStatusModal() { document.getElementById('statusModal').classList.remove('open'); }
+async function setTitleStatus(stage) {
+  document.getElementById('statusModalStatus').textContent = 'Saving…';
+  try {
+    await w('updateTitleStage', { titleId: STATUS_TITLE_ID, stage });
+    document.getElementById('statusModalStatus').textContent = 'Done.';
+    setTimeout(async () => { closeStatusModal(); await loadTitles(); }, 700);
+  } catch(e) { document.getElementById('statusModalStatus').textContent = 'Error: ' + e.message; }
+}
+
+// ── TD Items ───────────────────────────────────────────────────────────
+async function loadTodos() {
+  const el = document.getElementById('td-list');
+  try {
+    const data = await w('getProductTodos', { productId: PRODUCT_ID });
+    const todos = data.todos || [];
+    if (!todos.length) { el.innerHTML = '<div class="empty">No TD items.</div>'; return; }
+    el.innerHTML = '';
+    todos.forEach(t => {
+      const row = document.createElement('div'); row.className = 'td-row';
+      row.innerHTML = `<a class="td-name" href="https://www.notion.so/${t.id}" target="_blank" rel="noopener">${esc(t.name)}</a>`;
+      el.appendChild(row);
+    });
+  } catch(e) { el.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`; }
+}
+
+function openTdModal(prefill) {
+  document.getElementById('td-modal-input').value = prefill || '';
+  document.getElementById('tdModalStatus').textContent = '';
+  document.getElementById('tdModal').classList.add('open');
+  setTimeout(() => document.getElementById('td-modal-input').focus(), 80);
+}
+function closeTdModal() { document.getElementById('tdModal').classList.remove('open'); }
+async function addTodoFromModal() {
+  const name = document.getElementById('td-modal-input').value.trim();
+  if (!name) return;
+  const statusEl = document.getElementById('tdModalStatus');
+  statusEl.textContent = 'Creating…';
+  try {
+    await w('createTodo', { name, campaignId: PRODUCT_ID });
+    statusEl.textContent = 'Created.';
+    setTimeout(async () => { closeTdModal(); await loadTodos(); }, 600);
+  } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Files / Deliverables ───────────────────────────────────────────────
+async function loadDeliverables() {
+  const el = document.getElementById('deliverable-list');
+  if (!el) return;
+  try {
+    const data = await w('getProductDeliverables', { productId: PRODUCT_ID });
+    const items = data.deliverables || [];
+    if (!items.length) { el.innerHTML = '<div class="empty">No files yet.</div>'; return; }
+    el.innerHTML = '';
+    const statusColor = { Draft: '#718096', Review: '#c9a800', Final: '#68d391' };
+    items.forEach(d => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid rgba(255,255,255,.04);';
+      const linkHref = d.isFile ? d.url : `https://www.notion.so/${d.id}`;
+      const linkLabel = d.isFile ? '⬇' : '↗';
+      row.innerHTML = `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${d.type||'—'}</span><span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(d.name)}</span>${d.status?`<span style="font-size:10px;color:${statusColor[d.status]||'#555'};flex-shrink:0;">${d.status}</span>`:''}<a href="${linkHref}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">${linkLabel}</a>`;
+      el.appendChild(row);
+    });
+  } catch(e) { el.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`; }
+}
+
+// ── SM Posts ───────────────────────────────────────────────────────────
+async function loadSmPosts() {
+  const box = document.getElementById('smPostsBox');
+  if (!box) return;
+  box.innerHTML = '<div class="empty" style="color:#2a2a2a;font-style:italic;">SM Posts coming soon — link posts to products in Notion to populate this panel.</div>';
+}
+
+// ── Logins ─────────────────────────────────────────────────────────────
+function renderLogins() {
+  const el = document.getElementById('login-list');
+  if (!el) return;
+  if (!LOGIN_ITEMS.length) { el.innerHTML = '<div class="empty">No logins linked.</div>'; return; }
+  const byPlatform = {};
+  LOGIN_ITEMS.forEach(l => {
+    const plat = l.platformName || 'Other';
+    if (!byPlatform[plat]) byPlatform[plat] = [];
+    byPlatform[plat].push(l);
+  });
+  el.innerHTML = '';
+  Object.entries(byPlatform).forEach(([plat, items]) => {
+    const grp = document.createElement('div'); grp.className = 'login-platform-group';
+    const lbl = document.createElement('div'); lbl.className = 'login-platform-label'; lbl.textContent = plat;
+    grp.appendChild(lbl);
+    items.forEach(l => {
+      const row = document.createElement('div'); row.className = 'login-row';
+      const catColors = { Personal:'#63b3ed', 'Company Page':'#68d391', Client:'#f6ad55', Shared:'#a78bfa', Affiliate:'#fc8181' };
+      const cat = l.category || '';
+      row.innerHTML = `${cat ? `<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:${(catColors[cat]||'#555')}22;color:${(catColors[cat]||'#555')};flex-shrink:0;">${cat}</span>` : ''}<span style="flex:1;font-size:13px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" onclick="openLoginEditModal('${l.id}')">${esc(l.name)}</span>${l.accountUrl ? `<a href="${esc(l.accountUrl)}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">↗</a>` : ''}`;
+      grp.appendChild(row);
+    });
+    el.appendChild(grp);
+  });
+}
+
+async function loadLogins() {
+  const el = document.getElementById('login-list');
+  try {
+    const [loginData, platData] = await Promise.all([
+      w('getLogins'),
+      w('getPlatforms'),
+    ]);
+    ALL_PLATFORMS = platData.platforms || [];
+    LOGIN_ITEMS = (loginData.logins || []).filter(l =>
+      (l.campaignIds || []).includes(PRODUCT_ID)
+    );
+    renderLogins();
+  } catch(e) { el.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`; }
+}
+
+function openLoginModal() {
+  document.getElementById('lm-name').value = '';
+  document.getElementById('lm-plat-input').value = '';
+  document.getElementById('lm-plat-id').value = '';
+  document.getElementById('lm-usr').value = '';
+  document.getElementById('lm-url').value = '';
+  document.getElementById('lm-status-msg').textContent = '';
+  document.getElementById('lm-plat-dd').style.display = 'none';
+  document.getElementById('loginModal').classList.add('open');
+  setTimeout(() => document.getElementById('lm-name').focus(), 80);
+}
+function closeLoginModal() { document.getElementById('loginModal').classList.remove('open'); }
+
+function filterLmPlatforms() {
+  const q = (document.getElementById('lm-plat-input').value || '').toLowerCase();
+  const dd = document.getElementById('lm-plat-dd');
+  const matches = ALL_PLATFORMS.filter(p => !q || p.name.toLowerCase().includes(q)).slice(0, 12);
+  dd.innerHTML = '';
+  matches.forEach(p => {
+    const div = document.createElement('div'); div.className = 'plat-dd-item';
+    div.textContent = p.name;
+    div.onmousedown = () => { document.getElementById('lm-plat-input').value = p.name; document.getElementById('lm-plat-id').value = p.id; dd.style.display = 'none'; };
+    dd.appendChild(div);
+  });
+  dd.style.display = matches.length ? 'block' : 'none';
+}
+
+async function addLoginFromModal() {
+  const name = document.getElementById('lm-name').value.trim();
+  const platId = document.getElementById('lm-plat-id').value;
+  const usr = document.getElementById('lm-usr').value.trim();
+  const url = document.getElementById('lm-url').value.trim();
+  if (!name) return;
+  const statusEl = document.getElementById('lm-status-msg');
+  statusEl.textContent = 'Creating…';
+  try {
+    await w('createLogin', { title: name, platformId: platId, username: usr, accountUrl: url, campaignId: PRODUCT_ID });
+    statusEl.textContent = 'Created.';
+    setTimeout(async () => { closeLoginModal(); await loadLogins(); }, 600);
+  } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
+}
+
+function openLoginEditModal(id) {
+  const l = LOGIN_ITEMS.find(x => x.id === id); if (!l) return;
+  document.getElementById('le-modal-title').textContent = 'Edit Login';
+  document.getElementById('le-name').value = l.name || '';
+  document.getElementById('le-usr').value = l.username || '';
+  document.getElementById('le-url').value = l.accountUrl || '';
+  document.getElementById('le-notion-link').href = 'https://www.notion.so/' + l.id;
+  document.getElementById('le-status-msg').textContent = '';
+  document.getElementById('le-save').dataset.id = id;
+  document.getElementById('loginEditModal').classList.add('open');
+}
+function closeLoginEditModal() { document.getElementById('loginEditModal').classList.remove('open'); }
+async function saveLoginEdit() {
+  const id = document.getElementById('le-save').dataset.id;
+  const name = document.getElementById('le-name').value.trim();
+  const usr = document.getElementById('le-usr').value.trim();
+  const url = document.getElementById('le-url').value.trim();
+  const statusEl = document.getElementById('le-status-msg');
+  statusEl.textContent = 'Saving…';
+  try {
+    await w('updateLogin', { loginId: id, name, username: usr, accountUrl: url });
+    statusEl.textContent = 'Saved.';
+    const item = LOGIN_ITEMS.find(x => x.id === id);
+    if (item) { item.name = name; item.username = usr; item.accountUrl = url; }
+    renderLogins();
+    setTimeout(closeLoginEditModal, 600);
+  } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Add Title ──────────────────────────────────────────────────────────
+function openAddTitleModal() {
+  document.getElementById('addTitleInput').value = '';
+  document.getElementById('addTitleStatus').textContent = '';
+  document.getElementById('addTitleModal').classList.add('open');
+  setTimeout(() => document.getElementById('addTitleInput').focus(), 80);
+}
+function closeAddTitleModal() { document.getElementById('addTitleModal').classList.remove('open'); }
+async function submitAddTitle() {
+  const title = document.getElementById('addTitleInput').value.trim();
+  if (!title) return;
+  const statusEl = document.getElementById('addTitleStatus');
+  const btn = document.getElementById('addTitleSaveBtn');
+  btn.disabled = true; statusEl.textContent = 'Creating…';
+  try {
+    await w('createDevTitle', { title, productId: PRODUCT_ID });
+    statusEl.textContent = 'Created.';
+    setTimeout(async () => { closeAddTitleModal(); await loadTitles(); }, 600);
+  } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
+  finally { btn.disabled = false; }
+}
+
+// ── Field Research (News Feed etc.) ───────────────────────────────────
+let FIELD_RESEARCH_TARGET = '';
+function openFieldResearchModal(field) {
+  FIELD_RESEARCH_TARGET = field;
+  const labels = { newsFeed: 'News Feed' };
+  document.getElementById('fieldResearchTitle').textContent = 'Generate — ' + (labels[field] || field);
+  document.getElementById('fieldResearchHint').textContent = 'Uses Claude + web search to generate content for this field based on product keywords.';
+  document.getElementById('fieldResearchPrompt').value = 'Research current news, trends, and insights related to: ' + (RAW.keywords || 'self actualization guide');
+  document.getElementById('fieldResearchStatus').textContent = '';
+  document.getElementById('fieldResearchModal').classList.add('open');
+}
+function closeFieldResearchModal() { document.getElementById('fieldResearchModal').classList.remove('open'); }
+async function runFieldResearch() {
+  const prompt = document.getElementById('fieldResearchPrompt').value.trim();
+  const statusEl = document.getElementById('fieldResearchStatus');
+  const btn = document.getElementById('fieldResearchRunBtn');
+  btn.disabled = true; statusEl.textContent = 'Running…';
+  try {
+    const d = await w('generateField', { field: FIELD_RESEARCH_TARGET, prompt, researchId: RESEARCH_ID_LIVE || RESEARCH_ID });
+    statusEl.textContent = 'Done.';
+    if (FIELD_RESEARCH_TARGET === 'newsFeed') {
+      const newsEl = document.getElementById('r-news');
+      if (newsEl && d.value) newsEl.innerHTML = await condense('News Feed', d.value);
+    }
+    setTimeout(closeFieldResearchModal, 800);
+  } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
+  finally { btn.disabled = false; }
+}
+
+// ── Sources modal ──────────────────────────────────────────────────────
+function openSourcesModal(query) {
+  document.getElementById('sourcesModalTitle').textContent = query;
+  const body = document.getElementById('sourcesModalBody');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div>Fetching sources…</div>';
+  document.getElementById('sourcesModal').classList.add('open');
+  w('getSourceLinks', { query, keywords: RAW.keywords }).then(d => {
+    const links = d.sources || [];
+    body.innerHTML = links.length
+      ? links.map(l => `<div style="margin-bottom:8px;"><a href="${esc(l.url)}" target="_blank" style="color:#63b3ed;text-decoration:none;">${esc(l.title)}</a><div style="font-size:11px;color:#555;word-break:break-all;">${esc(l.url)}</div></div>`).join('')
+      : '<p style="color:#2a2a2a;">No sources found.</p>';
+  }).catch(e => { body.innerHTML = `<p style="color:#e05">${esc(e.message)}</p>`; });
+}
+function closeSourcesModal() { document.getElementById('sourcesModal').classList.remove('open'); }
+
+// ── Overlay close on backdrop click ───────────────────────────────────
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay')) {
+    e.target.classList.remove('open');
+  }
+});
+
+// ── init ───────────────────────────────────────────────────────────────
+function init() {
+  const psEl = document.getElementById('r-productsite');
+  if (psEl) {
+    if (typeof SITE_URL !== 'undefined' && SITE_URL) {
+      const display = SITE_URL.replace('https://cabuzzard.github.io/dash/','').replace(/\/$/,'');
+      psEl.innerHTML = '<a href="' + SITE_URL + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + display + '</a>';
+    } else { psEl.innerHTML = '<span class="empty">—</span>'; }
+  }
+  loadProduct();
+  loadTitles();
+  loadTodos();
+  loadLogins();
+  loadSmPosts();
+  loadDeliverables();
+}
+</script>
+</body>
+</html>
