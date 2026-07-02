@@ -1477,7 +1477,8 @@ function renderProducts() {
     const isActive = p.status === 'Active';
     row.className = 'product-row ' + (isActive ? 'is-active' : 'is-development');
     row.dataset.productId = p.id;
-    row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a><button class="gen-strategy-btn" onclick="generateProductStrategy('${p.id}', this)" title="${isActive ? 'Regenerate strategy' : 'Generate strategy from campaign research'}">${isActive ? '↺ Regen' : '⚡ Generate'}</button><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+    const psLink = p.productsite ? `<a href="${p.productsite}" target="_blank" rel="noopener" title="Product site" style="font-size:10px;color:#555;text-decoration:none;flex-shrink:0;padding:1px 4px;border:1px solid #2a2a2a;border-radius:3px;line-height:1.6;">site</a>` : '';
+    row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${psLink}<button class="gen-strategy-btn" onclick="generateProductStrategy('${p.id}', this)" title="${isActive ? 'Regenerate strategy' : 'Generate strategy from campaign research'}">${isActive ? '↺ Regen' : '⚡ Generate'}</button><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }

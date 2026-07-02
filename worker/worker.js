@@ -1714,11 +1714,12 @@ export default {
 
           return {
             id,
-            name:      props.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
-            campaign:  campaignName,
+            name:        props.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+            campaign:    campaignName,
             site,
-            status:    props.Status?.select?.name || "",
-            microsite: micrositeUrl,
+            status:      props.Status?.select?.name || "",
+            microsite:   micrositeUrl,
+            productsite: props["URL"]?.url || null,
           };
         });
 
