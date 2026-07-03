@@ -131,6 +131,20 @@
     .row { grid-template-columns: 1fr; gap: 4px; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  .calc-box { margin-top: 32px; padding: 28px; background: #fff; border: 1px solid var(--line); }
+  .calc-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: end; margin-bottom: 18px; }
+  @media (max-width: 560px) { .calc-row { grid-template-columns: 1fr; } }
+  .calc-field label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+  .calc-field input[type=number] { width: 100%; padding: 12px 14px; font-size: 15px; border: 1px solid var(--line); border-radius: 2px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .calc-check label { display: flex; align-items: center; gap: 8px; font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--forest); }
+  .calc-btn { width: 100%; border: none; cursor: pointer; }
+  .calc-results { margin-top: 20px; display: none; }
+  .calc-result-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border: 1px solid var(--line); margin-bottom: 8px; }
+  .calc-result-row.winner { border-color: var(--brass); border-width: 2px; background: #fdf7ec; }
+  .calc-result-name { font-weight: 600; font-size: 15px; }
+  .calc-result-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--brass); margin-left: 8px; }
+  .calc-result-amt { font-family: 'Times New Roman', Times, serif; font-size: 20px; font-weight: 700; color: var(--forest); }
+  .calc-disclaimer { font-size: 12px; color: var(--muted); margin-top: 16px; line-height: 1.6; }
   .lead-form { margin-top: 8px; text-align: left; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
@@ -172,7 +186,22 @@
 
   <section>
     <h2>Which account should you actually open?</h2>
-    <p class="body-text">Solo 401(k), SEP IRA, SIMPLE IRA — every source gives you a different number and nobody explains which one fits your actual income and business structure. Start with the free calculator.</p>
+    <p class="body-text">Solo 401(k), SEP IRA, SIMPLE IRA — every source gives you a different number and nobody explains which one fits your actual income and business structure. Run the numbers below — it's the free tool, right here.</p>
+
+    <div class="calc-box">
+      <div class="calc-row">
+        <div class="calc-field">
+          <label for="calc-income">Net self-employment income (annual)</label>
+          <input type="number" id="calc-income" placeholder="e.g. 120000" min="0" step="1000" />
+        </div>
+        <div class="calc-field calc-check">
+          <label for="calc-age50"><input type="checkbox" id="calc-age50" /> I'm 50 or older (catch-up contributions)</label>
+        </div>
+      </div>
+      <button type="button" class="btn calc-btn" id="calcBtn">Calculate my number</button>
+      <div id="calcResults" class="calc-results"></div>
+      <p class="calc-disclaimer">Ballpark estimate based on current IRS contribution limit structure — not tax advice. Actual limits depend on your exact net earnings and plan setup; confirm with the Retirement Account Setup Review below.</p>
+    </div>
   </section>
 
   <section>
@@ -237,6 +266,51 @@
 </div>
 <script>
 const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+
+// ── Retirement account calculator (ballpark estimate, not tax advice) ──
+document.getElementById('calcBtn').addEventListener('click', () => {
+  const income = parseFloat(document.getElementById('calc-income').value) || 0;
+  const is50Plus = document.getElementById('calc-age50').checked;
+  const results = document.getElementById('calcResults');
+  if (income <= 0) {
+    results.style.display = 'block';
+    results.innerHTML = '<p style="color:#8a2a1f;">Enter your net self-employment income first.</p>';
+    return;
+  }
+
+  // 2026 ballpark limits (confirm exact figures with a professional)
+  const OVERALL_CAP = 72000;
+  const ELECTIVE_DEFERRAL = 23500 + (is50Plus ? 7500 : 0);
+  const SIMPLE_DEFERRAL   = 16500 + (is50Plus ? 3500 : 0);
+
+  // Net SE earnings after the ~7.65% self-employment tax adjustment
+  const adjustedIncome = income * 0.9235;
+
+  // Solo 401(k): employee deferral + 20% employer profit-share, capped
+  const solo401kEmployer = adjustedIncome * 0.20;
+  const solo401k = Math.min(Math.min(income, ELECTIVE_DEFERRAL) + solo401kEmployer, OVERALL_CAP + (is50Plus ? 7500 : 0));
+
+  // SEP IRA: employer-only, ~20% of adjusted income, capped
+  const sepIra = Math.min(adjustedIncome * 0.20, OVERALL_CAP);
+
+  // SIMPLE IRA: employee deferral + 3% employer match, no profit-share
+  const simpleIra = Math.min(income, SIMPLE_DEFERRAL) + Math.min(income * 0.03, income * 0.03);
+
+  const accounts = [
+    { name: 'Solo 401(k)', amt: solo401k },
+    { name: 'SEP IRA', amt: sepIra },
+    { name: 'SIMPLE IRA', amt: simpleIra },
+  ].sort((a, b) => b.amt - a.amt);
+
+  results.style.display = 'block';
+  results.innerHTML = accounts.map((a, i) => `
+    <div class="calc-result-row${i === 0 ? ' winner' : ''}">
+      <div class="calc-result-name">${a.name}${i === 0 ? '<span class="calc-result-badge">Recommended</span>' : ''}</div>
+      <div class="calc-result-amt">$${Math.round(a.amt).toLocaleString()}</div>
+    </div>
+  `).join('');
+});
+
 document.getElementById('leadForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('submitBtn');
