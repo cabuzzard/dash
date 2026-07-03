@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mountainwize Coaching — Purpose After Success</title>
+<style>
+  :root {
+    --stone: #2e2b28;
+    --fog: #ede8e0;
+    --rust: #a94e2c;
+    --line: #c9c0b2;
+    --muted: #766d61;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--fog);
+    color: var(--stone);
+    font-family: 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+  }
+  .wrap { max-width: 740px; margin: 0 auto; padding: 0 28px; }
+  header.hero {
+    padding: 100px 0 70px;
+    position: relative;
+    overflow: hidden;
+  }
+  .contour {
+    position: absolute;
+    top: -60px; right: -120px;
+    width: 420px; height: 420px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    opacity: 0.5;
+  }
+  .contour::before, .contour::after {
+    content: '';
+    position: absolute;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    inset: 40px;
+  }
+  .contour::after { inset: 90px; }
+  .eyebrow {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--rust);
+    font-weight: 700;
+    margin-bottom: 26px;
+  }
+  h1 {
+    font-size: 44px;
+    line-height: 1.25;
+    font-weight: 400;
+    font-style: italic;
+    max-width: 560px;
+    position: relative;
+    z-index: 1;
+  }
+  .sub {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 16px;
+    color: var(--muted);
+    margin-top: 26px;
+    max-width: 480px;
+    line-height: 1.7;
+  }
+  section { padding: 64px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 26px; font-weight: 400; margin-bottom: 18px; }
+  p.body-text {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 15px;
+    color: #3d3833;
+    max-width: 540px;
+    margin-bottom: 14px;
+    line-height: 1.7;
+  }
+  .quote-line {
+    font-size: 22px;
+    font-style: italic;
+    color: var(--rust);
+    border-left: 2px solid var(--rust);
+    padding-left: 24px;
+    margin: 36px 0;
+    max-width: 480px;
+  }
+  .path {
+    margin-top: 32px;
+    display: grid;
+    gap: 0;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 140px 1fr auto;
+    gap: 20px;
+    padding: 22px 0;
+    border-bottom: 1px solid var(--line);
+    align-items: baseline;
+  }
+  .step:last-child { border-bottom: none; }
+  .step-name { font-size: 17px; }
+  .step-desc {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .step-price {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: right;
+  }
+  .cta-block {
+    text-align: center;
+    padding: 96px 0 70px;
+    border-top: none;
+  }
+  .cta-block h2 { margin-bottom: 12px; }
+  .cta-block p {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    color: var(--muted);
+    font-size: 15px;
+    margin-bottom: 32px;
+  }
+  .btn {
+    display: inline-block;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background: var(--rust);
+    color: var(--fog);
+    padding: 16px 36px;
+    border-radius: 2px;
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .btn:focus-visible { outline: 3px solid var(--stone); outline-offset: 3px; }
+  footer {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 13px;
+    color: var(--muted);
+    text-align: center;
+    padding: 32px 0 60px;
+  }
+  @media (max-width: 640px) {
+    h1 { font-size: 30px; }
+    .contour { display: none; }
+    .step { grid-template-columns: 1fr; gap: 4px; }
+    .step-price { text-align: left; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="contour"></div>
+    <div class="eyebrow">Mountainwize Coaching</div>
+    <h1>I didn't learn this from a book. I was lost — at altitude, in business, in life.</h1>
+    <p class="sub">Coaching for people 38–60 who did everything right and still feel something's missing. Not theory. Consequence-earned.</p>
+  </header>
+
+  <section>
+    <div class="quote-line">You're not lazy or ungrateful.<br>You're purposeless in a very specific, nameable way.</div>
+    <p class="body-text">One honest call to find the line of least resistance in whatever you're navigating right now. No program. No system. Just someone who's actually been there.</p>
+  </section>
+
+  <section>
+    <h2>Where this goes</h2>
+    <div class="path">
+      <div class="step">
+        <div style="color:var(--rust); font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; letter-spacing:0.08em; font-weight:700;">FIRST</div>
+        <div>
+          <div class="step-name">Purpose Crisis Self-Assessment</div>
+          <div class="step-desc">Name your specific flavor of purposelessness</div>
+        </div>
+        <div class="step-price">Free</div>
+      </div>
+      <div class="step">
+        <div style="color:var(--rust); font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; letter-spacing:0.08em; font-weight:700;">NEXT</div>
+        <div>
+          <div class="step-name">Energy Session</div>
+          <div class="step-desc">One call. No ongoing commitment.</div>
+        </div>
+        <div class="step-price">TBD</div>
+      </div>
+      <div class="step">
+        <div style="color:var(--rust); font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; letter-spacing:0.08em; font-weight:700;">THEN</div>
+        <div>
+          <div class="step-name">Rhythm Reset</div>
+          <div class="step-desc">4 weeks. Bring the Thursday feeling into the whole week.</div>
+        </div>
+        <div class="step-price">$500–1,500</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta-block">
+    <h2>Start with one honest question.</h2>
+    <p>Two minutes to name where you actually are.</p>
+    <a class="btn" href="#" role="button">Take the assessment →</a>
+  </div>
+
+  <footer>Mountainwize Coaching · Purpose</footer>
+</div>
+</body>
+</html>

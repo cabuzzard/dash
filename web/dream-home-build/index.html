@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Owner-Builder Advisory — Bay Area</title>
+<style>
+  :root {
+    --concrete: #26282b;
+    --paper: #eeece7;
+    --safety: #c8551f;
+    --line: #45484c;
+    --muted: #9a9d9f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--concrete);
+    color: var(--paper);
+    font-family: 'Courier New', 'SF Mono', monospace;
+  }
+  .wrap { max-width: 800px; margin: 0 auto; padding: 0 28px; }
+  header.hero {
+    padding: 80px 0 56px;
+    border-bottom: 1px solid var(--line);
+    position: relative;
+  }
+  .blueprint-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 32px 32px;
+    opacity: 0.15;
+    pointer-events: none;
+  }
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--safety);
+    font-weight: 700;
+    margin-bottom: 22px;
+  }
+  h1 {
+    font-family: Georgia, serif;
+    font-size: 42px;
+    line-height: 1.2;
+    font-weight: 400;
+    max-width: 640px;
+    color: #fff;
+  }
+  .sub {
+    font-size: 15px;
+    color: var(--muted);
+    margin-top: 22px;
+    max-width: 520px;
+    line-height: 1.7;
+  }
+  .math-strip {
+    display: flex;
+    gap: 0;
+    margin-top: 48px;
+    border: 1px solid var(--line);
+  }
+  .math-cell {
+    flex: 1;
+    padding: 18px 20px;
+    border-right: 1px solid var(--line);
+  }
+  .math-cell:last-child { border-right: none; }
+  .math-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .math-val { font-size: 22px; color: var(--safety); font-weight: 700; margin-top: 6px; }
+  section { padding: 60px 0; border-bottom: 1px solid var(--line); }
+  h2 {
+    font-family: Georgia, serif;
+    font-size: 24px;
+    font-weight: 400;
+    margin-bottom: 16px;
+    color: #fff;
+  }
+  p.body-text {
+    font-size: 14px;
+    color: #c4c6c8;
+    max-width: 560px;
+    margin-bottom: 12px;
+    line-height: 1.7;
+  }
+  .spec-table { margin-top: 28px; width: 100%; border-collapse: collapse; }
+  .spec-table tr { border-bottom: 1px solid var(--line); }
+  .spec-table td { padding: 16px 8px; font-size: 13px; vertical-align: top; }
+  .spec-tier { color: var(--safety); font-weight: 700; width: 80px; }
+  .spec-name { color: #fff; font-weight: 600; }
+  .spec-desc { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .spec-price { text-align: right; color: #fff; }
+  .cta-block { text-align: center; padding: 90px 0 70px; border-bottom: none; }
+  .cta-block h2 { color: #fff; }
+  .cta-block p { color: var(--muted); font-size: 14px; margin-bottom: 30px; }
+  .btn {
+    display: inline-block;
+    background: var(--safety);
+    color: #fff;
+    padding: 15px 34px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .btn:focus-visible { outline: 3px solid var(--paper); outline-offset: 3px; }
+  footer { font-size: 12px; color: var(--muted); text-align: center; padding: 32px 0 60px; }
+  @media (max-width: 640px) {
+    h1 { font-size: 28px; }
+    .math-strip { flex-direction: column; }
+    .math-cell { border-right: none; border-bottom: 1px solid var(--line); }
+    .spec-table td { display: block; width: 100% !important; text-align: left !important; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="blueprint-grid"></div>
+    <div class="eyebrow">Webguy Business Services · Owner-Builder Advisory</div>
+    <h1>You'll save 10–20% skipping the GC. Here's the honest math on what it actually costs you.</h1>
+    <p class="sub">Nobody neutral is telling you the real number — or the real hours. Bay Area–specific, licensed, non-commission advisory for people seriously considering building it themselves.</p>
+    <div class="math-strip">
+      <div class="math-cell">
+        <div class="math-label">Headline savings</div>
+        <div class="math-val">$80K</div>
+      </div>
+      <div class="math-cell">
+        <div class="math-label">Real net savings</div>
+        <div class="math-val">$20–60K</div>
+      </div>
+      <div class="math-cell">
+        <div class="math-label">Unpaid hours cost</div>
+        <div class="math-val">$45–97.5K</div>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <h2>Should you actually be your own GC?</h2>
+    <p class="body-text">Run the real numbers before you decide — build budget, your hourly rate, your region. Free calculator, honest output, no pitch.</p>
+  </section>
+
+  <section>
+    <h2>Build stack</h2>
+    <table class="spec-table">
+      <tr>
+        <td class="spec-tier">01</td>
+        <td>
+          <div class="spec-name">Honest Math Calculator</div>
+          <div class="spec-desc">Real net savings after retail pricing + overrun risk + your time</div>
+        </td>
+        <td class="spec-price">Free</td>
+      </tr>
+      <tr>
+        <td class="spec-tier">02</td>
+        <td>
+          <div class="spec-name">Owner-Builder Readiness Review</div>
+          <div class="spec-desc">One session, before you commit to anything — honest go/no-go</div>
+        </td>
+        <td class="spec-price">$500–1,500</td>
+      </tr>
+      <tr>
+        <td class="spec-tier">03</td>
+        <td>
+          <div class="spec-name">Checklist & Sequencing Template</div>
+          <div class="spec-desc">Phase-by-phase inspection points, correct trade order</div>
+        </td>
+        <td class="spec-price">TBD</td>
+      </tr>
+      <tr>
+        <td class="spec-tier">04</td>
+        <td>
+          <div class="spec-name">Ongoing Advisory Retainer</div>
+          <div class="spec-desc">Monthly check-ins through the full build — coming soon</div>
+        </td>
+        <td class="spec-price">TBD</td>
+      </tr>
+    </table>
+  </section>
+
+  <div class="cta-block">
+    <h2>Run the real numbers.</h2>
+    <p>Two minutes. Your budget, your region, your hourly rate. The actual math, not the headline.</p>
+    <a class="btn" href="#" role="button">Calculate my real savings</a>
+  </div>
+
+  <footer>Owner-Builder Advisory · Webguy Business Services · Bay Area, CA</footer>
+</div>
+</body>
+</html>
