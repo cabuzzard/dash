@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Get One Offer — Financial Freedom for Solo Operators</title>
+<meta name="description" content="A free 10-minute diagnostic for solo operators, freelancers, and independent consultants: find the one offer worth running as a system, and collapse the rest.">
+<meta name="robots" content="index, follow">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <style>
   :root {
     --ink: #12181f;
@@ -151,6 +154,21 @@
     .tier-price { text-align: left; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  .lead-form { margin-top: 8px; text-align: left; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
+  .form-group { margin-bottom: 16px; }
+  .lead-form label { display: block; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .lead-form input, .lead-form textarea {
+    width: 100%; padding: 12px 14px; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 15px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); outline: none; border-radius: 3px;
+  }
+  .lead-form textarea { resize: vertical; min-height: 84px; }
+  .lead-form .submit-btn { width: 100%; border: none; cursor: pointer; }
+  .lead-form .submit-btn:disabled { opacity: .6; cursor: not-allowed; }
+  .form-msg { margin-top: 18px; font-size: 14px; display: none; font-family: 'Helvetica Neue', Arial, sans-serif; padding: 14px 16px; border-radius: 3px; text-align: left; }
+  .form-msg.success { background: #e6f4ea; color: #1e5e34; border: 1px solid #b8dcc4; }
+  .form-msg.error { background: #fbe7e5; color: #8a2a1f; border: 1px solid #f0bcb5; }
 </style>
 </head>
 <body>
@@ -215,10 +233,73 @@
   <section class="cta-block" style="border-bottom:none;">
     <h2>Stop selling five things.</h2>
     <p>Start with the free diagnostic. Ten minutes to your one offer.</p>
-    <a class="btn" href="#" role="button">Get your one offer →</a>
+    <form id="leadForm" class="lead-form" novalidate>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-email">Email *</label>
+          <input type="email" id="f-email" name="email" required placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label for="f-phone">Phone *</label>
+          <input type="tel" id="f-phone" name="phone" required placeholder="(555) 000-0000" autocomplete="tel" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="f-note">What do you currently offer? <span style="font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></label>
+        <textarea id="f-note" name="note" placeholder="Consulting, coaching, courses, templates..." maxlength="600"></textarea>
+      </div>
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" style="margin:4px 0 16px;"></div>
+      <button type="submit" class="btn submit-btn" id="submitBtn">Get your one offer →</button>
+    </form>
+    <div class="form-msg" id="formMsg"></div>
   </section>
 
   <footer>Financial Freedom · Webguy Business Services</footer>
 </div>
+<script>
+const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+document.getElementById('leadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const msg = document.getElementById('formMsg');
+  const email = document.getElementById('f-email').value.trim();
+  const phone = document.getElementById('f-phone').value.trim();
+  const note  = document.getElementById('f-note').value.trim();
+
+  if (!email || !phone) {
+    msg.textContent = 'Please fill in your email and phone.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    msg.textContent = 'Please enter a valid email address.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    return;
+  }
+  if (!/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) {
+    msg.textContent = 'Please enter a valid phone number.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    return;
+  }
+  const tsToken = document.querySelector('[name="cf-turnstile-response"]')?.value || '';
+
+  btn.disabled = true; btn.textContent = 'Submitting…'; msg.style.display = 'none';
+  try {
+    const res = await fetch(WORKER_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'submitLead', campaign: 'financial-freedom', email, phone, fraudType: 'Webguy - Financial Freedom', note, tsToken })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    document.getElementById('leadForm').style.display = 'none';
+    msg.innerHTML = '<strong>Got it — check your inbox.</strong><br>Your one-offer diagnostic is on its way.';
+    msg.className = 'form-msg success'; msg.style.display = 'block';
+  } catch(err) {
+    msg.textContent = 'Something went wrong. Please try again.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Get your one offer →';
+  }
+});
+</script>
 </body>
 </html>

@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Owner-Builder Advisory — Bay Area</title>
+<meta name="description" content="Free calculator for Bay Area homeowners considering acting as their own general contractor: the honest math on real net savings vs. unpaid hours and risk.">
+<meta name="robots" content="index, follow">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <style>
   :root {
     --concrete: #26282b;
@@ -116,6 +119,21 @@
     .spec-table td { display: block; width: 100% !important; text-align: left !important; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  .lead-form { margin-top: 8px; text-align: left; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
+  .form-group { margin-bottom: 16px; }
+  .lead-form label { display: block; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .lead-form input, .lead-form textarea {
+    width: 100%; padding: 12px 14px; font-family: 'Courier New', monospace; font-size: 14px;
+    border: 1px solid var(--line); background: var(--paper); color: var(--concrete); outline: none;
+  }
+  .lead-form textarea { resize: vertical; min-height: 84px; }
+  .lead-form .submit-btn { width: 100%; border: none; cursor: pointer; }
+  .lead-form .submit-btn:disabled { opacity: .6; cursor: not-allowed; }
+  .form-msg { margin-top: 18px; font-size: 13px; display: none; padding: 14px 16px; text-align: left; }
+  .form-msg.success { background: #1e3a2a; color: #9fd8b3; }
+  .form-msg.error { background: #3a1e1a; color: #f0b8a8; }
 </style>
 </head>
 <body>
@@ -187,10 +205,73 @@
   <div class="cta-block">
     <h2>Run the real numbers.</h2>
     <p>Two minutes. Your budget, your region, your hourly rate. The actual math, not the headline.</p>
-    <a class="btn" href="#" role="button">Calculate my real savings</a>
+    <form id="leadForm" class="lead-form" novalidate>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-email">Email *</label>
+          <input type="email" id="f-email" name="email" required placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label for="f-phone">Phone *</label>
+          <input type="tel" id="f-phone" name="phone" required placeholder="(555) 000-0000" autocomplete="tel" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="f-note">Build budget &amp; region <span style="text-transform:none;letter-spacing:0;">(optional)</span></label>
+        <textarea id="f-note" name="note" placeholder="Rough budget, city/county, your hourly rate..." maxlength="600"></textarea>
+      </div>
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-theme="dark" style="margin:4px 0 16px;"></div>
+      <button type="submit" class="btn submit-btn" id="submitBtn">Calculate my real savings</button>
+    </form>
+    <div class="form-msg" id="formMsg"></div>
   </div>
 
   <footer>Owner-Builder Advisory · Webguy Business Services · Bay Area, CA</footer>
 </div>
+<script>
+const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+document.getElementById('leadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const msg = document.getElementById('formMsg');
+  const email = document.getElementById('f-email').value.trim();
+  const phone = document.getElementById('f-phone').value.trim();
+  const note  = document.getElementById('f-note').value.trim();
+
+  if (!email || !phone) {
+    msg.textContent = 'Please fill in your email and phone.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    msg.textContent = 'Please enter a valid email address.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    return;
+  }
+  if (!/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) {
+    msg.textContent = 'Please enter a valid phone number.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    return;
+  }
+  const tsToken = document.querySelector('[name="cf-turnstile-response"]')?.value || '';
+
+  btn.disabled = true; btn.textContent = 'Submitting…'; msg.style.display = 'none';
+  try {
+    const res = await fetch(WORKER_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'submitLead', campaign: 'dream-home-build', email, phone, fraudType: 'Webguy - Dream Home Build', note, tsToken })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    document.getElementById('leadForm').style.display = 'none';
+    msg.innerHTML = '<strong>Got it — check your inbox.</strong><br>Your honest owner-builder math is on its way.';
+    msg.className = 'form-msg success'; msg.style.display = 'block';
+  } catch(err) {
+    msg.textContent = 'Something went wrong. Please try again.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Calculate my real savings';
+  }
+});
+</script>
 </body>
 </html>
