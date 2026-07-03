@@ -789,6 +789,8 @@ export default {
     const PIN_VAL        = (env.PIN             || "").trim();
     const HMAC_SECRET    = (env.HMAC_SECRET     || "").trim();
     const TS_SECRET      = (env.TURNSTILE_SECRET|| "1x0000000000000000000000000000000AA").trim();
+    const AC_API_URL     = (env.ACTIVECAMPAIGN_API_URL || "").trim().replace(/\/$/, "");
+    const AC_API_KEY     = (env.ACTIVECAMPAIGN_API_KEY || "").trim();
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
     if (request.method === "GET") {
@@ -899,6 +901,49 @@ export default {
       });
       const result = await resp.json();
       if (!resp.ok) return json({ error: "Submission failed  -  please try again" }, resp.status);
+
+      // --- ActiveCampaign: tag the contact so the matching automation fires ---
+      // Best-effort only — a failure here must never break lead capture into Notion.
+      if (AC_API_URL && AC_API_KEY && campaign) {
+        try {
+          const acHeaders = { "Api-Token": AC_API_KEY, "Content-Type": "application/json" };
+          const syncResp = await fetch(`${AC_API_URL}/api/3/contact/sync`, {
+            method: "POST",
+            headers: acHeaders,
+            body: JSON.stringify({ contact: { email, phone } }),
+          });
+          const syncData = await syncResp.json();
+          const contactId = syncData.contact?.id;
+
+          if (contactId) {
+            const tagName = `lead-${campaign}`;
+            const searchResp = await fetch(`${AC_API_URL}/api/3/tags?search=${encodeURIComponent(tagName)}`, { headers: acHeaders });
+            const searchData = await searchResp.json();
+            let tagId = (searchData.tags || []).find(t => t.tag === tagName)?.id;
+
+            if (!tagId) {
+              const createResp = await fetch(`${AC_API_URL}/api/3/tags`, {
+                method: "POST",
+                headers: acHeaders,
+                body: JSON.stringify({ tag: { tag: tagName, tagType: "contact" } }),
+              });
+              const createData = await createResp.json();
+              tagId = createData.tag?.id;
+            }
+
+            if (tagId) {
+              await fetch(`${AC_API_URL}/api/3/contactTags`, {
+                method: "POST",
+                headers: acHeaders,
+                body: JSON.stringify({ contactTag: { contact: contactId, tag: tagId } }),
+              });
+            }
+          }
+        } catch (acErr) {
+          // Swallow — ActiveCampaign hiccups shouldn't fail the lead submission.
+        }
+      }
+
       return json({ success: true });
     }
 
