@@ -119,6 +119,19 @@
     .spec-table td { display: block; width: 100% !important; text-align: left !important; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  .calc-box { margin-top: 28px; padding: 26px; background: #1a1c1e; border: 1px solid var(--line); }
+  .calc-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 560px) { .calc-row { grid-template-columns: 1fr; } }
+  .calc-field label { display: block; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .calc-field input[type=number] { width: 100%; padding: 12px 14px; font-family: 'Courier New', monospace; font-size: 14px; border: 1px solid var(--line); background: var(--paper); color: var(--concrete); }
+  .calc-btn { width: 100%; border: none; cursor: pointer; }
+  .calc-results { margin-top: 20px; display: none; }
+  .calc-result-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border: 1px solid var(--line); margin-bottom: 8px; }
+  .calc-result-row.winner { border-color: var(--safety); border-width: 2px; }
+  .calc-result-row.warn .calc-result-amt { color: var(--safety); }
+  .calc-result-name { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .calc-result-amt { font-family: Georgia, serif; font-size: 22px; font-weight: 700; color: #fff; }
+  .calc-disclaimer { font-size: 12px; color: var(--muted); margin-top: 16px; line-height: 1.6; }
   .lead-form { margin-top: 8px; text-align: left; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
@@ -161,7 +174,33 @@
 
   <section>
     <h2>Should you actually be your own GC?</h2>
-    <p class="body-text">Run the real numbers before you decide — build budget, your hourly rate, your region. Free calculator, honest output, no pitch.</p>
+    <p class="body-text">Run the real numbers before you decide — build budget, your hourly rate, hours per week, and how long the build runs. Honest output, no pitch.</p>
+
+    <div class="calc-box">
+      <div class="calc-row">
+        <div class="calc-field">
+          <label for="calc-budget">Total build budget ($)</label>
+          <input type="number" id="calc-budget" placeholder="e.g. 500000" min="0" step="5000" />
+        </div>
+        <div class="calc-field">
+          <label for="calc-rate">Your hourly rate ($)</label>
+          <input type="number" id="calc-rate" placeholder="e.g. 75" min="0" step="5" />
+        </div>
+      </div>
+      <div class="calc-row">
+        <div class="calc-field">
+          <label for="calc-hours">Hours/week you'll spend managing it</label>
+          <input type="number" id="calc-hours" placeholder="e.g. 20" min="0" step="1" value="20" />
+        </div>
+        <div class="calc-field">
+          <label for="calc-months">Build duration (months)</label>
+          <input type="number" id="calc-months" placeholder="e.g. 12" min="1" step="1" value="12" />
+        </div>
+      </div>
+      <button type="button" class="btn calc-btn" id="calcBtn">Calculate my real savings</button>
+      <div id="calcResults" class="calc-results"></div>
+      <p class="calc-disclaimer">Headline savings assumes a 15% GC markup on your budget (industry range 10–20%). Real net savings = headline savings minus the dollar value of your own unpaid hours. Ballpark only — confirm with the Owner-Builder Readiness Review below.</p>
+    </div>
   </section>
 
   <section>
@@ -230,6 +269,43 @@
 </div>
 <script>
 const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+
+// ── Owner-builder honest math calculator ──
+document.getElementById('calcBtn').addEventListener('click', () => {
+  const budget = parseFloat(document.getElementById('calc-budget').value) || 0;
+  const rate   = parseFloat(document.getElementById('calc-rate').value) || 0;
+  const hoursWk = parseFloat(document.getElementById('calc-hours').value) || 0;
+  const months  = parseFloat(document.getElementById('calc-months').value) || 0;
+  const results = document.getElementById('calcResults');
+
+  if (budget <= 0 || rate <= 0) {
+    results.style.display = 'block';
+    results.innerHTML = '<p style="color:var(--safety);">Enter your build budget and hourly rate first.</p>';
+    return;
+  }
+
+  const headlineSavings = budget * 0.15;
+  const totalHours = hoursWk * (months * 4.33);
+  const timeCost = totalHours * rate;
+  const realNet = headlineSavings - timeCost;
+
+  results.style.display = 'block';
+  results.innerHTML = `
+    <div class="calc-result-row">
+      <div class="calc-result-name">Headline savings (15% of budget)</div>
+      <div class="calc-result-amt">$${Math.round(headlineSavings).toLocaleString()}</div>
+    </div>
+    <div class="calc-result-row warn">
+      <div class="calc-result-name">${Math.round(totalHours).toLocaleString()} unpaid hours @ $${rate}/hr</div>
+      <div class="calc-result-amt">-$${Math.round(timeCost).toLocaleString()}</div>
+    </div>
+    <div class="calc-result-row winner">
+      <div class="calc-result-name">Real net savings</div>
+      <div class="calc-result-amt">${realNet < 0 ? '-' : ''}$${Math.round(Math.abs(realNet)).toLocaleString()}</div>
+    </div>
+  `;
+});
+
 document.getElementById('leadForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('submitBtn');

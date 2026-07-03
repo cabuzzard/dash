@@ -153,6 +153,17 @@
     .step-price { text-align: left; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  .calc-box { margin-top: 28px; padding: 26px; background: #fff; border: 1px solid var(--line); }
+  .quiz-q { padding: 14px 0; border-bottom: 1px solid var(--line); font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .quiz-q:last-of-type { border-bottom: none; }
+  .quiz-text { font-size: 15px; margin-bottom: 10px; color: var(--stone); }
+  .quiz-scale { display: flex; gap: 20px; font-size: 13px; color: var(--muted); }
+  .quiz-scale label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .calc-btn { width: 100%; border: none; cursor: pointer; margin-top: 12px; }
+  .calc-results { margin-top: 20px; display: none; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .calc-result-row { padding: 18px; border-left: 3px solid var(--rust); background: #f7f3ec; }
+  .calc-result-name { font-weight: 700; font-size: 17px; color: var(--rust); margin-bottom: 8px; font-style: italic; }
+  .calc-result-amt { font-size: 14px; color: #3d3833; line-height: 1.6; }
   .lead-form { margin-top: 8px; text-align: left; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
@@ -181,7 +192,44 @@
 
   <section>
     <div class="quote-line">You're not lazy or ungrateful.<br>You're purposeless in a very specific, nameable way.</div>
-    <p class="body-text">One honest call to find the line of least resistance in whatever you're navigating right now. No program. No system. Just someone who's actually been there.</p>
+    <p class="body-text">Rate how much each statement resonates. There's no wrong answer — this just names which flavor of purposelessness you're actually in.</p>
+
+    <div class="calc-box">
+      <div class="quiz-q" data-cat="achievement">
+        <div class="quiz-text">Wins stopped feeling like anything a while ago, even the big ones.</div>
+        <div class="quiz-scale">
+          <label><input type="radio" name="q1" value="1" checked> Rarely</label>
+          <label><input type="radio" name="q1" value="3"> Sometimes</label>
+          <label><input type="radio" name="q1" value="5"> Constantly</label>
+        </div>
+      </div>
+      <div class="quiz-q" data-cat="connection">
+        <div class="quiz-text">People know what you've done. Almost no one knows who you actually are.</div>
+        <div class="quiz-scale">
+          <label><input type="radio" name="q2" value="1" checked> Rarely</label>
+          <label><input type="radio" name="q2" value="3"> Sometimes</label>
+          <label><input type="radio" name="q2" value="5"> Constantly</label>
+        </div>
+      </div>
+      <div class="quiz-q" data-cat="meaning">
+        <div class="quiz-text">If you stopped today, nothing you're building would actually matter in five years.</div>
+        <div class="quiz-scale">
+          <label><input type="radio" name="q3" value="1" checked> Rarely</label>
+          <label><input type="radio" name="q3" value="3"> Sometimes</label>
+          <label><input type="radio" name="q3" value="5"> Constantly</label>
+        </div>
+      </div>
+      <div class="quiz-q" data-cat="physical">
+        <div class="quiz-text">You live almost entirely in your head or a screen — you can't remember the last time your body taught you something.</div>
+        <div class="quiz-scale">
+          <label><input type="radio" name="q4" value="1" checked> Rarely</label>
+          <label><input type="radio" name="q4" value="3"> Sometimes</label>
+          <label><input type="radio" name="q4" value="5"> Constantly</label>
+        </div>
+      </div>
+      <button type="button" class="btn calc-btn" id="calcBtn">Name my flavor of purposelessness</button>
+      <div id="calcResults" class="calc-results"></div>
+    </div>
   </section>
 
   <section>
@@ -242,6 +290,34 @@
 </div>
 <script>
 const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+
+// ── Purpose Crisis Self-Assessment ──
+const PURPOSE_FLAVORS = {
+  achievement: { name: "Achievement Void", desc: "You're still winning — it just stopped registering as winning. The scoreboard works, the feeling doesn't." },
+  connection:  { name: "Connection Void", desc: "You're known for what you've done, not who you are. Success got louder while the people who really see you got fewer." },
+  meaning:     { name: "Meaning Void", desc: "Nothing's on fire, but nothing's actually building toward something either. The engine's running in neutral." },
+  physical:    { name: "Physical Void", desc: "You've been living entirely upstairs — in your head, on a screen — and it's been a long time since your body taught you anything true." },
+};
+document.getElementById('calcBtn').addEventListener('click', () => {
+  const results = document.getElementById('calcResults');
+  const map = { q1: 'achievement', q2: 'connection', q3: 'meaning', q4: 'physical' };
+  const scores = {};
+  Object.entries(map).forEach(([q, cat]) => {
+    const checked = document.querySelector(`input[name="${q}"]:checked`);
+    scores[cat] = checked ? parseInt(checked.value, 10) : 1;
+  });
+  const topCat = Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0];
+  const flavor = PURPOSE_FLAVORS[topCat];
+
+  results.style.display = 'block';
+  results.innerHTML = `
+    <div class="calc-result-row">
+      <div class="calc-result-name">${flavor.name}</div>
+      <div class="calc-result-amt">${flavor.desc}</div>
+    </div>
+  `;
+});
+
 document.getElementById('leadForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('submitBtn');

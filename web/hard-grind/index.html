@@ -109,6 +109,17 @@
     .row-price { text-align: left; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  .calc-box { margin-top: 28px; padding: 26px; background: #17151480; border: 1px solid var(--line); }
+  .quiz-q { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .quiz-q:last-of-type { border-bottom: none; }
+  .quiz-text { font-size: 15px; margin-bottom: 10px; }
+  .quiz-scale { display: flex; gap: 20px; font-size: 13px; color: var(--muted); }
+  .quiz-scale label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .calc-btn { width: 100%; border: none; cursor: pointer; margin-top: 12px; }
+  .calc-results { margin-top: 20px; display: none; }
+  .calc-result-row { padding: 16px; border: 2px solid var(--rust); background: #1f1c1b; }
+  .calc-result-name { font-weight: 700; font-size: 16px; color: var(--rust); margin-bottom: 6px; }
+  .calc-result-amt { font-size: 14px; color: #c4bfb4; line-height: 1.6; }
   .lead-form { margin-top: 8px; text-align: left; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
@@ -141,6 +152,51 @@
   <section>
     <h2>Name where your accountability breaks down.</h2>
     <p class="body-text">Free diagnostic. Not generic resilience advice — a specific read on where your system actually fails, matched to real business adversity.</p>
+
+    <div class="calc-box">
+      <div class="quiz-q" data-w="1">
+        <div class="quiz-text">Someone besides you reviews your numbers on a fixed weekly cadence.</div>
+        <div class="quiz-scale">
+          <label><input type="radio" name="q1" value="1" checked> Never</label>
+          <label><input type="radio" name="q1" value="3"> Sometimes</label>
+          <label><input type="radio" name="q1" value="5"> Always</label>
+        </div>
+      </div>
+      <div class="quiz-q" data-w="2">
+        <div class="quiz-text">You've told a specific person what happens if you miss your next target.</div>
+        <div class="quiz-scale">
+          <label><input type="radio" name="q2" value="1" checked> Never</label>
+          <label><input type="radio" name="q2" value="3"> Sometimes</label>
+          <label><input type="radio" name="q2" value="5"> Always</label>
+        </div>
+      </div>
+      <div class="quiz-q" data-w="3">
+        <div class="quiz-text">When you review a past failure, you do it analytically rather than emotionally.</div>
+        <div class="quiz-scale">
+          <label><input type="radio" name="q3" value="1" checked> Never</label>
+          <label><input type="radio" name="q3" value="3"> Sometimes</label>
+          <label><input type="radio" name="q3" value="5"> Always</label>
+        </div>
+      </div>
+      <div class="quiz-q" data-w="4">
+        <div class="quiz-text">You have a peer group of operators who've been through real adversity, not just cheerleaders.</div>
+        <div class="quiz-scale">
+          <label><input type="radio" name="q4" value="1" checked> Never</label>
+          <label><input type="radio" name="q4" value="3"> Sometimes</label>
+          <label><input type="radio" name="q4" value="5"> Always</label>
+        </div>
+      </div>
+      <div class="quiz-q" data-w="5">
+        <div class="quiz-text">You catch your own excuses before you say them out loud.</div>
+        <div class="quiz-scale">
+          <label><input type="radio" name="q5" value="1" checked> Never</label>
+          <label><input type="radio" name="q5" value="3"> Sometimes</label>
+          <label><input type="radio" name="q5" value="5"> Always</label>
+        </div>
+      </div>
+      <button type="button" class="btn calc-btn" id="calcBtn">Run the diagnostic</button>
+      <div id="calcResults" class="calc-results"></div>
+    </div>
   </section>
 
   <section>
@@ -209,6 +265,39 @@
 </div>
 <script>
 const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+
+// ── Founder Accountability Diagnostic ──
+const DIAGNOSTIC_INSIGHTS = {
+  q1: "You have no external check on your numbers — you're grading your own homework, and that's where accountability quietly dies.",
+  q2: "Nobody knows what's actually at stake if you miss. Without a named consequence to a named person, targets stay soft.",
+  q3: "You're still processing past failures emotionally instead of analytically — which means the same mistake gets to repeat itself.",
+  q4: "Your peer group hasn't been through real adversity, so their advice can't actually hold weight when things get hard.",
+  q5: "You're not catching your own excuses before they leave your mouth — that's the first crack accountability slips through.",
+};
+document.getElementById('calcBtn').addEventListener('click', () => {
+  const results = document.getElementById('calcResults');
+  const scores = {};
+  ['q1','q2','q3','q4','q5'].forEach(q => {
+    const checked = document.querySelector(`input[name="${q}"]:checked`);
+    scores[q] = checked ? parseInt(checked.value, 10) : 1;
+  });
+  const total = Object.values(scores).reduce((a, b) => a + b, 0);
+  const weakest = Object.entries(scores).sort((a, b) => a[1] - b[1])[0][0];
+
+  let verdict;
+  if (total >= 21) verdict = "Your system is mostly intact — the gap is execution, not structure.";
+  else if (total >= 13) verdict = "You have pieces of a system, but it's not load-bearing yet.";
+  else verdict = "There's no real accountability system here yet — just you, alone, with your own excuses.";
+
+  results.style.display = 'block';
+  results.innerHTML = `
+    <div class="calc-result-row">
+      <div class="calc-result-name">${verdict}</div>
+      <div class="calc-result-amt">Where it breaks down hardest: ${DIAGNOSTIC_INSIGHTS[weakest]}</div>
+    </div>
+  `;
+});
+
 document.getElementById('leadForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('submitBtn');

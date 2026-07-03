@@ -154,6 +154,23 @@
     .tier-price { text-align: left; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  .calc-box { margin-top: 28px; padding: 26px; background: #fff; border: 1px solid var(--line); }
+  .calc-head-row, .calc-service-row {
+    display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; align-items: center; margin-bottom: 10px;
+  }
+  @media (max-width: 560px) { .calc-head-row, .calc-service-row { grid-template-columns: 1fr; } }
+  .calc-head-row { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+  .calc-service-row input, .calc-service-row select {
+    width: 100%; padding: 10px 12px; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 2px;
+  }
+  .calc-btn { width: 100%; border: none; cursor: pointer; margin-top: 10px; }
+  .calc-results { margin-top: 20px; display: none; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .calc-result-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border: 1px solid var(--line); margin-bottom: 8px; }
+  .calc-result-row.winner { border-color: var(--gold); border-width: 2px; background: #fdf7ec; }
+  .calc-result-name { font-weight: 600; font-size: 15px; }
+  .calc-result-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--gold); margin-left: 8px; }
+  .calc-result-amt { font-size: 15px; color: var(--muted); }
   .lead-form { margin-top: 8px; text-align: left; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
@@ -189,7 +206,53 @@
 
   <section>
     <h2>Get your one offer, free.</h2>
-    <p class="body-text">A short, structured exercise: list every service you currently offer, find the one with the clearest buyer and the least resistance to sell, and collapse the rest. Ten minutes. No pitch.</p>
+    <p class="body-text">List up to four things you currently offer. Rate each on how clear the buyer is and how easily it sells. The highest score is your one offer — collapse the rest.</p>
+
+    <div class="calc-box">
+      <div class="calc-head-row">
+        <div>Service or offer</div>
+        <div>Buyer clarity</div>
+        <div>Ease of selling</div>
+      </div>
+      <div class="calc-service-row">
+        <input type="text" class="svc-name" placeholder="e.g. 1:1 consulting" />
+        <select class="svc-clarity">
+          <option value="1">1 — vague</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5 — obvious</option>
+        </select>
+        <select class="svc-ease">
+          <option value="1">1 — hard</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5 — easy</option>
+        </select>
+      </div>
+      <div class="calc-service-row">
+        <input type="text" class="svc-name" placeholder="e.g. group coaching" />
+        <select class="svc-clarity">
+          <option value="1">1 — vague</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5 — obvious</option>
+        </select>
+        <select class="svc-ease">
+          <option value="1">1 — hard</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5 — easy</option>
+        </select>
+      </div>
+      <div class="calc-service-row">
+        <input type="text" class="svc-name" placeholder="e.g. self-paced course" />
+        <select class="svc-clarity">
+          <option value="1">1 — vague</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5 — obvious</option>
+        </select>
+        <select class="svc-ease">
+          <option value="1">1 — hard</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5 — easy</option>
+        </select>
+      </div>
+      <div class="calc-service-row">
+        <input type="text" class="svc-name" placeholder="e.g. templates" />
+        <select class="svc-clarity">
+          <option value="1">1 — vague</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5 — obvious</option>
+        </select>
+        <select class="svc-ease">
+          <option value="1">1 — hard</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5 — easy</option>
+        </select>
+      </div>
+      <button type="button" class="btn calc-btn" id="calcBtn">Find my one offer</button>
+      <div id="calcResults" class="calc-results"></div>
+    </div>
   </section>
 
   <section>
@@ -258,6 +321,36 @@
 </div>
 <script>
 const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+
+// ── Get One Offer worksheet ──
+document.getElementById('calcBtn').addEventListener('click', () => {
+  const rows = document.querySelectorAll('.calc-service-row');
+  const results = document.getElementById('calcResults');
+  const scored = [];
+  rows.forEach(row => {
+    const name = row.querySelector('.svc-name').value.trim();
+    if (!name) return;
+    const clarity = parseInt(row.querySelector('.svc-clarity').value, 10);
+    const ease = parseInt(row.querySelector('.svc-ease').value, 10);
+    scored.push({ name, score: clarity * ease });
+  });
+
+  if (!scored.length) {
+    results.style.display = 'block';
+    results.innerHTML = '<p style="color:#8a2a1f;">Enter at least one service to compare.</p>';
+    return;
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  results.style.display = 'block';
+  results.innerHTML = scored.map((s, i) => `
+    <div class="calc-result-row${i === 0 ? ' winner' : ''}">
+      <div class="calc-result-name">${s.name}${i === 0 ? '<span class="calc-result-badge">Your one offer</span>' : ''}</div>
+      <div class="calc-result-amt">score: ${s.score}/25</div>
+    </div>
+  `).join('');
+});
+
 document.getElementById('leadForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('submitBtn');
