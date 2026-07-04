@@ -4126,10 +4126,17 @@ function renderPlatformMatrix() {
         setTimeout(() => domainDrop.style.display = 'none', 150);
         domainInput.style.borderBottomColor = 'transparent';
         const v = domainInput.value.trim();
-        if (v === (c.domain || '')) return;
+        const prev = c.domain || '';
+        if (v === prev) return;
         c.domain = v;
-        try { await call('updateCampaignDomain', { campaignId: c.id, domain: v || null }); }
-        catch(e) { console.error('domain save failed', e); }
+        try {
+          await call('updateCampaignDomain', { campaignId: c.id, domain: v || null });
+        } catch(e) {
+          console.error('domain save failed', e);
+          c.domain = prev;
+          domainInput.value = prev;
+          showToast('Domain save failed: ' + e.message, 'error');
+        }
       };
 
       const domainWrap = document.createElement('div');
