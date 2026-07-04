@@ -285,7 +285,7 @@ async function getCampaigns() {
       pubTitleData: pubTitleMap[id] || [],
       products:   prodCount[id] || 0,
       lastChanged: titleLastEdited[id] || c.last_edited_time || null,
-      domain: c.properties["Domain"]?.url || c.properties["Domain"]?.rich_text?.map(t => t.plain_text).join("") || "",
+      domain: c.properties["domain"]?.rich_text?.map(t => t.plain_text).join("") || "",
     };
   });
 
@@ -1882,11 +1882,11 @@ export default {
         const { campaignId, domain } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
-        const propVal = domain ? { url: domain } : { url: null };
+        const propVal = { rich_text: domain ? [{ type: "text", text: { content: domain } }] : [] };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Domain": propVal } }),
+          body: JSON.stringify({ properties: { "domain": propVal } }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
