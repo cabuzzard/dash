@@ -3734,7 +3734,7 @@ let platPlatforms    = [];   // Publish-status platforms only
 let platLoginIndex   = {};   // [campId][platId] -> login obj | null
 let platAllLogins    = [];   // full login list for "link existing" picker
 let platParentOf     = {};   // [childCampId] -> parentCampId
-let platExpandedSites = new Set();
+let platSortKey = 'site', platSortDir = 1;   // rows are flat + sortable, no site grouping
 let platNotesResearchId = null;
 let platNotesCallback   = null;
 
@@ -3848,6 +3848,31 @@ async function loadPlatformMatrix() {
   }
 }
 
+function comparePlatRows(a, b, key) {
+  switch (key) {
+    case 'site':   return (a.site || 'Other').localeCompare(b.site || 'Other');
+    case 'name':   return (a.name || '').localeCompare(b.name || '');
+    case 'domain': return (a.domain || '').localeCompare(b.domain || '');
+    case 'dev':    return (a.devTitles || 0) - (b.devTitles || 0);
+    case 'pub':    return (a.pubTitles || 0) - (b.pubTitles || 0);
+    default:       return 0;
+  }
+}
+
+function makeSortableTh(th, key) {
+  th.style.cursor = 'pointer';
+  th.title = 'Click to sort';
+  const arrow = document.createElement('span');
+  arrow.style.cssText = 'margin-left:4px;font-size:8px;color:var(--text2);';
+  arrow.textContent = platSortKey === key ? (platSortDir === 1 ? '▲' : '▼') : '';
+  th.appendChild(arrow);
+  th.onclick = () => {
+    platSortDir = (platSortKey === key) ? platSortDir * -1 : 1;
+    platSortKey = key;
+    renderPlatformMatrix();
+  };
+}
+
 function renderPlatformMatrix() {
   const el = document.getElementById('platformsContent');
   el.innerHTML = '';
@@ -3857,15 +3882,6 @@ function renderPlatformMatrix() {
     'Mobility Mentor':'♿','Affiliates':'💰','Main Business':'🏠',
     'Hermes':'🤖','creative flow guitar':'🎸','Other':'📁'
   };
-
-  // Group campaigns by site, filter to those with titles or logins
-  const siteMap = {};
-  platCampaigns.forEach(c => {
-    if (!c.name) return;
-    const site = c.site || 'Other';
-    if (!siteMap[site]) siteMap[site] = [];
-    siteMap[site].push(c);
-  });
 
   // Wrap in horizontal scroll container
   const wrap = document.createElement('div');
@@ -3882,6 +3898,7 @@ function renderPlatformMatrix() {
   const thCamp = document.createElement('th');
   thCamp.textContent = 'Campaign';
   thCamp.style.cssText = 'text-align:left;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:8px 12px 8px 0;white-space:nowrap;position:sticky;left:0;background:var(--bg);z-index:2;border-bottom:2px solid #333;border-right:1px solid #444;min-width:160px;';
+  makeSortableTh(thCamp, 'name');
   hrow.appendChild(thCamp);
 
   // Dev / Pub count col headers
@@ -3889,13 +3906,15 @@ function renderPlatformMatrix() {
     const th = document.createElement('th');
     th.textContent = label;
     th.style.cssText = 'text-align:center;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 6px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:36px;width:36px;';
+    makeSortableTh(th, label.toLowerCase());
     hrow.appendChild(th);
   });
 
-  // Site col header
+  // Site col header — now shows the site name inline (grouping removed), sortable
   const thSite = document.createElement('th');
   thSite.textContent = 'Site';
-  thSite.style.cssText = 'text-align:center;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 8px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;width:36px;min-width:36px;';
+  thSite.style.cssText = 'text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 8px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:150px;';
+  makeSortableTh(thSite, 'site');
   hrow.appendChild(thSite);
 
   // Notes col header
@@ -3908,6 +3927,7 @@ function renderPlatformMatrix() {
   const thDomain = document.createElement('th');
   thDomain.textContent = 'Domain';
   thDomain.style.cssText = 'text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 8px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:140px;';
+  makeSortableTh(thDomain, 'domain');
   hrow.appendChild(thDomain);
 
   // Platform col headers — draggable to reorder
@@ -3972,36 +3992,22 @@ function renderPlatformMatrix() {
   thead.appendChild(hrow);
   table.appendChild(thead);
 
-  // TBODY — grouped by site
+  // TBODY — flat list, sortable by any column (including Site, which used to be the grouping)
   const tbody = document.createElement('tbody');
-  const siteOrder = ['Mountainwize Coaching','Webguy Business Services','Mobility Mentor','Affiliates','creative flow guitar','Main Business','Hermes','Other'];
-  const orderedSites = [...siteOrder.filter(s => siteMap[s]), ...Object.keys(siteMap).filter(s => !siteOrder.includes(s))];
+  const rows  = platCampaigns.filter(c => c.name);
 
-  orderedSites.forEach(site => {
-    const camps = siteMap[site] || [];
-    if (!camps.length) return;
+  rows.sort((a, b) => {
+    const cmp = comparePlatRows(a, b, platSortKey);
+    if (cmp !== 0) return cmp * platSortDir;
+    return (b.devTitles || 0) - (a.devTitles || 0) || (a.name || '').localeCompare(b.name || '');
+  });
 
-    // Site group header row — collapsible
-    const isCollapsed = !platExpandedSites.has(site);
-    const siteRow = document.createElement('tr');
-    siteRow.style.cssText = 'cursor:pointer;user-select:none;';
-    const siteTd = document.createElement('td');
-    siteTd.colSpan = platPlatforms.length + 7;
-    siteTd.style.cssText = 'padding:10px 0 4px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);border-top:1px solid #444;border-bottom:1px solid #444;';
-    const chev = document.createElement('span');
-    chev.style.cssText = 'display:inline-block;margin-right:4px;font-size:9px;';
-    chev.textContent = isCollapsed ? '▶' : '▼';
-    siteTd.appendChild(chev);
-    siteTd.appendChild(document.createTextNode(' ' + (SITE_ICONS[site] || '📁') + ' ' + site));
-    siteRow.appendChild(siteTd);
-    tbody.appendChild(siteRow);
-
-    const campRowEls = [];
-    function buildCampRow(c, isSub) {
-      const tr = document.createElement('tr');
-      tr.style.cssText = 'border-bottom:1px solid #444;' + (isCollapsed ? 'display:none;' : '') + (isSub ? 'background:var(--surface);' : '');
-      tr.onmouseover = () => tr.style.background = 'var(--surface)';
-      tr.onmouseout  = () => tr.style.background = isSub ? 'var(--surface)' : '';
+  function buildCampRow(c, isSub) {
+    const site = c.site || 'Other';
+    const tr = document.createElement('tr');
+    tr.style.cssText = 'border-bottom:1px solid #444;' + (isSub ? 'background:var(--surface);' : '');
+    tr.onmouseover = () => tr.style.background = 'var(--surface)';
+    tr.onmouseout  = () => tr.style.background = isSub ? 'var(--surface)' : '';
 
       // Campaign name cell (sticky)
       const nameTd = document.createElement('td');
@@ -4044,14 +4050,14 @@ function renderPlatformMatrix() {
         tr.appendChild(td);
       });
 
-      // Site cell
+      // Site cell — shows the site name inline (previously only rendered as a group header)
       const siteTd = document.createElement('td');
-      siteTd.style.cssText = 'text-align:center;padding:6px 4px;border-left:1px solid #444;width:36px;min-width:36px;';
+      siteTd.style.cssText = 'text-align:left;padding:6px 8px;border-left:1px solid #444;white-space:nowrap;font-size:11px;color:var(--text2);min-width:150px;';
+      let siteHtml = esc((SITE_ICONS[site] || '📁') + ' ' + site);
       if (c.siteUrl) {
-        siteTd.innerHTML = '<a href="' + c.siteUrl + '" target="_blank" onclick="event.stopPropagation()" title="Open microsite" style="font-size:13px;color:var(--text3);text-decoration:none;opacity:.7;" onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'.7\'">↗</a>';
-      } else {
-        siteTd.innerHTML = '<span style="color:var(--border2);">—</span>';
+        siteHtml += ' <a href="' + c.siteUrl + '" target="_blank" onclick="event.stopPropagation()" title="Open microsite" style="font-size:11px;color:var(--text3);text-decoration:none;opacity:.7;margin-left:4px;" onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'.7\'">↗</a>';
       }
+      siteTd.innerHTML = siteHtml;
       tr.appendChild(siteTd);
 
       // Notes cell
@@ -4168,25 +4174,11 @@ function renderPlatformMatrix() {
       const spaceTd = document.createElement('td');
       tr.appendChild(spaceTd);
       return tr;
-    }
+  }
 
-    [...camps].sort((a, b) => (b.devTitles || 0) - (a.devTitles || 0)).forEach(c => {
-      const tr = buildCampRow(c, false);
-      campRowEls.push(tr);
-      tbody.appendChild(tr);
-    });
-
-    siteRow.onclick = () => {
-      if (platExpandedSites.has(site)) {
-        platExpandedSites.delete(site);
-        campRowEls.forEach(r => { r.style.display = 'none'; });
-        chev.textContent = '▶';
-      } else {
-        platExpandedSites.add(site);
-        campRowEls.forEach(r => { r.style.display = ''; });
-        chev.textContent = '▼';
-      }
-    };
+  rows.forEach(c => {
+    const tr = buildCampRow(c, false);
+    tbody.appendChild(tr);
   });
 
   table.appendChild(tbody);
