@@ -3868,6 +3868,12 @@ function renderPlatformMatrix() {
   makeSortableTh(thCamp, 'name');
   hrow.appendChild(thCamp);
 
+  // STE col header — microsite link, fixed (non-sortable), matching Overview tab convention
+  const thSte = document.createElement('th');
+  thSte.textContent = 'STE';
+  thSte.style.cssText = 'text-align:center;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 4px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;width:36px;min-width:36px;cursor:default;';
+  hrow.appendChild(thSte);
+
   // Dev / Pub count col headers
   ['Dev', 'Pub'].forEach(label => {
     const th = document.createElement('th');
@@ -4033,13 +4039,18 @@ function renderPlatformMatrix() {
       } else if (platCampaigns.some(x => platParentOf[x.id] === c.id)) {
         nameHtml += '<span style="display:inline-block;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);margin-left:6px;vertical-align:middle;">main</span>';
       }
-      if (c.siteUrl) {
-        nameHtml += ' <a href="' + c.siteUrl + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open microsite" style="font-size:10px;color:var(--text3);text-decoration:none;opacity:.7;vertical-align:middle;" onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'.7\'">↗</a>';
-      }
       const nameSpan = document.createElement('span');
       nameSpan.innerHTML = nameHtml;
       nameTd.appendChild(nameSpan);
       tr.appendChild(nameTd);
+
+      // STE cell — microsite link, matching the Overview tab's STE column
+      const steTd = document.createElement('td');
+      steTd.style.cssText = 'text-align:center;padding:6px 4px;border-left:1px solid #444;width:36px;min-width:36px;';
+      if (c.siteUrl) {
+        steTd.innerHTML = '<a href="' + c.siteUrl + '" target="_blank" rel="noopener" title="Microsite" style="color:var(--text3);text-decoration:none;">↗</a>';
+      }
+      tr.appendChild(steTd);
 
       // Dev / Pub count cells
       [[c.devTitles || 0, true], [c.pubTitles || 0, false]].forEach(([count, isDev]) => {
