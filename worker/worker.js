@@ -286,6 +286,7 @@ async function getCampaigns() {
       products:   prodCount[id] || 0,
       lastChanged: titleLastEdited[id] || c.last_edited_time || null,
       domain: c.properties["domain"]?.rich_text?.map(t => t.plain_text).join("") || "",
+      email:  c.properties["email"]?.rich_text?.map(t => t.plain_text).join("") || "",
     };
   });
 
@@ -1887,6 +1888,21 @@ export default {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "domain": propVal } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "updateCampaignEmail") {
+        const { campaignId, email } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const propVal = { rich_text: email ? [{ type: "text", text: { content: email } }] : [] };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "email": propVal } }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);

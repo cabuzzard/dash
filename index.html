@@ -3825,6 +3825,7 @@ function comparePlatRows(a, b, key) {
     case 'grouping': return (a.grouping || []).join(', ').localeCompare((b.grouping || []).join(', '));
     case 'name':   return (a.name || '').localeCompare(b.name || '');
     case 'domain': return (a.domain || '').localeCompare(b.domain || '');
+    case 'email':  return (a.email || '').localeCompare(b.email || '');
     case 'dev':    return (a.devTitles || 0) - (b.devTitles || 0);
     case 'pub':    return (a.pubTitles || 0) - (b.pubTitles || 0);
     default:       return 0;
@@ -3890,13 +3891,19 @@ function renderPlatformMatrix() {
   makeSortableTh(thGrouping, 'grouping');
   hrow.appendChild(thGrouping);
 
-  // Notes col header
   // Domain col header
   const thDomain = document.createElement('th');
   thDomain.textContent = 'Domain';
   thDomain.style.cssText = 'text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 8px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:140px;';
   makeSortableTh(thDomain, 'domain');
   hrow.appendChild(thDomain);
+
+  // Email col header
+  const thEmail = document.createElement('th');
+  thEmail.textContent = 'Email';
+  thEmail.style.cssText = 'text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 8px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:180px;';
+  makeSortableTh(thEmail, 'email');
+  hrow.appendChild(thEmail);
 
   // Platform col headers — draggable to reorder
   let platDragSrcIdx = null;
@@ -4148,6 +4155,69 @@ function renderPlatformMatrix() {
       domainWrap.appendChild(domainDrop);
       domainTd.appendChild(domainWrap);
       tr.appendChild(domainTd);
+
+      // Email cell (inline editable, autocomplete over emails already used on other campaigns)
+      const emailTd = document.createElement('td');
+      emailTd.style.cssText = 'padding:4px 6px;border-left:1px solid #444;font-size:11px;min-width:180px;';
+      const emailInput = document.createElement('input');
+      emailInput.type = 'text';
+      emailInput.value = c.email || '';
+      emailInput.placeholder = 'name@domain.com';
+      emailInput.style.cssText = 'width:100%;background:transparent;border:none;border-bottom:1px solid transparent;color:var(--text2);font-size:11px;font-family:inherit;padding:2px 2px;outline:none;box-sizing:border-box;';
+      emailInput.onmouseover = () => emailInput.style.borderBottomColor = 'var(--border2)';
+      emailInput.onmouseout  = () => { if (document.activeElement !== emailInput) emailInput.style.borderBottomColor = 'transparent'; };
+      emailInput.onclick = e => e.stopPropagation();
+      emailInput.onkeydown = e => { if (e.key === 'Enter') { emailDrop.style.display='none'; emailInput.blur(); } if (e.key === 'Escape') emailDrop.style.display='none'; };
+
+      // Autocomplete dropdown — existing emails already used on other campaigns, or type a new one
+      const emailDrop = document.createElement('div');
+      emailDrop.style.cssText = 'position:absolute;top:100%;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;z-index:100;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.4);display:none;';
+      emailInput.oninput = () => {
+        const q = emailInput.value.toLowerCase();
+        const pool = [...new Set(platCampaigns.map(x => x.email).filter(Boolean))];
+        const matches = pool.filter(e => !q || e.toLowerCase().includes(q)).slice(0, 20);
+        emailDrop.innerHTML = '';
+        if (!matches.length) { emailDrop.style.display = 'none'; return; }
+        matches.forEach(e => {
+          const item = document.createElement('div');
+          item.textContent = e;
+          item.style.cssText = 'padding:6px 10px;font-size:11px;cursor:pointer;color:var(--text2);';
+          item.onmouseover = () => item.style.background = 'var(--surface)';
+          item.onmouseout  = () => item.style.background = '';
+          item.onmousedown = ev => {
+            ev.preventDefault();
+            emailInput.value = e;
+            emailDrop.style.display = 'none';
+            emailInput.blur();
+          };
+          emailDrop.appendChild(item);
+        });
+        emailDrop.style.display = 'block';
+      };
+      emailInput.onfocus = () => { emailInput.style.borderBottomColor = 'var(--accent)'; emailInput.oninput(); };
+      emailInput.onblur = async () => {
+        setTimeout(() => emailDrop.style.display = 'none', 150);
+        emailInput.style.borderBottomColor = 'transparent';
+        const v = emailInput.value.trim();
+        const prev = c.email || '';
+        if (v === prev) return;
+        c.email = v;
+        try {
+          await call('updateCampaignEmail', { campaignId: c.id, email: v || null });
+        } catch(e) {
+          console.error('email save failed', e);
+          c.email = prev;
+          emailInput.value = prev;
+          showToast('Email save failed: ' + e.message, 'error');
+        }
+      };
+
+      const emailWrap = document.createElement('div');
+      emailWrap.style.cssText = 'position:relative;width:100%;';
+      emailWrap.appendChild(emailInput);
+      emailWrap.appendChild(emailDrop);
+      emailTd.appendChild(emailWrap);
+      tr.appendChild(emailTd);
 
       // Platform cells
       platPlatforms.forEach(p => {
