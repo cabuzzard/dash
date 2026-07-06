@@ -3734,7 +3734,29 @@ let platPlatforms    = [];   // Publish-status platforms only
 let platLoginIndex   = {};   // [campId][platId] -> login obj | null
 let platAllLogins    = [];   // full login list for "link existing" picker
 let platParentOf     = {};   // [childCampId] -> parentCampId
-let platSortKey = 'grouping', platSortDir = 1;   // rows are flat + sortable, no site grouping
+// rows are flat + sortable, no site grouping — persisted across reloads like platColumnOrder/platRowOrder
+let platSortKey = localStorage.getItem('platSortKey') || 'grouping';
+let platSortDir = parseInt(localStorage.getItem('platSortDir'), 10) || 1;
+function savePlatSort() {
+  try { localStorage.setItem('platSortKey', platSortKey); localStorage.setItem('platSortDir', String(platSortDir)); } catch(e) {}
+}
+
+// Manual drag-to-reorder rows — persisted like platColumnOrder, active when platSortKey === 'custom'
+function applyPlatRowOrder(rows) {
+  try {
+    const saved = JSON.parse(localStorage.getItem('platRowOrder') || '[]');
+    if (!saved.length) return rows;
+    const byId = {};
+    rows.forEach(r => { byId[r.id] = r; });
+    return [
+      ...saved.filter(id => byId[id]).map(id => byId[id]),
+      ...rows.filter(r => !saved.includes(r.id))
+    ];
+  } catch(e) { return rows; }
+}
+function savePlatRowOrder(rows) {
+  try { localStorage.setItem('platRowOrder', JSON.stringify(rows.map(r => r.id))); } catch(e) {}
+}
 let platNotesResearchId = null;
 let platNotesCallback   = null;
 
@@ -3869,6 +3891,7 @@ function makeSortableTh(th, key) {
   th.onclick = () => {
     platSortDir = (platSortKey === key) ? platSortDir * -1 : 1;
     platSortKey = key;
+    savePlatSort();
     renderPlatformMatrix();
   };
 }
@@ -3986,15 +4009,21 @@ function renderPlatformMatrix() {
   thead.appendChild(hrow);
   table.appendChild(thead);
 
-  // TBODY — flat list, sortable by any column (including Site, which used to be the grouping)
+  // TBODY — flat list, sortable by any column, or manually drag-reordered ("custom")
   const tbody = document.createElement('tbody');
-  const rows  = platCampaigns.filter(c => c.name);
+  let rows = platCampaigns.filter(c => c.name);
 
-  rows.sort((a, b) => {
-    const cmp = comparePlatRows(a, b, platSortKey);
-    if (cmp !== 0) return cmp * platSortDir;
-    return (b.devTitles || 0) - (a.devTitles || 0) || (a.name || '').localeCompare(b.name || '');
-  });
+  if (platSortKey === 'custom') {
+    rows = applyPlatRowOrder(rows);
+  } else {
+    rows.sort((a, b) => {
+      const cmp = comparePlatRows(a, b, platSortKey);
+      if (cmp !== 0) return cmp * platSortDir;
+      return (b.devTitles || 0) - (a.devTitles || 0) || (a.name || '').localeCompare(b.name || '');
+    });
+  }
+
+  let platRowDragSrcIdx = null;
 
   function buildCampRow(c, isSub) {
     const tr = document.createElement('tr');
@@ -4002,10 +4031,50 @@ function renderPlatformMatrix() {
     tr.onmouseover = () => tr.style.background = 'var(--surface)';
     tr.onmouseout  = () => tr.style.background = isSub ? 'var(--surface)' : '';
 
+    tr.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (platRowDragSrcIdx !== null) {
+        tr.style.outline = '2px solid var(--accent)';
+        tr.style.outlineOffset = '-2px';
+      }
+    });
+    tr.addEventListener('dragleave', () => { tr.style.outline = ''; });
+    tr.addEventListener('drop', e => {
+      e.preventDefault();
+      tr.style.outline = '';
+      const destIdx = rows.indexOf(c);
+      if (platRowDragSrcIdx === null || platRowDragSrcIdx === destIdx) return;
+      const moved = rows.splice(platRowDragSrcIdx, 1)[0];
+      const insertAt = platRowDragSrcIdx < destIdx ? destIdx - 1 : destIdx;
+      rows.splice(insertAt, 0, moved);
+      platSortKey = 'custom';
+      savePlatSort();
+      savePlatRowOrder(rows);
+      renderPlatformMatrix();
+    });
+
       // Campaign name cell (sticky)
       const nameTd = document.createElement('td');
       nameTd.style.cssText = 'padding:8px 12px 8px 0;font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;position:sticky;left:0;background:inherit;z-index:1;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-right:1px solid #444;';
       nameTd.title = c.name;
+
+      const dragHandle = document.createElement('span');
+      dragHandle.textContent = '⠿';
+      dragHandle.draggable = true;
+      dragHandle.title = 'Drag to reorder';
+      dragHandle.style.cssText = 'display:inline-block;color:var(--text3);cursor:grab;margin-right:6px;font-size:12px;user-select:none;';
+      dragHandle.addEventListener('dragstart', e => {
+        platRowDragSrcIdx = rows.indexOf(c);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(platRowDragSrcIdx));
+        setTimeout(() => { tr.style.opacity = '0.35'; }, 0);
+      });
+      dragHandle.addEventListener('dragend', () => {
+        tr.style.opacity = '';
+        platRowDragSrcIdx = null;
+      });
+      nameTd.appendChild(dragHandle);
+
       let nameHtml = '';
       if (isSub) {
         nameHtml += '<span style="display:inline-block;color:var(--text3);margin-right:6px;font-family:\'DM Mono\',monospace;">↳</span>';
@@ -4019,7 +4088,9 @@ function renderPlatformMatrix() {
       } else if (platCampaigns.some(x => platParentOf[x.id] === c.id)) {
         nameHtml += '<span style="display:inline-block;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);margin-left:6px;vertical-align:middle;">main</span>';
       }
-      nameTd.innerHTML = nameHtml;
+      const nameSpan = document.createElement('span');
+      nameSpan.innerHTML = nameHtml;
+      nameTd.appendChild(nameSpan);
       tr.appendChild(nameTd);
 
       // Dev / Pub count cells
