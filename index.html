@@ -4226,6 +4226,9 @@ function renderPlatformMatrix() {
         td.title = 'Click to manage login';
 
         const logins = (platLoginIndex[c.id] && platLoginIndex[c.id][p.id]) || [];
+        if (logins.some(l => l.status === 'Active')) {
+          td.style.background = 'rgba(255,255,255,0.08)';
+        }
 
         if (logins.length) {
           logins.forEach(l => {
