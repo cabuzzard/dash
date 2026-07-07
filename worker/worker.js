@@ -3231,13 +3231,15 @@ Return ONLY a JSON object with these exact keys:
           filter,
           sorts: [{ property: "Sequence Order", direction: "ascending" }],
         });
-        // Collect unique product + method IDs
-        const productIds = new Set();
-        const methodIds  = new Set();
+        // Collect unique product + method + platform IDs
+        const productIds  = new Set();
+        const methodIds   = new Set();
+        const platformIds = new Set();
         results.forEach(page => {
           const props = page.properties;
-          (props.product?.relation || []).forEach(r => productIds.add(r.id));
-          (props.method?.relation  || []).forEach(r => methodIds.add(r.id));
+          (props.product?.relation   || []).forEach(r => productIds.add(r.id));
+          (props.method?.relation    || []).forEach(r => methodIds.add(r.id));
+          (props.Platforms?.relation || []).forEach(r => platformIds.add(r.id));
         });
         const fetchName = async id => {
           try {
@@ -3251,18 +3253,22 @@ Return ONLY a JSON object with these exact keys:
             return { id: id.replace(/-/g,""), name };
           } catch { return { id: id.replace(/-/g,""), name: "Unknown" }; }
         };
-        const [prodPages, methPages] = await Promise.all([
+        const [prodPages, methPages, platPages] = await Promise.all([
           Promise.all([...productIds].map(fetchName)),
           Promise.all([...methodIds].map(fetchName)),
+          Promise.all([...platformIds].map(fetchName)),
         ]);
         const prodNames = {};
         prodPages.forEach(p => prodNames[p.id] = p.name);
         const methNames = {};
         methPages.forEach(m => methNames[m.id] = m.name);
+        const platNames = {};
+        platPages.forEach(p => platNames[p.id] = p.name);
         const titles = results.map(page => {
           const props     = page.properties;
-          const productRel = props.product?.relation || [];
-          const methodRel  = props.method?.relation  || [];
+          const productRel  = props.product?.relation   || [];
+          const methodRel   = props.method?.relation    || [];
+          const platformRel = props.Platforms?.relation || [];
           const productId  = productRel.length ? productRel[0].id.replace(/-/g,"") : "__none__";
           const methodId   = methodRel.length  ? methodRel[0].id.replace(/-/g,"")  : "__none__";
           return {
@@ -3270,7 +3276,7 @@ Return ONLY a JSON object with these exact keys:
             title:       props.Title?.title?.map(t => t.plain_text).join("") || "Untitled",
             status:      props.Status?.select?.name || "",
             grouping:    props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "Ungrouped",
-            platform:    props.Platform?.select?.name || "",
+            platform:    platformRel.map(r => platNames[r.id.replace(/-/g,"")] || "Unknown").join(", "),
             format:      props.Format?.select?.name  || "",
             productId,
             productName: productRel.length ? (prodNames[productId] || "Unknown Product") : "No Product",
