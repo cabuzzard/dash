@@ -3448,7 +3448,7 @@ Return ONLY a JSON object with these exact keys:
             lastUpdated: (() => { for (const r of results) { const v = r.properties["date:Last Updated:start"]?.date?.start || ""; if (v) return v; } return ""; })(),
             keywords:          rt(null, "Keywords"),
             newsFeed:          rt(null, "News Feed"),
-            notes:             rt(null, "Notes"),
+            notes:             rt(null, "Notes") || cp["Notes"]?.rich_text?.map(t => t.plain_text).join("") || "",
             thoughts:          rt(null, "Thoughts"),
             platforms:         rt(null, "Platforms & Methods"),
             productIdeas:      rt(null, "Product Ideas"),

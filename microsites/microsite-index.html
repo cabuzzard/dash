@@ -145,8 +145,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 1: three col — campaign meta / statement / unique opportunity -->
-<div class="three-col">
+<!-- SEC 1: four col — campaign meta / statement / unique opportunity / notes -->
+<div class="four-col">
   <div class="col">
     <h2>Campaign</h2>
     <div class="content">
@@ -168,6 +168,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <h2>Unique Opportunity <button class="td-add-btn-inline" onclick="openFieldResearchModal('uniqueOpportunity')" title="Generate with AI">&#x25B6;</button></h2>
     <div class="content">
       <div class="body-text" id="r-uniqueopportunity" style="white-space:pre-wrap;min-height:40px;"></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Notes</h2>
+    <div class="content">
+      <textarea id="r-notes" class="modal-ta" rows="6" style="min-height:120px;" placeholder="Add notes…" onblur="saveNotes()"></textarea>
     </div>
   </div>
 </div>
@@ -933,6 +939,11 @@ async function loadResearch() {
     const uoEl = document.getElementById('r-uniqueopportunity');
     if (uoEl) uoEl.textContent = r.uniqueOpportunity || '';
 
+    // Notes — editable, sourced from the Research record's Notes (falls back to the
+    // Campaign's own Notes field server-side if this campaign has no dedicated research page)
+    const notesEl = document.getElementById('r-notes');
+    if (notesEl) notesEl.value = r.notes || '';
+
     // Store raw values for editing
     RESEARCH_ID_LIVE = r.id || '';
     RAW = {
@@ -962,6 +973,15 @@ async function loadResearch() {
 
   } catch(e) {
     document.getElementById('r-name').textContent = 'Error: ' + e.message;
+  }
+}
+
+async function saveNotes() {
+  const val = document.getElementById('r-notes').value;
+  try {
+    await w('updateResearch', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, field: 'notes', value: val });
+  } catch(e) {
+    console.error('notes save failed', e);
   }
 }
 

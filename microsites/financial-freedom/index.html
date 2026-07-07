@@ -145,8 +145,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 1: three col — campaign meta / statement / unique opportunity -->
-<div class="three-col">
+<!-- SEC 1: four col — campaign meta / statement / unique opportunity / notes -->
+<div class="four-col">
   <div class="col">
     <h2>Campaign</h2>
     <div class="content">
@@ -168,6 +168,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <h2>Unique Opportunity <button class="td-add-btn-inline" onclick="openFieldResearchModal('uniqueOpportunity')" title="Generate with AI">&#x25B6;</button></h2>
     <div class="content">
       <div class="body-text" id="r-uniqueopportunity" style="white-space:pre-wrap;min-height:40px;"></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Notes</h2>
+    <div class="content">
+      <textarea id="r-notes" class="modal-ta" rows="6" style="min-height:120px;" placeholder="Add notes…" onblur="saveNotes()"></textarea>
     </div>
   </div>
 </div>
@@ -193,7 +199,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2>Deliverables</h2>
+    <h2>Files <button class="td-add-btn-inline" onclick="openFileUploadModal()" title="Upload file">+</button></h2>
     <div class="content">
       <div class="deliverable-list" id="deliverable-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -738,14 +744,18 @@ function parseToHtml(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   let html = '';
   lines.forEach(line => {
-    // Match "HEADING: body text" pattern
     const match = line.match(/^([A-Z][A-Z0-9\s\/&,'-]+):\s*(.+)$/);
     if (match) {
-      html += '<h3>' + match[1].trim() + '</h3><p>' + match[2].trim() + '</p>';
+      const heading = match[1].trim();
+      const body = match[2].trim();
+      const q = heading.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      html += `<div class="sm-trend-row"><span style="flex:1;cursor:pointer" onclick="openTdModal('${q}')"><span class="sm-trend-niche">${heading}</span><span class="sm-trend-body"> ${body}</span></span><button class="td-add-btn-inline" onclick="openSourcesModal('${q}')" title="Find sources">🔗</button></div>`;
     } else {
-      // Plain line — strip leading dash/bullet
       const clean = line.replace(/^[-•·*\d+\.\s]+/, '').trim();
-      if (clean) html += '<p>' + clean + '</p>';
+      if (clean) {
+        const q = clean.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        html += `<div class="sm-trend-row"><span class="sm-trend-body" style="flex:1;cursor:pointer" onclick="openTdModal('${q}')">${clean}</span><button class="td-add-btn-inline" onclick="openSourcesModal('${q}')" title="Find sources">🔗</button></div>`;
+      }
     }
   });
   return html || '<p>—</p>';
@@ -774,10 +784,11 @@ function renderSMTrends(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${t}"><span class="sm-trend-body">${line}</span></div>`; }
+    const srcQ = colonIdx === -1 ? line.trim() : line.slice(0, colonIdx).trim();
+    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row"><span class="sm-trend-body" style="cursor:pointer;flex:1" onclick="openTdModal('${t.replace(/'/g,"\\'")}')"> ${line}</span><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`; }
     const niche = line.slice(0, colonIdx).trim();
     const desc  = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${niche.replace(/"/g,'&quot;')}"><span class="sm-trend-niche">${niche}</span><span class="sm-trend-body">${desc}</span></div>`;
+    return `<div class="sm-trend-row"><span style="cursor:pointer;flex:1;display:flex;gap:6px;align-items:baseline;min-width:0" onclick="openTdModal('${niche.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')"><span class="sm-trend-niche">${niche}</span><span class="sm-trend-body">${desc}</span></span><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`;
   }).join('');
 }
 
@@ -808,10 +819,11 @@ function renderProductIdeas(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${t}"><span class="sm-trend-body">${line}</span></div>`; }
+    const srcQ = colonIdx === -1 ? line.trim() : line.slice(0, colonIdx).trim();
+    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row"><span class="sm-trend-body" style="cursor:pointer;flex:1" onclick="openTdModal('${t.replace(/'/g,"\\'")}')">${line}</span><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`; }
     const name = line.slice(0, colonIdx).trim();
     const desc = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row" style="cursor:pointer" onclick="openTdModal(this.dataset.prefill)" data-prefill="${name.replace(/"/g,'&quot;')}"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></div>`;
+    return `<div class="sm-trend-row"><span style="cursor:pointer;flex:1;display:flex;gap:6px;align-items:baseline;min-width:0" onclick="openTdModal('${name.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></span><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`;
   }).join('');
 }
 
@@ -933,6 +945,11 @@ async function loadResearch() {
     const uoEl = document.getElementById('r-uniqueopportunity');
     if (uoEl) uoEl.textContent = r.uniqueOpportunity || '';
 
+    // Notes — editable, sourced from the Research record's Notes (falls back to the
+    // Campaign's own Notes field server-side if this campaign has no dedicated research page)
+    const notesEl = document.getElementById('r-notes');
+    if (notesEl) notesEl.value = r.notes || '';
+
     // Store raw values for editing
     RESEARCH_ID_LIVE = r.id || '';
     RAW = {
@@ -962,6 +979,15 @@ async function loadResearch() {
 
   } catch(e) {
     document.getElementById('r-name').textContent = 'Error: ' + e.message;
+  }
+}
+
+async function saveNotes() {
+  const val = document.getElementById('r-notes').value;
+  try {
+    await w('updateResearch', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, field: 'notes', value: val });
+  } catch(e) {
+    console.error('notes save failed', e);
   }
 }
 
@@ -1171,9 +1197,25 @@ function renderTd() {
     const row = document.createElement('div');
     row.className = 'td-row';
     const nid = t.id.replace(/-/g,'');
-    row.innerHTML = `<a class="td-name" href="https://www.notion.so/${nid}" target="_blank" rel="noopener">${t.name}</a><button class="td-del" onclick="deleteTodo('${t.id}', this)" title="Remove">✕</button>`;
+    const isPodcast = t.podcast;
+    row.innerHTML = `<a class="td-name" href="https://www.notion.so/${nid}" target="_blank" rel="noopener">${t.name}</a><button class="td-add-btn-inline${isPodcast ? ' podcast-tagged' : ''}" onclick="tagTdPodcast('${t.id}', this)" title="${isPodcast ? 'Tagged for podcast' : 'Add to podcast'}" style="${isPodcast ? 'color:#a78bfa;' : ''}">🎙</button><button class="td-del" onclick="deleteTodo('${t.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
+}
+
+async function tagTdPodcast(tdId, btn) {
+  const wasPodcast = btn.classList.contains('podcast-tagged');
+  if (wasPodcast) return;
+  btn.textContent = '…'; btn.disabled = true;
+  try {
+    const data = await w('tagTdAsPodcast', { tdId });
+    if (data.error) throw new Error(data.error);
+    btn.textContent = '🎙'; btn.style.color = '#a78bfa'; btn.classList.add('podcast-tagged');
+    btn.title = 'Tagged for podcast';
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.textContent = '🎙'; btn.disabled = false;
+  }
 }
 
 async function loadTodos() {
@@ -1455,7 +1497,8 @@ function renderProducts() {
     const isActive = p.status === 'Active';
     row.className = 'product-row ' + (isActive ? 'is-active' : 'is-development');
     row.dataset.productId = p.id;
-    row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a><button class="gen-strategy-btn" onclick="generateProductStrategy('${p.id}', this)" title="${isActive ? 'Regenerate strategy' : 'Generate strategy from campaign research'}">${isActive ? '↺ Regen' : '⚡ Generate'}</button><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+    const psLink = p.productsite ? `<a href="${p.productsite}" target="_blank" rel="noopener" title="Product site" style="font-size:10px;color:#555;text-decoration:none;flex-shrink:0;padding:1px 4px;border:1px solid #2a2a2a;border-radius:3px;line-height:1.6;">site</a>` : '';
+    row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${psLink}<button class="gen-strategy-btn" onclick="generateProductStrategy('${p.id}', this)" title="${isActive ? 'Regenerate strategy' : 'Generate strategy from campaign research'}">${isActive ? '↺ Regen' : '⚡ Generate'}</button><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }
@@ -2051,7 +2094,9 @@ async function loadDeliverables() {
       group.items.forEach(d => {
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid rgba(255,255,255,.04);';
-        row.innerHTML = `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${d.type||'—'}</span><span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.name}</span><span style="font-size:10px;color:${statusColor[d.status]||'#555'};flex-shrink:0;">${d.status}</span><a href="https://www.notion.so/${d.id}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">↗</a>`;
+        const linkHref = d.isFile ? d.url : `https://www.notion.so/${d.id}`;
+        const linkLabel = d.isFile ? '⬇' : '↗';
+        row.innerHTML = `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${d.type||'—'}</span><span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.name}</span>${d.status ? `<span style="font-size:10px;color:${statusColor[d.status]||'#555'};flex-shrink:0;">${d.status}</span>` : ''}<a href="${linkHref}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">${linkLabel}</a>`;
         body.appendChild(row);
       });
       hdr.onclick = () => { const o = body.style.display !== 'none'; body.style.display = o ? 'none' : 'block'; arrow.textContent = o ? '▶' : '▾'; };
@@ -2059,6 +2104,49 @@ async function loadDeliverables() {
     });
   } catch(e) {
     el.innerHTML = '<div class="empty" style="color:#f87171;">Error: ' + e.message + '</div>';
+  }
+}
+
+// ── FILE UPLOAD MODAL ────────────────────────────────────────────────
+function openFileUploadModal() {
+  const sel = document.getElementById('fum-product-select');
+  sel.innerHTML = '<option value="">— choose product —</option>';
+  PRODUCT_ITEMS.forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = p.name;
+    sel.appendChild(o);
+  });
+  document.getElementById('fum-file').value = '';
+  document.getElementById('fum-status').textContent = '';
+  document.getElementById('fum-save').disabled = true;
+  document.getElementById('fileUploadModal').classList.add('open');
+}
+function closeFileUploadModal() { document.getElementById('fileUploadModal').classList.remove('open'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFileUploadModal(); });
+function fumCheckReady() {
+  const hasFile = document.getElementById('fum-file').files.length > 0;
+  const hasProd = document.getElementById('fum-product-select').value !== '';
+  document.getElementById('fum-save').disabled = !(hasFile && hasProd);
+}
+async function submitFileUpload() {
+  const file = document.getElementById('fum-file').files[0];
+  const productId = document.getElementById('fum-product-select').value;
+  const statusEl = document.getElementById('fum-status');
+  if (!file || !productId) return;
+  const btn = document.getElementById('fum-save');
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  statusEl.textContent = '';
+  try {
+    const reader = new FileReader();
+    const b64 = await new Promise((res, rej) => { reader.onload = e => res(e.target.result.split(',')[1]); reader.onerror = rej; reader.readAsDataURL(file); });
+    const data = await w('uploadProductFile', { productId, fileName: file.name, contentType: file.type || 'application/octet-stream', fileData: b64 });
+    if (data.error) throw new Error(data.error);
+    btn.textContent = '✓ Done';
+    statusEl.style.color = '#68d391'; statusEl.textContent = file.name + ' uploaded.';
+    setTimeout(() => { closeFileUploadModal(); loadDeliverables(); btn.textContent = 'Upload'; }, 1200);
+  } catch(e) {
+    statusEl.style.color = '#f87171'; statusEl.textContent = 'Error: ' + e.message;
+    btn.textContent = 'Upload'; btn.disabled = false;
   }
 }
 
@@ -2753,5 +2841,59 @@ async function runRegenKeywords() {
     <div class="method-gen-status" id="mgm-status"></div>
   </div>
 </div>
+<div class="modal-overlay" id="fileUploadModal" onclick="if(event.target===this)closeFileUploadModal()">
+  <div class="modal" style="max-width:380px;padding:20px;">
+    <div class="modal-title">Upload File</div>
+    <button class="modal-close" onclick="closeFileUploadModal()">✕</button>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
+      <div>
+        <div style="font-size:11px;color:#888;margin-bottom:4px;">Product</div>
+        <select id="fum-product-select" onchange="fumCheckReady()" style="width:100%;background:#1a1a1a;border:1px solid #333;color:#c9c9c9;padding:6px 8px;border-radius:4px;font-size:13px;">
+          <option value="">— choose product —</option>
+        </select>
+      </div>
+      <div>
+        <div style="font-size:11px;color:#888;margin-bottom:4px;">File</div>
+        <input type="file" id="fum-file" onchange="fumCheckReady()" accept="image/*,application/pdf,.zip,.png,.jpg,.jpeg,.gif,.webp" style="width:100%;font-size:12px;color:#c9c9c9;">
+      </div>
+      <div id="fum-status" style="font-size:12px;min-height:16px;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn cancel" onclick="closeFileUploadModal()">Cancel</button>
+      <button class="modal-btn save" id="fum-save" onclick="submitFileUpload()" disabled>Upload</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="sourcesModal" onclick="if(event.target===this)closeSourcesModal()">
+  <div class="modal" style="max-width:500px;padding:20px;">
+    <div class="modal-title">Sources</div>
+    <button class="modal-close" onclick="closeSourcesModal()">✕</button>
+    <div id="sources-query" style="font-size:11px;color:#888;margin:8px 0 12px;"></div>
+    <div id="sources-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <div class="modal-actions" style="margin-top:16px;">
+      <button class="modal-btn cancel" onclick="closeSourcesModal()">Close</button>
+    </div>
+  </div>
+</div>
+<script>
+function closeSourcesModal() { document.getElementById('sourcesModal').classList.remove('open'); }
+async function openSourcesModal(query) {
+  const el = document.getElementById('sources-list');
+  const qEl = document.getElementById('sources-query');
+  qEl.textContent = query;
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
+  document.getElementById('sourcesModal').classList.add('open');
+  try {
+    const kw = (typeof RESEARCH_ID_LIVE !== 'undefined' && window._researchKeywords) ? window._researchKeywords : '';
+    const data = await w('getSourceLinks', { query, keywords: kw });
+    if (data.error) throw new Error(data.error);
+    const sources = data.sources || [];
+    if (!sources.length) { el.innerHTML = '<div style="font-size:12px;color:#888;">No sources found.</div>'; return; }
+    el.innerHTML = sources.map(s => `<a href="${s.url}" target="_blank" rel="noopener" style="display:block;font-size:12px;color:#a78bfa;text-decoration:none;line-height:1.4;word-break:break-all;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${s.title}</a>`).join('');
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#f87171;">${e.message}</div>`;
+  }
+}
+</script>
 </body>
 </html>
