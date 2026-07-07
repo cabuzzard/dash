@@ -4227,7 +4227,7 @@ function renderPlatformMatrix() {
 
         const logins = (platLoginIndex[c.id] && platLoginIndex[c.id][p.id]) || [];
         if (logins.some(l => l.status === 'Active')) {
-          td.style.background = 'rgba(255,255,255,0.08)';
+          td.style.background = 'rgba(255,255,255,.25)';
         }
 
         if (logins.length) {
