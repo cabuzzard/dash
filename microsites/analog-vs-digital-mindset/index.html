@@ -15,6 +15,31 @@
   flex-shrink: 0; transition: all .15s; line-height: 1.4;
 }
 .title-status-btn:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
+/* CREATE ASSET BUTTON + MODAL */
+.title-asset-btn {
+  font-size: 12px; color: #2a2a2a; background: none; border: 1px solid #1a1a1a;
+  padding: 1px 6px; cursor: pointer; font-family: 'Syne', sans-serif;
+  flex-shrink: 0; transition: all .15s; line-height: 1.4;
+}
+.title-asset-btn:hover { color: #63b3ed; border-color: rgba(99,179,237,.3); }
+#create-asset-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000; align-items:center; justify-content:center; }
+#create-asset-modal.open { display:flex; }
+.ca-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:24px; width:420px; max-width:92vw; max-height:86vh; overflow-y:auto; }
+.ca-box h3 { margin:0 0 4px; font-size:15px; color:#fff; }
+.ca-subtitle { font-size:12px; color:#666; margin-bottom:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ca-section { margin-bottom:16px; }
+.ca-label { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#888; margin-bottom:6px; }
+.ca-type-grid { display:flex; gap:8px; flex-wrap:wrap; }
+.ca-type-btn { padding:8px 14px; border:1px solid #333; border-radius:6px; background:transparent; color:#c9c9c9; font-size:13px; cursor:pointer; font-family:inherit; }
+.ca-type-btn.selected { border-color:#63b3ed; background:rgba(99,179,237,.1); color:#fff; }
+.ca-type-btn:disabled { opacity:.35; cursor:default; }
+.ca-textarea { width:100%; background:#111; border:1px solid #333; color:#c9c9c9; padding:8px; border-radius:6px; font-size:13px; font-family:inherit; resize:vertical; min-height:56px; box-sizing:border-box; }
+.ca-opt-list { display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto; }
+.ca-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:6px; }
+.ca-go { padding:6px 16px; background:#63b3ed; color:#000; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+.ca-go:disabled { opacity:.5; cursor:default; }
+.ca-cancel { padding:6px 12px; background:transparent; color:#888; border:1px solid #333; border-radius:6px; font-size:13px; cursor:pointer; font-family:inherit; }
+.ca-status { font-size:12px; color:#888; margin-top:10px; text-align:center; min-height:16px; }
 /* STATUS OPTION GRID */
 .status-option-grid { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 4px; }
 .status-opt-btn { background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; transition: opacity .15s, transform .1s; }
@@ -954,6 +979,7 @@ async function loadResearch() {
     RESEARCH_ID_LIVE = r.id || '';
     RAW = {
       keywords: r.keywords || '',
+      smTrends: r.trendIntelligence || '',
     };
 
     // SEC 2 — keywords as interactive pills
@@ -1007,7 +1033,7 @@ async function loadTitles() {
     function makeTitleRow(t) {
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
       return div;
     }
     function renderGroupingLevel(titles, container) {
@@ -1349,6 +1375,93 @@ async function runMethodGenerate() {
     btn.disabled = false; btn.textContent = 'Generate';
   }
 }
+// ── CREATE ASSET (per-title "+" button) ─────────────────────────────
+let CA_PARENT_ID = null, CA_PARENT_TITLE = '', CA_TYPE = 'carousel', CA_PRODUCT_ID = null, CA_TREND = '';
+
+function caSelectType(type, btn) {
+  CA_TYPE = type;
+  document.querySelectorAll('.ca-type-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+}
+
+function caMarkSelected(input) {
+  input.closest('.ca-opt-list').querySelectorAll('.mgp-option').forEach(o => o.classList.remove('selected'));
+  input.closest('.mgp-option').classList.add('selected');
+}
+
+function openCreateAssetModal(titleId, titleText) {
+  CA_PARENT_ID = titleId; CA_PARENT_TITLE = titleText; CA_PRODUCT_ID = null; CA_TREND = '';
+  CA_TYPE = 'carousel';
+  document.getElementById('ca-subtitle').textContent = 'For: ' + titleText;
+  document.getElementById('ca-status').textContent = '';
+  document.getElementById('ca-go').disabled = false;
+  document.getElementById('ca-go').textContent = 'Generate';
+  document.querySelectorAll('.ca-type-btn').forEach(b => b.classList.remove('selected'));
+  const carouselBtn = document.querySelector('.ca-type-btn[data-type="carousel"]');
+  if (carouselBtn) carouselBtn.classList.add('selected');
+
+  document.getElementById('ca-keywords').value = (RAW && RAW.keywords) || '';
+
+  const trendEl = document.getElementById('ca-trends');
+  const trendLines = ((RAW && RAW.smTrends) || '').trim().split('\n').filter(l => l.trim());
+  const noneOpt = `<label class="mgp-option selected"><input type="radio" name="ca-trend" value="" checked onchange="CA_TREND='';caMarkSelected(this)"> <em style="color:#666">None</em></label>`;
+  if (!trendLines.length) {
+    trendEl.innerHTML = noneOpt + '<div style="font-size:11px;color:#555;padding:4px 2px">No SM trends yet — run ⟳ search in the SM Trends box first, or leave blank.</div>';
+  } else {
+    trendEl.innerHTML = noneOpt + trendLines.map(line => {
+      const esc = line.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      return `<label class="mgp-option"><input type="radio" name="ca-trend" value="${esc}" onchange="CA_TREND=this.value;caMarkSelected(this)"> ${line}</label>`;
+    }).join('');
+  }
+
+  const prodEl = document.getElementById('ca-products');
+  if (!PRODUCT_ITEMS.length) {
+    prodEl.innerHTML = '<div style="font-size:11px;color:#555;padding:4px 2px">No products on this campaign yet — add one under Products first.</div>';
+  } else {
+    prodEl.innerHTML = PRODUCT_ITEMS.map(p =>
+      `<label class="mgp-option"><input type="radio" name="ca-product" value="${p.id}" onchange="CA_PRODUCT_ID=this.value;caMarkSelected(this)"> ${p.name}</label>`
+    ).join('');
+  }
+
+  document.getElementById('create-asset-modal').classList.add('open');
+}
+
+function closeCreateAssetModal() {
+  document.getElementById('create-asset-modal').classList.remove('open');
+  CA_PARENT_ID = null;
+}
+
+async function runCreateAsset() {
+  if (!CA_PARENT_ID) return;
+  const keywords = document.getElementById('ca-keywords').value.trim();
+  const status = document.getElementById('ca-status');
+  if (!keywords) { status.textContent = 'Keywords required.'; status.style.color = '#fc8181'; return; }
+  const btn = document.getElementById('ca-go');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  status.style.color = '#888';
+  status.textContent = 'Writing 5 carousel concepts…';
+  try {
+    const data = await w('generateCarouselTitles', {
+      campaignId: CAMPAIGN_ID,
+      parentTitleId: CA_PARENT_ID,
+      parentTitle: CA_PARENT_TITLE,
+      keywords,
+      trend: CA_TREND,
+      productId: CA_PRODUCT_ID,
+    });
+    if (data.error) throw new Error(data.error);
+    status.textContent = `✓ Created ${data.created} carousel title${data.created === 1 ? '' : 's'}`;
+    status.style.color = '#68d391';
+    btn.textContent = 'Done';
+    await loadTitles();
+    setTimeout(closeCreateAssetModal, 1200);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Generate';
+  }
+}
+
 async function loadMethods() {
   const el = document.getElementById('method-list');
   try {
@@ -2839,6 +2952,42 @@ async function runRegenKeywords() {
       <button class="method-gen-go" id="mgm-go" onclick="runMethodGenerate()" disabled>Generate</button>
     </div>
     <div class="method-gen-status" id="mgm-status"></div>
+  </div>
+</div>
+<div id="create-asset-modal" onclick="if(event.target===this)closeCreateAssetModal()">
+  <div class="ca-box">
+    <h3>Create Asset</h3>
+    <div class="ca-subtitle" id="ca-subtitle"></div>
+
+    <div class="ca-section">
+      <div class="ca-label">Asset Type</div>
+      <div class="ca-type-grid">
+        <button type="button" class="ca-type-btn selected" data-type="carousel" onclick="caSelectType('carousel', this)">Carousel</button>
+        <button type="button" class="ca-type-btn" disabled title="Coming soon">Reel</button>
+        <button type="button" class="ca-type-btn" disabled title="Coming soon">Blog Post</button>
+      </div>
+    </div>
+
+    <div class="ca-section">
+      <div class="ca-label">Keywords</div>
+      <textarea class="ca-textarea" id="ca-keywords" placeholder="keyword 1, keyword 2, …"></textarea>
+    </div>
+
+    <div class="ca-section">
+      <div class="ca-label">Trend <span style="font-weight:400;text-transform:none;color:#555">— optional</span></div>
+      <div class="ca-opt-list" id="ca-trends"></div>
+    </div>
+
+    <div class="ca-section">
+      <div class="ca-label">Product</div>
+      <div class="ca-opt-list" id="ca-products"></div>
+    </div>
+
+    <div class="ca-actions">
+      <button class="ca-cancel" onclick="closeCreateAssetModal()">Cancel</button>
+      <button class="ca-go" id="ca-go" onclick="runCreateAsset()">Generate</button>
+    </div>
+    <div class="ca-status" id="ca-status"></div>
   </div>
 </div>
 <div class="modal-overlay" id="fileUploadModal" onclick="if(event.target===this)closeFileUploadModal()">

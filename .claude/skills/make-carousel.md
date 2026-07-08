@@ -1,13 +1,14 @@
 # make-carousel
 
-Generate a full Instagram carousel in Canva, merge all slides into one multi-page design, save the Canva link to the matching drive in Notion, and log everything to Notion SM Posts DB.
+Research what's trending on the topic, write original carousel copy inspired by it, generate a full Instagram carousel in Canva, merge all slides into one multi-page design, save the Canva link to the matching drive in Notion, and log everything to Notion SM Posts DB.
 
 ## Trigger phrases
-"make a carousel", "new carousel", "generate carousel", "next carousel", "carousel about X"
+"make a carousel", "new carousel", "generate carousel", "next carousel", "carousel about X", "research and make a carousel about X"
 
 ## Inputs
-- **topic** — the carousel subject (required). If not given, pick the highest-opportunity calm productivity angle not yet covered.
+- **topic / keywords** — the carousel subject (required-ish). If not given, pick the highest-opportunity calm productivity angle not yet covered (see list at bottom).
 - **product** — defaults to "Coaching Carousels" product in Notion.
+- **campaign** (optional) — if the user names a specific microsite/campaign, check its Research DB entry in Notion for existing "TikTok Trends" / "Trend Intelligence" fields before doing a fresh web search — reuse that data if it's recent.
 
 ## Style rules (ALWAYS follow)
 - 7 slides
@@ -19,8 +20,14 @@ Generate a full Instagram carousel in Canva, merge all slides into one multi-pag
 
 ## Workflow (execute every step, no skipping)
 
-### Step 1 — Write content
-Write all 7 slide scripts before generating any designs. Include:
+### Step 0 — Research trending content
+- If a campaign was named, first check Notion Research DB (collection lookup by Campaign relation) for a "TikTok Trends" / "Trend Intelligence" field. If present and recent, use it as your primary source and skip live search.
+- Otherwise, use WebSearch to find what's currently resonating on the topic — queries like `"<topic>" tiktok trending`, `"<topic>" instagram carousel viral`, `"<topic>" reels hook`, `"<topic>" short form video ideas`.
+- Pull 5–8 real top-performing posts. Note each one's **hook style, angle, and structure only** — not verbatim wording. This is inspiration, not source material.
+- Pick the single most resonant angle for this carousel given what's trending right now.
+
+### Step 1 — Write content (rewritten, never copied)
+Use the researched hooks/angles to shape structure and pacing, but every word must be original — do not lift phrasing from the source posts. Write all 7 slide scripts before generating any designs. Include:
 - Hook headline (slide 1)
 - 5 insight headlines + body copy (slides 2–6)
 - CTA quote + call to action (slide 7)
@@ -59,11 +66,15 @@ Call `notion-create-pages` on SM Posts DB (collection://ec422a5d-7161-42e6-843f-
 
 ### Step 7 — Report back
 Confirm:
+- Which trending posts/angles inspired this carousel (topic + why it's timely right now)
 - Merged Canva design link (ready to open and publish)
 - Notion drive link
 - Caption + hashtags ready to paste
+- Reminder that posting to Instagram is a manual step (see Notes) — status is set to Draft, not published
 
 ## Notes
+- **No auto-posting exists in this repo.** There is no Instagram/Meta Graph API integration wired up here — "posted" means: download/export the merged design from Canva, then post it manually from the Instagram app using the generated caption + hashtags. Always say this explicitly at the end so it's never assumed to be automatic.
+- Canva MCP tools (`generate-design`, `create-design-from-candidate`, `merge-designs`) must be connected in the session for Steps 2–3. If they're not available, stop and tell the user to connect the Canva connector first rather than improvising a substitute.
 - The merged design will always be in the user's Canva account under the title
 - If page count is > 7 after merging, warn the user — a source slide had multiple pages
 - For future carousels, number them sequentially (Carousel 04, 05, etc.)

@@ -2772,6 +2772,95 @@ No other text. No markdown fences.`;
         return json({ created });
       }
 
+      // ── generateCarouselTitles ──
+      // Called from the "+ create asset" button on a Development Title row.
+      // Generates 5 unwritten carousel concept titles and saves them as new
+      // Development-stage Titles, bundled under the parent via Grouping.
+      if (body.action === "generateCarouselTitles") {
+        const { campaignId, parentTitleId, parentTitle, keywords, trend, productId } = body;
+        if (!campaignId || !parentTitleId || !keywords) return json({ error: "campaignId, parentTitleId, keywords required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const hasProduct = productId && productId !== '__none__';
+
+        const [campRaw, productPage] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
+          hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
+        ]);
+        const cp = campRaw.properties || {};
+        const campaignName = (cp.Name?.title || cp["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
+
+        let productSection = "No specific product — general campaign content.";
+        let productName = "";
+        if (hasProduct && productPage) {
+          const pp = productPage.properties || {};
+          const ptxt = prop => (pp[prop]?.rich_text || []).map(x => x.plain_text).join("") || "";
+          productName = (pp.Name?.title || []).map(x => x.plain_text).join("") || "Unknown Product";
+          productSection = `PRODUCT: ${productName}
+Avatar: ${ptxt("Avatar")}
+Transformation: ${ptxt("Transformation")}
+Unique Angle: ${ptxt("Unique Angle")}`;
+        }
+
+        const prompt = `You are a social media content strategist. Generate exactly 5 Instagram carousel concept titles — compelling working titles for FUTURE carousels that have not been written yet. These are hooks/working titles only, not scripts.
+
+CAMPAIGN: ${campaignName}
+PARENT TITLE / THEME: ${parentTitle || "(none)"}
+KEYWORDS: ${keywords}
+${trend ? `TRENDING ANGLE TO DRAW FROM: ${trend}\n` : ''}
+${productSection}
+
+Return ONLY a JSON array of exactly 5 strings — each a compelling carousel title (max 12 words). No other text, no markdown fences.
+Example: ["Why Discipline Beats Motivation Every Time", "..."]`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+
+        let titles;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('[');
+          const end = raw.lastIndexOf(']');
+          if (start === -1 || end === -1 || end < start) throw new Error("No JSON array found");
+          titles = JSON.parse(raw.slice(start, end + 1));
+          if (!Array.isArray(titles)) throw new Error("Not an array");
+        } catch(e) {
+          const rawText = aiData.content?.[0]?.text || "";
+          return json({ error: "Failed to parse titles JSON: " + e.message + " | RAW: " + rawText.slice(0, 300) }, 500);
+        }
+
+        const rtBlock = text => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const groupingLabel = `Carousels > ${parentTitle || 'Untitled'}`;
+        let created = 0;
+        for (const t of titles.slice(0, 5)) {
+          const props = {
+            "Title":    { title: rtBlock(t) },
+            "Status":   { select: { name: "Development" } },
+            "Grouping": { rich_text: rtBlock(groupingLabel) },
+            "Campaign": { relation: [{ id: dash(campaignId) }] },
+          };
+          if (hasProduct) props["product"] = { relation: [{ id: dash(productId) }] };
+          const children = [
+            { object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(`Keywords: ${keywords}`) } },
+          ];
+          if (trend) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(`Trend: ${trend}`) } });
+          if (hasProduct && productName) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(`Product: ${productName}`) } });
+          await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props, children }),
+          });
+          created++;
+        }
+        return json({ created });
+      }
+
       // ── getDeliverables ──
       if (body.action === "getDeliverables") {
         const { campaignId } = body;
