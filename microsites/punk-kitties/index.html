@@ -1382,15 +1382,16 @@ async function runMethodGenerate() {
         slidesDone++;
       } catch(e) { slidesFailed++; if (!firstSlideErr) firstSlideErr = e.message; }
     }
+    const trendNote = data.hasTrendResearch ? ` — grounded in ${data.trendSource}` : ' — no trend research on file, ran on static campaign research only (press ⟳ search under SM Trends first for trend-grounded titles)';
     if (!slideTitles.length) {
-      status.textContent = '✓ Created ' + saved + ' titles — none were flagged as carousel/slide format (check the Method name/framework)';
+      status.textContent = '✓ Created ' + saved + ' titles' + trendNote + ' — none were flagged as carousel/slide format (check the Method name/framework)';
       status.style.color = '#f0b429';
     } else {
-      status.textContent = '✓ Created ' + saved + ' titles (' + slidesDone + '/' + slideTitles.length + ' carousel scripts written' + (slidesFailed ? ', ' + slidesFailed + ' failed: ' + firstSlideErr : '') + ')';
-      status.style.color = slidesFailed ? '#fc8181' : '#68d391';
+      status.textContent = '✓ Created ' + saved + ' titles' + trendNote + ' (' + slidesDone + '/' + slideTitles.length + ' carousel scripts written' + (slidesFailed ? ', ' + slidesFailed + ' failed: ' + firstSlideErr : '') + ')';
+      status.style.color = slidesFailed ? '#fc8181' : (data.hasTrendResearch ? '#68d391' : '#f0b429');
     }
     btn.textContent = 'Done';
-    if (!slidesFailed && slideTitles.length === slidesDone) setTimeout(closeMethodGenModal, 1800);
+    if (!slidesFailed && slideTitles.length === slidesDone && data.hasTrendResearch) setTimeout(closeMethodGenModal, 1800);
     else btn.disabled = false;
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
@@ -1472,15 +1473,16 @@ async function runCreateAsset() {
       } catch(e) { slidesFailed++; if (!firstSlideErr) firstSlideErr = e.message; }
     }
     await loadTitles();
+    const trendNote = data.hasTrendResearch ? ` — grounded in ${data.trendSource}` : ' — no trend research on file, ran on static campaign research only (press ⟳ search under SM Trends first for trend-grounded titles)';
     if (!slideTitles.length) {
-      status.textContent = `✓ Created ${saved} title${saved === 1 ? '' : 's'} — none were flagged as carousel/slide format (check the Method name/framework)`;
+      status.textContent = `✓ Created ${saved} title${saved === 1 ? '' : 's'}${trendNote} — none were flagged as carousel/slide format (check the Method name/framework)`;
       status.style.color = '#f0b429';
     } else {
-      status.textContent = `✓ Created ${saved} title${saved === 1 ? '' : 's'} (${slidesDone}/${slideTitles.length} carousel scripts written${slidesFailed ? ', ' + slidesFailed + ' failed: ' + firstSlideErr : ''})`;
-      status.style.color = slidesFailed ? '#fc8181' : '#68d391';
+      status.textContent = `✓ Created ${saved} title${saved === 1 ? '' : 's'}${trendNote} (${slidesDone}/${slideTitles.length} carousel scripts written${slidesFailed ? ', ' + slidesFailed + ' failed: ' + firstSlideErr : ''})`;
+      status.style.color = slidesFailed ? '#fc8181' : (data.hasTrendResearch ? '#68d391' : '#f0b429');
     }
     btn.textContent = 'Done';
-    if (!slidesFailed && slideTitles.length === slidesDone) setTimeout(closeCreateAssetModal, 1200);
+    if (!slidesFailed && slideTitles.length === slidesDone && data.hasTrendResearch) setTimeout(closeCreateAssetModal, 1200);
     else btn.disabled = false;
   } catch(e) {
     status.textContent = 'Error: ' + e.message;

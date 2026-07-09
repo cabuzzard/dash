@@ -2682,6 +2682,8 @@ export default {
           keyMessage:        rt(researchRaw, "Key Message"),
           campaignGoal:      (cp["Campaign Goal"]?.rich_text || []).map(t => t.plain_text).join(""),
           painPoints:        (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join(""),
+          tiktokTrends:      rt(researchRaw, "TikTok Trends"),
+          trendIntelligence: rt(researchRaw, "Trend Intelligence"),
         };
 
         // Extract method info
@@ -2714,8 +2716,14 @@ Objections: ${ptxt("Objections")}
 Unique Angle: ${ptxt("Unique Angle")}`;
         }
 
+        // Prefer live-researched TikTok Trends (real scraped post data) over the
+        // Haiku-guessed Trend Intelligence niches; use whichever exists.
+        const trendResearch = research.tiktokTrends || research.trendIntelligence || "";
+        const trendSource = research.tiktokTrends ? "TikTok Trends (live research)" : (research.trendIntelligence ? "Trend Intelligence (AI-suggested niches)" : "");
+        const hasTrendResearch = !!trendResearch;
+
         // Call Claude to generate titles
-        const prompt = `You are a content strategist. Generate all deliverable titles for a method, grounded in the campaign research${hasProduct ? " and product strategy" : ""}.
+        const prompt = `You are a content strategist. Generate all deliverable titles for a method, grounded in the campaign research${hasProduct ? " and product strategy" : ""}${hasTrendResearch ? " and current trend research" : ""}.
 
 CAMPAIGN: ${campaignName}
 CAMPAIGN RESEARCH:
@@ -2725,7 +2733,7 @@ Unique Opportunity: ${research.uniqueOpportunity}
 Key Message: ${research.keyMessage}
 Campaign Goal: ${research.campaignGoal}
 Pain Points: ${research.painPoints}
-
+${hasTrendResearch ? `\nTRENDING RESEARCH (${trendSource}):\n${trendResearch.slice(0, 1500)}\n` : '\n(No trend research on file for this campaign — titles below are grounded in static campaign research only, not current trends.)\n'}
 METHOD: ${methodName}
 METHOD FRAMEWORK:
 ${methodBody || "(No framework defined — infer phases and groupings from method name and best practices)"}
@@ -2736,6 +2744,7 @@ INSTRUCTIONS:
 - Read the method framework carefully. Each Phase heading in the framework is a Phase. Each Grouping heading is a Grouping.
 - Generate titles for EVERY phase and grouping defined in the framework.
 - Each title must be specific to this campaign${hasProduct ? " and product" : ""}${parentTitle ? " and should extend or riff on the seed idea above where it fits naturally" : ""} — use real names, real keywords, real positioning language. No generic titles.
+${hasTrendResearch ? '- Ground titles in the trending research above wherever it fits the pillar/grouping — especially any pillar about timing, seasonality, or current moments. Prefer angles the trend research shows real demand for over generic ones.' : ''}
 - Titles are deliverable names (things to produce), not content post headlines.
 - Aim for 2–3 titles per grouping unless the framework specifies otherwise.
 - Flag whether each title is a multi-slide / carousel / swipe-style deliverable (the method framework describes this — look for words like "slide", "carousel", "swipe", "panel") with "slideFormat": true. Otherwise "slideFormat": false. Do NOT write the slide content itself here — that happens in a separate follow-up step. Just flag it.
@@ -2775,7 +2784,7 @@ No other text. No markdown fences.`;
         }
 
         // Return titles to client — client will save in batches via saveMethodTitles
-        return json({ titles });
+        return json({ titles, hasTrendResearch, trendSource: hasTrendResearch ? trendSource : null });
       }
 
       // ── saveMethodTitles ──
