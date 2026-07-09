@@ -2742,6 +2742,13 @@ No other text. No markdown fences.`;
           return json({ error: "Failed to parse titles JSON: " + e.message + " | RAW: " + rawText.slice(0, 300) }, 500);
         }
 
+        // Don't rely solely on the model to notice a slide/carousel format from
+        // framework wording — if the Method itself is named for it, force the
+        // flag deterministically so titles never silently skip slide generation.
+        if (/carousel|slide|swipe|panel/i.test(methodName)) {
+          titles.forEach(t => { t.slideFormat = true; });
+        }
+
         // Return titles to client — client will save in batches via saveMethodTitles
         return json({ titles });
       }
