@@ -53,6 +53,25 @@
 .bc-actions button { background:#f6ad55; color:#1a1a1a; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; }
 .bc-actions button.secondary { background:none; border:1px solid #333; color:#c9c9c9; }
 .bc-actions button:disabled { opacity:.5; cursor:default; }
+/* DESIGN SPEC MODAL */
+#design-spec-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.8); z-index:1000; align-items:center; justify-content:center; }
+#design-spec-modal.open { display:flex; }
+.ds-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:20px; width:min(94vw, 460px); max-height:90vh; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
+.ds-box h3 { margin:0; font-size:15px; color:#fff; }
+.ds-subtitle { font-size:11px; color:#666; margin-top:-8px; }
+.ds-field { display:flex; flex-direction:column; gap:4px; }
+.ds-field label { font-size:11px; color:#999; text-transform:uppercase; letter-spacing:.03em; }
+.ds-field input[type=color] { width:100%; height:34px; border:1px solid #333; border-radius:6px; background:none; padding:2px; cursor:pointer; }
+.ds-field input[type=text], .ds-field textarea, .ds-field select {
+  background:#0d0d1a; border:1px solid #333; color:#c9c9c9; padding:7px 9px; border-radius:6px; font-size:13px; font-family:inherit;
+}
+.ds-field textarea { resize:vertical; min-height:56px; }
+.ds-row { display:flex; gap:12px; }
+.ds-row .ds-field { flex:1; }
+.ds-actions { display:flex; justify-content:flex-end; gap:8px; }
+.ds-actions button { background:#f6ad55; color:#1a1a1a; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; }
+.ds-actions button.secondary { background:none; border:1px solid #333; color:#c9c9c9; }
+.ds-status { font-size:12px; min-height:16px; }
 #create-asset-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000; align-items:center; justify-content:center; }
 #create-asset-modal.open { display:flex; }
 .ca-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:24px; width:420px; max-width:92vw; max-height:86vh; overflow-y:auto; }
@@ -235,7 +254,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2>Methods <button class="td-add-btn-inline" onclick="openMethodModal()" title="Add method">+</button></h2>
+    <h2>Methods <button class="td-add-btn-inline" onclick="openMethodModal()" title="Add method">+</button> <button class="td-add-btn-inline" onclick="openDesignSpecModal()" title="Design spec (applied when building carousels)">🎨</button></h2>
     <div class="content">
       <div class="method-list" id="method-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -1056,7 +1075,7 @@ async function loadTitles() {
     function makeTitleRow(t) {
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-build-btn" onclick="openBuildModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Build carousel">🎨</button><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-build-btn" onclick="openBuildModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.productId||'__none__'}')" title="Build carousel">🎨</button><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       return div;
     }
     function renderGroupingLevel(titles, container) {
@@ -1185,7 +1204,15 @@ async function deleteTitleRow(titleId, titleText, btn) {
 // text-accuracy problems, just pixel-exact typography from the copy already
 // written to the title's page body.
 let BC_TITLE_ID = null, BC_TITLE_TEXT = '', BC_SLIDES = [], BC_INDEX = 0;
-const BC_COLORS = { bg: '#F7F1E6', ink: '#2B2620', accent: '#8A6D4B', line: '#D9CBAE' };
+const BC_DEFAULT_SPEC = { bg: '#F7F1E6', ink: '#2B2620', accent: '#8A6D4B', headlineFont: 'Playfair Display', bodyFont: 'EB Garamond' };
+let BC_SPEC = { ...BC_DEFAULT_SPEC };
+const BC_LOADED_FONT_FAMILIES = new Set(['Playfair Display', 'EB Garamond']); // pre-loaded via the static <head> link
+function bcHexToRgba(hex, alpha) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+  if (!m) return `rgba(217,203,174,${alpha})`;
+  const [r, g, b] = [1,2,3].map(i => parseInt(m[i], 16));
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 function bcWrapLines(ctx, text, maxWidth) {
   const words = (text || '').split(/\s+/).filter(Boolean);
@@ -1205,79 +1232,93 @@ function bcDrawLines(ctx, lines, x, y, lineHeight, align) {
   return y + lines.length * lineHeight;
 }
 function bcDrawAccent(ctx) {
+  const line = bcHexToRgba(BC_SPEC.accent, .45);
   ctx.save();
-  ctx.strokeStyle = BC_COLORS.line; ctx.lineWidth = 2;
+  ctx.strokeStyle = line; ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(90, 110); ctx.bezierCurveTo(180, 70, 260, 150, 340, 100);
   ctx.stroke();
   [[110,108],[200,112],[280,118]].forEach(([cx,cy]) => {
-    ctx.beginPath(); ctx.fillStyle = BC_COLORS.line; ctx.ellipse(cx, cy, 5, 9, Math.PI/4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.fillStyle = line; ctx.ellipse(cx, cy, 5, 9, Math.PI/4, 0, Math.PI*2); ctx.fill();
   });
   ctx.restore();
 }
-let BC_FONTS_LOADED = false;
+function bcInjectGoogleFont(family) {
+  if (!family || BC_LOADED_FONT_FAMILIES.has(family)) return;
+  BC_LOADED_FONT_FAMILIES.add(family);
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, '+')}:ital,wght@0,400;0,700;1,400&display=swap`;
+  document.head.appendChild(link);
+}
+let BC_FONTS_LOADED_FOR = '';
 async function bcEnsureFonts() {
-  if (BC_FONTS_LOADED) return;
+  const key = BC_SPEC.headlineFont + '|' + BC_SPEC.bodyFont;
+  if (BC_FONTS_LOADED_FOR === key) return;
+  bcInjectGoogleFont(BC_SPEC.headlineFont);
+  bcInjectGoogleFont(BC_SPEC.bodyFont);
   // Canvas fillText does NOT trigger web-font fetching on its own — must
-  // explicitly request each face/weight/style combo used below or it
-  // silently falls back to the generic serif.
+  // explicitly request each face/weight/style combo used below (via the
+  // 'normal'/'bold'/'italic' keywords, which work for ANY loaded family,
+  // not just ones with an exact numeric weight declared) or it silently
+  // falls back to the generic serif.
+  const hf = BC_SPEC.headlineFont, bf = BC_SPEC.bodyFont;
   await Promise.all([
-    "600 66px 'Playfair Display'", "600 90px 'Playfair Display'", "600 50px 'Playfair Display'",
-    "italic 400 52px 'Playfair Display'",
-    "400 34px 'EB Garamond'", "600 34px 'EB Garamond'", "400 32px 'EB Garamond'", "400 26px 'EB Garamond'",
-    "italic 400 34px 'EB Garamond'",
-  ].map(f => document.fonts.load(f)));
-  BC_FONTS_LOADED = true;
+    `bold 60px "${hf}"`, `italic bold 60px "${hf}"`,
+    `400 30px "${bf}"`, `bold 30px "${bf}"`, `italic 400 30px "${bf}"`,
+  ].map(f => document.fonts.load(f).catch(() => {})));
+  BC_FONTS_LOADED_FOR = key;
 }
 async function bcRenderSlide(ctx, i) {
   await bcEnsureFonts();
   const W = 1080, H = 1350, M = 100;
   const s = BC_SLIDES[i], n = BC_SLIDES.length;
-  ctx.fillStyle = BC_COLORS.bg; ctx.fillRect(0, 0, W, H);
+  const hf = BC_SPEC.headlineFont, bf = BC_SPEC.bodyFont;
+  ctx.fillStyle = BC_SPEC.bg; ctx.fillRect(0, 0, W, H);
   bcDrawAccent(ctx);
-  ctx.fillStyle = BC_COLORS.ink;
+  ctx.fillStyle = BC_SPEC.ink;
   ctx.textBaseline = 'alphabetic';
 
   if (i === 0) {
-    ctx.font = "600 66px 'Playfair Display', serif";
+    ctx.font = `bold 66px "${hf}", serif`;
     const lines = bcWrapLines(ctx, s.headline, W - M*2);
     let y = H/2 - (lines.length * 78)/2;
     y = bcDrawLines(ctx, lines, W/2, y, 78, 'center');
     if (s.body) {
-      ctx.font = "italic 400 34px 'EB Garamond', serif";
-      ctx.fillStyle = BC_COLORS.accent;
+      ctx.font = `italic 400 34px "${bf}", serif`;
+      ctx.fillStyle = BC_SPEC.accent;
       const sub = bcWrapLines(ctx, s.body, W - M*2 - 120);
       bcDrawLines(ctx, sub, W/2, y + 50, 46, 'center');
     }
   } else if (i === n - 1) {
-    ctx.font = "italic 400 52px 'Playfair Display', serif";
+    ctx.font = `italic bold 52px "${hf}", serif`;
     const lines = bcWrapLines(ctx, s.headline, W - M*2 - 80);
     let y = H/2 - 80 - (lines.length * 64)/2;
     y = bcDrawLines(ctx, lines, W/2, y, 64, 'center');
     if (s.body) {
-      ctx.font = "600 34px 'EB Garamond', serif";
-      ctx.fillStyle = BC_COLORS.accent;
+      ctx.font = `bold 34px "${bf}", serif`;
+      ctx.fillStyle = BC_SPEC.accent;
       const act = bcWrapLines(ctx, s.body, W - M*2 - 100);
       bcDrawLines(ctx, act, W/2, y + 70, 46, 'center');
     }
   } else {
-    ctx.font = "600 90px 'Playfair Display', serif";
-    ctx.fillStyle = BC_COLORS.accent;
+    ctx.font = `bold 90px "${hf}", serif`;
+    ctx.fillStyle = BC_SPEC.accent;
     ctx.textAlign = 'left';
     ctx.fillText(String(i).padStart(2, '0'), M, 250);
-    ctx.fillStyle = BC_COLORS.ink;
-    ctx.font = "600 50px 'Playfair Display', serif";
+    ctx.fillStyle = BC_SPEC.ink;
+    ctx.font = `bold 50px "${hf}", serif`;
     const hLines = bcWrapLines(ctx, s.headline, W - M*2);
     let y = bcDrawLines(ctx, hLines, M, 350, 60, 'left');
     if (s.body) {
-      ctx.font = "400 32px 'EB Garamond', serif";
+      ctx.font = `400 32px "${bf}", serif`;
       const bLines = bcWrapLines(ctx, s.body, W - M*2);
       bcDrawLines(ctx, bLines, M, y + 50, 44, 'left');
     }
   }
 
-  ctx.font = "400 26px 'EB Garamond', serif";
-  ctx.fillStyle = BC_COLORS.accent;
+  ctx.font = `400 26px "${bf}", serif`;
+  ctx.fillStyle = BC_SPEC.accent;
   ctx.textAlign = 'center';
   ctx.fillText(`${i + 1} / ${n}`, W/2, H - 70);
 }
@@ -1303,8 +1344,9 @@ async function bcRenderThumbs() {
   }
   bcRenderCurrent();
 }
-async function openBuildModal(titleId, titleText) {
+async function openBuildModal(titleId, titleText, productId) {
   BC_TITLE_ID = titleId; BC_TITLE_TEXT = titleText; BC_SLIDES = []; BC_INDEX = 0;
+  BC_SPEC = { ...BC_DEFAULT_SPEC };
   document.getElementById('bc-subtitle').textContent = titleText;
   document.getElementById('bc-status').textContent = 'Loading…';
   document.getElementById('bc-status').style.display = 'block';
@@ -1313,7 +1355,12 @@ async function openBuildModal(titleId, titleText) {
   document.getElementById('bc-canva-btn').style.display = 'none';
   document.getElementById('build-carousel-modal').classList.add('open');
   try {
-    let content = await w('getTitleContent', { pageId: titleId });
+    const [ds, contentFirst] = await Promise.all([
+      w('getDesignSpec', { campaignId: CAMPAIGN_ID, productId }).catch(() => null),
+      w('getTitleContent', { pageId: titleId }),
+    ]);
+    if (ds && ds.spec) BC_SPEC = ds.spec;
+    let content = contentFirst;
     if (content.error) throw new Error(content.error);
     if (!content.slides || !content.slides.length) {
       document.getElementById('bc-status').textContent = 'No slide script yet — writing one now…';
@@ -1360,6 +1407,91 @@ async function bcDownloadAll() {
   } finally {
     btn.disabled = false; btn.textContent = orig;
   }
+}
+
+// ── DESIGN SPEC ───────────────────────────────────────────────────────
+// Campaign- (and optional per-product-override) branding applied by the
+// Build Carousel renderer above, instead of hardcoded colors/fonts.
+let DS_RAW_CAMPAIGN = {}, DS_RAW_PRODUCTS = {};
+function dsApplyToForm(spec) {
+  document.getElementById('ds-bg').value = spec.bg || BC_DEFAULT_SPEC.bg;
+  document.getElementById('ds-ink').value = spec.ink || BC_DEFAULT_SPEC.ink;
+  document.getElementById('ds-accent').value = spec.accent || BC_DEFAULT_SPEC.accent;
+  document.getElementById('ds-headline-font').value = spec.headlineFont || '';
+  document.getElementById('ds-body-font').value = spec.bodyFont || '';
+  document.getElementById('ds-notes').value = spec.notes || '';
+}
+async function openDesignSpecModal() {
+  const status = document.getElementById('ds-status');
+  status.textContent = 'Loading…'; status.style.color = '#888';
+  document.getElementById('design-spec-modal').classList.add('open');
+  const sel = document.getElementById('ds-target');
+  sel.innerHTML = '<option value="__campaign__">Campaign default</option>' +
+    (PRODUCT_ITEMS || []).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  sel.value = '__campaign__';
+  DS_RAW_PRODUCTS = {};
+  try {
+    const ds = await w('getDesignSpec', { campaignId: CAMPAIGN_ID });
+    if (ds.error) throw new Error(ds.error);
+    DS_RAW_CAMPAIGN = ds.campaignSpec || {};
+    dsApplyToForm({ ...BC_DEFAULT_SPEC, ...DS_RAW_CAMPAIGN });
+    status.textContent = '';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
+  }
+}
+async function dsLoadTarget() {
+  const target = document.getElementById('ds-target').value;
+  const status = document.getElementById('ds-status');
+  status.textContent = 'Loading…'; status.style.color = '#888';
+  try {
+    if (target === '__campaign__') {
+      dsApplyToForm({ ...BC_DEFAULT_SPEC, ...DS_RAW_CAMPAIGN });
+    } else {
+      if (!(target in DS_RAW_PRODUCTS)) {
+        const ds = await w('getDesignSpec', { campaignId: CAMPAIGN_ID, productId: target });
+        if (ds.error) throw new Error(ds.error);
+        DS_RAW_PRODUCTS[target] = ds.productSpec || {};
+      }
+      // Shows the effective (campaign + product override) values, so an
+      // untouched product still previews something sensible.
+      dsApplyToForm({ ...BC_DEFAULT_SPEC, ...DS_RAW_CAMPAIGN, ...DS_RAW_PRODUCTS[target] });
+    }
+    status.textContent = '';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
+  }
+}
+async function dsSave() {
+  const target = document.getElementById('ds-target').value;
+  const spec = {
+    bg: document.getElementById('ds-bg').value,
+    ink: document.getElementById('ds-ink').value,
+    accent: document.getElementById('ds-accent').value,
+    headlineFont: document.getElementById('ds-headline-font').value.trim() || BC_DEFAULT_SPEC.headlineFont,
+    bodyFont: document.getElementById('ds-body-font').value.trim() || BC_DEFAULT_SPEC.bodyFont,
+    notes: document.getElementById('ds-notes').value.trim(),
+  };
+  const status = document.getElementById('ds-status');
+  status.textContent = 'Saving…'; status.style.color = '#888';
+  try {
+    if (target === '__campaign__') {
+      const r = await w('updateCampaignDesignSpec', { campaignId: CAMPAIGN_ID, spec });
+      if (r.error) throw new Error(r.error);
+      DS_RAW_CAMPAIGN = spec;
+    } else {
+      const r = await w('updateProductDesignSpec', { productId: target, spec });
+      if (r.error) throw new Error(r.error);
+      DS_RAW_PRODUCTS[target] = spec;
+    }
+    status.textContent = 'Saved ✓'; status.style.color = '#68d391';
+    setTimeout(closeDesignSpecModal, 900);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
+  }
+}
+function closeDesignSpecModal() {
+  document.getElementById('design-spec-modal').classList.remove('open');
 }
 
 // Raw research values for editing
@@ -3260,6 +3392,33 @@ async function runRegenKeywords() {
       <button class="secondary" id="bc-canva-btn" onclick="window.open('https://www.canva.com/create/instagram-posts/','_blank')" style="display:none">Open Canva ↗</button>
       <button id="bc-download-btn" onclick="bcDownloadAll()" style="display:none">Download All PNGs</button>
     </div>
+  </div>
+</div>
+<div id="design-spec-modal" onclick="if(event.target===this)closeDesignSpecModal()">
+  <div class="ds-box">
+    <h3>Design Spec</h3>
+    <div class="ds-subtitle">Applied when the 🎨 Build button renders a carousel. Product overrides the campaign default when one is picked.</div>
+    <div class="ds-field">
+      <label>Applies to</label>
+      <select id="ds-target" onchange="dsLoadTarget()">
+        <option value="__campaign__">Campaign default</option>
+      </select>
+    </div>
+    <div class="ds-row">
+      <div class="ds-field"><label>Background</label><input type="color" id="ds-bg"></div>
+      <div class="ds-field"><label>Text / Ink</label><input type="color" id="ds-ink"></div>
+      <div class="ds-field"><label>Accent</label><input type="color" id="ds-accent"></div>
+    </div>
+    <div class="ds-row">
+      <div class="ds-field"><label>Headline Font</label><input type="text" id="ds-headline-font" placeholder="Playfair Display"></div>
+      <div class="ds-field"><label>Body Font</label><input type="text" id="ds-body-font" placeholder="EB Garamond"></div>
+    </div>
+    <div class="ds-field"><label>Style Notes <span style="text-transform:none;color:#555">— reference only, e.g. "no photography, no faces"</span></label><textarea id="ds-notes"></textarea></div>
+    <div class="ds-actions">
+      <button class="secondary" onclick="closeDesignSpecModal()">Cancel</button>
+      <button onclick="dsSave()">Save</button>
+    </div>
+    <div class="ds-status" id="ds-status"></div>
   </div>
 </div>
 <div class="modal-overlay" id="fileUploadModal" onclick="if(event.target===this)closeFileUploadModal()">

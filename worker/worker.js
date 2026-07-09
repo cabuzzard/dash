@@ -2965,6 +2965,55 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true, slideCount: n });
       }
 
+      // ── Design Spec (campaign- or product-level carousel branding) ──
+      const DESIGN_SPEC_DEFAULTS = {
+        bg: "#F7F1E6", ink: "#2B2620", accent: "#8A6D4B",
+        headlineFont: "Playfair Display", bodyFont: "EB Garamond",
+        notes: "Editorial minimal — no photography, no faces, no loud colors.",
+      };
+      const parseDesignSpec = raw => { try { const p = JSON.parse(raw || "{}"); return (p && typeof p === "object") ? p : {}; } catch(e) { return {}; } };
+
+      if (body.action === "getDesignSpec") {
+        const { campaignId, productId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
+        const [campPage, prodPage] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json()),
+          hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json()) : Promise.resolve(null),
+        ]);
+        const campaignSpec = parseDesignSpec(campPage.properties?.["Design Spec"]?.rich_text?.map(t => t.plain_text).join(""));
+        const productSpec = hasProduct ? parseDesignSpec(prodPage?.properties?.["Design Spec"]?.rich_text?.map(t => t.plain_text).join("")) : {};
+        const merged = { ...DESIGN_SPEC_DEFAULTS, ...campaignSpec, ...productSpec };
+        return json({ spec: merged, campaignSpec, productSpec, defaults: DESIGN_SPEC_DEFAULTS });
+      }
+
+      if (body.action === "updateCampaignDesignSpec") {
+        const { campaignId, spec } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Design Spec": { rich_text: [{ type: "text", text: { content: JSON.stringify(spec || {}).slice(0, 2000) } }] } } }),
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Save failed" }, resp.status); }
+        return json({ success: true });
+      }
+
+      if (body.action === "updateProductDesignSpec") {
+        const { productId, spec } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Design Spec": { rich_text: [{ type: "text", text: { content: JSON.stringify(spec || {}).slice(0, 2000) } }] } } }),
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Save failed" }, resp.status); }
+        return json({ success: true });
+      }
+
       // ── researchAndGenerateCarouselTitles ──
       // Called instead of generateMethodTitles when the selected Method is
       // "carousel". Merges campaign + product keyword signal, folds in any
