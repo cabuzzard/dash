@@ -29,11 +29,6 @@
 .ca-subtitle { font-size:12px; color:#666; margin-bottom:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ca-section { margin-bottom:16px; }
 .ca-label { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#888; margin-bottom:6px; }
-.ca-type-grid { display:flex; gap:8px; flex-wrap:wrap; }
-.ca-type-btn { padding:8px 14px; border:1px solid #333; border-radius:6px; background:transparent; color:#c9c9c9; font-size:13px; cursor:pointer; font-family:inherit; }
-.ca-type-btn.selected { border-color:#63b3ed; background:rgba(99,179,237,.1); color:#fff; }
-.ca-type-btn:disabled { opacity:.35; cursor:default; }
-.ca-textarea { width:100%; background:#111; border:1px solid #333; color:#c9c9c9; padding:8px; border-radius:6px; font-size:13px; font-family:inherit; resize:vertical; min-height:56px; box-sizing:border-box; }
 .ca-opt-list { display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto; }
 .ca-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:6px; }
 .ca-go { padding:6px 16px; background:#63b3ed; color:#000; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
@@ -1384,53 +1379,41 @@ async function runMethodGenerate() {
     btn.disabled = false; btn.textContent = 'Generate';
   }
 }
-// ── CREATE ASSET (per-title "+" button) ─────────────────────────────
-let CA_PARENT_ID = null, CA_PARENT_TITLE = '', CA_TYPE = 'carousel', CA_PRODUCT_ID = null, CA_TREND = '';
-
-function caSelectType(type, btn) {
-  CA_TYPE = type;
-  document.querySelectorAll('.ca-type-btn').forEach(b => b.classList.remove('selected'));
-  btn.classList.add('selected');
-}
+// ── GENERATE TITLES (per-title "+" button) — same methodology as the
+// Methods panel: pick a method, optionally a product, generate from the
+// method's framework, seeded by the title you started from. ────────────
+let CA_PARENT_ID = null, CA_PARENT_TITLE = '', CA_METHOD_ID = null, CA_PRODUCT_ID = null;
 
 function caMarkSelected(input) {
   input.closest('.ca-opt-list').querySelectorAll('.mgp-option').forEach(o => o.classList.remove('selected'));
   input.closest('.mgp-option').classList.add('selected');
 }
 
+function caCheckReady() {
+  document.getElementById('ca-go').disabled = !(CA_METHOD_ID && CA_PRODUCT_ID);
+}
+
 function openCreateAssetModal(titleId, titleText) {
-  CA_PARENT_ID = titleId; CA_PARENT_TITLE = titleText; CA_PRODUCT_ID = null; CA_TREND = '';
-  CA_TYPE = 'carousel';
-  document.getElementById('ca-subtitle').textContent = 'For: ' + titleText;
+  CA_PARENT_ID = titleId; CA_PARENT_TITLE = titleText; CA_METHOD_ID = null; CA_PRODUCT_ID = null;
+  document.getElementById('ca-subtitle').textContent = 'Seeded from: ' + titleText;
   document.getElementById('ca-status').textContent = '';
-  document.getElementById('ca-go').disabled = false;
+  document.getElementById('ca-go').disabled = true;
   document.getElementById('ca-go').textContent = 'Generate';
-  document.querySelectorAll('.ca-type-btn').forEach(b => b.classList.remove('selected'));
-  const carouselBtn = document.querySelector('.ca-type-btn[data-type="carousel"]');
-  if (carouselBtn) carouselBtn.classList.add('selected');
 
-  document.getElementById('ca-keywords').value = (RAW && RAW.keywords) || '';
-
-  const trendEl = document.getElementById('ca-trends');
-  const trendLines = ((RAW && RAW.smTrends) || '').trim().split('\n').filter(l => l.trim());
-  const noneOpt = `<label class="mgp-option selected"><input type="radio" name="ca-trend" value="" checked onchange="CA_TREND='';caMarkSelected(this)"> <em style="color:#666">None</em></label>`;
-  if (!trendLines.length) {
-    trendEl.innerHTML = noneOpt + '<div style="font-size:11px;color:#555;padding:4px 2px">No SM trends yet — run ⟳ search in the SM Trends box first, or leave blank.</div>';
+  const methodEl = document.getElementById('ca-methods');
+  if (!METHOD_ITEMS.length) {
+    methodEl.innerHTML = '<div style="font-size:11px;color:#555;padding:4px 2px">No methods on this campaign yet — add one under Methods first.</div>';
   } else {
-    trendEl.innerHTML = noneOpt + trendLines.map(line => {
-      const esc = line.replace(/'/g,"\\'").replace(/"/g,'&quot;');
-      return `<label class="mgp-option"><input type="radio" name="ca-trend" value="${esc}" onchange="CA_TREND=this.value;caMarkSelected(this)"> ${line}</label>`;
-    }).join('');
+    methodEl.innerHTML = METHOD_ITEMS.map(m =>
+      `<label class="mgp-option"><input type="radio" name="ca-method" value="${m.id}" onchange="CA_METHOD_ID=this.value;caMarkSelected(this);caCheckReady()"> ${m.name}</label>`
+    ).join('');
   }
 
   const prodEl = document.getElementById('ca-products');
-  if (!PRODUCT_ITEMS.length) {
-    prodEl.innerHTML = '<div style="font-size:11px;color:#555;padding:4px 2px">No products on this campaign yet — add one under Products first.</div>';
-  } else {
-    prodEl.innerHTML = PRODUCT_ITEMS.map(p =>
-      `<label class="mgp-option"><input type="radio" name="ca-product" value="${p.id}" onchange="CA_PRODUCT_ID=this.value;caMarkSelected(this)"> ${p.name}</label>`
-    ).join('');
-  }
+  const noneOpt = `<label class="mgp-option"><input type="radio" name="ca-product" value="${CAMPAIGN_ID}" onchange="CA_PRODUCT_ID=CAMPAIGN_ID;caMarkSelected(this);caCheckReady()"> <em style="color:#a78bfa">&#9670; Campaign (idea-based, no product)</em></label>`;
+  prodEl.innerHTML = noneOpt + PRODUCT_ITEMS.map(p =>
+    `<label class="mgp-option"><input type="radio" name="ca-product" value="${p.id}" onchange="CA_PRODUCT_ID=this.value;caMarkSelected(this);caCheckReady()"> ${p.name}</label>`
+  ).join('');
 
   document.getElementById('create-asset-modal').classList.add('open');
 }
@@ -1441,28 +1424,24 @@ function closeCreateAssetModal() {
 }
 
 async function runCreateAsset() {
-  if (!CA_PARENT_ID) return;
-  const keywords = document.getElementById('ca-keywords').value.trim();
-  const status = document.getElementById('ca-status');
-  if (!keywords) { status.textContent = 'Keywords required.'; status.style.color = '#fc8181'; return; }
+  if (!CA_PARENT_ID || !CA_METHOD_ID || !CA_PRODUCT_ID) return;
   const btn = document.getElementById('ca-go');
+  const status = document.getElementById('ca-status');
   btn.disabled = true; btn.textContent = 'Generating…';
   status.style.color = '#888';
-  status.textContent = 'Writing 5 carousel concepts…';
+  status.textContent = 'Reading method framework…';
   try {
-    const data = await w('generateCarouselTitles', {
-      campaignId: CAMPAIGN_ID,
-      parentTitleId: CA_PARENT_ID,
-      parentTitle: CA_PARENT_TITLE,
-      keywords,
-      trend: CA_TREND,
-      productId: CA_PRODUCT_ID,
-    });
+    const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: CA_METHOD_ID, productId: CA_PRODUCT_ID, parentTitle: CA_PARENT_TITLE });
     if (data.error) throw new Error(data.error);
-    const refMsg = data.referencesFound
-      ? ` — benchmarked vs ${data.referencesFound} IG post${data.referencesFound === 1 ? '' : 's'} (${data.carouselReferencesFound || 0} carousels)`
-      : ' — no IG references found, used keywords/trend only';
-    status.textContent = `✓ Created ${data.created} carousel title${data.created === 1 ? '' : 's'}${refMsg}`;
+    const titles = data.titles || [];
+    let saved = 0;
+    for (let i = 0; i < titles.length; i += 10) {
+      status.textContent = 'Saving ' + Math.min(i + 10, titles.length) + ' / ' + titles.length + ' titles…';
+      const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: CAMPAIGN_ID, methodId: CA_METHOD_ID, productId: CA_PRODUCT_ID });
+      if (r.error) throw new Error(r.error);
+      saved += r.created;
+    }
+    status.textContent = `✓ Created ${saved} title${saved === 1 ? '' : 's'}`;
     status.style.color = '#68d391';
     btn.textContent = 'Done';
     await loadTitles();
@@ -2952,30 +2931,16 @@ async function runRegenKeywords() {
 </div>
 <div id="create-asset-modal" onclick="if(event.target===this)closeCreateAssetModal()">
   <div class="ca-box">
-    <h3>Create Asset</h3>
+    <h3>Generate Titles</h3>
     <div class="ca-subtitle" id="ca-subtitle"></div>
 
     <div class="ca-section">
-      <div class="ca-label">Asset Type</div>
-      <div class="ca-type-grid">
-        <button type="button" class="ca-type-btn selected" data-type="carousel" onclick="caSelectType('carousel', this)">Carousel</button>
-        <button type="button" class="ca-type-btn" disabled title="Coming soon">Reel</button>
-        <button type="button" class="ca-type-btn" disabled title="Coming soon">Blog Post</button>
-      </div>
+      <div class="ca-label">Method</div>
+      <div class="ca-opt-list" id="ca-methods"></div>
     </div>
 
     <div class="ca-section">
-      <div class="ca-label">Keywords</div>
-      <textarea class="ca-textarea" id="ca-keywords" placeholder="keyword 1, keyword 2, …"></textarea>
-    </div>
-
-    <div class="ca-section">
-      <div class="ca-label">Trend <span style="font-weight:400;text-transform:none;color:#555">— optional</span></div>
-      <div class="ca-opt-list" id="ca-trends"></div>
-    </div>
-
-    <div class="ca-section">
-      <div class="ca-label">Product</div>
+      <div class="ca-label">Product <span style="font-weight:400;text-transform:none;color:#555">— optional, for idea-based content leave on Campaign</span></div>
       <div class="ca-opt-list" id="ca-products"></div>
     </div>
 

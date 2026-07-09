@@ -2626,7 +2626,7 @@ export default {
 
       // ── generateMethodTitles ──
       if (body.action === "generateMethodTitles") {
-        const { campaignId, methodId, productId } = body;
+        const { campaignId, methodId, productId, parentTitle } = body;
         if (!campaignId || !methodId) return json({ error: "campaignId and methodId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -2706,11 +2706,11 @@ METHOD FRAMEWORK:
 ${methodBody || "(No framework defined — infer phases and groupings from method name and best practices)"}
 
 ${productSection}
-
+${parentTitle ? `\nSEED IDEA (this run was started from an existing title — use it as inspiration/starting point for the angle, still organized across the framework's phases and groupings, not a rewrite of the seed itself):\n${parentTitle}\n` : ''}
 INSTRUCTIONS:
 - Read the method framework carefully. Each Phase heading in the framework is a Phase. Each Grouping heading is a Grouping.
 - Generate titles for EVERY phase and grouping defined in the framework.
-- Each title must be specific to this campaign${hasProduct ? " and product" : ""} — use real names, real keywords, real positioning language. No generic titles.
+- Each title must be specific to this campaign${hasProduct ? " and product" : ""}${parentTitle ? " and should extend or riff on the seed idea above where it fits naturally" : ""} — use real names, real keywords, real positioning language. No generic titles.
 - Titles are deliverable names (things to produce), not content post headlines.
 - Aim for 2–3 titles per grouping unless the framework specifies otherwise.
 
