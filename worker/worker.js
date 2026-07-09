@@ -2995,8 +2995,41 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ specs: specs.slice(0, 100) });
       }
 
+      // All design specs belonging to a campaign (via the Campaigns relation
+      // on the Design Specs DB). This is what the campaign "Design" section
+      // lists and what the Build picker offers.
+      if (body.action === "getCampaignDesignSpecs") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const rows = await notionQuery(DESIGN_SPECS_DB, {
+          filter: { property: "Campaigns", relation: { contains: dsDash(campaignId) } },
+          sorts: [{ property: "Name", direction: "ascending" }],
+        });
+        const specs = rows.map(r => dsFromPage(r));
+        // Self-heal: a spec attached via the campaign's single "Design Spec"
+        // relation (older flow) may not have its Campaigns back-relation set,
+        // so it wouldn't show up above. Fold it in and backfill the link.
+        const campPage = await fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json());
+        const attachedId = campPage.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+        if (attachedId && !specs.some(s => s.id === attachedId.replace(/-/g,""))) {
+          const sp = await fetch(`https://api.notion.com/v1/pages/${attachedId}`, { headers: dsHdr }).then(r => r.json());
+          if (sp && sp.id) {
+            specs.push(dsFromPage(sp));
+            const existing = (sp.properties?.["Campaigns"]?.relation || []).map(r => ({ id: r.id }));
+            if (!existing.some(r => r.id.replace(/-/g,"") === dsDash(campaignId).replace(/-/g,""))) {
+              existing.push({ id: dsDash(campaignId) });
+              await fetch(`https://api.notion.com/v1/pages/${attachedId}`, {
+                method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { "Campaigns": { relation: existing } } }),
+              }).catch(() => {});
+            }
+          }
+        }
+        return json({ specs, attachedId: attachedId ? attachedId.replace(/-/g,"") : null });
+      }
+
       if (body.action === "createDesignSpec") {
-        const { name, bg, ink, accent, headlineFont, bodyFont, notes, canvaLink } = body;
+        const { name, bg, ink, accent, headlineFont, bodyFont, notes, canvaLink, campaignId, productId } = body;
         if (!name) return json({ error: "name required" }, 400);
         const rt = v => v ? [{ type: "text", text: { content: String(v).slice(0, 2000) } }] : [];
         const props = {
@@ -3006,6 +3039,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
           "Aesthetic Description": { rich_text: rt(notes) },
         };
         if (canvaLink) props["Canva Link"] = { url: canvaLink };
+        if (campaignId) props["Campaigns"] = { relation: [{ id: dsDash(campaignId) }] };
+        if (productId && productId !== "__none__" && productId !== campaignId) props["Products"] = { relation: [{ id: dsDash(productId) }] };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
           body: JSON.stringify({ parent: { database_id: DESIGN_SPECS_DB }, properties: props }),
@@ -3013,6 +3048,94 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
         return json({ success: true, id: result.id.replace(/-/g,"") });
+      }
+
+      // AI-generate up to 3 design specs grounded in the campaign's research,
+      // each linked to the campaign. Canva Link is a template-SEARCH URL built
+      // from the aesthetic (a real, useful starting point — an actual Canva
+      // design link still has to be created manually and pasted back, since
+      // there's no Canva Connect OAuth wired up here).
+      if (body.action === "generateCampaignDesignSpecs") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const researchRaw = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+          method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dsDash(campaignId) } } }),
+        }).then(r => r.json());
+        const campRaw = await fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json());
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const cp = campRaw.properties || {};
+        const campaignName = (cp.Name?.title || cp["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
+        const research = {
+          keywords:          rt(researchRaw, "Keywords"),
+          statement:         rt(researchRaw, "Statement"),
+          uniqueOpportunity: rt(researchRaw, "Unique Opportunity"),
+          keyMessage:        rt(researchRaw, "Key Message"),
+          targetAudience:    (cp["Target Audience"]?.rich_text || []).map(t => t.plain_text).join(""),
+          painPoints:        (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join(""),
+          notes:             (cp["Notes"]?.rich_text || []).map(t => t.plain_text).join(""),
+        };
+
+        const prompt = `You are a brand & visual designer. Based on the campaign research below, propose exactly 3 DISTINCT design specs for its social carousels — each a different coherent aesthetic direction that fits the audience and positioning (e.g. one editorial/quiet, one bold/high-contrast, one warm/human — but choose whatever actually fits THIS campaign).
+
+CAMPAIGN: ${campaignName}
+Keywords: ${research.keywords}
+Statement: ${research.statement}
+Unique Opportunity: ${research.uniqueOpportunity}
+Key Message: ${research.keyMessage}
+Target Audience: ${research.targetAudience}
+Pain Points: ${research.painPoints}
+Notes: ${research.notes}
+
+For each spec give:
+- name: 2-4 words naming the aesthetic (e.g. "Editorial Minimal", "Bold Operator")
+- bg / ink / accent: hex colors (#RRGGBB). bg = slide background, ink = body/headline text (must be high-contrast on bg), accent = a supporting color.
+- headlineFont / bodyFont: real Google Fonts font-family names that fit the aesthetic (e.g. "Playfair Display", "Archivo Black", "Inter", "Fraunces", "Space Grotesk").
+- aesthetic: 1-2 sentences describing the visual direction, mood, and what to avoid.
+- canvaQuery: 3-6 words to search Canva templates for this look (e.g. "minimal editorial instagram carousel").
+
+Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, headlineFont, bodyFont, aesthetic, canvaQuery. No other text, no markdown fences.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let specs;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('['), end = raw.lastIndexOf(']');
+          if (start === -1 || end === -1 || end < start) throw new Error("No JSON array found");
+          specs = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          if (!Array.isArray(specs)) throw new Error("Not an array");
+        } catch(e) {
+          return json({ error: "Failed to parse design specs JSON: " + e.message }, 500);
+        }
+
+        const rtB = v => v ? [{ type: "text", text: { content: String(v).slice(0, 2000) } }] : [];
+        let created = 0;
+        const out = [];
+        for (const s of specs.slice(0, 3)) {
+          const canvaLink = s.canvaQuery ? `https://www.canva.com/templates/?query=${encodeURIComponent(String(s.canvaQuery).slice(0, 80))}` : "";
+          const props = {
+            Name: { title: [{ type: "text", text: { content: (s.name || "Design Spec").slice(0, 100) } }] },
+            Background: { rich_text: rtB(s.bg) }, Ink: { rich_text: rtB(s.ink) }, Accent: { rich_text: rtB(s.accent) },
+            "Headline Font": { rich_text: rtB(s.headlineFont) }, "Body Font": { rich_text: rtB(s.bodyFont) },
+            "Aesthetic Description": { rich_text: rtB(s.aesthetic) },
+            "Campaigns": { relation: [{ id: dsDash(campaignId) }] },
+          };
+          if (canvaLink) props["Canva Link"] = { url: canvaLink };
+          const resp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: DESIGN_SPECS_DB }, properties: props }),
+          });
+          const page = await resp.json();
+          if (page.id) { created++; out.push({ id: page.id.replace(/-/g,""), name: s.name }); }
+        }
+        return json({ created, specs: out });
       }
 
       if (body.action === "updateDesignSpec") {

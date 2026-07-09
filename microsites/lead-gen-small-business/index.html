@@ -80,6 +80,19 @@
 .ds-spec-name { flex:1; font-size:13px; color:#c9c9c9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ds-spec-card button { background:none; border:1px solid #333; color:#999; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:11px; flex-shrink:0; }
 .ds-spec-card button:hover { border-color:#f6ad55; color:#f6ad55; }
+/* Campaign "Design" section: small clickable spec tiles */
+.ds-icon-row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.ds-icon { position:relative; width:30px; height:30px; border-radius:5px; border:1px solid rgba(255,255,255,.2); cursor:pointer; overflow:hidden; display:flex; flex-direction:column; flex-shrink:0; }
+.ds-icon:hover { border-color:#f6ad55; }
+.ds-icon .ds-icon-bg { flex:1; }
+.ds-icon .ds-icon-stripe { height:8px; display:flex; }
+.ds-icon .ds-icon-stripe span { flex:1; }
+.ds-icon.has-canva::after { content:'↗'; position:absolute; top:-1px; right:1px; font-size:9px; color:#fff; text-shadow:0 0 2px #000; }
+/* Build modal: spec picker chips */
+.bc-spec-picker { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px; }
+.bc-spec-chip { display:flex; align-items:center; gap:5px; padding:3px 8px; border:1px solid #333; border-radius:14px; cursor:pointer; font-size:11px; color:#c9c9c9; }
+.bc-spec-chip.active { border-color:#f6ad55; color:#f6ad55; background:rgba(246,173,85,.1); }
+.bc-spec-chip .ds-swatch { width:10px; height:10px; }
 #create-asset-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000; align-items:center; justify-content:center; }
 #create-asset-modal.open { display:flex; }
 .ca-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:24px; width:420px; max-width:92vw; max-height:86vh; overflow-y:auto; }
@@ -231,6 +244,10 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="field"><div class="field-label">Last Updated</div><div class="field-value" id="r-date"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
       <div class="field"><div class="field-label">Microsite</div><div class="field-value" id="r-microsite"></div></div>
       <div class="field"><div class="field-label">Live Site</div><div class="field-value" id="r-livesite"></div></div>
+      <div class="field">
+        <div class="field-label">Design <button class="td-add-btn-inline" onclick="generateCampaignDesignSpecs()" id="ds-gen-btn" title="Generate 3 design specs from research">&#x25B6;</button> <button class="td-add-btn-inline" onclick="openDesignSpecModal()" title="Manage / create design specs">🎨</button></div>
+        <div class="field-value"><div class="ds-icon-row" id="r-design-specs"><span class="empty" style="font-size:11px">—</span></div></div>
+      </div>
     </div>
   </div>
   <div class="col">
@@ -262,7 +279,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2>Methods <button class="td-add-btn-inline" onclick="openMethodModal()" title="Add method">+</button> <button class="td-add-btn-inline" onclick="openDesignSpecModal()" title="Design spec (applied when building carousels)">🎨</button></h2>
+    <h2>Methods <button class="td-add-btn-inline" onclick="openMethodModal()" title="Add method">+</button></h2>
     <div class="content">
       <div class="method-list" id="method-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -1355,8 +1372,10 @@ async function bcRenderThumbs() {
 async function openBuildModal(titleId, titleText, productId) {
   BC_TITLE_ID = titleId; BC_TITLE_TEXT = titleText; BC_SLIDES = []; BC_INDEX = 0;
   BC_SPEC = { ...BC_DEFAULT_SPEC };
+  BC_PICKER_SPECS = []; BC_ACTIVE_SPEC_ID = null;
   document.getElementById('bc-subtitle').textContent = titleText;
   document.getElementById('bc-spec-note').textContent = '';
+  document.getElementById('bc-spec-picker-wrap').style.display = 'none';
   document.getElementById('bc-status').textContent = 'Loading…';
   document.getElementById('bc-status').style.display = 'block';
   document.getElementById('bc-body').style.display = 'none';
@@ -1364,15 +1383,16 @@ async function openBuildModal(titleId, titleText, productId) {
   document.getElementById('bc-canva-btn').style.display = 'none';
   document.getElementById('build-carousel-modal').classList.add('open');
   try {
-    const [ds, contentFirst] = await Promise.all([
+    const [ds, contentFirst, campSpecs] = await Promise.all([
       w('getEffectiveDesignSpec', { campaignId: CAMPAIGN_ID, productId }).catch(() => null),
       w('getTitleContent', { pageId: titleId }),
+      w('getCampaignDesignSpecs', { campaignId: CAMPAIGN_ID }).catch(() => null),
     ]);
     if (ds && ds.spec) BC_SPEC = ds.spec;
     const activeSpec = ds && (ds.productSpec || ds.campaignSpec);
-    document.getElementById('bc-spec-note').textContent = activeSpec
-      ? `Design: ${activeSpec.name}${ds.productSpec ? ' (product override)' : ' (campaign default)'}`
-      : 'Design: built-in default (no Design Spec attached — set one via the 🎨 button next to Methods)';
+    BC_ACTIVE_SPEC_ID = activeSpec ? activeSpec.id : null;
+    BC_PICKER_SPECS = (campSpecs && campSpecs.specs) || [];
+    bcRenderSpecPicker();
     let content = contentFirst;
     if (content.error) throw new Error(content.error);
     if (!content.slides || !content.slides.length) {
@@ -1392,6 +1412,64 @@ async function openBuildModal(titleId, titleText, productId) {
   } catch(e) {
     document.getElementById('bc-status').textContent = 'Error: ' + e.message;
   }
+}
+// Build modal design-spec picker: chips for each of the campaign's specs plus
+// a built-in-default chip and a "tweak & save copy" affordance.
+let BC_PICKER_SPECS = [], BC_ACTIVE_SPEC_ID = null;
+function bcSetSpecNote() {
+  const active = BC_PICKER_SPECS.find(s => s.id === BC_ACTIVE_SPEC_ID);
+  document.getElementById('bc-spec-note').textContent = active
+    ? `Design: ${active.name}`
+    : 'Design: built-in default (no spec selected)';
+}
+function bcRenderSpecPicker() {
+  const wrap = document.getElementById('bc-spec-picker-wrap');
+  const picker = document.getElementById('bc-spec-picker');
+  wrap.style.display = 'block';
+  picker.innerHTML = '';
+  const mkChip = (label, spec, id) => {
+    const chip = document.createElement('div');
+    chip.className = 'bc-spec-chip' + (id === BC_ACTIVE_SPEC_ID ? ' active' : '');
+    chip.innerHTML = spec
+      ? `<span class="ds-swatch" style="background:${spec.bg||'#ccc'}"></span><span class="ds-swatch" style="background:${spec.accent||'#999'}"></span> ${label}`
+      : label;
+    chip.onclick = () => bcSelectSpec(id);
+    return chip;
+  };
+  picker.appendChild(mkChip('Built-in default', null, null));
+  BC_PICKER_SPECS.forEach(s => picker.appendChild(mkChip(s.name, s, s.id)));
+  const tweak = document.createElement('div');
+  tweak.className = 'bc-spec-chip';
+  tweak.style.borderStyle = 'dashed';
+  tweak.textContent = '✎ tweak & save copy';
+  tweak.onclick = bcTweakSaveCopy;
+  picker.appendChild(tweak);
+  bcSetSpecNote();
+}
+function bcSelectSpec(specId) {
+  BC_ACTIVE_SPEC_ID = specId;
+  const spec = BC_PICKER_SPECS.find(s => s.id === specId);
+  BC_SPEC = spec ? { ...BC_DEFAULT_SPEC, ...Object.fromEntries(Object.entries(spec).filter(([k,v]) => k!=='id' && k!=='name' && v)) } : { ...BC_DEFAULT_SPEC };
+  bcRenderSpecPicker();
+  bcRenderThumbs();
+}
+// Opens the Design Spec create form pre-filled from the current build spec so
+// the user can change fonts/colors and save it as a NEW campaign spec.
+function bcTweakSaveCopy() {
+  openDesignSpecModal();
+  setTimeout(() => {
+    dsShowCreateForm();
+    const base = BC_SPEC || BC_DEFAULT_SPEC;
+    const active = BC_PICKER_SPECS.find(s => s.id === BC_ACTIVE_SPEC_ID);
+    document.getElementById('ds-name').value = (active ? active.name + ' copy' : 'New spec');
+    document.getElementById('ds-bg').value = base.bg || BC_DEFAULT_SPEC.bg;
+    document.getElementById('ds-ink').value = base.ink || BC_DEFAULT_SPEC.ink;
+    document.getElementById('ds-accent').value = base.accent || BC_DEFAULT_SPEC.accent;
+    document.getElementById('ds-headline-font').value = base.headlineFont || '';
+    document.getElementById('ds-body-font').value = base.bodyFont || '';
+    document.getElementById('ds-notes').value = base.notes || '';
+    dsPreview();
+  }, 350);
 }
 function closeBuildModal() {
   document.getElementById('build-carousel-modal').classList.remove('open');
@@ -1430,6 +1508,54 @@ let DS_ALL_SPECS = [];
 let DS_CAMPAIGN_ATTACHED = null;      // spec id attached to the campaign itself
 let DS_PRODUCT_ATTACHED = {};         // productId -> spec id attached to that product
 let DS_EDITING_ID = null;             // spec id being edited, or null when creating new
+let DS_CAMPAIGN_SPECS = [];           // all specs belonging to this campaign (icon row + Build picker)
+
+// ── Campaign "Design" section: small clickable spec tiles ──
+async function loadDesignSpecs() {
+  const el = document.getElementById('r-design-specs');
+  if (!el) return;
+  try {
+    const data = await w('getCampaignDesignSpecs', { campaignId: CAMPAIGN_ID });
+    if (data.error) throw new Error(data.error);
+    DS_CAMPAIGN_SPECS = data.specs || [];
+    renderDesignSpecIcons();
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="font-size:11px;color:#fc8181">' + e.message + '</span>';
+  }
+}
+function renderDesignSpecIcons() {
+  const el = document.getElementById('r-design-specs');
+  if (!el) return;
+  if (!DS_CAMPAIGN_SPECS.length) { el.innerHTML = '<span class="empty" style="font-size:11px">No specs — ▶ to generate</span>'; return; }
+  el.innerHTML = '';
+  DS_CAMPAIGN_SPECS.forEach(s => {
+    const icon = document.createElement('div');
+    icon.className = 'ds-icon' + (s.canvaLink ? ' has-canva' : '');
+    icon.title = s.name + (s.canvaLink ? ' — opens Canva ↗' : ' — click to edit');
+    icon.innerHTML = `<div class="ds-icon-bg" style="background:${s.bg || '#ccc'}"></div>` +
+      `<div class="ds-icon-stripe"><span style="background:${s.ink || '#666'}"></span><span style="background:${s.accent || '#999'}"></span></div>`;
+    icon.onclick = () => {
+      if (s.canvaLink) window.open(s.canvaLink, '_blank');
+      else openDesignSpecModal(s.id);
+    };
+    el.appendChild(icon);
+  });
+}
+async function generateCampaignDesignSpecs() {
+  const btn = document.getElementById('ds-gen-btn');
+  const el = document.getElementById('r-design-specs');
+  if (btn) btn.disabled = true;
+  if (el) el.innerHTML = '<span class="empty" style="font-size:11px">Studying research & designing…</span>';
+  try {
+    const r = await w('generateCampaignDesignSpecs', { campaignId: CAMPAIGN_ID });
+    if (r.error) throw new Error(r.error);
+    await loadDesignSpecs();
+  } catch(e) {
+    if (el) el.innerHTML = '<span class="empty" style="font-size:11px;color:#fc8181">' + e.message + '</span>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
 
 function dsCurrentTarget() { return document.getElementById('ds-target').value; }
 function dsAttachedIdForTarget(target) {
@@ -1464,7 +1590,7 @@ function dsRenderList() {
     ? `Currently attached: ${(DS_ALL_SPECS.find(s => s.id === attachedId) || {}).name || 'Unknown'}`
     : 'Currently attached: none (using built-in defaults)';
 }
-async function openDesignSpecModal() {
+async function openDesignSpecModal(focusEditId) {
   const status = document.getElementById('ds-status');
   status.textContent = 'Loading…'; status.style.color = '#888';
   document.getElementById('design-spec-modal').classList.add('open');
@@ -1485,6 +1611,7 @@ async function openDesignSpecModal() {
     DS_CAMPAIGN_ATTACHED = eff.campaignSpec ? eff.campaignSpec.id : null;
     dsRenderList();
     status.textContent = '';
+    if (focusEditId && typeof focusEditId === 'string' && DS_ALL_SPECS.some(s => s.id === focusEditId)) dsShowCreateForm(focusEditId);
   } catch(e) {
     status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
   }
@@ -1531,6 +1658,7 @@ async function dsDelete(specId) {
     if (DS_CAMPAIGN_ATTACHED === specId) DS_CAMPAIGN_ATTACHED = null;
     Object.keys(DS_PRODUCT_ATTACHED).forEach(k => { if (DS_PRODUCT_ATTACHED[k] === specId) DS_PRODUCT_ATTACHED[k] = null; });
     dsRenderList();
+    loadDesignSpecs(); // refresh the campaign "Design" section icons
     status.textContent = 'Deleted';
   } catch(e) {
     status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
@@ -1592,12 +1720,13 @@ async function dsSaveSpec() {
       const idx = DS_ALL_SPECS.findIndex(s => s.id === DS_EDITING_ID);
       if (idx !== -1) DS_ALL_SPECS[idx] = { ...spec, id: DS_EDITING_ID };
     } else {
-      const r = await w('createDesignSpec', spec);
+      const r = await w('createDesignSpec', { ...spec, campaignId: CAMPAIGN_ID });
       if (r.error) throw new Error(r.error);
       DS_ALL_SPECS.push({ ...spec, id: r.id });
     }
     dsHideCreateForm();
     dsRenderList();
+    loadDesignSpecs(); // refresh the campaign "Design" section icons
     status.textContent = 'Saved ✓'; status.style.color = '#68d391';
   } catch(e) {
     status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
@@ -2685,6 +2814,7 @@ function init() {
   loadLogins();
   loadSmPosts();
   loadDeliverables();
+  loadDesignSpecs();
 }
 
 // ── DELIVERABLES ─────────────────────────────────────────────────────
@@ -3489,6 +3619,10 @@ async function runRegenKeywords() {
     <h3>Build Carousel</h3>
     <div class="bc-subtitle" id="bc-subtitle"></div>
     <div class="bc-subtitle" id="bc-spec-note" style="color:#f6ad55"></div>
+    <div id="bc-spec-picker-wrap" style="display:none">
+      <div class="ds-subtitle" style="margin:0">Design spec <span style="color:#555">— pick one, or ✎ to tweak & save a new copy</span></div>
+      <div class="bc-spec-picker" id="bc-spec-picker"></div>
+    </div>
     <div class="bc-status" id="bc-status">Loading…</div>
     <div class="bc-body" id="bc-body" style="display:none">
       <div class="bc-canvas-wrap">
