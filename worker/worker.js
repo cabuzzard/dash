@@ -2871,35 +2871,62 @@ INSTRUCTIONS — rank what matters in this order:
 3. Adherence to the carousel format WHERE POSSIBLE — prefer angles that mirror what's working in the CAROUSEL-flagged references (list-style breakdowns, before/after, myth-busting, numbered frameworks). If the strongest keyword/buyer-intent matches above are not carousels, you may still draw on them for the angle, but note that in "basedOn".
 Do not copy any reference caption or wording — these are signal for what resonates, not source material.
 
-Return ONLY a JSON array of exactly 5 objects, each: { "title": "compelling carousel title, max 12 words", "basedOn": "one short phrase naming which reference (e.g. R3) or trend justified this angle, or 'keywords/buyer intent only' if no reference applied" }. No other text, no markdown fences.`;
+For EACH of the 5 concepts, write the full 7-slide carousel script (not just a title):
+- Slide 1 (hook): a short punchy headline, plus a one-line italic-style subtext.
+- Slides 2–6 (insights): 5 slides, each a short headline plus a 2–3 sentence body — the actual substance, not a placeholder.
+- Slide 7 (CTA): a short quote/summary line, plus a save/follow/next-step prompt.
+- An Instagram caption (150–200 words).
+- 10 hashtags (no # prefix needed, plain words/phrases).
+
+Return ONLY a JSON array of exactly 5 objects, each shaped exactly like this — no other text, no markdown fences:
+{
+  "title": "compelling carousel title, max 12 words",
+  "basedOn": "one short phrase naming which reference (e.g. R3) or trend justified this angle, or 'keywords/buyer intent only' if no reference applied",
+  "hook": { "headline": "...", "subtext": "..." },
+  "insights": [
+    { "headline": "...", "body": "..." },
+    { "headline": "...", "body": "..." },
+    { "headline": "...", "body": "..." },
+    { "headline": "...", "body": "..." },
+    { "headline": "...", "body": "..." }
+  ],
+  "cta": { "quote": "...", "action": "..." },
+  "caption": "...",
+  "hashtags": ["...", "...", "...", "...", "...", "...", "...", "...", "...", "..."]
+}`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
 
-        let titles;
+        let carousels;
         try {
           const raw = aiData.content?.[0]?.text || "";
           const start = raw.indexOf('[');
           const end = raw.lastIndexOf(']');
           if (start === -1 || end === -1 || end < start) throw new Error("No JSON array found");
-          titles = JSON.parse(raw.slice(start, end + 1));
-          if (!Array.isArray(titles)) throw new Error("Not an array");
+          carousels = JSON.parse(raw.slice(start, end + 1));
+          if (!Array.isArray(carousels)) throw new Error("Not an array");
         } catch(e) {
           const rawText = aiData.content?.[0]?.text || "";
-          return json({ error: "Failed to parse titles JSON: " + e.message + " | RAW: " + rawText.slice(0, 300) }, 500);
+          return json({ error: "Failed to parse carousels JSON: " + e.message + " | RAW: " + rawText.slice(0, 300) }, 500);
         }
 
-        const rtBlock = text => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+        const para = (text, opts = {}) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text, opts) } });
+        const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
+        const divider = () => ({ object: "block", type: "divider", divider: {} });
+
         const groupingLabel = `Carousels > ${parentTitle || 'Untitled'}`;
         let created = 0;
-        for (const item of titles.slice(0, 5)) {
-          const titleText = typeof item === 'string' ? item : (item.title || 'Carousel Idea');
-          const basedOn   = typeof item === 'object' ? (item.basedOn || '') : '';
+        for (const c of carousels.slice(0, 5)) {
+          const titleText = c.title || 'Carousel Idea';
+          const basedOn   = c.basedOn || '';
           const props = {
             "Title":    { title: rtBlock(titleText) },
             "Status":   { select: { name: "Development" } },
@@ -2907,13 +2934,35 @@ Return ONLY a JSON array of exactly 5 objects, each: { "title": "compelling caro
             "Campaign": { relation: [{ id: dash(campaignId) }] },
           };
           if (hasProduct) props["product"] = { relation: [{ id: dash(productId) }] };
+
           const children = [
-            { object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(`Keywords: ${keywords}`) } },
+            heading('Page 1 — Hook (1/7)'),
+            para(c.hook?.headline || '', { bold: true }),
           ];
-          if (trend) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(`Trend: ${trend}`) } });
-          if (hasProduct && productName) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(`Product: ${productName}`) } });
-          if (basedOn) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(`Based on: ${basedOn}`) } });
-          if (refs.length) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(`Benchmarked against ${refs.length} Instagram posts (${carouselRefCount} actual carousels) for #${primaryTag}`) } });
+          if (c.hook?.subtext) children.push(para(c.hook.subtext, { italic: true }));
+          children.push(divider());
+          (c.insights || []).slice(0, 5).forEach((ins, idx) => {
+            children.push(heading(`Page ${idx + 2} — ${String(idx + 1).padStart(2, '0')} (${idx + 2}/7)`));
+            children.push(para(ins.headline || '', { bold: true }));
+            if (ins.body) children.push(para(ins.body));
+            children.push(divider());
+          });
+          children.push(heading('Page 7 — CTA (7/7)'));
+          if (c.cta?.quote) children.push(para(c.cta.quote, { italic: true }));
+          if (c.cta?.action) children.push(para(c.cta.action, { bold: true }));
+          children.push(divider());
+          children.push(heading('Caption'));
+          children.push(para(c.caption || ''));
+          children.push(heading('Hashtags'));
+          children.push(para((c.hashtags || []).map(h => h.startsWith('#') ? h : '#' + h).join(' ')));
+          children.push(divider());
+          children.push(heading('Research Notes'));
+          children.push(bullet(`Keywords: ${keywords}`));
+          if (trend) children.push(bullet(`Trend: ${trend}`));
+          if (hasProduct && productName) children.push(bullet(`Product: ${productName}`));
+          if (basedOn) children.push(bullet(`Based on: ${basedOn}`));
+          if (refs.length) children.push(bullet(`Benchmarked against ${refs.length} Instagram posts (${carouselRefCount} actual carousels) for #${primaryTag}`));
+
           await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { ...hdr, "Content-Type": "application/json" },
