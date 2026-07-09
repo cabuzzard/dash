@@ -2656,7 +2656,11 @@ export default {
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const hasProduct = productId && productId !== '__none__';
+        // "no product" is signaled two ways in this codebase: the literal
+        // sentinel '__none__', or the campaignId itself (the modal's "Campaign"
+        // option sets productId=campaignId) — treat both as no product, else
+        // the campaign page gets fetched and read as if it were a product.
+        const hasProduct = productId && productId !== '__none__' && productId !== campaignId;
 
         // Fetch research, method page+body, and optionally product in parallel
         const fetches = [
@@ -2791,7 +2795,11 @@ No other text. No markdown fences.`;
       if (body.action === "saveMethodTitles") {
         const { titles, campaignId, methodId, productId } = body;
         if (!titles?.length || !campaignId || !methodId) return json({ error: "titles, campaignId, methodId required" }, 400);
-        const hasProduct = productId && productId !== '__none__';
+        // "no product" is signaled two ways in this codebase: the literal
+        // sentinel '__none__', or the campaignId itself (the modal's "Campaign"
+        // option sets productId=campaignId) — treat both as no product, else
+        // the campaign page gets fetched and read as if it were a product.
+        const hasProduct = productId && productId !== '__none__' && productId !== campaignId;
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
@@ -2913,47 +2921,74 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true, slideCount: n });
       }
 
-      // ── generateCarouselTitles ──
-      // Called from the "+ create asset" button on a Development Title row.
-      // Generates 5 unwritten carousel concept titles and saves them as new
-      // Development-stage Titles, bundled under the parent via Grouping.
-      if (body.action === "generateCarouselTitles") {
-        const { campaignId, parentTitleId, parentTitle, keywords, trend, productId } = body;
-        if (!campaignId || !parentTitleId || !keywords) return json({ error: "campaignId, parentTitleId, keywords required" }, 400);
+      // ── researchAndGenerateCarouselTitles ──
+      // Called instead of generateMethodTitles when the selected Method is
+      // "carousel". Merges campaign + product keyword signal, folds in any
+      // existing TikTok Trends / Trend Intelligence research already on the
+      // campaign, optionally benchmarks live Instagram posts (if APIFY_TOKEN
+      // is configured), then recommends exactly 10 titles with a short
+      // description each — NOT full scripts (that stays a separate per-title
+      // step via generateTitleSlides, to keep this call fast).
+      if (body.action === "researchAndGenerateCarouselTitles") {
+        const { campaignId, methodId, productId, parentTitle } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const hasProduct = productId && productId !== '__none__';
+        // "no product" is signaled two ways in this codebase: the literal
+        // sentinel '__none__', or the campaignId itself (the modal's "Campaign"
+        // option sets productId=campaignId) — treat both as no product, else
+        // the campaign page gets fetched and read as if it were a product.
+        const hasProduct = productId && productId !== '__none__' && productId !== campaignId;
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
 
-        const [campRaw, productPage] = await Promise.all([
+        const [researchRaw, campRaw, productPage] = await Promise.all([
+          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()),
           fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
           hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
         ]);
         const cp = campRaw.properties || {};
         const campaignName = (cp.Name?.title || cp["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
+        const campaignKeywords = rt(researchRaw, "Keywords");
+        const tiktokTrends      = rt(researchRaw, "TikTok Trends");
+        const trendIntelligence = rt(researchRaw, "Trend Intelligence");
+        const existingTrendResearch = tiktokTrends || trendIntelligence || "";
+        const existingTrendSource = tiktokTrends ? "TikTok Trends (live research)" : (trendIntelligence ? "Trend Intelligence (AI-suggested niches)" : "");
 
-        // Buyer-intent context: prefer the chosen product's avatar/transformation,
-        // fall back to campaign-level pain points when no product is selected.
+        // Products DB has no "Keywords" field — derive product-side keyword
+        // signal from its positioning text instead, then merge with campaign
+        // keywords for a single combined research query.
         let productSection = "No specific product — general campaign content.";
         let productName = "";
+        let productKeywordSignal = "";
         let buyerIntent = (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join("") || "(no campaign pain points on file)";
         if (hasProduct && productPage) {
           const pp = productPage.properties || {};
           const ptxt = prop => (pp[prop]?.rich_text || []).map(x => x.plain_text).join("") || "";
           productName = (pp.Name?.title || []).map(x => x.plain_text).join("") || "Unknown Product";
+          const desc = ptxt("Description"), avatar = ptxt("Avatar"), transformation = ptxt("Transformation"), uniqueAngle = ptxt("Unique Angle"), offer = ptxt("Offer Structure"), notes = ptxt("Notes");
           productSection = `PRODUCT: ${productName}
-Avatar: ${ptxt("Avatar")}
-Transformation: ${ptxt("Transformation")}
-Unique Angle: ${ptxt("Unique Angle")}`;
-          buyerIntent = ptxt("Avatar") || buyerIntent;
+Description: ${desc || "(none)"}
+Avatar: ${avatar || "(none)"}
+Transformation: ${transformation || "(none)"}
+Unique Angle: ${uniqueAngle || "(none)"}
+Offer Structure: ${offer || "(none)"}
+Notes: ${notes || "(none)"}`;
+          productKeywordSignal = [desc, avatar, transformation, uniqueAngle, notes].filter(Boolean).join(" ");
+          buyerIntent = avatar || buyerIntent;
         }
+        const mergedKeywords = [campaignKeywords, productKeywordSignal].filter(Boolean).join(", ");
+        if (!mergedKeywords) return json({ error: "No campaign Keywords on file and no product selected — add campaign Keywords in Research first" }, 400);
 
-        // ── Evaluate real Instagram carousel references: keyword + buyer-intent
-        // relevance drives ranking, carousel format is a preference (boost), not
-        // a hard filter -- if the strongest matches aren't carousels, still use them.
+        // ── Live Instagram benchmarking (real posts, real engagement) when
+        // APIFY_TOKEN is configured. Uses the first campaign keyword as the
+        // hashtag anchor; keyword-hit scoring draws on the full merged set.
         const AT = (env.APIFY_TOKEN || '').trim();
-        const kwTokens = keywords.split(/[,\n]/).map(k => k.trim().toLowerCase()).filter(Boolean);
-        const primaryTag = (kwTokens[0] || '').replace(/[^a-z0-9]/g, '');
+        const kwTokens = mergedKeywords.split(/[,\n]/).map(k => k.trim().toLowerCase()).filter(Boolean);
+        const primaryTag = ((campaignKeywords.split(/[,\n]/)[0] || kwTokens[0] || '').trim()).replace(/[^a-z0-9]/gi, '').toLowerCase();
         let refs = [];
         let refNote = '';
         if (AT && primaryTag) {
@@ -2974,144 +3009,116 @@ Unique Angle: ${ptxt("Unique Angle")}`;
                 const likes = Math.max(p.likesCount ?? 0, 0);
                 const comments = Math.max(p.commentsCount ?? 0, 0);
                 const engagement = likes + comments * 3;
-                // keyword/buyer-intent relevance dominates; carousel format is a boost, not a gate
                 const score = engagement * (1 + keywordHits * 0.4) * (isCarousel ? 1.4 : 1);
                 return { owner: p.ownerUsername || 'unknown', caption: caption.slice(0, 200), likes, comments, isCarousel, slides: p.carouselImageCount || 0, keywordHits, score };
               }).sort((a, b) => b.score - a.score).slice(0, 8);
-              if (!refs.length) refNote = `Searched #${primaryTag} on Instagram but found no posts to benchmark against — proceed on keywords/trend alone.`;
+              if (!refs.length) refNote = `Searched #${primaryTag} on Instagram but found no posts to benchmark against.`;
             } else {
-              refNote = 'Instagram reference search failed — proceed on keywords/trend alone.';
+              refNote = 'Instagram reference search failed.';
             }
-          } catch(e) { refNote = 'Instagram reference search failed — proceed on keywords/trend alone.'; }
+          } catch(e) { refNote = 'Instagram reference search failed.'; }
         } else if (!AT) {
-          refNote = 'APIFY_TOKEN not configured — no live reference benchmarking available.';
+          refNote = 'APIFY_TOKEN not configured — no live Instagram benchmarking available.';
         }
         const carouselRefCount = refs.filter(r => r.isCarousel).length;
-
         const refBlock = refs.length
           ? refs.map((r, i) =>
               `[R${i+1}] @${r.owner} | ${r.isCarousel ? `CAROUSEL (${r.slides || '?'} slides)` : 'single image/video (not a carousel)'} | ${r.likes} likes, ${r.comments} comments | keyword matches: ${r.keywordHits} | "${r.caption}"`
             ).join('\n')
-          : `(no reference posts found${refNote ? ' — ' + refNote : ''})`;
+          : `(no live reference posts${refNote ? ' — ' + refNote : ''})`;
 
-        const prompt = `You are a social media content strategist. Generate exactly 5 Instagram carousel concept titles — compelling working titles for FUTURE carousels that have not been written yet. These are hooks/working titles only, not scripts.
+        const prompt = `You are a social media trend analyst and content strategist. Analyze the research below, then recommend exactly 10 Instagram carousel concepts — compelling working titles for FUTURE carousels that have not been written yet, each with a short description. These are recommendations only, not scripts.
 
 CAMPAIGN: ${campaignName}
-PARENT TITLE / THEME: ${parentTitle || "(none)"}
-KEYWORDS: ${keywords}
-${trend ? `TRENDING ANGLE TO DRAW FROM: ${trend}\n` : ''}
+MERGED KEYWORDS (campaign + product): ${mergedKeywords}
 BUYER INTENT / AVATAR (who this needs to resonate with): ${buyerIntent}
 ${productSection}
-
-REFERENCE POSTS (real Instagram posts found for this topic, ranked by keyword relevance + engagement, carousel format flagged):
+${existingTrendResearch ? `\nEXISTING TREND RESEARCH ON FILE (${existingTrendSource}):\n${existingTrendResearch.slice(0, 1500)}\n` : '\n(No trend research on file for this campaign yet.)\n'}
+${parentTitle ? `SEED THEME (this run was started from an existing title — most concepts should extend or riff on this theme where it fits naturally, but don't force all 10 into it if the research points elsewhere):\n${parentTitle}\n\n` : ''}LIVE INSTAGRAM REFERENCE POSTS (real posts found just now for this topic, ranked by keyword relevance + engagement, carousel format flagged):
 ${refBlock}
 
-INSTRUCTIONS — rank what matters in this order:
-1. Topical relevance to the keywords above.
-2. Fit with the buyer intent/avatar — the angle should speak to what this specific audience wants or fears, not just be topically adjacent.
-3. Adherence to the carousel format WHERE POSSIBLE — prefer angles that mirror what's working in the CAROUSEL-flagged references (list-style breakdowns, before/after, myth-busting, numbered frameworks). If the strongest keyword/buyer-intent matches above are not carousels, you may still draw on them for the angle, but note that in "basedOn".
-Do not copy any reference caption or wording — these are signal for what resonates, not source material.
+INSTRUCTIONS:
+1. Analyze all the research above — the existing trend research, the live Instagram references (if any), and the merged keywords — to identify which angles have real current demand vs. which are generic.
+2. Rank concepts by: topical relevance to the merged keywords, fit with the buyer intent/avatar, and (where possible) alignment with what the CAROUSEL-flagged live references show is working (list-style breakdowns, before/after, myth-busting, numbered frameworks).
+3. Do not copy any reference caption or wording — these are signal for what resonates, not source material.
+4. For each concept, write a 1-3 sentence description of what the carousel would actually cover — specific enough that someone could start writing it from the description alone.
 
-For EACH of the 5 concepts, write the full 7-slide carousel script (not just a title):
-- Slide 1 (hook): a short punchy headline, plus a one-line italic-style subtext.
-- Slides 2–6 (insights): 5 slides, each a short headline plus a 2–3 sentence body — the actual substance, not a placeholder.
-- Slide 7 (CTA): a short quote/summary line, plus a save/follow/next-step prompt.
-- An Instagram caption (150–200 words).
-- 10 hashtags (no # prefix needed, plain words/phrases).
-
-Return ONLY a JSON array of exactly 5 objects, each shaped exactly like this — no other text, no markdown fences:
+Return ONLY a JSON array of exactly 10 objects, each shaped exactly like this — no other text, no markdown fences:
 {
   "title": "compelling carousel title, max 12 words",
-  "basedOn": "one short phrase naming which reference (e.g. R3) or trend justified this angle, or 'keywords/buyer intent only' if no reference applied",
-  "hook": { "headline": "...", "subtext": "..." },
-  "insights": [
-    { "headline": "...", "body": "..." },
-    { "headline": "...", "body": "..." },
-    { "headline": "...", "body": "..." },
-    { "headline": "...", "body": "..." },
-    { "headline": "...", "body": "..." }
-  ],
-  "cta": { "quote": "...", "action": "..." },
-  "caption": "...",
-  "hashtags": ["...", "...", "...", "...", "...", "...", "...", "...", "...", "..."]
+  "description": "1-3 sentences describing what this carousel covers and the angle it takes",
+  "basedOn": "one short phrase naming which reference (e.g. R3), existing trend research, or 'keywords/buyer intent only' if neither applied"
 }`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
 
-        let carousels;
+        let concepts;
         try {
           const raw = aiData.content?.[0]?.text || "";
           const start = raw.indexOf('[');
           const end = raw.lastIndexOf(']');
           if (start === -1 || end === -1 || end < start) throw new Error("No JSON array found");
-          carousels = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
-          if (!Array.isArray(carousels)) throw new Error("Not an array");
+          concepts = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          if (!Array.isArray(concepts)) throw new Error("Not an array");
         } catch(e) {
           const rawText = aiData.content?.[0]?.text || "";
-          return json({ error: "Failed to parse carousels JSON: " + e.message + " | RAW: " + rawText.slice(0, 300) }, 500);
+          return json({ error: "Failed to parse concepts JSON: " + e.message + " | RAW: " + rawText.slice(0, 300) }, 500);
         }
 
         const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
         const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
         const para = (text, opts = {}) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text, opts) } });
         const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
-        const divider = () => ({ object: "block", type: "divider", divider: {} });
 
-        const groupingLabel = `Carousels > ${parentTitle || 'Untitled'}`;
         let created = 0;
-        for (const c of carousels.slice(0, 5)) {
+        const saved = [];
+        const saveErrors = [];
+        for (const c of concepts.slice(0, 10)) {
           const titleText = c.title || 'Carousel Idea';
-          const basedOn   = c.basedOn || '';
+          const description = c.description || '';
+          const basedOn = c.basedOn || '';
           const props = {
-            "Title":    { title: rtBlock(titleText) },
-            "Status":   { select: { name: "Development" } },
-            "Grouping": { rich_text: rtBlock(groupingLabel) },
-            "Campaign": { relation: [{ id: dash(campaignId) }] },
+            "Title":     { title: rtBlock(titleText) },
+            "Status":    { select: { name: "Development" } },
+            "Grouping":  { rich_text: rtBlock("Carousel Concepts") },
+            "Core Idea": { rich_text: rtBlock(description.slice(0, 1990)) },
+            "Campaign":  { relation: [{ id: dash(campaignId) }] },
           };
+          if (methodId) props["method"] = { relation: [{ id: dash(methodId) }] };
           if (hasProduct) props["product"] = { relation: [{ id: dash(productId) }] };
 
           const children = [
-            heading('Page 1 — Hook (1/7)'),
-            para(c.hook?.headline || '', { bold: true }),
+            heading('Description'),
+            para(description.slice(0, 1990)),
+            heading('Research Notes'),
+            bullet(`Merged keywords: ${mergedKeywords}`.slice(0, 1990)),
           ];
-          if (c.hook?.subtext) children.push(para(c.hook.subtext, { italic: true }));
-          children.push(divider());
-          (c.insights || []).slice(0, 5).forEach((ins, idx) => {
-            children.push(heading(`Page ${idx + 2} — ${String(idx + 1).padStart(2, '0')} (${idx + 2}/7)`));
-            children.push(para(ins.headline || '', { bold: true }));
-            if (ins.body) children.push(para(ins.body));
-            children.push(divider());
-          });
-          children.push(heading('Page 7 — CTA (7/7)'));
-          if (c.cta?.quote) children.push(para(c.cta.quote, { italic: true }));
-          if (c.cta?.action) children.push(para(c.cta.action, { bold: true }));
-          children.push(divider());
-          children.push(heading('Caption'));
-          children.push(para(c.caption || ''));
-          children.push(heading('Hashtags'));
-          children.push(para((c.hashtags || []).map(h => h.startsWith('#') ? h : '#' + h).join(' ')));
-          children.push(divider());
-          children.push(heading('Research Notes'));
-          children.push(bullet(`Keywords: ${keywords}`));
-          if (trend) children.push(bullet(`Trend: ${trend}`));
           if (hasProduct && productName) children.push(bullet(`Product: ${productName}`));
+          if (existingTrendResearch) children.push(bullet(`Existing research considered: ${existingTrendSource}`));
           if (basedOn) children.push(bullet(`Based on: ${basedOn}`));
-          if (refs.length) children.push(bullet(`Benchmarked against ${refs.length} Instagram posts (${carouselRefCount} actual carousels) for #${primaryTag}`));
+          if (refs.length) children.push(bullet(`Benchmarked against ${refs.length} live Instagram posts (${carouselRefCount} actual carousels) for #${primaryTag}`));
 
-          await fetch("https://api.notion.com/v1/pages", {
+          const resp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props, children }),
           });
-          created++;
+          const page = await resp.json();
+          if (page.id) { created++; saved.push({ id: page.id.replace(/-/g, ""), title: titleText, description }); }
+          else saveErrors.push({ title: titleText, status: resp.status, error: page.message || JSON.stringify(page).slice(0, 300) });
         }
-        return json({ created, referencesFound: refs.length, carouselReferencesFound: carouselRefCount });
+        return json({
+          created, titles: saved, saveErrors: saveErrors.length ? saveErrors : undefined,
+          mergedKeywords,
+          hasExistingTrendResearch: !!existingTrendResearch, existingTrendSource: existingTrendResearch ? existingTrendSource : null,
+          referencesFound: refs.length, carouselReferencesFound: carouselRefCount, apifyConfigured: !!AT,
+        });
       }
 
       // ── getDeliverables ──

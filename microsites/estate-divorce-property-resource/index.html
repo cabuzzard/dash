@@ -1356,9 +1356,26 @@ async function runMethodGenerate() {
   const btn = document.getElementById('mgm-go');
   const status = document.getElementById('mgm-status');
   btn.disabled = true; btn.textContent = 'Generating…';
-  status.textContent = 'Reading method framework and product strategy…';
   status.style.color = '#888';
   try {
+    // The "carousel" method gets a dedicated research-driven flow (merges
+    // campaign+product keywords, folds in existing trend research, optional
+    // live Instagram benchmarking, recommends 10 titles+descriptions) instead
+    // of the generic framework-phase title generator used by every other method.
+    if (/carousel/i.test(MGM_METHOD_NAME)) {
+      status.textContent = 'Researching trends and merging keywords…';
+      const data = await w('researchAndGenerateCarouselTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
+      if (data.error) throw new Error(data.error);
+      const trendNote = data.hasExistingTrendResearch ? `grounded in ${data.existingTrendSource}` : 'no existing trend research on file';
+      const liveNote = data.apifyConfigured ? `, benchmarked against ${data.referencesFound} live Instagram posts (${data.carouselReferencesFound} carousels)` : ', no live Instagram benchmarking (APIFY_TOKEN not configured)';
+      status.textContent = `✓ Recommended ${data.created} carousel concepts — ${trendNote}${liveNote}`;
+      status.style.color = '#68d391';
+      btn.textContent = 'Done';
+      setTimeout(closeMethodGenModal, 2200);
+      return;
+    }
+
+    status.textContent = 'Reading method framework and product strategy…';
     const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
     if (data.error) throw new Error(data.error);
     const titles = data.titles || [];
@@ -1449,6 +1466,26 @@ async function runCreateAsset() {
   const status = document.getElementById('ca-status');
   btn.disabled = true; btn.textContent = 'Generating…';
   status.style.color = '#888';
+  const caMethodName = (METHOD_ITEMS.find(m => m.id === CA_METHOD_ID) || {}).name || '';
+  if (/carousel/i.test(caMethodName)) {
+    status.textContent = 'Researching trends and merging keywords…';
+    try {
+      const data = await w('researchAndGenerateCarouselTitles', { campaignId: CAMPAIGN_ID, methodId: CA_METHOD_ID, productId: CA_PRODUCT_ID, parentTitle: CA_PARENT_TITLE });
+      if (data.error) throw new Error(data.error);
+      await loadTitles();
+      const trendNote = data.hasExistingTrendResearch ? `grounded in ${data.existingTrendSource}` : 'no existing trend research on file';
+      const liveNote = data.apifyConfigured ? `, benchmarked against ${data.referencesFound} live Instagram posts (${data.carouselReferencesFound} carousels)` : ', no live Instagram benchmarking (APIFY_TOKEN not configured)';
+      status.textContent = `✓ Recommended ${data.created} carousel concepts — ${trendNote}${liveNote}`;
+      status.style.color = '#68d391';
+      btn.textContent = 'Done';
+      setTimeout(closeCreateAssetModal, 2200);
+    } catch(e) {
+      status.textContent = 'Error: ' + e.message;
+      status.style.color = '#fc8181';
+      btn.disabled = false; btn.textContent = 'Generate';
+    }
+    return;
+  }
   status.textContent = 'Reading method framework…';
   try {
     const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: CA_METHOD_ID, productId: CA_PRODUCT_ID, parentTitle: CA_PARENT_TITLE });
