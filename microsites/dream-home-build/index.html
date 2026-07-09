@@ -1138,7 +1138,6 @@ async function loadTitles() {
 }
 
 async function deleteTitleRow(titleId, titleText, btn) {
-  if (!confirm(`Delete "${titleText}"? This archives the page in Notion.`)) return;
   btn.disabled = true;
   try {
     await w('deleteTitle', { titleId });
