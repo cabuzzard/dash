@@ -3028,6 +3028,63 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ specs, attachedId: attachedId ? attachedId.replace(/-/g,"") : null });
       }
 
+      // Merge the visual style of an uploaded photo/drawing into a design spec.
+      // Client sends a data URL (jpg/png, downscaled) + the current spec fields;
+      // Claude vision returns merged colors/fonts/aesthetic to fill the edit form.
+      if (body.action === "mergeSpecStyleFromImage") {
+        const { image, current } = body;
+        if (!image) return json({ error: "image required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const m = /^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/i.exec(image || "");
+        if (!m) return json({ error: "image must be a base64 data URL (png/jpeg/webp)" }, 400);
+        let mediaType = m[1].toLowerCase(); if (mediaType === "image/jpg") mediaType = "image/jpeg";
+        const b64 = m[3];
+        const cur = current || {};
+        const prompt = `You are a brand designer. The attached image is a reference photo or drawing. Analyze its visual style — dominant colors, mood, contrast, texture, and the kind of typography that would suit it.
+
+Merge that style INTO this existing design spec (keep what still fits, but adopt the image's palette and mood):
+Name: ${cur.name || "(unnamed)"}
+Background: ${cur.bg || "(none)"}
+Ink/text: ${cur.ink || "(none)"}
+Accent: ${cur.accent || "(none)"}
+Headline font: ${cur.headlineFont || "(none)"}
+Body font: ${cur.bodyFont || "(none)"}
+Aesthetic notes: ${cur.notes || "(none)"}
+
+Return updated values:
+- bg: a hex background color drawn from the image
+- ink: a hex text color with strong contrast on bg (readable)
+- accent: a hex supporting color pulled from the image
+- headlineFont / bodyFont: real Google Fonts family names whose feel matches the image
+- notes: 1-2 sentences describing the merged aesthetic (the image's feel blended with the existing direction), including what to avoid
+
+Return ONLY this JSON, no other text, no markdown fences:
+{ "bg": "#RRGGBB", "ink": "#RRGGBB", "accent": "#RRGGBB", "headlineFont": "...", "bodyFont": "...", "notes": "..." }`;
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 700,
+            messages: [{ role: "user", content: [
+              { type: "image", source: { type: "base64", media_type: mediaType, data: b64 } },
+              { type: "text", text: prompt },
+            ] }],
+          }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude vision error" }, 500);
+        let merged;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+          if (s === -1 || e === -1 || e < s) throw new Error("No JSON object found");
+          merged = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+        } catch(e) {
+          return json({ error: "Failed to parse merged spec: " + e.message }, 500);
+        }
+        return json({ merged });
+      }
+
       if (body.action === "createDesignSpec") {
         const { name, bg, ink, accent, headlineFont, bodyFont, notes, canvaLink, campaignId, productId } = body;
         if (!name) return json({ error: "name required" }, 400);
