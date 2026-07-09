@@ -5,6 +5,10 @@
 <meta name="robots" content="noindex, nofollow">
 <meta http-equiv="X-Frame-Options" content="DENY">
 <link rel="stylesheet" href="../style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Webguy — AI Content Management</title>
 <style>
@@ -22,6 +26,33 @@
   flex-shrink: 0; transition: all .15s; line-height: 1.4;
 }
 .title-asset-btn:hover { color: #63b3ed; border-color: rgba(99,179,237,.3); }
+/* BUILD CAROUSEL BUTTON + MODAL */
+.title-build-btn {
+  font-size: 11px; color: #2a2a2a; background: none; border: 1px solid #1a1a1a;
+  padding: 1px 6px; cursor: pointer; font-family: 'Syne', sans-serif;
+  flex-shrink: 0; transition: all .15s; line-height: 1.4;
+}
+.title-build-btn:hover { color: #f6ad55; border-color: rgba(246,173,85,.3); }
+#build-carousel-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.8); z-index:1000; align-items:center; justify-content:center; }
+#build-carousel-modal.open { display:flex; }
+.bc-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:20px; width:min(94vw, 900px); max-height:92vh; overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
+.bc-box h3 { margin:0; font-size:15px; color:#fff; }
+.bc-subtitle { font-size:12px; color:#666; margin-top:-8px; }
+.bc-status { font-size:12px; color:#888; min-height:16px; }
+.bc-body { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
+.bc-canvas-wrap { flex-shrink:0; }
+.bc-canvas-wrap canvas { width:270px; height:337px; border-radius:6px; border:1px solid #333; background:#faf6f0; }
+.bc-nav { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px; }
+.bc-nav button { background:none; border:1px solid #333; color:#c9c9c9; padding:3px 10px; border-radius:4px; cursor:pointer; font-size:12px; }
+.bc-nav button:hover { border-color:#f6ad55; color:#f6ad55; }
+.bc-nav span { font-size:12px; color:#888; min-width:40px; text-align:center; }
+.bc-thumbs { display:flex; flex-wrap:wrap; gap:8px; flex:1; min-width:220px; }
+.bc-thumb { width:64px; height:80px; border-radius:4px; border:1px solid #333; cursor:pointer; background:#faf6f0; }
+.bc-thumb.active { border-color:#f6ad55; box-shadow:0 0 0 1px #f6ad55; }
+.bc-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.bc-actions button { background:#f6ad55; color:#1a1a1a; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; }
+.bc-actions button.secondary { background:none; border:1px solid #333; color:#c9c9c9; }
+.bc-actions button:disabled { opacity:.5; cursor:default; }
 #create-asset-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000; align-items:center; justify-content:center; }
 #create-asset-modal.open { display:flex; }
 .ca-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:24px; width:420px; max-width:92vw; max-height:86vh; overflow-y:auto; }
@@ -1025,7 +1056,7 @@ async function loadTitles() {
     function makeTitleRow(t) {
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-build-btn" onclick="openBuildModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Build carousel">🎨</button><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       return div;
     }
     function renderGroupingLevel(titles, container) {
@@ -1145,6 +1176,189 @@ async function deleteTitleRow(titleId, titleText, btn) {
   } catch(e) {
     btn.disabled = false;
     alert('Error: ' + e.message);
+  }
+}
+
+// ── BUILD CAROUSEL ───────────────────────────────────────────────────
+// Renders a title's slide script as real, on-brand PNG images directly in
+// the browser (Canvas 2D) — no Canva OAuth/templates and no AI image-gen
+// text-accuracy problems, just pixel-exact typography from the copy already
+// written to the title's page body.
+let BC_TITLE_ID = null, BC_TITLE_TEXT = '', BC_SLIDES = [], BC_INDEX = 0;
+const BC_COLORS = { bg: '#F7F1E6', ink: '#2B2620', accent: '#8A6D4B', line: '#D9CBAE' };
+
+function bcWrapLines(ctx, text, maxWidth) {
+  const words = (text || '').split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxWidth && line) { lines.push(line); line = w; }
+    else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+function bcDrawLines(ctx, lines, x, y, lineHeight, align) {
+  ctx.textAlign = align;
+  lines.forEach((l, i) => ctx.fillText(l, x, y + i * lineHeight));
+  return y + lines.length * lineHeight;
+}
+function bcDrawAccent(ctx) {
+  ctx.save();
+  ctx.strokeStyle = BC_COLORS.line; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(90, 110); ctx.bezierCurveTo(180, 70, 260, 150, 340, 100);
+  ctx.stroke();
+  [[110,108],[200,112],[280,118]].forEach(([cx,cy]) => {
+    ctx.beginPath(); ctx.fillStyle = BC_COLORS.line; ctx.ellipse(cx, cy, 5, 9, Math.PI/4, 0, Math.PI*2); ctx.fill();
+  });
+  ctx.restore();
+}
+let BC_FONTS_LOADED = false;
+async function bcEnsureFonts() {
+  if (BC_FONTS_LOADED) return;
+  // Canvas fillText does NOT trigger web-font fetching on its own — must
+  // explicitly request each face/weight/style combo used below or it
+  // silently falls back to the generic serif.
+  await Promise.all([
+    "600 66px 'Playfair Display'", "600 90px 'Playfair Display'", "600 50px 'Playfair Display'",
+    "italic 400 52px 'Playfair Display'",
+    "400 34px 'EB Garamond'", "600 34px 'EB Garamond'", "400 32px 'EB Garamond'", "400 26px 'EB Garamond'",
+    "italic 400 34px 'EB Garamond'",
+  ].map(f => document.fonts.load(f)));
+  BC_FONTS_LOADED = true;
+}
+async function bcRenderSlide(ctx, i) {
+  await bcEnsureFonts();
+  const W = 1080, H = 1350, M = 100;
+  const s = BC_SLIDES[i], n = BC_SLIDES.length;
+  ctx.fillStyle = BC_COLORS.bg; ctx.fillRect(0, 0, W, H);
+  bcDrawAccent(ctx);
+  ctx.fillStyle = BC_COLORS.ink;
+  ctx.textBaseline = 'alphabetic';
+
+  if (i === 0) {
+    ctx.font = "600 66px 'Playfair Display', serif";
+    const lines = bcWrapLines(ctx, s.headline, W - M*2);
+    let y = H/2 - (lines.length * 78)/2;
+    y = bcDrawLines(ctx, lines, W/2, y, 78, 'center');
+    if (s.body) {
+      ctx.font = "italic 400 34px 'EB Garamond', serif";
+      ctx.fillStyle = BC_COLORS.accent;
+      const sub = bcWrapLines(ctx, s.body, W - M*2 - 120);
+      bcDrawLines(ctx, sub, W/2, y + 50, 46, 'center');
+    }
+  } else if (i === n - 1) {
+    ctx.font = "italic 400 52px 'Playfair Display', serif";
+    const lines = bcWrapLines(ctx, s.headline, W - M*2 - 80);
+    let y = H/2 - 80 - (lines.length * 64)/2;
+    y = bcDrawLines(ctx, lines, W/2, y, 64, 'center');
+    if (s.body) {
+      ctx.font = "600 34px 'EB Garamond', serif";
+      ctx.fillStyle = BC_COLORS.accent;
+      const act = bcWrapLines(ctx, s.body, W - M*2 - 100);
+      bcDrawLines(ctx, act, W/2, y + 70, 46, 'center');
+    }
+  } else {
+    ctx.font = "600 90px 'Playfair Display', serif";
+    ctx.fillStyle = BC_COLORS.accent;
+    ctx.textAlign = 'left';
+    ctx.fillText(String(i).padStart(2, '0'), M, 250);
+    ctx.fillStyle = BC_COLORS.ink;
+    ctx.font = "600 50px 'Playfair Display', serif";
+    const hLines = bcWrapLines(ctx, s.headline, W - M*2);
+    let y = bcDrawLines(ctx, hLines, M, 350, 60, 'left');
+    if (s.body) {
+      ctx.font = "400 32px 'EB Garamond', serif";
+      const bLines = bcWrapLines(ctx, s.body, W - M*2);
+      bcDrawLines(ctx, bLines, M, y + 50, 44, 'left');
+    }
+  }
+
+  ctx.font = "400 26px 'EB Garamond', serif";
+  ctx.fillStyle = BC_COLORS.accent;
+  ctx.textAlign = 'center';
+  ctx.fillText(`${i + 1} / ${n}`, W/2, H - 70);
+}
+function bcRenderCurrent() {
+  const canvas = document.getElementById('bc-canvas');
+  bcRenderSlide(canvas.getContext('2d'), BC_INDEX);
+  document.getElementById('bc-navpos').textContent = `${BC_INDEX + 1}/${BC_SLIDES.length}`;
+  document.querySelectorAll('.bc-thumb').forEach((el, idx) => el.classList.toggle('active', idx === BC_INDEX));
+}
+function bcNav(delta) {
+  BC_INDEX = Math.max(0, Math.min(BC_SLIDES.length - 1, BC_INDEX + delta));
+  bcRenderCurrent();
+}
+async function bcRenderThumbs() {
+  const wrap = document.getElementById('bc-thumbs');
+  wrap.innerHTML = '';
+  for (let i = 0; i < BC_SLIDES.length; i++) {
+    const c = document.createElement('canvas');
+    c.width = 1080; c.height = 1350; c.className = 'bc-thumb';
+    await bcRenderSlide(c.getContext('2d'), i);
+    c.onclick = () => { BC_INDEX = i; bcRenderCurrent(); };
+    wrap.appendChild(c);
+  }
+  bcRenderCurrent();
+}
+async function openBuildModal(titleId, titleText) {
+  BC_TITLE_ID = titleId; BC_TITLE_TEXT = titleText; BC_SLIDES = []; BC_INDEX = 0;
+  document.getElementById('bc-subtitle').textContent = titleText;
+  document.getElementById('bc-status').textContent = 'Loading…';
+  document.getElementById('bc-status').style.display = 'block';
+  document.getElementById('bc-body').style.display = 'none';
+  document.getElementById('bc-download-btn').style.display = 'none';
+  document.getElementById('bc-canva-btn').style.display = 'none';
+  document.getElementById('build-carousel-modal').classList.add('open');
+  try {
+    let content = await w('getTitleContent', { pageId: titleId });
+    if (content.error) throw new Error(content.error);
+    if (!content.slides || !content.slides.length) {
+      document.getElementById('bc-status').textContent = 'No slide script yet — writing one now…';
+      const sr = await w('generateTitleSlides', { pageId: titleId, title: titleText, campaignId: CAMPAIGN_ID });
+      if (sr.error) throw new Error(sr.error);
+      content = await w('getTitleContent', { pageId: titleId });
+      if (content.error) throw new Error(content.error);
+    }
+    if (!content.slides || !content.slides.length) throw new Error('Still no slide content — try again or check the title in Notion.');
+    BC_SLIDES = content.slides;
+    document.getElementById('bc-status').style.display = 'none';
+    document.getElementById('bc-body').style.display = 'flex';
+    document.getElementById('bc-download-btn').style.display = 'inline-block';
+    document.getElementById('bc-canva-btn').style.display = 'inline-block';
+    await bcRenderThumbs();
+  } catch(e) {
+    document.getElementById('bc-status').textContent = 'Error: ' + e.message;
+  }
+}
+function closeBuildModal() {
+  document.getElementById('build-carousel-modal').classList.remove('open');
+  BC_TITLE_ID = null; BC_SLIDES = [];
+}
+async function bcDownloadAll() {
+  const btn = document.getElementById('bc-download-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Zipping…';
+  try {
+    const zip = new JSZip();
+    for (let i = 0; i < BC_SLIDES.length; i++) {
+      const c = document.createElement('canvas');
+      c.width = 1080; c.height = 1350;
+      await bcRenderSlide(c.getContext('2d'), i);
+      const blob = await new Promise(res => c.toBlob(res, 'image/png'));
+      zip.file(`slide-${String(i + 1).padStart(2, '0')}.png`, blob);
+    }
+    const content = await zip.generateAsync({ type: 'blob' });
+    const slug = BC_TITLE_TEXT.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'carousel';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(content);
+    a.download = `${slug}.zip`;
+    a.click();
+  } catch(e) {
+    alert('Download failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
   }
 }
 
@@ -3023,6 +3237,29 @@ async function runRegenKeywords() {
       <button class="ca-go" id="ca-go" onclick="runCreateAsset()">Generate</button>
     </div>
     <div class="ca-status" id="ca-status"></div>
+  </div>
+</div>
+<div id="build-carousel-modal" onclick="if(event.target===this)closeBuildModal()">
+  <div class="bc-box">
+    <h3>Build Carousel</h3>
+    <div class="bc-subtitle" id="bc-subtitle"></div>
+    <div class="bc-status" id="bc-status">Loading…</div>
+    <div class="bc-body" id="bc-body" style="display:none">
+      <div class="bc-canvas-wrap">
+        <canvas id="bc-canvas" width="1080" height="1350"></canvas>
+        <div class="bc-nav">
+          <button onclick="bcNav(-1)">‹ prev</button>
+          <span id="bc-navpos">1/1</span>
+          <button onclick="bcNav(1)">next ›</button>
+        </div>
+      </div>
+      <div class="bc-thumbs" id="bc-thumbs"></div>
+    </div>
+    <div class="bc-actions">
+      <button class="secondary" onclick="closeBuildModal()">Close</button>
+      <button class="secondary" id="bc-canva-btn" onclick="window.open('https://www.canva.com/create/instagram-posts/','_blank')" style="display:none">Open Canva ↗</button>
+      <button id="bc-download-btn" onclick="bcDownloadAll()" style="display:none">Download All PNGs</button>
+    </div>
   </div>
 </div>
 <div class="modal-overlay" id="fileUploadModal" onclick="if(event.target===this)closeFileUploadModal()">

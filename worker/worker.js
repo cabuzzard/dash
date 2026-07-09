@@ -1331,6 +1331,50 @@ export default {
         return json({ text });
       }
 
+      // ── getTitleContent ──
+      // Parses a Content Strategy title's body into structured sections —
+      // used by the carousel "Build" button to pull slide headline/body pairs
+      // (and Description/Sources for description-only concepts) back out of
+      // the heading_3 + paragraph/bullet structure written by
+      // generateTitleSlides / researchAndGenerateCarouselTitles.
+      if (body.action === "getTitleContent") {
+        const { pageId } = body;
+        if (!pageId) return json({ error: "pageId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/blocks/${dash(pageId)}/children?page_size=100`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+        });
+        const data = await resp.json();
+        const blocks = data.results || [];
+        const sections = [];
+        let current = null;
+        for (const b of blocks) {
+          if (b.type === "heading_3") {
+            current = { heading: (b.heading_3?.rich_text || []).map(t => t.plain_text).join(""), lines: [] };
+            sections.push(current);
+          } else if (current && (b.type === "paragraph" || b.type === "bulleted_list_item")) {
+            const rt = b[b.type]?.rich_text || [];
+            const text = rt.map(t => t.plain_text).join("");
+            const url = (rt.find(t => t.text?.link) || {}).text?.link?.url || null;
+            const bold = !!rt[0]?.annotations?.bold;
+            if (text) current.lines.push({ text, url, bold });
+          }
+        }
+        const findSection = name => sections.find(s => s.heading.toLowerCase() === name.toLowerCase());
+        const slides = sections
+          .filter(s => /^Slide \d+/i.test(s.heading))
+          .map(s => ({
+            label: s.heading,
+            headline: (s.lines.find(l => l.bold) || s.lines[0] || {}).text || "",
+            body: (s.lines.find(l => !l.bold) || {}).text || "",
+          }));
+        const description = findSection("Description")?.lines?.[0]?.text || "";
+        const caption = findSection("Caption")?.lines?.[0]?.text || "";
+        const hashtags = findSection("Hashtags")?.lines?.[0]?.text || "";
+        const sources = (findSection("Sources")?.lines || []).filter(l => l.url).map(l => ({ text: l.text, url: l.url }));
+        return json({ slides, description, caption, hashtags, sources });
+      }
+
       if (body.action === "updatePageBody") {
         const { pageId, text } = body;
         if (!pageId) return json({ error: "pageId required" }, 400);
