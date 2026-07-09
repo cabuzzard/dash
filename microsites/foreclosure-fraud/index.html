@@ -87,7 +87,10 @@
 .ds-icon .ds-icon-bg { flex:1; }
 .ds-icon .ds-icon-stripe { height:8px; display:flex; }
 .ds-icon .ds-icon-stripe span { flex:1; }
-.ds-icon.has-canva::after { content:'↗'; position:absolute; top:-1px; right:1px; font-size:9px; color:#fff; text-shadow:0 0 2px #000; }
+.ds-icon.is-default { border-color:#f6ad55; box-shadow:0 0 0 1px #f6ad55; }
+.ds-icon .ds-icon-star { position:absolute; top:-2px; left:1px; font-size:10px; color:#f6ad55; text-shadow:0 0 2px #000; pointer-events:none; }
+.ds-icon .ds-icon-canva { position:absolute; top:-2px; right:0; font-size:11px; color:#fff; text-shadow:0 0 3px #000; cursor:pointer; padding:0 1px; }
+.ds-icon .ds-icon-canva:hover { color:#f6ad55; }
 /* Build modal: spec picker chips */
 .bc-spec-picker { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px; }
 .bc-spec-chip { display:flex; align-items:center; gap:5px; padding:3px 8px; border:1px solid #333; border-radius:14px; cursor:pointer; font-size:11px; color:#c9c9c9; }
@@ -1511,6 +1514,10 @@ let DS_EDITING_ID = null;             // spec id being edited, or null when crea
 let DS_CAMPAIGN_SPECS = [];           // all specs belonging to this campaign (icon row + Build picker)
 
 // ── Campaign "Design" section: small clickable spec tiles ──
+// The campaign DEFAULT spec (gold ★) applies to every method's build/publish
+// unless a different one is picked at the Build (publish) stage. Click a tile
+// to make it the default; click the ↗ corner to open its Canva design.
+let DS_DEFAULT_ID = null;
 async function loadDesignSpecs() {
   const el = document.getElementById('r-design-specs');
   if (!el) return;
@@ -1518,6 +1525,7 @@ async function loadDesignSpecs() {
     const data = await w('getCampaignDesignSpecs', { campaignId: CAMPAIGN_ID });
     if (data.error) throw new Error(data.error);
     DS_CAMPAIGN_SPECS = data.specs || [];
+    DS_DEFAULT_ID = data.attachedId || null;
     renderDesignSpecIcons();
   } catch(e) {
     el.innerHTML = '<span class="empty" style="font-size:11px;color:#fc8181">' + e.message + '</span>';
@@ -1529,17 +1537,32 @@ function renderDesignSpecIcons() {
   if (!DS_CAMPAIGN_SPECS.length) { el.innerHTML = '<span class="empty" style="font-size:11px">No specs — ▶ to generate</span>'; return; }
   el.innerHTML = '';
   DS_CAMPAIGN_SPECS.forEach(s => {
+    const isDefault = s.id === DS_DEFAULT_ID;
     const icon = document.createElement('div');
-    icon.className = 'ds-icon' + (s.canvaLink ? ' has-canva' : '');
-    icon.title = s.name + (s.canvaLink ? ' — opens Canva ↗' : ' — click to edit');
+    icon.className = 'ds-icon' + (s.canvaLink ? ' has-canva' : '') + (isDefault ? ' is-default' : '');
+    icon.title = s.name + (isDefault ? ' — campaign DEFAULT (applies to all methods)' : ' — click to set as campaign default') + (s.canvaLink ? ' · ↗ opens Canva' : '');
     icon.innerHTML = `<div class="ds-icon-bg" style="background:${s.bg || '#ccc'}"></div>` +
-      `<div class="ds-icon-stripe"><span style="background:${s.ink || '#666'}"></span><span style="background:${s.accent || '#999'}"></span></div>`;
-    icon.onclick = () => {
-      if (s.canvaLink) window.open(s.canvaLink, '_blank');
-      else openDesignSpecModal(s.id);
+      `<div class="ds-icon-stripe"><span style="background:${s.ink || '#666'}"></span><span style="background:${s.accent || '#999'}"></span></div>` +
+      (isDefault ? `<span class="ds-icon-star">★</span>` : '') +
+      (s.canvaLink ? `<span class="ds-icon-canva" title="Open Canva design">↗</span>` : '');
+    // Click the ↗ corner → open Canva; click anywhere else → set as default.
+    icon.onclick = (e) => {
+      if (e.target.classList.contains('ds-icon-canva')) { window.open(s.canvaLink, '_blank'); return; }
+      setCampaignDefaultSpec(s.id);
     };
     el.appendChild(icon);
   });
+}
+async function setCampaignDefaultSpec(specId) {
+  const prev = DS_DEFAULT_ID;
+  DS_DEFAULT_ID = specId; renderDesignSpecIcons(); // optimistic
+  try {
+    const r = await w('setCampaignDesignSpec', { campaignId: CAMPAIGN_ID, designSpecId: specId });
+    if (r.error) throw new Error(r.error);
+  } catch(e) {
+    DS_DEFAULT_ID = prev; renderDesignSpecIcons();
+    alert('Could not set default: ' + e.message);
+  }
 }
 async function generateCampaignDesignSpecs() {
   const btn = document.getElementById('ds-gen-btn');
