@@ -2984,23 +2984,35 @@ Notes: ${notes || "(none)"}`;
         if (!mergedKeywords) return json({ error: "No campaign Keywords on file and no product selected — add campaign Keywords in Research first" }, 400);
 
         // ── Live Instagram benchmarking (real posts, real engagement) when
-        // APIFY_TOKEN is configured. Uses the first campaign keyword as the
-        // hashtag anchor; keyword-hit scoring draws on the full merged set.
+        // APIFY_TOKEN is configured. Long invented keyword phrases (e.g. "real
+        // accountability for founders") are almost never real hashtags, so try
+        // the shortest few merged-keyword tokens in order — short, generic
+        // words are far more likely to be hashtags anyone actually used —
+        // stopping at the first one that returns real posts.
         const AT = (env.APIFY_TOKEN || '').trim();
         const kwTokens = mergedKeywords.split(/[,\n]/).map(k => k.trim().toLowerCase()).filter(Boolean);
-        const primaryTag = ((campaignKeywords.split(/[,\n]/)[0] || kwTokens[0] || '').trim()).replace(/[^a-z0-9]/gi, '').toLowerCase();
+        const candidateTags = Array.from(new Set(
+          kwTokens.map(k => k.replace(/[^a-z0-9]/gi, '').toLowerCase()).filter(Boolean)
+        )).sort((a, b) => a.length - b.length).slice(0, 3);
         let refs = [];
         let refNote = '';
-        if (AT && primaryTag) {
-          try {
-            const res = await fetch(
-              `https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${AT}&timeout=55`,
-              { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ search: primaryTag, searchType: 'hashtag', searchLimit: 1, resultsType: 'posts', resultsLimit: 30 }) }
-            );
-            if (res.ok) {
+        let primaryTag = candidateTags[0] || '';
+        if (AT && candidateTags.length) {
+          for (const tag of candidateTags) {
+            try {
+              const res = await fetch(
+                `https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${AT}&timeout=55`,
+                { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ search: tag, searchType: 'hashtag', searchLimit: 1, resultsType: 'posts', resultsLimit: 30 }) }
+              );
+              if (!res.ok) { refNote = 'Instagram reference search failed.'; continue; }
               const items = await res.json();
-              const posts = Array.isArray(items) ? items : [];
+              // Apify returns a single { error, errorDescription } item (not an
+              // HTTP error) when a hashtag has no results — filter those out so
+              // they aren't miscounted as a real reference post.
+              const posts = (Array.isArray(items) ? items : []).filter(p => p && !p.error);
+              if (!posts.length) { refNote = `No results for any of #${candidateTags.join(', #')}.`; continue; }
+              primaryTag = tag;
               refs = posts.map(p => {
                 const caption = (p.caption || '');
                 const hay = (caption + ' ' + (Array.isArray(p.hashtags) ? p.hashtags.join(' ') : '')).toLowerCase();
@@ -3010,13 +3022,13 @@ Notes: ${notes || "(none)"}`;
                 const comments = Math.max(p.commentsCount ?? 0, 0);
                 const engagement = likes + comments * 3;
                 const score = engagement * (1 + keywordHits * 0.4) * (isCarousel ? 1.4 : 1);
-                return { owner: p.ownerUsername || 'unknown', caption: caption.slice(0, 200), likes, comments, isCarousel, slides: p.carouselImageCount || 0, keywordHits, score };
+                const url = p.url || (p.shortCode ? `https://www.instagram.com/p/${p.shortCode}/` : '');
+                return { owner: p.ownerUsername || 'unknown', caption: caption.slice(0, 200), likes, comments, isCarousel, slides: p.carouselImageCount || 0, keywordHits, score, url };
               }).sort((a, b) => b.score - a.score).slice(0, 8);
-              if (!refs.length) refNote = `Searched #${primaryTag} on Instagram but found no posts to benchmark against.`;
-            } else {
-              refNote = 'Instagram reference search failed.';
-            }
-          } catch(e) { refNote = 'Instagram reference search failed.'; }
+              refNote = '';
+              break;
+            } catch(e) { refNote = 'Instagram reference search failed.'; }
+          }
         } else if (!AT) {
           refNote = 'APIFY_TOKEN not configured — no live Instagram benchmarking available.';
         }
@@ -3071,10 +3083,15 @@ Return ONLY a JSON array of exactly 10 objects, each shaped exactly like this �
           return json({ error: "Failed to parse concepts JSON: " + e.message + " | RAW: " + rawText.slice(0, 300) }, 500);
         }
 
-        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: opts.url ? { url: opts.url } : null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
         const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
         const para = (text, opts = {}) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text, opts) } });
-        const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
+        const bullet = (text, opts = {}) => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text, opts) } });
+
+        // Up to 5 source links written into every title's body for comparison —
+        // shared across the batch since the Instagram benchmarking was one
+        // search covering all 10 concepts, not a per-title lookup.
+        const sourceRefs = refs.filter(r => r.url).slice(0, 5);
 
         let created = 0;
         const saved = [];
@@ -3103,6 +3120,10 @@ Return ONLY a JSON array of exactly 10 objects, each shaped exactly like this �
           if (existingTrendResearch) children.push(bullet(`Existing research considered: ${existingTrendSource}`));
           if (basedOn) children.push(bullet(`Based on: ${basedOn}`));
           if (refs.length) children.push(bullet(`Benchmarked against ${refs.length} live Instagram posts (${carouselRefCount} actual carousels) for #${primaryTag}`));
+          if (sourceRefs.length) {
+            children.push(heading('Sources'));
+            sourceRefs.forEach(r => children.push(bullet(`@${r.owner}${r.isCarousel ? ' (carousel)' : ''} — ${r.likes} likes, ${r.comments} comments`, { url: r.url })));
+          }
 
           const resp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
