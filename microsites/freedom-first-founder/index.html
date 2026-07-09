@@ -72,6 +72,14 @@
 .ds-actions button { background:#f6ad55; color:#1a1a1a; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; }
 .ds-actions button.secondary { background:none; border:1px solid #333; color:#c9c9c9; }
 .ds-status { font-size:12px; min-height:16px; }
+.ds-list { display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; }
+.ds-spec-card { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #333; border-radius:6px; }
+.ds-spec-card.attached { border-color:#f6ad55; background:rgba(246,173,85,.08); }
+.ds-swatches { display:flex; gap:3px; flex-shrink:0; }
+.ds-swatch { width:14px; height:14px; border-radius:50%; border:1px solid rgba(255,255,255,.2); }
+.ds-spec-name { flex:1; font-size:13px; color:#c9c9c9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ds-spec-card button { background:none; border:1px solid #333; color:#999; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:11px; flex-shrink:0; }
+.ds-spec-card button:hover { border-color:#f6ad55; color:#f6ad55; }
 #create-asset-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000; align-items:center; justify-content:center; }
 #create-asset-modal.open { display:flex; }
 .ca-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:24px; width:420px; max-width:92vw; max-height:86vh; overflow-y:auto; }
@@ -1356,7 +1364,7 @@ async function openBuildModal(titleId, titleText, productId) {
   document.getElementById('build-carousel-modal').classList.add('open');
   try {
     const [ds, contentFirst] = await Promise.all([
-      w('getDesignSpec', { campaignId: CAMPAIGN_ID, productId }).catch(() => null),
+      w('getEffectiveDesignSpec', { campaignId: CAMPAIGN_ID, productId }).catch(() => null),
       w('getTitleContent', { pageId: titleId }),
     ]);
     if (ds && ds.spec) BC_SPEC = ds.spec;
@@ -1410,82 +1418,182 @@ async function bcDownloadAll() {
 }
 
 // ── DESIGN SPEC ───────────────────────────────────────────────────────
-// Campaign- (and optional per-product-override) branding applied by the
-// Build Carousel renderer above, instead of hardcoded colors/fonts.
-let DS_RAW_CAMPAIGN = {}, DS_RAW_PRODUCTS = {};
-function dsApplyToForm(spec) {
-  document.getElementById('ds-bg').value = spec.bg || BC_DEFAULT_SPEC.bg;
-  document.getElementById('ds-ink').value = spec.ink || BC_DEFAULT_SPEC.ink;
-  document.getElementById('ds-accent').value = spec.accent || BC_DEFAULT_SPEC.accent;
-  document.getElementById('ds-headline-font').value = spec.headlineFont || '';
-  document.getElementById('ds-body-font').value = spec.bodyFont || '';
-  document.getElementById('ds-notes').value = spec.notes || '';
+// Reusable named branding records (own DB, same pattern as Methods) that
+// attach to the campaign default and/or a specific product via relation.
+// The Build Carousel renderer resolves the effective one per-render.
+let DS_ALL_SPECS = [];
+let DS_CAMPAIGN_ATTACHED = null;      // spec id attached to the campaign itself
+let DS_PRODUCT_ATTACHED = {};         // productId -> spec id attached to that product
+let DS_EDITING_ID = null;             // spec id being edited, or null when creating new
+
+function dsCurrentTarget() { return document.getElementById('ds-target').value; }
+function dsAttachedIdForTarget(target) {
+  return target === '__campaign__' ? DS_CAMPAIGN_ATTACHED : (DS_PRODUCT_ATTACHED[target] || null);
+}
+function dsRenderList() {
+  const target = dsCurrentTarget();
+  const attachedId = dsAttachedIdForTarget(target);
+  const list = document.getElementById('ds-list');
+  list.innerHTML = '';
+  if (!DS_ALL_SPECS.length) { list.innerHTML = '<div class="empty">No Design Specs yet — create one below.</div>'; }
+  DS_ALL_SPECS.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'ds-spec-card' + (s.id === attachedId ? ' attached' : '');
+    card.innerHTML = `
+      <span class="ds-swatches">
+        <span class="ds-swatch" style="background:${s.bg || '#ccc'}"></span>
+        <span class="ds-swatch" style="background:${s.ink || '#666'}"></span>
+        <span class="ds-swatch" style="background:${s.accent || '#999'}"></span>
+      </span>
+      <span class="ds-spec-name">${s.name}</span>
+      <button data-act="attach">${s.id === attachedId ? 'Attached ✓' : 'Attach'}</button>
+      <button data-act="edit">Edit</button>
+      <button data-act="delete">✕</button>
+    `;
+    card.querySelector('[data-act="attach"]').onclick = () => dsAttach(s.id === attachedId ? null : s.id);
+    card.querySelector('[data-act="edit"]').onclick = () => dsShowCreateForm(s.id);
+    card.querySelector('[data-act="delete"]').onclick = () => dsDelete(s.id);
+    list.appendChild(card);
+  });
+  document.getElementById('ds-current').textContent = attachedId
+    ? `Currently attached: ${(DS_ALL_SPECS.find(s => s.id === attachedId) || {}).name || 'Unknown'}`
+    : 'Currently attached: none (using built-in defaults)';
 }
 async function openDesignSpecModal() {
   const status = document.getElementById('ds-status');
   status.textContent = 'Loading…'; status.style.color = '#888';
   document.getElementById('design-spec-modal').classList.add('open');
+  dsHideCreateForm();
   const sel = document.getElementById('ds-target');
   sel.innerHTML = '<option value="__campaign__">Campaign default</option>' +
     (PRODUCT_ITEMS || []).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
   sel.value = '__campaign__';
-  DS_RAW_PRODUCTS = {};
+  DS_PRODUCT_ATTACHED = {};
   try {
-    const ds = await w('getDesignSpec', { campaignId: CAMPAIGN_ID });
-    if (ds.error) throw new Error(ds.error);
-    DS_RAW_CAMPAIGN = ds.campaignSpec || {};
-    dsApplyToForm({ ...BC_DEFAULT_SPEC, ...DS_RAW_CAMPAIGN });
+    const [list, eff] = await Promise.all([
+      w('searchDesignSpecs', {}),
+      w('getEffectiveDesignSpec', { campaignId: CAMPAIGN_ID, productId: '__none__' }),
+    ]);
+    if (list.error) throw new Error(list.error);
+    if (eff.error) throw new Error(eff.error);
+    DS_ALL_SPECS = list.specs || [];
+    DS_CAMPAIGN_ATTACHED = eff.campaignSpec ? eff.campaignSpec.id : null;
+    dsRenderList();
     status.textContent = '';
   } catch(e) {
     status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
   }
 }
 async function dsLoadTarget() {
-  const target = document.getElementById('ds-target').value;
+  const target = dsCurrentTarget();
+  if (target === '__campaign__' || target in DS_PRODUCT_ATTACHED) { dsRenderList(); return; }
   const status = document.getElementById('ds-status');
   status.textContent = 'Loading…'; status.style.color = '#888';
   try {
-    if (target === '__campaign__') {
-      dsApplyToForm({ ...BC_DEFAULT_SPEC, ...DS_RAW_CAMPAIGN });
-    } else {
-      if (!(target in DS_RAW_PRODUCTS)) {
-        const ds = await w('getDesignSpec', { campaignId: CAMPAIGN_ID, productId: target });
-        if (ds.error) throw new Error(ds.error);
-        DS_RAW_PRODUCTS[target] = ds.productSpec || {};
-      }
-      // Shows the effective (campaign + product override) values, so an
-      // untouched product still previews something sensible.
-      dsApplyToForm({ ...BC_DEFAULT_SPEC, ...DS_RAW_CAMPAIGN, ...DS_RAW_PRODUCTS[target] });
-    }
+    const eff = await w('getEffectiveDesignSpec', { campaignId: CAMPAIGN_ID, productId: target });
+    if (eff.error) throw new Error(eff.error);
+    DS_PRODUCT_ATTACHED[target] = eff.productSpec ? eff.productSpec.id : null;
+    dsRenderList();
     status.textContent = '';
   } catch(e) {
     status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
   }
 }
-async function dsSave() {
-  const target = document.getElementById('ds-target').value;
+async function dsAttach(specId) {
+  const target = dsCurrentTarget();
+  const status = document.getElementById('ds-status');
+  status.textContent = specId ? 'Attaching…' : 'Unlinking…'; status.style.color = '#888';
+  try {
+    const r = target === '__campaign__'
+      ? await w('setCampaignDesignSpec', { campaignId: CAMPAIGN_ID, designSpecId: specId })
+      : await w('setProductDesignSpec', { productId: target, designSpecId: specId });
+    if (r.error) throw new Error(r.error);
+    if (target === '__campaign__') DS_CAMPAIGN_ATTACHED = specId; else DS_PRODUCT_ATTACHED[target] = specId;
+    dsRenderList();
+    status.textContent = specId ? 'Attached ✓' : 'Unlinked';
+    status.style.color = '#68d391';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
+  }
+}
+async function dsDelete(specId) {
+  const status = document.getElementById('ds-status');
+  status.textContent = 'Deleting…'; status.style.color = '#888';
+  try {
+    const r = await w('deleteDesignSpec', { id: specId });
+    if (r.error) throw new Error(r.error);
+    DS_ALL_SPECS = DS_ALL_SPECS.filter(s => s.id !== specId);
+    if (DS_CAMPAIGN_ATTACHED === specId) DS_CAMPAIGN_ATTACHED = null;
+    Object.keys(DS_PRODUCT_ATTACHED).forEach(k => { if (DS_PRODUCT_ATTACHED[k] === specId) DS_PRODUCT_ATTACHED[k] = null; });
+    dsRenderList();
+    status.textContent = 'Deleted';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
+  }
+}
+function dsShowCreateForm(editId) {
+  DS_EDITING_ID = editId || null;
+  const spec = editId ? DS_ALL_SPECS.find(s => s.id === editId) : null;
+  document.getElementById('ds-name').value = spec ? spec.name : '';
+  document.getElementById('ds-bg').value = (spec && spec.bg) || BC_DEFAULT_SPEC.bg;
+  document.getElementById('ds-ink').value = (spec && spec.ink) || BC_DEFAULT_SPEC.ink;
+  document.getElementById('ds-accent').value = (spec && spec.accent) || BC_DEFAULT_SPEC.accent;
+  document.getElementById('ds-headline-font').value = (spec && spec.headlineFont) || '';
+  document.getElementById('ds-body-font').value = (spec && spec.bodyFont) || '';
+  document.getElementById('ds-notes').value = (spec && spec.notes) || '';
+  document.getElementById('ds-canva-link').value = (spec && spec.canvaLink) || '';
+  document.getElementById('ds-form').style.display = 'flex';
+  dsPreview();
+}
+function dsHideCreateForm() {
+  DS_EDITING_ID = null;
+  document.getElementById('ds-form').style.display = 'none';
+}
+function dsPreview() {
   const spec = {
     bg: document.getElementById('ds-bg').value,
     ink: document.getElementById('ds-ink').value,
     accent: document.getElementById('ds-accent').value,
     headlineFont: document.getElementById('ds-headline-font').value.trim() || BC_DEFAULT_SPEC.headlineFont,
     bodyFont: document.getElementById('ds-body-font').value.trim() || BC_DEFAULT_SPEC.bodyFont,
+  };
+  // Reuses the real Build renderer so the preview is pixel-identical to what
+  // Build will actually produce — briefly swaps the shared globals it reads.
+  const savedSpec = BC_SPEC, savedSlides = BC_SLIDES;
+  BC_SPEC = spec;
+  BC_SLIDES = [{ headline: 'Sample Headline Here', body: 'A short subtext line to preview the pairing.' }];
+  bcRenderSlide(document.getElementById('ds-preview-canvas').getContext('2d'), 0)
+    .finally(() => { BC_SPEC = savedSpec; BC_SLIDES = savedSlides; });
+}
+async function dsSaveSpec() {
+  const name = document.getElementById('ds-name').value.trim();
+  if (!name) { document.getElementById('ds-status').textContent = 'Name required'; document.getElementById('ds-status').style.color = '#fc8181'; return; }
+  const spec = {
+    name,
+    bg: document.getElementById('ds-bg').value,
+    ink: document.getElementById('ds-ink').value,
+    accent: document.getElementById('ds-accent').value,
+    headlineFont: document.getElementById('ds-headline-font').value.trim() || BC_DEFAULT_SPEC.headlineFont,
+    bodyFont: document.getElementById('ds-body-font').value.trim() || BC_DEFAULT_SPEC.bodyFont,
     notes: document.getElementById('ds-notes').value.trim(),
+    canvaLink: document.getElementById('ds-canva-link').value.trim(),
   };
   const status = document.getElementById('ds-status');
   status.textContent = 'Saving…'; status.style.color = '#888';
   try {
-    if (target === '__campaign__') {
-      const r = await w('updateCampaignDesignSpec', { campaignId: CAMPAIGN_ID, spec });
+    if (DS_EDITING_ID) {
+      const r = await w('updateDesignSpec', { id: DS_EDITING_ID, ...spec });
       if (r.error) throw new Error(r.error);
-      DS_RAW_CAMPAIGN = spec;
+      const idx = DS_ALL_SPECS.findIndex(s => s.id === DS_EDITING_ID);
+      if (idx !== -1) DS_ALL_SPECS[idx] = { ...spec, id: DS_EDITING_ID };
     } else {
-      const r = await w('updateProductDesignSpec', { productId: target, spec });
+      const r = await w('createDesignSpec', spec);
       if (r.error) throw new Error(r.error);
-      DS_RAW_PRODUCTS[target] = spec;
+      DS_ALL_SPECS.push({ ...spec, id: r.id });
     }
+    dsHideCreateForm();
+    dsRenderList();
     status.textContent = 'Saved ✓'; status.style.color = '#68d391';
-    setTimeout(closeDesignSpecModal, 900);
   } catch(e) {
     status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
   }
@@ -3396,27 +3504,45 @@ async function runRegenKeywords() {
 </div>
 <div id="design-spec-modal" onclick="if(event.target===this)closeDesignSpecModal()">
   <div class="ds-box">
-    <h3>Design Spec</h3>
-    <div class="ds-subtitle">Applied when the 🎨 Build button renders a carousel. Product overrides the campaign default when one is picked.</div>
+    <h3>Design Specs</h3>
+    <div class="ds-subtitle">Reusable branding records — attach one to the campaign default and/or to a specific product. The 🎨 Build button uses whichever applies (product overrides campaign).</div>
     <div class="ds-field">
-      <label>Applies to</label>
+      <label>Attach to</label>
       <select id="ds-target" onchange="dsLoadTarget()">
         <option value="__campaign__">Campaign default</option>
       </select>
     </div>
-    <div class="ds-row">
-      <div class="ds-field"><label>Background</label><input type="color" id="ds-bg"></div>
-      <div class="ds-field"><label>Text / Ink</label><input type="color" id="ds-ink"></div>
-      <div class="ds-field"><label>Accent</label><input type="color" id="ds-accent"></div>
+    <div id="ds-current" style="font-size:12px;color:#999"></div>
+
+    <div id="ds-list" class="ds-list"></div>
+    <button class="secondary" style="align-self:flex-start" onclick="dsShowCreateForm()">+ New Design Spec</button>
+
+    <div id="ds-form" style="display:none; flex-direction:column; gap:12px;">
+      <div class="ds-field"><label>Name</label><input type="text" id="ds-name" placeholder="e.g. Editorial Minimal"></div>
+      <div class="ds-row">
+        <div class="ds-field"><label>Background</label><input type="color" id="ds-bg" oninput="dsPreview()"></div>
+        <div class="ds-field"><label>Text / Ink</label><input type="color" id="ds-ink" oninput="dsPreview()"></div>
+        <div class="ds-field"><label>Accent</label><input type="color" id="ds-accent" oninput="dsPreview()"></div>
+      </div>
+      <div class="ds-row">
+        <div class="ds-field"><label>Headline Font</label><input type="text" id="ds-headline-font" placeholder="Playfair Display" oninput="dsPreview()"></div>
+        <div class="ds-field"><label>Body Font</label><input type="text" id="ds-body-font" placeholder="EB Garamond" oninput="dsPreview()"></div>
+      </div>
+      <div class="ds-field"><label>Aesthetic Description <span style="text-transform:none;color:#555">— e.g. "editorial minimal, no photography, no faces, no loud colors"</span></label><textarea id="ds-notes"></textarea></div>
+      <div class="ds-field"><label>Canva Link <span style="text-transform:none;color:#555">— paste after you build the real tile in Canva (I can't create Canva designs from here)</span></label><input type="text" id="ds-canva-link" placeholder="https://canva.com/design/..."></div>
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <canvas id="ds-preview-canvas" width="1080" height="1350" style="width:120px;height:150px;border-radius:4px;border:1px solid #333;flex-shrink:0"></canvas>
+        <div style="font-size:11px;color:#666;padding-top:4px">Live preview of one representative tile — this is what the 🎨 Build button will match. Use "Open Canva" to build the real thing there, then paste its link above.</div>
+      </div>
+      <div class="ds-actions">
+        <button class="secondary" onclick="window.open('https://www.canva.com/create/instagram-posts/','_blank')">Open Canva ↗</button>
+        <button class="secondary" onclick="dsHideCreateForm()">Cancel</button>
+        <button onclick="dsSaveSpec()">Save</button>
+      </div>
     </div>
-    <div class="ds-row">
-      <div class="ds-field"><label>Headline Font</label><input type="text" id="ds-headline-font" placeholder="Playfair Display"></div>
-      <div class="ds-field"><label>Body Font</label><input type="text" id="ds-body-font" placeholder="EB Garamond"></div>
-    </div>
-    <div class="ds-field"><label>Style Notes <span style="text-transform:none;color:#555">— reference only, e.g. "no photography, no faces"</span></label><textarea id="ds-notes"></textarea></div>
+
     <div class="ds-actions">
-      <button class="secondary" onclick="closeDesignSpecModal()">Cancel</button>
-      <button onclick="dsSave()">Save</button>
+      <button class="secondary" onclick="closeDesignSpecModal()">Close</button>
     </div>
     <div class="ds-status" id="ds-status"></div>
   </div>

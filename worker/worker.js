@@ -19,6 +19,7 @@ const TRADES_DB          = "2207133ee3b04ff496e5e75415e3e43d";
 const RUNS_DB            = "21c676fd91b74137b5f3ab57167a0849";
 const DRIVES_DB          = "3751f7d3a4bb806cb133ff9182306ec8";
 const RESUMES_DB         = "3751f7d3a4bb80599583c9aef8d10b05";
+const DESIGN_SPECS_DB    = "3981f7d3a4bb817c8edad15db64fa50d";
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -2965,53 +2966,130 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true, slideCount: n });
       }
 
-      // ── Design Spec (campaign- or product-level carousel branding) ──
+      // ── Design Spec (reusable branding records, attached to a campaign
+      // and/or a specific product via relation — same pattern as Methods) ──
       const DESIGN_SPEC_DEFAULTS = {
         bg: "#F7F1E6", ink: "#2B2620", accent: "#8A6D4B",
         headlineFont: "Playfair Display", bodyFont: "EB Garamond",
         notes: "Editorial minimal — no photography, no faces, no loud colors.",
+        canvaLink: "",
       };
-      const parseDesignSpec = raw => { try { const p = JSON.parse(raw || "{}"); return (p && typeof p === "object") ? p : {}; } catch(e) { return {}; } };
+      const dsDash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+      const dsHdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+      const dsFromPage = p => ({
+        id:           p.id.replace(/-/g,""),
+        name:         p.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+        bg:           p.properties?.Background?.rich_text?.map(t => t.plain_text).join("") || "",
+        ink:          p.properties?.Ink?.rich_text?.map(t => t.plain_text).join("") || "",
+        accent:       p.properties?.Accent?.rich_text?.map(t => t.plain_text).join("") || "",
+        headlineFont: p.properties?.["Headline Font"]?.rich_text?.map(t => t.plain_text).join("") || "",
+        bodyFont:     p.properties?.["Body Font"]?.rich_text?.map(t => t.plain_text).join("") || "",
+        notes:        p.properties?.["Aesthetic Description"]?.rich_text?.map(t => t.plain_text).join("") || "",
+        canvaLink:    p.properties?.["Canva Link"]?.url || "",
+      });
 
-      if (body.action === "getDesignSpec") {
+      if (body.action === "searchDesignSpecs") {
+        const { query } = body;
+        const rows = await notionQuery(DESIGN_SPECS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
+        const specs = rows.map(r => dsFromPage(r)).filter(s => !query || s.name.toLowerCase().includes(query.toLowerCase()));
+        return json({ specs: specs.slice(0, 100) });
+      }
+
+      if (body.action === "createDesignSpec") {
+        const { name, bg, ink, accent, headlineFont, bodyFont, notes, canvaLink } = body;
+        if (!name) return json({ error: "name required" }, 400);
+        const rt = v => v ? [{ type: "text", text: { content: String(v).slice(0, 2000) } }] : [];
+        const props = {
+          Name: { title: [{ type: "text", text: { content: name } }] },
+          Background: { rich_text: rt(bg) }, Ink: { rich_text: rt(ink) }, Accent: { rich_text: rt(accent) },
+          "Headline Font": { rich_text: rt(headlineFont) }, "Body Font": { rich_text: rt(bodyFont) },
+          "Aesthetic Description": { rich_text: rt(notes) },
+        };
+        if (canvaLink) props["Canva Link"] = { url: canvaLink };
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: DESIGN_SPECS_DB }, properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,"") });
+      }
+
+      if (body.action === "updateDesignSpec") {
+        const { id, name, bg, ink, accent, headlineFont, bodyFont, notes, canvaLink } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const rt = v => v ? [{ type: "text", text: { content: String(v).slice(0, 2000) } }] : [];
+        const props = {
+          Background: { rich_text: rt(bg) }, Ink: { rich_text: rt(ink) }, Accent: { rich_text: rt(accent) },
+          "Headline Font": { rich_text: rt(headlineFont) }, "Body Font": { rich_text: rt(bodyFont) },
+          "Aesthetic Description": { rich_text: rt(notes) },
+          "Canva Link": { url: canvaLink || null },
+        };
+        if (name) props.Name = { title: [{ type: "text", text: { content: name } }] };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dsDash(id)}`, {
+          method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: props }),
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Update failed" }, resp.status); }
+        return json({ success: true });
+      }
+
+      if (body.action === "deleteDesignSpec") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dsDash(id)}`, {
+          method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: "Delete failed" }, resp.status); }
+        return json({ success: true });
+      }
+
+      if (body.action === "setCampaignDesignSpec") {
+        const { campaignId, designSpecId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, {
+          method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Design Spec": { relation: designSpecId ? [{ id: dsDash(designSpecId) }] : [] } } }),
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Update failed" }, resp.status); }
+        return json({ success: true });
+      }
+
+      if (body.action === "setProductDesignSpec") {
+        const { productId, designSpecId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, {
+          method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Design Spec": { relation: designSpecId ? [{ id: dsDash(designSpecId) }] : [] } } }),
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Update failed" }, resp.status); }
+        return json({ success: true });
+      }
+
+      // Resolves the effective design spec for a Build render: campaign's
+      // attached spec, overridden field-by-field by the product's attached
+      // spec (if the title has a product and it has its own spec), falling
+      // back to DESIGN_SPEC_DEFAULTS for anything still unset.
+      if (body.action === "getEffectiveDesignSpec") {
         const { campaignId, productId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
-        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
         const [campPage, prodPage] = await Promise.all([
-          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json()),
-          hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json()) : Promise.resolve(null),
+          fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json()),
+          hasProduct ? fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
         ]);
-        const campaignSpec = parseDesignSpec(campPage.properties?.["Design Spec"]?.rich_text?.map(t => t.plain_text).join(""));
-        const productSpec = hasProduct ? parseDesignSpec(prodPage?.properties?.["Design Spec"]?.rich_text?.map(t => t.plain_text).join("")) : {};
-        const merged = { ...DESIGN_SPEC_DEFAULTS, ...campaignSpec, ...productSpec };
-        return json({ spec: merged, campaignSpec, productSpec, defaults: DESIGN_SPEC_DEFAULTS });
-      }
-
-      if (body.action === "updateCampaignDesignSpec") {
-        const { campaignId, spec } = body;
-        if (!campaignId) return json({ error: "campaignId required" }, 400);
-        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
-        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Design Spec": { rich_text: [{ type: "text", text: { content: JSON.stringify(spec || {}).slice(0, 2000) } }] } } }),
-        });
-        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Save failed" }, resp.status); }
-        return json({ success: true });
-      }
-
-      if (body.action === "updateProductDesignSpec") {
-        const { productId, spec } = body;
-        if (!productId) return json({ error: "productId required" }, 400);
-        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
-        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Design Spec": { rich_text: [{ type: "text", text: { content: JSON.stringify(spec || {}).slice(0, 2000) } }] } } }),
-        });
-        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Save failed" }, resp.status); }
-        return json({ success: true });
+        const campSpecId = campPage.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+        const prodSpecId = hasProduct ? (prodPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null) : null;
+        const [campSpecPage, prodSpecPage] = await Promise.all([
+          campSpecId ? fetch(`https://api.notion.com/v1/pages/${campSpecId}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
+          prodSpecId ? fetch(`https://api.notion.com/v1/pages/${prodSpecId}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
+        ]);
+        const stripEmpty = obj => Object.fromEntries(Object.entries(obj).filter(([k, v]) => k !== "id" && k !== "name" && v));
+        const campaignSpec = campSpecPage ? dsFromPage(campSpecPage) : null;
+        const productSpec = prodSpecPage ? dsFromPage(prodSpecPage) : null;
+        const merged = { ...DESIGN_SPEC_DEFAULTS, ...(campaignSpec ? stripEmpty(campaignSpec) : {}), ...(productSpec ? stripEmpty(productSpec) : {}) };
+        return json({ spec: merged, campaignSpec, productSpec });
       }
 
       // ── researchAndGenerateCarouselTitles ──
