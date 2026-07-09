@@ -1033,7 +1033,7 @@ async function loadTitles() {
     function makeTitleRow(t) {
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       return div;
     }
     function renderGroupingLevel(titles, container) {
@@ -1142,6 +1142,18 @@ async function loadTitles() {
   } catch(e) {
     devEl.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
     pubEl.innerHTML = '<div class="empty">—</div>';
+  }
+}
+
+async function deleteTitleRow(titleId, titleText, btn) {
+  if (!confirm(`Delete "${titleText}"? This archives the page in Notion.`)) return;
+  btn.disabled = true;
+  try {
+    await w('deleteTitle', { titleId });
+    await loadTitles();
+  } catch(e) {
+    btn.disabled = false;
+    alert('Error: ' + e.message);
   }
 }
 
