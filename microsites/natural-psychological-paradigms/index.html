@@ -1356,6 +1356,7 @@ async function openBuildModal(titleId, titleText, productId) {
   BC_TITLE_ID = titleId; BC_TITLE_TEXT = titleText; BC_SLIDES = []; BC_INDEX = 0;
   BC_SPEC = { ...BC_DEFAULT_SPEC };
   document.getElementById('bc-subtitle').textContent = titleText;
+  document.getElementById('bc-spec-note').textContent = '';
   document.getElementById('bc-status').textContent = 'Loading…';
   document.getElementById('bc-status').style.display = 'block';
   document.getElementById('bc-body').style.display = 'none';
@@ -1368,6 +1369,10 @@ async function openBuildModal(titleId, titleText, productId) {
       w('getTitleContent', { pageId: titleId }),
     ]);
     if (ds && ds.spec) BC_SPEC = ds.spec;
+    const activeSpec = ds && (ds.productSpec || ds.campaignSpec);
+    document.getElementById('bc-spec-note').textContent = activeSpec
+      ? `Design: ${activeSpec.name}${ds.productSpec ? ' (product override)' : ' (campaign default)'}`
+      : 'Design: built-in default (no Design Spec attached — set one via the 🎨 button next to Methods)';
     let content = contentFirst;
     if (content.error) throw new Error(content.error);
     if (!content.slides || !content.slides.length) {
@@ -3483,6 +3488,7 @@ async function runRegenKeywords() {
   <div class="bc-box">
     <h3>Build Carousel</h3>
     <div class="bc-subtitle" id="bc-subtitle"></div>
+    <div class="bc-subtitle" id="bc-spec-note" style="color:#f6ad55"></div>
     <div class="bc-status" id="bc-status">Loading…</div>
     <div class="bc-body" id="bc-body" style="display:none">
       <div class="bc-canvas-wrap">
