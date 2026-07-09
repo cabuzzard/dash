@@ -2841,15 +2841,17 @@ No other text. No markdown fences.`;
 
 TITLE: ${title}
 ${keywords ? `KEYWORDS: ${keywords}\n` : ''}
-Write:
-- Slide 1 (hook): short punchy headline + one-line subtext
+Write EXACTLY 7 slides, no more, no fewer:
+- Slide 1 (hook): short punchy headline + one-line subtext as "body"
 - Slides 2-6 (insights): 5 slides, each a short headline + 2-3 sentence body — real substance, not placeholders
-- Slide 7 (CTA): short quote/summary line + save/follow/next-step prompt
-- Instagram caption (150-200 words)
-- 8-10 hashtags (no # prefix needed)
+- Slide 7 (CTA): short quote/summary line as headline + save/follow/next-step prompt as "body"
+- Instagram caption (150-200 words) — required, never leave empty
+- 8-10 hashtags (no # prefix needed) — required, never leave empty
+
+Every slide must have both a non-empty "headline" and a non-empty "body" — do not add a trailing empty slide.
 
 Return ONLY this JSON object, no other text, no markdown fences:
-{ "slides": [ { "headline": "...", "body": "..." }, ... 7 total, hook and CTA slides may omit "body" ... ], "caption": "...", "hashtags": ["...", "..."] }`;
+{ "slides": [ { "headline": "...", "body": "..." }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -2875,7 +2877,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const para = (text, opts = {}) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text, opts) } });
         const divider = () => ({ object: "block", type: "divider", divider: {} });
 
-        const slides = Array.isArray(parsed.slides) ? parsed.slides : [];
+        const slides = (Array.isArray(parsed.slides) ? parsed.slides : []).filter(s => s && (s.headline || s.body));
         const n = slides.length;
         const children = [];
         slides.forEach((s, idx) => {
