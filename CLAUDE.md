@@ -136,6 +136,7 @@ Live URL pattern: `https://cabuzzard.github.io/dash/microsites/{deploy-path}/`
 | `small-business-re-agent-ca` | ✓ | — | `3731f7d3a4bb816f9d9cd5bffda0549d` | `3731f7d3a4bb8117b12ddfb70d5a5ced` |
 | `mountainwize-coaching` | — | ✓ | — | — |
 | `webguy` | — | ✓ | — | — |
+| `garden-planning-calendar-workbook` | ✓ | ✓ | `3981f7d3a4bb81a69924cdc633e96828` | `3981f7d3a4bb815c90c4ef64e4324572` |
 
 ## Security Notes
 

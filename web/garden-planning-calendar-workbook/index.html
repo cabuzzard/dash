@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Garden Planning Calendar & Workbook — The Evergreen Home Series</title>
+<meta name="description" content="An undated, reusable month-by-month garden planner that converts into a professional Caretaker & Sitter Handoff Kit. Get the free printable pack and be first to know when it launches.">
+<meta name="robots" content="index, follow">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+  :root {
+    --ink: #23301f;
+    --paper: #f6f4ec;
+    --leaf: #4a7c3f;
+    --leaf-dark: #35592c;
+    --line: #d9d3bf;
+    --muted: #63705c;
+    --card: #ffffff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Georgia, 'Iowan Old Style', serif;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 0 28px; }
+  header.hero { padding: 84px 0 56px; border-bottom: 1px solid var(--line); }
+  .eyebrow {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 12px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--leaf); font-weight: 700; margin-bottom: 22px;
+  }
+  h1 { font-size: 46px; line-height: 1.12; font-weight: 400; letter-spacing: -.01em; max-width: 640px; }
+  h1 em { font-style: italic; color: var(--leaf-dark); }
+  .sub { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 17px; color: var(--muted); margin-top: 20px; max-width: 540px; }
+  .badge-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 32px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .badge {
+    font-size: 12px; font-weight: 700; color: var(--leaf-dark);
+    border: 1px solid var(--leaf); background: rgba(74,124,63,.08);
+    padding: 6px 12px; border-radius: 20px;
+  }
+  section { padding: 60px 0; border-bottom: 1px solid var(--line); }
+  h2 { font-size: 26px; font-weight: 400; margin-bottom: 22px; }
+  p.body-text { font-size: 16px; color: #3a4536; max-width: 580px; margin-bottom: 14px; }
+  .parts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 8px; }
+  .part-card { background: var(--card); padding: 24px 26px; }
+  .part-num { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; letter-spacing: .1em; color: var(--leaf); font-weight: 700; margin-bottom: 8px; }
+  .part-title { font-size: 18px; margin-bottom: 6px; }
+  .part-desc { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13.5px; color: var(--muted); line-height: 1.55; }
+  @media (max-width: 620px) { .parts-grid { grid-template-columns: 1fr; } }
+
+  .fix-list { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 28px; }
+  .fix-row { background: var(--card); padding: 18px 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .fix-label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #a05a3a; font-weight: 700; margin-bottom: 4px; }
+  .fix-value { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--leaf-dark); font-weight: 700; margin-bottom: 4px; }
+  .fix-text { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #333; }
+  @media (max-width: 620px) { .fix-row { grid-template-columns: 1fr; } }
+
+  .who-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 8px; }
+  .who-card { background: var(--card); border: 1px solid var(--line); padding: 26px; }
+  .who-title { font-size: 18px; margin-bottom: 10px; color: var(--leaf-dark); }
+  .who-text { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: var(--muted); }
+  @media (max-width: 620px) { .who-grid { grid-template-columns: 1fr; } }
+
+  .cta-block { text-align: center; padding: 88px 0; }
+  .cta-block h2 { font-size: 30px; margin-bottom: 10px; }
+  .cta-block .sub-cta { font-family: 'Helvetica Neue', Arial, sans-serif; color: var(--muted); margin-bottom: 34px; max-width: 480px; margin-left: auto; margin-right: auto; }
+  .lead-form { margin-top: 8px; text-align: left; max-width: 460px; margin-left: auto; margin-right: auto; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
+  .form-group { margin-bottom: 16px; }
+  .lead-form label { display: block; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .lead-form input {
+    width: 100%; padding: 12px 14px; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 15px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); outline: none; border-radius: 3px;
+  }
+  .btn {
+    display: inline-block; font-family: 'Helvetica Neue', Arial, sans-serif;
+    background: var(--leaf-dark); color: #fdfbf3; padding: 15px 34px; border: none;
+    border-radius: 3px; text-decoration: none; font-size: 15px; font-weight: 700;
+    letter-spacing: .02em; cursor: pointer; width: 100%;
+  }
+  .btn:focus-visible { outline: 3px solid var(--leaf); outline-offset: 3px; }
+  .btn:disabled { opacity: .6; cursor: not-allowed; }
+  .form-msg { margin-top: 18px; font-size: 14px; display: none; font-family: 'Helvetica Neue', Arial, sans-serif; padding: 14px 16px; border-radius: 3px; text-align: left; }
+  .form-msg.success { background: #e6f0e2; color: #2c4a24; border: 1px solid #b9d4ac; }
+  .form-msg.error { background: #fbe7e5; color: #8a2a1f; border: 1px solid #f0bcb5; }
+  footer { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: var(--muted); text-align: center; padding: 30px 0 60px; }
+  @media (max-width: 640px) { h1 { font-size: 32px; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">The Evergreen Home Series · Coming to Amazon KDP</div>
+    <h1>Plan the season. <em>Hand off the home.</em></h1>
+    <p class="sub">Garden Planning Calendar &amp; Workbook — the only undated, reusable garden planner that also converts into a professional Caretaker &amp; Sitter Handoff Kit. One book plans this year's garden and hands it off cleanly when you're away.</p>
+    <div class="badge-row">
+      <span class="badge">Undated — start any month</span>
+      <span class="badge">Quick-Find plant index</span>
+      <span class="badge">Sitter &amp; caretaker kit included</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>What's inside</h2>
+    <p class="body-text">Four parts, one undated book you can pick up again every year.</p>
+    <div class="parts-grid">
+      <div class="part-card">
+        <div class="part-num">PART ONE</div>
+        <div class="part-title">Seasonal Planning Calendar</div>
+        <div class="part-desc">January through December, with tasks split by climate band — Cold, Temperate, Warm — plus planning prompts and monthly review pages.</div>
+      </div>
+      <div class="part-card">
+        <div class="part-num">PART TWO</div>
+        <div class="part-title">The Garden Workbook</div>
+        <div class="part-desc">Layout grids at three scales, numbered plant profiles with a Quick-Find Index, and sowing, harvest, budget, and pest logs.</div>
+      </div>
+      <div class="part-card">
+        <div class="part-num">PART THREE</div>
+        <div class="part-title">Caretaker &amp; Sitter Handoff Kit</div>
+        <div class="part-desc">Watering schedules, dog/cat/small-pet/aquarium care sheets, a home maintenance checklist, emergency contacts, and a daily sitter log.</div>
+      </div>
+      <div class="part-card">
+        <div class="part-num">PART FOUR</div>
+        <div class="part-title">Year in Review</div>
+        <div class="part-desc">Carry what worked (and what didn't) straight into next year's garden — no need to buy a new planner every January.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Built to fix what other planners get wrong</h2>
+    <div class="fix-list">
+      <div class="fix-row">
+        <div><div class="fix-label">The complaint</div><div class="fix-text">Rigid dated layouts become useless mid-year</div></div>
+        <div><div class="fix-value">Our fix</div><div class="fix-text">Fully undated month system — start in any month, reuse it next year</div></div>
+      </div>
+      <div class="fix-row">
+        <div><div class="fix-label">The complaint</div><div class="fix-text">Hard to find plant info again later</div></div>
+        <div><div class="fix-value">Our fix</div><div class="fix-text">Numbered plant profiles plus a Quick-Find Index</div></div>
+      </div>
+      <div class="fix-row">
+        <div><div class="fix-label">The complaint</div><div class="fix-text">Layout grids don't fit odd or large gardens</div></div>
+        <div><div class="fix-value">Our fix</div><div class="fix-text">Grids at three scales, plus free-form sketch pages</div></div>
+      </div>
+      <div class="fix-row">
+        <div><div class="fix-label">The complaint</div><div class="fix-text">Blank pages with no guidance</div></div>
+        <div><div class="fix-value">Our fix</div><div class="fix-text">Every section opens with prompts, examples, and zone tips</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Who it's for</h2>
+    <div class="who-grid">
+      <div class="who-card">
+        <div class="who-title">Gardeners</div>
+        <div class="who-text">Weekend or serious, container or full plot — one reusable book instead of a pile of abandoned dated planners.</div>
+      </div>
+      <div class="who-card">
+        <div class="who-title">Sitters &amp; caretakers</div>
+        <div class="who-text">House sitters, pet sitters, and family helpers get a professional, fill-in handoff kit — bring it to a client walkthrough and fill it in together.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-block" style="border-bottom:none;">
+    <h2>Get the free printable pack.</h2>
+    <p class="sub-cta">Join the Evergreen Home list for a free printable companion page — and be the first to know the moment Garden Planning Calendar &amp; Workbook goes live on Amazon.</p>
+    <form id="leadForm" class="lead-form" novalidate>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-email">Email *</label>
+          <input type="email" id="f-email" name="email" required placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label for="f-phone">Phone *</label>
+          <input type="tel" id="f-phone" name="phone" required placeholder="(555) 000-0000" autocomplete="tel" />
+        </div>
+      </div>
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" style="margin:4px 0 16px;"></div>
+      <button type="submit" class="btn submit-btn" id="submitBtn">Send me the free pack →</button>
+    </form>
+    <div class="form-msg" id="formMsg"></div>
+  </section>
+
+  <footer>Garden Planning Calendar &amp; Workbook · The Evergreen Home Series · Evergreen Home Press</footer>
+</div>
+<script>
+const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+
+document.getElementById('leadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const msg = document.getElementById('formMsg');
+  const email = document.getElementById('f-email').value.trim();
+  const phone = document.getElementById('f-phone').value.trim();
+
+  if (!email || !phone) {
+    msg.textContent = 'Please fill in your email and phone.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    msg.textContent = 'Please enter a valid email address.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    return;
+  }
+  if (!/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) {
+    msg.textContent = 'Please enter a valid phone number.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    return;
+  }
+  const tsToken = document.querySelector('[name="cf-turnstile-response"]')?.value || '';
+
+  btn.disabled = true; btn.textContent = 'Sending…'; msg.style.display = 'none';
+  try {
+    const res = await fetch(WORKER_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'submitLead', campaign: 'garden-planning-calendar-workbook', email, phone, fraudType: 'Evergreen Home - Garden Planning Book', note: '', tsToken })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    document.getElementById('leadForm').style.display = 'none';
+    msg.innerHTML = '<strong>You\'re on the list.</strong><br>Check your inbox for the free printable pack — we\'ll email you the moment the book launches.';
+    msg.className = 'form-msg success'; msg.style.display = 'block';
+  } catch(err) {
+    msg.textContent = 'Something went wrong. Please try again.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Send me the free pack →';
+  }
+});
+</script>
+</body>
+</html>
