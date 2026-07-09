@@ -2713,8 +2713,10 @@ INSTRUCTIONS:
 - Each title must be specific to this campaign${hasProduct ? " and product" : ""}${parentTitle ? " and should extend or riff on the seed idea above where it fits naturally" : ""} — use real names, real keywords, real positioning language. No generic titles.
 - Titles are deliverable names (things to produce), not content post headlines.
 - Aim for 2–3 titles per grouping unless the framework specifies otherwise.
+- Flag whether each title is a multi-slide / carousel / swipe-style deliverable (the method framework describes this — look for words like "slide", "carousel", "swipe", "panel") with "slideFormat": true. Otherwise "slideFormat": false. Do NOT write the slide content itself here — that happens in a separate follow-up step. Just flag it.
 
-Return ONLY a JSON array. Each item: { "title": "...", "phase": "exact phase name from framework", "grouping": "exact grouping name from framework" }
+Return ONLY a JSON array. Each item:
+{ "title": "...", "phase": "exact phase name from framework", "grouping": "exact grouping name from framework", "slideFormat": true|false }
 No other text. No markdown fences.
 If the framework has no clear phases, use the framework section names as phase and content types as grouping.
 No other text. No markdown fences.`;
@@ -2751,8 +2753,9 @@ No other text. No markdown fences.`;
         const hasProduct = productId && productId !== '__none__';
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const rtBlock = text => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
         let created = 0;
+        const saved = [];
         for (const t of titles) {
           const props = {
             "Title":    { title: rtBlock(t.title) },
@@ -2762,14 +2765,109 @@ No other text. No markdown fences.`;
             "method":   { relation: [{ id: dash(methodId) }] },
           };
           if (hasProduct) props["product"] = { relation: [{ id: dash(productId) }] };
-          await fetch("https://api.notion.com/v1/pages", {
+
+          const resp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props }),
           });
+          const page = await resp.json();
           created++;
+          // slideFormat titles need a separate generateTitleSlides call per title
+          // (kept out of this batch write, and out of the generation call above,
+          // so no single request has to write dozens of full carousel scripts —
+          // that was slow enough to trip Cloudflare's 524 timeout).
+          if (t.slideFormat && page.id) saved.push({ id: page.id.replace(/-/g, ""), title: t.title, slideFormat: true });
         }
-        return json({ created });
+        return json({ created, titles: saved });
+      }
+
+      // ── generateTitleSlides ──
+      // Follow-up step for a slideFormat title from saveMethodTitles: one small,
+      // fast AI call per title that writes its full carousel script into the
+      // already-created page's body. Kept separate from generateMethodTitles so
+      // a framework with many carousel titles doesn't blow past Cloudflare's
+      // response timeout in one giant call.
+      if (body.action === "generateTitleSlides") {
+        const { pageId, title, campaignId } = body;
+        if (!pageId || !title) return json({ error: "pageId and title required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        let keywords = "";
+        if (campaignId) {
+          const researchRaw = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+          keywords = rt(researchRaw, "Keywords");
+        }
+
+        const prompt = `Write a full 7-slide Instagram carousel script for this specific title.
+
+TITLE: ${title}
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}
+Write:
+- Slide 1 (hook): short punchy headline + one-line subtext
+- Slides 2-6 (insights): 5 slides, each a short headline + 2-3 sentence body — real substance, not placeholders
+- Slide 7 (CTA): short quote/summary line + save/follow/next-step prompt
+- Instagram caption (150-200 words)
+- 8-10 hashtags (no # prefix needed)
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "slides": [ { "headline": "...", "body": "..." }, ... 7 total, hook and CTA slides may omit "body" ... ], "caption": "...", "hashtags": ["...", "..."] }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+
+        let parsed;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('{');
+          const end = raw.lastIndexOf('}');
+          if (start === -1 || end === -1 || end < start) throw new Error("No JSON object found");
+          parsed = JSON.parse(raw.slice(start, end + 1));
+        } catch(e) {
+          return json({ error: "Failed to parse slides JSON: " + e.message }, 500);
+        }
+
+        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+        const para = (text, opts = {}) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text, opts) } });
+        const divider = () => ({ object: "block", type: "divider", divider: {} });
+
+        const slides = Array.isArray(parsed.slides) ? parsed.slides : [];
+        const n = slides.length;
+        const children = [];
+        slides.forEach((s, idx) => {
+          children.push(heading(`Slide ${idx + 1} (${idx + 1}/${n})`));
+          if (s.headline) children.push(para(s.headline, { bold: true }));
+          if (s.body) children.push(para(s.body));
+          children.push(divider());
+        });
+        if (parsed.caption) { children.push(heading('Caption')); children.push(para(parsed.caption)); }
+        if (Array.isArray(parsed.hashtags) && parsed.hashtags.length) {
+          children.push(heading('Hashtags'));
+          children.push(para(parsed.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ')));
+        }
+
+        if (children.length) {
+          const resp = await fetch(`https://api.notion.com/v1/blocks/${dash(pageId)}/children`, {
+            method: "PATCH",
+            headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children }),
+          });
+          if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Failed to write slides to page" }, resp.status); }
+        }
+
+        return json({ success: true, slideCount: n });
       }
 
       // ── generateCarouselTitles ──

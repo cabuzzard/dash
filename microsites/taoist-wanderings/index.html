@@ -1363,14 +1363,27 @@ async function runMethodGenerate() {
     if (data.error) throw new Error(data.error);
     const titles = data.titles || [];
     let saved = 0;
+    const slideTitles = [];
     for (let i = 0; i < titles.length; i += 10) {
       status.textContent = 'Saving ' + Math.min(i + 10, titles.length) + ' / ' + titles.length + ' titles…';
       const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
       if (r.error) throw new Error(r.error);
       saved += r.created;
+      slideTitles.push(...(r.titles || []));
     }
-    status.textContent = '✓ Created ' + saved + ' titles';
-    status.style.color = '#68d391';
+    // Slide/carousel-format titles get their full script written in separate,
+    // small follow-up calls (one per title) so one giant AI call doesn't time out.
+    let slidesDone = 0, slidesFailed = 0;
+    for (const st of slideTitles) {
+      status.textContent = 'Writing slides ' + (slidesDone + slidesFailed + 1) + ' / ' + slideTitles.length + '…';
+      try {
+        const sr = await w('generateTitleSlides', { pageId: st.id, title: st.title, campaignId: CAMPAIGN_ID });
+        if (sr.error) throw new Error(sr.error);
+        slidesDone++;
+      } catch(e) { slidesFailed++; }
+    }
+    status.textContent = '✓ Created ' + saved + ' titles' + (slideTitles.length ? ` (${slidesDone}/${slideTitles.length} carousel scripts written${slidesFailed ? ', ' + slidesFailed + ' failed' : ''})` : '');
+    status.style.color = slidesFailed ? '#f0b429' : '#68d391';
     btn.textContent = 'Done';
     setTimeout(closeMethodGenModal, 1800);
   } catch(e) {
@@ -1435,14 +1448,25 @@ async function runCreateAsset() {
     if (data.error) throw new Error(data.error);
     const titles = data.titles || [];
     let saved = 0;
+    const slideTitles = [];
     for (let i = 0; i < titles.length; i += 10) {
       status.textContent = 'Saving ' + Math.min(i + 10, titles.length) + ' / ' + titles.length + ' titles…';
       const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: CAMPAIGN_ID, methodId: CA_METHOD_ID, productId: CA_PRODUCT_ID });
       if (r.error) throw new Error(r.error);
       saved += r.created;
+      slideTitles.push(...(r.titles || []));
     }
-    status.textContent = `✓ Created ${saved} title${saved === 1 ? '' : 's'}`;
-    status.style.color = '#68d391';
+    let slidesDone = 0, slidesFailed = 0;
+    for (const st of slideTitles) {
+      status.textContent = 'Writing slides ' + (slidesDone + slidesFailed + 1) + ' / ' + slideTitles.length + '…';
+      try {
+        const sr = await w('generateTitleSlides', { pageId: st.id, title: st.title, campaignId: CAMPAIGN_ID });
+        if (sr.error) throw new Error(sr.error);
+        slidesDone++;
+      } catch(e) { slidesFailed++; }
+    }
+    status.textContent = `✓ Created ${saved} title${saved === 1 ? '' : 's'}` + (slideTitles.length ? ` (${slidesDone}/${slideTitles.length} carousel scripts written${slidesFailed ? ', ' + slidesFailed + ' failed' : ''})` : '');
+    status.style.color = slidesFailed ? '#f0b429' : '#68d391';
     btn.textContent = 'Done';
     await loadTitles();
     setTimeout(closeCreateAssetModal, 1200);
