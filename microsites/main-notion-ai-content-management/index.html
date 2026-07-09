@@ -1450,7 +1450,10 @@ async function runCreateAsset() {
       productId: CA_PRODUCT_ID,
     });
     if (data.error) throw new Error(data.error);
-    status.textContent = `✓ Created ${data.created} carousel title${data.created === 1 ? '' : 's'}`;
+    const refMsg = data.referencesFound
+      ? ` — benchmarked vs ${data.referencesFound} IG post${data.referencesFound === 1 ? '' : 's'} (${data.carouselReferencesFound || 0} carousels)`
+      : ' — no IG references found, used keywords/trend only';
+    status.textContent = `✓ Created ${data.created} carousel title${data.created === 1 ? '' : 's'}${refMsg}`;
     status.style.color = '#68d391';
     btn.textContent = 'Done';
     await loadTitles();

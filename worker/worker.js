@@ -2791,8 +2791,11 @@ No other text. No markdown fences.`;
         const cp = campRaw.properties || {};
         const campaignName = (cp.Name?.title || cp["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
 
+        // Buyer-intent context: prefer the chosen product's avatar/transformation,
+        // fall back to campaign-level pain points when no product is selected.
         let productSection = "No specific product — general campaign content.";
         let productName = "";
+        let buyerIntent = (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join("") || "(no campaign pain points on file)";
         if (hasProduct && productPage) {
           const pp = productPage.properties || {};
           const ptxt = prop => (pp[prop]?.rich_text || []).map(x => x.plain_text).join("") || "";
@@ -2801,7 +2804,54 @@ No other text. No markdown fences.`;
 Avatar: ${ptxt("Avatar")}
 Transformation: ${ptxt("Transformation")}
 Unique Angle: ${ptxt("Unique Angle")}`;
+          buyerIntent = ptxt("Avatar") || buyerIntent;
         }
+
+        // ── Evaluate real Instagram carousel references: keyword + buyer-intent
+        // relevance drives ranking, carousel format is a preference (boost), not
+        // a hard filter -- if the strongest matches aren't carousels, still use them.
+        const AT = (env.APIFY_TOKEN || '').trim();
+        const kwTokens = keywords.split(/[,\n]/).map(k => k.trim().toLowerCase()).filter(Boolean);
+        const primaryTag = (kwTokens[0] || '').replace(/[^a-z0-9]/g, '');
+        let refs = [];
+        let refNote = '';
+        if (AT && primaryTag) {
+          try {
+            const res = await fetch(
+              `https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${AT}&timeout=55`,
+              { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ search: primaryTag, searchType: 'hashtag', searchLimit: 1, resultsType: 'posts', resultsLimit: 30 }) }
+            );
+            if (res.ok) {
+              const items = await res.json();
+              const posts = Array.isArray(items) ? items : [];
+              refs = posts.map(p => {
+                const caption = (p.caption || '');
+                const hay = (caption + ' ' + (Array.isArray(p.hashtags) ? p.hashtags.join(' ') : '')).toLowerCase();
+                const keywordHits = kwTokens.filter(k => k && hay.includes(k)).length;
+                const isCarousel = p.type === 'Sidecar';
+                const likes = Math.max(p.likesCount ?? 0, 0);
+                const comments = Math.max(p.commentsCount ?? 0, 0);
+                const engagement = likes + comments * 3;
+                // keyword/buyer-intent relevance dominates; carousel format is a boost, not a gate
+                const score = engagement * (1 + keywordHits * 0.4) * (isCarousel ? 1.4 : 1);
+                return { owner: p.ownerUsername || 'unknown', caption: caption.slice(0, 200), likes, comments, isCarousel, slides: p.carouselImageCount || 0, keywordHits, score };
+              }).sort((a, b) => b.score - a.score).slice(0, 8);
+              if (!refs.length) refNote = `Searched #${primaryTag} on Instagram but found no posts to benchmark against — proceed on keywords/trend alone.`;
+            } else {
+              refNote = 'Instagram reference search failed — proceed on keywords/trend alone.';
+            }
+          } catch(e) { refNote = 'Instagram reference search failed — proceed on keywords/trend alone.'; }
+        } else if (!AT) {
+          refNote = 'APIFY_TOKEN not configured — no live reference benchmarking available.';
+        }
+        const carouselRefCount = refs.filter(r => r.isCarousel).length;
+
+        const refBlock = refs.length
+          ? refs.map((r, i) =>
+              `[R${i+1}] @${r.owner} | ${r.isCarousel ? `CAROUSEL (${r.slides || '?'} slides)` : 'single image/video (not a carousel)'} | ${r.likes} likes, ${r.comments} comments | keyword matches: ${r.keywordHits} | "${r.caption}"`
+            ).join('\n')
+          : `(no reference posts found${refNote ? ' — ' + refNote : ''})`;
 
         const prompt = `You are a social media content strategist. Generate exactly 5 Instagram carousel concept titles — compelling working titles for FUTURE carousels that have not been written yet. These are hooks/working titles only, not scripts.
 
@@ -2809,15 +2859,24 @@ CAMPAIGN: ${campaignName}
 PARENT TITLE / THEME: ${parentTitle || "(none)"}
 KEYWORDS: ${keywords}
 ${trend ? `TRENDING ANGLE TO DRAW FROM: ${trend}\n` : ''}
+BUYER INTENT / AVATAR (who this needs to resonate with): ${buyerIntent}
 ${productSection}
 
-Return ONLY a JSON array of exactly 5 strings — each a compelling carousel title (max 12 words). No other text, no markdown fences.
-Example: ["Why Discipline Beats Motivation Every Time", "..."]`;
+REFERENCE POSTS (real Instagram posts found for this topic, ranked by keyword relevance + engagement, carousel format flagged):
+${refBlock}
+
+INSTRUCTIONS — rank what matters in this order:
+1. Topical relevance to the keywords above.
+2. Fit with the buyer intent/avatar — the angle should speak to what this specific audience wants or fears, not just be topically adjacent.
+3. Adherence to the carousel format WHERE POSSIBLE — prefer angles that mirror what's working in the CAROUSEL-flagged references (list-style breakdowns, before/after, myth-busting, numbered frameworks). If the strongest keyword/buyer-intent matches above are not carousels, you may still draw on them for the angle, but note that in "basedOn".
+Do not copy any reference caption or wording — these are signal for what resonates, not source material.
+
+Return ONLY a JSON array of exactly 5 objects, each: { "title": "compelling carousel title, max 12 words", "basedOn": "one short phrase naming which reference (e.g. R3) or trend justified this angle, or 'keywords/buyer intent only' if no reference applied" }. No other text, no markdown fences.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
@@ -2838,9 +2897,11 @@ Example: ["Why Discipline Beats Motivation Every Time", "..."]`;
         const rtBlock = text => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
         const groupingLabel = `Carousels > ${parentTitle || 'Untitled'}`;
         let created = 0;
-        for (const t of titles.slice(0, 5)) {
+        for (const item of titles.slice(0, 5)) {
+          const titleText = typeof item === 'string' ? item : (item.title || 'Carousel Idea');
+          const basedOn   = typeof item === 'object' ? (item.basedOn || '') : '';
           const props = {
-            "Title":    { title: rtBlock(t) },
+            "Title":    { title: rtBlock(titleText) },
             "Status":   { select: { name: "Development" } },
             "Grouping": { rich_text: rtBlock(groupingLabel) },
             "Campaign": { relation: [{ id: dash(campaignId) }] },
@@ -2851,6 +2912,8 @@ Example: ["Why Discipline Beats Motivation Every Time", "..."]`;
           ];
           if (trend) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(`Trend: ${trend}`) } });
           if (hasProduct && productName) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(`Product: ${productName}`) } });
+          if (basedOn) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(`Based on: ${basedOn}`) } });
+          if (refs.length) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(`Benchmarked against ${refs.length} Instagram posts (${carouselRefCount} actual carousels) for #${primaryTag}`) } });
           await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { ...hdr, "Content-Type": "application/json" },
@@ -2858,7 +2921,7 @@ Example: ["Why Discipline Beats Motivation Every Time", "..."]`;
           });
           created++;
         }
-        return json({ created });
+        return json({ created, referencesFound: refs.length, carouselReferencesFound: carouselRefCount });
       }
 
       // ── getDeliverables ──
