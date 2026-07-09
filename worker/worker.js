@@ -44,6 +44,31 @@ function stripMcpEscaping(s) {
   return s;
 }
 
+// Claude's JSON output occasionally contains a raw (unescaped) newline or tab
+// inside a string value — invalid JSON, but easy to repair: walk the string
+// tracking whether we're inside a quoted literal (respecting \" escapes) and
+// escape any raw control character found there before JSON.parse sees it.
+function sanitizeJsonControlChars(str) {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (const ch of str) {
+    if (inString) {
+      if (escaped) { out += ch; escaped = false; continue; }
+      if (ch === '\\') { out += ch; escaped = true; continue; }
+      if (ch === '"') { inString = false; out += ch; continue; }
+      if (ch === '\n') { out += '\\n'; continue; }
+      if (ch === '\r') { out += '\\r'; continue; }
+      if (ch === '\t') { out += '\\t'; continue; }
+      out += ch;
+    } else {
+      if (ch === '"') inString = true;
+      out += ch;
+    }
+  }
+  return out;
+}
+
 async function notionQuery(dbId, body) {
   const results = [];
   let cursor = undefined;
@@ -2735,7 +2760,7 @@ No other text. No markdown fences.`;
           const start = raw.indexOf('[');
           const end = raw.lastIndexOf(']');
           if (start === -1 || end === -1 || end < start) throw new Error("No JSON array found");
-          titles = JSON.parse(raw.slice(start, end + 1));
+          titles = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
           if (!Array.isArray(titles)) throw new Error("Not an array");
         } catch(e) {
           const rawText = aiData.content?.[0]?.text || "";
@@ -2840,7 +2865,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           const start = raw.indexOf('{');
           const end = raw.lastIndexOf('}');
           if (start === -1 || end === -1 || end < start) throw new Error("No JSON object found");
-          parsed = JSON.parse(raw.slice(start, end + 1));
+          parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
         } catch(e) {
           return json({ error: "Failed to parse slides JSON: " + e.message }, 500);
         }
@@ -3014,7 +3039,7 @@ Return ONLY a JSON array of exactly 5 objects, each shaped exactly like this —
           const start = raw.indexOf('[');
           const end = raw.lastIndexOf(']');
           if (start === -1 || end === -1 || end < start) throw new Error("No JSON array found");
-          carousels = JSON.parse(raw.slice(start, end + 1));
+          carousels = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
           if (!Array.isArray(carousels)) throw new Error("Not an array");
         } catch(e) {
           const rawText = aiData.content?.[0]?.text || "";
