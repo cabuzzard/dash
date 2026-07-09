@@ -1373,19 +1373,25 @@ async function runMethodGenerate() {
     }
     // Slide/carousel-format titles get their full script written in separate,
     // small follow-up calls (one per title) so one giant AI call doesn't time out.
-    let slidesDone = 0, slidesFailed = 0;
+    let slidesDone = 0, slidesFailed = 0, firstSlideErr = '';
     for (const st of slideTitles) {
       status.textContent = 'Writing slides ' + (slidesDone + slidesFailed + 1) + ' / ' + slideTitles.length + '…';
       try {
         const sr = await w('generateTitleSlides', { pageId: st.id, title: st.title, campaignId: CAMPAIGN_ID });
         if (sr.error) throw new Error(sr.error);
         slidesDone++;
-      } catch(e) { slidesFailed++; }
+      } catch(e) { slidesFailed++; if (!firstSlideErr) firstSlideErr = e.message; }
     }
-    status.textContent = '✓ Created ' + saved + ' titles' + (slideTitles.length ? ` (${slidesDone}/${slideTitles.length} carousel scripts written${slidesFailed ? ', ' + slidesFailed + ' failed' : ''})` : '');
-    status.style.color = slidesFailed ? '#f0b429' : '#68d391';
+    if (!slideTitles.length) {
+      status.textContent = '✓ Created ' + saved + ' titles — none were flagged as carousel/slide format (check the Method name/framework)';
+      status.style.color = '#f0b429';
+    } else {
+      status.textContent = '✓ Created ' + saved + ' titles (' + slidesDone + '/' + slideTitles.length + ' carousel scripts written' + (slidesFailed ? ', ' + slidesFailed + ' failed: ' + firstSlideErr : '') + ')';
+      status.style.color = slidesFailed ? '#fc8181' : '#68d391';
+    }
     btn.textContent = 'Done';
-    setTimeout(closeMethodGenModal, 1800);
+    if (!slidesFailed && slideTitles.length === slidesDone) setTimeout(closeMethodGenModal, 1800);
+    else btn.disabled = false;
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.style.color = '#fc8181';
@@ -1456,20 +1462,26 @@ async function runCreateAsset() {
       saved += r.created;
       slideTitles.push(...(r.titles || []));
     }
-    let slidesDone = 0, slidesFailed = 0;
+    let slidesDone = 0, slidesFailed = 0, firstSlideErr = '';
     for (const st of slideTitles) {
       status.textContent = 'Writing slides ' + (slidesDone + slidesFailed + 1) + ' / ' + slideTitles.length + '…';
       try {
         const sr = await w('generateTitleSlides', { pageId: st.id, title: st.title, campaignId: CAMPAIGN_ID });
         if (sr.error) throw new Error(sr.error);
         slidesDone++;
-      } catch(e) { slidesFailed++; }
+      } catch(e) { slidesFailed++; if (!firstSlideErr) firstSlideErr = e.message; }
     }
-    status.textContent = `✓ Created ${saved} title${saved === 1 ? '' : 's'}` + (slideTitles.length ? ` (${slidesDone}/${slideTitles.length} carousel scripts written${slidesFailed ? ', ' + slidesFailed + ' failed' : ''})` : '');
-    status.style.color = slidesFailed ? '#f0b429' : '#68d391';
-    btn.textContent = 'Done';
     await loadTitles();
-    setTimeout(closeCreateAssetModal, 1200);
+    if (!slideTitles.length) {
+      status.textContent = `✓ Created ${saved} title${saved === 1 ? '' : 's'} — none were flagged as carousel/slide format (check the Method name/framework)`;
+      status.style.color = '#f0b429';
+    } else {
+      status.textContent = `✓ Created ${saved} title${saved === 1 ? '' : 's'} (${slidesDone}/${slideTitles.length} carousel scripts written${slidesFailed ? ', ' + slidesFailed + ' failed: ' + firstSlideErr : ''})`;
+      status.style.color = slidesFailed ? '#fc8181' : '#68d391';
+    }
+    btn.textContent = 'Done';
+    if (!slidesFailed && slideTitles.length === slidesDone) setTimeout(closeCreateAssetModal, 1200);
+    else btn.disabled = false;
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.style.color = '#fc8181';
