@@ -76,9 +76,6 @@
 .product-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .product-row:last-child { border-bottom: none; }
 .product-name { flex: 1; font-size: 13px; color: #c9c9c9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gen-strategy-btn { font-size: 11px; padding: 2px 7px; background: rgba(99,179,237,.15); border: 1px solid rgba(99,179,237,.3); color: #63b3ed; border-radius: 4px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
-.gen-strategy-btn:hover { background: rgba(99,179,237,.25); }
-.gen-strategy-btn:disabled { opacity: .5; cursor: default; }
 .product-row.is-active .product-name { color: #68d391; }
 .product-row.is-development .product-name { color: #718096; }
 .product-status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-right: 2px; }
@@ -1626,25 +1623,9 @@ function renderProducts() {
     row.className = 'product-row ' + (isActive ? 'is-active' : 'is-development');
     row.dataset.productId = p.id;
     const psLink = p.productsite ? `<a href="${p.productsite}" target="_blank" rel="noopener" title="Product site" style="font-size:10px;color:#555;text-decoration:none;flex-shrink:0;padding:1px 4px;border:1px solid #2a2a2a;border-radius:3px;line-height:1.6;">site</a>` : '';
-    row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${psLink}<button class="gen-strategy-btn" onclick="generateProductStrategy('${p.id}', this)" title="${isActive ? 'Regenerate strategy' : 'Generate strategy from campaign research'}">${isActive ? '↺ Regen' : '⚡ Generate'}</button><button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+    row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
-}
-
-async function generateProductStrategy(productId, btn) {
-  const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = '…';
-  try {
-    const data = await w('generateProductStrategy', { productId, campaignId: CAMPAIGN_ID });
-    if (data.error) { alert('Error: ' + data.error); return; }
-    const row = btn.closest('.product-row');
-    if (row) { row.className = 'product-row is-active'; btn.textContent = '↺ Regen'; btn.title = 'Regenerate strategy'; }
-    btn.style.color = '#68d391';
-    setTimeout(() => { btn.style.color = ''; btn.disabled = false; }, 2000);
-  } catch(e) {
-    alert('Error: ' + e.message);
-    btn.textContent = orig; btn.disabled = false;
-  }
 }
 
 async function loadProducts() {
