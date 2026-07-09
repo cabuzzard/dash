@@ -2991,19 +2991,29 @@ Notes: ${notes || "(none)"}`;
         // stopping at the first one that returns real posts.
         const AT = (env.APIFY_TOKEN || '').trim();
         const kwTokens = mergedKeywords.split(/[,\n]/).map(k => k.trim().toLowerCase()).filter(Boolean);
+        // Candidate hashtags are individual WORDS pulled from the merged
+        // keywords, not the invented compound phrases themselves — nobody
+        // hashtags "#realaccountabilityforfounders", but "#accountability" is
+        // a real, populated tag. Shortest-first since shorter/generic words
+        // are more likely to be tags people actually used.
+        const STOPWORDS = new Set(['for','the','and','or','of','to','in','on','with','without','your','you','their','is','are','not','but','from','that','this','it','no']);
         const candidateTags = Array.from(new Set(
-          kwTokens.map(k => k.replace(/[^a-z0-9]/gi, '').toLowerCase()).filter(Boolean)
-        )).sort((a, b) => a.length - b.length).slice(0, 3);
+          mergedKeywords.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 4 && !STOPWORDS.has(w))
+        )).sort((a, b) => a.length - b.length).slice(0, 5);
         let refs = [];
         let refNote = '';
         let primaryTag = candidateTags[0] || '';
         if (AT && candidateTags.length) {
           for (const tag of candidateTags) {
             try {
+              // directUrls hits the hashtag's explore page directly. The
+              // search+searchType:'hashtag' input does fuzzy discovery via
+              // Google and can resolve to an unrelated tag with 0 posts —
+              // confirmed live, do not use it for a known hashtag lookup.
               const res = await fetch(
                 `https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${AT}&timeout=55`,
                 { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ search: tag, searchType: 'hashtag', searchLimit: 1, resultsType: 'posts', resultsLimit: 30 }) }
+                  body: JSON.stringify({ directUrls: [`https://www.instagram.com/explore/tags/${tag}/`], resultsType: 'posts', resultsLimit: 30 }) }
               );
               if (!res.ok) { refNote = 'Instagram reference search failed.'; continue; }
               const items = await res.json();
