@@ -395,6 +395,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div id="r-kdp"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>Seed Channels <span style="font-size:10px;color:var(--text3,#999);font-weight:400">Video Copy</span></span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="seedKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="seedBtn" onclick="runSeedChannels()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-seed"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
 </div>
 
 
@@ -956,6 +968,46 @@ async function runKDPBestSellers() {
   }
 }
 
+// Seed channels for the Video Copy method — built off the campaign keywords.
+function renderSeedChannels(text) {
+  const el = document.getElementById('r-seed');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No seed channels yet — press ⟳ search to find niche YouTube channels from the campaign keywords.</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    // "Title: Xk subs · N videos — https://youtube.com/…"
+    const urlMatch = line.match(/(https?:\/\/\S+)\s*$/);
+    const url = urlMatch ? urlMatch[1] : '';
+    const label = url ? line.slice(0, line.lastIndexOf('—')).trim() : line.trim();
+    const colonIdx = label.indexOf(':');
+    const name = colonIdx === -1 ? label : label.slice(0, colonIdx).trim();
+    const meta = colonIdx === -1 ? '' : label.slice(colonIdx + 1).trim();
+    const inner = `<span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${meta}</span>`;
+    return url
+      ? `<div class="sm-trend-row"><a href="${url}" target="_blank" rel="noopener" style="display:flex;gap:6px;align-items:baseline;flex:1;min-width:0;text-decoration:none;color:inherit">${inner} <span style="font-size:9px;color:#4488ff">↗</span></a></div>`
+      : `<div class="sm-trend-row">${inner}</div>`;
+  }).join('');
+}
+async function runSeedChannels() {
+  const btn = document.getElementById('seedBtn');
+  const el  = document.getElementById('r-seed');
+  const kwOverride = (document.getElementById('seedKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Finding niche channels…</div>';
+  try {
+    const data = await w('getSeedChannels', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderSeedChannels(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
+
 function renderTikTokShop(text) {
   const el = document.getElementById('r-ttshop');
   if (!el) return;
@@ -1066,6 +1118,9 @@ async function loadResearch() {
 
     // SEC 3 — KDP Best Sellers field
     renderKDPBestSellers(r.kdpBestSellers || '');
+
+    // SEC 3 — Seed Channels field (Video Copy method)
+    renderSeedChannels(r.seedChannels || '');
 
     // News Feed — condense via Claude
     const newsEl = document.getElementById('r-news');

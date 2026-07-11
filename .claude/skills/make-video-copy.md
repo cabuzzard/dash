@@ -11,8 +11,8 @@ Model the **structure, packaging, and topic**; never copy the script, footage, o
 "make a video copy", "model this channel", "video copy from these seeds", "run make-video-copy", "find outliers and script one", "copy this youtube niche"
 
 ## Inputs
-- **seed channel list** — the user supplies it (channel URLs/handles), niche-relevant, ideally 50K–500K subs with steady growth. More seeds = more outliers.
 - **campaign** — name or Campaigns-DB page ID (niche, keywords, voice). From a title, read its `Campaign` relation.
+- **seed channel list** — normally you do NOT need to supply this. It runs off the campaign keywords: the campaign's Research record has a **"Seed Channels"** field, populated from the keywords by the dashboard's Seed Channels ⟳ search (worker action `getSeedChannels`, YouTube Data API). Read that field first (Notion connector). A user-supplied list overrides it; if the field is empty, tell the user to press ⟳ search on the campaign's Seed Channels panel (or supply channels manually).
 - **count** (optional) — how many videos to model this run (default 1–3).
 
 ## Constants
@@ -22,8 +22,8 @@ Model the **structure, packaging, and topic**; never copy the script, footage, o
 
 ## Workflow
 
-### Step 0 — Campaign context (Notion connector)
-Resolve the campaign; read its niche, keyword list, Target Audience, and voice/register (Research DB + Campaign page). The rewrite must land in *this* campaign's positioning — not the seed channel's.
+### Step 0 — Campaign context + seed list (Notion connector)
+Resolve the campaign; read its niche, keyword list, Target Audience, voice/register, **and the Research record's "Seed Channels" field** (the keyword-derived seed list). Use that seed list unless the user supplied their own. If "Seed Channels" is empty, ask the user to run the Seed Channels ⟳ search on the campaign panel (populates it from the keywords) or paste channels. The rewrite must land in *this* campaign's positioning — not the seed channel's.
 
 ### Step 1 — Find the outliers (per seed channel)
 For each seed channel, pull its videos with view counts and flag **outliers ≈ 10× the channel's average views** (or clear recent breakouts). Tooling, in preference order:

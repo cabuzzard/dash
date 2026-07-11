@@ -4262,6 +4262,7 @@ Return ONLY a JSON object with these exact keys:
             trendIntelligence: rt(null, "Trend Intelligence"),
             etsyProducts:      rt(null, "Etsy Products"),
             youtubeOutliers:   rt(null, "YouTube Outliers"),
+            seedChannels:      rt(null, "Seed Channels"),
             keyMessage:        rt(null, "Key Message"),
             webPageUrl:        url(null, "Web Page URL"),
             statement:         rt(null, "Statement"),
@@ -4325,6 +4326,7 @@ Return ONLY a JSON object with these exact keys:
             trendIntelligence:  rt(rp, "Trend Intelligence"),
             etsyProducts:       rt(rp, "Etsy Products"),
             youtubeOutliers:    rt(rp, "YouTube Outliers"),
+            seedChannels:       rt(rp, "Seed Channels"),
             keyMessage:         rt(rp, "Key Message"),
           };
         }
@@ -4923,6 +4925,68 @@ Rules:
           return json({ error: pe.message || "Notion write failed" }, patch.status);
         }
         return json({ success: true, text: result });
+      }
+
+      // ── getSeedChannels ──
+      // Seed-channel list for the "Video Copy" method, built off the campaign
+      // keywords: YouTube-searches the keywords for channels in the niche,
+      // keeps the "modelable" range (5K–3M subs, real catalog), saves to the
+      // Research "Seed Channels" field. The make-video-copy skill reads it.
+      if (body.action === "getSeedChannels") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const { researchId, kwOverride } = body;
+        if (!researchId) return json({ error: "researchId required" }, 400);
+        const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const YT_KEY = (env.YOUTUBE_API_KEY || "").trim();
+        if (!YT_KEY) return json({ error: "YOUTUBE_API_KEY secret not set on worker" }, 500);
+
+        let keywords = (kwOverride || "").trim();
+        if (!keywords) {
+          try {
+            const rr = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+            }).then(r => r.json());
+            keywords = rr.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+          } catch {}
+        }
+        if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
+
+        const terms = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3);
+        const chanIds = new Set();
+        for (const term of terms) {
+          try {
+            const r = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&maxResults=15&q=${encodeURIComponent(term)}&key=${YT_KEY}`);
+            if (!r.ok) continue;
+            const d = await r.json();
+            (d.items || []).forEach(i => { const id = i.snippet?.channelId || i.id?.channelId; if (id) chanIds.add(id); });
+          } catch {}
+        }
+        if (!chanIds.size) return json({ error: "No channels found for these keywords" }, 404);
+
+        const cr = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${[...chanIds].slice(0, 50).join(",")}&key=${YT_KEY}`);
+        const cd = await cr.json();
+        if (!cr.ok) return json({ error: cd.error?.message || "YouTube channels lookup failed" }, 502);
+        const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n/1e3) + "k" : String(n);
+        let channels = (cd.items || []).map(c => ({
+          title: c.snippet?.title || c.id,
+          url:   c.snippet?.customUrl ? `https://youtube.com/${c.snippet.customUrl}` : `https://youtube.com/channel/${c.id}`,
+          subs:  parseInt(c.statistics?.subscriberCount || 0),
+          vids:  parseInt(c.statistics?.videoCount || 0),
+          hidden: !!c.statistics?.hiddenSubscriberCount,
+        }))
+        // Keep the "modelable" range: has a real catalog, big enough to have
+        // proven outliers, small enough that the niche isn't saturated by a giant.
+        .filter(c => !c.hidden && c.subs >= 5000 && c.subs <= 3000000 && c.vids >= 10)
+        .sort((a, b) => b.subs - a.subs).slice(0, 15);
+        if (!channels.length) return json({ error: "No channels in the seed range (5K–3M subs, 10+ videos) for these keywords — try broader/different keywords" }, 404);
+
+        const text = channels.map(c => `${c.title}: ${fmt(c.subs)} subs · ${fmt(c.vids)} videos — ${c.url}`).join("\n");
+        await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Seed Channels": { rich_text: [{ type: "text", text: { content: text.slice(0, 2000) } }] } } }),
+        }).catch(() => {});
+        return json({ success: true, text, channels });
       }
 
       // ── getYouTubeOutliers ──
