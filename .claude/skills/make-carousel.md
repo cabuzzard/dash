@@ -2,6 +2,8 @@
 
 Research what's trending on the topic, write original carousel copy inspired by it, generate a full Instagram carousel in Canva, merge all slides into one multi-page design, save the Canva link to the matching drive in Notion, and log everything to Notion SM Posts DB.
 
+**Growth alignment:** carousels are the authority/save engine — read the "carousel" method's "Growth Strategy (2026)" section and the master [📈 Account Growth OS](https://app.notion.com/p/39a1f7d3a4bb818a8653e60a1b6cf6f7). Engineer every carousel for **saves + shares** (weighted 3–5× a like): slide 1 = ~80% of the weight (open a gap in <10 words, "is this for me? / what do I get?"), 6–10 slides, campaign keywords in the on-screen text of the slides + caption for SEO, and a last slide that's a saveable recap + a `save this` / `send this to…` / `comment [KEYWORD]` CTA.
+
 ## Trigger phrases
 "make a carousel", "new carousel", "generate carousel", "next carousel", "carousel about X", "research and make a carousel about X"
 

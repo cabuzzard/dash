@@ -2,7 +2,7 @@
 
 Turn one idea into a **text pic**: a single-slide, ≤~25-word narrative built on a proven, currently-converting hook/story arc, grounded in the campaign's research and audience, and produced as a real Canva image (text over a background in the campaign's design system).
 
-This is the production skill for the **"text pic"** Method (Notion Methods DB → "text pic", id `3981f7d3a4bb81eba7bafea33ab41d51`). That method's page body holds the framework (pillars + arc toolkit); this skill executes one title/idea at a time.
+This is the production skill for the **"text pic"** Method (Notion Methods DB → "text pic", id `3981f7d3a4bb81eba7bafea33ab41d51`). That method's page body holds the framework (pillars + arc toolkit) **plus a "Growth Strategy (2026)" section** — read it, and the master [📈 Account Growth OS](https://app.notion.com/p/39a1f7d3a4bb818a8653e60a1b6cf6f7), before writing. Text pics are **save/send bait**: engineer for saves + sends (weighted above likes), put the campaign keyword in the on-screen text (read for SEO), and close the caption on `save this` / `send this to…`.
 
 ## Trigger phrases
 "make a text pic", "text pic from this idea", "produce a text pic", "turn this into a text pic", "run make-text-pic", "text pic for <campaign>"
