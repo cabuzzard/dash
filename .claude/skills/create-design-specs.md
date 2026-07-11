@@ -15,8 +15,10 @@ The dashboard "▶" button (worker action `generateCampaignDesignSpecs`) can onl
 
 ## Constants
 - Worker URL: `https://jolly-darkness-5dcc.trailnotes2026.workers.dev`
-- Design Specs DB: `3981f7d3a4bb817c8edad15db64fa50d`
-- All worker calls below are POST `{ action, ...args }` to the Worker URL. None of these design-spec actions are token-gated, so no PIN/session token is needed.
+- Design Specs DB: `3981f7d3a4bb817c8edad15db64fa50d` (properties: Name [title], Background, Ink, Accent, "Headline Font", "Body Font", "Aesthetic Description" [all rich_text], "Canva Link" [url], Campaigns / Products [relations]).
+- Campaigns DB: `087b1163b4e64975bc7a4b686ff801de`. A campaign's DEFAULT spec is its own "Design Spec" relation.
+
+**Auth / data access:** the dashboard Worker requires the admin session token on every action (global gate), which needs the PIN. This skill runs in chat, so do **all** Notion reads/writes through the **Notion connector** (no PIN needed) — never via the Worker. Use the Canva MCP for designs.
 
 ## Workflow (run every step)
 
@@ -24,11 +26,11 @@ The dashboard "▶" button (worker action `generateCampaignDesignSpecs`) can onl
 If given a name, find the campaign's page ID. Fastest: the campaign's microsite `index.html` in `microsites/<deploy-path>/` has `const CAMPAIGN_ID = "..."`. Or query the Campaigns DB by name via the Notion MCP. Confirm the ID before continuing.
 
 ### Step 1 — Ensure 3 researched specs exist
-POST `getCampaignDesignSpecs { campaignId }`. Count specs whose `canvaLink` does NOT contain `/d/` (i.e. not yet Canva-backed — a template-search link or empty counts as un-backed).
+Query the Design Specs DB (Notion connector) filtered to this campaign (Campaigns relation contains the campaignId). Treat a spec as un-backed if its "Canva Link" does NOT contain `/d/` (empty or a template-search link counts as un-backed).
 - If there are already ≥ `count` un-backed specs, hydrate those (skip to Step 2).
-- Otherwise POST `generateCampaignDesignSpecs { campaignId }` once. This reads the campaign research and creates 3 fresh researched specs (distinct aesthetics, real colors/fonts/aesthetic notes). Then POST `getCampaignDesignSpecs { campaignId }` again to get their full details.
+- Otherwise, read the campaign's research (query the Research DB `557e6b7b8c434a578d45ecb0a8329f63` by Campaign relation for Statement, Unique Opportunity, Key Message, Keywords; and the campaign page for Target Audience / Pain Points), devise `count` DISTINCT design directions, and create each as a Design Specs page via the Notion connector: Name, Background/Ink/Accent (hex), Headline Font/Body Font (real Google Fonts), Aesthetic Description, and the **Campaigns** relation set to this campaign. Then re-read them.
 
-Pick the `count` specs to work on (prefer the freshest un-backed ones). Each spec object has: `id, name, bg, ink, accent, headlineFont, bodyFont, notes` (aesthetic description), `canvaLink`.
+Work on the `count` freshest un-backed specs. Each has: name, bg, ink, accent, headlineFont, bodyFont, notes (Aesthetic Description).
 
 ### Step 2 — Generate a real Canva design per spec
 For EACH selected spec, call `generate-design` (Canva MCP):
@@ -42,13 +44,7 @@ For EACH selected spec, call `generate-design` (Canva MCP):
 Call `create-design-from-candidate { job_id, candidate_id }`. It returns `design_summary.urls.edit_url` (and `view_url`). That `edit_url` is the real Canva design link.
 
 ### Step 4 — Write the Canva link back onto the spec
-POST `updateDesignSpec` with the spec's EXISTING fields plus the new link — **you must resend every field**, because `updateDesignSpec` overwrites and any omitted field is blanked:
-```
-updateDesignSpec {
-  id, name, bg, ink, accent, headlineFont, bodyFont, notes,   // all unchanged, resent verbatim
-  canvaLink: <edit_url from Step 3>
-}
-```
+Update that spec's Design Specs page (Notion connector): set its **"Canva Link"** property to the `edit_url` from Step 3. Leave the other properties as they are.
 
 ### Step 5 — Report
 For each spec, give: name, the color/font summary, and the clickable Canva edit link. Remind the user the specs now show in the campaign's **Design** field (icons — the Canva-backed ones show a ↗ and open the design) and as chips in the **Build Carousel** modal's spec picker, so they can pick one when building any development title's carousel.
