@@ -1,2 +1,7 @@
 videos/
 images/
+
+# Secrets — never commit
+.env
+.env.*
+*.key
