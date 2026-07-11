@@ -90,6 +90,22 @@
   .skill-desc { font-size: 12px; color: var(--text3); line-height: 1.5; }
   .skill-arrow { font-size: 14px; color: var(--text3); flex-shrink: 0; margin-top: 2px; }
 
+  /* ── WEEKLY CONTENT OUTPUT CARD ── */
+  .wo-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px 18px; margin-bottom:16px; }
+  .wo-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+  .wo-title { font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--text3); }
+  .wo-toggle { display:flex; gap:0; border:1px solid var(--border2); border-radius:4px; overflow:hidden; }
+  .wo-toggle button { font-family:inherit; font-size:11px; padding:3px 10px; background:transparent; color:var(--text3); border:none; cursor:pointer; }
+  .wo-toggle button.active { background:var(--border2); color:var(--text); }
+  .wo-current { display:flex; gap:26px; margin-bottom:14px; flex-wrap:wrap; }
+  .wo-stat { display:flex; align-items:baseline; gap:8px; }
+  .wo-num { font-size:26px; font-weight:600; line-height:1; }
+  .wo-lbl { font-size:11px; color:var(--text3); }
+  .wo-chart { width:100%; }
+  .wo-legend { display:flex; align-items:center; gap:14px; margin-top:8px; font-size:10px; color:var(--text3); flex-wrap:wrap; }
+  .wo-dot { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+  .wo-empty { font-size:12px; color:var(--text3); padding:6px 0 2px; }
+
   /* ── DOMAINS TAB ── */
   .dom-stat-bar { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
   .dom-stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 18px; min-width:90px; }
@@ -564,6 +580,7 @@
 
   <div class="tab-panel active" id="tabOverview">
     <a class="add-link" onclick="openNewCampaignModal()">+ New campaign</a>
+    <div id="weeklyOutputCard" class="wo-card" style="display:none"></div>
     <div id="ovContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
@@ -5081,6 +5098,72 @@ async function loadOverview() {
   } catch (e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
+  loadWeeklyOutput(); // non-blocking — sits above the campaigns table
+}
+
+// ── WEEKLY CONTENT OUTPUT ─────────────────────────────────────────────
+// Reel vs Carousel scheduled per Mon–Sun week, current week + last 8 weeks.
+// "Published" counts what actually went out; "Planned" counts everything
+// scheduled that week regardless of status. Default: Published.
+const WO_REEL = '#a78bfa', WO_CARO = '#ec4899'; // matches Notion's Reel=purple, Carousel=pink
+let WO_MODE = 'published';
+async function loadWeeklyOutput(mode) {
+  if (mode) WO_MODE = mode;
+  const card = document.getElementById('weeklyOutputCard');
+  if (!card) return;
+  card.style.display = 'block';
+  if (!card.dataset.init) { card.innerHTML = '<div class="wo-title" style="padding:2px 0">Weekly Content Output</div><div class="wo-empty">Loading…</div>'; }
+  try {
+    const d = await call('getContentOutputStats', { weeks: 8, mode: WO_MODE });
+    renderWeeklyOutput(d);
+    card.dataset.init = '1';
+  } catch (e) {
+    card.innerHTML = '<div class="wo-title" style="padding:2px 0">Weekly Content Output</div><div class="wo-empty" style="color:#e57373">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+function renderWeeklyOutput(d) {
+  const card = document.getElementById('weeklyOutputCard');
+  const weeks = d.weeks || [];
+  const cur = d.current || { reels: 0, carousels: 0 };
+  const anyData = weeks.some(w => w.reels || w.carousels);
+
+  const toggle = `<span class="wo-toggle">
+      <button data-mode="published" class="${WO_MODE === 'published' ? 'active' : ''}" onclick="loadWeeklyOutput('published')">Published</button>
+      <button data-mode="planned" class="${WO_MODE === 'planned' ? 'active' : ''}" onclick="loadWeeklyOutput('planned')">Planned</button>
+    </span>`;
+
+  // Lightweight inline SVG grouped bar chart — two bars (Reel/Carousel) per week.
+  const W = 660, H = 150, padL = 22, padR = 8, padT = 8, padB = 22;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const n = weeks.length || 1;
+  const groupW = plotW / n;
+  const barW = Math.max(4, Math.min(15, groupW / 2 - 3));
+  const maxV = Math.max(1, ...weeks.map(w => Math.max(w.reels, w.carousels)));
+  let bars = '';
+  weeks.forEach((w, i) => {
+    const gx = padL + i * groupW + groupW / 2;
+    const rh = (w.reels / maxV) * plotH, ch = (w.carousels / maxV) * plotH;
+    bars += `<rect x="${(gx - barW - 1).toFixed(1)}" y="${(padT + plotH - rh).toFixed(1)}" width="${barW.toFixed(1)}" height="${rh.toFixed(1)}" fill="${WO_REEL}" rx="1"><title>Week of ${w.weekStart}: ${w.reels} Reels</title></rect>`;
+    bars += `<rect x="${(gx + 1).toFixed(1)}" y="${(padT + plotH - ch).toFixed(1)}" width="${barW.toFixed(1)}" height="${ch.toFixed(1)}" fill="${WO_CARO}" rx="1"><title>Week of ${w.weekStart}: ${w.carousels} Carousels</title></rect>`;
+    const [, mm, dd] = w.weekStart.split('-');
+    const isCur = i === weeks.length - 1;
+    bars += `<text x="${gx.toFixed(1)}" y="${H - 7}" text-anchor="middle" font-size="9" fill="${isCur ? '#ccc' : '#777'}">${+mm}/${+dd}</text>`;
+  });
+  const chart = `<svg class="wo-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Reels vs Carousels by week">
+      <line x1="${padL}" y1="${padT + plotH}" x2="${W - padR}" y2="${padT + plotH}" stroke="var(--border2)"/>
+      <text x="2" y="${padT + 8}" font-size="9" fill="#666">${maxV}</text>
+      ${bars}
+    </svg>`;
+
+  const modeLbl = WO_MODE === 'published' ? 'Published' : 'Planned (scheduled)';
+  card.innerHTML =
+    `<div class="wo-head"><span class="wo-title">Weekly Content Output</span>${toggle}</div>` +
+    `<div class="wo-current">
+       <div class="wo-stat"><span class="wo-num" style="color:${WO_REEL}">${cur.reels}</span><span class="wo-lbl">Reels this week</span></div>
+       <div class="wo-stat"><span class="wo-num" style="color:${WO_CARO}">${cur.carousels}</span><span class="wo-lbl">Carousels this week</span></div>
+     </div>` +
+    (anyData ? chart : `<div class="wo-empty">No ${modeLbl.toLowerCase()} Reels or Carousels with scheduled dates in the last 8 weeks yet. Tag items in Content Strategy with a Format of Reel/Carousel and a Scheduled Date${WO_MODE === 'published' ? ' (and Status = Published)' : ''} and they’ll appear here.</div>`) +
+    `<div class="wo-legend"><span><span class="wo-dot" style="background:${WO_REEL}"></span>Reels</span><span><span class="wo-dot" style="background:${WO_CARO}"></span>Carousels</span><span>· last 8 weeks (Mon–Sun) · ${modeLbl}</span></div>`;
 }
 
 function syncStickyThead(cols, sortState, rerender) {

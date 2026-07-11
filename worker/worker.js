@@ -980,6 +980,73 @@ export default {
     }
 
     try {
+      // ── getContentOutputStats ──
+      // Weekly Reel-vs-Carousel output from the 📝 Content Strategy DB, for the
+      // dashboard's "Weekly Content Output" card. "Output" = items whose
+      // Scheduled Date falls within a given Mon–Sun week.
+      // DECISION: default to Status = "Published" (what actually went out).
+      // Pass mode:"planned" to instead count everything scheduled that week.
+      if (body.action === "getContentOutputStats") {
+        const weeks = Math.max(1, Math.min(26, body.weeks || 8));
+        const mode = body.mode === "planned" ? "planned" : "published";
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const iso = d => d.toISOString().slice(0, 10);
+
+        // Monday (UTC) of the current week → earliest & latest Monday in the window.
+        const now = new Date();
+        const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+        const dow = (today.getUTCDay() + 6) % 7; // 0 = Monday
+        const curMonday = new Date(today); curMonday.setUTCDate(today.getUTCDate() - dow);
+        const firstMonday = new Date(curMonday); firstMonday.setUTCDate(curMonday.getUTCDate() - (weeks - 1) * 7);
+        const curSunday = new Date(curMonday); curSunday.setUTCDate(curMonday.getUTCDate() + 6);
+
+        const buckets = [];
+        for (let i = 0; i < weeks; i++) {
+          const m = new Date(firstMonday); m.setUTCDate(firstMonday.getUTCDate() + i * 7);
+          buckets.push({ weekStart: iso(m), reels: 0, carousels: 0 });
+        }
+        const byWeekStart = Object.fromEntries(buckets.map((b, i) => [b.weekStart, i]));
+        const bucketIndex = dateStr => {
+          const d = new Date(dateStr + "T00:00:00Z");
+          if (isNaN(d)) return -1;
+          const dd = (d.getUTCDay() + 6) % 7;
+          const mon = new Date(d); mon.setUTCDate(d.getUTCDate() - dd);
+          const idx = byWeekStart[iso(mon)];
+          return idx === undefined ? -1 : idx;
+        };
+
+        const andFilter = [
+          { or: [ { property: "Format", select: { equals: "Reel" } }, { property: "Format", select: { equals: "Carousel" } } ] },
+          { property: "Scheduled Date", date: { on_or_after: iso(firstMonday) } },
+          { property: "Scheduled Date", date: { on_or_before: iso(curSunday) } },
+        ];
+        if (mode === "published") andFilter.push({ property: "Status", select: { equals: "Published" } });
+
+        let cursor, counted = 0;
+        for (let page = 0; page < 20; page++) {
+          const resp = await fetch(`https://api.notion.com/v1/databases/${CONTENT_STRATEGY_DB}/query`, {
+            method: "POST", headers: hdr,
+            body: JSON.stringify({ filter: { and: andFilter }, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) return json({ error: data.message || "Notion query failed" }, resp.status);
+          for (const p of (data.results || [])) {
+            const fmt = p.properties?.Format?.select?.name;
+            const ds = p.properties?.["Scheduled Date"]?.date?.start;
+            if (!fmt || !ds) continue;
+            const idx = bucketIndex(ds.slice(0, 10));
+            if (idx === -1) continue;
+            if (fmt === "Reel") buckets[idx].reels++;
+            else if (fmt === "Carousel") buckets[idx].carousels++;
+            counted++;
+          }
+          if (!data.has_more) break;
+          cursor = data.next_cursor;
+        }
+        const cur = buckets[buckets.length - 1];
+        return json({ mode, weeks: buckets, current: { weekStart: cur.weekStart, reels: cur.reels, carousels: cur.carousels }, counted });
+      }
+
       if (body.action === "getDevTitles") {
         const [campRows, productRows] = await Promise.all([
           notionQuery(CAMPAIGNS_DB, {
