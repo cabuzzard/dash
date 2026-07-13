@@ -3570,6 +3570,247 @@ Return ONLY a JSON array of exactly 10 objects, each shaped exactly like this �
         });
       }
 
+      // ── researchAndGenerateUpworkProposals ──
+      // Called instead of generateMethodTitles when the selected Method is
+      // "Upwork Proposal". Merges campaign Keywords with the product seed to
+      // build an Upwork search query, scrapes live matching job ads (Apify
+      // neatrat/upwork-job-scraper — in-house cookie pool, no user login
+      // needed), then makes ONE Claude call that writes a tailored proposal for
+      // each ad. Each proposal is saved as a Content Strategy title (Grouping
+      // "Upwork Proposals") with the full proposal + source job link in the
+      // body. Graceful fallback: if APIFY_TOKEN is unset or no ads come back,
+      // Claude writes keyword-themed proposal TEMPLATES designed to be pasted
+      // in response to a matching ad. Mirrors researchAndGenerateCarouselTitles.
+      if (body.action === "researchAndGenerateUpworkProposals") {
+        const { campaignId, methodId, productId, parentTitle } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        // "no product" is signaled two ways: the literal '__none__' sentinel, or
+        // the campaignId itself (the modal's "Campaign" option sets
+        // productId=campaignId) — treat both as no product.
+        const hasProduct = productId && productId !== '__none__' && productId !== campaignId;
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+
+        const [researchRaw, campRaw, productPage] = await Promise.all([
+          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
+          hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
+        ]);
+        const cp = campRaw.properties || {};
+        const campaignName = (cp.Name?.title || cp["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
+        // Keywords live on the Research record; fall back to the campaign's own
+        // Keywords text property if research has none.
+        const campaignKeywords = rt(researchRaw, "Keywords") || (cp["Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
+        const painPoints = (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join("");
+
+        // Products DB has no Keywords field — derive the product-side skill/
+        // service signal from its positioning text, same as the carousel flow.
+        let productSection = "No specific product — proposals pitch the campaign's general service.";
+        let productName = "";
+        let productKeywordSignal = "";
+        let buyerIntent = painPoints || "(no campaign pain points on file)";
+        if (hasProduct && productPage) {
+          const pp = productPage.properties || {};
+          const ptxt = prop => (pp[prop]?.rich_text || []).map(x => x.plain_text).join("") || "";
+          productName = (pp.Name?.title || []).map(x => x.plain_text).join("") || "Unknown Product";
+          const desc = ptxt("Description"), avatar = ptxt("Avatar"), transformation = ptxt("Transformation"),
+                uniqueAngle = ptxt("Unique Angle"), offer = ptxt("Offer Structure"), proof = ptxt("Proof Points"),
+                price = ptxt("Price"), notes = ptxt("Notes");
+          productSection = `PRODUCT / SERVICE BEING PITCHED: ${productName}
+Description: ${desc || "(none)"}
+Avatar (ideal client): ${avatar || "(none)"}
+Transformation delivered: ${transformation || "(none)"}
+Unique Angle: ${uniqueAngle || "(none)"}
+Offer Structure: ${offer || "(none)"}
+Proof Points: ${proof || "(none)"}
+Price: ${price || "(none)"}
+Notes: ${notes || "(none)"}`;
+          productKeywordSignal = [desc, avatar, transformation, uniqueAngle, offer, notes].filter(Boolean).join(" ");
+          buyerIntent = avatar || buyerIntent;
+        }
+        const mergedKeywords = [campaignKeywords, productKeywordSignal].filter(Boolean).join(", ");
+        if (!mergedKeywords) return json({ error: "No campaign Keywords on file and no product selected — add campaign Keywords in Research first" }, 400);
+
+        // Build a concise Upwork search query from the strongest skill/service
+        // terms. The product signal (the actual skill being offered) leads;
+        // campaign keywords fill in. Upwork's relevance sort does the rest.
+        const STOPWORDS = new Set(['for','the','and','or','of','to','in','on','with','without','your','you','their','is','are','not','but','from','that','this','it','no','a','an','we','our','they']);
+        const queryTerms = Array.from(new Set(
+          [productKeywordSignal, campaignKeywords].filter(Boolean).join(" ")
+            .toLowerCase().split(/[^a-z0-9+#]+/).filter(w => w.length >= 3 && !STOPWORDS.has(w))
+        )).slice(0, 8);
+        const searchQuery = (queryTerms.join(" ") || campaignKeywords || mergedKeywords).slice(0, 120);
+
+        // ── Live Upwork job search via Apify (neatrat/upwork-job-scraper).
+        const AT = (env.APIFY_TOKEN || '').trim();
+        let jobs = [];
+        let jobNote = '';
+        if (AT) {
+          try {
+            const res = await fetch(
+              `https://api.apify.com/v2/acts/neatrat~upwork-job-scraper/run-sync-get-dataset-items?token=${AT}&timeout=90`,
+              { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: searchQuery, sort: 'relevance', perPage: 20, pagesToScrape: 1, jobType: ['fixed','hourly'], experienceLevel: ['entry','intermediate','expert'] }) }
+            );
+            if (!res.ok) { jobNote = `Upwork search failed (HTTP ${res.status}).`; }
+            else {
+              const items = await res.json();
+              const raw = (Array.isArray(items) ? items : []).filter(j => j && !j.error);
+              // Output schema isn't published, so read fields defensively across
+              // the likely key names for this actor family.
+              const pick = (o, keys) => { for (const k of keys) { if (o[k] != null && o[k] !== '') return o[k]; } return ''; };
+              jobs = raw.map(j => {
+                const title = String(pick(j, ['title','jobTitle','name']) || '').slice(0, 200);
+                const description = String(pick(j, ['description','descriptionText','snippet','jobDescription']) || '').replace(/\s+/g, ' ').trim().slice(0, 900);
+                const url = pick(j, ['url','link','jobUrl','ciphertext']) || '';
+                const type = pick(j, ['type','jobType','contractType']) || '';
+                const budget = pick(j, ['budget','amount','fixedPrice','price']) || '';
+                const hourly = pick(j, ['hourlyRate','hourlyBudget','hourly','rate']) || '';
+                const skillsRaw = pick(j, ['skills','tags','requiredSkills']);
+                const skills = Array.isArray(skillsRaw) ? skillsRaw.map(s => (typeof s === 'string' ? s : (s?.name || s?.prettyName || ''))).filter(Boolean).slice(0, 10) : [];
+                const experienceLevel = pick(j, ['experienceLevel','experience','tier']) || '';
+                const client = j.client || j.clientInfo || {};
+                const clientCountry = pick({ ...j, ...client }, ['country','clientCountry','location']) || '';
+                const clientSpend = pick({ ...j, ...client }, ['totalSpent','clientSpend','spent','totalCharges']) || '';
+                return { title, description, url: typeof url === 'string' ? url : '', type, budget, hourly, skills, experienceLevel, clientCountry, clientSpend };
+              }).filter(j => j.title || j.description);
+              if (!jobs.length) jobNote = `No live Upwork ads matched "${searchQuery}".`;
+            }
+          } catch(e) { jobNote = 'Upwork search failed (network/timeout).'; }
+        } else {
+          jobNote = 'APIFY_TOKEN not configured — wrote keyword-themed proposal templates instead of responding to live ads.';
+        }
+
+        // Cap the number of proposals so one Claude call stays fast and small.
+        const targetJobs = jobs.slice(0, 8);
+        const hasLiveJobs = targetJobs.length > 0;
+        const jobBlock = hasLiveJobs
+          ? targetJobs.map((j, i) => `[J${i+1}] ${j.title}
+  Type: ${j.type || '?'}${j.budget ? ` | Budget: ${j.budget}` : ''}${j.hourly ? ` | Hourly: ${j.hourly}` : ''}${j.experienceLevel ? ` | Level: ${j.experienceLevel}` : ''}
+  Skills: ${j.skills.length ? j.skills.join(', ') : '(none listed)'}${j.clientCountry ? `\n  Client: ${j.clientCountry}${j.clientSpend ? `, spent ${j.clientSpend}` : ''}` : ''}
+  Description: ${j.description || '(none)'}`).join('\n\n')
+          : '(no live ads retrieved — write templates for the kinds of ads these keywords match)';
+
+        const prompt = hasLiveJobs
+          ? `You are an expert Upwork proposal writer with a track record of winning contracts. Below are REAL Upwork job ads found just now by searching for this campaign's skill/service, plus the product/service you are pitching. Write ONE tailored proposal per ad.
+
+CAMPAIGN: ${campaignName}
+SEARCH QUERY USED: ${searchQuery}
+MERGED KEYWORDS (campaign + product): ${mergedKeywords}
+IDEAL CLIENT / BUYER INTENT: ${buyerIntent}
+${productSection}
+
+LIVE UPWORK ADS (respond to each specifically):
+${jobBlock}
+
+INSTRUCTIONS:
+- Write a distinct proposal for EACH ad above, in the same order.
+- Open with a specific hook that proves you read THAT ad — reference the client's actual need, not a generic greeting. Never open with "I hope this finds you well".
+- Connect the client's need to the product/service's transformation and unique angle above. Pitch the offer, don't just describe skills.
+- Include one concrete proof point or relevant result if the product provides one, a short "here's how I'd approach it" line, and a soft CTA (a question or a call ask).
+- 120-200 words each. First person. Confident, human, specific. No filler, no buzzword soup, no '[bracketed placeholders]'.
+- Match the ad's format (fixed vs hourly) in any pricing/scope language.
+
+Return ONLY a JSON array, one object per ad, in order — no other text, no markdown fences:
+{ "jobTitle": "the ad's title", "jobUrl": "the ad's URL (copy from the ad, empty string if none)", "proposal": "the full proposal text", "matchReason": "one short phrase on why this product fits this ad" }`
+          : `You are an expert Upwork proposal writer. No live ads were retrieved, so instead write 6 ready-to-send Upwork proposal TEMPLATES — each targeting a DISTINCT type of Upwork ad that would match this campaign's keywords/skill, pitching the product/service below.
+
+CAMPAIGN: ${campaignName}
+SEARCH QUERY: ${searchQuery}
+MERGED KEYWORDS (campaign + product): ${mergedKeywords}
+IDEAL CLIENT / BUYER INTENT: ${buyerIntent}
+${productSection}
+${parentTitle ? `SEED THEME (riff on this where it fits): ${parentTitle}\n` : ''}
+INSTRUCTIONS:
+- Each template targets a different, clearly-named ad archetype (e.g. "Startup needs ongoing X", "Agency overflow one-off X", "Non-technical founder wants X set up").
+- Write it as a near-final proposal the freelancer can paste when they find a matching ad. Use AT MOST one light placeholder like {the specific detail they mentioned} where a job-specific reference is genuinely needed.
+- Open with a hook tied to that archetype's pain, connect to the product's transformation/unique angle, include a proof point and a soft CTA. 120-200 words. First person. No buzzword soup.
+
+Return ONLY a JSON array of 6 objects — no other text, no markdown fences:
+{ "jobTitle": "the ad archetype this template targets", "jobUrl": "", "proposal": "the full proposal text", "matchReason": "one short phrase on why this product fits this archetype" }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+
+        let proposals;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('[');
+          const end = raw.lastIndexOf(']');
+          if (start === -1 || end === -1 || end < start) throw new Error("No JSON array found");
+          proposals = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          if (!Array.isArray(proposals)) throw new Error("Not an array");
+        } catch(e) {
+          const rawText = aiData.content?.[0]?.text || "";
+          return json({ error: "Failed to parse proposals JSON: " + e.message + " | RAW: " + rawText.slice(0, 300) }, 500);
+        }
+
+        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: opts.url ? { url: opts.url } : null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+        const para = (text, opts = {}) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text, opts) } });
+        const bullet = (text, opts = {}) => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text, opts) } });
+
+        let created = 0;
+        const saved = [];
+        const saveErrors = [];
+        for (const p of proposals.slice(0, hasLiveJobs ? 8 : 6)) {
+          const jobTitle = (p.jobTitle || 'Upwork Proposal').slice(0, 200);
+          const proposalText = String(p.proposal || '');
+          const jobUrl = typeof p.jobUrl === 'string' ? p.jobUrl : '';
+          const matchReason = p.matchReason || '';
+          // Notion rich_text blocks cap at 2000 chars; proposals are well under
+          // but slice defensively.
+          const props = {
+            "Title":     { title: rtBlock(hasLiveJobs ? jobTitle : `Upwork Proposal — ${jobTitle}`) },
+            "Status":    { select: { name: "Development" } },
+            "Grouping":  { rich_text: rtBlock("Upwork Proposals") },
+            "Core Idea": { rich_text: rtBlock((matchReason || jobTitle).slice(0, 1990)) },
+            "Campaign":  { relation: [{ id: dash(campaignId) }] },
+          };
+          if (methodId) props["method"] = { relation: [{ id: dash(methodId) }] };
+          if (hasProduct) props["product"] = { relation: [{ id: dash(productId) }] };
+
+          const children = [
+            heading('Proposal'),
+            ...proposalText.split(/\n\n+/).filter(Boolean).map(pg => para(pg.slice(0, 1990))),
+            heading('Target Ad'),
+            bullet(hasLiveJobs ? `Job: ${jobTitle}` : `Ad archetype: ${jobTitle}`),
+          ];
+          if (matchReason) children.push(bullet(`Why it fits: ${matchReason}`.slice(0, 1990)));
+          if (jobUrl) children.push(bullet('Open the ad on Upwork ↗', { url: jobUrl }));
+          children.push(heading('Research Notes'));
+          children.push(bullet(`Search query: ${searchQuery}`.slice(0, 1990)));
+          children.push(bullet(`Merged keywords: ${mergedKeywords}`.slice(0, 1990)));
+          if (hasProduct && productName) children.push(bullet(`Product pitched: ${productName}`));
+          children.push(bullet(hasLiveJobs ? `Responding to a live Upwork ad (Apify search)` : `Template — no live ad (${jobNote || 'fallback'})`));
+
+          const resp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props, children }),
+          });
+          const page = await resp.json();
+          if (page.id) { created++; saved.push({ id: page.id.replace(/-/g, ""), title: jobTitle }); }
+          else saveErrors.push({ title: jobTitle, status: resp.status, error: page.message || JSON.stringify(page).slice(0, 300) });
+        }
+        return json({
+          created, titles: saved, saveErrors: saveErrors.length ? saveErrors : undefined,
+          mergedKeywords, searchQuery,
+          jobsFound: jobs.length, proposalsWritten: created, liveAds: hasLiveJobs,
+          apifyConfigured: !!AT, note: jobNote || undefined,
+        });
+      }
+
       // ── getDeliverables ──
       if (body.action === "getDeliverables") {
         const { campaignId } = body;
