@@ -2443,10 +2443,31 @@ function renderProducts() {
     const isActive = p.status === 'Active';
     row.className = 'product-row ' + (isActive ? 'is-active' : 'is-development');
     row.dataset.productId = p.id;
-    const psLink = p.productsite ? `<a href="${p.productsite}" target="_blank" rel="noopener" title="Product site" style="font-size:10px;color:#555;text-decoration:none;flex-shrink:0;padding:1px 4px;border:1px solid #2a2a2a;border-radius:3px;line-height:1.6;">site</a>` : '';
+    // Every row gets a product-site control: a "site" link when one exists, or a
+    // "+ site" button that deploys one (createProductSite) when it doesn't.
+    const psStyle = 'font-size:10px;color:#555;text-decoration:none;flex-shrink:0;padding:1px 4px;border:1px solid #2a2a2a;border-radius:3px;line-height:1.6;';
+    const psLink = p.productsite
+      ? `<a href="${p.productsite}" target="_blank" rel="noopener" title="Product site" style="${psStyle}">site</a>`
+      : `<button class="td-add-btn-inline" onclick="addProductSite('${p.id}', this)" title="Create product site" style="${psStyle};background:none;cursor:pointer;">+ site</button>`;
     row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
+}
+
+// Deploy a product site for this product (commits productsites/{slug}/ via the
+// Worker's GitHub API call, then sets the product URL). No approval dialog —
+// inline feedback on the button; error alert only. GitHub Pages takes ~1 min
+// to serve the new page, but the "site" link appears immediately once saved.
+async function addProductSite(productId, btn) {
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = 'deploying…';
+  try {
+    const res = await w('createProductSite', { productId, campaignId: CAMPAIGN_ID });
+    if (res.error) throw new Error(res.error);
+    await loadProducts(); // re-render — row now shows the "site" link
+  } catch(e) {
+    btn.disabled = false; btn.textContent = orig;
+    alert('Could not create product site: ' + e.message);
+  }
 }
 
 async function loadProducts() {

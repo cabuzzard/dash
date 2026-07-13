@@ -2410,6 +2410,79 @@ export default {
         return json({ success: true, productId: result.id.replace(/-/g,""), productName: titleText, methodId: methodRel || null });
       }
 
+      // ── createProductSite ──
+      // Deploys a per-product admin site under productsites/{slug}/ by committing
+      // to GitHub (GitHub Pages serves it). The Worker can't run local git, so it
+      // fetches the operator-resilience-intensive template via the GitHub API,
+      // fills in PRODUCT_ID / RESEARCH_ID / SITE_URL / Notion links / title, and
+      // PUTs productsites/{slug}/index.html. Then sets the product's URL property
+      // so the row's "site" chip links to it. Powers the product-row "+ site"
+      // button. Requires a GITHUB_TOKEN secret (PAT with repo write scope).
+      if (body.action === "createProductSite") {
+        const { productId, campaignId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN (a GitHub PAT with 'repo' / Contents write scope for cabuzzard/dash)" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const REPO = "cabuzzard/dash", BRANCH = "main", TEMPLATE_PATH = "productsites/operator-resilience-intensive/index.html";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+
+        // Product name → slug; look up the campaign's research for RESEARCH_ID.
+        const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+        if (productPage.object === "error" || !productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
+        const productName = (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const slug = productName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || ('product-' + productId.slice(0, 8));
+        let researchId = "";
+        if (campaignId) {
+          const rq = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } }, page_size: 1 }),
+          }).then(r => r.json());
+          researchId = (rq.results?.[0]?.id || "").replace(/-/g, "");
+        }
+        const siteUrl = `https://cabuzzard.github.io/dash/productsites/${slug}/`;
+
+        // Fetch the template (via the GitHub API so it works even if the repo is
+        // private — uses the same token).
+        const tmplResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${TEMPLATE_PATH}?ref=${BRANCH}`, {
+          headers: { ...gh, "Accept": "application/vnd.github.raw" },
+        });
+        if (!tmplResp.ok) return json({ error: `Could not fetch product-site template from GitHub (HTTP ${tmplResp.status}) — check GITHUB_TOKEN scope` }, 502);
+        let html = await tmplResp.text();
+
+        // Substitute the site-specific constants (mirrors sync_productsites.py).
+        html = html.replace(/const PRODUCT_ID\s*=\s*"[^"]*";[^\n]*/, `const PRODUCT_ID  = "${productId}"; // ${slug}`);
+        html = html.replace(/const RESEARCH_ID\s*=\s*"[^"]*";[^\n]*/, `const RESEARCH_ID = "${researchId}"; // research`);
+        html = html.replace(/const SITE_URL\s*=\s*"[^"]*";/, `const SITE_URL    = "${siteUrl}";`);
+        html = html.replace(/<title>[^<]*<\/title>/, `<title>${productName} — Product Admin</title>`);
+        const notionLinks = `<a href="https://www.notion.so/${productId}" target="_blank" class="notion-link">↗ Product</a>${researchId ? ` &nbsp; <a href="https://www.notion.so/${researchId}" target="_blank" class="notion-link">↗ Research</a>` : ''}`;
+        html = html.replace(/<a href="https:\/\/www\.notion\.so\/[^"]+" target="_blank" class="notion-link">↗ \w+<\/a>(?:\s*&nbsp;\s*<a href="https:\/\/www\.notion\.so\/[^"]+" target="_blank" class="notion-link">↗ \w+<\/a>)?/, notionLinks);
+
+        // Commit productsites/{slug}/index.html (create or update).
+        const targetPath = `productsites/${slug}/index.html`;
+        const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${targetPath}?ref=${BRANCH}`, { headers: gh });
+        let existingSha = null;
+        if (getResp.ok) { try { existingSha = (await getResp.json()).sha || null; } catch(e) {} }
+        // UTF-8-safe base64 (btoa is Latin1-only; the template has em dashes/emoji).
+        const toB64 = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+        const putBody = { message: `Add product site: ${slug}`, content: toB64(html), branch: BRANCH };
+        if (existingSha) putBody.sha = existingSha;
+        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${targetPath}`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+        });
+        const putResult = await putResp.json();
+        if (!putResp.ok) return json({ error: `GitHub commit failed (HTTP ${putResp.status}): ${putResult.message || 'unknown'}` }, 502);
+
+        // Point the product's URL property at the new site so the chip links to it.
+        await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "URL": { url: siteUrl } } }),
+        });
+
+        return json({ success: true, url: siteUrl, slug, updated: !!existingSha, commit: putResult.commit?.sha || null });
+      }
+
       if (body.action === "updateProductStatus") {
         const { productId, status } = body;
         if (!productId || !status) return json({ error: "productId and status required" }, 400);
