@@ -1528,6 +1528,9 @@ export default {
           id:     p.id.replace(/-/g,""),
           name:   p.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
           status: p.properties?.Status?.select?.name || "In Development",
+          // The product's URL property — feeds the "site" chip on the product
+          // row (links to its productsites/ page when set).
+          productsite: p.properties?.["URL"]?.url || null,
         }));
         return json({ products });
       }
