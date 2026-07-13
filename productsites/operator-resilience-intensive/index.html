@@ -83,15 +83,18 @@
     </div>
   </div>
   <div class="col">
-    <h2>Unique Angle + Avatar</h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span>Unique Angle</span><button class="td-add-btn-inline" onclick="openFieldResearchModal('uniqueAngle')" title="Generate with AI">&#x25B6;</button></h2>
     <div class="content">
       <div class="body-text" id="r-uniqueangle" style="white-space:pre-wrap;min-height:40px;margin-bottom:14px;"></div>
-      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#555;margin-bottom:6px;">Avatar</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#555;">Avatar</div>
+        <button class="td-add-btn-inline" onclick="openFieldResearchModal('avatar')" title="Generate with AI">&#x25B6;</button>
+      </div>
       <div class="body-text" id="r-avatar" style="white-space:pre-wrap;min-height:40px;font-size:12px;color:#888;"></div>
     </div>
   </div>
   <div class="col">
-    <h2>Transformation</h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span>Transformation</span><button class="td-add-btn-inline" onclick="openFieldResearchModal('transformation')" title="Generate with AI">&#x25B6;</button></h2>
     <div class="content">
       <div class="body-text" id="r-transformation" style="white-space:pre-wrap;min-height:40px;"></div>
     </div>
@@ -101,25 +104,25 @@
 <!-- SEC 2: four col — offer structure / proof points / objections / td items -->
 <div class="four-col">
   <div class="col">
-    <h2>Offer Structure</h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span>Offer Structure</span><button class="td-add-btn-inline" onclick="openFieldResearchModal('offerStructure')" title="Generate with AI">&#x25B6;</button></h2>
     <div class="content">
       <div class="body-text" id="r-offerstruct" style="white-space:pre-wrap;font-size:12px;"></div>
     </div>
   </div>
   <div class="col">
-    <h2>Proof Points</h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span>Proof Points</span><button class="td-add-btn-inline" onclick="openFieldResearchModal('proofPoints')" title="Generate with AI">&#x25B6;</button></h2>
     <div class="content">
       <div class="body-text" id="r-proofpoints" style="white-space:pre-wrap;font-size:12px;"></div>
     </div>
   </div>
   <div class="col">
-    <h2>Objections</h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span>Objections</span><button class="td-add-btn-inline" onclick="openFieldResearchModal('objections')" title="Generate with AI">&#x25B6;</button></h2>
     <div class="content">
       <div class="body-text" id="r-objections" style="white-space:pre-wrap;font-size:12px;"></div>
     </div>
   </div>
   <div class="col">
-    <h2>TD Items</h2>
+    <h2>TD Items <button class="td-add-btn-inline" onclick="openTdModal()" title="Add TD item">+</button></h2>
     <div class="content">
       <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -516,6 +519,7 @@ async function condense(label, raw) {
 // ── keyword pills ──────────────────────────────────────────────────────
 let RAW = { keywords: '' };
 let RESEARCH_ID_LIVE = '';
+let PRODUCT_NAME = '';
 let ALL_PLATFORMS = [];
 let LOGIN_ITEMS = [];
 
@@ -652,6 +656,7 @@ async function loadProduct() {
     const r = data.research;
 
     // SEC 1 — product meta
+    PRODUCT_NAME = p.name || '';
     document.getElementById('r-name').textContent = p.name || '—';
     const statusEl = document.getElementById('r-status');
     const sc = (p.status || '').toLowerCase();
@@ -694,6 +699,9 @@ async function loadProduct() {
     if (r) {
       RESEARCH_ID_LIVE = r.id || '';
       RAW.keywords = r.keywords || '';
+      RAW.statement = r.statement || '';
+      RAW.uniqueOpportunity = r.uniqueOpportunity || '';
+      RAW.keyMessage = r.keyMessage || '';
       renderKeywordPills(r.keywords || '');
       renderSMTrends(r.trendIntelligence || '');
       renderProductIdeas(r.productIdeas || '');
@@ -802,7 +810,8 @@ async function addTodoFromModal() {
   const statusEl = document.getElementById('tdModalStatus');
   statusEl.textContent = 'Creating…';
   try {
-    await w('createTodo', { name, campaignId: PRODUCT_ID });
+    const res = await w('createProductTodo', { name, productId: PRODUCT_ID });
+    if (res.error) throw new Error(res.error);
     statusEl.textContent = 'Created.';
     setTimeout(async () => { closeTdModal(); await loadTodos(); }, 600);
   } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
@@ -971,31 +980,105 @@ async function submitAddTitle() {
   finally { btn.disabled = false; }
 }
 
-// ── Field Research (News Feed etc.) ───────────────────────────────────
+// ── Field Research (News Feed + product strategy fields) ───────────────
+// Each entry: target 'research' saves via updateResearch (Research page);
+// target 'product' saves via updateProductField (this Product's own page).
+// promptFn receives {name, keywords, statement, uniqueOpportunity, keyMessage}
+// pulled from RAW + PRODUCT_NAME so prompts are grounded, not generic.
+const FIELD_META = {
+  newsFeed: {
+    title: 'News Feed — Generate',
+    hint:  'Claude + web search generates current news/trends for this product\'s keywords. Saved to the linked Research record.',
+    target: 'research',
+    notionField: 'newsFeed',
+    promptFn: ctx => `Research current news, trends, and insights related to: ${ctx.keywords || 'this product'}`,
+    renderFn: async text => { const el = document.getElementById('r-news'); if (el) el.innerHTML = await condense('News Feed', text); },
+  },
+  uniqueAngle: {
+    title: 'Unique Angle — Generate',
+    hint:  'One sentence that separates this product from every other offer in its space.',
+    target: 'product',
+    notionField: 'uniqueAngle',
+    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\nUnique opportunity: ${ctx.uniqueOpportunity || '(none)'}\n\nWrite ONE sentence that separates this product from every other offer in its space. Specific, concrete, no fluff. Output only that sentence.`,
+    renderFn: text => { const el = document.getElementById('r-uniqueangle'); if (el) el.textContent = text; },
+  },
+  avatar: {
+    title: 'Avatar — Generate',
+    hint:  'Who this product is for — specific situation, pain, identity.',
+    target: 'product',
+    notionField: 'avatar',
+    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\n\nDescribe the Avatar — who this product is for. Specific situation, pain, identity. 2-3 sentences. Output only the description.`,
+    renderFn: text => { const el = document.getElementById('r-avatar'); if (el) el.textContent = text; },
+  },
+  transformation: {
+    title: 'Transformation — Generate',
+    hint:  'Before state → after state. What changes and how life looks different.',
+    target: 'product',
+    notionField: 'transformation',
+    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\n\nDescribe the Transformation this product delivers: before state → after state, what changes and how life looks different. 2-3 sentences. Output only the description.`,
+    renderFn: text => { const el = document.getElementById('r-transformation'); if (el) el.textContent = text; },
+  },
+  offerStructure: {
+    title: 'Offer Structure — Generate',
+    hint:  'What\'s included, format, duration, delivery method.',
+    target: 'product',
+    notionField: 'offerStructure',
+    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\n\nDescribe the Offer Structure — what's included, format, duration, delivery method. 2-4 sentences. Output only the description.`,
+    renderFn: text => { const el = document.getElementById('r-offerstruct'); if (el) el.textContent = text; },
+  },
+  proofPoints: {
+    title: 'Proof Points — Generate',
+    hint:  'The kind of proof/results this product should build toward.',
+    target: 'product',
+    notionField: 'proofPoints',
+    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\n\nWrite 3-5 bullet points of the kind of proof/results this product should build toward. Be specific. Output only the bullets.`,
+    renderFn: text => { const el = document.getElementById('r-proofpoints'); if (el) el.textContent = text; },
+  },
+  objections: {
+    title: 'Objections — Generate',
+    hint:  'Top objections and the honest answer to each.',
+    target: 'product',
+    notionField: 'objections',
+    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\n\nWrite the top 3 objections a buyer would have and the honest answer to each. Format: Objection → Answer. Output only the list.`,
+    renderFn: text => { const el = document.getElementById('r-objections'); if (el) el.textContent = text; },
+  },
+};
+
 let FIELD_RESEARCH_TARGET = '';
 function openFieldResearchModal(field) {
+  const meta = FIELD_META[field];
+  if (!meta) return;
   FIELD_RESEARCH_TARGET = field;
-  const labels = { newsFeed: 'News Feed' };
-  document.getElementById('fieldResearchTitle').textContent = 'Generate — ' + (labels[field] || field);
-  document.getElementById('fieldResearchHint').textContent = 'Uses Claude + web search to generate content for this field based on product keywords.';
-  document.getElementById('fieldResearchPrompt').value = 'Research current news, trends, and insights related to: ' + (RAW.keywords || 'operator resilience, founder recovery');
+  const ctx = { name: PRODUCT_NAME, keywords: RAW.keywords, statement: RAW.statement, uniqueOpportunity: RAW.uniqueOpportunity, keyMessage: RAW.keyMessage };
+  document.getElementById('fieldResearchTitle').textContent = meta.title;
+  document.getElementById('fieldResearchHint').textContent = meta.hint;
+  document.getElementById('fieldResearchPrompt').value = meta.promptFn(ctx);
   document.getElementById('fieldResearchStatus').textContent = '';
   document.getElementById('fieldResearchModal').classList.add('open');
 }
 function closeFieldResearchModal() { document.getElementById('fieldResearchModal').classList.remove('open'); }
 async function runFieldResearch() {
+  const field = FIELD_RESEARCH_TARGET;
+  const meta = field && FIELD_META[field];
+  if (!meta) return;
   const prompt = document.getElementById('fieldResearchPrompt').value.trim();
+  if (!prompt) return;
   const statusEl = document.getElementById('fieldResearchStatus');
   const btn = document.getElementById('fieldResearchRunBtn');
-  btn.disabled = true; statusEl.textContent = 'Running…';
+  btn.disabled = true; statusEl.textContent = 'Generating with Claude…';
   try {
-    const d = await w('generateField', { field: FIELD_RESEARCH_TARGET, prompt, researchId: RESEARCH_ID_LIVE || RESEARCH_ID });
-    statusEl.textContent = 'Done.';
-    if (FIELD_RESEARCH_TARGET === 'newsFeed') {
-      const newsEl = document.getElementById('r-news');
-      if (newsEl && d.value) newsEl.innerHTML = await condense('News Feed', d.value);
+    const res = await w('sendPrompt', { prompt });
+    if (res.error) throw new Error(res.error);
+    const text = (res.text || '').trim();
+    statusEl.textContent = 'Saving…';
+    if (meta.target === 'research') {
+      await w('updateResearch', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, field: meta.notionField, value: text });
+    } else {
+      await w('updateProductField', { productId: PRODUCT_ID, field: meta.notionField, value: text });
     }
-    setTimeout(closeFieldResearchModal, 800);
+    await meta.renderFn(text);
+    statusEl.textContent = '✓ Done.';
+    setTimeout(closeFieldResearchModal, 900);
   } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
   finally { btn.disabled = false; }
 }

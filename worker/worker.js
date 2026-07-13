@@ -4983,6 +4983,79 @@ Rules:
         return json({ success: true });
       }
 
+      // ── updateProductField ──
+      // Writes one of a Product page's own strategy fields (as opposed to
+      // updateResearch, which targets the Research page). Powers the product
+      // site's per-field "▶ Generate" buttons for Unique Angle / Avatar /
+      // Transformation / Offer Structure / Proof Points / Objections.
+      if (body.action === "updateProductField") {
+        const { productId, field, value } = body;
+        if (!productId || !field) return json({ error: "productId and field required" }, 400);
+        const fieldMap = {
+          avatar:         "Avatar",
+          transformation: "Transformation",
+          offerStructure: "Offer Structure",
+          proofPoints:    "Proof Points",
+          objections:     "Objections",
+          uniqueAngle:    "Unique Angle",
+        };
+        const notionField = fieldMap[field];
+        if (!notionField) return json({ error: "Unknown field: " + field }, 400);
+        const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        // Notion rich_text blocks max 2000 chars — chunk if needed
+        const rtChunks = [];
+        const rtStr = value || "";
+        for (let i = 0; i < Math.max(rtStr.length, 1); i += 2000) {
+          rtChunks.push({ type: "text", text: { content: rtStr.slice(i, i + 2000) } });
+        }
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { [notionField]: { rich_text: rtChunks } } })
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── createProductTodo ──
+      // Creates a Main TD item and links it into a PRODUCT's own "TD Items"
+      // relation. Distinct from createTodo, which links into a CAMPAIGN's
+      // "Associated To Do" relation — Products DB has no such property, so the
+      // product site was previously (mis-)calling createTodo with productId
+      // passed as campaignId, which silently failed to link anything (no
+      // resp.ok check on that write) while still reporting success.
+      if (body.action === "createProductTodo") {
+        const { name, productId } = body;
+        if (!name || !productId) return json({ error: "name and productId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const createResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: MAIN_TD_DB },
+            properties: { Title: { title: [{ type: "text", text: { content: name } }] } }
+          }),
+        });
+        const created = await createResp.json();
+        if (!createResp.ok) return json({ error: created.message || "Create failed" }, createResp.status);
+        const newTodoId = created.id.replace(/-/g,"");
+
+        const prodResp = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, { headers: hdr });
+        const prodPage = await prodResp.json();
+        const existing = (prodPage.properties?.["TD Items"]?.relation || []).map(r => ({ id: r.id }));
+        existing.push({ id: dashId(newTodoId) });
+        const linkResp = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, {
+          method: "PATCH",
+          headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "TD Items": { relation: existing } } }),
+        });
+        if (!linkResp.ok) { const err = await linkResp.json(); return json({ error: "Todo created but link failed: " + (err.message || "unknown") }, 500); }
+
+        return json({ success: true, id: newTodoId, name });
+      }
+
       // ── getSMTrends ──
       if (body.action === "getSMTrends") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
