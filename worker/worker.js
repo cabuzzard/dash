@@ -3689,6 +3689,11 @@ Notes: ${notes || "(none)"}`;
         // Cap the number of proposals so one Claude call stays fast and small.
         const targetJobs = jobs.slice(0, 8);
         const hasLiveJobs = targetJobs.length > 0;
+        // Reference gigs written as clickable links into EVERY proposal's body
+        // (like the carousel method's shared Sources section) — the full set of
+        // live ads this search surfaced, so each proposal shows the pool it came
+        // from. Only gigs with a real URL are linkable.
+        const refGigs = jobs.filter(j => j.url && /^https?:\/\//i.test(j.url)).slice(0, 10);
         const jobBlock = hasLiveJobs
           ? targetJobs.map((j, i) => `[J${i+1}] ${j.title}
   Type: ${j.type || '?'}${j.budget ? ` | Budget: ${j.budget}` : ''}${j.hourly ? ` | Hourly: ${j.hourly}` : ''}${j.experienceLevel ? ` | Level: ${j.experienceLevel}` : ''}
@@ -3788,6 +3793,16 @@ Return ONLY a JSON array of 6 objects — no other text, no markdown fences:
           ];
           if (matchReason) children.push(bullet(`Why it fits: ${matchReason}`.slice(0, 1990)));
           if (jobUrl) children.push(bullet('Open the ad on Upwork ↗', { url: jobUrl }));
+          // Reference gigs — every live ad the search surfaced, as clickable
+          // links, so each proposal shows the pool it came from.
+          if (refGigs.length) {
+            children.push(heading('Reference Upwork Gigs'));
+            refGigs.forEach(g => {
+              const meta = [g.type, g.budget, g.hourly, g.experienceLevel].filter(Boolean).join(' · ');
+              const label = `${g.title || 'Upwork gig'}${meta ? ` — ${meta}` : ''} ↗`;
+              children.push(bullet(label.slice(0, 1990), { url: g.url }));
+            });
+          }
           children.push(heading('Research Notes'));
           children.push(bullet(`Search query: ${searchQuery}`.slice(0, 1990)));
           children.push(bullet(`Merged keywords: ${mergedKeywords}`.slice(0, 1990)));
