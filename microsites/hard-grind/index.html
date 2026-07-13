@@ -1158,7 +1158,7 @@ async function loadTitles() {
     function makeTitleRow(t) {
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-build-btn" onclick="openBuildModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.productId||'__none__'}')" title="Build carousel">🎨</button><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-asset-btn" onclick="makeProductFromTitle('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create product from title">♻</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-build-btn" onclick="openBuildModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.productId||'__none__'}')" title="Build carousel">🎨</button><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-asset-btn" onclick="makeProductFromTitle('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Create product from title">♻</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       return div;
     }
     function renderGroupingLevel(titles, container) {
@@ -2159,14 +2159,16 @@ function caCheckReady() {
 // ── CREATE PRODUCT FROM TITLE ──────────────────────────────────────────
 // Copy an existing title into a new Product (name + core idea + full body),
 // then refresh the product list. Run a method on it yourself afterward.
-async function makeProductFromTitle(titleId, titleText) {
-  if (!confirm(`Create a new product from "${titleText}"?`)) return;
+async function makeProductFromTitle(titleId, titleText, btn) {
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
     const res = await w('createProductFromTitle', { titleId, campaignId: CAMPAIGN_ID });
     if (res.error) throw new Error(res.error);
     await loadProducts(); // refresh so the new product shows in the Products panel
-    alert(`✓ Created product "${res.productName}". Now run a method on it from the Products panel.`);
+    if (btn) { btn.textContent = '✓'; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500); }
   } catch(e) {
+    if (btn) { btn.textContent = orig; btn.disabled = false; }
     alert('Error creating product from title: ' + e.message);
   }
 }
