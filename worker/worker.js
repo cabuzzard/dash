@@ -3895,6 +3895,220 @@ Return ONLY a JSON array of 6 objects — no other text, no markdown fences:
         });
       }
 
+      // ── researchUpworkMarketTitles ──
+      // Turns a (possibly weak) seed keyword into ACTIVE Upwork market angles:
+      // (1) Claude expands the seed + product into real client-side Upwork
+      // search phrases, (2) scrapes each on Upwork in parallel to measure live
+      // demand (ad counts + budgets), (3) Claude proposes ~10 titles aimed at
+      // the markets that ACTUALLY have live ads, grounded in the seed. Each
+      // title is saved with its market, a demand signal, and reference-gig
+      // links. Routed when the Method name matches /upwork/i AND
+      // /title|market|trend/i (so "Upwork Proposal" still hits the proposal
+      // action, "Upwork Titles"/"Upwork Market" hits this one).
+      if (body.action === "researchUpworkMarketTitles") {
+        const { campaignId, methodId, productId, parentTitle } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const hasProduct = productId && productId !== '__none__' && productId !== campaignId;
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+
+        const [researchRaw, campRaw, productPage] = await Promise.all([
+          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
+          hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
+        ]);
+        const cp = campRaw.properties || {};
+        const campaignName = (cp.Name?.title || cp["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
+        const campaignKeywords = rt(researchRaw, "Keywords") || (cp["Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
+        let productSection = "No specific product — use the campaign seed only.";
+        let productName = "", productKeywordSignal = "";
+        let buyerIntent = (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join("") || "(none)";
+        if (hasProduct && productPage) {
+          const pp = productPage.properties || {};
+          const ptxt = prop => (pp[prop]?.rich_text || []).map(x => x.plain_text).join("") || "";
+          productName = (pp.Name?.title || []).map(x => x.plain_text).join("") || "Unknown Product";
+          const desc = ptxt("Description"), avatar = ptxt("Avatar"), transformation = ptxt("Transformation"), uniqueAngle = ptxt("Unique Angle"), offer = ptxt("Offer Structure");
+          productSection = `PRODUCT: ${productName}\nDescription: ${(desc||"(none)").slice(0,600)}\nAvatar: ${avatar||"(none)"}\nTransformation: ${transformation||"(none)"}\nUnique Angle: ${uniqueAngle||"(none)"}\nOffer: ${offer||"(none)"}`;
+          productKeywordSignal = [productName, uniqueAngle, offer].filter(Boolean).join(" ");
+          buyerIntent = avatar || buyerIntent;
+        }
+        const seed = [campaignKeywords, productKeywordSignal].filter(Boolean).join(", ");
+        if (!seed) return json({ error: "No campaign Keywords and no product — add Keywords in Research first" }, 400);
+
+        // Step 1 — Claude translates the (possibly job-seeker-style) seed into
+        // real client-side Upwork search phrases (short skill/service terms).
+        const expandPrompt = `A freelancer wants to find ACTIVE work on Upwork related to this seed. The seed may be phrased like a job-seeker ("freelance jobs, work from home") rather than a skill clients hire for. Translate it into 6 concrete Upwork SEARCH PHRASES that hiring CLIENTS would actually title a job with — short skill/service phrases (2-4 words), specific and real, spanning the most likely active markets for this seed${hasProduct ? " and product" : ""}.
+
+SEED KEYWORDS: ${seed}
+${hasProduct ? productSection : ""}
+BUYER/AVATAR: ${buyerIntent}
+
+Return ONLY a JSON array of 6 short strings — no other text, no fences. Example: ["ai automation setup","zapier integration","chatbot development","make.com automation","openai api integration","workflow automation"]`;
+        const expandResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 400, messages: [{ role: "user", content: expandPrompt }] }),
+        });
+        const expandData = await expandResp.json();
+        if (!expandResp.ok) return json({ error: expandData.error?.message || "Claude API error (expand)" }, 500);
+        let candidates = [];
+        try {
+          const raw = expandData.content?.[0]?.text || "";
+          const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+          candidates = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1))).filter(x => typeof x === 'string').map(x => x.trim()).filter(Boolean);
+        } catch(e) { candidates = []; }
+        if (!candidates.length) candidates = [ (seed.split(',')[0] || '').trim() ].filter(Boolean);
+        candidates = Array.from(new Set(candidates.map(c => c.toLowerCase()))).slice(0, 6);
+
+        // Step 2 — measure live demand: scrape the top candidates in parallel
+        // (wall-clock ≈ one scrape) and rank markets by live-ad count.
+        const AT = (env.APIFY_TOKEN || '').trim();
+        const scrapeCandidates = candidates.slice(0, 4);
+        const pick = (o, keys) => { for (const k of keys) { if (o[k] != null && o[k] !== '') return o[k]; } return ''; };
+        const normalize = j => {
+          const skillsRaw = pick(j, ['skills','tags','requiredSkills']);
+          return {
+            title:       String(pick(j, ['title','jobTitle','name']) || '').slice(0, 160),
+            description: String(pick(j, ['description','descriptionText','snippet']) || '').replace(/\s+/g, ' ').trim().slice(0, 300),
+            url:         (v => typeof v === 'string' ? v : '')(pick(j, ['url','link','jobUrl'])),
+            type:        pick(j, ['type','jobType','contractType']) || '',
+            budget:      pick(j, ['budget','amount','fixedPrice','price']) || '',
+            hourly:      pick(j, ['hourlyRate','hourlyBudget','hourly','rate']) || '',
+            skills:      Array.isArray(skillsRaw) ? skillsRaw.map(s => typeof s === 'string' ? s : (s?.name || '')).filter(Boolean).slice(0, 8) : [],
+          };
+        };
+        let markets = [];
+        let apifyNote = '';
+        if (AT && scrapeCandidates.length) {
+          const results = await Promise.all(scrapeCandidates.map(async q => {
+            try {
+              const res = await fetch(`https://api.apify.com/v2/acts/neatrat~upwork-job-scraper/run-sync-get-dataset-items?token=${AT}&timeout=60`,
+                { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ query: q, sort: 'newest', perPage: 12, pagesToScrape: 1, maxJobAge: { value: 30, unit: 'days' } }) });
+              if (!res.ok) return { query: q, ads: [] };
+              const items = await res.json();
+              const ads = (Array.isArray(items) ? items : []).filter(j => j && !j.error).map(normalize).filter(a => a.title || a.description);
+              return { query: q, ads };
+            } catch(e) { return { query: q, ads: [] }; }
+          }));
+          markets = results.map(r => ({ ...r, adCount: r.ads.length })).sort((a, b) => b.adCount - a.adCount);
+          if (!markets.some(m => m.adCount)) apifyNote = 'No live Upwork ads for any candidate market — titles are AI-suggested, not demand-validated.';
+        } else {
+          apifyNote = AT ? 'No candidate markets to scrape.' : 'APIFY_TOKEN not configured — titles are AI-suggested, not demand-validated.';
+          markets = scrapeCandidates.map(q => ({ query: q, ads: [], adCount: 0 }));
+        }
+        const totalAds = markets.reduce((n, m) => n + m.adCount, 0);
+        const hasDemand = totalAds > 0;
+
+        const marketBlock = markets.map((m, i) => {
+          const sample = m.ads.slice(0, 3).map(a => `"${a.title}"${a.budget ? ` (${a.budget})` : a.hourly ? ` (${a.hourly})` : ''}`).join('; ');
+          return `[M${i+1}] "${m.query}" — ${m.adCount} live ad${m.adCount === 1 ? '' : 's'}${sample ? ` | samples: ${sample}` : ''}`;
+        }).join('\n');
+
+        // Step 3 — Claude proposes titles for the ACTIVE markets, weighted by
+        // real live-ad volume, grounded in the seed.
+        const titlePrompt = `You are a freelance market strategist. Below are candidate Upwork markets for a seed, each with the number of LIVE ads found just now (real current demand). Propose exactly 10 titles for content/offers this campaign${hasProduct ? "/product" : ""} should make to win work in the markets that are ACTUALLY ACTIVE.
+
+SEED KEYWORDS: ${seed}
+${hasProduct ? productSection : ""}
+BUYER/AVATAR: ${buyerIntent}
+${parentTitle ? `SEED THEME (riff on this where it fits): ${parentTitle}\n` : ''}
+CANDIDATE UPWORK MARKETS (with live demand):
+${marketBlock}
+
+INSTRUCTIONS:
+- PRIORITIZE markets with more live ads — that's where real demand is. Give little/no weight to markets with 0 live ads.
+- Each title is a specific angle/offer that maps to one active market and is grounded in the seed${hasProduct ? " and product" : ""}.
+- Titles are things to produce (a gig/offer title, a portfolio piece, a lead magnet, a positioning angle) — specific, not generic.
+${hasDemand ? '' : '- No live demand data was available, so base titles on the most plausible active markets from the candidates and flag them as unvalidated.'}
+
+Return ONLY a JSON array of exactly 10 objects — no other text, no fences:
+{ "title": "max 12 words", "description": "1-2 sentences on the angle and who it targets", "market": "which candidate market (M#) or its phrase", "demandSignal": "e.g. '14 live ads' or 'no live ads (unvalidated)'" }`;
+        const titleResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: titlePrompt }] }),
+        });
+        const titleData = await titleResp.json();
+        if (!titleResp.ok) return json({ error: titleData.error?.message || "Claude API error (titles)" }, 500);
+        let concepts;
+        try {
+          const raw = titleData.content?.[0]?.text || "";
+          const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+          if (s === -1 || e === -1 || e < s) throw new Error("No JSON array found");
+          concepts = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+          if (!Array.isArray(concepts)) throw new Error("Not an array");
+        } catch(e) {
+          return json({ error: "Failed to parse titles JSON: " + e.message + " | RAW: " + (titleData.content?.[0]?.text || '').slice(0, 300) }, 500);
+        }
+
+        // Map a concept back to its market (by M# or phrase) for its gig links.
+        const matchMarket = c => {
+          const m = String(c.market || '');
+          const byNum = m.match(/M(\d+)/i);
+          if (byNum) { const idx = parseInt(byNum[1], 10) - 1; if (markets[idx]) return markets[idx]; }
+          const low = m.toLowerCase();
+          return markets.find(mk => mk.query && (low.includes(mk.query) || mk.query.includes(low))) || null;
+        };
+
+        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: opts.url ? { url: opts.url } : null }, annotations: { bold: !!opts.bold, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+        const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+        const bullet = (text, opts = {}) => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text, opts) } });
+
+        let created = 0; const saved = []; const saveErrors = [];
+        for (const c of concepts.slice(0, 10)) {
+          const titleText = (c.title || 'Upwork Market Title').slice(0, 200);
+          const description = c.description || '';
+          const market = matchMarket(c);
+          const props = {
+            "Title":     { title: rtBlock(titleText) },
+            "Status":    { select: { name: "Development" } },
+            "Grouping":  { rich_text: rtBlock("Upwork Market Titles") },
+            "Core Idea": { rich_text: rtBlock(description.slice(0, 1990)) },
+            "Campaign":  { relation: [{ id: dash(campaignId) }] },
+          };
+          if (methodId) props["method"] = { relation: [{ id: dash(methodId) }] };
+          if (hasProduct) props["product"] = { relation: [{ id: dash(productId) }] };
+          const children = [
+            heading('Description'), para(description.slice(0, 1990)),
+            heading('Active Market'),
+            bullet(`Market: ${market ? market.query : (c.market || '?')}`),
+            bullet(`Demand: ${c.demandSignal || (market ? `${market.adCount} live ads` : 'unvalidated')}`),
+          ];
+          const gigLinks = (market ? market.ads : []).filter(a => a.url && /^https?:\/\//i.test(a.url)).slice(0, 6);
+          if (gigLinks.length) {
+            children.push(heading('Reference Upwork Gigs'));
+            gigLinks.forEach(a => {
+              const meta = [a.type, a.budget, a.hourly].filter(Boolean).join(' · ');
+              children.push(bullet(`${a.title}${meta ? ` — ${meta}` : ''} ↗`.slice(0, 1990), { url: a.url }));
+            });
+          }
+          children.push(heading('Research Notes'));
+          children.push(bullet(`Seed: ${seed}`.slice(0, 1990)));
+          children.push(bullet(`Candidate markets: ${markets.map(m => `${m.query} (${m.adCount})`).join(', ')}`.slice(0, 1990)));
+          if (apifyNote) children.push(bullet(apifyNote.slice(0, 1990)));
+
+          const resp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props, children }),
+          });
+          const page = await resp.json();
+          if (page.id) { created++; saved.push({ id: page.id.replace(/-/g, ''), title: titleText }); }
+          else saveErrors.push({ title: titleText, status: resp.status, error: page.message || JSON.stringify(page).slice(0, 300) });
+        }
+        return json({
+          created, titles: saved, saveErrors: saveErrors.length ? saveErrors : undefined,
+          candidates, markets: markets.map(m => ({ query: m.query, adCount: m.adCount })),
+          totalAds, hasDemand, apifyConfigured: !!AT, note: apifyNote || undefined,
+        });
+      }
+
       // ── getDeliverables ──
       if (body.action === "getDeliverables") {
         const { campaignId } = body;

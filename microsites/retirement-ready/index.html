@@ -2087,6 +2087,22 @@ async function runMethodGenerate() {
       return;
     }
 
+    // The "Upwork Titles"/"Upwork Market" method finds active Upwork markets for
+    // the seed keyword and proposes titles aimed at real demand (checked BEFORE
+    // the proposal method so a market-named method doesn't hit proposals).
+    if (/upwork/i.test(MGM_METHOD_NAME) && /title|market|trend/i.test(MGM_METHOD_NAME)) {
+      status.textContent = 'Finding active Upwork markets and proposing titles…';
+      const data = await w('researchUpworkMarketTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
+      if (data.error) throw new Error(data.error);
+      const activeCount = (data.markets || []).filter(m => m.adCount).length;
+      const dNote = data.hasDemand ? `found ${data.totalAds} live ads across ${activeCount} active market${activeCount === 1 ? '' : 's'}` : (data.apifyConfigured ? 'no live ads matched — titles are AI-suggested' : 'no live search (APIFY_TOKEN off) — titles are AI-suggested');
+      status.textContent = `✓ Proposed ${data.created} Upwork market titles — ${dNote}`;
+      status.style.color = data.hasDemand ? '#68d391' : '#f0b429';
+      btn.textContent = 'Done';
+      setTimeout(closeMethodGenModal, 2600);
+      return;
+    }
+
     // The "Upwork Proposal" method searches live Upwork ads matching the
     // product/campaign keywords and writes a tailored proposal per ad.
     if (/upwork/i.test(MGM_METHOD_NAME)) {
@@ -2229,6 +2245,28 @@ async function runCreateAsset() {
     }
     return;
   }
+  // "Upwork Titles"/"Upwork Market" method: find active Upwork markets for the
+  // seed and propose titles aimed at real demand (checked before proposals).
+  if (/upwork/i.test(caMethodName) && /title|market|trend/i.test(caMethodName)) {
+    status.textContent = 'Finding active Upwork markets and proposing titles…';
+    try {
+      const data = await w('researchUpworkMarketTitles', { campaignId: CAMPAIGN_ID, methodId: CA_METHOD_ID, productId: CA_PRODUCT_ID, parentTitle: CA_PARENT_TITLE });
+      if (data.error) throw new Error(data.error);
+      await loadTitles();
+      const activeCount = (data.markets || []).filter(m => m.adCount).length;
+      const dNote = data.hasDemand ? `found ${data.totalAds} live ads across ${activeCount} active market${activeCount === 1 ? '' : 's'}` : (data.apifyConfigured ? 'no live ads matched — titles are AI-suggested' : 'no live search (APIFY_TOKEN off) — titles are AI-suggested');
+      status.textContent = `✓ Proposed ${data.created} Upwork market titles — ${dNote}`;
+      status.style.color = data.hasDemand ? '#68d391' : '#f0b429';
+      btn.textContent = 'Done';
+      setTimeout(closeCreateAssetModal, 2600);
+    } catch(e) {
+      status.textContent = 'Error: ' + e.message;
+      status.style.color = '#fc8181';
+      btn.disabled = false; btn.textContent = 'Generate';
+    }
+    return;
+  }
+
   // "Upwork Proposal" method: search live Upwork ads matching the keywords and
   // write a tailored proposal per ad (seeded by the title you started from).
   if (/upwork/i.test(caMethodName)) {
