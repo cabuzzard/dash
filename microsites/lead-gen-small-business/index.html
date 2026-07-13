@@ -2103,20 +2103,6 @@ async function runMethodGenerate() {
       return;
     }
 
-    // The "Upwork Proposal" method searches live Upwork ads matching the
-    // product/campaign keywords and writes a tailored proposal per ad.
-    if (/upwork/i.test(MGM_METHOD_NAME)) {
-      status.textContent = 'Searching Upwork ads and writing proposals…';
-      const data = await w('researchAndGenerateUpworkProposals', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
-      if (data.error) throw new Error(data.error);
-      const adNote = data.liveAds ? `responding to ${data.jobsFound} live Upwork ad${data.jobsFound === 1 ? '' : 's'} for "${data.searchQuery}"` : (data.apifyConfigured ? `no live ads matched — wrote keyword-themed templates` : `no live search (APIFY_TOKEN not configured) — wrote keyword-themed templates`);
-      status.textContent = `✓ Wrote ${data.created} Upwork proposal${data.created === 1 ? '' : 's'} — ${adNote}`;
-      status.style.color = data.liveAds ? '#68d391' : '#f0b429';
-      btn.textContent = 'Done';
-      setTimeout(closeMethodGenModal, 2400);
-      return;
-    }
-
     status.textContent = 'Reading method framework and product strategy…';
     const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
     if (data.error) throw new Error(data.error);
@@ -2267,26 +2253,6 @@ async function runCreateAsset() {
     return;
   }
 
-  // "Upwork Proposal" method: search live Upwork ads matching the keywords and
-  // write a tailored proposal per ad (seeded by the title you started from).
-  if (/upwork/i.test(caMethodName)) {
-    status.textContent = 'Searching Upwork ads and writing proposals…';
-    try {
-      const data = await w('researchAndGenerateUpworkProposals', { campaignId: CAMPAIGN_ID, methodId: CA_METHOD_ID, productId: CA_PRODUCT_ID, parentTitle: CA_PARENT_TITLE });
-      if (data.error) throw new Error(data.error);
-      await loadTitles();
-      const adNote = data.liveAds ? `responding to ${data.jobsFound} live Upwork ad${data.jobsFound === 1 ? '' : 's'} for "${data.searchQuery}"` : (data.apifyConfigured ? `no live ads matched — wrote keyword-themed templates` : `no live search (APIFY_TOKEN not configured) — wrote keyword-themed templates`);
-      status.textContent = `✓ Wrote ${data.created} Upwork proposal${data.created === 1 ? '' : 's'} — ${adNote}`;
-      status.style.color = data.liveAds ? '#68d391' : '#f0b429';
-      btn.textContent = 'Done';
-      setTimeout(closeCreateAssetModal, 2400);
-    } catch(e) {
-      status.textContent = 'Error: ' + e.message;
-      status.style.color = '#fc8181';
-      btn.disabled = false; btn.textContent = 'Generate';
-    }
-    return;
-  }
   status.textContent = 'Reading method framework…';
   try {
     const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: CA_METHOD_ID, productId: CA_PRODUCT_ID, parentTitle: CA_PARENT_TITLE });
