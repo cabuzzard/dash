@@ -3636,15 +3636,34 @@ Notes: ${notes || "(none)"}`;
         const mergedKeywords = [campaignKeywords, productKeywordSignal].filter(Boolean).join(", ");
         if (!mergedKeywords) return json({ error: "No campaign Keywords on file and no product selected — add campaign Keywords in Research first" }, 400);
 
-        // Build a concise Upwork search query from the strongest skill/service
-        // terms. The product signal (the actual skill being offered) leads;
-        // campaign keywords fill in. Upwork's relevance sort does the rest.
+        // Build a concise Upwork search query from the SKILL/SERVICE being
+        // offered — that's how clients title their ads. The product name +
+        // positioning text lead; campaign keywords only fill in when there's
+        // no product. Critically, strip job-SEEKER phrasing ("freelance jobs,
+        // work from home, remote work") — those are what a job hunter types,
+        // not what a hiring client posts, and they dilute the query to zero
+        // matches. Upwork's relevance sort handles the rest.
         const STOPWORDS = new Set(['for','the','and','or','of','to','in','on','with','without','your','you','their','is','are','not','but','from','that','this','it','no','a','an','we','our','they']);
+        // Job-seeker / marketplace noise that never helps match a client's ad.
+        const QUERY_NOISE = new Set(['job','jobs','work','working','remote','home','freelance','freelancer','freelancing','hire','hiring','gig','gigs','online','part','full','time','parttime','fulltime','position','positions','opportunity','opportunities','career','careers','income','money','earn','earning','side','hustle','board','boards','listing','listings','platform','platforms','best','legitimate','flexible','find','get','got','start','search','how','upwork','fiverr','paying','pay','contract','contractor','independent','economy','benefits','employment','client','clients','project','projects','need','needed','looking','wanted']);
+        // Skill text: product name + positioning first; campaign keywords are a
+        // last resort (on a job-hunting campaign they're all noise words).
+        const skillText = [productName, productKeywordSignal, hasProduct ? '' : campaignKeywords].filter(Boolean).join(" ");
+        // Keep 2-char terms (ai, hr, qa, ux, ui are real skills); stopwords/noise
+        // sets remove the junk regardless of length.
         const queryTerms = Array.from(new Set(
-          [productKeywordSignal, campaignKeywords].filter(Boolean).join(" ")
-            .toLowerCase().split(/[^a-z0-9+#]+/).filter(w => w.length >= 3 && !STOPWORDS.has(w))
-        )).slice(0, 8);
-        const searchQuery = (queryTerms.join(" ") || campaignKeywords || mergedKeywords).slice(0, 120);
+          skillText.toLowerCase().split(/[^a-z0-9+#]+/).filter(w => w.length >= 2 && !STOPWORDS.has(w) && !QUERY_NOISE.has(w))
+        )).slice(0, 6);
+        // Fallbacks if stripping left nothing: the product name minus noise, then
+        // raw campaign keywords minus noise, then the raw merged keywords.
+        const stripNoise = s => s.toLowerCase().split(/[^a-z0-9+#]+/).filter(w => w.length >= 2 && !QUERY_NOISE.has(w) && !STOPWORDS.has(w)).join(" ").trim();
+        const searchQuery = (
+          queryTerms.join(" ")
+          || stripNoise(productName)
+          || stripNoise(campaignKeywords)
+          || campaignKeywords
+          || mergedKeywords
+        ).slice(0, 100);
 
         // ── Live Upwork job search via Apify (neatrat/upwork-job-scraper).
         const AT = (env.APIFY_TOKEN || '').trim();
