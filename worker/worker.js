@@ -2357,6 +2357,56 @@ export default {
         if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
         return json({ success: true, id: result.id.replace(/-/g,"") });
       }
+
+      // ── createProductFromTitle ──
+      // Spins an existing Content Strategy title into a seed Product: copies the
+      // title's name + Core Idea + full body text into the product's
+      // Name/Description/Notes, carries over the campaign and the title's method
+      // relation, so a method can be re-run against it as a fresh product seed.
+      // Powers the title-row "♻ copy to product & re-run" button.
+      if (body.action === "createProductFromTitle") {
+        const { titleId, campaignId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const [titlePage, blocksResp] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json()),
+        ]);
+        if (titlePage.object === "error" || !titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const tp = titlePage.properties || {};
+        const titleText = (tp.Title?.title || tp.Name?.title || []).map(t => t.plain_text).join("") || "Untitled";
+        const coreIdea = (tp["Core Idea"]?.rich_text || []).map(t => t.plain_text).join("");
+        const methodRel = (tp.method?.relation || [])[0]?.id?.replace(/-/g,"") || "";
+        const campRel = (campaignId || (tp.Campaign?.relation || [])[0]?.id || "").toString().replace(/-/g,"");
+        // Full body text, preserving heading/bullet structure as plain text.
+        const bodyText = (blocksResp.results || []).map(b => {
+          const type = b.type; const rich = b[type]?.rich_text || [];
+          const text = rich.map(t => t.plain_text).join("");
+          if (!text) return "";
+          if (/^heading/.test(type)) return `\n${text}`;
+          if (type === "bulleted_list_item" || type === "numbered_list_item") return `• ${text}`;
+          return text;
+        }).filter(Boolean).join("\n");
+        // Notion caps a single rich_text run at 2000 chars — keep the seed under.
+        const description = ([coreIdea, bodyText].filter(Boolean).join("\n\n") || titleText).slice(0, 1990);
+        const props = {
+          Name:        { title: [{ type: "text", text: { content: titleText.slice(0, 200) } }] },
+          Status:      { select: { name: "In Development" } },
+          Description: { rich_text: [{ type: "text", text: { content: description } }] },
+          Notes:       { rich_text: [{ type: "text", text: { content: `Seeded from title ${titleId} for method re-run.`.slice(0, 1990) } }] },
+        };
+        if (campRel)   props["Campaigns"] = { relation: [{ id: dash(campRel) }] };
+        if (methodRel) props["Methods"]   = { relation: [{ id: dash(methodRel) }] };
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: PRODUCTS_DB }, properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok || !result.id) return json({ error: result.message || "Create failed" }, resp.status || 500);
+        return json({ success: true, productId: result.id.replace(/-/g,""), productName: titleText, methodId: methodRel || null });
+      }
+
       if (body.action === "updateProductStatus") {
         const { productId, status } = body;
         if (!productId || !status) return json({ error: "productId and status required" }, 400);

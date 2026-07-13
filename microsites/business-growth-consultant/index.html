@@ -1158,7 +1158,7 @@ async function loadTitles() {
     function makeTitleRow(t) {
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-build-btn" onclick="openBuildModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.productId||'__none__'}')" title="Build carousel">🎨</button><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-build-btn" onclick="openBuildModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.productId||'__none__'}')" title="Build carousel">🎨</button><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-asset-btn" onclick="rerunFromTitle('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.methodId||'__none__'}')" title="Copy to product &amp; re-run method">♻</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       return div;
     }
     function renderGroupingLevel(titles, container) {
@@ -2154,6 +2154,34 @@ function caMarkSelected(input) {
 
 function caCheckReady() {
   document.getElementById('ca-go').disabled = !(CA_METHOD_ID && CA_PRODUCT_ID);
+}
+
+// ── RE-RUN FROM TITLE ──────────────────────────────────────────────────
+// Copy an existing title into a new seed Product (name + core idea + full
+// body), then open the create-asset modal pre-selected with that product and
+// the title's original method, so the user just reviews and hits Generate.
+async function rerunFromTitle(titleId, titleText, methodId) {
+  if (!confirm(`Create a product from "${titleText}" and re-run its method on it?`)) return;
+  try {
+    const res = await w('createProductFromTitle', { titleId, campaignId: CAMPAIGN_ID });
+    if (res.error) throw new Error(res.error);
+    await loadProducts(); // refresh PRODUCT_ITEMS so the new product appears in the modal
+    openCreateAssetModal(titleId, titleText); // resets CA_* and builds the radios
+    // Pre-select the new product…
+    const pi = document.querySelector(`#ca-products input[value="${res.productId}"]`);
+    if (pi) { pi.checked = true; CA_PRODUCT_ID = res.productId; caMarkSelected(pi); }
+    // …and the title's original method, if it's on this campaign.
+    const m = (methodId && methodId !== '__none__') ? methodId : (res.methodId || null);
+    if (m) {
+      const mi = document.querySelector(`#ca-methods input[value="${m}"]`);
+      if (mi) { mi.checked = true; CA_METHOD_ID = m; caMarkSelected(mi); }
+    }
+    caCheckReady();
+    const st = document.getElementById('ca-status');
+    if (st) { st.style.color = '#68d391'; st.textContent = '✓ Product created from title — review method/product, then Generate.'; }
+  } catch(e) {
+    alert('Error creating product from title: ' + e.message);
+  }
 }
 
 function openCreateAssetModal(titleId, titleText) {
