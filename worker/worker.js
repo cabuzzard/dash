@@ -4634,6 +4634,18 @@ Return ONLY a JSON object with these exact keys:
             return { id: c.id.replace(/-/g,""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?" };
           } catch { return null; }
         }));
+        // Products DB has its own "Methods" relation — the delivery/marketing
+        // method(s) attached to this product. Surfaced so the strategy-field
+        // generator (esp. Offer Structure) can shape itself around how the
+        // product is actually sold (e.g. Upwork-style contract scope vs a
+        // packaged digital offer), not just generic keywords.
+        const methodRels = pp["Methods"]?.relation || [];
+        const methods = await Promise.all(methodRels.map(async m => {
+          try {
+            const r = await fetch(`https://api.notion.com/v1/pages/${m.id}`, { headers: hdr }).then(r => r.json());
+            return { id: m.id.replace(/-/g,""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?" };
+          } catch { return null; }
+        }));
         const product = {
           name:           (pp.Name?.title || []).map(t => t.plain_text).join("") || "Untitled",
           status:         pp.Status?.select?.name || "",
@@ -4647,6 +4659,7 @@ Return ONLY a JSON object with these exact keys:
           proofPoints:    rt(pp, "Proof Points"),
           objections:     rt(pp, "Objections"),
           campaigns:      campaigns.filter(Boolean),
+          methods:        methods.filter(Boolean),
         };
         let research = null;
         if (researchPage) {

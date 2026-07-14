@@ -78,6 +78,7 @@
       <div class="field"><div class="field-label">Site</div><div class="field-value" id="r-site"></div></div>
       <div class="field"><div class="field-label">Price</div><div class="field-value" id="r-price"></div></div>
       <div class="field"><div class="field-label">Spots</div><div class="field-value" id="r-spots"></div></div>
+      <div class="field"><div class="field-label">Methods</div><div class="field-value" id="r-methods" style="font-size:12px;"></div></div>
       <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/38f1f7d3a4bb81158d9cd0ec1364951b" target="_blank" class="notion-link">↗ Product</a> &nbsp; <a href="https://www.notion.so/3911f7d3a4bb81cfa636f3309e6475f1" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Productsite</div><div class="field-value" id="r-productsite"></div></div>
     </div>
@@ -520,6 +521,7 @@ async function condense(label, raw) {
 let RAW = { keywords: '' };
 let RESEARCH_ID_LIVE = '';
 let PRODUCT_NAME = '';
+let PRODUCT_METHODS = [];
 let ALL_PLATFORMS = [];
 let LOGIN_ITEMS = [];
 
@@ -682,6 +684,15 @@ async function loadProduct() {
     if (ppEl) ppEl.textContent = p.proofPoints || '';
     const obEl = document.getElementById('r-objections');
     if (obEl) obEl.textContent = p.objections || '';
+
+    // Product meta — linked Methods (feeds the strategy-field prompts below)
+    PRODUCT_METHODS = p.methods || [];
+    const methodsEl = document.getElementById('r-methods');
+    if (methodsEl) {
+      methodsEl.innerHTML = PRODUCT_METHODS.length
+        ? PRODUCT_METHODS.map(m => `<a href="https://www.notion.so/${m.id}" target="_blank" rel="noopener" class="notion-link" style="margin-right:8px;">${esc(m.name)}</a>`).join('')
+        : '<span class="empty">—</span>';
+    }
 
     // SEC 5 — campaigns list
     const campEl = document.getElementById('campaign-list');
@@ -1020,10 +1031,10 @@ const FIELD_META = {
   },
   offerStructure: {
     title: 'Offer Structure — Generate',
-    hint:  'What\'s included, format, duration, delivery method.',
+    hint:  'What\'s included, format, duration, delivery method — shaped by the product\'s linked Method(s).',
     target: 'product',
     notionField: 'offerStructure',
-    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\n\nDescribe the Offer Structure — what's included, format, duration, delivery method. 2-4 sentences. Output only the description.`,
+    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nContent/marketing Method(s) attached to this product: ${ctx.methods || '(none linked — describe a generic direct-to-buyer format)'}\n\nDescribe the Offer Structure — what's included, format, duration, delivery method. The structure MUST match how this product is actually sold given its attached Method(s) above: e.g. an Upwork-related method implies a scoped freelance contract (hourly or fixed-price, defined deliverables, a discovery call) — NOT a self-serve digital product; a content/carousel/newsletter method implies a packaged digital offer or course instead. If no method is linked, describe a generic direct-to-buyer format. 2-4 sentences. Output only the description.`,
     renderFn: text => { const el = document.getElementById('r-offerstruct'); if (el) el.textContent = text; },
   },
   proofPoints: {
@@ -1049,7 +1060,7 @@ function openFieldResearchModal(field) {
   const meta = FIELD_META[field];
   if (!meta) return;
   FIELD_RESEARCH_TARGET = field;
-  const ctx = { name: PRODUCT_NAME, keywords: RAW.keywords, statement: RAW.statement, uniqueOpportunity: RAW.uniqueOpportunity, keyMessage: RAW.keyMessage };
+  const ctx = { name: PRODUCT_NAME, keywords: RAW.keywords, statement: RAW.statement, uniqueOpportunity: RAW.uniqueOpportunity, keyMessage: RAW.keyMessage, methods: PRODUCT_METHODS.map(m => m.name).join(', ') };
   document.getElementById('fieldResearchTitle').textContent = meta.title;
   document.getElementById('fieldResearchHint').textContent = meta.hint;
   document.getElementById('fieldResearchPrompt').value = meta.promptFn(ctx);
