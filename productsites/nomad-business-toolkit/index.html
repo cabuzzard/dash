@@ -357,6 +357,11 @@
     </div>
     <div class="modal-body">
       <div class="modal-hint" id="fieldResearchHint"></div>
+      <div id="fieldResearchMethodRow" style="display:none;margin-top:14px;">
+        <label class="lm-label" for="fieldResearchMethodSelect">Generating for method</label>
+        <select id="fieldResearchMethodSelect" onchange="onFieldResearchMethodChange()" style="width:100%;font-size:13px;padding:6px 8px;border:1px solid #2a2a2a;background:#111;color:#ddd;border-radius:4px;font-family:inherit;"></select>
+        <div style="font-size:11px;color:#666;margin-top:4px;">This field is stored as one section per method — generating replaces only this method's section, others are kept.</div>
+      </div>
       <label class="lm-label" for="fieldResearchPrompt" style="margin-top:14px;">Prompt</label>
       <textarea class="modal-ta" id="fieldResearchPrompt" rows="8" style="resize:vertical;min-height:160px!important;"></textarea>
       <div id="fieldResearchStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
@@ -522,6 +527,9 @@ let RAW = { keywords: '' };
 let RESEARCH_ID_LIVE = '';
 let PRODUCT_NAME = '';
 let PRODUCT_METHODS = [];
+// Raw current value of each method-groupable strategy field, kept in sync
+// locally after every save so section-merges never need a re-fetch.
+let PRODUCT_FIELDS = { uniqueAngle: '', avatar: '', transformation: '', offerStructure: '', proofPoints: '', objections: '' };
 let ALL_PLATFORMS = [];
 let LOGIN_ITEMS = [];
 
@@ -684,6 +692,12 @@ async function loadProduct() {
     if (ppEl) ppEl.textContent = p.proofPoints || '';
     const obEl = document.getElementById('r-objections');
     if (obEl) obEl.textContent = p.objections || '';
+
+    // Cache raw field values so per-method section merges never need a re-fetch.
+    PRODUCT_FIELDS = {
+      uniqueAngle: p.uniqueAngle || '', avatar: p.avatar || '', transformation: p.transformation || '',
+      offerStructure: p.offerStructure || '', proofPoints: p.proofPoints || '', objections: p.objections || '',
+    };
 
     // Product meta — linked Methods (feeds the strategy-field prompts below)
     PRODUCT_METHODS = p.methods || [];
@@ -1010,7 +1024,7 @@ const FIELD_META = {
     hint:  'One sentence that separates this product from every other offer in its space.',
     target: 'product',
     notionField: 'uniqueAngle',
-    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\nUnique opportunity: ${ctx.uniqueOpportunity || '(none)'}\n\nWrite ONE sentence that separates this product from every other offer in its space. Specific, concrete, no fluff. Output only that sentence.`,
+    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\nUnique opportunity: ${ctx.uniqueOpportunity || '(none)'}\nContent/marketing Method(s) attached to this product: ${ctx.methods || '(none linked)'}\n\nWrite ONE sentence that separates this product from every other offer in its space. Take the attached Method(s) into account if it changes how the product is actually delivered or positioned. Specific, concrete, no fluff. Output only that sentence.`,
     renderFn: text => { const el = document.getElementById('r-uniqueangle'); if (el) el.textContent = text; },
   },
   avatar: {
@@ -1018,7 +1032,7 @@ const FIELD_META = {
     hint:  'Who this product is for — specific situation, pain, identity.',
     target: 'product',
     notionField: 'avatar',
-    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\n\nDescribe the Avatar — who this product is for. Specific situation, pain, identity. 2-3 sentences. Output only the description.`,
+    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\nContent/marketing Method(s) attached to this product: ${ctx.methods || '(none linked)'}\n\nDescribe the Avatar — who this product is for. Specific situation, pain, identity. If this product is sold via a specific Method above (e.g. Upwork), ground the avatar in that context (their situation on that platform, not a generic buyer). 2-3 sentences. Output only the description.`,
     renderFn: text => { const el = document.getElementById('r-avatar'); if (el) el.textContent = text; },
   },
   transformation: {
@@ -1026,7 +1040,7 @@ const FIELD_META = {
     hint:  'Before state → after state. What changes and how life looks different.',
     target: 'product',
     notionField: 'transformation',
-    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\n\nDescribe the Transformation this product delivers: before state → after state, what changes and how life looks different. 2-3 sentences. Output only the description.`,
+    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\nContent/marketing Method(s) attached to this product: ${ctx.methods || '(none linked)'}\n\nDescribe the Transformation this product delivers: before state → after state, what changes and how life looks different. If a Method above implies a specific delivery context (e.g. an Upwork contract), let the transformation reflect that reality. 2-3 sentences. Output only the description.`,
     renderFn: text => { const el = document.getElementById('r-transformation'); if (el) el.textContent = text; },
   },
   offerStructure: {
@@ -1042,7 +1056,7 @@ const FIELD_META = {
     hint:  'The kind of proof/results this product should build toward.',
     target: 'product',
     notionField: 'proofPoints',
-    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\n\nWrite 3-5 bullet points of the kind of proof/results this product should build toward. Be specific. Output only the bullets.`,
+    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\nContent/marketing Method(s) attached to this product: ${ctx.methods || '(none linked)'}\n\nWrite 3-5 bullet points of the kind of proof/results this product should build toward. If sold via a specific Method above (e.g. Upwork), the proof points should be things that matter in that context (e.g. client reviews, repeat contracts, turnaround time) not generic testimonials. Be specific. Output only the bullets.`,
     renderFn: text => { const el = document.getElementById('r-proofpoints'); if (el) el.textContent = text; },
   },
   objections: {
@@ -1050,20 +1064,65 @@ const FIELD_META = {
     hint:  'Top objections and the honest answer to each.',
     target: 'product',
     notionField: 'objections',
-    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\n\nWrite the top 3 objections a buyer would have and the honest answer to each. Format: Objection → Answer. Output only the list.`,
+    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nContent/marketing Method(s) attached to this product: ${ctx.methods || '(none linked)'}\n\nWrite the top 3 objections a buyer would have and the honest answer to each. If sold via a specific Method above (e.g. Upwork), the objections should be ones real for that context (e.g. \\"why not just hire an agency\\", \\"how do I know you'll deliver on a fixed price\\"). Format: Objection → Answer. Output only the list.`,
     renderFn: text => { const el = document.getElementById('r-objections'); if (el) el.textContent = text; },
   },
 };
 
+// ── Per-method section storage (product-targeted fields only) ──────────
+// A field with >1 method attached stores "[Method Name]\nbody" blocks
+// separated by a blank line — one section per method. Regenerating for one
+// method replaces only that section; others are preserved untouched.
+function parseFieldSections(text) {
+  if (!text || !text.trim()) return [];
+  const blocks = text.split(/\n(?=\[.+?\]\n)/);
+  const sections = blocks.map(b => {
+    const m = b.match(/^\[(.+?)\]\n?([\s\S]*)$/);
+    return m ? { method: m[1].trim(), body: (m[2] || '').trim() } : null;
+  }).filter(Boolean);
+  // If the existing text predates section format (no bracket header at all),
+  // preserve it as a labeled "Previous" section rather than silently losing it.
+  if (!sections.length) return [{ method: 'Previous', body: text.trim() }];
+  return sections;
+}
+function serializeFieldSections(sections) {
+  return sections.filter(s => s.body).map(s => `[${s.method}]\n${s.body}`).join('\n\n');
+}
+
 let FIELD_RESEARCH_TARGET = '';
+let FIELD_RESEARCH_METHOD = null; // {id,name} currently selected in the picker, or null
+
+function fieldResearchCtx() {
+  return { name: PRODUCT_NAME, keywords: RAW.keywords, statement: RAW.statement, uniqueOpportunity: RAW.uniqueOpportunity, keyMessage: RAW.keyMessage, methods: FIELD_RESEARCH_METHOD ? FIELD_RESEARCH_METHOD.name : '' };
+}
+function refreshFieldResearchPrompt() {
+  const meta = FIELD_META[FIELD_RESEARCH_TARGET];
+  if (meta) document.getElementById('fieldResearchPrompt').value = meta.promptFn(fieldResearchCtx());
+}
+function onFieldResearchMethodChange() {
+  const sel = document.getElementById('fieldResearchMethodSelect');
+  FIELD_RESEARCH_METHOD = PRODUCT_METHODS.find(m => m.id === sel.value) || null;
+  refreshFieldResearchPrompt();
+}
 function openFieldResearchModal(field) {
   const meta = FIELD_META[field];
   if (!meta) return;
   FIELD_RESEARCH_TARGET = field;
-  const ctx = { name: PRODUCT_NAME, keywords: RAW.keywords, statement: RAW.statement, uniqueOpportunity: RAW.uniqueOpportunity, keyMessage: RAW.keyMessage, methods: PRODUCT_METHODS.map(m => m.name).join(', ') };
+  // Method picker only applies to product-targeted, section-grouped fields
+  // (newsFeed is campaign/trend research, not tied to a specific method).
+  const pickerRow = document.getElementById('fieldResearchMethodRow');
+  const sel = document.getElementById('fieldResearchMethodSelect');
+  if (meta.target === 'product' && PRODUCT_METHODS.length > 1) {
+    sel.innerHTML = PRODUCT_METHODS.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+    FIELD_RESEARCH_METHOD = PRODUCT_METHODS[0];
+    pickerRow.style.display = '';
+  } else {
+    FIELD_RESEARCH_METHOD = (meta.target === 'product' && PRODUCT_METHODS.length === 1) ? PRODUCT_METHODS[0] : null;
+    pickerRow.style.display = 'none';
+  }
   document.getElementById('fieldResearchTitle').textContent = meta.title;
   document.getElementById('fieldResearchHint').textContent = meta.hint;
-  document.getElementById('fieldResearchPrompt').value = meta.promptFn(ctx);
+  document.getElementById('fieldResearchPrompt').value = meta.promptFn(fieldResearchCtx());
   document.getElementById('fieldResearchStatus').textContent = '';
   document.getElementById('fieldResearchModal').classList.add('open');
 }
@@ -1082,12 +1141,22 @@ async function runFieldResearch() {
     if (res.error) throw new Error(res.error);
     const text = (res.text || '').trim();
     statusEl.textContent = 'Saving…';
-    if (meta.target === 'research') {
-      await w('updateResearch', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, field: meta.notionField, value: text });
-    } else {
-      await w('updateProductField', { productId: PRODUCT_ID, field: meta.notionField, value: text });
+    let toSave = text;
+    if (meta.target === 'product' && FIELD_RESEARCH_METHOD) {
+      // Merge: replace only this method's section, keep every other section as-is.
+      const sections = parseFieldSections(PRODUCT_FIELDS[field] || '');
+      const idx = sections.findIndex(s => s.method === FIELD_RESEARCH_METHOD.name);
+      if (idx >= 0) sections[idx] = { method: FIELD_RESEARCH_METHOD.name, body: text };
+      else sections.push({ method: FIELD_RESEARCH_METHOD.name, body: text });
+      toSave = serializeFieldSections(sections);
     }
-    await meta.renderFn(text);
+    if (meta.target === 'research') {
+      await w('updateResearch', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, field: meta.notionField, value: toSave });
+    } else {
+      await w('updateProductField', { productId: PRODUCT_ID, field: meta.notionField, value: toSave });
+      PRODUCT_FIELDS[field] = toSave;
+    }
+    await meta.renderFn(toSave);
     statusEl.textContent = '✓ Done.';
     setTimeout(closeFieldResearchModal, 900);
   } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
