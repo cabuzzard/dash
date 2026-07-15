@@ -3858,13 +3858,15 @@ Return ONLY a JSON array, no other text, no markdown fences:
       // child, or ordinary flat method alike — no per-type branching),
       // grounded in the PRODUCT-level Strategy (all 11 STRATEGY_FIELDS) +
       // Keywords — the "what to say" — plus this method's own framework —
-      // the "what to build for this platform". One consolidated deliverable
-      // per ASSET-classified phase (not one per bullet), so this stays well
-      // within a single call regardless of framework size. Falls back to
-      // the method's full framework if no phase is tagged [Asset] (older,
-      // untagged methods like Product Page still have their genuinely
-      // asset-shaped phases picked up via STRATEGY_FIELD_PHASE_MAP's
-      // reverse lookup inside parseMethodPhases).
+      // the "what to build for this platform". ONE Claude call PER
+      // ASSET-classified phase, not one call for the whole method — trying
+      // to write full assembled content for every phase in a single call is
+      // exactly the truncation failure that hit the earlier per-method
+      // Strategy design (a big/verbose phase like "Campaign Architecture"
+      // alone can burn the whole token budget mid-string). Each phase call
+      // is small and safe regardless of how many phases the method has.
+      // Falls back to the method's full framework as one pseudo-phase if
+      // nothing is tagged [Asset] and no legacy-name match either.
       if (body.action === "generateTitlesFromProductStrategy") {
         const { productId, campaignId, methodId, methodName } = body;
         if (!productId || !methodId) return json({ error: "productId and methodId required" }, 400);
@@ -3892,12 +3894,14 @@ Return ONLY a JSON array, no other text, no markdown fences:
         }).filter(Boolean).join("\n");
 
         const assetPhases = phases.filter(p => p.kind !== "strategy");
-        const relevantPhases = assetPhases.length ? assetPhases : phases;
-        const frameworkBlock = relevantPhases.map(p =>
-          `PHASE: ${p.name}\n` + p.groupings.map(g => `${g.name}: ${g.notes.join("; ")}`).join("\n")
-        ).join("\n\n");
+        const relevantPhases = assetPhases.length ? assetPhases : (phases.length ? phases : [{ name: methodName, groupings: [] }]);
 
-        const prompt = `You are producing the actual publishable deliverables for one marketing method, using this product's core strategy as the source material for what to say.
+        const rtBlock = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1990), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        let created = 0;
+        const failedPhases = [];
+        for (const phase of relevantPhases) {
+          const frameworkBlock = `PHASE: ${phase.name}\n` + phase.groupings.map(g => `${g.name}: ${g.notes.join("; ")}`).join("\n");
+          const prompt = `You are producing the actual publishable deliverable(s) for ONE section of a marketing method, using this product's core strategy as the source material for what to say.
 
 PRODUCT: ${productName}
 KEYWORDS: ${productKeywords || "(none)"}
@@ -3906,56 +3910,53 @@ PRODUCT STRATEGY (use this as the substance — don't invent positioning that co
 ${strategyBlock || "(no strategy fields generated yet — ground in PRODUCT/KEYWORDS only)"}
 
 METHOD: ${methodName}
-WHAT THIS METHOD NEEDS BUILT (from its own framework):
-${frameworkBlock || "(no framework on file — infer reasonable deliverables from the method name)"}
+SECTION TO PRODUCE: ${phase.name}
+WHAT THIS SECTION NEEDS BUILT (from the method's own framework):
+${frameworkBlock}
 
 INSTRUCTIONS:
-- Produce ONE deliverable per PHASE listed above — consolidate everything in that phase's groupings into ONE cohesive, real, assembled piece of content (not a restatement of the framework, not one title per bullet).
-- Ground every deliverable in the PRODUCT STRATEGY above — real specifics, not generic marketing language.
-- If no phases were listed, propose 1-3 genuine deliverables this method would need.
+- Produce ONE cohesive, real, assembled deliverable for THIS section only — consolidate everything above into one piece of content, not a restatement of the framework, not one title per bullet. Only propose a second item if this section genuinely needs two distinct pieces (rare).
+- Ground it in the PRODUCT STRATEGY above — real specifics, not generic marketing language.
+- Keep the assembled content focused and complete for this one section — don't try to cover other sections of the method.
 
 Return ONLY a JSON array, no other text, no markdown fences:
-{ "title": "deliverable name, e.g. 'Above the Fold Copy — <product>'", "content": "the actual assembled copy/content for this deliverable" }`;
+{ "title": "deliverable name, e.g. '${phase.name} — <product>'", "content": "the actual assembled copy/content for this deliverable" }`;
 
-        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
-        });
-        const aiData = await aiResp.json();
-        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+          try {
+            const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+              body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2500, messages: [{ role: "user", content: prompt }] }),
+            });
+            const aiData = await aiResp.json();
+            if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+            const raw = aiData.content?.[0]?.text || "";
+            const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+            if (s === -1 || e === -1 || e < s) throw new Error("No JSON array found");
+            const items = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+            if (!Array.isArray(items)) throw new Error("Not an array");
 
-        let items;
-        try {
-          const raw = aiData.content?.[0]?.text || "";
-          const s = raw.indexOf('['), e = raw.lastIndexOf(']');
-          if (s === -1 || e === -1 || e < s) throw new Error("No JSON array found");
-          items = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
-          if (!Array.isArray(items)) throw new Error("Not an array");
-        } catch(e) {
-          return json({ error: "Failed to parse titles JSON: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
+            for (const it of items.slice(0, 2)) {
+              const props = {
+                "Title":    { title: rtBlock(String(it.title || phase.name).slice(0, 200)) },
+                "Status":   { select: { name: "Development" } },
+                "Grouping": { rich_text: rtBlock(`${methodName} > ${phase.name}`) },
+                "method":   { relation: [{ id: dash(methodId) }] },
+                "product":  { relation: [{ id: dash(productId) }] },
+              };
+              if (campaignId) props["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+              const children = String(it.content || '').split(/\n\n+/).filter(Boolean).map(pg => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(pg.slice(0, 1990)) } }));
+              const resp = await fetch("https://api.notion.com/v1/pages", {
+                method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props, children }),
+              });
+              const page = await resp.json();
+              if (page.id) created++;
+            }
+          } catch(e) { failedPhases.push(phase.name); }
         }
-
-        const rtBlock = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1990), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
-        let created = 0;
-        for (const it of items.slice(0, 10)) {
-          const props = {
-            "Title":    { title: rtBlock(String(it.title || 'Untitled').slice(0, 200)) },
-            "Status":   { select: { name: "Development" } },
-            "Grouping": { rich_text: rtBlock(methodName || '') },
-            "method":   { relation: [{ id: dash(methodId) }] },
-            "product":  { relation: [{ id: dash(productId) }] },
-          };
-          if (campaignId) props["Campaign"] = { relation: [{ id: dash(campaignId) }] };
-          const children = String(it.content || '').split(/\n\n+/).filter(Boolean).map(pg => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(pg.slice(0, 1990)) } }));
-          const resp = await fetch("https://api.notion.com/v1/pages", {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props, children }),
-          });
-          const page = await resp.json();
-          if (page.id) created++;
-        }
-        return json({ created });
+        if (!created) return json({ error: `Failed to generate any titles — every section failed: ${failedPhases.join(", ") || "unknown error"}` }, 500);
+        return json({ created, phaseCount: relevantPhases.length, failedPhases });
       }
 
       // ── generateTitlesFromStrategy ──
