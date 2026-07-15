@@ -21,6 +21,7 @@ const RUNS_DB            = "21c676fd91b74137b5f3ab57167a0849";
 const DRIVES_DB          = "3751f7d3a4bb806cb133ff9182306ec8";
 const RESUMES_DB         = "3751f7d3a4bb80599583c9aef8d10b05";
 const DESIGN_SPECS_DB    = "3981f7d3a4bb817c8edad15db64fa50d";
+const SAVED_POSTS_DB     = "0a037d3a9a9a4289a41f76050055c795";
 
 // Strategy DB (per-PRODUCT, not per-method) — a fixed positioning schema
 // true for the product regardless of which platform/method it's marketed
@@ -1055,6 +1056,233 @@ async function runAutoTradeScan(env) {
   }
 
   return { scanned: universe.length, buys: buys.length, created };
+}
+
+// ── SAVED POSTS PIPELINE (Notion "Saved Posts (Swipe File)" → Apify scrape → ─
+// transcribe if video → Claude summary). Content TYPE (text vs video/speech)
+// is detected from what the scraper actually returns for that URL, not
+// hardcoded per platform — a tweet with a video attachment is treated the
+// same as a YouTube video: transcribe, don't just summarize the caption.
+async function callApifyActor(token, actorSlug, input, timeoutSec = 60) {
+  const resp = await fetch(`https://api.apify.com/v2/acts/${actorSlug}/run-sync-get-dataset-items?token=${token}&timeout=${timeoutSec}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data?.error?.message || data?.errorDescription || `Apify actor ${actorSlug} failed`);
+  return Array.isArray(data) ? data : [data];
+}
+
+// Downloads a video/audio file and transcribes it via ElevenLabs Scribe.
+// Used for any content that turns out to be video/speech, regardless of
+// platform (X video posts, Instagram reels, YouTube fallback).
+async function transcribeViaElevenLabs(env, mediaUrl) {
+  const key = (env.ELEVENLABS_API_KEY || "").trim();
+  if (!key) throw new Error("ELEVENLABS_API_KEY not configured");
+  const mediaResp = await fetch(mediaUrl);
+  if (!mediaResp.ok) throw new Error("Could not download media for transcription");
+  const blob = await mediaResp.blob();
+  const form = new FormData();
+  form.append("model_id", "scribe_v1");
+  form.append("file", blob, "media");
+  const resp = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+    method: "POST",
+    headers: { "xi-api-key": key },
+    body: form,
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data?.detail?.message || data?.detail || "ElevenLabs transcription failed");
+  return data.text || "";
+}
+
+// Scrapes the saved URL via the right Apify actor for its platform, then
+// detects whether the actual post is text or video/speech from the scraped
+// output itself (media attachments / videoUrl field) and transcribes when
+// it is. Returns raw text, transcript (if any), detected author, and a note
+// for anything degraded (e.g. transcription unavailable).
+async function fetchSavedPostContent(env, platform, url) {
+  const AT = (env.APIFY_TOKEN || "").trim();
+  if (!AT) throw new Error("APIFY_TOKEN not configured");
+
+  if (platform === "X") {
+    const items = await callApifyActor(AT, "apidojo~tweet-scraper", { startUrls: [url], maxItems: 1 });
+    const tweet = items?.[0];
+    if (!tweet || tweet.noResults) throw new Error("Tweet not found or unavailable (deleted/private)");
+    const text = tweet.fullText || tweet.text || "";
+    const author = tweet.author?.userName || tweet.author?.name || "";
+    const media = tweet.extendedEntities?.media || tweet.entities?.media || [];
+    const videoMedia = media.find(m => m.type === "video" || m.type === "animated_gif");
+    let transcript = "", note = "";
+    if (videoMedia) {
+      const variants = (videoMedia.video_info?.variants || []).filter(v => v.content_type === "video/mp4");
+      const best = variants.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+      if (best?.url) {
+        try { transcript = await transcribeViaElevenLabs(env, best.url); }
+        catch (e) { note = `Video post — transcription failed (${e.message}), summarized from tweet text only.`; }
+      } else {
+        note = "Video post — no downloadable video URL found, summarized from tweet text only.";
+      }
+    }
+    return { text, transcript, author, note };
+  }
+
+  if (platform === "Instagram") {
+    const items = await callApifyActor(AT, "apify~instagram-scraper", { directUrls: [url], resultsType: "posts", resultsLimit: 1 });
+    const post = items?.[0];
+    if (!post || post.error) throw new Error(post?.errorDescription || "Instagram post not found or unavailable (private/deleted)");
+    const text = post.caption || "";
+    const author = post.ownerUsername || "";
+    let transcript = "", note = "";
+    if (post.videoUrl) {
+      try { transcript = await transcribeViaElevenLabs(env, post.videoUrl); }
+      catch (e) { note = `Reel/video post — transcription failed (${e.message}), summarized from caption only.`; }
+    }
+    return { text, transcript, author, note };
+  }
+
+  if (platform === "YouTube") {
+    let transcript = "", title = "", author = "", note = "";
+    try {
+      const items = await callApifyActor(AT, "codepoetry~youtube-transcript-ai-scraper", { startUrls: [url], enableAiFallback: true }, 120);
+      const yt = items?.[0];
+      if (!yt || yt.error) throw new Error(yt?.error || "No transcript returned");
+      transcript = yt.transcript_text || yt.transcript_llm || "";
+      title = yt.metadata?.title || yt.title || "";
+      author = yt.metadata?.channel_name || yt.metadata?.channelName || yt.channelName || "";
+      if (yt.is_ai_generated) note = "Transcript generated via AI speech-to-text (no native captions available).";
+    } catch (e) {
+      note = `Transcript actor failed (${e.message}) — trying audio download + ElevenLabs.`;
+    }
+    if (!transcript) {
+      try {
+        const dl = await callApifyActor(AT, "streamers~youtube-video-downloader", { videos: [{ url }], preferredFormat: "mp3" }, 180);
+        const audioUrl = dl?.[0]?.downloadUrl || dl?.[0]?.url;
+        if (!audioUrl) throw new Error("no downloadable audio URL returned");
+        transcript = await transcribeViaElevenLabs(env, audioUrl);
+        note = "Transcribed via audio download + ElevenLabs (no actor captions available).";
+      } catch (e2) {
+        note = (note ? note + " " : "") + `ElevenLabs fallback also failed (${e2.message}) — summarized from title only.`;
+      }
+    }
+    return { text: title, transcript, author, note };
+  }
+
+  throw new Error(`Unsupported platform: ${platform}`);
+}
+
+async function summarizeSavedPost(env, { text, transcript, platform, author }) {
+  if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
+  const content = [text, transcript].filter(Boolean).join("\n\n---\n\n") || "(no text or transcript could be extracted)";
+  const prompt = `Summarize this ${platform} post for a content swipe file. Provide:
+1. A short headline (under 8 words) capturing the core idea
+2. A 2-4 sentence summary covering: the hook/opening, the core argument or story, and why it might be worth referencing later
+
+Respond ONLY with JSON: {"headline": "...", "body": "..."}
+
+Post content:
+${content.slice(0, 12000)}
+Author: ${author || "unknown"}`;
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6", max_tokens: 600,
+      system: "You are summarizing social media content for a personal swipe file used for content research and inspiration. Be concise and specific — extract the actual hook, structure, or insight, not a generic description.",
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data?.error?.message || "Claude summarization failed");
+  const raw = data.content?.[0]?.text || "";
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Could not parse summary response");
+  const parsed = JSON.parse(sanitizeJsonControlChars(match[0]));
+  return { headline: parsed.headline || "Saved Post", body: parsed.body || raw.slice(0, 500) };
+}
+
+async function patchSavedPostPage(pageId, properties) {
+  const resp = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+    method: "PATCH",
+    headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.message || "Notion page update failed");
+  return data;
+}
+
+// Full raw text/transcript has no 2000-char property limit workaround here —
+// it's written into the page BODY as paragraph blocks (same pattern as the
+// Strategy docs elsewhere in this worker), chunked under Notion's per-block
+// rich_text length limit and batched under the 100-blocks-per-request cap.
+async function appendFullContentToPage(pageId, { text, transcript }) {
+  const chunk = s => { const out = []; let r = s; while (r.length) { out.push(r.slice(0, 1900)); r = r.slice(1900); } return out; };
+  const blocks = [];
+  if (transcript) {
+    blocks.push({ object: "block", type: "heading_2", heading_2: { rich_text: [{ type: "text", text: { content: "Full Transcript" } }] } });
+    for (const c of chunk(transcript)) blocks.push({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: c } }] } });
+  }
+  if (text) {
+    blocks.push({ object: "block", type: "heading_2", heading_2: { rich_text: [{ type: "text", text: { content: transcript ? "Original Post Text" : "Full Text" } }] } });
+    for (const c of chunk(text)) blocks.push({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: c } }] } });
+  }
+  for (let i = 0; i < blocks.length; i += 90) {
+    const batch = blocks.slice(i, i + 90);
+    const resp = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+      body: JSON.stringify({ children: batch }),
+    });
+    if (!resp.ok) { const d = await resp.json(); throw new Error(d.message || "Failed to write transcript blocks"); }
+  }
+}
+
+async function processSavedPost(env, page) {
+  const props = page.properties || {};
+  const url = props.URL?.url;
+  const platform = props.Platform?.select?.name;
+  const pageId = page.id;
+
+  await patchSavedPostPage(pageId, { Status: { status: { name: "In progress" } } });
+
+  try {
+    if (!url) throw new Error("No URL set on this row");
+    if (!platform) throw new Error("No Platform set on this row");
+
+    const { text, transcript, author, note } = await fetchSavedPostContent(env, platform, url);
+    if (!text.trim() && !transcript.trim()) throw new Error("No content could be extracted from this URL");
+
+    const summary = await summarizeSavedPost(env, { text, transcript, platform, author });
+
+    const patchProps = {
+      Name: { title: [{ type: "text", text: { content: summary.headline.slice(0, 200) } }] },
+      Notes: { rich_text: [{ type: "text", text: { content: (summary.body + (note ? `\n\n(${note})` : "")).slice(0, 1990) } }] },
+      Status: { status: { name: "Done" } },
+      "Summary Error": { rich_text: [] },
+    };
+    if (author) patchProps.Account = { rich_text: [{ type: "text", text: { content: author.slice(0, 1990) } }] };
+    await patchSavedPostPage(pageId, patchProps);
+    await appendFullContentToPage(pageId, { text, transcript });
+
+    return { id: pageId, ok: true };
+  } catch (e) {
+    await patchSavedPostPage(pageId, {
+      Status: { status: { name: "Not started" } },
+      "Summary Error": { rich_text: [{ type: "text", text: { content: String(e.message || e).slice(0, 1990) } }] },
+    });
+    return { id: pageId, ok: false, error: e.message };
+  }
+}
+
+async function runSavedPostsPipeline(env, limit) {
+  const rows = await notionQuery(SAVED_POSTS_DB, {
+    filter: { property: "Status", status: { equals: "Not started" } },
+  });
+  const toRun = limit ? rows.slice(0, limit) : rows;
+  const results = [];
+  for (const page of toRun) results.push(await processSavedPost(env, page));
+  return { processed: results.length, ok: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, results };
 }
 
 export default {
@@ -9218,6 +9446,49 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ diff });
       }
 
+      // ── Saved Posts (Links tab) ──
+      if (body.action === "getSavedPosts") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const rows = await notionQuery(SAVED_POSTS_DB, {
+          sorts: [{ property: "Date Saved", direction: "descending" }],
+        });
+        const posts = rows.map(p => {
+          const pr = p.properties || {};
+          return {
+            id: p.id,
+            name: pr.Name?.title?.[0]?.plain_text || "Saved Post",
+            url: pr.URL?.url || "",
+            platform: pr.Platform?.select?.name || "",
+            account: pr.Account?.rich_text?.[0]?.plain_text || "",
+            status: pr.Status?.status?.name || "",
+            dateSaved: pr["Date Saved"]?.date?.start || "",
+            notes: pr.Notes?.rich_text?.[0]?.plain_text || "",
+            error: pr["Summary Error"]?.rich_text?.[0]?.plain_text || "",
+            notionUrl: p.url,
+          };
+        });
+        return json({ posts });
+      }
+
+      if (body.action === "runSavedPostsPipeline") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const summary = await runSavedPostsPipeline(env, body.limit);
+        return json(summary);
+      }
+
+      if (body.action === "retrySavedPost") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const pageResp = await fetch(`https://api.notion.com/v1/pages/${id}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const page = await pageResp.json();
+        if (!pageResp.ok) return json({ error: page.message || "Page not found" }, 404);
+        const result = await processSavedPost(env, page);
+        return json(result);
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);
@@ -9225,6 +9496,10 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
   },
 
   async scheduled(event, env, ctx) {
+    if (event.cron === "*/30 * * * *") {
+      ctx.waitUntil(runSavedPostsPipeline(env).catch(e => console.error('savedPostsPipeline failed:', e.message)));
+      return;
+    }
     ctx.waitUntil(deepScan(env).catch(e => console.error('deepScan failed:', e.message)));
     ctx.waitUntil(runAutoTradeScan(env).catch(e => console.error('runAutoTradeScan failed:', e.message)));
   },

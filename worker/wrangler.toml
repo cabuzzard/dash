@@ -11,7 +11,7 @@ binding = "TRADES"
 id = "344c88fa8ca744fcbe25495b4701666d"
 
 [triggers]
-crons = ["0 0 * * *"]
+crons = ["0 0 * * *", "*/30 * * * *"]
 
 [env]
 routes = [{ pattern = "https://cabuzzard.github.io/dash/*" }]

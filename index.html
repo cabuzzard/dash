@@ -574,6 +574,7 @@
     <div class="tab" onclick="switchTab('platforms')">Platforms</div>
     <div class="tab" onclick="switchTab('domains')">Domains</div>
     <div class="tab" onclick="switchTab('trades')">Trades</div>
+    <div class="tab" onclick="switchTab('links')">Links</div>
   </div>
 
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
@@ -680,6 +681,16 @@
 
   <div class="tab-panel" id="tabPlatforms">
     <div id="platformsContent">
+      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabLinks">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <a class="add-link" onclick="loadLinks()">↺ Refresh</a>
+      <button id="linksRunBtn" onclick="runLinksPipeline()" style="font-size:11px;font-weight:600;padding:4px 12px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▶ Run Now</button>
+    </div>
+    <div id="linksContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
   </div>
@@ -2377,6 +2388,7 @@ async function call(action, extra = {}) {
 let prodLoaded = false;
 let devLoaded  = false;
 let tdTabLoaded = false;
+let linksLoaded = false;
 
 const ASSET_STATUS_CYCLE = ['Publish', 'Published'];
 function assetStatusStyle(status) {
@@ -3141,6 +3153,7 @@ function switchTab(name) {
   if (name === 'td'          && !tdTabLoaded)     { tdTabLoaded     = true; loadTdTab(); }
   if (name === 'platforms') { loadPlatformMatrix(); if (!smAccsLoaded) loadSmAccounts(); if (!emailsLoaded) loadEmails(); }
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
+  if (name === 'links'     && !linksLoaded)  { linksLoaded  = true; loadLinks(); }
   if (name === 'trades') {
     if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); }
     startTradesAutoRefresh();
@@ -3156,6 +3169,89 @@ function startTradesAutoRefresh() {
 }
 function stopTradesAutoRefresh() {
   if (_tradesRefreshTimer) { clearInterval(_tradesRefreshTimer); _tradesRefreshTimer = null; }
+}
+
+// ── LINKS TAB (Saved Posts swipe file pipeline) ─────────────────────────
+let LINKS_POSTS = [];
+
+function linksStatusColor(status) {
+  if (status === 'Done')        return '#4cff4c';
+  if (status === 'In progress') return '#ffb020';
+  return 'var(--text3)';
+}
+
+async function loadLinks() {
+  const el = document.getElementById('linksContent');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getSavedPosts');
+    LINKS_POSTS = data.posts || [];
+    renderLinks();
+  } catch(e) {
+    el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderLinks() {
+  const el = document.getElementById('linksContent');
+  if (!LINKS_POSTS.length) { el.innerHTML = '<div class="empty" style="margin-top:32px;text-align:center;">No saved posts yet.</div>'; return; }
+
+  el.innerHTML = LINKS_POSTS.map(p => {
+    const dateStr = p.dateSaved ? new Date(p.dateSaved).toLocaleDateString() : '';
+    const errorBlock = p.error
+      ? '<div style="margin-top:6px;font-size:12px;color:#ff6b6b;">⚠ ' + esc(p.error) + '</div>'
+      : '';
+    const notesBlock = p.notes
+      ? '<div style="margin-top:6px;font-size:12px;color:var(--text2);line-height:1.5;">' + esc(p.notes) + '</div>'
+      : '';
+    const retryBtn = (p.status !== 'Done')
+      ? '<button onclick="retryLinkRow(\'' + p.id + '\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">↺ Retry</button>'
+      : '';
+    return '' +
+      '<div id="linkRow_' + p.id + '" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface);">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">' +
+          '<div style="min-width:0;flex:1;">' +
+            '<span style="font-size:13px;font-weight:600;color:var(--text);">' + esc(p.name) + '</span>' +
+            '<span style="font-size:11px;color:var(--text3);margin-left:8px;">' + esc(p.platform) + (p.account ? ' · @' + esc(p.account) : '') + (dateStr ? ' · ' + dateStr : '') + '</span>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;flex-shrink:0;">' +
+            '<span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:' + linksStatusColor(p.status) + ';">' + esc(p.status) + '</span>' +
+            (p.url ? '<a href="' + esc(p.url) + '" target="_blank" style="margin-left:10px;color:var(--text3);text-decoration:none;font-size:12px;">🔗</a>' : '') +
+            (p.notionUrl ? '<a href="' + esc(p.notionUrl) + '" target="_blank" style="margin-left:6px;color:var(--text3);text-decoration:none;font-size:12px;">↗</a>' : '') +
+            retryBtn +
+          '</div>' +
+        '</div>' +
+        notesBlock + errorBlock +
+      '</div>';
+  }).join('');
+}
+
+async function runLinksPipeline() {
+  const btn = document.getElementById('linksRunBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+  try {
+    const result = await call('runSavedPostsPipeline');
+    showToast('Processed ' + result.processed + ' (' + result.ok + ' ok, ' + result.failed + ' failed)', result.failed ? 'error' : 'success');
+    await loadLinks();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
+  btn.disabled = false;
+  btn.textContent = '▶ Run Now';
+}
+
+async function retryLinkRow(id) {
+  const row = document.getElementById('linkRow_' + id);
+  if (row) row.style.opacity = '0.5';
+  try {
+    const result = await call('retrySavedPost', { id });
+    showToast(result.ok ? 'Done ✓' : 'Failed: ' + result.error, result.ok ? 'success' : 'error');
+    await loadLinks();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    if (row) row.style.opacity = '1';
+  }
 }
 
 // ── DOMAINS TAB ───────────────────────────────────────────────────────
