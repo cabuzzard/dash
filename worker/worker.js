@@ -1534,6 +1534,9 @@ export default {
           // Shared tag set by the ecosystem pipeline (createEcosystemProduct) —
           // groups sibling products spawned from the same seed idea.
           ecosystem: (p.properties?.["Ecosystem"]?.rich_text || []).map(t => t.plain_text).join("") || null,
+          // Funnel role within that ecosystem (Top of funnel / Lead-in / Core
+          // offer / Retention / etc.) — orders/sub-groups rows within a group.
+          type: (p.properties?.["Type"]?.rich_text || []).map(t => t.plain_text).join("") || null,
         }));
         return json({ products });
       }
@@ -2567,7 +2570,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
       // with the shared Ecosystem group (the original seed idea title) so
       // sibling products can be found/displayed together later.
       if (body.action === "createEcosystemProduct") {
-        const { name, description, campaignId, ecosystemTag } = body;
+        const { name, description, campaignId, ecosystemTag, type } = body;
         if (!name || !campaignId) return json({ error: "name and campaignId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
@@ -2578,6 +2581,10 @@ Return ONLY a JSON array — no other text, no markdown fences:
         };
         if (description) props["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
         if (ecosystemTag) props["Ecosystem"] = { rich_text: [{ type: "text", text: { content: String(ecosystemTag).slice(0, 200) } }] };
+        // Funnel role within the ecosystem (Top of funnel / Lead-in / Core
+        // offer / Retention / etc.), from researchProductEcosystem's
+        // funnelStage — drives grouping/ordering within an ecosystem in the UI.
+        if (type) props["Type"] = { rich_text: [{ type: "text", text: { content: String(type).slice(0, 100) } }] };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ parent: { database_id: PRODUCTS_DB }, properties: props }),
