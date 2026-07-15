@@ -1360,14 +1360,19 @@ export default {
       }
 
       if (body.action === "createProduct") {
-        const { title } = body;
+        const { title, type } = body;
         if (!title) return json({ error: "title required" }, 400);
+        const createProps = { Name: { title: [{ type: "text", text: { content: title } }] } };
+        // Type = concrete FORMAT (PDF/Email/Quiz/Coaching/Membership/etc.) —
+        // set at manual creation so matchProductMethod (called right after by
+        // the front-end) has a real signal to match a method against.
+        if (type) createProps["Type"] = { rich_text: [{ type: "text", text: { content: String(type).slice(0, 100) } }] };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({
             parent: { database_id: PRODUCTS_DB },
-            properties: { Name: { title: [{ type: "text", text: { content: title } }] } }
+            properties: createProps
           }),
         });
         const result = await resp.json();

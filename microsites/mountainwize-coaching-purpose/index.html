@@ -536,6 +536,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <input class="modal-ta" id="product-modal-input" type="text" placeholder="Product name…" style="height:32px;padding:5px 10px;" autocomplete="off" oninput="filterProductDd()" onfocus="filterProductDd()" />
         <div id="product-modal-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
       </div>
+      <label class="lm-label" for="product-modal-type" style="margin-top:8px;">Type <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(format — PDF, Email, Quiz, Coaching, Membership… only used when creating a new product)</span></label>
+      <input class="modal-ta" id="product-modal-type" type="text" placeholder="e.g. PDF, Email, Coaching…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" />
       <div class="modal-status" id="productModalStatus"></div>
     </div>
     <div class="modal-foot">
@@ -2569,14 +2571,17 @@ async function removeProduct(productId, btn) {
 
 let productModalSelectedId = null;
 
+let PRODUCT_MODAL_JUST_CREATED = false;
 function openProductModal() {
   document.getElementById('product-modal-input').value = '';
+  document.getElementById('product-modal-type').value = '';
   document.getElementById('product-modal-dd').style.display = 'none';
   document.getElementById('productModalStatus').textContent = '';
   document.getElementById('productModalStatus').className = 'modal-status';
   document.getElementById('productModalSave').disabled = false;
   document.getElementById('productModalSave').textContent = 'Add';
   productModalSelectedId = null;
+  PRODUCT_MODAL_JUST_CREATED = false;
   document.getElementById('productModal').classList.add('open');
   setTimeout(() => document.getElementById('product-modal-input').focus(), 100);
 }
@@ -2619,9 +2624,11 @@ function filterProductDd() {
       const saveBtn = document.getElementById('productModalSave');
       if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Creating…'; }
       try {
-        const res = await w('createProduct', { title: query });
+        const typeVal = (document.getElementById('product-modal-type')?.value || '').trim();
+        const res = await w('createProduct', { title: query, type: typeVal || undefined });
         ALL_PRODUCTS.push({ id: res.id, name: query });
         productModalSelectedId = res.id;
+        PRODUCT_MODAL_JUST_CREATED = true;
         document.getElementById('product-modal-input').value = query;
         dd.style.display = 'none';
       } catch(e) {
@@ -2646,6 +2653,7 @@ document.addEventListener('click', e => {
 async function addProductFromModal() {
   const name = document.getElementById('product-modal-input').value.trim();
   if (!name) return;
+  const typeVal = (document.getElementById('product-modal-type')?.value || '').trim();
   const btn    = document.getElementById('productModalSave');
   const status = document.getElementById('productModalStatus');
   btn.disabled = true;
@@ -2654,18 +2662,36 @@ async function addProductFromModal() {
   try {
     let productId = productModalSelectedId;
     if (!productId) {
-      const res = await w('createProduct', { title: name });
+      const res = await w('createProduct', { title: name, type: typeVal || undefined });
       productId = res.id;
       ALL_PRODUCTS.push({ id: productId, name });
+      PRODUCT_MODAL_JUST_CREATED = true;
     }
     await w('addCampaignProduct', { campaignId: CAMPAIGN_ID, productId });
     if (!PRODUCT_ITEMS.some(p => p.id === productId)) {
-      PRODUCT_ITEMS.push({ id: productId, name });
+      PRODUCT_ITEMS.push({ id: productId, name, type: typeVal || null });
     }
     renderProducts();
-    status.textContent = 'Added ✓';
-    status.className = 'modal-status ok';
-    setTimeout(closeProductModal, 700);
+    // A freshly-created (typed) product automatically gets a method matched
+    // — existing-first, also attaches to this campaign's Methods field.
+    if (PRODUCT_MODAL_JUST_CREATED) {
+      status.textContent = 'Added ✓ — matching a method…';
+      status.className = 'modal-status ok';
+      try {
+        const mr = await w('matchProductMethod', { productId, campaignId: CAMPAIGN_ID });
+        if (mr.error) throw new Error(mr.error);
+        await loadMethods();
+        status.textContent = `Added ✓ — ${mr.wasNew ? 'created new method' : 'matched existing method'}: ${mr.methodName}`;
+      } catch(e) {
+        status.textContent = 'Added ✓ — method matching failed: ' + e.message;
+        status.className = 'modal-status err';
+      }
+      setTimeout(closeProductModal, 2200);
+    } else {
+      status.textContent = 'Added ✓';
+      status.className = 'modal-status ok';
+      setTimeout(closeProductModal, 700);
+    }
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.className = 'modal-status err';
