@@ -4223,7 +4223,7 @@ async function runEcosystemBuild() {
       <label class="lm-label" for="pmNewInput" style="margin-top:10px;">Or add a brand-new method by name</label>
       <div style="display:flex;gap:6px;margin-top:4px;">
         <input class="modal-ta" id="pmNewInput" type="text" placeholder="New method name…" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" />
-        <button class="td-add-btn-inline" onclick="addPmNewByName()" style="padding:0 10px;">+</button>
+        <button class="td-add-btn-inline" id="pmNewAddBtn" onclick="addPmNewByName()" style="padding:0 10px;">+</button>
       </div>
       <div id="pmStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:16px;"></div>
     </div>
@@ -4270,8 +4270,31 @@ function renderPmList() {
 function removePmStaged(i) { PM_STAGED.splice(i, 1); renderPmList(); }
 function removePmTrafficChild(i) { if (PM_STAGED[i]) PM_STAGED[i].trafficChild = null; renderPmList(); }
 
+// Bumped on every call — a fetch that resolves after a NEWER call has
+// started (e.g. "↻ Update & Re-suggest" fired again, or the modal was
+// reopened for a different product) drops its result instead of clobbering
+// whatever the newer call (or the user, via the staging controls below)
+// has since done to PM_STAGED.
+let PM_OPEN_TOKEN = 0;
+// Staging controls that mutate PM_STAGED — locked while a suggestion fetch
+// is in flight, since that fetch's resolution REPLACES PM_STAGED wholesale
+// (`PM_STAGED = already.map(...)`) and would otherwise silently discard
+// anything added in the meantime (e.g. typing a new method name while
+// "↻ Update & Re-suggest" is still working) with no error shown at all.
+function setPmStagingLocked(locked) {
+  ['pmSearchInput', 'pmNewInput', 'pmNewAddBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = locked;
+  });
+}
 async function openProductMethodsModal(productId, productName) {
+  const myToken = ++PM_OPEN_TOKEN;
   PM_PRODUCT_ID = productId; PM_PRODUCT_NAME = productName;
+  // Reset staged state synchronously (not just once the fetch resolves) —
+  // otherwise a fast "Add Methods" click before the fetch resolves would
+  // commit the PREVIOUS product's leftover staged methods against this one.
+  PM_STAGED = [];
+  PM_ORIGINAL_IDS = new Set();
   document.getElementById('pmTitle').textContent = 'Methods — ' + productName;
   document.getElementById('pmTitleInput').value = productName || '';
   document.getElementById('pmDescInput').value = '';
@@ -4279,12 +4302,14 @@ async function openProductMethodsModal(productId, productName) {
   document.getElementById('pmNewInput').value = '';
   document.getElementById('pmSearchDd').style.display = 'none';
   document.getElementById('pmStatus').textContent = '';
-  document.getElementById('pmCommitBtn').disabled = false;
+  document.getElementById('pmCommitBtn').disabled = true;
   document.getElementById('pmCommitBtn').textContent = 'Add Methods';
   document.getElementById('pmList').innerHTML = '<div class="loading"><div class="spinner"></div>Suggesting…</div>';
   document.getElementById('productMethodsModal').classList.add('open');
+  setPmStagingLocked(true);
   try {
     const data = await w('suggestProductMethod', { productId });
+    if (myToken !== PM_OPEN_TOKEN) return; // superseded by a newer open/re-suggest — don't clobber its result
     if (data.error) throw new Error(data.error);
     // Title/description come straight from Notion (via suggestProductMethod,
     // which already fetches the product page) — pre-fill so they can be
@@ -4315,7 +4340,10 @@ async function openProductMethodsModal(productId, productName) {
     }
     renderPmList();
   } catch(e) {
+    if (myToken !== PM_OPEN_TOKEN) return;
     document.getElementById('pmList').innerHTML = `<div style="font-size:12px;color:#e05;">${e.message}</div>`;
+  } finally {
+    if (myToken === PM_OPEN_TOKEN) { setPmStagingLocked(false); document.getElementById('pmCommitBtn').disabled = false; }
   }
 }
 function closeProductMethodsModal() {
