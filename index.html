@@ -2084,6 +2084,62 @@
   </div>
 </div>
 
+<!-- Link → Title Modal (Links tab): same idea-input as microsites/product
+     sites, plus a Campaign picker. Description prefills from the saved
+     post's summary. All pickers: choose existing or type a new name to
+     create it on save. -->
+<div class="modal-overlay" id="linkTitleModal" style="display:none;" onclick="if(event.target===this)closeLinkTitleModal()">
+  <div class="modal" style="width:480px;max-width:95vw;max-height:88vh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div class="modal-title" style="margin:0;font-size:14px;">Create Title from Saved Post</div>
+      <span onclick="closeLinkTitleModal()" style="cursor:pointer;color:var(--text3);font-size:18px;">✕</span>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Idea (title) <span style="color:var(--danger);">*</span></label>
+      <input class="modal-input" id="ltTitleInput" type="text" placeholder="The idea — becomes the title…" autocomplete="off" />
+    </div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Campaign <span style="color:var(--text3);font-weight:400;">(pick existing or type a new name)</span></label>
+      <input class="modal-input" id="ltCampaignInput" type="text" placeholder="Search campaigns, or type a new campaign name…" autocomplete="off"
+        oninput="ltFilter('campaign')" onfocus="ltFilter('campaign')" onblur="setTimeout(()=>{document.getElementById('ltCampaignDD').style.display='none'},180)" />
+      <div id="ltCampaignDD" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Method <span style="color:var(--text3);font-weight:400;">(pick existing or type a new name)</span></label>
+      <input class="modal-input" id="ltMethodInput" type="text" placeholder="Search methods, or type a new method name…" autocomplete="off"
+        oninput="ltFilter('method')" onfocus="ltFilter('method')" onblur="setTimeout(()=>{document.getElementById('ltMethodDD').style.display='none'},180)" />
+      <div id="ltMethodDD" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Product <span style="color:var(--text3);font-weight:400;">(pick existing or type a new name)</span></label>
+      <input class="modal-input" id="ltProductInput" type="text" placeholder="Search products, or type a new product name…" autocomplete="off"
+        oninput="ltFilter('product')" onfocus="ltFilter('product')" onblur="setTimeout(()=>{document.getElementById('ltProductDD').style.display='none'},180)" />
+      <div id="ltProductDD" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Description of content <span style="color:var(--text3);font-weight:400;">(prefilled from the saved post)</span></label>
+      <textarea class="modal-input" id="ltDescInput" rows="4" style="resize:vertical;" placeholder="What this content is and should communicate…"></textarea>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Seed keywords</label>
+      <input class="modal-input" id="ltKeywordsInput" type="text" placeholder="comma, separated, seed keywords" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Research instructions <span style="color:var(--text3);font-weight:400;">(for this idea)</span></label>
+      <textarea class="modal-input" id="ltResearchInput" rows="3" style="resize:vertical;" placeholder="How research for this idea should run — sources, angles, what to look for…"></textarea>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Research guidelines <span style="color:var(--text3);font-weight:400;">(optional — routing recommendations for Claude; remembered on this device, sent with every run)</span></label>
+      <textarea class="modal-input" id="ltGuidelinesInput" rows="2" style="resize:vertical;" placeholder="e.g. prioritize niche forums + Reddit; US buyers only; avoid hustle-culture framing…"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeLinkTitleModal()">Cancel</button>
+      <button class="btn btn-primary" id="ltSaveBtn" onclick="submitLinkTitle()">Create</button>
+    </div>
+    <div id="ltStatus" style="font-size:12px;color:var(--text3);margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- Edit Asset Modal (components + login) -->
 <div class="modal-overlay" id="editAssetModal" style="display:none;" onclick="if(event.target===this)closeEditAssetModal()">
   <div class="modal" style="max-height:88vh;display:flex;flex-direction:column;width:560px;max-width:96vw;">
@@ -2366,10 +2422,14 @@ function lockApp() {
 
 // ── WORKER ───────────────────────────────────────────────────────────
 async function call(action, extra = {}) {
+  const payload = { action, token: SESSION_TOKEN, ...extra };
+  // operator research guidelines ride along on every call — the worker folds
+  // them into all AI research/generation prompts (harmless on non-AI actions)
+  try { const rg = rgVal(); if (rg && payload.researchGuidelines == null) payload.researchGuidelines = rg; } catch(e) {}
   const resp = await fetch(WORKER_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, token: SESSION_TOKEN, ...extra })
+    body: JSON.stringify(payload)
   });
   const data = await resp.json();
   if (resp.status === 401) {
@@ -3215,6 +3275,7 @@ function renderLinks() {
       ? '<button onclick="retryLinkRow(\'' + p.id + '\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">↺ Retry</button>'
       : '';
     const deleteBtn = '<button onclick="deleteLinkRow(\'' + p.id + '\')" title="Delete" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0 0 0 8px;flex-shrink:0;color:var(--text3);">🗑</button>';
+    const titleBtn = '<button onclick="openLinkTitleModal(\'' + p.id + '\')" title="Create a Content Strategy title from this post" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">✚ title</button>';
     const platformBadge = '<span style="font-size:10px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:10px;flex-shrink:0;' + linksPlatformStyle(p.platform) + '">' + esc(p.platform || 'Unknown') + '</span>';
     return '' +
       '<div id="linkRow_' + p.id + '" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface);">' +
@@ -3230,6 +3291,7 @@ function renderLinks() {
             '<span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:' + linksStatusColor(p.status) + ';">' + esc(p.status) + '</span>' +
             (p.url ? '<a href="' + esc(p.url) + '" target="_blank" style="margin-left:10px;color:var(--text3);text-decoration:none;font-size:12px;">🔗</a>' : '') +
             (p.notionUrl ? '<a href="' + esc(p.notionUrl) + '" target="_blank" style="margin-left:6px;color:var(--text3);text-decoration:none;font-size:12px;">↗</a>' : '') +
+            titleBtn +
             retryBtn +
             deleteBtn +
           '</div>' +
@@ -3279,6 +3341,123 @@ async function deleteLinkRow(id) {
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
     if (row) row.style.opacity = '1';
+  }
+}
+
+// ── LINK → TITLE MODAL ──────────────────────────────────────────────────
+// Same idea-input as the microsite/product-site Add Idea modal, plus a
+// Campaign picker. Campaign/Method/Product: pick existing from the dropdown
+// or type an unmatched name — it's created on save. Description prefills
+// from the saved post's pipeline summary. Research guidelines persist in
+// localStorage (same key the microsites use) and ride along on every call().
+function rgVal() { try { return (localStorage.getItem('rg_guidelines') || '').trim(); } catch(e) { return ''; } }
+function rgSave(v) { try { localStorage.setItem('rg_guidelines', (v || '').trim()); } catch(e) {} }
+
+let LT_LISTS = { campaign: [], method: [], product: [] };
+let LT_SEL   = { campaign: null, method: null, product: null }; // {id,name} while input text still matches
+const LT_CFG = {
+  campaign: { input: 'ltCampaignInput', dd: 'ltCampaignDD', createAction: 'createCampaign', createParam: 'name' },
+  method:   { input: 'ltMethodInput',   dd: 'ltMethodDD',   createAction: 'createMethod',   createParam: 'title' },
+  product:  { input: 'ltProductInput',  dd: 'ltProductDD',  createAction: 'createProduct',  createParam: 'title' },
+};
+
+async function ltEnsureLists() {
+  try {
+    if (!LT_LISTS.campaign.length) {
+      const camps = (typeof platCampaigns !== 'undefined' && platCampaigns.length)
+        ? platCampaigns : ((await call('getCampaigns')).campaigns || []);
+      LT_LISTS.campaign = camps.filter(c => c.name).map(c => ({ id: c.id, name: c.name }));
+    }
+    if (!LT_LISTS.method.length)  LT_LISTS.method  = (await call('searchMethods',  { query: '' })).methods  || [];
+    if (!LT_LISTS.product.length) LT_LISTS.product = (await call('searchProducts', { query: '' })).products || [];
+  } catch(e) { /* lists are a convenience — typing a new name still works */ }
+}
+
+function ltFilter(kind) {
+  const cfg = LT_CFG[kind];
+  const inp = document.getElementById(cfg.input);
+  const dd  = document.getElementById(cfg.dd);
+  const q = inp.value.trim(), qL = q.toLowerCase();
+  if (LT_SEL[kind] && q !== LT_SEL[kind].name) LT_SEL[kind] = null;
+  dd.innerHTML = '';
+  const matches = LT_LISTS[kind].filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 10);
+  matches.forEach(x => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = x.name;
+    div.onmousedown = () => { LT_SEL[kind] = { id: x.id, name: x.name }; inp.value = x.name; dd.style.display = 'none'; };
+    dd.appendChild(div);
+  });
+  const exact = LT_LISTS[kind].some(x => x.name.toLowerCase() === qL);
+  if (q && !exact) {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.style.cssText = 'color:var(--accent);font-style:italic;';
+    div.textContent = '＋ new ' + kind + ' "' + q + '" will be created on Create';
+    dd.appendChild(div);
+  }
+  dd.style.display = (matches.length || (q && !exact)) ? 'block' : 'none';
+}
+
+// Resolve a picker to an id: picked → exact-name match → create new.
+async function ltResolve(kind, statusEl) {
+  const cfg = LT_CFG[kind];
+  const val = document.getElementById(cfg.input).value.trim();
+  if (!val) return { id: null, created: false };
+  if (LT_SEL[kind] && val === LT_SEL[kind].name) return { id: LT_SEL[kind].id, created: false };
+  const match = LT_LISTS[kind].find(x => x.name.toLowerCase() === val.toLowerCase());
+  if (match) return { id: match.id, created: false };
+  statusEl.textContent = 'Creating new ' + kind + ' "' + val + '"…';
+  const res = await call(cfg.createAction, { [cfg.createParam]: val });
+  if (res.error) throw new Error(res.error);
+  LT_LISTS[kind].push({ id: res.id, name: val });
+  return { id: res.id, created: true };
+}
+
+function openLinkTitleModal(postId) {
+  const p = LINKS_POSTS.find(x => x.id === postId) || {};
+  ['ltTitleInput','ltCampaignInput','ltMethodInput','ltProductInput','ltKeywordsInput','ltResearchInput'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  LT_SEL = { campaign: null, method: null, product: null };
+  document.getElementById('ltDescInput').value = p.notes || '';
+  document.getElementById('ltGuidelinesInput').value = rgVal();
+  document.getElementById('ltStatus').textContent = '';
+  const btn = document.getElementById('ltSaveBtn');
+  btn.disabled = false; btn.textContent = 'Create';
+  document.getElementById('linkTitleModal').style.display = 'flex';
+  ltEnsureLists(); // fire-and-forget — dropdowns populate when it lands
+  setTimeout(() => document.getElementById('ltTitleInput').focus(), 120);
+}
+function closeLinkTitleModal() { document.getElementById('linkTitleModal').style.display = 'none'; }
+
+async function submitLinkTitle() {
+  const title = document.getElementById('ltTitleInput').value.trim();
+  if (!title) { document.getElementById('ltTitleInput').focus(); return; }
+  const btn = document.getElementById('ltSaveBtn');
+  const status = document.getElementById('ltStatus');
+  btn.disabled = true; btn.textContent = 'Creating…'; status.textContent = '';
+  rgSave(document.getElementById('ltGuidelinesInput').value); // persist guidelines for all future runs
+  try {
+    const campaign = await ltResolve('campaign', status);
+    const method   = await ltResolve('method', status);
+    const product  = await ltResolve('product', status);
+    status.textContent = 'Creating title…';
+    await call('createDevTitle', {
+      title,
+      status: 'Development',
+      campaignId: campaign.id || undefined,
+      methodId:   method.id   || undefined,
+      productId:  product.id  || undefined,
+      description:          document.getElementById('ltDescInput').value.trim()     || undefined,
+      seedKeywords:         document.getElementById('ltKeywordsInput').value.trim() || undefined,
+      researchInstructions: document.getElementById('ltResearchInput').value.trim() || undefined,
+    });
+    closeLinkTitleModal();
+    showToast('Title created ✓', 'success');
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Create';
   }
 }
 
