@@ -6,7 +6,7 @@
 <meta http-equiv="X-Frame-Options" content="DENY">
 <link rel="stylesheet" href="../style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>fundraising strategy call — Product Admin</title>
+<title>Webguy — Product Admin</title>
 <style>
 /* STATUS CHANGE BUTTON */
 .title-status-btn {
@@ -284,16 +284,46 @@
   </div>
 </div>
 
-<!-- ADD TITLE MODAL -->
+<!-- ADD TITLE MODAL — idea input: title + method/product (pick or create) +
+     content description + seed keywords + research instructions. Same modal
+     as the campaign microsite; here Product is prefilled with this site's
+     product. The extra fields land on the Content Strategy record (Core Idea /
+     "seed idea" / Notes) and are read back by research flows server-side. -->
 <div class="modal-overlay" id="addTitleModal">
-  <div class="modal" style="max-width:420px;">
+  <div class="modal" style="max-width:520px;">
     <div class="modal-head">
-      <div class="modal-title">Add Development Title</div>
+      <div class="modal-title">Add Idea</div>
       <button class="modal-close" onclick="closeAddTitleModal()">✕</button>
     </div>
-    <div class="modal-body">
-      <label class="lm-label">Title <span style="color:var(--danger,#e05);">*</span></label>
-      <input class="modal-ta" id="addTitleInput" type="text" placeholder="Title text…" autocomplete="off" style="margin-bottom:12px;" />
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <label class="lm-label">Idea (title) <span style="color:var(--danger,#e05);">*</span></label>
+      <input class="modal-ta" id="addTitleInput" type="text" placeholder="The idea — becomes the title…" autocomplete="off" style="margin-bottom:10px;" />
+
+      <label class="lm-label">Method <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="modal-ta" id="atMethodInput" type="text" placeholder="Search methods, or type a new method name…" autocomplete="off"
+               oninput="atFilter('method')" onfocus="atFilter('method')"
+               onblur="setTimeout(()=>{const d=document.getElementById('atMethodDD'); if(d) d.style.display='none';},180)" />
+        <div id="atMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      </div>
+
+      <label class="lm-label">Product <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="modal-ta" id="atProductInput" type="text" placeholder="Search products, or type a new product name…" autocomplete="off"
+               oninput="atFilter('product')" onfocus="atFilter('product')"
+               onblur="setTimeout(()=>{const d=document.getElementById('atProductDD'); if(d) d.style.display='none';},180)" />
+        <div id="atProductDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      </div>
+
+      <label class="lm-label">Description of content</label>
+      <textarea class="modal-ta" id="atDescInput" rows="3" placeholder="What this content is and should communicate…" style="margin-bottom:10px;resize:vertical;"></textarea>
+
+      <label class="lm-label">Seed keywords</label>
+      <input class="modal-ta" id="atKeywordsInput" type="text" placeholder="comma, separated, seed keywords" autocomplete="off" style="margin-bottom:10px;" />
+
+      <label class="lm-label">Research instructions</label>
+      <textarea class="modal-ta" id="atResearchInput" rows="3" placeholder="How research for this idea should run — sources to check, angles to take, what to look for, what to avoid…" style="margin-bottom:10px;resize:vertical;"></textarea>
+
       <div id="addTitleStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
     </div>
     <div class="modal-foot">
@@ -980,26 +1010,120 @@ async function saveLoginEdit() {
   } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
 }
 
-// ── Add Title ──────────────────────────────────────────────────────────
+// ── Add Title (idea input) ─────────────────────────────────────────────
+// Same modal as the campaign microsite's Add Idea: method/product are
+// search-and-pick over the full DBs (typing an unmatched name creates it on
+// save), plus content description, seed keywords, and research instructions
+// that land on the Content Strategy record (Core Idea / "seed idea" / Notes)
+// for the research flows to read back. Product is prefilled with this site's
+// product but stays editable.
+let AT_METHOD_ID = null, AT_METHOD_NAME = '';
+let AT_PRODUCT_ID = null, AT_PRODUCT_NAME = '';
+let AT_METHODS = [], AT_PRODUCTS = [];
+
+async function atEnsureLists() {
+  try {
+    if (!AT_METHODS.length) AT_METHODS = (await w('searchMethods', { query: '' })).methods || [];
+    if (!AT_PRODUCTS.length) AT_PRODUCTS = (await w('searchProducts', { query: '' })).products || [];
+  } catch(e) { /* lists are a convenience — typing a new name still works */ }
+}
+
+function atFilter(kind) {
+  const inp  = document.getElementById(kind === 'method' ? 'atMethodInput' : 'atProductInput');
+  const dd   = document.getElementById(kind === 'method' ? 'atMethodDD' : 'atProductDD');
+  const list = kind === 'method' ? AT_METHODS : AT_PRODUCTS;
+  const q = inp.value.trim(), qL = q.toLowerCase();
+  if (kind === 'method' && q !== AT_METHOD_NAME) { AT_METHOD_ID = null; AT_METHOD_NAME = ''; }
+  if (kind === 'product' && q !== AT_PRODUCT_NAME) { AT_PRODUCT_ID = null; AT_PRODUCT_NAME = ''; }
+  dd.innerHTML = '';
+  const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
+  matches.forEach(x => {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#c9c9c9;border-bottom:1px solid #222;';
+    div.onmouseenter = () => div.style.background = '#333';
+    div.onmouseleave = () => div.style.background = '';
+    div.textContent = x.name;
+    div.onmousedown = () => {
+      if (kind === 'method') { AT_METHOD_ID = x.id; AT_METHOD_NAME = x.name; }
+      else { AT_PRODUCT_ID = x.id; AT_PRODUCT_NAME = x.name; }
+      inp.value = x.name;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+  const exact = list.some(x => x.name.toLowerCase() === qL);
+  if (q && !exact) {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;font-size:12px;color:#e8ff47;font-style:italic;border-bottom:1px solid #222;';
+    div.textContent = `＋ new ${kind} "${q}" will be created on Create`;
+    dd.appendChild(div);
+  }
+  dd.style.display = (matches.length || (q && !exact)) ? 'block' : 'none';
+}
+
+async function atResolve(kind, statusEl) {
+  const inp = document.getElementById(kind === 'method' ? 'atMethodInput' : 'atProductInput');
+  const val = inp.value.trim();
+  if (!val) return { id: null, created: false };
+  const pickedId   = kind === 'method' ? AT_METHOD_ID : AT_PRODUCT_ID;
+  const pickedName = kind === 'method' ? AT_METHOD_NAME : AT_PRODUCT_NAME;
+  if (pickedId && val === pickedName) return { id: pickedId, created: false };
+  const list = kind === 'method' ? AT_METHODS : AT_PRODUCTS;
+  const match = list.find(x => x.name.toLowerCase() === val.toLowerCase());
+  if (match) return { id: match.id, created: false };
+  statusEl.textContent = `Creating new ${kind} "${val}"…`;
+  const res = await w(kind === 'method' ? 'createMethod' : 'createProduct', { title: val });
+  if (res.error) throw new Error(res.error);
+  list.push({ id: res.id, name: val });
+  return { id: res.id, created: true };
+}
+
 function openAddTitleModal() {
-  document.getElementById('addTitleInput').value = '';
+  ['addTitleInput','atMethodInput','atDescInput','atKeywordsInput','atResearchInput'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  AT_METHOD_ID = null; AT_METHOD_NAME = '';
+  // prefill with this site's product (editable)
+  AT_PRODUCT_ID = PRODUCT_ID; AT_PRODUCT_NAME = PRODUCT_NAME || '';
+  document.getElementById('atProductInput').value = PRODUCT_NAME || '';
   document.getElementById('addTitleStatus').textContent = '';
+  document.getElementById('addTitleSaveBtn').disabled = false;
+  document.getElementById('addTitleSaveBtn').textContent = 'Create';
   document.getElementById('addTitleModal').classList.add('open');
+  atEnsureLists(); // fire-and-forget — dropdowns populate when it lands
   setTimeout(() => document.getElementById('addTitleInput').focus(), 80);
 }
 function closeAddTitleModal() { document.getElementById('addTitleModal').classList.remove('open'); }
 async function submitAddTitle() {
   const title = document.getElementById('addTitleInput').value.trim();
-  if (!title) return;
+  if (!title) { document.getElementById('addTitleInput').focus(); return; }
   const statusEl = document.getElementById('addTitleStatus');
   const btn = document.getElementById('addTitleSaveBtn');
-  btn.disabled = true; statusEl.textContent = 'Creating…';
+  btn.disabled = true; btn.textContent = 'Creating…'; statusEl.textContent = '';
   try {
-    await w('createDevTitle', { title, productId: PRODUCT_ID });
+    const method  = await atResolve('method', statusEl);
+    const product = await atResolve('product', statusEl);
+    statusEl.textContent = 'Creating title…';
+    // product prefills to this site's product; if cleared entirely, fall back
+    // to PRODUCT_ID so a product-site title is never orphaned from its product
+    await w('createDevTitle', {
+      title,
+      status: 'Development',
+      campaignId: PRODUCT_CAMPAIGN_ID || undefined,
+      productId: product.id || PRODUCT_ID,
+      methodId:  method.id  || undefined,
+      description:          document.getElementById('atDescInput').value.trim()     || undefined,
+      seedKeywords:         document.getElementById('atKeywordsInput').value.trim() || undefined,
+      researchInstructions: document.getElementById('atResearchInput').value.trim() || undefined,
+    });
     statusEl.textContent = 'Created.';
     setTimeout(async () => { closeAddTitleModal(); await loadTitles(); }, 600);
-  } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
-  finally { btn.disabled = false; }
+  } catch(e) {
+    statusEl.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Create';
+    return;
+  }
+  btn.disabled = false; btn.textContent = 'Create';
 }
 
 

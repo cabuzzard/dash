@@ -214,6 +214,35 @@ async function extractBlocksTextRecursive(hdr, blockId, depth = 0) {
 // to "asset" — the safe default, since assets flow to Titles rather than
 // silently overwriting one of the 12 fixed Strategy fields.
 const STRATEGY_PHASE_NAMES = new Set(Object.values(STRATEGY_FIELD_PHASE_MAP));
+
+// Reads an idea-title's stored guidance (Core Idea = content description,
+// "seed idea" = seed keywords, Notes = research instructions) and returns
+// { text, keywords } for folding into research prompts. `text` falls back to
+// the plain parentTitle string when there's no id or the fetch fails, so
+// callers can use it unconditionally wherever they used parentTitle before.
+async function buildTitleSeedContext(hdr, parentTitleId, parentTitleText) {
+  const fallback = { text: parentTitleText || "", keywords: "" };
+  if (!parentTitleId) return fallback;
+  try {
+    const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+    const resp = await fetch(`https://api.notion.com/v1/pages/${dash(parentTitleId)}`, { headers: hdr });
+    if (!resp.ok) return fallback;
+    const page = await resp.json();
+    const p = page.properties || {};
+    const rtx = prop => (p[prop]?.rich_text || []).map(t => t.plain_text).join("");
+    const name = (p.Title?.title || []).map(t => t.plain_text).join("") || parentTitleText || "";
+    const description = rtx("Core Idea");
+    const seedKeywords = rtx("seed idea");
+    const instructions = rtx("Notes");
+    const parts = [];
+    if (name) parts.push(`Idea: ${name}`);
+    if (description) parts.push(`Content description: ${description}`);
+    if (seedKeywords) parts.push(`Seed keywords: ${seedKeywords}`);
+    if (instructions) parts.push(`Research instructions (follow these when researching, choosing angles, and shaping titles): ${instructions}`);
+    return { text: parts.length ? parts.join("\n") : fallback.text, keywords: seedKeywords };
+  } catch { return fallback; }
+}
+
 async function parseMethodPhases(hdr, methodId) {
   const resp = await fetch(`https://api.notion.com/v1/blocks/${methodId}/children?page_size=100`, { headers: hdr }).then(r => r.json());
   const blocks = resp.results || [];
@@ -1667,18 +1696,28 @@ export default {
       }
 
       if (body.action === "createDevTitle") {
-        const { title, campaignId, status, grouping } = body;
+        // Extended idea-input shape: an idea (the title) plus optional method/
+        // product relations, a content description (→ Core Idea), seed
+        // keywords (→ "seed idea"), and research instructions (→ Notes) that
+        // downstream research flows read back via buildTitleSeedContext.
+        // productId used to be silently ignored here — product sites were
+        // creating titles with no product relation at all.
+        const { title, campaignId, productId, methodId, status, grouping, description, seedKeywords, researchInstructions } = body;
         if (!title) return json({ error: "title required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
 
         const props = {
           Title:  { title: [{ type: "text", text: { content: title } }] },
           Status: { select: { name: status || "Development" } },
         };
-        if (grouping) props["Grouping"] = { rich_text: [{ type: "text", text: { content: grouping } }] };
-        if (campaignId) {
-          const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
-          props["Campaign"] = { relation: [{ id: dashId(campaignId) }] };
-        }
+        const rtProp = v => ({ rich_text: [{ type: "text", text: { content: String(v).slice(0, 1990) } }] });
+        if (grouping) props["Grouping"] = rtProp(grouping);
+        if (description) props["Core Idea"] = rtProp(description);
+        if (seedKeywords) props["seed idea"] = rtProp(seedKeywords);
+        if (researchInstructions) props["Notes"] = rtProp(researchInstructions);
+        if (campaignId) props["Campaign"] = { relation: [{ id: dashId(campaignId) }] };
+        if (productId && productId !== '__none__' && productId !== campaignId) props["product"] = { relation: [{ id: dashId(productId) }] };
+        if (methodId) props["method"] = { relation: [{ id: dashId(methodId) }] };
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
@@ -4916,11 +4955,12 @@ Return ONLY a JSON array — no other text, no markdown fences:
 
       // ── generateMethodTitles ──
       if (body.action === "generateMethodTitles") {
-        const { campaignId, methodId, productId, parentTitle } = body;
+        const { campaignId, methodId, productId, parentTitle, parentTitleId } = body;
         if (!campaignId || !methodId) return json({ error: "campaignId and methodId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const parentSeed = await buildTitleSeedContext(hdr, parentTitleId, parentTitle);
         // "no product" is signaled two ways in this codebase: the literal
         // sentinel '__none__', or the campaignId itself (the modal's "Campaign"
         // option sets productId=campaignId) — treat both as no product, else
@@ -4997,11 +5037,11 @@ METHOD FRAMEWORK:
 ${methodBody || "(No framework defined — infer phases and groupings from method name and best practices)"}
 
 ${productSection}
-${parentTitle ? `\nSEED IDEA (this run was started from an existing title — use it as inspiration/starting point for the angle, still organized across the framework's phases and groupings, not a rewrite of the seed itself):\n${parentTitle}\n` : ''}
+${parentSeed.text ? `\nSEED IDEA (this run was started from an existing title — use it as inspiration/starting point for the angle, still organized across the framework's phases and groupings, not a rewrite of the seed itself):\n${parentSeed.text}\n` : ''}
 INSTRUCTIONS:
 - Read the method framework carefully. Each Phase heading in the framework is a Phase. Each Grouping heading is a Grouping.
 - Generate titles for EVERY phase and grouping defined in the framework.
-- Each title must be specific to this campaign${hasProduct ? " and product" : ""}${parentTitle ? " and should extend or riff on the seed idea above where it fits naturally" : ""} — use real names, real keywords, real positioning language. No generic titles.
+- Each title must be specific to this campaign${hasProduct ? " and product" : ""}${parentSeed.text ? " and should extend or riff on the seed idea above where it fits naturally" : ""} — use real names, real keywords, real positioning language. No generic titles.
 ${hasTrendResearch ? '- Ground titles in the trending research above wherever it fits the pillar/grouping — especially any pillar about timing, seasonality, or current moments. Prefer angles the trend research shows real demand for over generic ones.' : ''}
 - Titles are deliverable names (things to produce), not content post headlines.
 - Aim for 2–3 titles per grouping unless the framework specifies otherwise.
@@ -5490,11 +5530,12 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
       // description each — NOT full scripts (that stays a separate per-title
       // step via generateTitleSlides, to keep this call fast).
       if (body.action === "researchAndGenerateCarouselTitles") {
-        const { campaignId, methodId, productId, parentTitle } = body;
+        const { campaignId, methodId, productId, parentTitle, parentTitleId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const parentSeed = await buildTitleSeedContext(hdr, parentTitleId, parentTitle);
         // "no product" is signaled two ways in this codebase: the literal
         // sentinel '__none__', or the campaignId itself (the modal's "Campaign"
         // option sets productId=campaignId) — treat both as no product, else
@@ -5540,7 +5581,7 @@ Notes: ${notes || "(none)"}`;
           productKeywordSignal = [desc, avatar, transformation, uniqueAngle, notes].filter(Boolean).join(" ");
           buyerIntent = avatar || buyerIntent;
         }
-        const mergedKeywords = [campaignKeywords, productKeywordSignal].filter(Boolean).join(", ");
+        const mergedKeywords = [parentSeed.keywords, campaignKeywords, productKeywordSignal].filter(Boolean).join(", ");
         if (!mergedKeywords) return json({ error: "No campaign Keywords on file and no product selected — add campaign Keywords in Research first" }, 400);
 
         // ── Live Instagram benchmarking (real posts, real engagement) when
@@ -5616,7 +5657,7 @@ MERGED KEYWORDS (campaign + product): ${mergedKeywords}
 BUYER INTENT / AVATAR (who this needs to resonate with): ${buyerIntent}
 ${productSection}
 ${existingTrendResearch ? `\nEXISTING TREND RESEARCH ON FILE (${existingTrendSource}):\n${existingTrendResearch.slice(0, 1500)}\n` : '\n(No trend research on file for this campaign yet.)\n'}
-${parentTitle ? `SEED THEME (this run was started from an existing title — most concepts should extend or riff on this theme where it fits naturally, but don't force all 10 into it if the research points elsewhere):\n${parentTitle}\n\n` : ''}LIVE INSTAGRAM REFERENCE POSTS (real posts found just now for this topic, ranked by keyword relevance + engagement, carousel format flagged):
+${parentSeed.text ? `SEED THEME (this run was started from an existing title — most concepts should extend or riff on this theme where it fits naturally, but don't force all 10 into it if the research points elsewhere):\n${parentSeed.text}\n\n` : ''}LIVE INSTAGRAM REFERENCE POSTS (real posts found just now for this topic, ranked by keyword relevance + engagement, carousel format flagged):
 ${refBlock}
 
 INSTRUCTIONS:
@@ -5723,11 +5764,12 @@ Return ONLY a JSON array of exactly 10 objects, each shaped exactly like this �
       // /title|market|trend/i (so "Upwork Proposal" still hits the proposal
       // action, "Upwork Titles"/"Upwork Market" hits this one).
       if (body.action === "researchUpworkMarketTitles") {
-        const { campaignId, methodId, productId, parentTitle } = body;
+        const { campaignId, methodId, productId, parentTitle, parentTitleId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const parentSeed = await buildTitleSeedContext(hdr, parentTitleId, parentTitle);
         const hasProduct = productId && productId !== '__none__' && productId !== campaignId;
         const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
 
@@ -5754,7 +5796,7 @@ Return ONLY a JSON array of exactly 10 objects, each shaped exactly like this �
           productKeywordSignal = [productName, uniqueAngle, offer].filter(Boolean).join(" ");
           buyerIntent = avatar || buyerIntent;
         }
-        const seed = [campaignKeywords, productKeywordSignal].filter(Boolean).join(", ");
+        const seed = [parentSeed.keywords, campaignKeywords, productKeywordSignal].filter(Boolean).join(", ");
         if (!seed) return json({ error: "No campaign Keywords and no product — add Keywords in Research first" }, 400);
 
         // Step 1 — Claude translates the (possibly job-seeker-style) seed into
@@ -5834,7 +5876,7 @@ Return ONLY a JSON array of 6 short strings — no other text, no fences. Exampl
 SEED KEYWORDS: ${seed}
 ${hasProduct ? productSection : ""}
 BUYER/AVATAR: ${buyerIntent}
-${parentTitle ? `SEED THEME (riff on this where it fits): ${parentTitle}\n` : ''}
+${parentSeed.text ? `SEED THEME (riff on this where it fits):\n${parentSeed.text}\n` : ''}
 CANDIDATE UPWORK MARKETS (with live demand):
 ${marketBlock}
 
