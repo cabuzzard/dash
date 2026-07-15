@@ -2965,6 +2965,149 @@ Return ONLY a JSON object, no other text, no markdown fences:
         return json({ success: true });
       }
 
+      // ── getProductMethods ──
+      // A product's currently-attached methods (id+name only) — cheap, no AI
+      // call. Used by "Generate Titles" in the ⚙ modal to read the real,
+      // committed state rather than whatever's staged-but-unsaved in the UI.
+      if (body.action === "getProductMethods") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const page = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+        if (page.object === "error" || !page.properties) return json({ error: page.message || "Product not found" }, 404);
+        const ids = (page.properties?.Methods?.relation || []).map(r => r.id.replace(/-/g,""));
+        const methods = ids.length
+          ? await Promise.all(ids.map(async id => {
+              const mp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json());
+              return { id, name: (mp.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Method" };
+            }))
+          : [];
+        return json({ methods });
+      }
+
+      // ── getMethodDetails ──
+      // One method's Name/Notes/Platform plus its linked Traffic Methods
+      // (children, resolved to name+notes) — feeds the "Generate Titles"
+      // flow in the ⚙ Methods modal, which needs to know each attached
+      // method's traffic children before generating for both levels.
+      if (body.action === "getMethodDetails") {
+        const { methodId } = body;
+        if (!methodId) return json({ error: "methodId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const page = await fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, { headers: hdr }).then(r => r.json());
+        if (page.object === "error" || !page.properties) return json({ error: page.message || "Method not found" }, 404);
+        const p = page.properties;
+        const name = (p.Name?.title || []).map(t => t.plain_text).join("") || "Method";
+        const notes = (p.Notes?.rich_text || []).map(t => t.plain_text).join("");
+        const platform = p.Platform?.select?.name || "";
+        const trafficIds = (p["Traffic Methods"]?.relation || []).map(r => r.id.replace(/-/g,""));
+        const trafficMethods = trafficIds.length
+          ? await Promise.all(trafficIds.map(async id => {
+              const tp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json());
+              return {
+                id, name: (tp.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Method",
+                notes: (tp.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
+                platform: tp.properties?.Platform?.select?.name || "",
+              };
+            }))
+          : [];
+        return json({ id: methodId, name, notes, platform, trafficMethods });
+      }
+
+      // ── generateTrafficMethodTitles ──
+      // For a TRAFFIC method (the child in a Page→Instagram-style pairing),
+      // generates a comprehensive, multi-post-type title set in one pass:
+      // Claude organizes titles by POST TYPE (Carousel/Reel/Picture Post, or
+      // whatever genuinely fits the method's platform — not hardcoded), with
+      // 2-4 titles per type carrying an explicit sequenceOrder so a rollout
+      // of same-type posts (Reel 1, Reel 2, Reel 3...) is a real, orderable
+      // sequence, not just a flat list. Saved with the full method lineage in
+      // Grouping ("Parent > Child > PostType") and Sequence Order set — so
+      // the hierarchy (page(1) > instagram(2) > post type(3) > sequence(3.1))
+      // is visible directly on every generated title.
+      if (body.action === "generateTrafficMethodTitles") {
+        const { productId, campaignId, parentMethodName, childMethodId, childMethodName, childMethodNotes } = body;
+        if (!productId || !campaignId || !childMethodId || !childMethodName) return json({ error: "productId, campaignId, childMethodId, childMethodName required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+
+        const [productPage, researchRaw] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()),
+        ]);
+        const pp = productPage.properties || {};
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+        const keywords = rt(researchRaw, "Keywords");
+
+        const prompt = `You are a content strategist planning DISTRIBUTION content to drive traffic to a destination. Organize your plan by POST TYPE (the distinct content formats this method's platform actually supports — e.g. Carousel, Reel, Picture Post for Instagram; just "Email" for an email list; "Video" for YouTube — infer the real formats from the platform/notes, don't force formats that don't fit).
+
+DESTINATION THIS TRAFFIC SERVES: ${parentMethodName || "(none — standalone)"}
+TRAFFIC METHOD: ${childMethodName}
+METHOD NOTES: ${childMethodNotes || "(none)"}
+PRODUCT: ${productName}
+PRODUCT DESCRIPTION: ${productDesc || "(none)"}
+CAMPAIGN KEYWORDS: ${keywords || "(none on file)"}
+
+INSTRUCTIONS:
+- Group titles by postType. For each postType with more than one title, they form a ROLLOUT SEQUENCE — assign sequenceOrder 1, 2, 3... reflecting the order they'd actually post in (each building on or varying the last, not repetitive).
+- 2-4 titles per postType. 2-4 postTypes total (only ones that genuinely fit this platform).
+- Titles are deliverable names (things to produce), specific to this product — not generic content ideas.
+
+Return ONLY a JSON array — no other text, no markdown fences:
+{ "title": "...", "description": "1-2 sentences, specific to this product", "postType": "e.g. Carousel", "sequenceOrder": 1 }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2500, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+
+        let items;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+          if (s === -1 || e === -1 || e < s) throw new Error("No JSON array found");
+          items = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+          if (!Array.isArray(items)) throw new Error("Not an array");
+        } catch(e) {
+          return json({ error: "Failed to parse titles JSON: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
+        }
+
+        const rtBlock = text => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        let created = 0;
+        const byPostType = {};
+        for (const it of items) {
+          const grouping = [parentMethodName, childMethodName, it.postType].filter(Boolean).join(' > ');
+          const props = {
+            "Title":          { title: rtBlock(String(it.title || 'Untitled').slice(0, 200)) },
+            "Status":         { select: { name: "Development" } },
+            "Grouping":       { rich_text: rtBlock(grouping) },
+            "Core Idea":      { rich_text: rtBlock(String(it.description || '').slice(0, 1990)) },
+            "Campaign":       { relation: [{ id: dash(campaignId) }] },
+            "method":         { relation: [{ id: dash(childMethodId) }] },
+            "product":        { relation: [{ id: dash(productId) }] },
+          };
+          if (Number.isFinite(it.sequenceOrder)) props["Sequence Order"] = { number: it.sequenceOrder };
+          const resp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props }),
+          });
+          const page = await resp.json();
+          if (page.id) { created++; byPostType[it.postType || 'Other'] = (byPostType[it.postType || 'Other'] || 0) + 1; }
+        }
+        return json({ created, postTypes: byPostType });
+      }
+
       // ── addProductMethod / removeProductMethod ──
       // Manual attach/detach of an existing Method to a product — kept
       // available independent of the AI matching pipeline above, so a

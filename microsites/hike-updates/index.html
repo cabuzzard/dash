@@ -4223,6 +4223,7 @@ async function runEcosystemBuild() {
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeProductMethodsModal()">Cancel</button>
       <button class="modal-btn save" id="pmCommitBtn" onclick="commitProductMethods()">Add Methods</button>
+      <button class="modal-btn save" id="pmGenBtn" onclick="generateProductTitles()" title="Generates for the methods currently attached to this product — click Add Methods first if you just changed anything">Generate Titles</button>
     </div>
   </div>
 </div>
@@ -4393,6 +4394,83 @@ async function commitProductMethods() {
     status.textContent = 'Error: ' + e.message;
     status.style.color = '#fc8181';
     btn.disabled = false; btn.textContent = 'Add Methods';
+  }
+}
+
+// Generates titles for this product's CURRENTLY-ATTACHED methods (freshly
+// re-fetched from Notion — ignores any uncommitted staged changes in
+// PM_STAGED; click "Add Methods" first if you just changed something). For
+// each attached method: generates the method's own deliverables (carousel /
+// Upwork Titles / generic framework — same dispatch as the campaign Methods
+// panel), AND for each of its linked Traffic Methods, generates a
+// comprehensive multi-post-type title set (generateTrafficMethodTitles) —
+// so page(1) > instagram(2) > post type(3) > sequence(3.1) all get covered
+// in one click.
+async function generateProductTitles() {
+  if (!PM_PRODUCT_ID) return;
+  const btn = document.getElementById('pmGenBtn');
+  const status = document.getElementById('pmStatus');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  status.textContent = 'Reading attached methods…';
+  status.style.color = '#888';
+  try {
+    const mData = await w('getProductMethods', { productId: PM_PRODUCT_ID });
+    if (mData.error) throw new Error(mData.error);
+    const methods = mData.methods || [];
+    if (!methods.length) throw new Error('No methods attached yet — add one first.');
+
+    let parentTitles = 0, trafficTitles = 0, errors = 0;
+    for (const m of methods) {
+      status.textContent = `Reading "${m.name}"…`;
+      const detail = await w('getMethodDetails', { methodId: m.id });
+      if (detail.error) { errors++; continue; }
+
+      // The method's own deliverables — same dispatch as the Methods panel.
+      status.textContent = `Generating "${m.name}"…`;
+      try {
+        if (/carousel/i.test(m.name)) {
+          const r = await w('researchAndGenerateCarouselTitles', { campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
+          if (r.error) throw new Error(r.error);
+          parentTitles += r.created || 0;
+        } else if (/upwork/i.test(m.name) && /title|market|trend/i.test(m.name)) {
+          const r = await w('researchUpworkMarketTitles', { campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
+          if (r.error) throw new Error(r.error);
+          parentTitles += r.created || 0;
+        } else {
+          const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
+          if (data.error) throw new Error(data.error);
+          const titles = data.titles || [];
+          for (let i = 0; i < titles.length; i += 10) {
+            const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
+            if (r.error) throw new Error(r.error);
+            parentTitles += r.created || 0;
+          }
+        }
+      } catch(e) { errors++; }
+
+      // Its traffic children — comprehensive post-type + sequence generation.
+      for (const child of (detail.trafficMethods || [])) {
+        status.textContent = `Generating "${m.name} > ${child.name}"…`;
+        try {
+          const r = await w('generateTrafficMethodTitles', {
+            productId: PM_PRODUCT_ID, campaignId: CAMPAIGN_ID,
+            parentMethodName: m.name, childMethodId: child.id, childMethodName: child.name, childMethodNotes: child.notes,
+          });
+          if (r.error) throw new Error(r.error);
+          trafficTitles += r.created || 0;
+        } catch(e) { errors++; }
+      }
+    }
+
+    await loadTitles();
+    status.textContent = `✓ Generated ${parentTitles} title${parentTitles === 1 ? '' : 's'}${trafficTitles ? ` + ${trafficTitles} traffic title${trafficTitles === 1 ? '' : 's'}` : ''}${errors ? `, ${errors} step${errors === 1 ? '' : 's'} failed` : ''}.`;
+    status.style.color = errors ? '#f0b429' : '#68d391';
+    btn.textContent = 'Done';
+    setTimeout(() => { btn.disabled = false; btn.textContent = 'Generate Titles'; }, 2000);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Generate Titles';
   }
 }
 </script>
