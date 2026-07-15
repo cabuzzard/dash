@@ -5604,6 +5604,21 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
         return json(out);
       }
 
+      // ── deleteAsset ──
+      // Archives an Asset record (Notion soft-delete) — used by the ✕ on
+      // asset rows under publish titles.
+      if (body.action === "deleteAsset") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dsDash(assetId)}`, {
+          method: "PATCH",
+          headers: { ...dsHdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Delete failed" }, resp.status); }
+        return json({ success: true });
+      }
+
       // ── getAssetTypes ──
       // Existing "Asset Type" select options from the Assets DB schema, for
       // the generate-assets modal's pick-or-create type field. (Typing a new
@@ -5657,6 +5672,11 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
             methodBody = (await extractBlocksTextRecursive(dsHdr, dsDash(methodId))).slice(0, 2500);
           } catch(e) {}
         }
+        // Drawing Post assets get a Canva starting-point link (template
+        // search built from a per-concept query — real Canva design creation
+        // can't be automated from the worker, so this is the fastest manual
+        // entry point that still matches each concept).
+        const isDrawingPost = /drawing/i.test(methodName);
 
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a senior content designer and copywriter. Create exactly ${count} DISTINCT asset concepts — options for the operator to choose between — for the content idea below. Every concept is a ${assetType} — do not propose other formats. Each must be complete enough to build immediately without further questions.
 
@@ -5667,9 +5687,9 @@ Background ${spec.bg} · Ink ${spec.ink} · Accent ${spec.accent} · Headline fo
 ${spec.notes ? `Aesthetic: ${spec.notes}` : ""}
 
 Each concept must take a genuinely different approach to the same idea — different layout, hook, or visual metaphor, not just a color swap. The body must fully specify the deliverable: exact on-image headline/text, visual layout description, how the design spec colors/fonts are used, and the accompanying post caption.
-
+${isDrawingPost ? `Each item must ALSO include "canvaQuery": a short 2-4 word Canva template search phrase matching that concept's visual style and subject (e.g. "minimal line diagram", "hand drawn infographic") — used to build a Canva starting-point link.\n` : ""}
 Return ONLY a JSON array of exactly ${count} items, no markdown fences:
-[{ "assetTitle": "short distinct option name", "platform": "Instagram" | "LinkedIn" | "TikTok" | "YouTube" | "Facebook" | "X / Twitter" | "Other", "body": "full concept: on-image text, layout, spec usage, caption" }]`;
+[{ "assetTitle": "short distinct option name", "platform": "Instagram" | "LinkedIn" | "TikTok" | "YouTube" | "Facebook" | "X / Twitter" | "Other", "body": "full concept: on-image text, layout, spec usage, caption"${isDrawingPost ? ', "canvaQuery": "2-4 word Canva search phrase"' : ""} }]`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -5696,6 +5716,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           };
           if (c.platform)  properties["Platform Name"] = { select: { name: String(c.platform).slice(0, 100) } };
           properties["Asset Type"] = { select: { name: String(assetType).slice(0, 100) } }; // required — every asset has a type
+          if (isDrawingPost && c.canvaQuery) properties["Design Link"] = { url: "https://www.canva.com/templates/?query=" + encodeURIComponent(String(c.canvaQuery).slice(0, 80)) };
           if (campaignId)  properties["Campaign"]      = { relation: [{ id: dsDash(campaignId) }] };
           const resp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",

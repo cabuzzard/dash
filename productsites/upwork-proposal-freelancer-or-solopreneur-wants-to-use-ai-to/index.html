@@ -908,7 +908,8 @@ async function loadTitles() {
           + (a.type ? `<span style="font-size:10px;color:#777;flex-shrink:0;">${esc(a.type)}</span>` : '')
           + (a.status ? `<span style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${a.status==='Published'?'#4fd1c5':(a.status==='Publish'?'#fc8181':'#888')};flex-shrink:0;">${esc(a.status)}</span>` : '')
           + (a.designLink ? `<a href="${esc(a.designLink)}" target="_blank" rel="noopener" style="color:#4488ff;text-decoration:none;font-size:11px;flex-shrink:0;" title="Design link">🎨</a>` : '')
-          + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" style="flex-shrink:0;">↗</a>`;
+          + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" style="flex-shrink:0;">↗</a>`
+          + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset" style="flex-shrink:0;">✕</button>`;
         wrap.appendChild(ar);
       });
       return wrap;
@@ -1374,6 +1375,18 @@ function closeGenAssetsModal() { document.getElementById('genAssetsModal').class
 document.getElementById('genAssetsModal').addEventListener('click', function(e) {
   if (e.target === this) closeGenAssetsModal();
 });
+
+async function deleteAssetRow(assetId, btn) {
+  if (!confirm('Delete this asset?\nThis archives it in Notion.')) return;
+  btn.disabled = true;
+  try {
+    await w('deleteAsset', { assetId });
+    await loadTitles();
+  } catch(e) {
+    btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+}
 
 async function submitGenAssets() {
   const title = document.getElementById('gaTitleInput').value.trim();
