@@ -691,9 +691,15 @@ async function refreshStrategyPanel() {
   renderStrategyPanel();
 }
 // Generates titles for ANY attached method — no destination/traffic-child/
-// flat distinction anymore. Every method's titles are grounded in the
-// PRODUCT-level Strategy (all 11 fields) + Keywords generated on this page,
-// plus that method's own framework (generateTitlesFromProductStrategy).
+// destination/growth split. Destination methods (needsTrafficPlan — a
+// landing page, a booking form) are component-based: generateTitlesFrom-
+// ProductStrategy, one deliverable per asset phase. Growth/distribution
+// methods (Instagram, X, Pinterest, Email — a platform grown ON, not
+// landed on) are arc/sequence-based: generateTrafficMethodTitles, grounded
+// in the method's own researched [Arc] structure + Product Strategy, post-
+// type + Sequence Order. Works whether or not it's formally linked as a
+// traffic child of a destination (parentMethodId is optional context, not
+// a requirement — a growth method is worth generating for on its own).
 // Carousel/Upwork-Titles methods keep their dedicated live-research
 // pipelines (Instagram benchmarking / Upwork job scraping) since those
 // genuinely need real-time external data the Strategy fields can't provide.
@@ -716,8 +722,17 @@ async function genPsTitles(methodId, isDestination, parentMethodId) {
       const r = await w('researchUpworkMarketTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
       if (r.error) throw new Error(r.error);
       created = r.created || 0;
-    } else {
+    } else if (isDestination) {
       const r = await w('generateTitlesFromProductStrategy', { productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined, methodId, methodName: name });
+      if (r.error) throw new Error(r.error);
+      created = r.created || 0;
+    } else {
+      const parent = parentMethodId ? PRODUCT_METHODS.find(x => x.id === parentMethodId) : null;
+      const r = await w('generateTrafficMethodTitles', {
+        productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined,
+        parentMethodId: parentMethodId || undefined, parentMethodName: parent ? parent.name : undefined,
+        childMethodId: methodId, childMethodName: name, childMethodNotes: '',
+      });
       if (r.error) throw new Error(r.error);
       created = r.created || 0;
     }

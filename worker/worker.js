@@ -226,7 +226,7 @@ async function parseMethodPhases(hdr, methodId) {
     const groupingText = rawText.replace(/^Grouping:\s*/i, "").trim();
     if (type === "heading_1" || type === "heading_2") {
       if (!text) continue;
-      const tagMatch = text.match(/^(.*?)\s*\[(Strategy|Asset)\]\s*$/i);
+      const tagMatch = text.match(/^(.*?)\s*\[(Strategy|Asset|Arc)\]\s*$/i);
       const name = tagMatch ? tagMatch[1].trim() : text;
       const kind = tagMatch ? tagMatch[2].toLowerCase() : (STRATEGY_PHASE_NAMES.has(text) ? "strategy" : "asset");
       curPhase = { name, kind, groupings: [] };
@@ -249,10 +249,23 @@ async function parseMethodPhases(hdr, methodId) {
 // Skips (returns {skipped:true}) if the method already has a substantial
 // framework (>= 3 phases) unless `force` is set, so this is safe to call
 // automatically on every method create/attach without clobbering existing
-// work. Each phase gets tagged [Strategy] or [Asset] by Claude directly in
-// the heading text (see parseMethodPhases) — this is what lets brand-new
-// methods slot into the Strategy/Titles split without a hardcoded name map.
-async function researchAndWriteMethodology(hdr, env, methodId, methodName, platform, productContext, force) {
+// work.
+//
+// Branches on `isDestination` (the method's own "Needs Traffic Plan"
+// checkbox) — the two kinds of method need fundamentally different
+// research:
+// - Destination (a landing page, a booking form): genuinely component-
+//   based — a page has a Headline, a CTA, a Guarantee. Each phase gets
+//   tagged [Strategy] (positioning content that belongs in the product-
+//   level Strategy DB) or [Asset] (page components — belongs in Titles).
+// - Growth/distribution (Instagram, X, Pinterest, Email, LinkedIn — a
+//   platform people grow an audience ON, not a page they land on):
+//   arc/sequence-based, NOT component-based. What matters is the
+//   STRUCTURE of how content unfolds on that platform (a carousel-launch
+//   arc, a nurture-email sequence, a trend-jack reel) — reusable
+//   knowledge about the platform itself, independent of any product's
+//   subject matter or keywords. Every phase here is tagged [Arc].
+async function researchAndWriteMethodology(hdr, env, methodId, methodName, platform, productContext, force, isDestination) {
   if (!env.ANTHROPIC_API_KEY) return { skipped: true, reason: "no API key" };
   if (!force) {
     try {
@@ -260,7 +273,8 @@ async function researchAndWriteMethodology(hdr, env, methodId, methodName, platf
       if (existing.length >= 3) return { skipped: true, reason: "already researched", phaseCount: existing.length };
     } catch(e) { /* fall through and research anyway */ }
   }
-  const prompt = `You are a marketing methodologist. Research and write a COMPLETE marketing methodology framework for the method "${methodName}"${platform ? ` (platform: ${platform})` : ''}, as it would be used to market and sell a product.
+  const prompt = isDestination
+    ? `You are a marketing methodologist. Research and write a COMPLETE marketing methodology framework for the method "${methodName}"${platform ? ` (platform: ${platform})` : ''}, as it would be used to market and sell a product.
 ${productContext ? `\nCONTEXT — being set up right now for this product: ${productContext}\n` : ''}
 Organize the methodology into PHASES (major stages of using this method) and, within each phase, GROUPINGS (sub-categories), each with 2-5 specific deliverable-prompt bullet items.
 
@@ -271,7 +285,18 @@ CRITICAL — classify EVERY phase as one of:
 Ground this in real, current best practices for "${methodName}" — cite real tactics, formats, and constraints (character limits, ideal lengths, platform conventions) where relevant, not generic funnel theory.
 
 Return ONLY a JSON array, no other text, no markdown fences:
-[{ "phase": "...", "kind": "strategy"|"asset", "groupings": [{ "name": "...", "items": ["...", "..."] }] }]`;
+[{ "phase": "...", "kind": "strategy"|"asset", "groupings": [{ "name": "...", "items": ["...", "..."] }] }]`
+    : `You are a growth strategist. Research and define 2-4 reusable CONTENT ARC/SEQUENCE TYPES for growing an audience on "${methodName}"${platform ? ` (platform: ${platform})` : ''} — the STRUCTURAL patterns that actually drive growth on this specific platform. This must be reusable for ANY product that uses this platform — do NOT reference a specific product, keyword, or subject matter anywhere in the output.
+
+For each arc/sequence type, describe (as GROUPINGS, one per structural piece/step):
+- The STRUCTURE: how many pieces, what role each one plays in the sequence (e.g. hook -> problem -> proof -> CTA), and the order they go in.
+- The CADENCE/PACING: how often, over what timeframe, the platform-native posting rhythm.
+- WHY it drives growth specifically on this platform — algorithm behavior, audience habits, format strengths.
+
+Ground this in real, current best practices for growing on "${methodName}" — cite real, specific platform mechanics (character/length limits, native formats, algorithm/discovery signals) — not generic funnel theory.
+
+Return ONLY a JSON array, no other text, no markdown fences:
+[{ "phase": "Arc: <name, e.g. Carousel Launch Arc>", "groupings": [{ "name": "structural role, e.g. Post 1 — Hook", "items": ["what this piece's job is", "format/length/cadence notes"] }] }]`;
 
   const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -297,7 +322,7 @@ Return ONLY a JSON array, no other text, no markdown fences:
   const bulletBlock = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
   const children = [];
   for (const p of phases) {
-    const kind = /^strategy$/i.test(p.kind) ? "Strategy" : "Asset";
+    const kind = isDestination ? (/^strategy$/i.test(p.kind) ? "Strategy" : "Asset") : "Arc";
     children.push(headingBlock(2, `Phase: ${p.phase} [${kind}]`));
     for (const g of (p.groupings || [])) {
       children.push(headingBlock(3, `Grouping: ${g.name}`));
@@ -3213,7 +3238,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
             (ppc.Description?.rich_text || []).map(t => t.plain_text).join(""),
             notes ? `Seed notes for this method: ${notes}` : '',
           ].filter(Boolean).join(" — ");
-          await researchAndWriteMethodology(hdr, env, dash(methodId), name, platform, productContext, false);
+          await researchAndWriteMethodology(hdr, env, dash(methodId), name, platform, productContext, false, !!needsTrafficPlan);
         } catch(e) { /* best-effort — method still usable with just its short notes */ }
 
         return json({ success: true, methodId, methodName: name });
@@ -3613,6 +3638,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
         if (methodPage.object === "error" || !methodPage.properties) return json({ error: methodPage.message || "Method not found" }, 404);
         const methodName = (methodPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Method";
         const platform = methodPage.properties?.Platform?.select?.name || "";
+        const isDestination = !!methodPage.properties?.["Needs Traffic Plan"]?.checkbox;
         let productContext = "";
         if (productId) {
           try {
@@ -3624,7 +3650,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
             ].filter(Boolean).join(" — ");
           } catch(e) { /* research still runs without product context */ }
         }
-        const result = await researchAndWriteMethodology(hdr, env, dash(methodId), methodName, platform, productContext, !!force);
+        const result = await researchAndWriteMethodology(hdr, env, dash(methodId), methodName, platform, productContext, !!force, isDestination);
         if (result.error) return json({ error: result.error }, 500);
         return json(result);
       }
@@ -4051,72 +4077,65 @@ Return ONLY a JSON array — no other text, no markdown fences:
       }
 
       // ── generateTrafficMethodTitles ──
-      // For a TRAFFIC method (the child in a Page→Instagram-style pairing),
-      // generates a comprehensive, multi-post-type title set in one pass:
-      // Claude organizes titles by POST TYPE (Carousel/Reel/Picture Post, or
-      // whatever genuinely fits the method's platform — not hardcoded), with
-      // 2-4 titles per type carrying an explicit sequenceOrder so a rollout
-      // of same-type posts (Reel 1, Reel 2, Reel 3...) is a real, orderable
-      // sequence, not just a flat list. Saved with the full method lineage in
-      // Grouping ("Parent > Child > PostType") and Sequence Order set — so
-      // the hierarchy (page(1) > instagram(2) > post type(3) > sequence(3.1))
-      // is visible directly on every generated title.
+      // For a GROWTH/DISTRIBUTION method (Instagram, X, Pinterest, Email —
+      // a platform an audience is grown ON, not a page landed on), generates
+      // a comprehensive, multi-post-type title set in one pass. Grounded in
+      // the PRODUCT-level Strategy (11 fields — what to say) AND the
+      // method's own researched [Arc] phases (parseMethodPhases — the
+      // reusable, product-agnostic structural patterns that drive growth on
+      // THIS platform, from researchAndWriteMethodology). Claude organizes
+      // titles by POST TYPE (Carousel/Reel/Picture Post, or whatever
+      // genuinely fits — informed by the method's own arc research, not
+      // invented from scratch each time), with 2-4 titles per type carrying
+      // an explicit sequenceOrder so a rollout (Reel 1, Reel 2, Reel 3...)
+      // is a real, orderable sequence. Works standalone OR nested under a
+      // destination (parentMethodId/parentMethodName are optional, purely
+      // for the Grouping lineage label) — a growth method doesn't require a
+      // parent destination to be worth generating for.
       if (body.action === "generateTrafficMethodTitles") {
         const { productId, campaignId, parentMethodName, parentMethodId, childMethodId, childMethodName, childMethodNotes } = body;
-        if (!productId || !campaignId || !childMethodId || !childMethodName) return json({ error: "productId, campaignId, childMethodId, childMethodName required" }, 400);
+        if (!productId || !childMethodId || !childMethodName) return json({ error: "productId, childMethodId, childMethodName required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
 
-        const [productPage, researchRaw] = await Promise.all([
+        const [productPage, stratQ, arcPhases] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
-          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+          fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+            body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
           }).then(r => r.json()),
+          parseMethodPhases(hdr, dash(childMethodId)),
         ]);
         const pp = productPage.properties || {};
         const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
-        const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
-        const keywords = rt(researchRaw, "Keywords");
+        const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
 
-        // If the destination method has a Strategy doc, ground the traffic
-        // content in it too — so Instagram posts stay consistent with the
-        // page's actual headlines/positioning/differentiator, not just the
-        // raw product description.
-        let strategyContext = '';
-        if (parentMethodId) {
-          try {
-            const sq = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-              body: JSON.stringify({ filter: { and: [
-                { property: "Product", relation: { contains: dash(productId) } },
-                { property: "Method", relation: { contains: dash(parentMethodId) } },
-              ] } }),
-            }).then(r => r.json());
-            const rec = (sq.results || [])[0];
-            if (rec) {
-              const sid = rec.id.replace(/-/g,"");
-              const blocks = await fetch(`https://api.notion.com/v1/blocks/${dash(sid)}/children?page_size=50`, { headers: hdr }).then(r => r.json());
-              strategyContext = (blocks.results || []).map(b => (b[b.type]?.rich_text || []).map(x => x.plain_text).join("")).filter(Boolean).join("\n").slice(0, 2000);
-            }
-          } catch(e) { /* best-effort — generation still works without it */ }
-        }
+        const stratRecord = (stratQ.results || [])[0];
+        const stratProps = stratRecord?.properties || {};
+        const strategyBlock = STRATEGY_FIELDS.map(f => {
+          const v = (stratProps[f]?.rich_text || []).map(t => t.plain_text).join("");
+          return v ? `${f}: ${v}` : '';
+        }).filter(Boolean).join("\n");
 
-        const prompt = `You are a content strategist planning DISTRIBUTION content to drive traffic to a destination. Organize your plan by POST TYPE (the distinct content formats this method's platform actually supports — e.g. Carousel, Reel, Picture Post for Instagram; just "Email" for an email list; "Video" for YouTube — infer the real formats from the platform/notes, don't force formats that don't fit).
+        const arcBlock = arcPhases.map(p =>
+          `${p.name}\n` + p.groupings.map(g => `  ${g.name}: ${g.notes.join("; ")}`).join("\n")
+        ).join("\n\n");
 
-DESTINATION THIS TRAFFIC SERVES: ${parentMethodName || "(none — standalone)"}
-${strategyContext ? `DESTINATION'S STRATEGY (stay consistent with this positioning/messaging):\n${strategyContext}\n` : ''}TRAFFIC METHOD: ${childMethodName}
+        const prompt = `You are a content strategist planning growth content for one platform. Organize your plan by POST TYPE (the distinct content formats this platform actually supports — e.g. Carousel, Reel, Picture Post for Instagram; just "Email" for an email list; "Video" for YouTube).
+
+${arcBlock ? `THIS PLATFORM'S RESEARCHED GROWTH ARCS (reusable structural patterns for ${childMethodName} — use these as the actual postType/sequence structure, don't invent a different structure from scratch):\n${arcBlock}\n\n` : ''}${parentMethodName ? `DESTINATION THIS TRAFFIC SERVES: ${parentMethodName}\n\n` : ''}PRODUCT STRATEGY (the substance — what to actually say, ground every title in this):
+${strategyBlock || "(no strategy fields generated yet)"}
+
+PLATFORM/METHOD: ${childMethodName}
 METHOD NOTES: ${childMethodNotes || "(none)"}
 PRODUCT: ${productName}
-PRODUCT DESCRIPTION: ${productDesc || "(none)"}
-CAMPAIGN KEYWORDS: ${keywords || "(none on file)"}
+KEYWORDS: ${productKeywords || "(none on file)"}
 
 INSTRUCTIONS:
-- Group titles by postType. For each postType with more than one title, they form a ROLLOUT SEQUENCE — assign sequenceOrder 1, 2, 3... reflecting the order they'd actually post in (each building on or varying the last, not repetitive).
+- Group titles by postType, following the researched growth arcs above where provided. For each postType with more than one title, they form a ROLLOUT SEQUENCE — assign sequenceOrder 1, 2, 3... reflecting the order they'd actually post in (each building on or varying the last per the arc's structure, not repetitive).
 - 2-4 titles per postType. 2-4 postTypes total (only ones that genuinely fit this platform).
-- Titles are deliverable names (things to produce), specific to this product — not generic content ideas.
+- Titles are deliverable names (things to produce), specific to this product's strategy above — not generic content ideas.
 
 Return ONLY a JSON array — no other text, no markdown fences:
 { "title": "...", "description": "1-2 sentences, specific to this product", "postType": "e.g. Carousel", "sequenceOrder": 1 }`;
@@ -4150,10 +4169,10 @@ Return ONLY a JSON array — no other text, no markdown fences:
             "Status":         { select: { name: "Development" } },
             "Grouping":       { rich_text: rtBlock(grouping) },
             "Core Idea":      { rich_text: rtBlock(String(it.description || '').slice(0, 1990)) },
-            "Campaign":       { relation: [{ id: dash(campaignId) }] },
             "method":         { relation: [{ id: dash(childMethodId) }] },
             "product":        { relation: [{ id: dash(productId) }] },
           };
+          if (campaignId) props["Campaign"] = { relation: [{ id: dash(campaignId) }] };
           if (Number.isFinite(it.sequenceOrder)) props["Sequence Order"] = { number: it.sequenceOrder };
           const resp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
@@ -4204,12 +4223,13 @@ Return ONLY a JSON array — no other text, no markdown fences:
           const methodPage = await fetch(`https://api.notion.com/v1/pages/${dashId(methodId)}`, { headers: hdr }).then(r => r.json());
           const methodName = (methodPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Method";
           const platform = methodPage.properties?.Platform?.select?.name || "";
+          const isDestination = !!methodPage.properties?.["Needs Traffic Plan"]?.checkbox;
           const ppc = prodPage.properties || {};
           const productContext = [
             (ppc.Name?.title || []).map(t => t.plain_text).join(""),
             (ppc.Description?.rich_text || []).map(t => t.plain_text).join(""),
           ].filter(Boolean).join(" — ");
-          await researchAndWriteMethodology(hdr, env, dashId(methodId), methodName, platform, productContext, false);
+          await researchAndWriteMethodology(hdr, env, dashId(methodId), methodName, platform, productContext, false, isDestination);
         } catch(e) { /* best-effort — method stays usable as-is */ }
 
         return json({ success: true });
