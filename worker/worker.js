@@ -5573,6 +5573,130 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
         return json({ spec: merged, campaignSpec, productSpec });
       }
 
+      // ── getTitleDetails ──
+      // Everything the generate-assets modal needs to prefill from an
+      // existing Content Strategy title: text fields + relation ids AND
+      // resolved names (for the method/product picker inputs).
+      if (body.action === "getTitleDetails") {
+        const { titleId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const page = await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, { headers: dsHdr }).then(r => r.json());
+        const p = page.properties || {};
+        const rtx = k => (p[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const rel = k => (p[k]?.relation || [])[0]?.id?.replace(/-/g,"") || "";
+        const out = {
+          title: (p.Title?.title || []).map(t => t.plain_text).join(""),
+          description: rtx("Core Idea"),
+          seedKeywords: rtx("seed idea"),
+          researchInstructions: rtx("Notes"),
+          campaignId: rel("Campaign"),
+          productId:  rel("product"),
+          methodId:   rel("method"),
+        };
+        const nameOf = async id => {
+          if (!id) return "";
+          try {
+            const r = await fetch(`https://api.notion.com/v1/pages/${dsDash(id)}`, { headers: dsHdr }).then(x => x.json());
+            return (r.properties?.Name?.title || []).map(t => t.plain_text).join("");
+          } catch(e) { return ""; }
+        };
+        [out.campaignName, out.productName, out.methodName] = await Promise.all([nameOf(out.campaignId), nameOf(out.productId), nameOf(out.methodId)]);
+        return json(out);
+      }
+
+      // ── generateTitleAssets ──
+      // The real "create assets" flow: generates N distinct, build-ready
+      // asset concepts for one title (grounded in the title's idea/
+      // description/keywords/instructions, the attached method's framework,
+      // and the campaign/product design spec) and creates each as a REAL
+      // record in the Assets DB linked to the title via its Content Strategy
+      // relation — so they render as rows under the publish title.
+      if (body.action === "generateTitleAssets") {
+        const { titleId, campaignId, productId, methodId, title, description, seedKeywords, researchInstructions } = body;
+        const count = Math.min(Math.max(parseInt(body.count) || 4, 1), 8);
+        if (!titleId || !title) return json({ error: "titleId and title required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
+
+        // design spec: campaign default, product override, hard defaults
+        let spec = { ...DESIGN_SPEC_DEFAULTS };
+        try {
+          const [campPage, prodPage] = await Promise.all([
+            campaignId ? fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
+            hasProduct ? fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
+          ]);
+          const campSpecId = campPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+          const prodSpecId = prodPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+          const [cs, ps] = await Promise.all([
+            campSpecId ? fetch(`https://api.notion.com/v1/pages/${campSpecId}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
+            prodSpecId ? fetch(`https://api.notion.com/v1/pages/${prodSpecId}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
+          ]);
+          const stripEmpty = obj => Object.fromEntries(Object.entries(obj).filter(([k, v]) => k !== "id" && k !== "name" && v));
+          spec = { ...spec, ...(cs ? stripEmpty(dsFromPage(cs)) : {}), ...(ps ? stripEmpty(dsFromPage(ps)) : {}) };
+        } catch(e) { /* defaults are fine */ }
+
+        // method grounding (name + framework text)
+        let methodName = "", methodBody = "";
+        if (methodId && methodId !== "__none__") {
+          try {
+            const mp = await fetch(`https://api.notion.com/v1/pages/${dsDash(methodId)}`, { headers: dsHdr }).then(r => r.json());
+            methodName = (mp.properties?.Name?.title || []).map(t => t.plain_text).join("");
+            methodBody = (await extractBlocksTextRecursive(dsHdr, dsDash(methodId))).slice(0, 2500);
+          } catch(e) {}
+        }
+
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a senior content designer and copywriter. Create exactly ${count} DISTINCT asset concepts — options for the operator to choose between — for the content idea below. Each must be complete enough to build immediately without further questions.
+
+IDEA / TITLE: ${title}
+${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `SEED KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${methodName ? `METHOD: ${methodName}${methodBody ? `\nMETHOD NOTES/FRAMEWORK (dictates the deliverable format):\n${methodBody}` : ""}\n` : ""}
+DESIGN SPEC (every concept must match this aesthetic):
+Background ${spec.bg} · Ink ${spec.ink} · Accent ${spec.accent} · Headline font ${spec.headlineFont} · Body font ${spec.bodyFont}
+${spec.notes ? `Aesthetic: ${spec.notes}` : ""}
+
+Each concept must take a genuinely different approach to the same idea — different layout, hook, or visual metaphor, not just a color swap. The body must fully specify the deliverable: exact on-image headline/text, visual layout description, how the design spec colors/fonts are used, and the accompanying post caption.
+
+Return ONLY a JSON array of exactly ${count} items, no markdown fences:
+[{ "assetTitle": "short distinct option name", "platform": "Instagram" | "LinkedIn" | "TikTok" | "YouTube" | "Facebook" | "X / Twitter" | "Other", "assetType": "Post" | "Graphic" | "Reel" | "Video" | "Story" | "Article", "body": "full concept: on-image text, layout, spec usage, caption" }]`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude error" }, 502);
+        let concepts;
+        try {
+          const raw = (aiData.content?.[0]?.text || "").replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+          concepts = JSON.parse(raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1));
+        } catch(e) { return json({ error: "Could not parse generated concepts — try again" }, 502); }
+        if (!Array.isArray(concepts) || !concepts.length) return json({ error: "No concepts generated — try again" }, 502);
+
+        const created = [];
+        const failures = [];
+        for (const c of concepts.slice(0, count)) {
+          const properties = {
+            "Asset Title":  { title: [{ text: { content: String(c.assetTitle || "Untitled option").slice(0, 200) } }] },
+            "Asset Status": { select: { name: "Development" } },
+            "Body":         { rich_text: [{ text: { content: String(c.body || "").slice(0, 2000) } }] },
+            "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+          };
+          if (c.platform)  properties["Platform Name"] = { select: { name: String(c.platform).slice(0, 100) } };
+          if (c.assetType) properties["Asset Type"]    = { select: { name: String(c.assetType).slice(0, 100) } };
+          if (campaignId)  properties["Campaign"]      = { relation: [{ id: dsDash(campaignId) }] };
+          const resp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties }),
+          });
+          const result = await resp.json();
+          if (resp.ok && result.id) created.push({ id: result.id.replace(/-/g,""), title: c.assetTitle || "Untitled option" });
+          else failures.push(result.message || "create failed");
+        }
+        if (!created.length) return json({ error: "All asset creates failed: " + (failures[0] || "unknown") }, 502);
+        return json({ success: true, created: created.length, assets: created, failed: failures.length });
+      }
+
       // ── researchAndGenerateCarouselTitles ──
       // Called instead of generateMethodTitles when the selected Method is
       // "carousel". Merges campaign + product keyword signal, folds in any

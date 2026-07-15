@@ -782,6 +782,58 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- GENERATE ASSETS MODAL — same shape as the Add Idea modal, prefilled from
+     an existing title; on Generate it creates N real Asset records linked to
+     the title (they render as rows under the publish title). -->
+<div class="modal-overlay" id="genAssetsModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title">Generate Assets from Title</div>
+      <button class="modal-close" onclick="closeGenAssetsModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <label class="lm-label">Idea (title) <span style="color:var(--danger,#e05);">*</span></label>
+      <input class="modal-ta" id="gaTitleInput" type="text" autocomplete="off" style="margin-bottom:10px;" />
+
+      <label class="lm-label">Method <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="modal-ta" id="gaMethodInput" type="text" placeholder="Search methods…" autocomplete="off"
+               oninput="gaFilter('method')" onfocus="gaFilter('method')"
+               onblur="setTimeout(()=>{const d=document.getElementById('gaMethodDD'); if(d) d.style.display='none';},180)" />
+        <div id="gaMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      </div>
+
+      <label class="lm-label">Product <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="modal-ta" id="gaProductInput" type="text" placeholder="Search products…" autocomplete="off"
+               oninput="gaFilter('product')" onfocus="gaFilter('product')"
+               onblur="setTimeout(()=>{const d=document.getElementById('gaProductDD'); if(d) d.style.display='none';},180)" />
+        <div id="gaProductDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      </div>
+
+      <label class="lm-label">Description of content</label>
+      <textarea class="modal-ta" id="gaDescInput" rows="3" style="margin-bottom:10px;resize:vertical;"></textarea>
+
+      <label class="lm-label">Seed keywords</label>
+      <input class="modal-ta" id="gaKeywordsInput" type="text" autocomplete="off" style="margin-bottom:10px;" />
+
+      <label class="lm-label">Research instructions</label>
+      <textarea class="modal-ta" id="gaResearchInput" rows="3" style="margin-bottom:10px;resize:vertical;"></textarea>
+
+      <label class="lm-label">Number of options</label>
+      <select class="modal-ta" id="gaCountInput" style="margin-bottom:10px;width:90px;">
+        <option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option>
+      </select>
+
+      <div id="gaStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeGenAssetsModal()">Cancel</button>
+      <button class="modal-btn save" id="gaGoBtn" onclick="submitGenAssets()">Generate</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "3721f7d3a4bb813ebc1de7576df0ca0a"; // lead-gen-small-business
@@ -887,7 +939,7 @@ function esc(s) {
 // all AI research/generation prompts. A visible editable field is injected
 // into each research/generation modal when it opens — edit it anywhere and
 // the new value applies to every subsequent run on this device.
-const RG_MODAL_IDS = ['create-asset-modal','method-gen-modal','smPromptModal','fieldResearchModal','addTitleModal','ecosystemModal','productMethodsModal','design-spec-modal'];
+const RG_MODAL_IDS = ['create-asset-modal','method-gen-modal','smPromptModal','fieldResearchModal','addTitleModal','genAssetsModal','ecosystemModal','productMethodsModal','design-spec-modal'];
 function rgVal() { try { return (localStorage.getItem('rg_guidelines') || '').trim(); } catch(e) { return ''; } }
 function rgSave(v) { try { localStorage.setItem('rg_guidelines', (v || '').trim()); } catch(e) {} }
 function rgInject(modalEl) {
@@ -1245,7 +1297,7 @@ async function loadTitles() {
     function makeTitleRow(t) {
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-build-btn" onclick="openBuildModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.productId||'__none__'}')" title="Build carousel">🎨</button><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-asset-btn" onclick="makeProductFromTitle('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Create product from title">♻</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-build-btn" onclick="openBuildModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.productId||'__none__'}')" title="Build carousel">🎨</button><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title)">🧩</button><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Generate more titles seeded from this one">+</button><button class="title-asset-btn" onclick="makeProductFromTitle('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Create product from title">♻</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       if (!t.assets || !t.assets.length) return div;
       // publish-stage titles: render each linked asset as an indented row
       const wrap = document.createElement('div');
@@ -4061,6 +4113,131 @@ async function submitAddTitle() {
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     btn.disabled = false; btn.textContent = 'Create';
+  }
+}
+
+// ── GENERATE ASSETS MODAL (🧩 per title row) ─────────────────────────
+// Prefills every field from the existing title (getTitleDetails), lets the
+// operator adjust, then generateTitleAssets creates N real Asset records
+// linked to the title — they render as rows under the publish title.
+let GA_TITLE_ID = null, GA_CAMPAIGN_ID = null;
+let GA_METHOD_ID = null, GA_METHOD_NAME = '';
+let GA_PRODUCT_ID = null, GA_PRODUCT_NAME = '';
+
+function gaFilter(kind) {
+  const inp  = document.getElementById(kind === 'method' ? 'gaMethodInput' : 'gaProductInput');
+  const dd   = document.getElementById(kind === 'method' ? 'gaMethodDD' : 'gaProductDD');
+  const list = kind === 'method' ? AT_METHODS : AT_PRODUCTS;
+  const q = inp.value.trim(), qL = q.toLowerCase();
+  if (kind === 'method' && q !== GA_METHOD_NAME) { GA_METHOD_ID = null; GA_METHOD_NAME = ''; }
+  if (kind === 'product' && q !== GA_PRODUCT_NAME) { GA_PRODUCT_ID = null; GA_PRODUCT_NAME = ''; }
+  dd.innerHTML = '';
+  const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
+  matches.forEach(x => {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#c9c9c9;border-bottom:1px solid #222;';
+    div.onmouseenter = () => div.style.background = '#333';
+    div.onmouseleave = () => div.style.background = '';
+    div.textContent = x.name;
+    div.onmousedown = () => {
+      if (kind === 'method') { GA_METHOD_ID = x.id; GA_METHOD_NAME = x.name; }
+      else { GA_PRODUCT_ID = x.id; GA_PRODUCT_NAME = x.name; }
+      inp.value = x.name;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+  const exact = list.some(x => x.name.toLowerCase() === qL);
+  if (q && !exact) {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;font-size:12px;color:#e8ff47;font-style:italic;border-bottom:1px solid #222;';
+    div.textContent = `＋ new ${kind} "${q}" will be created on Generate`;
+    dd.appendChild(div);
+  }
+  dd.style.display = (matches.length || (q && !exact)) ? 'block' : 'none';
+}
+
+async function gaResolve(kind, statusEl) {
+  const inp = document.getElementById(kind === 'method' ? 'gaMethodInput' : 'gaProductInput');
+  const val = inp.value.trim();
+  if (!val) return { id: null };
+  const pickedId   = kind === 'method' ? GA_METHOD_ID : GA_PRODUCT_ID;
+  const pickedName = kind === 'method' ? GA_METHOD_NAME : GA_PRODUCT_NAME;
+  if (pickedId && val === pickedName) return { id: pickedId };
+  const list = kind === 'method' ? AT_METHODS : AT_PRODUCTS;
+  const match = list.find(x => x.name.toLowerCase() === val.toLowerCase());
+  if (match) return { id: match.id };
+  statusEl.textContent = `Creating new ${kind} "${val}"…`;
+  const res = await w(kind === 'method' ? 'createMethod' : 'createProduct', { title: val });
+  if (res.error) throw new Error(res.error);
+  list.push({ id: res.id, name: val });
+  return { id: res.id };
+}
+
+async function openGenAssetsModal(titleId) {
+  GA_TITLE_ID = titleId; GA_CAMPAIGN_ID = null;
+  GA_METHOD_ID = null; GA_METHOD_NAME = '';
+  GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
+  ['gaTitleInput','gaMethodInput','gaProductInput','gaDescInput','gaKeywordsInput','gaResearchInput'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const status = document.getElementById('gaStatus');
+  status.textContent = 'Loading title details…';
+  const btn = document.getElementById('gaGoBtn');
+  btn.disabled = true; btn.textContent = 'Generate';
+  document.getElementById('genAssetsModal').classList.add('open');
+  atEnsureLists(); // shared picker lists, refreshed on open
+  try {
+    const d = await w('getTitleDetails', { titleId });
+    document.getElementById('gaTitleInput').value    = d.title || '';
+    document.getElementById('gaDescInput').value     = d.description || '';
+    document.getElementById('gaKeywordsInput').value = d.seedKeywords || '';
+    document.getElementById('gaResearchInput').value = d.researchInstructions || '';
+    if (d.methodId)  { GA_METHOD_ID = d.methodId;   GA_METHOD_NAME = d.methodName || '';  document.getElementById('gaMethodInput').value  = d.methodName || ''; }
+    if (d.productId) { GA_PRODUCT_ID = d.productId; GA_PRODUCT_NAME = d.productName || ''; document.getElementById('gaProductInput').value = d.productName || ''; }
+    GA_CAMPAIGN_ID = d.campaignId || CAMPAIGN_ID;
+    status.textContent = '';
+  } catch(e) {
+    GA_CAMPAIGN_ID = CAMPAIGN_ID;
+    status.textContent = 'Could not prefill from title (' + e.message + ') — fields are editable.';
+  }
+  btn.disabled = false;
+}
+function closeGenAssetsModal() { document.getElementById('genAssetsModal').classList.remove('open'); }
+document.getElementById('genAssetsModal').addEventListener('click', function(e) {
+  if (e.target === this) closeGenAssetsModal();
+});
+
+async function submitGenAssets() {
+  const title = document.getElementById('gaTitleInput').value.trim();
+  if (!title) { document.getElementById('gaTitleInput').focus(); return; }
+  const btn = document.getElementById('gaGoBtn');
+  const status = document.getElementById('gaStatus');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  try {
+    const method  = await gaResolve('method', status);
+    const product = await gaResolve('product', status);
+    status.textContent = 'Generating asset concepts…';
+    const r = await w('generateTitleAssets', {
+      titleId: GA_TITLE_ID,
+      campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID,
+      methodId:  method.id  || undefined,
+      productId: product.id || undefined,
+      title,
+      description:          document.getElementById('gaDescInput').value.trim()     || undefined,
+      seedKeywords:         document.getElementById('gaKeywordsInput').value.trim() || undefined,
+      researchInstructions: document.getElementById('gaResearchInput').value.trim() || undefined,
+      count: parseInt(document.getElementById('gaCountInput').value) || 4,
+    });
+    status.textContent = `✓ Created ${r.created} asset option${r.created === 1 ? '' : 's'}${r.failed ? ` (${r.failed} failed)` : ''} — they appear under the title once it's in Publish.`;
+    status.style.color = '#68d391';
+    btn.textContent = 'Done';
+    await loadTitles();
+    setTimeout(closeGenAssetsModal, 2200);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Generate';
   }
 }
 
