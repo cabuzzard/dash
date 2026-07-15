@@ -243,6 +243,18 @@ async function buildTitleSeedContext(hdr, parentTitleId, parentTitleText) {
   } catch { return fallback; }
 }
 
+// Optional operator "research guidelines" — free-text routing recommendations
+// sent by the front-end with every request (see w() in the site templates).
+// Prepended to AI research/generation prompts so the operator can steer
+// sources, angles, framing, and routing across the whole production flow
+// without editing each prompt. Returns '' when unset so call sites can
+// interpolate unconditionally.
+const researchGuidelinesBlock = g => {
+  const t = (g == null ? "" : String(g)).trim();
+  if (!t) return "";
+  return `OPERATOR RESEARCH GUIDELINES (standing routing recommendations from the user — apply them when choosing sources, angles, framing, and routing; where they conflict with the default approach below, the guidelines win):\n${t.slice(0, 1500)}\n\n`;
+};
+
 async function parseMethodPhases(hdr, methodId) {
   const resp = await fetch(`https://api.notion.com/v1/blocks/${methodId}/children?page_size=100`, { headers: hdr }).then(r => r.json());
   const blocks = resp.results || [];
@@ -295,7 +307,7 @@ async function parseMethodPhases(hdr, methodId) {
 //   arc, a nurture-email sequence, a trend-jack reel) — reusable
 //   knowledge about the platform itself, independent of any product's
 //   subject matter or keywords. Every phase here is tagged [Arc].
-async function researchAndWriteMethodology(hdr, env, methodId, methodName, platform, productContext, force, isDestination) {
+async function researchAndWriteMethodology(hdr, env, methodId, methodName, platform, productContext, force, isDestination, guidelines) {
   if (!env.ANTHROPIC_API_KEY) return { skipped: true, reason: "no API key" };
   if (!force) {
     try {
@@ -304,7 +316,7 @@ async function researchAndWriteMethodology(hdr, env, methodId, methodName, platf
     } catch(e) { /* fall through and research anyway */ }
   }
   const prompt = isDestination
-    ? `You are a marketing methodologist. Research and write a COMPLETE marketing methodology framework for the method "${methodName}"${platform ? ` (platform: ${platform})` : ''}, as it would be used to market and sell a product.
+    ? `${researchGuidelinesBlock(guidelines)}You are a marketing methodologist. Research and write a COMPLETE marketing methodology framework for the method "${methodName}"${platform ? ` (platform: ${platform})` : ''}, as it would be used to market and sell a product.
 ${productContext ? `\nCONTEXT — being set up right now for this product: ${productContext}\n` : ''}
 Organize the methodology into PHASES (major stages of using this method) and, within each phase, GROUPINGS (sub-categories), each with 2-5 specific deliverable-prompt bullet items.
 
@@ -316,7 +328,7 @@ Ground this in real, current best practices for "${methodName}" — cite real ta
 
 Return ONLY a JSON array, no other text, no markdown fences:
 [{ "phase": "...", "kind": "strategy"|"asset", "groupings": [{ "name": "...", "items": ["...", "..."] }] }]`
-    : `You are a growth strategist. Research and define 2-4 reusable CONTENT ARC/SEQUENCE TYPES for growing an audience on "${methodName}"${platform ? ` (platform: ${platform})` : ''} — the STRUCTURAL patterns that actually drive growth on this specific platform. This must be reusable for ANY product that uses this platform — do NOT reference a specific product, keyword, or subject matter anywhere in the output.
+    : `${researchGuidelinesBlock(guidelines)}You are a growth strategist. Research and define 2-4 reusable CONTENT ARC/SEQUENCE TYPES for growing an audience on "${methodName}"${platform ? ` (platform: ${platform})` : ''} — the STRUCTURAL patterns that actually drive growth on this specific platform. This must be reusable for ANY product that uses this platform — do NOT reference a specific product, keyword, or subject matter anywhere in the output.
 
 For each arc/sequence type, describe (as GROUPINGS, one per structural piece/step):
 - The STRUCTURE: how many pieces, what role each one plays in the sequence (e.g. hook -> problem -> proof -> CTA), and the order they go in.
@@ -1953,7 +1965,7 @@ export default {
         const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
         const currentKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
 
-        const prompt = `You are an SEO/positioning strategist. Generate a refined, specific keyword list for this product.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO/positioning strategist. Generate a refined, specific keyword list for this product.
 
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
@@ -3181,7 +3193,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const keywords = rt(researchRaw, "Keywords") || (cp["Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
         const buyerIntent = (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join("") || "(none on file)";
 
-        const prompt = `You are a product and funnel strategist. A campaign has one seed product idea. Determine the full ECOSYSTEM of products needed to market and sell it — not just the core offer itself, but the supporting products at other funnel stages (e.g. a free/low-ticket lead-in, a credibility or content product, the core offer, a retention/upsell product) that a real launch plan would need. Ground everything in the campaign context below. Not every idea needs every stage — a simple info product might only need 2-3 items; a high-ticket offer might need the full ladder.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a product and funnel strategist. A campaign has one seed product idea. Determine the full ECOSYSTEM of products needed to market and sell it — not just the core offer itself, but the supporting products at other funnel stages (e.g. a free/low-ticket lead-in, a credibility or content product, the core offer, a retention/upsell product) that a real launch plan would need. Ground everything in the campaign context below. Not every idea needs every stage — a simple info product might only need 2-3 items; a high-ticket offer might need the full ladder.
 
 CAMPAIGN: ${campaignName}
 CAMPAIGN KEYWORDS: ${keywords || "(none on file)"}
@@ -3344,7 +3356,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
           ? existingMethods.map((m, i) => `[E${i+1}] ${m.name}${m.platform ? ` (${m.platform})` : ''}${m.notes ? ` — ${m.notes.slice(0, 200)}` : ' — (no methodology written yet)'}`).join('\n')
           : '(no existing methods on file)';
 
-        const prompt = `You are a marketing strategist choosing HOW to market and sell one specific product. Below is the full list of EXISTING marketing methods already on file. Strongly prefer reusing one of them — only propose a new method if none of them genuinely fit this product's context.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a marketing strategist choosing HOW to market and sell one specific product. Below is the full list of EXISTING marketing methods already on file. Strongly prefer reusing one of them — only propose a new method if none of them genuinely fit this product's context.
 
 PRODUCT: ${productName}
 TYPE (format — this is the PRIMARY signal for which method fits): ${productType || "(not set — infer format from the name/description)"}
@@ -3531,7 +3543,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
             (ppc.Description?.rich_text || []).map(t => t.plain_text).join(""),
             notes ? `Seed notes for this method: ${notes}` : '',
           ].filter(Boolean).join(" — ");
-          await researchAndWriteMethodology(hdr, env, dash(methodId), name, platform, productContext, false, !!needsTrafficPlan);
+          await researchAndWriteMethodology(hdr, env, dash(methodId), name, platform, productContext, false, !!needsTrafficPlan, body.researchGuidelines);
         } catch(e) { /* best-effort — method still usable with just its short notes */ }
 
         return json({ success: true, methodId, methodName: name });
@@ -3819,7 +3831,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
           return v ? `${f}: ${v}` : '';
         }).filter(Boolean).join("\n");
 
-        const prompt = `You are a marketing strategist writing ONE field of a product's core strategy document — a fixed positioning reference used across every marketing channel this product is sold through, not tied to any one platform.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a marketing strategist writing ONE field of a product's core strategy document — a fixed positioning reference used across every marketing channel this product is sold through, not tied to any one platform.
 
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
@@ -3943,7 +3955,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
             ].filter(Boolean).join(" — ");
           } catch(e) { /* research still runs without product context */ }
         }
-        const result = await researchAndWriteMethodology(hdr, env, dash(methodId), methodName, platform, productContext, !!force, isDestination);
+        const result = await researchAndWriteMethodology(hdr, env, dash(methodId), methodName, platform, productContext, !!force, isDestination, body.researchGuidelines);
         if (result.error) return json({ error: result.error }, 500);
         return json(result);
       }
@@ -4024,7 +4036,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
         const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
 
         const groupingsBlock = target.groupings.map(g => `${g.name}:\n${g.notes.map(n => `- ${n}`).join("\n")}`).join("\n\n");
-        const prompt = `You are a marketing strategist writing ONE section of a larger product-page brief.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a marketing strategist writing ONE section of a larger product-page brief.
 
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
@@ -4220,7 +4232,7 @@ Return ONLY a JSON array, no other text, no markdown fences:
         const failedPhases = [];
         for (const phase of relevantPhases) {
           const frameworkBlock = `PHASE: ${phase.name}\n` + phase.groupings.map(g => `${g.name}: ${g.notes.join("; ")}`).join("\n");
-          const prompt = `You are producing the actual publishable deliverable(s) for ONE section of a marketing method, using this product's core strategy as the source material for what to say.
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing the actual publishable deliverable(s) for ONE section of a marketing method, using this product's core strategy as the source material for what to say.
 
 PRODUCT: ${productName}
 KEYWORDS: ${productKeywords || "(none)"}
@@ -4313,7 +4325,7 @@ Return ONLY a JSON array, no other text, no markdown fences:
         const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
         const productName = (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Product";
 
-        const prompt = `You have a complete marketing STRATEGY document below for one product and destination method. Your job is to turn it into actual PUBLISHABLE deliverables — real assets with a publication destination — NOT a restatement of the strategy's planning decisions.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You have a complete marketing STRATEGY document below for one product and destination method. Your job is to turn it into actual PUBLISHABLE deliverables — real assets with a publication destination — NOT a restatement of the strategy's planning decisions.
 
 PRODUCT: ${productName}
 METHOD: ${methodName}
@@ -4415,7 +4427,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
           `${p.name}\n` + p.groupings.map(g => `  ${g.name}: ${g.notes.join("; ")}`).join("\n")
         ).join("\n\n");
 
-        const prompt = `You are a content strategist planning growth content for one platform. Organize your plan by POST TYPE (the distinct content formats this platform actually supports — e.g. Carousel, Reel, Picture Post for Instagram; just "Email" for an email list; "Video" for YouTube).
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist planning growth content for one platform. Organize your plan by POST TYPE (the distinct content formats this platform actually supports — e.g. Carousel, Reel, Picture Post for Instagram; just "Email" for an email list; "Video" for YouTube).
 
 ${arcBlock ? `THIS PLATFORM'S RESEARCHED GROWTH ARCS (reusable structural patterns for ${childMethodName} — use these as the actual postType/sequence structure, don't invent a different structure from scratch):\n${arcBlock}\n\n` : ''}${parentMethodName ? `DESTINATION THIS TRAFFIC SERVES: ${parentMethodName}\n\n` : ''}PRODUCT STRATEGY (the substance — what to actually say, ground every title in this):
 ${strategyBlock || "(no strategy fields generated yet)"}
@@ -4522,7 +4534,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
             (ppc.Name?.title || []).map(t => t.plain_text).join(""),
             (ppc.Description?.rich_text || []).map(t => t.plain_text).join(""),
           ].filter(Boolean).join(" — ");
-          await researchAndWriteMethodology(hdr, env, dashId(methodId), methodName, platform, productContext, false, isDestination);
+          await researchAndWriteMethodology(hdr, env, dashId(methodId), methodName, platform, productContext, false, isDestination, body.researchGuidelines);
         } catch(e) { /* best-effort — method stays usable as-is */ }
 
         return json({ success: true });
@@ -5021,7 +5033,7 @@ Unique Angle: ${ptxt("Unique Angle")}`;
         const hasTrendResearch = !!trendResearch;
 
         // Call Claude to generate titles
-        const prompt = `You are a content strategist. Generate all deliverable titles for a method, grounded in the campaign research${hasProduct ? " and product strategy" : ""}${hasTrendResearch ? " and current trend research" : ""}.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist. Generate all deliverable titles for a method, grounded in the campaign research${hasProduct ? " and product strategy" : ""}${hasTrendResearch ? " and current trend research" : ""}.
 
 CAMPAIGN: ${campaignName}
 CAMPAIGN RESEARCH:
@@ -5148,7 +5160,7 @@ No other text. No markdown fences.`;
           keywords = rt(researchRaw, "Keywords");
         }
 
-        const prompt = `Write a full 7-slide Instagram carousel script for this specific title.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}Write a full 7-slide Instagram carousel script for this specific title.
 
 TITLE: ${title}
 ${keywords ? `KEYWORDS: ${keywords}\n` : ''}
@@ -5383,7 +5395,7 @@ Return ONLY this JSON, no other text, no markdown fences:
           notes:             (cp["Notes"]?.rich_text || []).map(t => t.plain_text).join(""),
         };
 
-        const prompt = `You are a brand & visual designer. Based on the campaign research below, propose exactly 3 DISTINCT design specs for its social carousels — each a different coherent aesthetic direction that fits the audience and positioning (e.g. one editorial/quiet, one bold/high-contrast, one warm/human — but choose whatever actually fits THIS campaign).
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a brand & visual designer. Based on the campaign research below, propose exactly 3 DISTINCT design specs for its social carousels — each a different coherent aesthetic direction that fits the audience and positioning (e.g. one editorial/quiet, one bold/high-contrast, one warm/human — but choose whatever actually fits THIS campaign).
 
 CAMPAIGN: ${campaignName}
 Keywords: ${research.keywords}
@@ -5650,7 +5662,7 @@ Notes: ${notes || "(none)"}`;
             ).join('\n')
           : `(no live reference posts${refNote ? ' — ' + refNote : ''})`;
 
-        const prompt = `You are a social media trend analyst and content strategist. Analyze the research below, then recommend exactly 10 Instagram carousel concepts — compelling working titles for FUTURE carousels that have not been written yet, each with a short description. These are recommendations only, not scripts.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a social media trend analyst and content strategist. Analyze the research below, then recommend exactly 10 Instagram carousel concepts — compelling working titles for FUTURE carousels that have not been written yet, each with a short description. These are recommendations only, not scripts.
 
 CAMPAIGN: ${campaignName}
 MERGED KEYWORDS (campaign + product): ${mergedKeywords}
@@ -5801,7 +5813,7 @@ Return ONLY a JSON array of exactly 10 objects, each shaped exactly like this �
 
         // Step 1 — Claude translates the (possibly job-seeker-style) seed into
         // real client-side Upwork search phrases (short skill/service terms).
-        const expandPrompt = `A freelancer wants to find ACTIVE work on Upwork related to this seed. The seed may be phrased like a job-seeker ("freelance jobs, work from home") rather than a skill clients hire for. Translate it into 6 concrete Upwork SEARCH PHRASES that hiring CLIENTS would actually title a job with — short skill/service phrases (2-4 words), specific and real, spanning the most likely active markets for this seed${hasProduct ? " and product" : ""}.
+        const expandPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}A freelancer wants to find ACTIVE work on Upwork related to this seed. The seed may be phrased like a job-seeker ("freelance jobs, work from home") rather than a skill clients hire for. Translate it into 6 concrete Upwork SEARCH PHRASES that hiring CLIENTS would actually title a job with — short skill/service phrases (2-4 words), specific and real, spanning the most likely active markets for this seed${hasProduct ? " and product" : ""}.
 
 SEED KEYWORDS: ${seed}
 ${hasProduct ? productSection : ""}
@@ -5871,7 +5883,7 @@ Return ONLY a JSON array of 6 short strings — no other text, no fences. Exampl
 
         // Step 3 — Claude proposes titles for the ACTIVE markets, weighted by
         // real live-ad volume, grounded in the seed.
-        const titlePrompt = `You are a freelance market strategist. Below are candidate Upwork markets for a seed, each with the number of LIVE ads found just now (real current demand). Propose exactly 10 titles for content/offers this campaign${hasProduct ? "/product" : ""} should make to win work in the markets that are ACTUALLY ACTIVE.
+        const titlePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a freelance market strategist. Below are candidate Upwork markets for a seed, each with the number of LIVE ads found just now (real current demand). Propose exactly 10 titles for content/offers this campaign${hasProduct ? "/product" : ""} should make to win work in the markets that are ACTUALLY ACTIVE.
 
 SEED KEYWORDS: ${seed}
 ${hasProduct ? productSection : ""}
@@ -6128,7 +6140,7 @@ Return ONLY a JSON array of exactly 10 objects — no other text, no fences:
           uniqueAngle:    ptxt("Unique Angle"),
         };
 
-        const prompt = `You are an expert content writer. Write the actual content for a specific deliverable in a content system.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an expert content writer. Write the actual content for a specific deliverable in a content system.
 
 METHOD: ${methodName}
 METHOD FRAMEWORK (defines the content format and how to write for this method):
@@ -6327,7 +6339,7 @@ Write only the content itself. No preamble, no meta-commentary, no "Here's the c
 
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY secret not configured" }, 500);
 
-        const prompt = `You are a direct-response copywriter and product strategist. Given campaign research and a product name, derive a complete product strategy profile.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a direct-response copywriter and product strategist. Given campaign research and a product name, derive a complete product strategy profile.
 
 CAMPAIGN RESEARCH:
 Keywords: ${research.keywords}
@@ -6807,8 +6819,12 @@ Rules:
 
       // â"€â"€ CAMPAIGN ADMIN: sendPrompt via Claude â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
       if (body.action === "sendPrompt") {
-        const { prompt } = body;
+        let { prompt } = body;
         if (!prompt) return json({ error: "prompt required" }, 400);
+        // operator research guidelines ride along on every front-end call —
+        // prepend them here so prompt-editing modals (field research, SM
+        // trends) get the same routing steer as the structured actions
+        prompt = researchGuidelinesBlock(body.researchGuidelines) + prompt;
         const resp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -7586,7 +7602,7 @@ Rules:
         const { campaignId, researchId, currentKeywords } = body;
         const pageId = researchId || campaignId;
         if (!pageId) return json({ error: "researchId required" }, 400);
-        const prompt = `You are a keyword research specialist. Given these existing campaign keywords: "${currentKeywords || 'none provided'}"
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a keyword research specialist. Given these existing campaign keywords: "${currentKeywords || 'none provided'}"
 
 Research and generate an expanded, optimized list of 15-20 highly relevant keywords for this campaign niche. Include long-tail variations, related search terms, problem-aware and solution-aware terms, and high-intent buyer keywords.
 

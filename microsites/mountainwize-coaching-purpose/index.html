@@ -859,7 +859,12 @@ function tick() {
 setInterval(tick, 1000); tick();
 
 async function w(action, extra = {}) {
-  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, token: SESSION_TOKEN, ...extra }) });
+  const payload = { action, token: SESSION_TOKEN, ...extra };
+  // operator research guidelines ride along on every call — the worker folds
+  // them into all AI research/generation prompts (harmless on non-AI actions)
+  const rg = rgVal();
+  if (rg && payload.researchGuidelines == null) payload.researchGuidelines = rg;
+  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
   const d = await r.json();
   if (r.status === 401) {
     SESSION_TOKEN = null;
@@ -875,6 +880,46 @@ async function w(action, extra = {}) {
 function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── Research guidelines (operator routing recommendations) ───────────
+// Optional standing guidance, persisted per-browser (localStorage) and sent
+// with EVERY worker call as `researchGuidelines`; the worker prepends it to
+// all AI research/generation prompts. A visible editable field is injected
+// into each research/generation modal when it opens — edit it anywhere and
+// the new value applies to every subsequent run on this device.
+const RG_MODAL_IDS = ['create-asset-modal','method-gen-modal','smPromptModal','fieldResearchModal','addTitleModal','ecosystemModal','productMethodsModal','design-spec-modal'];
+function rgVal() { try { return (localStorage.getItem('rg_guidelines') || '').trim(); } catch(e) { return ''; } }
+function rgSave(v) { try { localStorage.setItem('rg_guidelines', (v || '').trim()); } catch(e) {} }
+function rgInject(modalEl) {
+  const existing = modalEl.querySelector('.rg-ta');
+  if (existing) { if (document.activeElement !== existing) existing.value = rgVal(); return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'rg-field';
+  wrap.style.cssText = 'margin:10px 0 2px;';
+  wrap.innerHTML = '<label class="lm-label" style="display:block;">Research guidelines <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;">(optional — routing recommendations for Claude; remembered on this device, sent with every run)</span></label>' +
+    '<textarea class="modal-ta rg-ta" rows="2" placeholder="e.g. prioritize niche forums + Reddit; US buyers only; avoid hustle-culture framing; always cite live sources…" style="resize:vertical;margin-top:4px;"></textarea>';
+  const body = modalEl.querySelector('.modal-body');
+  const actions = modalEl.querySelector('.ca-actions');
+  if (body) body.appendChild(wrap);
+  else if (actions && actions.parentElement) actions.parentElement.insertBefore(wrap, actions);
+  else (modalEl.firstElementChild || modalEl).appendChild(wrap);
+  const ta = wrap.querySelector('textarea');
+  ta.value = rgVal();
+  ta.addEventListener('change', () => rgSave(ta.value));
+  ta.addEventListener('blur', () => rgSave(ta.value));
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const rgObserver = new MutationObserver(muts => {
+    for (const m of muts) {
+      const el = m.target;
+      if (el.classList && el.classList.contains('open')) { try { rgInject(el); } catch(e) {} }
+    }
+  });
+  RG_MODAL_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) rgObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
+  });
+});
 
 // Strip HTML tags to plain text
 function stripHtml(raw) {
