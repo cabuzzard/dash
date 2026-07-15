@@ -1082,6 +1082,8 @@ async function transcribeViaElevenLabs(env, mediaUrl) {
   if (!key) throw new Error("ELEVENLABS_API_KEY not configured");
   const mediaResp = await fetch(mediaUrl);
   if (!mediaResp.ok) throw new Error("Could not download media for transcription");
+  const contentType = mediaResp.headers.get("content-type") || "";
+  if (!/^(audio|video)\//.test(contentType)) throw new Error(`Media URL did not resolve to audio/video (got ${contentType || "unknown type"})`);
   const blob = await mediaResp.blob();
   const form = new FormData();
   form.append("model_id", "scribe_v1");
@@ -1106,19 +1108,24 @@ async function fetchSavedPostContent(env, platform, url) {
   if (!AT) throw new Error("APIFY_TOKEN not configured");
 
   if (platform === "X") {
-    const items = await callApifyActor(AT, "apidojo~tweet-scraper", { startUrls: [url], maxItems: 1 });
+    // apidojo/tweet-scraper was returning noResults for every URL under this
+    // account/tier (confirmed against known-good tweets, not just the saved
+    // ones) — switched to calm_builder/twitter-posts-scraper, verified working
+    // against real saved URLs during setup.
+    const items = await callApifyActor(AT, "calm_builder~twitter-posts-scraper", {
+      postUrls: [{ url }], flattenOutput: true, includeAuthorProfile: false,
+    });
     const tweet = items?.[0];
-    if (!tweet || tweet.noResults) throw new Error("Tweet not found or unavailable (deleted/private)");
-    const text = tweet.fullText || tweet.text || "";
-    const author = tweet.author?.userName || tweet.author?.name || "";
-    const media = tweet.extendedEntities?.media || tweet.entities?.media || [];
+    if (!tweet || tweet.success === false) throw new Error(tweet?.error || "Tweet not found or unavailable (deleted/private)");
+    const text = tweet.text || "";
+    const author = tweet.author?.username || tweet.author?.name || "";
+    const media = tweet.media || [];
     const videoMedia = media.find(m => m.type === "video" || m.type === "animated_gif");
     let transcript = "", note = "";
     if (videoMedia) {
-      const variants = (videoMedia.video_info?.variants || []).filter(v => v.content_type === "video/mp4");
-      const best = variants.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
-      if (best?.url) {
-        try { transcript = await transcribeViaElevenLabs(env, best.url); }
+      const videoUrl = videoMedia.url || videoMedia.video_url || videoMedia.variants?.[0]?.url;
+      if (videoUrl) {
+        try { transcript = await transcribeViaElevenLabs(env, videoUrl); }
         catch (e) { note = `Video post — transcription failed (${e.message}), summarized from tweet text only.`; }
       } else {
         note = "Video post — no downloadable video URL found, summarized from tweet text only.";
