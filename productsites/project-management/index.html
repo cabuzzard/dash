@@ -84,6 +84,9 @@
       <div class="field"><div class="field-label">Methods <button class="td-add-btn-inline" onclick="openAddMethodModal()" title="Add method">+</button></div><div class="field-value" id="r-methods" style="font-size:12px;"></div></div>
       <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/39d1f7d3a4bb81baba83f4c5f7550da7" target="_blank" class="notion-link">↗ Product</a> &nbsp; <a href="https://www.notion.so/39c1f7d3a4bb81bf93a5dc83f1387439" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Productsite</div><div class="field-value" id="r-productsite"></div></div>
+      <div class="field"><div class="field-label">Description</div><div class="field-value"><textarea id="r-desc-input" class="modal-ta" rows="2" style="width:100%;font-size:12px;resize:vertical;min-height:44px!important;padding:5px 8px;" placeholder="What is this product, briefly…"></textarea></div></div>
+      <div class="field"><div class="field-label">Keywords <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(grounds every section below)</span></div><div class="field-value"><input id="r-keywords-input" class="modal-ta" type="text" style="width:100%;font-size:12px;height:30px;padding:5px 8px;" placeholder="comma-separated keywords…" /></div></div>
+      <div class="field"><div class="field-label"></div><div class="field-value"><button class="td-add-btn-inline" id="productMetaSaveBtn" onclick="saveProductMeta()" style="font-size:11px;padding:3px 9px;">Save Description &amp; Keywords</button> <span id="productMetaStatus" style="font-size:11px;color:#888;"></span></div></div>
     </div>
   </div>
 </div>
@@ -411,6 +414,8 @@ async function loadProduct() {
     document.getElementById('r-site').textContent = p.site || '—';
     document.getElementById('r-price').textContent = p.price || '—';
     document.getElementById('r-spots').textContent = p.spots != null ? p.spots : '—';
+    document.getElementById('r-desc-input').value = p.description || '';
+    document.getElementById('r-keywords-input').value = p.keywords || '';
 
     // Product meta — linked Methods (feeds the Strategy & Titles panel below)
     PRODUCT_METHODS = p.methods || [];
@@ -440,18 +445,40 @@ async function loadProduct() {
     document.getElementById('r-name').textContent = 'Error: ' + e.message;
   }
 }
+async function saveProductMeta() {
+  const btn = document.getElementById('productMetaSaveBtn');
+  const status = document.getElementById('productMetaStatus');
+  const description = document.getElementById('r-desc-input').value.trim();
+  const keywords = document.getElementById('r-keywords-input').value.trim();
+  btn.disabled = true; btn.textContent = 'Saving…';
+  status.textContent = '';
+  try {
+    const r = await w('updateProductTitleDescription', { productId: PRODUCT_ID, description, keywords });
+    if (r.error) throw new Error(r.error);
+    status.textContent = '✓ Saved.'; status.style.color = '#68d391';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Description & Keywords';
+  }
+}
 
 // ── Strategy & Titles panel ───────────────────────────────────────────
 // A destination method's (Needs Traffic Plan) Notion-page framework
 // (headlines/CTA copy/offer structure/proof points) is a BRIEF for one
-// asset, not a list of publishable pieces — Generate Strategy writes it to
-// the Strategy DB (one record per Product+Method), rendered in full here
-// (not just linked out to Notion) so this page is the complete picture.
-// Generate Titles then reads that strategy back as grounding to produce
-// real publishable deliverables. Traffic-child methods (linked under a
+// asset, not a list of publishable pieces. It's also commonly BIG — a
+// Product Page framework can run 10+ phases / 60-100 individual
+// deliverable prompts — so instead of one "Generate Strategy" call trying
+// to produce all of it at once (which silently truncates well before the
+// end once a framework has more than a handful of phases), each phase is
+// its own row with its own small, independent Generate button — grounded
+// in the PRODUCT's own Title/Description/Keywords above, not campaign
+// research. Regenerating one phase only replaces that phase's own blocks
+// in the Strategy doc; every other phase is untouched. Generate Titles
+// then reads the ACCUMULATED strategy back as grounding to produce real
+// publishable deliverables. Traffic-child methods (linked under a
 // destination via Traffic Methods) nest under their parent and get their
-// own Generate Titles, gated until the parent's strategy exists so their
-// content stays consistent with the destination's positioning.
+// own Generate Titles, gated until at least one phase has content.
 function psRowBtn(label, onclick, id, disabled) {
   return `<button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" ${id ? `id="${id}"` : ''} ${disabled ? `disabled title="${esc(disabled)}"` : ''} onclick="${onclick}">${label}</button>`;
 }
@@ -481,25 +508,33 @@ function renderStrategyPanel() {
   if (!PRODUCT_METHODS.length) { el.innerHTML = '<div class="empty">No methods attached — add one above.</div>'; return; }
   el.innerHTML = PRODUCT_METHODS.filter(m => !PRODUCT_METHOD_CHILD_IDS.has(m.id)).map(m => {
     const detail = PRODUCT_METHOD_DETAILS[m.id];
-    let controls = '', body = '', childrenHtml = '';
+    let controls = '', body = '', phaseRows = '', childrenHtml = '';
     if (detail) {
       if (detail.needsTrafficPlan) {
-        const hasStrategy = !!detail.strategy;
+        const phases = detail.phases || [];
+        const hasContent = phases.some(p => p.hasContent);
         const editing = PS_EDITING.has(m.id);
-        controls = psRowBtn(hasStrategy ? '↻ Re-run Strategy' : 'Generate Strategy', `genPsStrategy('${m.id}')`, 'psRowStrat-' + m.id);
-        if (hasStrategy) {
-          controls += psRowBtn('Generate Titles', `genPsTitles('${m.id}',true,null)`, 'psRowTitles-' + m.id);
+        if (hasContent) {
+          controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',true,null)`, 'psRowTitles-' + m.id);
           controls += psRowBtn(editing ? 'Cancel' : '✎ Edit', `psToggleEdit('${m.id}')`, null);
-          controls += ` <a href="${detail.strategy.url}" target="_blank" class="notion-link" style="font-size:11px;">↗ Notion</a>`;
+          if (detail.strategyUrl) controls += ` <a href="${detail.strategyUrl}" target="_blank" class="notion-link" style="font-size:11px;">↗ Notion</a>`;
+        }
+        phaseRows = phases.length
+          ? phases.map((p, i) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px 4px 22px;border-top:1px solid #161616;flex-wrap:wrap;">
+              <span style="flex:1;font-size:12px;color:${p.hasContent ? '#ccc' : '#666'};">${esc(p.name)} <span style="color:#444;font-size:10px;">(${p.itemCount} item${p.itemCount === 1 ? '' : 's'})</span>${p.hasContent ? ' <span style="color:#68d391;">✓</span>' : ''}</span>
+              ${psRowBtn(p.hasContent ? '↻' : 'Generate', `genPsPhase('${m.id}','${p.name.replace(/'/g,"\\'")}',${i})`, 'psPhase-' + m.id + '-' + i)}
+            </div>`).join('')
+          : '<div style="font-size:11px;color:#555;padding:4px 8px 4px 22px;">Loading sections…</div>';
+        if (hasContent) {
           body = editing
             ? `<div style="margin-top:8px;">
-                <textarea id="psEditTa-${m.id}" style="width:100%;min-height:180px;background:#0d0d0d;border:1px solid #2a2a2a;color:#ddd;font-family:inherit;font-size:12px;line-height:1.6;padding:8px 10px;resize:vertical;">${esc(detail.strategy.text || '')}</textarea>
+                <textarea id="psEditTa-${m.id}" style="width:100%;min-height:180px;background:#0d0d0d;border:1px solid #2a2a2a;color:#ddd;font-family:inherit;font-size:12px;line-height:1.6;padding:8px 10px;resize:vertical;">${esc(detail.strategy?.text || '')}</textarea>
                 <div style="margin-top:6px;">${psRowBtn('Save', `psSaveStrategyEdit('${m.id}')`, null)}</div>
               </div>`
-            : `<div class="body-text" style="white-space:pre-wrap;font-size:12px;margin-top:8px;padding:8px 10px;background:#0d0d0d;border:1px solid #1a1a1a;">${esc(detail.strategy.text || '(empty)')}</div>`;
+            : `<div class="body-text" style="white-space:pre-wrap;font-size:12px;margin-top:8px;padding:8px 10px;background:#0d0d0d;border:1px solid #1a1a1a;">${esc(detail.strategy?.text || '(empty)')}</div>`;
         }
         childrenHtml = (detail.trafficMethods || []).map(c => {
-          const disabled = hasStrategy ? null : "Generate the parent's Strategy first";
+          const disabled = hasContent ? null : "Generate at least one section above first";
           return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px 6px 22px;border-top:1px solid #1a1a1a;flex-wrap:wrap;">
             <span style="font-size:10px;color:#666;">↳ traffic</span>
             <span style="flex:1;font-size:12px;color:#ccc;">${esc(c.name)}</span>
@@ -515,14 +550,15 @@ function renderStrategyPanel() {
         <a href="https://www.notion.so/${m.id}" target="_blank" rel="noopener" class="notion-link" style="flex:1;font-size:13px;">${esc(m.name)}</a>
         ${controls}
       </div>
+      ${phaseRows}
       ${body}
       ${childrenHtml}
     </div>`;
   }).join('');
 }
-// Fetches Needs-Traffic-Plan / linked-traffic-children / Strategy status for
-// every attached method, then re-renders the panel so each row grows the
-// right controls and the full strategy text. Runs in the background after
+// Fetches Needs-Traffic-Plan / linked-traffic-children / phase list /
+// accumulated Strategy text for every attached method, then re-renders the
+// panel so each row grows the right controls. Runs in the background after
 // loadProduct's fast render, and again after any per-row generation.
 async function refreshStrategyPanel() {
   const detailsMap = {};
@@ -531,41 +567,39 @@ async function refreshStrategyPanel() {
     try {
       const d = await w('getMethodDetails', { methodId: m.id });
       if (d.error) return;
-      detailsMap[m.id] = { needsTrafficPlan: !!d.needsTrafficPlan, trafficMethods: d.trafficMethods || [], strategy: null };
+      detailsMap[m.id] = { needsTrafficPlan: !!d.needsTrafficPlan, trafficMethods: d.trafficMethods || [], strategy: null, phases: [], strategyUrl: null };
       for (const c of (d.trafficMethods || [])) childIds.add(c.id);
     } catch(e) {}
   }));
   await Promise.all(Object.keys(detailsMap).filter(id => detailsMap[id].needsTrafficPlan).map(async id => {
     try {
-      const s = await w('getMethodStrategy', { productId: PRODUCT_ID, methodId: id });
+      const [s, ph] = await Promise.all([
+        w('getMethodStrategy', { productId: PRODUCT_ID, methodId: id }),
+        w('getMethodPhases', { productId: PRODUCT_ID, methodId: id }),
+      ]);
       detailsMap[id].strategy = s.strategy || null;
+      detailsMap[id].phases = ph.phases || [];
+      detailsMap[id].strategyUrl = ph.strategyUrl || s.strategy?.url || null;
     } catch(e) {}
   }));
   PRODUCT_METHOD_DETAILS = detailsMap;
   PRODUCT_METHOD_CHILD_IDS = childIds;
   renderStrategyPanel();
 }
-async function genPsStrategy(methodId) {
+async function genPsPhase(methodId, phaseName, idx) {
   const m = PRODUCT_METHODS.find(x => x.id === methodId);
-  if (!m) return;
-  const btn = document.getElementById('psRowStrat-' + methodId);
+  const btn = document.getElementById('psPhase-' + methodId + '-' + idx);
   const status = document.getElementById('strategyStatus');
-  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
-  if (status) { status.textContent = `Writing strategy for "${m.name}"…`; status.style.color = '#888'; }
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  if (status) { status.textContent = `Generating "${phaseName}"…`; status.style.color = '#888'; }
   try {
-    if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
-    const data = await w('generateMethodTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
-    if (data.error) throw new Error(data.error);
-    const r = await w('saveMethodStrategy', {
-      items: data.titles || [], campaignId: PRODUCT_CAMPAIGN_ID, methodId, methodName: m.name,
-      productId: PRODUCT_ID, productName: PRODUCT_NAME,
-    });
+    const r = await w('generateStrategySection', { productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined, methodId, methodName: m ? m.name : '', phase: phaseName });
     if (r.error) throw new Error(r.error);
-    if (status) { status.textContent = `✓ Strategy written for "${m.name}".`; status.style.color = '#68d391'; }
+    if (status) { status.textContent = `✓ "${phaseName}" generated (${r.itemCount} item${r.itemCount === 1 ? '' : 's'}).`; status.style.color = '#68d391'; }
     await refreshStrategyPanel();
   } catch(e) {
     if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
-    if (btn) { btn.disabled = false; btn.textContent = 'Generate Strategy'; }
+    if (btn) { btn.disabled = false; btn.textContent = '↻'; }
   }
 }
 async function genPsTitles(methodId, isDestination, parentMethodId) {

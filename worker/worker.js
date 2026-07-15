@@ -122,6 +122,78 @@ async function propagateMethodToCampaigns(productId, methodId) {
   } catch(e) { /* best-effort — never block the product-method attach */ }
 }
 
+// Recursively reads a Notion block's children into a flattened text outline,
+// descending into any block with has_children (toggles and toggleable
+// headings included). A Method's own methodology page is commonly
+// hand-authored as a nested toggle outline (Section > Subsection > items) —
+// Notion stores everything nested inside a toggle as CHILDREN of that
+// toggle block, not as page-level siblings, so a single non-recursive
+// `blocks/{id}/children` fetch only sees the outermost toggle labels and
+// silently misses everything nested inside them. This is what feeds the
+// "METHOD FRAMEWORK" section of every title/strategy-generation prompt, so
+// missing it means the AI never actually saw most of the real framework.
+async function extractBlocksTextRecursive(hdr, blockId, depth = 0) {
+  if (depth > 4) return ""; // guard against runaway/circular nesting
+  const resp = await fetch(`https://api.notion.com/v1/blocks/${blockId}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+  const blocks = resp.results || [];
+  const indent = "  ".repeat(depth);
+  const parts = await Promise.all(blocks.map(async b => {
+    const type = b.type;
+    const rich = b[type]?.rich_text || [];
+    const text = rich.map(t => t.plain_text).join("");
+    let line = "";
+    if (type === "heading_1") line = `\n${indent}# ${text}`;
+    else if (type === "heading_2") line = `\n${indent}## ${text}`;
+    else if (type === "heading_3") line = `\n${indent}### ${text}`;
+    else if (type === "toggle") line = `\n${indent}#### ${text}`; // plain toggle block used as a sub-heading label
+    else if (type === "bulleted_list_item") line = `${indent}- ${text}`;
+    else if (type === "numbered_list_item") line = `${indent}${text}`;
+    else if (type === "paragraph" && text) line = `${indent}${text}`;
+    const childText = b.has_children ? await extractBlocksTextRecursive(hdr, b.id, depth + 1) : "";
+    return [line, childText].filter(Boolean).join("\n");
+  }));
+  return parts.filter(Boolean).join("\n");
+}
+
+// Parses a Method's own page body into its natural Phase > Grouping
+// structure by BLOCK TYPE (heading_1/2 = phase boundary, heading_3 =
+// grouping boundary within the current phase, bullets/numbered items =
+// counted as that grouping's items) — not by text pattern-matching, since
+// a method's heading text is free-form (e.g. "Above the Fold" has no
+// literal "Phase:" prefix on some methods but does on others). Single-level
+// only (methodology pages are typically flat headings, not toggle-nested —
+// see extractBlocksTextRecursive for the toggle-aware variant used when
+// reading a method's FULL text for a single generation pass). Returns
+// phases in document order — this is what lets a big framework (e.g. an
+// 11-phase Product Page framework) be generated ONE PHASE AT A TIME instead
+// of in one Claude call that risks truncating well before the last phases.
+async function parseMethodPhases(hdr, methodId) {
+  const resp = await fetch(`https://api.notion.com/v1/blocks/${methodId}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+  const blocks = resp.results || [];
+  const phases = [];
+  let curPhase = null, curGrouping = null;
+  for (const b of blocks) {
+    const type = b.type;
+    const rich = b[type]?.rich_text || [];
+    const text = rich.map(t => t.plain_text).join("").replace(/^Phase:\s*/i, "").trim();
+    const groupingText = rich.map(t => t.plain_text).join("").replace(/^Grouping:\s*/i, "").trim();
+    if (type === "heading_1" || type === "heading_2") {
+      if (!text) continue;
+      curPhase = { name: text, groupings: [] };
+      phases.push(curPhase);
+      curGrouping = null;
+    } else if (type === "heading_3") {
+      if (!curPhase || !groupingText) continue;
+      curGrouping = { name: groupingText, notes: [] };
+      curPhase.groupings.push(curGrouping);
+    } else if ((type === "bulleted_list_item" || type === "numbered_list_item") && text) {
+      if (curGrouping) curGrouping.notes.push(text);
+      else if (curPhase) { curGrouping = { name: curPhase.name, notes: [text] }; curPhase.groupings.push(curGrouping); }
+    }
+  }
+  return phases;
+}
+
 // â"€â"€ SESSION TOKEN HELPERS â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 async function signToken(secret) {
   const payload  = { exp: Date.now() + 8 * 3600 * 1000, v: 1 };
@@ -1402,13 +1474,14 @@ export default {
       // and re-suggesting is how a vague/AI-seeded product gets sharpened
       // before methods are chosen.
       if (body.action === "updateProductTitleDescription") {
-        const { productId, title, description } = body;
+        const { productId, title, description, keywords } = body;
         if (!productId) return json({ error: "productId required" }, 400);
-        if (!title && description == null) return json({ error: "title or description required" }, 400);
+        if (!title && description == null && keywords == null) return json({ error: "title, description, or keywords required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const props = {};
         if (title) props["Name"] = { title: [{ type: "text", text: { content: String(title).slice(0, 200) } }] };
         if (description != null) props["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
+        if (keywords != null) props["Keywords"] = { rich_text: [{ type: "text", text: { content: String(keywords).slice(0, 1990) } }] };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -3171,6 +3244,188 @@ Return ONLY a JSON object, no other text, no markdown fences:
         return json({ strategy: { id: strategyId, url: record.url, text, status: record.properties?.Status?.select?.name || "" } });
       }
 
+      // ── getMethodPhases ──
+      // Lists a Method's own Phase>Grouping structure (parsed by block type
+      // via parseMethodPhases, not text pattern) alongside which phases
+      // already have content in this Product's Strategy record — powers
+      // the product site's per-phase generation rows, so a big framework
+      // (e.g. an 11-phase Product Page) never has to be generated in one
+      // Claude call that risks truncating partway through.
+      if (body.action === "getMethodPhases") {
+        const { productId, methodId } = body;
+        if (!methodId) return json({ error: "methodId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const phasesRaw = await parseMethodPhases(hdr, dash(methodId));
+
+        let existingPhaseNames = new Set();
+        let strategyUrl = null;
+        if (productId) {
+          const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { and: [
+              { property: "Product", relation: { contains: dash(productId) } },
+              { property: "Method", relation: { contains: dash(methodId) } },
+            ] } }),
+          }).then(r => r.json());
+          const record = (q.results || [])[0];
+          if (record) {
+            strategyUrl = record.url;
+            const strategyId = record.id.replace(/-/g,"");
+            const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(strategyId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+            for (const b of (blocksResp.results || [])) {
+              if (b.type === "heading_2") {
+                const t = (b.heading_2?.rich_text || []).map(x => x.plain_text).join("").trim();
+                if (t) existingPhaseNames.add(t);
+              }
+            }
+          }
+        }
+
+        const phases = phasesRaw.map(p => ({
+          name: p.name,
+          groupingCount: p.groupings.length,
+          itemCount: p.groupings.reduce((n, g) => n + g.notes.length, 0),
+          hasContent: existingPhaseNames.has(p.name),
+        }));
+        return json({ phases, strategyUrl });
+      }
+
+      // ── generateStrategySection ──
+      // Generates ONE phase of a Strategy document at a time — grounded in
+      // the PRODUCT's own Title/Description/Keywords (not campaign
+      // research) — and splices the result into the Strategy record's page
+      // body, replacing only that phase's own blocks (if any) so
+      // regenerating one phase never clobbers the others. This is what
+      // "run every section" on the product site calls, deliberately
+      // avoiding the single-big-call approach that silently truncates once
+      // a framework has more than a handful of phases.
+      if (body.action === "generateStrategySection") {
+        const { productId, methodId, methodName, phase, campaignId } = body;
+        if (!productId || !methodId || !phase) return json({ error: "productId, methodId, phase required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const [phasesRaw, productPage] = await Promise.all([
+          parseMethodPhases(hdr, dash(methodId)),
+          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+        ]);
+        const target = phasesRaw.find(p => p.name === phase);
+        if (!target) return json({ error: `Phase "${phase}" not found on this method` }, 404);
+
+        const pp = productPage.properties || {};
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+        const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+
+        const groupingsBlock = target.groupings.map(g => `${g.name}:\n${g.notes.map(n => `- ${n}`).join("\n")}`).join("\n\n");
+        const prompt = `You are a marketing strategist writing ONE section of a larger product-page brief.
+
+PRODUCT: ${productName}
+DESCRIPTION: ${productDesc || "(none)"}
+KEYWORDS: ${productKeywords || "(none)"}
+
+SECTION: ${target.name}
+This section's groupings and the deliverable prompts under each (from the method's own framework):
+${groupingsBlock}
+
+INSTRUCTIONS:
+- For each grouping listed, generate 1-3 specific, named deliverable items — concrete work someone could sit down and produce, grounded in the PRODUCT/DESCRIPTION/KEYWORDS above. Not generic — use the real product name and specifics.
+- Stay within THIS section only — do not invent content for other sections.
+
+Return ONLY a JSON array, no other text, no markdown fences:
+{ "title": "...", "grouping": "exact grouping name from the list above", "description": "1-2 sentences, specific to this product" }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let items;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+          if (s === -1 || e === -1 || e < s) throw new Error("No JSON array found");
+          items = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+          if (!Array.isArray(items)) throw new Error("Not an array");
+        } catch(e) {
+          return json({ error: "Failed to parse section JSON: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
+        }
+
+        // Upsert the Strategy record (same find-or-create as saveMethodStrategy).
+        const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Product", relation: { contains: dash(productId) } },
+            { property: "Method", relation: { contains: dash(methodId) } },
+          ] } }),
+        }).then(r => r.json());
+        const existing = (q.results || [])[0];
+
+        const rtBlock = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1990), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const headingBlock = (level, text) => ({ object: "block", type: `heading_${level}`, [`heading_${level}`]: { rich_text: rtBlock(text) } });
+        const bulletBlock = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
+
+        const byGrouping = {};
+        for (const it of items) { const g = it.grouping || target.name; byGrouping[g] = byGrouping[g] || []; byGrouping[g].push(it); }
+        const newBlocks = [headingBlock(2, target.name)];
+        for (const g of Object.keys(byGrouping)) {
+          newBlocks.push(headingBlock(3, g));
+          for (const it of byGrouping[g]) newBlocks.push(bulletBlock(`${it.title}${it.description ? `: ${it.description}` : ''}`));
+        }
+
+        let strategyId, strategyUrl;
+        if (existing) {
+          strategyId = existing.id.replace(/-/g,""); strategyUrl = existing.url;
+          // Remove ONLY this phase's existing blocks (the heading_2 matching
+          // this phase's name, and everything up to the next heading_2) —
+          // every other phase's blocks are left untouched.
+          const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(strategyId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+          const allBlocks = blocksResp.results || [];
+          const toDelete = [];
+          let inTarget = false;
+          for (const b of allBlocks) {
+            if (b.type === "heading_2") {
+              const t = (b.heading_2?.rich_text || []).map(x => x.plain_text).join("").trim();
+              inTarget = t === target.name;
+            }
+            if (inTarget) toDelete.push(b.id);
+          }
+          await Promise.all(toDelete.map(id => fetch(`https://api.notion.com/v1/blocks/${id}`, { method: "DELETE", headers: hdr })));
+          await fetch(`https://api.notion.com/v1/blocks/${dash(strategyId)}/children`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children: newBlocks }),
+          });
+          await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { Status: { select: { name: "Current" } } } }),
+          });
+        } else {
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parent: { database_id: STRATEGY_DB },
+              properties: {
+                Name: { title: [{ type: "text", text: { content: `${productName} — ${methodName || 'Method'} Strategy`.slice(0, 200) } }] },
+                Product: { relation: [{ id: dash(productId) }] },
+                Method: { relation: [{ id: dash(methodId) }] },
+                Campaigns: campaignId ? { relation: [{ id: dash(campaignId) }] } : undefined,
+                Status: { select: { name: "Current" } },
+              },
+              children: newBlocks,
+            }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Strategy create failed" }, createResp.status || 500);
+          strategyId = created.id.replace(/-/g,""); strategyUrl = created.url;
+        }
+
+        return json({ success: true, strategyId, url: strategyUrl, itemCount: items.length });
+      }
+
       // ── updateMethodStrategyText ──
       // Hand-edit for an existing Strategy record — the product site's ✎
       // Edit control reads getMethodStrategy's flat text, lets the user
@@ -3904,7 +4159,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
           hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
         ];
         const [researchRaw, campRaw, methodPage, productPage] = await Promise.all(fetches);
-        const methodBlocks = await fetch(`https://api.notion.com/v1/blocks/${dash(methodId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+        const methodBody = await extractBlocksTextRecursive(hdr, dash(methodId));
 
         // Extract research
         const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
@@ -3923,17 +4178,6 @@ Return ONLY a JSON array — no other text, no markdown fences:
 
         // Extract method info
         const methodName = (methodPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Unknown Method";
-        const extractText = blocks => (blocks.results || []).map(b => {
-          const type = b.type;
-          const rich = b[type]?.rich_text || [];
-          const text = rich.map(t => t.plain_text).join("");
-          if (type === "heading_1" || type === "heading_2" || type === "heading_3") return `\n## ${text}`;
-          if (type === "bulleted_list_item") return `- ${text}`;
-          if (type === "numbered_list_item") return `${text}`;
-          if (type === "paragraph" && text) return text;
-          return "";
-        }).filter(Boolean).join("\n");
-        const methodBody = extractText(methodBlocks);
 
         // Extract product strategy (optional)
         let productSection = "No product — this is a campaign-level page.";
@@ -5034,22 +5278,9 @@ Return ONLY a JSON array of exactly 10 objects — no other text, no fences:
           productId ? fetch(`https://api.notion.com/v1/pages/${productId}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
         ]);
 
-        // Fetch method body blocks
-        const methodBlocks = methodId
-          ? await fetch(`https://api.notion.com/v1/blocks/${methodId}/children?page_size=100`, { headers: hdr }).then(r => r.json())
-          : { results: [] };
-
-        const extractText = blocks => (blocks.results || []).map(b => {
-          const type = b.type; const rich = b[type]?.rich_text || [];
-          const text = rich.map(t => t.plain_text).join("");
-          if (type === "heading_1" || type === "heading_2" || type === "heading_3") return `\n## ${text}`;
-          if (type === "bulleted_list_item") return `- ${text}`;
-          if (type === "paragraph" && text) return text;
-          return "";
-        }).filter(Boolean).join("\n");
-
+        // Fetch method body (recursively — see extractBlocksTextRecursive)
+        const methodBody = methodId ? await extractBlocksTextRecursive(hdr, methodId) : "";
         const methodName = (methodPage?.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Unknown Method";
-        const methodBody = extractText(methodBlocks);
 
         const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
         const cp = campRaw?.properties || {};
@@ -5645,6 +5876,8 @@ Return ONLY a JSON object with these exact keys:
           site:           pp.Site?.select?.name || "",
           price:          rt(pp, "Price"),
           spots:          pp.Spots?.number || null,
+          description:    rt(pp, "Description"),
+          keywords:       rt(pp, "Keywords"),
           offerStructure: rt(pp, "Offer Structure"),
           uniqueAngle:    rt(pp, "Unique Angle"),
           avatar:         rt(pp, "Avatar"),
