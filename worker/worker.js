@@ -1359,6 +1359,21 @@ export default {
         return json({ success: true, id: newTodoId, name });
       }
 
+      // ── getProductTypes ──
+      // Distinct Type values already in use across the whole Products DB —
+      // feeds the Add Product modal's Type dropdown (search-existing-or-
+      // create-new), so "new type" can be detected client-side and routed to
+      // matchProductMethod's researched-from-scratch path.
+      if (body.action === "getProductTypes") {
+        const rows = await notionQuery(PRODUCTS_DB, { page_size: 100 });
+        const seen = new Map();
+        for (const p of rows) {
+          const t = (p.properties?.Type?.rich_text || []).map(x => x.plain_text).join("").trim();
+          if (t && !seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t);
+        }
+        return json({ types: [...seen.values()].sort((a, b) => a.localeCompare(b)) });
+      }
+
       if (body.action === "createProduct") {
         const { title, type } = body;
         if (!title) return json({ error: "title required" }, 400);
@@ -2642,8 +2657,13 @@ Return ONLY a JSON array — no other text, no markdown fences:
       // are AUGMENTED (merged/generalized) with the new pattern, not
       // overwritten — the Method gets smarter each time it's reused across
       // products/campaigns, per the standing "prefer existing" instruction.
+      // When the CALLER already knows the product's Type is brand-new to the
+      // system (isNewType, set by the Add Product modal's type dropdown),
+      // existing-method matching is skipped entirely — there is nothing to
+      // loosely fit, so a real methodology is researched (live web search)
+      // and written from scratch instead of force-fitting an unrelated method.
       if (body.action === "matchProductMethod") {
-        const { productId, campaignId } = body;
+        const { productId, campaignId, isNewType } = body;
         if (!productId) return json({ error: "productId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -2651,7 +2671,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
 
         const [productPage, methodsResults] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
-          fetch(`https://api.notion.com/v1/databases/${METHODS_DB}/query`, {
+          isNewType ? Promise.resolve({ results: [] }) : fetch(`https://api.notion.com/v1/databases/${METHODS_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ page_size: 100 }),
           }).then(r => r.json()),
         ]);
@@ -2666,26 +2686,62 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const productType = (pp.Type?.rich_text || []).map(t => t.plain_text).join("");
         const marketingPhase = (pp["Marketing Phase"]?.rich_text || []).map(t => t.plain_text).join("");
 
-        // Dedupe existing methods by NAME (case-insensitive) — the Methods DB
-        // has known duplicates (e.g. "Upwork Proposal" / "upwork proposal");
-        // prefer whichever copy has real Notes so the model sees the richer one.
-        const byName = new Map();
-        for (const m of (methodsResults.results || [])) {
-          const mName = (m.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
-          if (!mName) continue;
-          const notes = (m.properties?.Notes?.rich_text || []).map(t => t.plain_text).join("");
-          const key = mName.toLowerCase();
-          const existing = byName.get(key);
-          if (!existing || (notes.length > existing.notes.length)) {
-            byName.set(key, { id: m.id.replace(/-/g,""), name: mName, notes, platform: m.properties?.Platform?.select?.name || "" });
-          }
-        }
-        const existingMethods = [...byName.values()];
-        const methodsBlock = existingMethods.length
-          ? existingMethods.map((m, i) => `[E${i+1}] ${m.name}${m.platform ? ` (${m.platform})` : ''}${m.notes ? ` — ${m.notes.slice(0, 200)}` : ' — (no methodology written yet)'}`).join('\n')
-          : '(no existing methods on file)';
+        let decision;
+        let existingMethods = [];
 
-        const prompt = `You are a marketing strategist choosing HOW to market and sell one specific product. Below is the full list of EXISTING marketing methods already on file. Strongly prefer reusing one of them — only propose a new method if none of them genuinely fit this product's context.
+        if (isNewType) {
+          // Brand-new Type — no existing method could genuinely fit. Research
+          // real, current marketing practices for this format via web search
+          // and write the canonical methodology from scratch.
+          const researchPrompt = `You are a marketing strategist. This is the FIRST product of a brand-new TYPE in this system — there is no existing playbook for it, so you need to research and write the canonical methodology that every future product of this type will reuse.
+
+PRODUCT TYPE (format): ${productType || productName}
+PRODUCT: ${productName}
+DESCRIPTION: ${productDesc || "(none)"}
+MARKETING PHASE (funnel role — weave this into the methodology's guidance, don't treat it as a separate field): ${marketingPhase || "(not set)"}
+
+Research current, real, up-to-date best practices, channels, and tactics for marketing and selling a "${productType || productName}" product. Ground the methodology in what you find — specific tactics and channels, not generic funnel theory.
+
+Return ONLY a JSON object, no other text, no markdown fences:
+{ "name": "short reusable method name tied to the TYPE, not this specific product (e.g. 'Quiz Lead Magnet Funnel', not '${productName} Quiz')", "platform": "e.g. Instagram, Email, YouTube, Landing Page, Other", "category": "Content, Outreach, Research, SEO, Ecommerce, or Video", "notes": "the researched methodology — 3-5 sentences, specific tactics grounded in what you found, incorporating the marketing phase context" }`;
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "web-search-2025-03-05", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }], messages: [{ role: "user", content: researchPrompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+          let raw = '';
+          for (const block of (aiData.content || [])) { if (block.type === 'text') raw += block.text; }
+          try {
+            const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+            if (s === -1 || e === -1 || e < s) throw new Error("No JSON object found");
+            decision = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+            decision.isNew = true;
+          } catch(e) {
+            return json({ error: "Failed to parse researched methodology: " + e.message + " | RAW: " + raw.slice(0, 300) }, 500);
+          }
+        } else {
+          // Dedupe existing methods by NAME (case-insensitive) — the Methods DB
+          // has known duplicates (e.g. "Upwork Proposal" / "upwork proposal");
+          // prefer whichever copy has real Notes so the model sees the richer one.
+          const byName = new Map();
+          for (const m of (methodsResults.results || [])) {
+            const mName = (m.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+            if (!mName) continue;
+            const notes = (m.properties?.Notes?.rich_text || []).map(t => t.plain_text).join("");
+            const key = mName.toLowerCase();
+            const existing = byName.get(key);
+            if (!existing || (notes.length > existing.notes.length)) {
+              byName.set(key, { id: m.id.replace(/-/g,""), name: mName, notes, platform: m.properties?.Platform?.select?.name || "" });
+            }
+          }
+          existingMethods = [...byName.values()];
+          const methodsBlock = existingMethods.length
+            ? existingMethods.map((m, i) => `[E${i+1}] ${m.name}${m.platform ? ` (${m.platform})` : ''}${m.notes ? ` — ${m.notes.slice(0, 200)}` : ' — (no methodology written yet)'}`).join('\n')
+            : '(no existing methods on file)';
+
+          const prompt = `You are a marketing strategist choosing HOW to market and sell one specific product. Below is the full list of EXISTING marketing methods already on file. Strongly prefer reusing one of them — only propose a new method if none of them genuinely fit this product's context.
 
 PRODUCT: ${productName}
 TYPE (format — this is the PRIMARY signal for which method fits): ${productType || "(not set — infer format from the name/description)"}
@@ -2707,22 +2763,22 @@ Return ONLY a JSON object, no other text, no markdown fences:
 OR
 { "isNew": true, "name": "...", "platform": "...", "category": "...", "notes": "..." }`;
 
-        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: prompt }] }),
-        });
-        const aiData = await aiResp.json();
-        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: prompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
 
-        let decision;
-        try {
-          const raw = aiData.content?.[0]?.text || "";
-          const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
-          if (s === -1 || e === -1 || e < s) throw new Error("No JSON object found");
-          decision = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
-        } catch(e) {
-          return json({ error: "Failed to parse method decision: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
+          try {
+            const raw = aiData.content?.[0]?.text || "";
+            const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+            if (s === -1 || e === -1 || e < s) throw new Error("No JSON object found");
+            decision = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+          } catch(e) {
+            return json({ error: "Failed to parse method decision: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
+          }
         }
 
         let methodId, methodName, wasNew = false, augmented = false;
@@ -2769,7 +2825,7 @@ OR
         // in the campaign microsite's Methods field, not just on the product.
         await propagateMethodToCampaigns(productId, methodId);
 
-        return json({ success: true, productId, methodId, methodName, wasNew, augmented });
+        return json({ success: true, productId, methodId, methodName, wasNew, augmented, researched: !!isNewType });
       }
 
       // ── addProductMethod / removeProductMethod ──

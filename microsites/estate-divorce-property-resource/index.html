@@ -536,8 +536,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <input class="modal-ta" id="product-modal-input" type="text" placeholder="Product name…" style="height:32px;padding:5px 10px;" autocomplete="off" oninput="filterProductDd()" onfocus="filterProductDd()" />
         <div id="product-modal-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
       </div>
-      <label class="lm-label" for="product-modal-type" style="margin-top:8px;">Type <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(format — PDF, Email, Quiz, Coaching, Membership… only used when creating a new product)</span></label>
-      <input class="modal-ta" id="product-modal-type" type="text" placeholder="e.g. PDF, Email, Coaching…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" />
+      <label class="lm-label" for="product-modal-type" style="margin-top:8px;">Type <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(format — only used when creating a new product)</span></label>
+      <div style="position:relative;margin-bottom:4px;" id="product-modal-type-wrap">
+        <input class="modal-ta" id="product-modal-type" type="text" placeholder="Search existing types or add new…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" oninput="filterTypeDd()" onfocus="filterTypeDd()" />
+        <div id="product-modal-type-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
+      </div>
       <div class="modal-status" id="productModalStatus"></div>
     </div>
     <div class="modal-foot">
@@ -2576,14 +2579,17 @@ function openProductModal() {
   document.getElementById('product-modal-input').value = '';
   document.getElementById('product-modal-type').value = '';
   document.getElementById('product-modal-dd').style.display = 'none';
+  document.getElementById('product-modal-type-dd').style.display = 'none';
   document.getElementById('productModalStatus').textContent = '';
   document.getElementById('productModalStatus').className = 'modal-status';
   document.getElementById('productModalSave').disabled = false;
   document.getElementById('productModalSave').textContent = 'Add';
   productModalSelectedId = null;
   PRODUCT_MODAL_JUST_CREATED = false;
+  PRODUCT_MODAL_TYPE_IS_NEW = false;
   document.getElementById('productModal').classList.add('open');
   setTimeout(() => document.getElementById('product-modal-input').focus(), 100);
+  loadProductTypes();
 }
 
 function closeProductModal() {
@@ -2648,12 +2654,64 @@ document.addEventListener('click', e => {
     const dd = document.getElementById('product-modal-dd');
     if (dd) dd.style.display = 'none';
   }
+  if (!e.target.closest('#product-modal-type-wrap')) {
+    const tdd = document.getElementById('product-modal-type-dd');
+    if (tdd) tdd.style.display = 'none';
+  }
 });
+
+// ── Type dropdown (search existing Types or add a new one) ──────────────
+let ALL_PRODUCT_TYPES = [];
+let PRODUCT_MODAL_TYPE_IS_NEW = false;
+function filterTypeDd() {
+  const query  = (document.getElementById('product-modal-type').value || '').trim();
+  const queryL = query.toLowerCase();
+  const dd = document.getElementById('product-modal-type-dd');
+  dd.innerHTML = '';
+
+  const matches = ALL_PRODUCT_TYPES.filter(t => !query || t.toLowerCase().includes(queryL)).slice(0, 12);
+  matches.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-item';
+    div.textContent = t;
+    div.onmousedown = () => {
+      document.getElementById('product-modal-type').value = t;
+      PRODUCT_MODAL_TYPE_IS_NEW = false;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+
+  const exact = ALL_PRODUCT_TYPES.some(t => t.toLowerCase() === queryL);
+  if (query && !exact) {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-create';
+    div.textContent = '+ New type "' + query + '" (will research a methodology)';
+    div.onmousedown = () => {
+      PRODUCT_MODAL_TYPE_IS_NEW = true;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  } else {
+    PRODUCT_MODAL_TYPE_IS_NEW = false;
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+async function loadProductTypes() {
+  try {
+    const data = await w('getProductTypes', {});
+    ALL_PRODUCT_TYPES = data.types || [];
+  } catch(e) { ALL_PRODUCT_TYPES = []; }
+}
 
 async function addProductFromModal() {
   const name = document.getElementById('product-modal-input').value.trim();
   if (!name) return;
   const typeVal = (document.getElementById('product-modal-type')?.value || '').trim();
+  // Defensive recompute in case the field was edited without the dropdown's
+  // onmousedown handler firing (e.g. pasted then submitted without a blur).
+  const isNewType = !!typeVal && !ALL_PRODUCT_TYPES.some(t => t.toLowerCase() === typeVal.toLowerCase());
   const btn    = document.getElementById('productModalSave');
   const status = document.getElementById('productModalStatus');
   btn.disabled = true;
@@ -2673,15 +2731,17 @@ async function addProductFromModal() {
     }
     renderProducts();
     // A freshly-created (typed) product automatically gets a method matched
-    // — existing-first, also attaches to this campaign's Methods field.
+    // — existing-first when the Type already exists, or a freshly RESEARCHED
+    // methodology (live web search) when the Type is brand-new to the
+    // system. Either way, also attaches to this campaign's Methods field.
     if (PRODUCT_MODAL_JUST_CREATED) {
-      status.textContent = 'Added ✓ — matching a method…';
+      status.textContent = isNewType ? 'Added ✓ — researching a new methodology…' : 'Added ✓ — matching a method…';
       status.className = 'modal-status ok';
       try {
-        const mr = await w('matchProductMethod', { productId, campaignId: CAMPAIGN_ID });
+        const mr = await w('matchProductMethod', { productId, campaignId: CAMPAIGN_ID, isNewType });
         if (mr.error) throw new Error(mr.error);
         await loadMethods();
-        status.textContent = `Added ✓ — ${mr.wasNew ? 'created new method' : 'matched existing method'}: ${mr.methodName}`;
+        status.textContent = `Added ✓ — ${mr.researched ? 'researched new methodology' : (mr.wasNew ? 'created new method' : 'matched existing method')}: ${mr.methodName}`;
       } catch(e) {
         status.textContent = 'Added ✓ — method matching failed: ' + e.message;
         status.className = 'modal-status err';
