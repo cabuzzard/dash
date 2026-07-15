@@ -1060,7 +1060,7 @@ function renderSeedChannels(text) {
   const el = document.getElementById('r-seed');
   if (!el) return;
   if (!text || !text.trim()) {
-    el.innerHTML = '<span class="empty">No seed channels yet — press ⟳ search to find the YouTube channels and TikTok creators behind the top videos for the campaign keywords.</span>';
+    el.innerHTML = '<span class="empty">No seed videos yet — press ⟳ search to find the top YouTube + TikTok videos for the campaign keywords (or type keywords above to override).</span>';
     return;
   }
   const lines = text.trim().split('\n').filter(l => l.trim());

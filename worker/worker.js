@@ -7449,46 +7449,45 @@ Rules:
 
         const terms = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 5);
         const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n/1e3) + "k" : String(n);
+        const age = iso => {
+          if (!iso) return "";
+          const days = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 86400000));
+          return days < 30 ? `${days}d ago` : days < 365 ? `${Math.round(days/30)}mo ago` : `${(days/365).toFixed(1)}y ago`;
+        };
 
-        // ── YouTube: search VIDEOS per keyword, tally the channels behind them
-        const chanHits = new Map(); // channelId -> search-appearance count
+        // ── YouTube: top VIDEOS per keyword (individual videos, not channels)
+        const vidHits = new Map(); // videoId -> search-appearance count
         await Promise.all(terms.map(async term => {
           try {
-            const r = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=25&q=${encodeURIComponent(term)}&key=${YT_KEY}`);
+            const r = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=15&q=${encodeURIComponent(term)}&key=${YT_KEY}`);
             if (!r.ok) return;
             const d = await r.json();
-            const seen = new Set(); // count a channel once per search term
             (d.items || []).forEach(i => {
-              const id = i.snippet?.channelId;
-              if (!id || seen.has(id)) return;
-              seen.add(id);
-              chanHits.set(id, (chanHits.get(id) || 0) + 1);
+              const id = i.id?.videoId;
+              if (!id) return;
+              vidHits.set(id, (vidHits.get(id) || 0) + 1);
             });
           } catch {}
         }));
-        if (!chanHits.size) return json({ error: "No videos found for these keywords" }, 404);
+        if (!vidHits.size) return json({ error: "No videos found for these keywords" }, 404);
 
-        const topIds = [...chanHits.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 50);
-        const cr = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${topIds.join(",")}&key=${YT_KEY}`);
-        const cd = await cr.json();
-        if (!cr.ok) return json({ error: cd.error?.message || "YouTube channels lookup failed" }, 502);
-        const allChans = (cd.items || []).map(c => ({
-          title: c.snippet?.title || c.id,
-          url:   c.snippet?.customUrl ? `https://youtube.com/${c.snippet.customUrl}` : `https://youtube.com/channel/${c.id}`,
-          subs:  parseInt(c.statistics?.subscriberCount || 0),
-          vids:  parseInt(c.statistics?.videoCount || 0),
-          hits:  chanHits.get(c.id) || 0,
-          hidden: !!c.statistics?.hiddenSubscriberCount,
-        })).filter(c => !c.hidden);
-        // Prefer the "modelable" range (real catalog, proven but not giant);
-        // if nothing survives the range filter, show the raw ranking rather
-        // than erroring — visibility beats an empty panel.
-        let channels = allChans.filter(c => c.subs >= 5000 && c.subs <= 3000000 && c.vids >= 10);
-        if (!channels.length) channels = allChans;
-        channels = channels.sort((a, b) => b.hits - a.hits || b.subs - a.subs).slice(0, 12);
-        if (!channels.length) return json({ error: "No channels found for these keywords — try broader/different keywords" }, 404);
+        const topIds = [...vidHits.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 50);
+        const vr = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${topIds.join(",")}&key=${YT_KEY}`);
+        const vd = await vr.json();
+        if (!vr.ok) return json({ error: vd.error?.message || "YouTube videos lookup failed" }, 502);
+        const videos = (vd.items || []).map(v => ({
+          title:   (v.snippet?.title || v.id).replace(/\s+/g, " ").trim(),
+          channel: v.snippet?.channelTitle || "",
+          views:   parseInt(v.statistics?.viewCount || 0),
+          when:    age(v.snippet?.publishedAt),
+          hits:    vidHits.get(v.id) || 0,
+          url:     `https://youtube.com/watch?v=${v.id}`,
+        }))
+        .sort((a, b) => b.hits - a.hits || b.views - a.views)
+        .slice(0, 12);
+        if (!videos.length) return json({ error: "No videos found for these keywords — try broader/different keywords" }, 404);
 
-        // ── TikTok: top creators behind keyword-matching videos (Apify)
+        // ── TikTok: top keyword-matching videos (Apify)
         let tiktoks = [], tkNote = "";
         const AT = (env.APIFY_TOKEN || "").trim();
         if (AT) {
@@ -7497,28 +7496,27 @@ Rules:
               searchQueries: terms.slice(0, 2),
               resultsPerPage: 15,
             }, 75);
-            const byAuthor = new Map();
-            for (const it of (items || [])) {
+            tiktoks = (items || []).map(it => {
               const a = it.authorMeta || it.author || {};
-              const handle = a.name || a.uniqueId || a.username || "";
-              if (!handle) continue;
-              const cur = byAuthor.get(handle) || { handle, nick: a.nickName || a.nickname || handle, fans: parseInt(a.fans || a.followers || 0), hits: 0 };
-              cur.hits++;
-              if (!cur.fans) cur.fans = parseInt(a.fans || a.followers || 0);
-              byAuthor.set(handle, cur);
-            }
-            tiktoks = [...byAuthor.values()]
-              .filter(t => t.fans >= 5000)
-              .sort((a, b) => b.hits - a.hits || b.fans - a.fans)
-              .slice(0, 8);
-            if (!tiktoks.length) tkNote = "no TikTok creators ≥5K followers matched these keywords";
+              const caption = String(it.text || it.desc || it.title || "").replace(/\s+/g, " ").trim();
+              return {
+                caption: caption.length > 80 ? caption.slice(0, 77) + "…" : (caption || "(no caption)"),
+                handle:  a.name || a.uniqueId || a.username || "",
+                plays:   parseInt(it.playCount || it.plays || it.stats?.playCount || 0),
+                url:     it.webVideoUrl || it.url || (a.name && it.id ? `https://tiktok.com/@${a.name}/video/${it.id}` : ""),
+              };
+            })
+            .filter(t => t.url)
+            .sort((a, b) => b.plays - a.plays)
+            .slice(0, 8);
+            if (!tiktoks.length) tkNote = "no TikTok videos matched these keywords";
           } catch(e) { tkNote = "TikTok search failed — " + (e.message || "actor error"); }
         } else {
           tkNote = "APIFY_TOKEN not configured — YouTube only";
         }
 
-        const ytLines = channels.map(c => `${c.title}: ${fmt(c.subs)} subs · ${fmt(c.vids)} videos · in ${c.hits}/${terms.length} keyword searches — ${c.url}`);
-        const tkLines = tiktoks.map(t => `${t.nick} (@${t.handle}): ${fmt(t.fans)} followers · ${t.hits} matching videos — https://tiktok.com/@${t.handle}`);
+        const ytLines = videos.map(v => `${v.title}: ${v.channel} · ${fmt(v.views)} views · ${v.when}${v.hits > 1 ? ` · in ${v.hits}/${terms.length} keyword searches` : ""} — ${v.url}`);
+        const tkLines = tiktoks.map(t => `${t.caption}: @${t.handle} · ${fmt(t.plays)} plays — ${t.url}`);
         const text = [
           "YouTube:",
           ...ytLines,
@@ -7531,7 +7529,7 @@ Rules:
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "Seed Channels": { rich_text: [{ type: "text", text: { content: text.slice(0, 2000) } }] } } }),
         }).catch(() => {});
-        return json({ success: true, text, channels, tiktoks, tiktokNote: tkNote || undefined });
+        return json({ success: true, text, videos, tiktoks, tiktokNote: tkNote || undefined });
       }
 
       // ── getYouTubeOutliers ──
