@@ -2745,7 +2745,14 @@ Return ONLY a JSON array — no other text, no markdown fences:
           const key = mName.toLowerCase();
           const existing = byName.get(key);
           if (!existing || (notes.length > existing.notes.length)) {
-            byName.set(key, { id: m.id.replace(/-/g,""), name: mName, notes, platform: m.properties?.Platform?.select?.name || "" });
+            byName.set(key, {
+              id: m.id.replace(/-/g,""), name: mName, notes, platform: m.properties?.Platform?.select?.name || "",
+              // Destination/conversion methods (like a landing page) assume
+              // traffic already exists — flagged so a traffic/distribution
+              // method can be suggested alongside them when missing.
+              needsTrafficPlan: !!m.properties?.["Needs Traffic Plan"]?.checkbox,
+              hasTrafficPlan: (m.properties?.["Traffic Methods"]?.relation || []).length > 0,
+            });
           }
         }
         const existingMethods = [...byName.values()];
@@ -2793,14 +2800,66 @@ OR
           return json({ error: "Failed to parse method decision: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
         }
 
+        // Destination/conversion methods (a landing page, a booking page)
+        // assume traffic already exists — they don't generate awareness
+        // themselves. When the chosen/researched method needs a traffic plan
+        // and doesn't already have one, suggest ONE distribution method to
+        // drive people to it too (existing-first, same escalation pattern).
+        async function suggestTrafficPlan(parentName, parentNotes) {
+          const trafficPrompt = `You are picking a DISTRIBUTION/AWARENESS method to drive traffic to an existing destination method. The destination method converts visitors once they arrive — it does not generate them. Your job is choosing HOW people discover and arrive at it.
+
+DESTINATION METHOD: ${parentName}
+WHAT IT DOES: ${parentNotes || "(no notes on file)"}
+PRODUCT THIS SERVES: ${productName} (${productType || "type not set"})
+MARKETING PHASE: ${marketingPhase || "(not set)"}
+
+EXISTING METHODS ON FILE:
+${methodsBlock}
+
+INSTRUCTIONS:
+- Pick a method whose JOB is generating awareness/traffic (e.g. social content, organic content, SEO, paid ads, outreach) — NOT another destination/conversion surface like a landing page.
+- Strongly prefer an existing method if one fits. Only propose new if nothing existing does this job.
+- If reusing existing, write "augmentedNotes" the same way as before — generalized, merged with this new use case.
+
+Return ONLY a JSON object, no other text, no markdown fences:
+{ "isNew": false, "existingTag": "E2", "augmentedNotes": "..." }
+OR
+{ "isNew": true, "name": "...", "platform": "...", "category": "...", "notes": "..." }`;
+          const tResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: trafficPrompt }] }),
+          });
+          const tData = await tResp.json();
+          if (!tResp.ok) return null;
+          let tDecision;
+          try {
+            const raw = tData.content?.[0]?.text || "";
+            const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+            tDecision = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+          } catch(e) { return null; }
+          if (!tDecision.isNew) {
+            const tagMatch = String(tDecision.existingTag || '').match(/E(\d+)/i);
+            const idx = tagMatch ? parseInt(tagMatch[1], 10) - 1 : -1;
+            const matched = existingMethods[idx];
+            if (matched) return { isExisting: true, methodId: matched.id, methodName: matched.name, notes: tDecision.augmentedNotes || '', researched: false };
+          }
+          if (tDecision.isNew && tDecision.name) {
+            return { isExisting: false, methodName: tDecision.name, notes: tDecision.notes || '', platform: tDecision.platform || '', category: tDecision.category || '', researched: false };
+          }
+          return null;
+        }
+
         if (!decision.isNew) {
           const tagMatch = String(decision.existingTag || '').match(/E(\d+)/i);
           const idx = tagMatch ? parseInt(tagMatch[1], 10) - 1 : -1;
           const matched = existingMethods[idx];
           if (matched) {
+            const needsTrafficPlan = matched.needsTrafficPlan && !matched.hasTrafficPlan;
+            const trafficSuggestion = needsTrafficPlan ? await suggestTrafficPlan(matched.name, matched.notes) : null;
             return json({
               alreadyAttached,
-              suggestion: { isExisting: true, methodId: matched.id, methodName: matched.name, notes: decision.augmentedNotes || '', researched: false },
+              suggestion: { isExisting: true, methodId: matched.id, methodName: matched.name, notes: decision.augmentedNotes || '', researched: false, needsTrafficPlan, trafficSuggestion },
             });
           }
           // Model referenced an unknown tag — fall through to research instead
@@ -2819,7 +2878,7 @@ MARKETING PHASE (funnel role — weave this into the methodology's guidance, don
 Research current, real, up-to-date best practices, channels, and tactics for marketing and selling a "${productType || productName}" product. Ground the methodology in what you find — specific tactics and channels, not generic funnel theory.
 
 Return ONLY a JSON object, no other text, no markdown fences:
-{ "name": "short reusable method name tied to the TYPE, not this specific product (e.g. 'Quiz Lead Magnet Funnel', not '${productName} Quiz')", "platform": "e.g. Instagram, Email, YouTube, Landing Page, Other", "category": "Content, Outreach, Research, SEO, Ecommerce, or Video", "notes": "the researched methodology — 3-5 sentences, specific tactics grounded in what you found, incorporating the marketing phase context" }`;
+{ "name": "short reusable method name tied to the TYPE, not this specific product (e.g. 'Quiz Lead Magnet Funnel', not '${productName} Quiz')", "platform": "e.g. Instagram, Email, YouTube, Landing Page, Other", "category": "Content, Outreach, Research, SEO, Ecommerce, or Video", "notes": "the researched methodology — 3-5 sentences, specific tactics grounded in what you found, incorporating the marketing phase context", "needsTrafficPlan": true|false, "needsTrafficPlanReason": "one phrase — true if this method is a DESTINATION/conversion surface that assumes traffic already exists (a page, a booking form), false if the method itself generates awareness/traffic (social content, SEO, ads, outreach)" }`;
         const researchResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "web-search-2025-03-05", "content-type": "application/json" },
@@ -2833,9 +2892,11 @@ Return ONLY a JSON object, no other text, no markdown fences:
           const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
           if (s === -1 || e === -1 || e < s) throw new Error("No JSON object found");
           const researched = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+          const needsTrafficPlan = !!researched.needsTrafficPlan;
+          const trafficSuggestion = needsTrafficPlan ? await suggestTrafficPlan(researched.name || productName, researched.notes || '') : null;
           return json({
             alreadyAttached,
-            suggestion: { isExisting: false, methodName: researched.name || `Method for ${productName}`, notes: researched.notes || '', platform: researched.platform || '', category: researched.category || '', researched: true },
+            suggestion: { isExisting: false, methodName: researched.name || `Method for ${productName}`, notes: researched.notes || '', platform: researched.platform || '', category: researched.category || '', researched: true, needsTrafficPlan, trafficSuggestion },
           });
         } catch(e) {
           return json({ error: "Failed to parse researched methodology: " + e.message + " | RAW: " + raw.slice(0, 300) }, 500);
@@ -2848,7 +2909,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
       // to the product, and propagates to every campaign the product belongs
       // to. Nothing here runs until the user explicitly clicks "Add Methods".
       if (body.action === "createAndAttachMethod") {
-        const { productId, name, platform, category, notes } = body;
+        const { productId, name, platform, category, notes, needsTrafficPlan } = body;
         if (!productId || !name) return json({ error: "productId and name required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
@@ -2856,6 +2917,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
         if (platform) createProps["Platform"] = { select: { name: platform } };
         if (category) createProps["Category"] = { multi_select: [{ name: category }] };
         if (notes) createProps["Notes"] = { rich_text: [{ type: "text", text: { content: String(notes).slice(0, 1990) } }] };
+        if (needsTrafficPlan) createProps["Needs Traffic Plan"] = { checkbox: true };
         const createResp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ parent: { database_id: METHODS_DB }, properties: createProps }),
@@ -2875,6 +2937,32 @@ Return ONLY a JSON object, no other text, no markdown fences:
         await propagateMethodToCampaigns(productId, methodId);
 
         return json({ success: true, methodId, methodName: name });
+      }
+
+      // ── linkTrafficMethod ──
+      // Links a child distribution/traffic method under a parent destination
+      // method's "Traffic Methods" relation (dual — the child's "Drives
+      // Traffic To" auto-syncs). This is the hierarchy itself: Page →
+      // Traffic Methods → [Carousel Content, Organic Social, ...]. Called
+      // after the child method is attached to the product (still a flat
+      // per-product Methods list) so it's ALSO documented as this parent's
+      // canonical traffic plan for reuse by future products.
+      if (body.action === "linkTrafficMethod") {
+        const { parentMethodId, childMethodId } = body;
+        if (!parentMethodId || !childMethodId) return json({ error: "parentMethodId and childMethodId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const parentResp = await fetch(`https://api.notion.com/v1/pages/${dash(parentMethodId)}`, { headers: hdr });
+        const parentPage = await parentResp.json();
+        const existing = (parentPage.properties?.["Traffic Methods"]?.relation || []).map(r => ({ id: r.id }));
+        if (!existing.some(r => r.id.replace(/-/g,"") === childMethodId.replace(/-/g,""))) existing.push({ id: dash(childMethodId) });
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(parentMethodId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Traffic Methods": { relation: existing } } }),
+        });
+        const result = await patchResp.json();
+        if (!patchResp.ok) return json({ error: result.message || "Update failed" }, patchResp.status);
+        return json({ success: true });
       }
 
       // ── addProductMethod / removeProductMethod ──

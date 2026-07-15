@@ -4229,21 +4229,39 @@ async function runEcosystemBuild() {
 <script>
 let PM_PRODUCT_ID = null, PM_PRODUCT_NAME = '';
 let PM_ORIGINAL_IDS = new Set();
-let PM_STAGED = []; // { kind:'existing', id, name, augmentedNotes?, suggested? } | { kind:'new', name, platform?, category?, notes?, suggested?, researched? }
+// { kind:'existing', id, name, augmentedNotes?, suggested?, trafficChild? } |
+// { kind:'new', name, platform?, category?, notes?, suggested?, researched?, needsTrafficPlan?, trafficChild? }
+// trafficChild (when present, only on the AI's own top-level suggestion):
+// { kind:'existing', id, name, augmentedNotes? } | { kind:'new', name, platform?, category?, notes? }
+let PM_STAGED = [];
 
+function pmChildRow(child, parentIdx) {
+  if (!child) return '';
+  const label = child.kind === 'existing' ? child.name : `${child.name} <em style="color:#888;font-style:normal;">(new)</em>`;
+  return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px 5px 22px;border:1px solid #2a2a2a;border-top:none;border-radius:0 0 3px 3px;background:#161616;">
+    <span style="font-size:10px;color:#666;">↳ traffic</span>
+    <span style="flex:1;font-size:12px;color:#ccc;">${label}</span>
+    <button class="td-del" onclick="removePmTrafficChild(${parentIdx})" title="Remove">✕</button>
+  </div>`;
+}
 function renderPmList() {
   const el = document.getElementById('pmList');
   if (!PM_STAGED.length) { el.innerHTML = '<div class="empty">No methods staged — search below or add a new one.</div>'; return; }
   el.innerHTML = PM_STAGED.map((m, i) => {
     const label = m.kind === 'existing' ? m.name : `${m.name} <em style="color:#888;font-style:normal;">(new${m.researched ? ', researched' : ''})</em>`;
     const badge = m.suggested ? '<span style="font-size:9px;color:#e8ff47;border:1px solid #3a3a2a;border-radius:3px;padding:1px 5px;margin-left:6px;">suggested</span>' : '';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #2a2a2a;border-radius:3px;">
-      <span style="flex:1;font-size:13px;color:#ddd;">${label}${badge}</span>
-      <button class="td-del" onclick="removePmStaged(${i})" title="Remove">✕</button>
+    const radius = m.trafficChild ? '3px 3px 0 0' : '3px';
+    return `<div>
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #2a2a2a;border-radius:${radius};">
+        <span style="flex:1;font-size:13px;color:#ddd;">${label}${badge}</span>
+        <button class="td-del" onclick="removePmStaged(${i})" title="Remove">✕</button>
+      </div>
+      ${pmChildRow(m.trafficChild, i)}
     </div>`;
   }).join('');
 }
 function removePmStaged(i) { PM_STAGED.splice(i, 1); renderPmList(); }
+function removePmTrafficChild(i) { if (PM_STAGED[i]) PM_STAGED[i].trafficChild = null; renderPmList(); }
 
 async function openProductMethodsModal(productId, productName) {
   PM_PRODUCT_ID = productId; PM_PRODUCT_NAME = productName;
@@ -4264,12 +4282,20 @@ async function openProductMethodsModal(productId, productName) {
     PM_STAGED = already.map(a => ({ kind: 'existing', id: a.id, name: a.name }));
     const sug = data.suggestion;
     if (sug) {
+      // A destination method (a page, a booking form) assumes traffic already
+      // exists — if it needs a traffic plan and doesn't have one, the
+      // suggestion carries a nested trafficChild suggestion too.
+      const ts = sug.trafficSuggestion;
+      const trafficChild = ts
+        ? (ts.isExisting ? { kind: 'existing', id: ts.methodId, name: ts.methodName, augmentedNotes: ts.notes || '' }
+                          : { kind: 'new', name: ts.methodName, platform: ts.platform, category: ts.category, notes: ts.notes })
+        : null;
       if (sug.isExisting) {
         if (!PM_STAGED.some(m => m.kind === 'existing' && m.id === sug.methodId)) {
-          PM_STAGED.push({ kind: 'existing', id: sug.methodId, name: sug.methodName, augmentedNotes: sug.notes || '', suggested: true });
+          PM_STAGED.push({ kind: 'existing', id: sug.methodId, name: sug.methodName, augmentedNotes: sug.notes || '', suggested: true, trafficChild });
         }
       } else {
-        PM_STAGED.push({ kind: 'new', name: sug.methodName, platform: sug.platform, category: sug.category, notes: sug.notes, suggested: true, researched: !!sug.researched });
+        PM_STAGED.push({ kind: 'new', name: sug.methodName, platform: sug.platform, category: sug.category, notes: sug.notes, suggested: true, researched: !!sug.researched, needsTrafficPlan: !!sug.needsTrafficPlan, trafficChild });
       }
     }
     renderPmList();
@@ -4326,22 +4352,43 @@ async function commitProductMethods() {
         await w('removeProductMethod', { productId: PM_PRODUCT_ID, methodId: id });
       }
     }
-    // Added/kept existing (including the AI suggestion if kept).
+    let trafficLinked = 0;
     for (const m of PM_STAGED) {
-      if (m.kind === 'existing' && !PM_ORIGINAL_IDS.has(m.id)) {
-        await w('addProductMethod', { productId: PM_PRODUCT_ID, methodId: m.id, augmentedNotes: m.augmentedNotes || undefined });
+      // Commit the top-level (parent/destination) method, capturing its
+      // final methodId so a kept traffic-child can be linked under it.
+      let parentId = null;
+      if (m.kind === 'existing') {
+        parentId = m.id;
+        if (!PM_ORIGINAL_IDS.has(m.id)) {
+          await w('addProductMethod', { productId: PM_PRODUCT_ID, methodId: m.id, augmentedNotes: m.augmentedNotes || undefined });
+        }
+      } else {
+        const r = await w('createAndAttachMethod', { productId: PM_PRODUCT_ID, campaignId: CAMPAIGN_ID, name: m.name, platform: m.platform, category: m.category, notes: m.notes, needsTrafficPlan: m.needsTrafficPlan || (!!m.trafficChild) });
+        if (r.error) throw new Error(r.error);
+        parentId = r.methodId;
       }
-    }
-    // Brand-new methods (AI-researched-and-kept, or manually typed).
-    for (const m of PM_STAGED) {
-      if (m.kind === 'new') {
-        await w('createAndAttachMethod', { productId: PM_PRODUCT_ID, campaignId: CAMPAIGN_ID, name: m.name, platform: m.platform, category: m.category, notes: m.notes });
+      // Kept traffic-child suggestion — commit it too, then link it under
+      // the parent's "Traffic Methods" (the hierarchy itself).
+      if (m.trafficChild && parentId) {
+        const c = m.trafficChild;
+        let childId = null;
+        if (c.kind === 'existing') {
+          childId = c.id;
+          await w('addProductMethod', { productId: PM_PRODUCT_ID, methodId: c.id, augmentedNotes: c.augmentedNotes || undefined });
+        } else {
+          const r = await w('createAndAttachMethod', { productId: PM_PRODUCT_ID, campaignId: CAMPAIGN_ID, name: c.name, platform: c.platform, category: c.category, notes: c.notes });
+          if (!r.error) childId = r.methodId;
+        }
+        if (childId) {
+          await w('linkTrafficMethod', { parentMethodId: parentId, childMethodId: childId });
+          trafficLinked++;
+        }
       }
     }
     await loadMethods();
-    status.textContent = '✓ Methods added.';
+    status.textContent = trafficLinked ? `✓ Methods added — ${trafficLinked} traffic plan${trafficLinked === 1 ? '' : 's'} linked.` : '✓ Methods added.';
     status.style.color = '#68d391';
-    setTimeout(closeProductMethodsModal, 900);
+    setTimeout(closeProductMethodsModal, 1200);
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.style.color = '#fc8181';
