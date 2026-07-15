@@ -3147,6 +3147,48 @@ Return ONLY a JSON object, no other text, no markdown fences:
         return json({ strategy: { id: strategyId, url: record.url, text, status: record.properties?.Status?.select?.name || "" } });
       }
 
+      // ── updateMethodStrategyText ──
+      // Hand-edit for an existing Strategy record — the product site's ✎
+      // Edit control reads getMethodStrategy's flat text, lets the user
+      // rewrite it freely, and this replaces the body wholesale. Heading
+      // structure (Phase/Grouping) isn't reconstructed from the edited text
+      // — "- " prefixed lines become bullets, everything else becomes a
+      // plain paragraph; re-running Generate Strategy still produces full
+      // H2/H3 structure if the user wants that back.
+      if (body.action === "updateMethodStrategyText") {
+        const { productId, methodId, text } = body;
+        if (!productId || !methodId || typeof text !== "string") return json({ error: "productId, methodId, text required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Product", relation: { contains: dash(productId) } },
+            { property: "Method", relation: { contains: dash(methodId) } },
+          ] } }),
+        }).then(r => r.json());
+        const existing = (q.results || [])[0];
+        if (!existing) return json({ error: "No Strategy found for this method — run Generate Strategy first." }, 400);
+        const strategyId = existing.id.replace(/-/g,"");
+        const rtBlock = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1990), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const children = text.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 100).map(line => {
+          if (line.startsWith("- ")) return { object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(line.slice(2)) } };
+          return { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(line) } };
+        });
+        const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(strategyId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+        const existingBlockIds = (blocksResp.results || []).map(b => b.id);
+        await Promise.all(existingBlockIds.map(id => fetch(`https://api.notion.com/v1/blocks/${id}`, { method: "DELETE", headers: hdr })));
+        await fetch(`https://api.notion.com/v1/blocks/${dash(strategyId)}/children`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ children }),
+        });
+        await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Status: { select: { name: "Current" } } } }),
+        });
+        return json({ success: true, strategyId, url: existing.url });
+      }
+
       // ── generateTitlesFromStrategy ──
       // For a DESTINATION method (has a Strategy doc): reads the strategy
       // back and produces a small set of GENUINE publishable titles informed

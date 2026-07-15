@@ -68,8 +68,11 @@
   </div>
 </div>
 
-<!-- SEC 1: three col — product meta / unique angle + avatar / transformation -->
-<div class="three-col">
+<!-- SEC 1: one-col — product meta. Unique Angle/Avatar/Transformation/Offer
+     Structure/Proof Points/Objections were removed 2026-07-14 — that content
+     now lives IN each method's Strategy doc below (per-method, not one
+     blended product-wide guess), and is edited there. -->
+<div class="one-col">
   <div class="col">
     <h2>Product</h2>
     <div class="content">
@@ -83,32 +86,18 @@
       <div class="field"><div class="field-label">Productsite</div><div class="field-value" id="r-productsite"></div></div>
     </div>
   </div>
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span>Unique Angle</span><button class="td-add-btn-inline" onclick="openFieldResearchModal('uniqueAngle')" title="Generate with AI">&#x25B6;</button></h2>
-    <div class="content">
-      <div class="body-text" id="r-uniqueangle" style="white-space:pre-wrap;min-height:40px;margin-bottom:14px;"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">
-        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#555;">Avatar</div>
-        <button class="td-add-btn-inline" onclick="openFieldResearchModal('avatar')" title="Generate with AI">&#x25B6;</button>
-      </div>
-      <div class="body-text" id="r-avatar" style="white-space:pre-wrap;min-height:40px;font-size:12px;color:#888;"></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span>Transformation</span><button class="td-add-btn-inline" onclick="openFieldResearchModal('transformation')" title="Generate with AI">&#x25B6;</button></h2>
-    <div class="content">
-      <div class="body-text" id="r-transformation" style="white-space:pre-wrap;min-height:40px;"></div>
-    </div>
-  </div>
 </div>
 
-<!-- SEC 1.5: one-col — Strategy & Titles, per attached method. Destination
-     (Needs Traffic Plan) methods get Generate Strategy, then Generate
-     Titles once a strategy exists, with the full strategy doc rendered
-     inline (not just a Notion link-out) so this page is the complete
-     picture. Their linked traffic methods nest underneath with their own
-     Generate Titles, gated on the parent strategy. Ordinary flat methods
-     get a plain Generate Titles. -->
+<!-- SEC 1.5: one-col — Strategy & Titles, per attached method. This is now
+     THE editable strategy surface for the product (replaces the old
+     Unique Angle/Avatar/Transformation/Offer Structure/Proof Points/
+     Objections fields above). Destination (Needs Traffic Plan) methods get
+     Generate Strategy, then Generate Titles once a strategy exists, with
+     the full strategy doc rendered inline AND hand-editable (✎ Edit —
+     updateMethodStrategyText) — not just a Notion link-out, so this page
+     is the complete picture. Their linked traffic methods nest underneath
+     with their own Generate Titles, gated on the parent strategy. Ordinary
+     flat methods get a plain Generate Titles. -->
 <div class="one-col">
   <div class="col">
     <h2>Strategy &amp; Titles</h2>
@@ -119,26 +108,8 @@
   </div>
 </div>
 
-<!-- SEC 2: four col — offer structure / proof points / objections / td items -->
-<div class="four-col">
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span>Offer Structure</span><button class="td-add-btn-inline" onclick="openFieldResearchModal('offerStructure')" title="Generate with AI">&#x25B6;</button></h2>
-    <div class="content">
-      <div class="body-text" id="r-offerstruct" style="white-space:pre-wrap;font-size:12px;"></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span>Proof Points</span><button class="td-add-btn-inline" onclick="openFieldResearchModal('proofPoints')" title="Generate with AI">&#x25B6;</button></h2>
-    <div class="content">
-      <div class="body-text" id="r-proofpoints" style="white-space:pre-wrap;font-size:12px;"></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span>Objections</span><button class="td-add-btn-inline" onclick="openFieldResearchModal('objections')" title="Generate with AI">&#x25B6;</button></h2>
-    <div class="content">
-      <div class="body-text" id="r-objections" style="white-space:pre-wrap;font-size:12px;"></div>
-    </div>
-  </div>
+<!-- SEC 2: one-col — TD Items. -->
+<div class="one-col">
   <div class="col">
     <h2>TD Items <button class="td-add-btn-inline" onclick="openTdModal()" title="Add TD item">+</button></h2>
     <div class="content">
@@ -175,76 +146,16 @@
   </div>
 </div>
 
-<!-- SEC 4: four col — logins / keywords / sm trends / news feed -->
-<div class="four-col">
+<!-- SEC 4: two col — logins / campaigns. Keywords/SM Trends/News Feed/
+     Product Ideas/TikTok Shop/KDP Best Sellers were removed 2026-07-14 —
+     those are campaign-level Research (the same data duplicated across
+     every product site under a campaign); manage them on the campaign
+     microsite instead. A product's own grounding is its Strategy docs. -->
+<div class="two-col">
   <div class="col">
     <h2>Logins <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
     <div class="content">
       <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span>Keywords</span><button id="kwRegenBtn" onclick="runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #2a2a2a;background:transparent;color:#555;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button></h2>
-    <div class="content">
-      <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>SM Trends</span>
-      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <input id="smTrendsKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
-        <button id="smTrendsBtn" onclick="runSMTrends()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
-      </span>
-    </h2>
-    <div class="content">
-      <div id="r-smtrends"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2>News Feed <button class="td-add-btn-inline" onclick="openFieldResearchModal('newsFeed')" title="Generate with AI">&#x25B6;</button></h2>
-    <div class="content">
-      <div class="body-text" id="r-news"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- SEC 5: four col — product ideas / tiktok shop / kdp best sellers / campaigns -->
-<div class="four-col">
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>Product Ideas</span>
-      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <input id="prodIdeasKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
-        <button id="prodIdeasBtn" onclick="runProductIdeas()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
-      </span>
-    </h2>
-    <div class="content">
-      <div id="r-prodideas"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>TikTok Shop</span>
-      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <input id="ttShopKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
-        <button id="ttShopBtn" onclick="runTikTokShop()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
-      </span>
-    </h2>
-    <div class="content">
-      <div id="r-ttshop"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>KDP Best Sellers</span>
-      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <input id="kdpKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
-        <button id="kdpBtn" onclick="runKDPBestSellers()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
-      </span>
-    </h2>
-    <div class="content">
-      <div id="r-kdp"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
@@ -346,50 +257,6 @@
   </div>
 </div>
 
-<!-- EDIT MODAL (keywords etc.) -->
-<div class="modal-overlay" id="editModal">
-  <div class="modal">
-    <div class="modal-head">
-      <div class="modal-title" id="modalTitle">Edit</div>
-      <button class="modal-close" onclick="closeModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="modal-hint" id="modalHint"></div>
-      <textarea class="modal-ta" id="modalTa" rows="8"></textarea>
-      <div class="modal-status" id="modalStatus"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
-      <button class="modal-btn save" id="modalSave" onclick="saveModal()">Save to Notion</button>
-    </div>
-  </div>
-</div>
-
-<!-- FIELD RESEARCH MODAL -->
-<div class="modal-overlay" id="fieldResearchModal">
-  <div class="modal" style="max-width:520px;">
-    <div class="modal-head">
-      <div class="modal-title" id="fieldResearchTitle">Generate Field</div>
-      <button class="modal-close" onclick="closeFieldResearchModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="modal-hint" id="fieldResearchHint"></div>
-      <div id="fieldResearchMethodRow" style="display:none;margin-top:14px;">
-        <label class="lm-label" for="fieldResearchMethodSelect">Generating for method</label>
-        <select id="fieldResearchMethodSelect" onchange="onFieldResearchMethodChange()" style="width:100%;font-size:13px;padding:6px 8px;border:1px solid #2a2a2a;background:#111;color:#ddd;border-radius:4px;font-family:inherit;"></select>
-        <div style="font-size:11px;color:#666;margin-top:4px;">This field is stored as one section per method — generating replaces only this method's section, others are kept.</div>
-      </div>
-      <label class="lm-label" for="fieldResearchPrompt" style="margin-top:14px;">Prompt</label>
-      <textarea class="modal-ta" id="fieldResearchPrompt" rows="8" style="resize:vertical;min-height:160px!important;"></textarea>
-      <div id="fieldResearchStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="modal-btn cancel" onclick="closeFieldResearchModal()">Close</button>
-      <button class="modal-btn save" id="fieldResearchRunBtn" onclick="runFieldResearch()">&#x25B6; Generate</button>
-    </div>
-  </div>
-</div>
-
 <!-- ADD TITLE MODAL -->
 <div class="modal-overlay" id="addTitleModal">
   <div class="modal" style="max-width:420px;">
@@ -405,22 +272,6 @@
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeAddTitleModal()">Cancel</button>
       <button class="modal-btn save" id="addTitleSaveBtn" onclick="submitAddTitle()">Create</button>
-    </div>
-  </div>
-</div>
-
-<!-- SOURCES MODAL -->
-<div class="modal-overlay" id="sourcesModal">
-  <div class="modal" style="max-width:480px;">
-    <div class="modal-head">
-      <div class="modal-title" id="sourcesModalTitle">Source Links</div>
-      <button class="modal-close" onclick="closeSourcesModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div id="sourcesModalBody" style="font-size:13px;line-height:1.7;"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="modal-btn cancel" onclick="closeSourcesModal()">Close</button>
     </div>
   </div>
 </div>
@@ -526,41 +377,7 @@ async function w(action, extra = {}) {
 }
 
 function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function stripHtml(raw) { return raw ? raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : ''; }
 
-function parseToHtml(text) {
-  if (!text) return '<p>—</p>';
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  let html = '';
-  lines.forEach(line => {
-    const match = line.match(/^([A-Z][A-Z0-9\s\/&,'-]+):\s*(.+)$/);
-    if (match) {
-      const heading = match[1].trim();
-      const body = match[2].trim();
-      const q = heading.replace(/'/g,"\\'").replace(/"/g,'&quot;');
-      html += `<div class="sm-trend-row"><span style="flex:1;cursor:pointer" onclick="openTdModal('${q}')"><span class="sm-trend-niche">${heading}</span><span class="sm-trend-body"> ${body}</span></span><button class="td-add-btn-inline" onclick="openSourcesModal('${q}')" title="Find sources">🔗</button></div>`;
-    } else {
-      const clean = line.replace(/^[-•·*\d+\.\s]+/, '').trim();
-      if (clean) {
-        const q = clean.replace(/'/g,"\\'").replace(/"/g,'&quot;');
-        html += `<div class="sm-trend-row"><span class="sm-trend-body" style="flex:1;cursor:pointer" onclick="openTdModal('${q}')">${clean}</span><button class="td-add-btn-inline" onclick="openSourcesModal('${q}')" title="Find sources">🔗</button></div>`;
-      }
-    }
-  });
-  return html || '<p>—</p>';
-}
-
-async function condense(label, raw) {
-  if (!raw || raw.trim().length < 40) return raw ? `<p>${esc(raw)}</p>` : '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
-  try {
-    const d = await w('condense', { label, text: raw });
-    return d.html || `<p>${esc(raw)}</p>`;
-  } catch { return `<p>${esc(raw)}</p>`; }
-}
-
-// ── keyword pills ──────────────────────────────────────────────────────
-let RAW = { keywords: '' };
-let RESEARCH_ID_LIVE = '';
 let PRODUCT_NAME = '';
 let PRODUCT_METHODS = [];
 // First campaign linked to this product — Strategy/Titles worker actions
@@ -576,143 +393,14 @@ let PRODUCT_METHOD_DETAILS = {};
 // attached method — rendered nested under their parent, not as their own
 // top-level row.
 let PRODUCT_METHOD_CHILD_IDS = new Set();
-// Raw current value of each method-groupable strategy field, kept in sync
-// locally after every save so section-merges never need a re-fetch.
-let PRODUCT_FIELDS = { uniqueAngle: '', avatar: '', transformation: '', offerStructure: '', proofPoints: '', objections: '' };
 let ALL_PLATFORMS = [];
 let LOGIN_ITEMS = [];
-
-function renderKeywordPills(kw) {
-  const el = document.getElementById('r-keywords');
-  if (!el) return;
-  const pills = kw.split(/[,\n]+/).map(k => k.trim()).filter(Boolean);
-  if (!pills.length) { el.innerHTML = '<span class="empty">—</span>'; return; }
-  el.innerHTML = pills.map(k => {
-    const q = k.replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    return `<span class="kw-pill" onclick="openTdModal('${q}')" title="Add as TD">${esc(k)}</span>`;
-  }).join('');
-}
-
-function openModal(field) {
-  const cfg = {
-    keywords: { title: 'Keywords', hint: 'Comma or newline separated keywords for this product', val: RAW.keywords, field: 'keywords' },
-  };
-  const c = cfg[field]; if (!c) return;
-  document.getElementById('modalTitle').textContent = c.title;
-  document.getElementById('modalHint').textContent = c.hint;
-  document.getElementById('modalTa').value = c.val || '';
-  document.getElementById('modalStatus').textContent = '';
-  document.getElementById('modalSave').dataset.field = field;
-  document.getElementById('editModal').classList.add('open');
-}
-function closeModal() { document.getElementById('editModal').classList.remove('open'); }
-async function saveModal() {
-  const field = document.getElementById('modalSave').dataset.field;
-  const val = document.getElementById('modalTa').value.trim();
-  const statusEl = document.getElementById('modalStatus');
-  statusEl.textContent = 'Saving…';
-  try {
-    await w('updateResearch', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, field, value: val });
-    RAW.keywords = val;
-    renderKeywordPills(val);
-    statusEl.textContent = 'Saved.';
-    setTimeout(closeModal, 600);
-  } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
-}
-
-// ── SM Trends ──────────────────────────────────────────────────────────
-function renderSMTrends(raw) {
-  const el = document.getElementById('r-smtrends');
-  if (!el) return;
-  el.innerHTML = raw ? parseToHtml(raw) : '<p style="color:#2a2a2a;font-style:italic;">No data. Click ⟳ search to fetch.</p>';
-}
-async function runSMTrends() {
-  const btn = document.getElementById('smTrendsBtn');
-  const kwOverride = document.getElementById('smTrendsKwInput').value.trim() || '';
-  btn.disabled = true; btn.textContent = '…';
-  const el = document.getElementById('r-smtrends');
-  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
-  try {
-    const d = await w('getSMTrends', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
-    renderSMTrends(d.trendIntelligence || '');
-  } catch(e) { if (el) el.innerHTML = `<p style="color:#e05">${esc(e.message)}</p>`; }
-  finally { btn.disabled = false; btn.textContent = '⟳ search'; }
-}
-
-// ── Product Ideas ──────────────────────────────────────────────────────
-function renderProductIdeas(raw) {
-  const el = document.getElementById('r-prodideas');
-  if (!el) return;
-  el.innerHTML = raw ? parseToHtml(raw) : '<p style="color:#2a2a2a;font-style:italic;">No data. Click ⟳ search to fetch.</p>';
-}
-async function runProductIdeas() {
-  const btn = document.getElementById('prodIdeasBtn');
-  const kwOverride = document.getElementById('prodIdeasKwInput').value.trim() || '';
-  btn.disabled = true; btn.textContent = '…';
-  const el = document.getElementById('r-prodideas');
-  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
-  try {
-    const d = await w('getProductIdeas', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
-    renderProductIdeas(d.productIdeas || '');
-  } catch(e) { if (el) el.innerHTML = `<p style="color:#e05">${esc(e.message)}</p>`; }
-  finally { btn.disabled = false; btn.textContent = '⟳ search'; }
-}
-
-// ── TikTok Shop ────────────────────────────────────────────────────────
-function renderTikTokShop(raw) {
-  const el = document.getElementById('r-ttshop');
-  if (!el) return;
-  el.innerHTML = raw ? parseToHtml(raw) : '<p style="color:#2a2a2a;font-style:italic;">No data. Click ⟳ search to fetch.</p>';
-}
-async function runTikTokShop() {
-  const btn = document.getElementById('ttShopBtn');
-  const kwOverride = document.getElementById('ttShopKwInput').value.trim() || '';
-  btn.disabled = true; btn.textContent = '…';
-  const el = document.getElementById('r-ttshop');
-  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
-  try {
-    const d = await w('getTikTokShopProducts', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
-    renderTikTokShop(d.tikTokShopProducts || '');
-  } catch(e) { if (el) el.innerHTML = `<p style="color:#e05">${esc(e.message)}</p>`; }
-  finally { btn.disabled = false; btn.textContent = '⟳ search'; }
-}
-
-// ── KDP Best Sellers ───────────────────────────────────────────────────
-function renderKDPBestSellers(raw) {
-  const el = document.getElementById('r-kdp');
-  if (!el) return;
-  el.innerHTML = raw ? parseToHtml(raw) : '<p style="color:#2a2a2a;font-style:italic;">No data. Click ⟳ search to fetch.</p>';
-}
-async function runKDPBestSellers() {
-  const btn = document.getElementById('kdpBtn');
-  const kwOverride = document.getElementById('kdpKwInput').value.trim() || '';
-  btn.disabled = true; btn.textContent = '…';
-  const el = document.getElementById('r-kdp');
-  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching…</div>';
-  try {
-    const d = await w('getKDPBestSellers', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
-    renderKDPBestSellers(d.kdpBestSellers || '');
-  } catch(e) { if (el) el.innerHTML = `<p style="color:#e05">${esc(e.message)}</p>`; }
-  finally { btn.disabled = false; btn.textContent = '⟳ search'; }
-}
-
-// ── Keyword regen ──────────────────────────────────────────────────────
-async function runRegenKeywords() {
-  const btn = document.getElementById('kwRegenBtn');
-  btn.disabled = true; btn.textContent = '…';
-  try {
-    const d = await w('regenKeywords', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, currentKeywords: RAW.keywords });
-    if (d.keywords) { RAW.keywords = d.keywords; renderKeywordPills(d.keywords); }
-  } catch(e) { alert('Error: ' + e.message); }
-  finally { btn.disabled = false; btn.textContent = '⟳ regen'; }
-}
 
 // ── loadProduct ────────────────────────────────────────────────────────
 async function loadProduct() {
   try {
     const data = await w('getProductResearch', { productId: PRODUCT_ID, researchId: RESEARCH_ID });
     const p = data.product;
-    const r = data.research;
 
     // SEC 1 — product meta
     PRODUCT_NAME = p.name || '';
@@ -724,31 +412,7 @@ async function loadProduct() {
     document.getElementById('r-price').textContent = p.price || '—';
     document.getElementById('r-spots').textContent = p.spots != null ? p.spots : '—';
 
-    // SEC 1 — unique angle + avatar
-    const uaEl = document.getElementById('r-uniqueangle');
-    if (uaEl) uaEl.textContent = p.uniqueAngle || '';
-    const avEl = document.getElementById('r-avatar');
-    if (avEl) avEl.textContent = p.avatar || '';
-
-    // SEC 1 — transformation
-    const trEl = document.getElementById('r-transformation');
-    if (trEl) trEl.textContent = p.transformation || '';
-
-    // SEC 2 — offer structure, proof points, objections
-    const osEl = document.getElementById('r-offerstruct');
-    if (osEl) osEl.textContent = p.offerStructure || '';
-    const ppEl = document.getElementById('r-proofpoints');
-    if (ppEl) ppEl.textContent = p.proofPoints || '';
-    const obEl = document.getElementById('r-objections');
-    if (obEl) obEl.textContent = p.objections || '';
-
-    // Cache raw field values so per-method section merges never need a re-fetch.
-    PRODUCT_FIELDS = {
-      uniqueAngle: p.uniqueAngle || '', avatar: p.avatar || '', transformation: p.transformation || '',
-      offerStructure: p.offerStructure || '', proofPoints: p.proofPoints || '', objections: p.objections || '',
-    };
-
-    // Product meta — linked Methods (feeds the strategy-field prompts below)
+    // Product meta — linked Methods (feeds the Strategy & Titles panel below)
     PRODUCT_METHODS = p.methods || [];
     const methodsEl = document.getElementById('r-methods');
     if (methodsEl) {
@@ -772,29 +436,6 @@ async function loadProduct() {
     renderStrategyPanel(); // fast render (no controls yet) — refreshStrategyPanel below fills them in
     refreshStrategyPanel(); // background — fetches per-method details/strategy status
 
-    // Research fields
-    if (r) {
-      RESEARCH_ID_LIVE = r.id || '';
-      RAW.keywords = r.keywords || '';
-      RAW.statement = r.statement || '';
-      RAW.uniqueOpportunity = r.uniqueOpportunity || '';
-      RAW.keyMessage = r.keyMessage || '';
-      renderKeywordPills(r.keywords || '');
-      renderSMTrends(r.trendIntelligence || '');
-      renderProductIdeas(r.productIdeas || '');
-      renderTikTokShop(r.tikTokShopProducts || '');
-      renderKDPBestSellers(r.kdpBestSellers || '');
-
-      const newsEl = document.getElementById('r-news');
-      if (newsEl) newsEl.innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-      const news = await condense('News Feed', r.newsFeed);
-      if (newsEl) newsEl.innerHTML = news;
-    } else {
-      document.getElementById('r-keywords').innerHTML = '<span class="empty">—</span>';
-      document.getElementById('r-smtrends').innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No research record.</p>';
-      document.getElementById('r-news').innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No research record.</p>';
-    }
-
   } catch(e) {
     document.getElementById('r-name').textContent = 'Error: ' + e.message;
   }
@@ -814,6 +455,26 @@ async function loadProduct() {
 function psRowBtn(label, onclick, id, disabled) {
   return `<button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" ${id ? `id="${id}"` : ''} ${disabled ? `disabled title="${esc(disabled)}"` : ''} onclick="${onclick}">${label}</button>`;
 }
+// Methods currently in hand-edit mode for their Strategy text — toggled by
+// the ✎ Edit / Cancel button, read by renderStrategyPanel to swap the
+// read-only body for a textarea + Save.
+let PS_EDITING = new Set();
+function psToggleEdit(methodId) { PS_EDITING.has(methodId) ? PS_EDITING.delete(methodId) : PS_EDITING.add(methodId); renderStrategyPanel(); }
+async function psSaveStrategyEdit(methodId) {
+  const ta = document.getElementById('psEditTa-' + methodId);
+  if (!ta) return;
+  const status = document.getElementById('strategyStatus');
+  if (status) { status.textContent = 'Saving strategy…'; status.style.color = '#888'; }
+  try {
+    const r = await w('updateMethodStrategyText', { productId: PRODUCT_ID, methodId, text: ta.value });
+    if (r.error) throw new Error(r.error);
+    PS_EDITING.delete(methodId);
+    if (status) { status.textContent = '✓ Strategy saved.'; status.style.color = '#68d391'; }
+    await refreshStrategyPanel();
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+  }
+}
 function renderStrategyPanel() {
   const el = document.getElementById('strategyPanel');
   if (!el) return;
@@ -824,11 +485,18 @@ function renderStrategyPanel() {
     if (detail) {
       if (detail.needsTrafficPlan) {
         const hasStrategy = !!detail.strategy;
+        const editing = PS_EDITING.has(m.id);
         controls = psRowBtn(hasStrategy ? '↻ Re-run Strategy' : 'Generate Strategy', `genPsStrategy('${m.id}')`, 'psRowStrat-' + m.id);
         if (hasStrategy) {
           controls += psRowBtn('Generate Titles', `genPsTitles('${m.id}',true,null)`, 'psRowTitles-' + m.id);
+          controls += psRowBtn(editing ? 'Cancel' : '✎ Edit', `psToggleEdit('${m.id}')`, null);
           controls += ` <a href="${detail.strategy.url}" target="_blank" class="notion-link" style="font-size:11px;">↗ Notion</a>`;
-          body = `<div class="body-text" style="white-space:pre-wrap;font-size:12px;margin-top:8px;padding:8px 10px;background:#0d0d0d;border:1px solid #1a1a1a;">${esc(detail.strategy.text || '(empty)')}</div>`;
+          body = editing
+            ? `<div style="margin-top:8px;">
+                <textarea id="psEditTa-${m.id}" style="width:100%;min-height:180px;background:#0d0d0d;border:1px solid #2a2a2a;color:#ddd;font-family:inherit;font-size:12px;line-height:1.6;padding:8px 10px;resize:vertical;">${esc(detail.strategy.text || '')}</textarea>
+                <div style="margin-top:6px;">${psRowBtn('Save', `psSaveStrategyEdit('${m.id}')`, null)}</div>
+              </div>`
+            : `<div class="body-text" style="white-space:pre-wrap;font-size:12px;margin-top:8px;padding:8px 10px;background:#0d0d0d;border:1px solid #1a1a1a;">${esc(detail.strategy.text || '(empty)')}</div>`;
         }
         childrenHtml = (detail.trafficMethods || []).map(c => {
           const disabled = hasStrategy ? null : "Generate the parent's Strategy first";
@@ -1208,178 +876,6 @@ async function submitAddTitle() {
   finally { btn.disabled = false; }
 }
 
-// ── Field Research (News Feed + product strategy fields) ───────────────
-// Each entry: target 'research' saves via updateResearch (Research page);
-// target 'product' saves via updateProductField (this Product's own page).
-// promptFn receives {name, keywords, statement, uniqueOpportunity, keyMessage}
-// pulled from RAW + PRODUCT_NAME so prompts are grounded, not generic.
-const FIELD_META = {
-  newsFeed: {
-    title: 'News Feed — Generate',
-    hint:  'Claude + web search generates current news/trends for this product\'s keywords. Saved to the linked Research record.',
-    target: 'research',
-    notionField: 'newsFeed',
-    promptFn: ctx => `Research current news, trends, and insights related to: ${ctx.keywords || 'this product'}`,
-    renderFn: async text => { const el = document.getElementById('r-news'); if (el) el.innerHTML = await condense('News Feed', text); },
-  },
-  uniqueAngle: {
-    title: 'Unique Angle — Generate',
-    hint:  'One sentence that separates this product from every other offer in its space.',
-    target: 'product',
-    notionField: 'uniqueAngle',
-    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\nUnique opportunity: ${ctx.uniqueOpportunity || '(none)'}\nContent/marketing Method(s) attached to this product: ${ctx.methods || '(none linked)'}\n\nWrite ONE sentence that separates this product from every other offer in its space. Take the attached Method(s) into account if it changes how the product is actually delivered or positioned. Specific, concrete, no fluff. Output only that sentence.`,
-    renderFn: text => { const el = document.getElementById('r-uniqueangle'); if (el) el.textContent = text; },
-  },
-  avatar: {
-    title: 'Avatar — Generate',
-    hint:  'Who this product is for — specific situation, pain, identity.',
-    target: 'product',
-    notionField: 'avatar',
-    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\nContent/marketing Method(s) attached to this product: ${ctx.methods || '(none linked)'}\n\nDescribe the Avatar — who this product is for. Specific situation, pain, identity. If this product is sold via a specific Method above (e.g. Upwork), ground the avatar in that context (their situation on that platform, not a generic buyer). 2-3 sentences. Output only the description.`,
-    renderFn: text => { const el = document.getElementById('r-avatar'); if (el) el.textContent = text; },
-  },
-  transformation: {
-    title: 'Transformation — Generate',
-    hint:  'Before state → after state. What changes and how life looks different.',
-    target: 'product',
-    notionField: 'transformation',
-    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\nContent/marketing Method(s) attached to this product: ${ctx.methods || '(none linked)'}\n\nDescribe the Transformation this product delivers: before state → after state, what changes and how life looks different. If a Method above implies a specific delivery context (e.g. an Upwork contract), let the transformation reflect that reality. 2-3 sentences. Output only the description.`,
-    renderFn: text => { const el = document.getElementById('r-transformation'); if (el) el.textContent = text; },
-  },
-  offerStructure: {
-    title: 'Offer Structure — Generate',
-    hint:  'What\'s included, format, duration, delivery method — shaped by the product\'s linked Method(s).',
-    target: 'product',
-    notionField: 'offerStructure',
-    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nContent/marketing Method(s) attached to this product: ${ctx.methods || '(none linked — describe a generic direct-to-buyer format)'}\n\nDescribe the Offer Structure — what's included, format, duration, delivery method. The structure MUST match how this product is actually sold given its attached Method(s) above: e.g. an Upwork-related method implies a scoped freelance contract (hourly or fixed-price, defined deliverables, a discovery call) — NOT a self-serve digital product; a content/carousel/newsletter method implies a packaged digital offer or course instead. If no method is linked, describe a generic direct-to-buyer format. 2-4 sentences. Output only the description.`,
-    renderFn: text => { const el = document.getElementById('r-offerstruct'); if (el) el.textContent = text; },
-  },
-  proofPoints: {
-    title: 'Proof Points — Generate',
-    hint:  'The kind of proof/results this product should build toward.',
-    target: 'product',
-    notionField: 'proofPoints',
-    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nCampaign statement: ${ctx.statement || '(none)'}\nContent/marketing Method(s) attached to this product: ${ctx.methods || '(none linked)'}\n\nWrite 3-5 bullet points of the kind of proof/results this product should build toward. If sold via a specific Method above (e.g. Upwork), the proof points should be things that matter in that context (e.g. client reviews, repeat contracts, turnaround time) not generic testimonials. Be specific. Output only the bullets.`,
-    renderFn: text => { const el = document.getElementById('r-proofpoints'); if (el) el.textContent = text; },
-  },
-  objections: {
-    title: 'Objections — Generate',
-    hint:  'Top objections and the honest answer to each.',
-    target: 'product',
-    notionField: 'objections',
-    promptFn: ctx => `Product name: ${ctx.name || 'this product'}\nKeywords: ${ctx.keywords || '(none)'}\nContent/marketing Method(s) attached to this product: ${ctx.methods || '(none linked)'}\n\nWrite the top 3 objections a buyer would have and the honest answer to each. If sold via a specific Method above (e.g. Upwork), the objections should be ones real for that context (e.g. \\"why not just hire an agency\\", \\"how do I know you'll deliver on a fixed price\\"). Format: Objection → Answer. Output only the list.`,
-    renderFn: text => { const el = document.getElementById('r-objections'); if (el) el.textContent = text; },
-  },
-};
-
-// ── Per-method section storage (product-targeted fields only) ──────────
-// A field with >1 method attached stores "[Method Name]\nbody" blocks
-// separated by a blank line — one section per method. Regenerating for one
-// method replaces only that section; others are preserved untouched.
-function parseFieldSections(text) {
-  if (!text || !text.trim()) return [];
-  const blocks = text.split(/\n(?=\[.+?\]\n)/);
-  const sections = blocks.map(b => {
-    const m = b.match(/^\[(.+?)\]\n?([\s\S]*)$/);
-    return m ? { method: m[1].trim(), body: (m[2] || '').trim() } : null;
-  }).filter(Boolean);
-  // If the existing text predates section format (no bracket header at all),
-  // preserve it as a labeled "Previous" section rather than silently losing it.
-  if (!sections.length) return [{ method: 'Previous', body: text.trim() }];
-  return sections;
-}
-function serializeFieldSections(sections) {
-  return sections.filter(s => s.body).map(s => `[${s.method}]\n${s.body}`).join('\n\n');
-}
-
-let FIELD_RESEARCH_TARGET = '';
-let FIELD_RESEARCH_METHOD = null; // {id,name} currently selected in the picker, or null
-
-function fieldResearchCtx() {
-  return { name: PRODUCT_NAME, keywords: RAW.keywords, statement: RAW.statement, uniqueOpportunity: RAW.uniqueOpportunity, keyMessage: RAW.keyMessage, methods: FIELD_RESEARCH_METHOD ? FIELD_RESEARCH_METHOD.name : '' };
-}
-function refreshFieldResearchPrompt() {
-  const meta = FIELD_META[FIELD_RESEARCH_TARGET];
-  if (meta) document.getElementById('fieldResearchPrompt').value = meta.promptFn(fieldResearchCtx());
-}
-function onFieldResearchMethodChange() {
-  const sel = document.getElementById('fieldResearchMethodSelect');
-  FIELD_RESEARCH_METHOD = PRODUCT_METHODS.find(m => m.id === sel.value) || null;
-  refreshFieldResearchPrompt();
-}
-function openFieldResearchModal(field) {
-  const meta = FIELD_META[field];
-  if (!meta) return;
-  FIELD_RESEARCH_TARGET = field;
-  // Method picker only applies to product-targeted, section-grouped fields
-  // (newsFeed is campaign/trend research, not tied to a specific method).
-  const pickerRow = document.getElementById('fieldResearchMethodRow');
-  const sel = document.getElementById('fieldResearchMethodSelect');
-  if (meta.target === 'product' && PRODUCT_METHODS.length > 1) {
-    sel.innerHTML = PRODUCT_METHODS.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
-    FIELD_RESEARCH_METHOD = PRODUCT_METHODS[0];
-    pickerRow.style.display = '';
-  } else {
-    FIELD_RESEARCH_METHOD = (meta.target === 'product' && PRODUCT_METHODS.length === 1) ? PRODUCT_METHODS[0] : null;
-    pickerRow.style.display = 'none';
-  }
-  document.getElementById('fieldResearchTitle').textContent = meta.title;
-  document.getElementById('fieldResearchHint').textContent = meta.hint;
-  document.getElementById('fieldResearchPrompt').value = meta.promptFn(fieldResearchCtx());
-  document.getElementById('fieldResearchStatus').textContent = '';
-  document.getElementById('fieldResearchModal').classList.add('open');
-}
-function closeFieldResearchModal() { document.getElementById('fieldResearchModal').classList.remove('open'); }
-async function runFieldResearch() {
-  const field = FIELD_RESEARCH_TARGET;
-  const meta = field && FIELD_META[field];
-  if (!meta) return;
-  const prompt = document.getElementById('fieldResearchPrompt').value.trim();
-  if (!prompt) return;
-  const statusEl = document.getElementById('fieldResearchStatus');
-  const btn = document.getElementById('fieldResearchRunBtn');
-  btn.disabled = true; statusEl.textContent = 'Generating with Claude…';
-  try {
-    const res = await w('sendPrompt', { prompt });
-    if (res.error) throw new Error(res.error);
-    const text = (res.text || '').trim();
-    statusEl.textContent = 'Saving…';
-    let toSave = text;
-    if (meta.target === 'product' && FIELD_RESEARCH_METHOD) {
-      // Merge: replace only this method's section, keep every other section as-is.
-      const sections = parseFieldSections(PRODUCT_FIELDS[field] || '');
-      const idx = sections.findIndex(s => s.method === FIELD_RESEARCH_METHOD.name);
-      if (idx >= 0) sections[idx] = { method: FIELD_RESEARCH_METHOD.name, body: text };
-      else sections.push({ method: FIELD_RESEARCH_METHOD.name, body: text });
-      toSave = serializeFieldSections(sections);
-    }
-    if (meta.target === 'research') {
-      await w('updateResearch', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, field: meta.notionField, value: toSave });
-    } else {
-      await w('updateProductField', { productId: PRODUCT_ID, field: meta.notionField, value: toSave });
-      PRODUCT_FIELDS[field] = toSave;
-    }
-    await meta.renderFn(toSave);
-    statusEl.textContent = '✓ Done.';
-    setTimeout(closeFieldResearchModal, 900);
-  } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
-  finally { btn.disabled = false; }
-}
-
-// ── Sources modal ──────────────────────────────────────────────────────
-function openSourcesModal(query) {
-  document.getElementById('sourcesModalTitle').textContent = query;
-  const body = document.getElementById('sourcesModalBody');
-  body.innerHTML = '<div class="loading"><div class="spinner"></div>Fetching sources…</div>';
-  document.getElementById('sourcesModal').classList.add('open');
-  w('getSourceLinks', { query, keywords: RAW.keywords }).then(d => {
-    const links = d.sources || [];
-    body.innerHTML = links.length
-      ? links.map(l => `<div style="margin-bottom:8px;"><a href="${esc(l.url)}" target="_blank" style="color:#63b3ed;text-decoration:none;">${esc(l.title)}</a><div style="font-size:11px;color:#555;word-break:break-all;">${esc(l.url)}</div></div>`).join('')
-      : '<p style="color:#2a2a2a;">No sources found.</p>';
-  }).catch(e => { body.innerHTML = `<p style="color:#e05">${esc(e.message)}</p>`; });
-}
-function closeSourcesModal() { document.getElementById('sourcesModal').classList.remove('open'); }
 
 // ── Add Method (manual) ───────────────────────────────────────────────
 // Independent of the AI ecosystem/method-matching pipeline — lets the user
