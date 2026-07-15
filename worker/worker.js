@@ -2483,6 +2483,278 @@ export default {
         return json({ success: true, url: siteUrl, slug, updated: !!existingSha, commit: putResult.commit?.sha || null });
       }
 
+      // ══════════════════════════════════════════════════════════════════
+      // PRODUCT ECOSYSTEM PIPELINE — idea → funnel ecosystem of Products →
+      // Methods matched (existing-first) → reused Methods' methodology
+      // augmented with the new pattern. Orchestrated client-side as three
+      // chained calls (mirrors generateMethodTitles→saveMethodTitles and
+      // researchAndGenerateCarouselTitles): researchProductEcosystem (one
+      // fast Claude call, no writes) → createEcosystemProduct (one per item)
+      // → matchProductMethod (one per created product). Kept in three small
+      // steps so no single call risks Cloudflare's 524 edge timeout.
+      // ══════════════════════════════════════════════════════════════════
+
+      // ── researchProductEcosystem ──
+      // Given a (user-edited) product idea title + description, determines
+      // the funnel ecosystem of products needed to market and sell it — e.g.
+      // a lead magnet, a low-ticket entry point, the core offer, a retention
+      // product — grounded in campaign research. Returns the proposed list
+      // only; nothing is created yet (saveMethodTitles-style split).
+      if (body.action === "researchProductEcosystem") {
+        const { ideaTitle, ideaDescription, campaignId } = body;
+        if (!ideaTitle || !campaignId) return json({ error: "ideaTitle and campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+
+        const [researchRaw, campRaw] = await Promise.all([
+          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
+        ]);
+        const cp = campRaw.properties || {};
+        const campaignName = (cp.Name?.title || []).map(t => t.plain_text).join("") || "Campaign";
+        const keywords = rt(researchRaw, "Keywords") || (cp["Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
+        const buyerIntent = (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join("") || "(none on file)";
+
+        const prompt = `You are a product and funnel strategist. A campaign has one seed product idea. Determine the full ECOSYSTEM of products needed to market and sell it — not just the core offer itself, but the supporting products at other funnel stages (e.g. a free/low-ticket lead-in, a credibility or content product, the core offer, a retention/upsell product) that a real launch plan would need. Ground everything in the campaign context below. Not every idea needs every stage — a simple info product might only need 2-3 items; a high-ticket offer might need the full ladder.
+
+CAMPAIGN: ${campaignName}
+CAMPAIGN KEYWORDS: ${keywords || "(none on file)"}
+BUYER / PAIN POINTS: ${buyerIntent}
+
+SEED IDEA:
+Title: ${ideaTitle}
+Description: ${ideaDescription || "(no description given — infer from the title)"}
+
+INSTRUCTIONS:
+- Return 2-5 products total, including the seed idea itself as one of them (use the exact seed title for that one).
+- Each product needs a clear funnel role — do not invent products that don't serve getting someone to (or past) the core offer.
+- Descriptions must be concrete and specific to this idea, not generic funnel theory.
+
+Return ONLY a JSON array — no other text, no markdown fences:
+{ "name": "product name", "description": "1-3 sentences, specific to this idea", "funnelStage": "e.g. Top of funnel / Lead-in / Core offer / Retention" }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+
+        let ecosystem;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+          if (s === -1 || e === -1 || e < s) throw new Error("No JSON array found");
+          ecosystem = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+          if (!Array.isArray(ecosystem)) throw new Error("Not an array");
+        } catch(e) {
+          return json({ error: "Failed to parse ecosystem JSON: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
+        }
+        return json({ ecosystem: ecosystem.slice(0, 5) });
+      }
+
+      // ── createEcosystemProduct ──
+      // Creates ONE Product from the researchProductEcosystem output, tagged
+      // with the shared Ecosystem group (the original seed idea title) so
+      // sibling products can be found/displayed together later.
+      if (body.action === "createEcosystemProduct") {
+        const { name, description, campaignId, ecosystemTag } = body;
+        if (!name || !campaignId) return json({ error: "name and campaignId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const props = {
+          Name:        { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] },
+          Status:      { select: { name: "In Development" } },
+          Campaigns:   { relation: [{ id: dash(campaignId) }] },
+        };
+        if (description) props["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
+        if (ecosystemTag) props["Ecosystem"] = { rich_text: [{ type: "text", text: { content: String(ecosystemTag).slice(0, 200) } }] };
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: PRODUCTS_DB }, properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok || !result.id) return json({ error: result.message || "Create failed" }, resp.status || 500);
+        return json({ success: true, productId: result.id.replace(/-/g,""), name });
+      }
+
+      // ── matchProductMethod ──
+      // For one product, checks the FULL existing Methods DB first and asks
+      // Claude to pick the best fit; only proposes a brand-new Method when
+      // nothing genuinely fits. If an existing Method is reused, its Notes
+      // are AUGMENTED (merged/generalized) with the new pattern, not
+      // overwritten — the Method gets smarter each time it's reused across
+      // products/campaigns, per the standing "prefer existing" instruction.
+      if (body.action === "matchProductMethod") {
+        const { productId, campaignId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const [productPage, methodsResults] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/databases/${METHODS_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ page_size: 100 }),
+          }).then(r => r.json()),
+        ]);
+        if (productPage.object === "error" || !productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
+        const pp = productPage.properties || {};
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+
+        // Dedupe existing methods by NAME (case-insensitive) — the Methods DB
+        // has known duplicates (e.g. "Upwork Proposal" / "upwork proposal");
+        // prefer whichever copy has real Notes so the model sees the richer one.
+        const byName = new Map();
+        for (const m of (methodsResults.results || [])) {
+          const mName = (m.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+          if (!mName) continue;
+          const notes = (m.properties?.Notes?.rich_text || []).map(t => t.plain_text).join("");
+          const key = mName.toLowerCase();
+          const existing = byName.get(key);
+          if (!existing || (notes.length > existing.notes.length)) {
+            byName.set(key, { id: m.id.replace(/-/g,""), name: mName, notes, platform: m.properties?.Platform?.select?.name || "" });
+          }
+        }
+        const existingMethods = [...byName.values()];
+        const methodsBlock = existingMethods.length
+          ? existingMethods.map((m, i) => `[E${i+1}] ${m.name}${m.platform ? ` (${m.platform})` : ''}${m.notes ? ` — ${m.notes.slice(0, 200)}` : ' — (no methodology written yet)'}`).join('\n')
+          : '(no existing methods on file)';
+
+        const prompt = `You are a marketing strategist choosing HOW to market and sell one specific product. Below is the full list of EXISTING marketing methods already on file. Strongly prefer reusing one of them — only propose a new method if none of them genuinely fit this product's context.
+
+PRODUCT: ${productName}
+DESCRIPTION: ${productDesc || "(none)"}
+
+EXISTING METHODS ON FILE:
+${methodsBlock}
+
+INSTRUCTIONS:
+- If an existing method fits (even loosely — e.g. a generic "Campaign Page" method can serve a booking page, a waitlist page, or an offer page), choose it. Reference it by its [E#] tag.
+- Only set "isNew": true if nothing existing is even a loose fit for how this product would actually be marketed.
+- If reusing an existing method, write "augmentedNotes": a short (2-4 sentence) GENERALIZED methodology that MERGES what that method already does with this new use case — broaden the definition, don't just describe this one product. If the existing method had no notes, write a real methodology from scratch grounded in this product but written generally enough to apply to future similar products too.
+- If proposing new, give it a short reusable name (not tied to this one product's name) and a real methodology description, plus a Platform guess (e.g. Instagram, Email, YouTube, Upwork, Etsy, Other) and Category guess (Content, Outreach, Research, SEO, Ecommerce, Video).
+
+Return ONLY a JSON object, no other text, no markdown fences:
+{ "isNew": false, "existingTag": "E2", "augmentedNotes": "..." }
+OR
+{ "isNew": true, "name": "...", "platform": "...", "category": "...", "notes": "..." }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+
+        let decision;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+          if (s === -1 || e === -1 || e < s) throw new Error("No JSON object found");
+          decision = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+        } catch(e) {
+          return json({ error: "Failed to parse method decision: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
+        }
+
+        let methodId, methodName, wasNew = false, augmented = false;
+        if (decision.isNew) {
+          wasNew = true;
+          methodName = decision.name || `Method for ${productName}`;
+          const createProps = { Name: { title: [{ type: "text", text: { content: String(methodName).slice(0, 200) } }] } };
+          if (decision.platform) createProps["Platform"] = { select: { name: decision.platform } };
+          if (decision.category) createProps["Category"] = { multi_select: [{ name: decision.category }] };
+          if (decision.notes) createProps["Notes"] = { rich_text: [{ type: "text", text: { content: String(decision.notes).slice(0, 1990) } }] };
+          if (campaignId) createProps["Campaigns"] = { relation: [{ id: dash(campaignId) }] };
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: METHODS_DB }, properties: createProps }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Method create failed" }, createResp.status || 500);
+          methodId = created.id.replace(/-/g,"");
+        } else {
+          const tagMatch = String(decision.existingTag || '').match(/E(\d+)/i);
+          const idx = tagMatch ? parseInt(tagMatch[1], 10) - 1 : -1;
+          const matched = existingMethods[idx];
+          if (!matched) return json({ error: "Model referenced an unknown existing method tag: " + decision.existingTag }, 500);
+          methodId = matched.id;
+          methodName = matched.name;
+          // Augment the existing method's Notes — merge, don't overwrite blindly.
+          if (decision.augmentedNotes) {
+            await fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { Notes: { rich_text: [{ type: "text", text: { content: String(decision.augmentedNotes).slice(0, 1990) } }] } } }),
+            });
+            augmented = true;
+          }
+        }
+
+        // Attach to the product's Methods relation (append, keep any existing).
+        const existingRel = (pp.Methods?.relation || []).map(r => ({ id: r.id }));
+        if (!existingRel.some(r => r.id.replace(/-/g,"") === methodId)) existingRel.push({ id: dash(methodId) });
+        await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Methods: { relation: existingRel } } }),
+        });
+
+        return json({ success: true, productId, methodId, methodName, wasNew, augmented });
+      }
+
+      // ── addProductMethod / removeProductMethod ──
+      // Manual attach/detach of an existing Method to a product — kept
+      // available independent of the AI matching pipeline above, so a
+      // product's methods can always be hand-edited/augmented directly.
+      if (body.action === "addProductMethod") {
+        const { productId, methodId } = body;
+        if (!productId || !methodId) return json({ error: "productId and methodId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const prodResp = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const prodPage = await prodResp.json();
+        const existing = (prodPage.properties?.["Methods"]?.relation || []).map(r => ({ id: r.id }));
+        const alreadyLinked = existing.some(r => r.id.replace(/-/g,"") === methodId.replace(/-/g,""));
+        if (!alreadyLinked) existing.push({ id: dashId(methodId) });
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Methods": { relation: existing } } }),
+        });
+        const result = await patchResp.json();
+        if (!patchResp.ok) return json({ error: result.message || "Update failed" }, patchResp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "removeProductMethod") {
+        const { productId, methodId } = body;
+        if (!productId || !methodId) return json({ error: "productId and methodId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const prodResp = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const prodPage = await prodResp.json();
+        const filtered = (prodPage.properties?.["Methods"]?.relation || [])
+          .filter(r => r.id.replace(/-/g,"") !== methodId.replace(/-/g,""))
+          .map(r => ({ id: r.id }));
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Methods": { relation: filtered } } }),
+        });
+        const result = await patchResp.json();
+        if (!patchResp.ok) return json({ error: result.message || "Update failed" }, patchResp.status);
+        return json({ success: true });
+      }
+
       if (body.action === "updateProductStatus") {
         const { productId, status } = body;
         if (!productId || !status) return json({ error: "productId and status required" }, 400);

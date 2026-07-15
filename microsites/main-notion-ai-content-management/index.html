@@ -927,10 +927,16 @@ function renderProductIdeas(text) {
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
     const srcQ = colonIdx === -1 ? line.trim() : line.slice(0, colonIdx).trim();
-    if (colonIdx === -1) { const t = line.trim().replace(/"/g,'&quot;'); return `<div class="sm-trend-row"><span class="sm-trend-body" style="cursor:pointer;flex:1" onclick="openTdModal('${t.replace(/'/g,"\\'")}')">${line}</span><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`; }
+    if (colonIdx === -1) {
+      const t = line.trim().replace(/"/g,'&quot;');
+      const ecoName = t.replace(/'/g,"\\'");
+      return `<div class="sm-trend-row"><span class="sm-trend-body" style="cursor:pointer;flex:1" onclick="openTdModal('${t.replace(/'/g,"\\'")}')">${line}</span><button class="td-add-btn-inline" onclick="openEcosystemModal('${ecoName}','')" title="Build product ecosystem">🧬</button><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`;
+    }
     const name = line.slice(0, colonIdx).trim();
     const desc = line.slice(colonIdx + 1).trim();
-    return `<div class="sm-trend-row"><span style="cursor:pointer;flex:1;display:flex;gap:6px;align-items:baseline;min-width:0" onclick="openTdModal('${name.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></span><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`;
+    const ecoName = name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    const ecoDesc = desc.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    return `<div class="sm-trend-row"><span style="cursor:pointer;flex:1;display:flex;gap:6px;align-items:baseline;min-width:0" onclick="openTdModal('${name.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></span><button class="td-add-btn-inline" onclick="openEcosystemModal('${ecoName}','${ecoDesc}')" title="Build product ecosystem">🧬</button><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`;
   }).join('');
 }
 
@@ -3944,6 +3950,87 @@ async function openSourcesModal(query) {
     el.innerHTML = sources.map(s => `<a href="${s.url}" target="_blank" rel="noopener" style="display:block;font-size:12px;color:#a78bfa;text-decoration:none;line-height:1.4;word-break:break-all;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${s.title}</a>`).join('');
   } catch(e) {
     el.innerHTML = `<div style="font-size:12px;color:#f87171;">${e.message}</div>`;
+  }
+}
+</script>
+
+<!-- ECOSYSTEM MODAL — build a funnel ecosystem of Products from one idea -->
+<div class="modal-overlay" id="ecosystemModal" onclick="if(event.target===this)closeEcosystemModal()">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title">Build Product Ecosystem</div>
+      <button class="modal-close" onclick="closeEcosystemModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Edit the seed idea below, then Generate — this researches the full funnel ecosystem needed to market and sell it (lead-in, core offer, retention, etc.), creates each as a Product, and matches a Method to each (existing methods preferred, new only when nothing fits).</div>
+      <label class="lm-label" for="ecoTitleInput" style="margin-top:12px;">Title</label>
+      <input class="modal-ta" id="ecoTitleInput" type="text" style="height:36px;padding:7px 10px;" />
+      <label class="lm-label" for="ecoDescInput" style="margin-top:10px;">Description</label>
+      <textarea class="modal-ta" id="ecoDescInput" rows="4" style="resize:vertical;min-height:90px!important;"></textarea>
+      <div id="ecoStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;white-space:pre-line;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeEcosystemModal()">Cancel</button>
+      <button class="modal-btn save" id="ecoGoBtn" onclick="runEcosystemBuild()">Generate</button>
+    </div>
+  </div>
+</div>
+<script>
+function openEcosystemModal(name, desc) {
+  document.getElementById('ecoTitleInput').value = name || '';
+  document.getElementById('ecoDescInput').value = desc || '';
+  document.getElementById('ecoStatus').textContent = '';
+  document.getElementById('ecoStatus').style.color = '#888';
+  document.getElementById('ecoGoBtn').disabled = false;
+  document.getElementById('ecoGoBtn').textContent = 'Generate';
+  document.getElementById('ecosystemModal').classList.add('open');
+}
+function closeEcosystemModal() {
+  document.getElementById('ecosystemModal').classList.remove('open');
+}
+async function runEcosystemBuild() {
+  const ideaTitle = document.getElementById('ecoTitleInput').value.trim();
+  const ideaDescription = document.getElementById('ecoDescInput').value.trim();
+  if (!ideaTitle) return;
+  const btn = document.getElementById('ecoGoBtn');
+  const status = document.getElementById('ecoStatus');
+  btn.disabled = true; btn.textContent = 'Working…';
+  status.style.color = '#888';
+  try {
+    status.textContent = 'Researching the funnel ecosystem…';
+    const ecoData = await w('researchProductEcosystem', { ideaTitle, ideaDescription, campaignId: CAMPAIGN_ID });
+    if (ecoData.error) throw new Error(ecoData.error);
+    const ecosystem = ecoData.ecosystem || [];
+    if (!ecosystem.length) throw new Error('No ecosystem products returned.');
+
+    const created = [];
+    for (let i = 0; i < ecosystem.length; i++) {
+      status.textContent = `Creating products ${i + 1} / ${ecosystem.length}…`;
+      const item = ecosystem[i];
+      const r = await w('createEcosystemProduct', { name: item.name, description: item.description, campaignId: CAMPAIGN_ID, ecosystemTag: ideaTitle });
+      if (r.error) { status.textContent += `\n(skipped "${item.name}": ${r.error})`; continue; }
+      created.push({ productId: r.productId, name: item.name });
+    }
+    if (!created.length) throw new Error('No products were created.');
+
+    let newMethods = 0, reusedMethods = 0, augmented = 0, methodErrors = 0;
+    for (let i = 0; i < created.length; i++) {
+      status.textContent = `Matching methods ${i + 1} / ${created.length}…`;
+      const r = await w('matchProductMethod', { productId: created[i].productId, campaignId: CAMPAIGN_ID });
+      if (r.error) { methodErrors++; continue; }
+      if (r.wasNew) newMethods++; else reusedMethods++;
+      if (r.augmented) augmented++;
+    }
+
+    await loadProducts();
+    status.textContent = `✓ Created ${created.length} products — ${reusedMethods} used existing methods (${augmented} augmented), ${newMethods} new method${newMethods === 1 ? '' : 's'} created${methodErrors ? `, ${methodErrors} method match${methodErrors === 1 ? '' : 'es'} failed` : ''}.`;
+    status.style.color = methodErrors ? '#f0b429' : '#68d391';
+    btn.textContent = 'Done';
+    setTimeout(closeEcosystemModal, 2600);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Generate';
   }
 }
 </script>
