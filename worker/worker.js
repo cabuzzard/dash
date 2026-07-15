@@ -1238,17 +1238,36 @@ async function appendFullContentToPage(pageId, { text, transcript }) {
   }
 }
 
+// The iOS Shortcut that saves rows only reliably fills in URL (and not
+// always even that) — Platform is regularly left empty. Rather than depend
+// on it, detect the platform from the URL's own hostname whenever the
+// Platform select is unset, and backfill the select so it's visible in
+// Notion for manual curation too.
+function detectPlatformFromUrl(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    if (host === "x.com" || host.endsWith(".x.com") || host === "twitter.com" || host.endsWith(".twitter.com")) return "X";
+    if (host === "instagram.com" || host.endsWith(".instagram.com")) return "Instagram";
+    if (host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be") return "YouTube";
+  } catch { /* invalid URL */ }
+  return null;
+}
+
 async function processSavedPost(env, page) {
   const props = page.properties || {};
-  const url = props.URL?.url;
-  const platform = props.Platform?.select?.name;
+  const url = (props.URL?.url || "").trim();
+  let platform = props.Platform?.select?.name;
   const pageId = page.id;
 
   await patchSavedPostPage(pageId, { Status: { status: { name: "In progress" } } });
 
   try {
     if (!url) throw new Error("No URL set on this row");
-    if (!platform) throw new Error("No Platform set on this row");
+    if (!platform) {
+      platform = detectPlatformFromUrl(url);
+      if (!platform) throw new Error(`Could not detect platform from URL: ${url}`);
+      await patchSavedPostPage(pageId, { Platform: { select: { name: platform } } });
+    }
 
     const { text, transcript, author, note } = await fetchSavedPostContent(env, platform, url);
     if (!text.trim() && !transcript.trim()) throw new Error("No content could be extracted from this URL");
