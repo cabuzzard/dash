@@ -2440,24 +2440,47 @@ async function addMethodFromModal() {
 let PRODUCT_ITEMS = [];
 let ALL_PRODUCTS  = [];
 
+function makeProductRow(p) {
+  const row = document.createElement('div');
+  const isActive = p.status === 'Active';
+  row.className = 'product-row ' + (isActive ? 'is-active' : 'is-development');
+  row.dataset.productId = p.id;
+  // Every row gets a product-site control: a "site" link when one exists, or a
+  // "+ site" button that deploys one (createProductSite) when it doesn't.
+  const psStyle = 'font-size:10px;color:#555;text-decoration:none;flex-shrink:0;padding:1px 4px;border:1px solid #2a2a2a;border-radius:3px;line-height:1.6;';
+  const psLink = p.productsite
+    ? `<a href="${p.productsite}" target="_blank" rel="noopener" title="Product site" style="${psStyle}">site</a>`
+    : `<button class="td-add-btn-inline" onclick="addProductSite('${p.id}', this)" title="Create product site" style="${psStyle};background:none;cursor:pointer;">+ site</button>`;
+  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+  return row;
+}
+
 function renderProducts() {
   const el = document.getElementById('product-list');
   el.innerHTML = '';
   if (!PRODUCT_ITEMS.length) { el.innerHTML = '<div class="empty">No products yet.</div>'; return; }
+  // Products spawned together by the 🧬 ecosystem pipeline share an
+  // "ecosystem" tag (the seed idea's title) — group and label them so the
+  // funnel is visible instead of a flat undifferentiated list. Products
+  // without a tag (everything created before this feature, or added
+  // individually) render exactly as before, ungrouped.
+  const groups = {};
+  const ungrouped = [];
   PRODUCT_ITEMS.forEach(p => {
-    const row = document.createElement('div');
-    const isActive = p.status === 'Active';
-    row.className = 'product-row ' + (isActive ? 'is-active' : 'is-development');
-    row.dataset.productId = p.id;
-    // Every row gets a product-site control: a "site" link when one exists, or a
-    // "+ site" button that deploys one (createProductSite) when it doesn't.
-    const psStyle = 'font-size:10px;color:#555;text-decoration:none;flex-shrink:0;padding:1px 4px;border:1px solid #2a2a2a;border-radius:3px;line-height:1.6;';
-    const psLink = p.productsite
-      ? `<a href="${p.productsite}" target="_blank" rel="noopener" title="Product site" style="${psStyle}">site</a>`
-      : `<button class="td-add-btn-inline" onclick="addProductSite('${p.id}', this)" title="Create product site" style="${psStyle};background:none;cursor:pointer;">+ site</button>`;
-    row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
-    el.appendChild(row);
+    if (p.ecosystem) { (groups[p.ecosystem] = groups[p.ecosystem] || []).push(p); }
+    else ungrouped.push(p);
   });
+  Object.keys(groups).forEach(tag => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'border-left:2px solid #e8ff47;padding-left:8px;margin-bottom:10px;';
+    const header = document.createElement('div');
+    header.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#e8ff47;margin-bottom:4px;';
+    header.innerHTML = `🧬 ${tag}`;
+    wrap.appendChild(header);
+    groups[tag].forEach(p => wrap.appendChild(makeProductRow(p)));
+    el.appendChild(wrap);
+  });
+  ungrouped.forEach(p => el.appendChild(makeProductRow(p)));
 }
 
 // Deploy a product site for this product (commits productsites/{slug}/ via the

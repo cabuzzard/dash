@@ -1531,6 +1531,9 @@ export default {
           // The product's URL property — feeds the "site" chip on the product
           // row (links to its productsites/ page when set).
           productsite: p.properties?.["URL"]?.url || null,
+          // Shared tag set by the ecosystem pipeline (createEcosystemProduct) —
+          // groups sibling products spawned from the same seed idea.
+          ecosystem: (p.properties?.["Ecosystem"]?.rich_text || []).map(t => t.plain_text).join("") || null,
         }));
         return json({ products });
       }
