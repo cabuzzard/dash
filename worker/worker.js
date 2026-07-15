@@ -5604,6 +5604,18 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
         return json(out);
       }
 
+      // ── getAssetTypes ──
+      // Existing "Asset Type" select options from the Assets DB schema, for
+      // the generate-assets modal's pick-or-create type field. (Typing a new
+      // type just passes the string — Notion auto-creates select options.)
+      if (body.action === "getAssetTypes") {
+        const resp = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, { headers: dsHdr });
+        const db = await resp.json();
+        if (!resp.ok) return json({ error: db.message || "Schema fetch failed" }, resp.status);
+        const types = (db.properties?.["Asset Type"]?.select?.options || []).map(o => o.name).filter(Boolean);
+        return json({ types });
+      }
+
       // ── generateTitleAssets ──
       // The real "create assets" flow: generates N distinct, build-ready
       // asset concepts for one title (grounded in the title's idea/
@@ -5612,9 +5624,10 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
       // record in the Assets DB linked to the title via its Content Strategy
       // relation — so they render as rows under the publish title.
       if (body.action === "generateTitleAssets") {
-        const { titleId, campaignId, productId, methodId, title, description, seedKeywords, researchInstructions } = body;
+        const { titleId, campaignId, productId, methodId, title, description, seedKeywords, researchInstructions, assetType } = body;
         const count = Math.min(Math.max(parseInt(body.count) || 4, 1), 8);
         if (!titleId || !title) return json({ error: "titleId and title required" }, 400);
+        if (!assetType) return json({ error: "assetType required — every asset must have a type" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
 
@@ -5645,7 +5658,7 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
           } catch(e) {}
         }
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a senior content designer and copywriter. Create exactly ${count} DISTINCT asset concepts — options for the operator to choose between — for the content idea below. Each must be complete enough to build immediately without further questions.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a senior content designer and copywriter. Create exactly ${count} DISTINCT asset concepts — options for the operator to choose between — for the content idea below. Every concept is a ${assetType} — do not propose other formats. Each must be complete enough to build immediately without further questions.
 
 IDEA / TITLE: ${title}
 ${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `SEED KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${methodName ? `METHOD: ${methodName}${methodBody ? `\nMETHOD NOTES/FRAMEWORK (dictates the deliverable format):\n${methodBody}` : ""}\n` : ""}
@@ -5656,7 +5669,7 @@ ${spec.notes ? `Aesthetic: ${spec.notes}` : ""}
 Each concept must take a genuinely different approach to the same idea — different layout, hook, or visual metaphor, not just a color swap. The body must fully specify the deliverable: exact on-image headline/text, visual layout description, how the design spec colors/fonts are used, and the accompanying post caption.
 
 Return ONLY a JSON array of exactly ${count} items, no markdown fences:
-[{ "assetTitle": "short distinct option name", "platform": "Instagram" | "LinkedIn" | "TikTok" | "YouTube" | "Facebook" | "X / Twitter" | "Other", "assetType": "Post" | "Graphic" | "Reel" | "Video" | "Story" | "Article", "body": "full concept: on-image text, layout, spec usage, caption" }]`;
+[{ "assetTitle": "short distinct option name", "platform": "Instagram" | "LinkedIn" | "TikTok" | "YouTube" | "Facebook" | "X / Twitter" | "Other", "body": "full concept: on-image text, layout, spec usage, caption" }]`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -5682,7 +5695,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
           };
           if (c.platform)  properties["Platform Name"] = { select: { name: String(c.platform).slice(0, 100) } };
-          if (c.assetType) properties["Asset Type"]    = { select: { name: String(c.assetType).slice(0, 100) } };
+          properties["Asset Type"] = { select: { name: String(assetType).slice(0, 100) } }; // required — every asset has a type
           if (campaignId)  properties["Campaign"]      = { relation: [{ id: dsDash(campaignId) }] };
           const resp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
