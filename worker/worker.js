@@ -3853,6 +3853,111 @@ Return ONLY a JSON array, no other text, no markdown fences:
         return json({ success: true, strategyId, url: existing.url });
       }
 
+      // ── generateTitlesFromProductStrategy ──
+      // Generates titles for ANY attached method (destination, traffic-
+      // child, or ordinary flat method alike — no per-type branching),
+      // grounded in the PRODUCT-level Strategy (all 11 STRATEGY_FIELDS) +
+      // Keywords — the "what to say" — plus this method's own framework —
+      // the "what to build for this platform". One consolidated deliverable
+      // per ASSET-classified phase (not one per bullet), so this stays well
+      // within a single call regardless of framework size. Falls back to
+      // the method's full framework if no phase is tagged [Asset] (older,
+      // untagged methods like Product Page still have their genuinely
+      // asset-shaped phases picked up via STRATEGY_FIELD_PHASE_MAP's
+      // reverse lookup inside parseMethodPhases).
+      if (body.action === "generateTitlesFromProductStrategy") {
+        const { productId, campaignId, methodId, methodName } = body;
+        if (!productId || !methodId) return json({ error: "productId and methodId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const [productPage, stratQ, phases] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
+          }).then(r => r.json()),
+          parseMethodPhases(hdr, dash(methodId)),
+        ]);
+        const pp = productPage.properties || {};
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+
+        const stratRecord = (stratQ.results || [])[0];
+        const stratProps = stratRecord?.properties || {};
+        const strategyBlock = STRATEGY_FIELDS.map(f => {
+          const v = (stratProps[f]?.rich_text || []).map(t => t.plain_text).join("");
+          return v ? `${f}: ${v}` : '';
+        }).filter(Boolean).join("\n");
+
+        const assetPhases = phases.filter(p => p.kind !== "strategy");
+        const relevantPhases = assetPhases.length ? assetPhases : phases;
+        const frameworkBlock = relevantPhases.map(p =>
+          `PHASE: ${p.name}\n` + p.groupings.map(g => `${g.name}: ${g.notes.join("; ")}`).join("\n")
+        ).join("\n\n");
+
+        const prompt = `You are producing the actual publishable deliverables for one marketing method, using this product's core strategy as the source material for what to say.
+
+PRODUCT: ${productName}
+KEYWORDS: ${productKeywords || "(none)"}
+
+PRODUCT STRATEGY (use this as the substance — don't invent positioning that contradicts it):
+${strategyBlock || "(no strategy fields generated yet — ground in PRODUCT/KEYWORDS only)"}
+
+METHOD: ${methodName}
+WHAT THIS METHOD NEEDS BUILT (from its own framework):
+${frameworkBlock || "(no framework on file — infer reasonable deliverables from the method name)"}
+
+INSTRUCTIONS:
+- Produce ONE deliverable per PHASE listed above — consolidate everything in that phase's groupings into ONE cohesive, real, assembled piece of content (not a restatement of the framework, not one title per bullet).
+- Ground every deliverable in the PRODUCT STRATEGY above — real specifics, not generic marketing language.
+- If no phases were listed, propose 1-3 genuine deliverables this method would need.
+
+Return ONLY a JSON array, no other text, no markdown fences:
+{ "title": "deliverable name, e.g. 'Above the Fold Copy — <product>'", "content": "the actual assembled copy/content for this deliverable" }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+
+        let items;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+          if (s === -1 || e === -1 || e < s) throw new Error("No JSON array found");
+          items = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+          if (!Array.isArray(items)) throw new Error("Not an array");
+        } catch(e) {
+          return json({ error: "Failed to parse titles JSON: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
+        }
+
+        const rtBlock = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1990), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        let created = 0;
+        for (const it of items.slice(0, 10)) {
+          const props = {
+            "Title":    { title: rtBlock(String(it.title || 'Untitled').slice(0, 200)) },
+            "Status":   { select: { name: "Development" } },
+            "Grouping": { rich_text: rtBlock(methodName || '') },
+            "method":   { relation: [{ id: dash(methodId) }] },
+            "product":  { relation: [{ id: dash(productId) }] },
+          };
+          if (campaignId) props["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+          const children = String(it.content || '').split(/\n\n+/).filter(Boolean).map(pg => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(pg.slice(0, 1990)) } }));
+          const resp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props, children }),
+          });
+          const page = await resp.json();
+          if (page.id) created++;
+        }
+        return json({ created });
+      }
+
       // ── generateTitlesFromStrategy ──
       // For a DESTINATION method (has a Strategy doc): reads the strategy
       // back and produces a small set of GENUINE publishable titles informed

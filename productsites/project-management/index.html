@@ -36,6 +36,9 @@
 .campaign-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .campaign-row:last-child { border-bottom: none; }
 .campaign-name { flex: 1; font-size: 13px; color: #c9c9c9; }
+/* METHOD SEARCH DROPDOWN (Methods modal) */
+.plat-dd-item { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #c9c9c9; border-bottom: 1px solid #1e1e1e; }
+.plat-dd-item:hover { background: #2a2a2a; }
 </style>
 </head>
 <body>
@@ -81,7 +84,7 @@
       <div class="field"><div class="field-label">Site</div><div class="field-value" id="r-site"></div></div>
       <div class="field"><div class="field-label">Price</div><div class="field-value" id="r-price"></div></div>
       <div class="field"><div class="field-label">Spots</div><div class="field-value" id="r-spots"></div></div>
-      <div class="field"><div class="field-label">Methods <button class="td-add-btn-inline" onclick="openAddMethodModal()" title="Add method">+</button></div><div class="field-value" id="r-methods" style="font-size:12px;"></div></div>
+      <div class="field"><div class="field-label">Methods <button class="td-add-btn-inline" onclick="openProductMethodsModal(PRODUCT_ID, PRODUCT_NAME)" title="Add method">+</button></div><div class="field-value" id="r-methods" style="font-size:12px;"></div></div>
       <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/39d1f7d3a4bb81baba83f4c5f7550da7" target="_blank" class="notion-link">↗ Product</a> &nbsp; <a href="https://www.notion.so/39c1f7d3a4bb81bf93a5dc83f1387439" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Productsite</div><div class="field-value" id="r-productsite"></div></div>
       <div class="field"><div class="field-label">Description</div><div class="field-value"><textarea id="r-desc-input" class="modal-ta" rows="2" style="width:100%;font-size:12px;resize:vertical;min-height:44px!important;padding:5px 8px;" placeholder="What is this product, briefly…"></textarea></div></div>
@@ -300,21 +303,35 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="addMethodModal">
-  <div class="modal" style="max-width:420px;">
+<!-- METHODS MODAL — same review/stage/commit flow as the campaign
+     microsite's ⚙ modal: AI-suggested + already-attached methods, remove/
+     search/add-new, nothing saved until "Add Methods". New methods get
+     auto-researched into a full framework on commit (createAndAttachMethod
+     -> researchAndWriteMethodology). -->
+<div class="modal-overlay" id="productMethodsModal" onclick="if(event.target===this)closeProductMethodsModal()">
+  <div class="modal" style="max-width:460px;">
     <div class="modal-head">
-      <div class="modal-title">Add Method</div>
-      <button class="modal-close" onclick="closeAddMethodModal()">✕</button>
+      <div class="modal-title">Methods</div>
+      <button class="modal-close" onclick="closeProductMethodsModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="modal-hint">Manually attach an existing method to this product — independent of any AI-recommended methods already attached.</div>
-      <input class="modal-ta" id="ammSearchInput" type="text" placeholder="Search methods…" style="height:32px;padding:5px 10px;margin-top:10px;" autocomplete="off" oninput="filterAddMethodList()" />
-      <div id="ammList" style="max-height:220px;overflow-y:auto;margin-top:8px;display:flex;flex-direction:column;gap:4px;"></div>
-      <div id="ammStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:16px;"></div>
+      <div class="modal-hint">Suggested and currently-attached methods for this product. Remove any you don't want, search to add more, or type a new one — nothing is saved until you click Add Methods.</div>
+      <div id="pmList" style="margin-top:12px;display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;"></div>
+      <label class="lm-label" for="pmSearchInput" style="margin-top:14px;">Add existing method</label>
+      <div style="position:relative;" id="pm-search-wrap">
+        <input class="modal-ta" id="pmSearchInput" type="text" placeholder="Search methods…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" oninput="filterPmSearch()" onfocus="filterPmSearch()" />
+        <div id="pmSearchDd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:160px;overflow-y:auto;"></div>
+      </div>
+      <label class="lm-label" for="pmNewInput" style="margin-top:10px;">Or add a brand-new method by name</label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <input class="modal-ta" id="pmNewInput" type="text" placeholder="New method name…" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" />
+        <button class="td-add-btn-inline" id="pmNewAddBtn" onclick="addPmNewByName()" style="padding:0 10px;">+</button>
+      </div>
+      <div id="pmStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:16px;"></div>
     </div>
     <div class="modal-foot">
-      <button class="modal-btn cancel" onclick="closeAddMethodModal()">Cancel</button>
-      <button class="modal-btn save" id="ammAddBtn" onclick="confirmAddMethod()" disabled>Add</button>
+      <button class="modal-btn cancel" onclick="closeProductMethodsModal()">Cancel</button>
+      <button class="modal-btn save" id="pmCommitBtn" onclick="commitProductMethods()">Add Methods</button>
     </div>
   </div>
 </div>
@@ -567,21 +584,15 @@ async function saveStrategyField(field) {
 }
 
 // ── Strategy & Titles panel ───────────────────────────────────────────
-// A destination method's (Needs Traffic Plan) Notion-page framework
-// (headlines/CTA copy/offer structure/proof points) is a BRIEF for one
-// asset, not a list of publishable pieces. It's also commonly BIG — a
-// Product Page framework can run 10+ phases / 60-100 individual
-// deliverable prompts — so instead of one "Generate Strategy" call trying
-// to produce all of it at once (which silently truncates well before the
-// end once a framework has more than a handful of phases), each phase is
-// its own row with its own small, independent Generate button — grounded
-// in the PRODUCT's own Title/Description/Keywords above, not campaign
-// research. Regenerating one phase only replaces that phase's own blocks
-// in the Strategy doc; every other phase is untouched. Generate Titles
-// then reads the ACCUMULATED strategy back as grounding to produce real
-// publishable deliverables. Traffic-child methods (linked under a
-// destination via Traffic Methods) nest under their parent and get their
-// own Generate Titles, gated until at least one phase has content.
+// Generate Titles (genPsTitles -> generateTitlesFromProductStrategy) reads
+// the PRODUCT-level Strategy panel above (11 fields) + Keywords as the
+// grounding for every attached method, regardless of type — no more
+// destination/traffic-child/flat branching or per-method Strategy-doc
+// prerequisite. A legacy per-method Strategy doc, if one exists from
+// earlier work, still renders read/editable below for reference — but it's
+// no longer required before Generate Titles works. Traffic-child methods
+// (linked under a destination via Traffic Methods) nest under their
+// parent with their own Generate Titles, ungated too.
 function psRowBtn(label, onclick, id, disabled) {
   return `<button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" ${id ? `id="${id}"` : ''} ${disabled ? `disabled title="${esc(disabled)}"` : ''} onclick="${onclick}">${label}</button>`;
 }
@@ -614,10 +625,14 @@ function renderStrategyPanel() {
     let controls = '', body = '', childrenHtml = '';
     if (detail) {
       if (detail.needsTrafficPlan) {
+        // Generate Titles is UNGATED — it reads the product-level Strategy
+        // panel above, not this method's own (legacy) Strategy doc. The old
+        // per-method doc, if one exists, is shown read/editable below purely
+        // for reference/cleanup, not as a prerequisite for titles anymore.
         const hasStrategy = !!detail.strategy;
         const editing = PS_EDITING.has(m.id);
+        controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',true,null)`, 'psRowTitles-' + m.id);
         if (hasStrategy) {
-          controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',true,null)`, 'psRowTitles-' + m.id);
           controls += psRowBtn(editing ? 'Cancel' : '✎ Edit', `psToggleEdit('${m.id}')`, null);
           controls += ` <a href="${detail.strategy.url}" target="_blank" class="notion-link" style="font-size:11px;">↗ Notion</a>`;
           body = editing
@@ -626,17 +641,12 @@ function renderStrategyPanel() {
                 <div style="margin-top:6px;">${psRowBtn('Save', `psSaveStrategyEdit('${m.id}')`, null)}</div>
               </div>`
             : `<div class="body-text" style="white-space:pre-wrap;font-size:12px;margin-top:8px;padding:8px 10px;background:#0d0d0d;border:1px solid #1a1a1a;">${esc(detail.strategy.text || '(empty)')}</div>`;
-        } else {
-          controls = '<span style="font-size:11px;color:#555;">No strategy doc for this method yet.</span>';
         }
-        childrenHtml = (detail.trafficMethods || []).map(c => {
-          const disabled = hasStrategy ? null : "No parent strategy doc yet";
-          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px 6px 22px;border-top:1px solid #1a1a1a;flex-wrap:wrap;">
+        childrenHtml = (detail.trafficMethods || []).map(c => `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px 6px 22px;border-top:1px solid #1a1a1a;flex-wrap:wrap;">
             <span style="font-size:10px;color:#666;">↳ traffic</span>
             <span style="flex:1;font-size:12px;color:#ccc;">${esc(c.name)}</span>
-            ${psRowBtn('Generate Titles', `genPsTitles('${c.id}',false,'${m.id}')`, 'psRowTitles-' + c.id, disabled)}
-          </div>`;
-        }).join('');
+            ${psRowBtn('Generate Titles', `genPsTitles('${c.id}',false,'${m.id}')`, 'psRowTitles-' + c.id)}
+          </div>`).join('');
       } else if (!(detail.trafficMethods || []).length) {
         controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',false,null)`, 'psRowTitles-' + m.id);
       }
@@ -680,6 +690,13 @@ async function refreshStrategyPanel() {
   PRODUCT_METHOD_CHILD_IDS = childIds;
   renderStrategyPanel();
 }
+// Generates titles for ANY attached method — no destination/traffic-child/
+// flat distinction anymore. Every method's titles are grounded in the
+// PRODUCT-level Strategy (all 11 fields) + Keywords generated on this page,
+// plus that method's own framework (generateTitlesFromProductStrategy).
+// Carousel/Upwork-Titles methods keep their dedicated live-research
+// pipelines (Instagram benchmarking / Upwork job scraping) since those
+// genuinely need real-time external data the Strategy fields can't provide.
 async function genPsTitles(methodId, isDestination, parentMethodId) {
   const m = PRODUCT_METHODS.find(x => x.id === methodId);
   const name = m ? m.name : 'method';
@@ -688,39 +705,21 @@ async function genPsTitles(methodId, isDestination, parentMethodId) {
   if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
   if (status) { status.textContent = `Generating titles for "${name}"…`; status.style.color = '#888'; }
   try {
-    if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
     let created = 0;
-    if (isDestination) {
-      const r = await w('generateTitlesFromStrategy', { productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID, methodId, methodName: name });
-      if (r.error) throw new Error(r.error);
-      created = r.created || 0;
-    } else if (parentMethodId) {
-      const parent = PRODUCT_METHODS.find(x => x.id === parentMethodId);
-      const child = (PRODUCT_METHOD_DETAILS[parentMethodId]?.trafficMethods || []).find(c => c.id === methodId);
-      const r = await w('generateTrafficMethodTitles', {
-        productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID,
-        parentMethodName: parent ? parent.name : '', parentMethodId,
-        childMethodId: methodId, childMethodName: child ? child.name : name, childMethodNotes: child ? child.notes : '',
-      });
-      if (r.error) throw new Error(r.error);
-      created = r.created || 0;
-    } else if (/carousel/i.test(name)) {
+    if (/carousel/i.test(name)) {
+      if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
       const r = await w('researchAndGenerateCarouselTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
       if (r.error) throw new Error(r.error);
       created = r.created || 0;
     } else if (/upwork/i.test(name) && /title|market|trend/i.test(name)) {
+      if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
       const r = await w('researchUpworkMarketTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
       if (r.error) throw new Error(r.error);
       created = r.created || 0;
     } else {
-      const data = await w('generateMethodTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
-      if (data.error) throw new Error(data.error);
-      const titles = data.titles || [];
-      for (let i = 0; i < titles.length; i += 10) {
-        const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
-        if (r.error) throw new Error(r.error);
-        created += r.created || 0;
-      }
+      const r = await w('generateTitlesFromProductStrategy', { productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined, methodId, methodName: name });
+      if (r.error) throw new Error(r.error);
+      created = r.created || 0;
     }
     await loadTitles();
     if (status) { status.textContent = `✓ Generated ${created} title${created === 1 ? '' : 's'} for "${name}".`; status.style.color = '#68d391'; }
@@ -989,62 +988,171 @@ async function submitAddTitle() {
 }
 
 
-// ── Add Method (manual) ───────────────────────────────────────────────
-// Independent of the AI ecosystem/method-matching pipeline — lets the user
-// always hand-attach an existing method to this product.
-let AMM_SELECTED_ID = null;
-function renderAmmList(methods) {
-  const el = document.getElementById('ammList');
-  if (!methods.length) { el.innerHTML = '<div style="font-size:12px;color:#555;padding:6px 2px;">No methods found.</div>'; return; }
-  el.innerHTML = methods.map(m => {
-    const selected = m.id === AMM_SELECTED_ID;
-    return `<div onclick="selectAmmMethod('${m.id}', this)" style="cursor:pointer;padding:6px 8px;border:1px solid ${selected ? '#e8ff47' : '#2a2a2a'};color:${selected ? '#e8ff47' : '#c9c9c9'};font-size:12px;border-radius:3px;" data-id="${m.id}">${esc(m.name)}</div>`;
+// ── Methods modal ──────────────────────────────────────────────────────
+// Full parity with the campaign microsite's ⚙ modal: AI-suggested +
+// already-attached methods, remove/search/add-new, nothing saved until
+// "Add Methods". Kept independent of the AI ecosystem/method-matching
+// pipeline elsewhere — this is always available to hand-edit a product's
+// methods directly. New methods get auto-researched into a full
+// Phase>Grouping framework on commit (createAndAttachMethod already does
+// this server-side — see researchAndWriteMethodology).
+let PM_PRODUCT_ID = null, PM_PRODUCT_NAME = '';
+let PM_ORIGINAL_IDS = new Set();
+// { kind:'existing', id, name, augmentedNotes?, suggested?, trafficChild? } |
+// { kind:'new', name, platform?, category?, notes?, suggested?, researched?, needsTrafficPlan?, trafficChild? }
+let PM_STAGED = [];
+function pmChildRow(child, parentIdx) {
+  if (!child) return '';
+  const label = child.kind === 'existing' ? child.name : `${child.name} <em style="color:#888;font-style:normal;">(new)</em>`;
+  return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px 5px 22px;border:1px solid #2a2a2a;border-top:none;border-radius:0 0 3px 3px;background:#161616;">
+    <span style="font-size:10px;color:#666;">↳ traffic</span>
+    <span style="flex:1;font-size:12px;color:#ccc;">${label}</span>
+    <button class="td-del" onclick="removePmTrafficChild(${parentIdx})" title="Remove">✕</button>
+  </div>`;
+}
+function renderPmList() {
+  const el = document.getElementById('pmList');
+  if (!PM_STAGED.length) { el.innerHTML = '<div class="empty">No methods staged — search below or add a new one.</div>'; return; }
+  el.innerHTML = PM_STAGED.map((m, i) => {
+    const label = m.kind === 'existing' ? m.name : `${m.name} <em style="color:#888;font-style:normal;">(new${m.researched ? ', researched' : ''})</em>`;
+    const badge = m.suggested ? '<span style="font-size:9px;color:#e8ff47;border:1px solid #3a3a2a;border-radius:3px;padding:1px 5px;margin-left:6px;">suggested</span>' : '';
+    const radius = m.trafficChild ? '3px 3px 0 0' : '3px';
+    return `<div>
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #2a2a2a;border-radius:${radius};">
+        <span style="flex:1;font-size:13px;color:#ddd;">${label}${badge}</span>
+        <button class="td-del" onclick="removePmStaged(${i})" title="Remove">✕</button>
+      </div>
+      ${pmChildRow(m.trafficChild, i)}
+    </div>`;
   }).join('');
 }
-function selectAmmMethod(id, el) {
-  AMM_SELECTED_ID = id;
-  document.querySelectorAll('#ammList > div').forEach(d => {
-    const on = d.dataset.id === id;
-    d.style.borderColor = on ? '#e8ff47' : '#2a2a2a';
-    d.style.color = on ? '#e8ff47' : '#c9c9c9';
+function removePmStaged(i) { PM_STAGED.splice(i, 1); renderPmList(); }
+function removePmTrafficChild(i) { if (PM_STAGED[i]) PM_STAGED[i].trafficChild = null; renderPmList(); }
+
+let PM_OPEN_TOKEN = 0;
+function setPmStagingLocked(locked) {
+  ['pmSearchInput', 'pmNewInput', 'pmNewAddBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = locked;
   });
-  document.getElementById('ammAddBtn').disabled = false;
 }
-async function filterAddMethodList() {
-  const q = document.getElementById('ammSearchInput').value.trim();
+async function openProductMethodsModal(productId, productName) {
+  const myToken = ++PM_OPEN_TOKEN;
+  PM_PRODUCT_ID = productId; PM_PRODUCT_NAME = productName;
+  PM_STAGED = [];
+  PM_ORIGINAL_IDS = new Set();
+  document.getElementById('pmSearchInput').value = '';
+  document.getElementById('pmNewInput').value = '';
+  document.getElementById('pmSearchDd').style.display = 'none';
+  document.getElementById('pmStatus').textContent = '';
+  document.getElementById('pmCommitBtn').disabled = true;
+  document.getElementById('pmCommitBtn').textContent = 'Add Methods';
+  document.getElementById('pmList').innerHTML = '<div class="loading"><div class="spinner"></div>Suggesting…</div>';
+  document.getElementById('productMethodsModal').classList.add('open');
+  setPmStagingLocked(true);
   try {
-    const data = await w('searchMethods', { query: q });
-    renderAmmList(data.methods || []);
+    const data = await w('suggestProductMethod', { productId });
+    if (myToken !== PM_OPEN_TOKEN) return;
+    if (data.error) throw new Error(data.error);
+    const already = data.alreadyAttached || [];
+    PM_ORIGINAL_IDS = new Set(already.map(a => a.id));
+    PM_STAGED = already.map(a => ({ kind: 'existing', id: a.id, name: a.name }));
+    const sug = data.suggestion;
+    if (sug) {
+      const ts = sug.trafficSuggestion;
+      const trafficChild = ts
+        ? (ts.isExisting ? { kind: 'existing', id: ts.methodId, name: ts.methodName, augmentedNotes: ts.notes || '' }
+                          : { kind: 'new', name: ts.methodName, platform: ts.platform, category: ts.category, notes: ts.notes })
+        : null;
+      if (sug.isExisting) {
+        if (!PM_STAGED.some(m => m.kind === 'existing' && m.id === sug.methodId)) {
+          PM_STAGED.push({ kind: 'existing', id: sug.methodId, name: sug.methodName, augmentedNotes: sug.notes || '', suggested: true, trafficChild });
+        }
+      } else {
+        PM_STAGED.push({ kind: 'new', name: sug.methodName, platform: sug.platform, category: sug.category, notes: sug.notes, suggested: true, researched: !!sug.researched, needsTrafficPlan: !!sug.needsTrafficPlan, trafficChild });
+      }
+    }
+    renderPmList();
   } catch(e) {
-    document.getElementById('ammList').innerHTML = `<div style="font-size:12px;color:#e05;">${esc(e.message)}</div>`;
+    if (myToken !== PM_OPEN_TOKEN) return;
+    document.getElementById('pmList').innerHTML = `<div style="font-size:12px;color:#e05;">${esc(e.message)}</div>`;
+  } finally {
+    if (myToken === PM_OPEN_TOKEN) { setPmStagingLocked(false); document.getElementById('pmCommitBtn').disabled = false; }
   }
 }
-function openAddMethodModal() {
-  AMM_SELECTED_ID = null;
-  document.getElementById('ammSearchInput').value = '';
-  document.getElementById('ammStatus').textContent = '';
-  document.getElementById('ammAddBtn').disabled = true;
-  document.getElementById('ammAddBtn').textContent = 'Add';
-  document.getElementById('addMethodModal').classList.add('open');
-  filterAddMethodList();
+function closeProductMethodsModal() {
+  document.getElementById('productMethodsModal').classList.remove('open');
+  PM_PRODUCT_ID = null;
 }
-function closeAddMethodModal() { document.getElementById('addMethodModal').classList.remove('open'); }
-async function confirmAddMethod() {
-  if (!AMM_SELECTED_ID) return;
-  const btn = document.getElementById('ammAddBtn');
-  const status = document.getElementById('ammStatus');
-  btn.disabled = true; btn.textContent = 'Adding…';
+async function filterPmSearch() {
+  const q = document.getElementById('pmSearchInput').value.trim();
+  const dd = document.getElementById('pmSearchDd');
+  if (!q) { dd.style.display = 'none'; return; }
   try {
-    const r = await w('addProductMethod', { productId: PRODUCT_ID, methodId: AMM_SELECTED_ID });
-    if (r.error) throw new Error(r.error);
+    const data = await w('searchMethods', { query: q });
+    const methods = (data.methods || []).filter(m => !PM_STAGED.some(s => s.kind === 'existing' && s.id === m.id)).slice(0, 10);
+    dd.innerHTML = methods.map(m => `<div class="plat-dd-item" onmousedown="addPmExisting('${m.id}','${m.name.replace(/'/g,"\\'")}')">${esc(m.name)}</div>`).join('');
+    dd.style.display = methods.length ? 'block' : 'none';
+  } catch(e) { dd.style.display = 'none'; }
+}
+function addPmExisting(id, name) {
+  if (!PM_STAGED.some(s => s.kind === 'existing' && s.id === id)) PM_STAGED.push({ kind: 'existing', id, name });
+  document.getElementById('pmSearchInput').value = '';
+  document.getElementById('pmSearchDd').style.display = 'none';
+  renderPmList();
+}
+function addPmNewByName() {
+  const name = document.getElementById('pmNewInput').value.trim();
+  if (!name) return;
+  PM_STAGED.push({ kind: 'new', name });
+  document.getElementById('pmNewInput').value = '';
+  renderPmList();
+}
+async function commitProductMethods() {
+  if (!PM_PRODUCT_ID) return;
+  const btn = document.getElementById('pmCommitBtn');
+  const status = document.getElementById('pmStatus');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  status.textContent = '';
+  try {
+    const stagedExistingIds = new Set(PM_STAGED.filter(m => m.kind === 'existing').map(m => m.id));
+    for (const id of PM_ORIGINAL_IDS) {
+      if (!stagedExistingIds.has(id)) await w('removeProductMethod', { productId: PM_PRODUCT_ID, methodId: id });
+    }
+    let trafficLinked = 0;
+    for (const m of PM_STAGED) {
+      let parentId = null;
+      if (m.kind === 'existing') {
+        parentId = m.id;
+        if (!PM_ORIGINAL_IDS.has(m.id)) {
+          await w('addProductMethod', { productId: PM_PRODUCT_ID, methodId: m.id, augmentedNotes: m.augmentedNotes || undefined });
+        }
+      } else {
+        const r = await w('createAndAttachMethod', { productId: PM_PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined, name: m.name, platform: m.platform, category: m.category, notes: m.notes, needsTrafficPlan: m.needsTrafficPlan || (!!m.trafficChild) });
+        if (r.error) throw new Error(r.error);
+        parentId = r.methodId;
+      }
+      if (m.trafficChild && parentId) {
+        const c = m.trafficChild;
+        let childId = null;
+        if (c.kind === 'existing') {
+          childId = c.id;
+          await w('addProductMethod', { productId: PM_PRODUCT_ID, methodId: c.id, augmentedNotes: c.augmentedNotes || undefined });
+        } else {
+          const r = await w('createAndAttachMethod', { productId: PM_PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined, name: c.name, platform: c.platform, category: c.category, notes: c.notes });
+          if (!r.error) childId = r.methodId;
+        }
+        if (childId) { await w('linkTrafficMethod', { parentMethodId: parentId, childMethodId: childId }); trafficLinked++; }
+      }
+    }
     await loadProduct();
-    status.textContent = '✓ Added.';
+    status.textContent = trafficLinked ? `✓ Methods added — ${trafficLinked} traffic plan${trafficLinked === 1 ? '' : 's'} linked.` : '✓ Methods added — new methods are being researched into a full framework in the background.';
     status.style.color = '#68d391';
-    setTimeout(closeAddMethodModal, 700);
+    setTimeout(closeProductMethodsModal, 1400);
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.style.color = '#fc8181';
-    btn.disabled = false; btn.textContent = 'Add';
+    btn.disabled = false; btn.textContent = 'Add Methods';
   }
 }
 
