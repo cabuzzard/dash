@@ -3231,6 +3231,7 @@ function renderLinks() {
             (p.url ? '<a href="' + esc(p.url) + '" target="_blank" style="margin-left:10px;color:var(--text3);text-decoration:none;font-size:12px;">🔗</a>' : '') +
             (p.notionUrl ? '<a href="' + esc(p.notionUrl) + '" target="_blank" style="margin-left:6px;color:var(--text3);text-decoration:none;font-size:12px;">↗</a>' : '') +
             retryBtn +
+            deleteBtn +
           '</div>' +
         '</div>' +
         notesBlock + errorBlock +
@@ -3260,6 +3261,21 @@ async function retryLinkRow(id) {
     const result = await call('retrySavedPost', { id });
     showToast(result.ok ? 'Done ✓' : 'Failed: ' + result.error, result.ok ? 'success' : 'error');
     await loadLinks();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    if (row) row.style.opacity = '1';
+  }
+}
+
+async function deleteLinkRow(id) {
+  if (!confirm('Delete this saved post?\nThis archives it in Notion.')) return;
+  const row = document.getElementById('linkRow_' + id);
+  if (row) row.style.opacity = '0.5';
+  try {
+    await call('deleteSavedPost', { id });
+    LINKS_POSTS = LINKS_POSTS.filter(p => p.id !== id);
+    renderLinks();
+    showToast('Deleted ✓', 'success');
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
     if (row) row.style.opacity = '1';
