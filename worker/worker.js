@@ -70,6 +70,15 @@ function json(data, status = 200) {
   });
 }
 
+// Some Apify actors (e.g. the YouTube transcripts one) return captions with
+// raw HTML entities instead of real characters (&#39;s instead of 's).
+const HTML_ENTITIES = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&apos;": "'", "&nbsp;": " " };
+function decodeHtmlEntities(s) {
+  return s
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&amp;|&lt;|&gt;|&quot;|&#39;|&apos;|&nbsp;/g, m => HTML_ENTITIES[m]);
+}
+
 // Strip backslash-escaping that the Notion MCP applies to JSON strings.
 // Notion MCP stores '{"key":"val"}' as '\{"key":"val"\}' (literal leading/trailing backslash).
 function stripMcpEscaping(s) {
@@ -1190,15 +1199,19 @@ async function fetchSavedPostContent(env, platform, url) {
   }
 
   if (platform === "YouTube") {
+    // codepoetry/youtube-transcript-ai-scraper failed on every video tested
+    // (including the actor's own documented example) — switched to
+    // karamelo/youtube-transcripts, verified working against real saved URLs.
     let transcript = "", title = "", author = "", note = "";
     try {
-      const items = await callApifyActor(AT, "codepoetry~youtube-transcript-ai-scraper", { startUrls: [url], enableAiFallback: true }, 120);
+      const items = await callApifyActor(AT, "karamelo~youtube-transcripts", {
+        urls: [url], outputFormat: "singleStringText", channelNameBoolean: true, descriptionBoolean: true,
+      }, 90);
       const yt = items?.[0];
-      if (!yt || yt.error) throw new Error(yt?.error || "No transcript returned");
-      transcript = yt.transcript_text || yt.transcript_llm || "";
-      title = yt.metadata?.title || yt.title || "";
-      author = yt.metadata?.channel_name || yt.metadata?.channelName || yt.channelName || "";
-      if (yt.is_ai_generated) note = "Transcript generated via AI speech-to-text (no native captions available).";
+      if (!yt || !yt.captions) throw new Error("No captions returned (video may have none)");
+      transcript = decodeHtmlEntities(String(yt.captions));
+      title = yt.title || "";
+      author = yt.channelName || "";
     } catch (e) {
       note = `Transcript actor failed (${e.message}) — trying audio download + ElevenLabs.`;
     }
