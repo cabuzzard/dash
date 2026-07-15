@@ -94,6 +94,33 @@ async function notionQuery(dbId, body) {
   return results;
 }
 
+// Whenever a Method gets attached to a Product (AI-matched or manually), also
+// attach it to every Campaign that Product is linked to, so it shows up in
+// the campaign microsite's Methods field too — not just on the product.
+// Best-effort: failures here don't fail the caller's product-method attach.
+async function propagateMethodToCampaigns(productId, methodId) {
+  const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  try {
+    const prodResp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr });
+    const prodPage = await prodResp.json();
+    const campaignRels = (prodPage.properties?.["Campaigns"]?.relation || []).map(r => r.id.replace(/-/g,""));
+    for (const campaignId of campaignRels) {
+      try {
+        const campResp = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr });
+        const campPage = await campResp.json();
+        const existing = (campPage.properties?.["Methods"]?.relation || []).map(r => ({ id: r.id }));
+        if (existing.some(r => r.id.replace(/-/g,"") === methodId.replace(/-/g,""))) continue;
+        existing.push({ id: dash(methodId) });
+        await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Methods": { relation: existing } } }),
+        });
+      } catch(e) { /* best-effort per campaign */ }
+    }
+  } catch(e) { /* best-effort — never block the product-method attach */ }
+}
+
 // â"€â"€ SESSION TOKEN HELPERS â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 async function signToken(secret) {
   const payload  = { exp: Date.now() + 8 * 3600 * 1000, v: 1 };
@@ -2733,6 +2760,9 @@ OR
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { Methods: { relation: existingRel } } }),
         });
+        // Also attach to every Campaign this product belongs to, so it shows
+        // in the campaign microsite's Methods field, not just on the product.
+        await propagateMethodToCampaigns(productId, methodId);
 
         return json({ success: true, productId, methodId, methodName, wasNew, augmented });
       }
@@ -2759,6 +2789,8 @@ OR
         });
         const result = await patchResp.json();
         if (!patchResp.ok) return json({ error: result.message || "Update failed" }, patchResp.status);
+        // Also attach to every Campaign this product belongs to.
+        await propagateMethodToCampaigns(productId, methodId);
         return json({ success: true });
       }
 

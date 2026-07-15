@@ -2473,8 +2473,24 @@ function makeProductRow(p) {
   const typeBadge = p.type
     ? `<span title="Type" style="font-size:9px;color:#888;border:1px solid #2a2a2a;border-radius:3px;padding:1px 5px;flex-shrink:0;white-space:nowrap;">${p.type}</span>`
     : '';
-  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}<button class="td-add-btn-inline" onclick="rematchProductMethod('${p.id}', this)" title="Match/rematch method (existing-first, also attaches to campaign)">🔁</button>${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
+}
+
+// Re-runs the existing-first method matching for one product (e.g. after
+// editing its Type), and — via the worker's propagateMethodToCampaigns —
+// also attaches the matched method to this campaign's own Methods field.
+async function rematchProductMethod(productId, btn) {
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await w('matchProductMethod', { productId, campaignId: CAMPAIGN_ID });
+    if (r.error) throw new Error(r.error);
+    await loadMethods();
+    btn.textContent = '✓'; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+  } catch(e) {
+    btn.textContent = orig; btn.disabled = false;
+    alert('Error matching method: ' + e.message);
+  }
 }
 
 function renderProducts() {
