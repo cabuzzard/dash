@@ -197,6 +197,20 @@ async function extractBlocksTextRecursive(hdr, blockId, depth = 0) {
 // phases in document order — this is what lets a big framework (e.g. an
 // 11-phase Product Page framework) be generated ONE PHASE AT A TIME instead
 // of in one Claude call that risks truncating well before the last phases.
+//
+// Each phase also gets a `kind`: "strategy" (positioning/messaging content
+// true of the product regardless of platform — belongs in the product-level
+// Strategy DB) or "asset" (platform/destination-specific deliverables —
+// belongs in Titles). Freshly-researched methods (via
+// researchAndWriteMethodology) tag this directly in the heading text —
+// "Phase: Problem [Strategy]" — so classification works for ANY method
+// going forward without a hardcoded name list. Older methods authored
+// before that convention (e.g. Product Page) have no tag, so this falls
+// back to STRATEGY_FIELD_PHASE_MAP's reverse lookup (a phase name that
+// equals one of that map's *values* is "strategy"); anything else defaults
+// to "asset" — the safe default, since assets flow to Titles rather than
+// silently overwriting one of the 12 fixed Strategy fields.
+const STRATEGY_PHASE_NAMES = new Set(Object.values(STRATEGY_FIELD_PHASE_MAP));
 async function parseMethodPhases(hdr, methodId) {
   const resp = await fetch(`https://api.notion.com/v1/blocks/${methodId}/children?page_size=100`, { headers: hdr }).then(r => r.json());
   const blocks = resp.results || [];
@@ -205,11 +219,15 @@ async function parseMethodPhases(hdr, methodId) {
   for (const b of blocks) {
     const type = b.type;
     const rich = b[type]?.rich_text || [];
-    const text = rich.map(t => t.plain_text).join("").replace(/^Phase:\s*/i, "").trim();
-    const groupingText = rich.map(t => t.plain_text).join("").replace(/^Grouping:\s*/i, "").trim();
+    const rawText = rich.map(t => t.plain_text).join("");
+    const text = rawText.replace(/^Phase:\s*/i, "").trim();
+    const groupingText = rawText.replace(/^Grouping:\s*/i, "").trim();
     if (type === "heading_1" || type === "heading_2") {
       if (!text) continue;
-      curPhase = { name: text, groupings: [] };
+      const tagMatch = text.match(/^(.*?)\s*\[(Strategy|Asset)\]\s*$/i);
+      const name = tagMatch ? tagMatch[1].trim() : text;
+      const kind = tagMatch ? tagMatch[2].toLowerCase() : (STRATEGY_PHASE_NAMES.has(text) ? "strategy" : "asset");
+      curPhase = { name, kind, groupings: [] };
       phases.push(curPhase);
       curGrouping = null;
     } else if (type === "heading_3") {
@@ -222,6 +240,80 @@ async function parseMethodPhases(hdr, methodId) {
     }
   }
   return phases;
+}
+
+// Researches and writes a COMPLETE Phase>Grouping>items methodology
+// framework for a method — the "replenish until fully researched" step.
+// Skips (returns {skipped:true}) if the method already has a substantial
+// framework (>= 3 phases) unless `force` is set, so this is safe to call
+// automatically on every method create/attach without clobbering existing
+// work. Each phase gets tagged [Strategy] or [Asset] by Claude directly in
+// the heading text (see parseMethodPhases) — this is what lets brand-new
+// methods slot into the Strategy/Titles split without a hardcoded name map.
+async function researchAndWriteMethodology(hdr, env, methodId, methodName, platform, productContext, force) {
+  if (!env.ANTHROPIC_API_KEY) return { skipped: true, reason: "no API key" };
+  if (!force) {
+    try {
+      const existing = await parseMethodPhases(hdr, methodId);
+      if (existing.length >= 3) return { skipped: true, reason: "already researched", phaseCount: existing.length };
+    } catch(e) { /* fall through and research anyway */ }
+  }
+  const prompt = `You are a marketing methodologist. Research and write a COMPLETE marketing methodology framework for the method "${methodName}"${platform ? ` (platform: ${platform})` : ''}, as it would be used to market and sell a product.
+${productContext ? `\nCONTEXT — being set up right now for this product: ${productContext}\n` : ''}
+Organize the methodology into PHASES (major stages of using this method) and, within each phase, GROUPINGS (sub-categories), each with 2-5 specific deliverable-prompt bullet items.
+
+CRITICAL — classify EVERY phase as one of:
+- "strategy": positioning/messaging content that is TRUE OF THE PRODUCT regardless of which platform/method markets it (audience/pain points, proof, offer structure, objections, benefits, emotional drivers, transformation). Reusable across any method — not specific to "${methodName}".
+- "asset": platform/destination-specific deliverables — actual pieces that must be built/written/published specifically for ${methodName} (headlines, captions, visuals, technical specs, format/length/character-count constraints, etc.)
+
+Ground this in real, current best practices for "${methodName}" — cite real tactics, formats, and constraints (character limits, ideal lengths, platform conventions) where relevant, not generic funnel theory.
+
+Return ONLY a JSON array, no other text, no markdown fences:
+[{ "phase": "...", "kind": "strategy"|"asset", "groupings": [{ "name": "...", "items": ["...", "..."] }] }]`;
+
+  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "web-search-2025-03-05", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }], messages: [{ role: "user", content: prompt }] }),
+  });
+  const aiData = await aiResp.json();
+  if (!aiResp.ok) return { error: aiData.error?.message || "Claude API error" };
+  let raw = '';
+  for (const block of (aiData.content || [])) { if (block.type === 'text') raw += block.text; }
+  let phases;
+  try {
+    const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+    if (s === -1 || e === -1 || e < s) throw new Error("No JSON array found");
+    phases = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+    if (!Array.isArray(phases)) throw new Error("Not an array");
+  } catch(e) {
+    return { error: "Failed to parse methodology JSON: " + e.message + " | RAW: " + raw.slice(0, 300) };
+  }
+
+  const rtBlock = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1990), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+  const headingBlock = (level, text) => ({ object: "block", type: `heading_${level}`, [`heading_${level}`]: { rich_text: rtBlock(text) } });
+  const bulletBlock = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
+  const children = [];
+  for (const p of phases) {
+    const kind = /^strategy$/i.test(p.kind) ? "Strategy" : "Asset";
+    children.push(headingBlock(2, `Phase: ${p.phase} [${kind}]`));
+    for (const g of (p.groupings || [])) {
+      children.push(headingBlock(3, `Grouping: ${g.name}`));
+      for (const item of (g.items || [])) children.push(bulletBlock(item));
+    }
+  }
+
+  // Replace whatever body currently exists — this only runs when the
+  // method is thin/stub (see the skip check above) or explicitly forced.
+  const existingBlocks = await fetch(`https://api.notion.com/v1/blocks/${methodId}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+  await Promise.all((existingBlocks.results || []).map(b => fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: "DELETE", headers: hdr })));
+  for (let i = 0; i < children.length; i += 90) {
+    await fetch(`https://api.notion.com/v1/blocks/${methodId}/children`, {
+      method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ children: children.slice(i, i + 90) }),
+    });
+  }
+  return { researched: true, phaseCount: phases.length };
 }
 
 // â"€â"€ SESSION TOKEN HELPERS â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -3064,6 +3156,20 @@ Return ONLY a JSON object, no other text, no markdown fences:
         });
         await propagateMethodToCampaigns(productId, methodId);
 
+        // Replenish the new method's methodology into a full, classified
+        // Phase>Grouping framework — best-effort, never blocks the attach.
+        // The short `notes` paragraph (if any) becomes the seed/context for
+        // a genuinely researched framework, not the final methodology.
+        try {
+          const ppc = prodPage.properties || {};
+          const productContext = [
+            (ppc.Name?.title || []).map(t => t.plain_text).join(""),
+            (ppc.Description?.rich_text || []).map(t => t.plain_text).join(""),
+            notes ? `Seed notes for this method: ${notes}` : '',
+          ].filter(Boolean).join(" — ");
+          await researchAndWriteMethodology(hdr, env, dash(methodId), name, platform, productContext, false);
+        } catch(e) { /* best-effort — method still usable with just its short notes */ }
+
         return json({ success: true, methodId, methodName: name });
       }
 
@@ -3444,6 +3550,37 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
         const created = await createResp.json();
         if (!createResp.ok || !created.id) return json({ error: created.message || "Strategy create failed" }, createResp.status || 500);
         return json({ success: true, strategyId: created.id.replace(/-/g,""), url: created.url });
+      }
+
+      // ── researchMethodology ──
+      // Explicit/manual trigger for researchAndWriteMethodology — normally
+      // this runs automatically (best-effort) inside createAndAttachMethod
+      // and addProductMethod, but this lets a thin method be re-researched
+      // on demand (pass force:true to overwrite an existing framework, e.g.
+      // after the auto-run produced something too shallow).
+      if (body.action === "researchMethodology") {
+        const { methodId, productId, force } = body;
+        if (!methodId) return json({ error: "methodId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const methodPage = await fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, { headers: hdr }).then(r => r.json());
+        if (methodPage.object === "error" || !methodPage.properties) return json({ error: methodPage.message || "Method not found" }, 404);
+        const methodName = (methodPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Method";
+        const platform = methodPage.properties?.Platform?.select?.name || "";
+        let productContext = "";
+        if (productId) {
+          try {
+            const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+            const ppc = productPage.properties || {};
+            productContext = [
+              (ppc.Name?.title || []).map(t => t.plain_text).join(""),
+              (ppc.Description?.rich_text || []).map(t => t.plain_text).join(""),
+            ].filter(Boolean).join(" — ");
+          } catch(e) { /* research still runs without product context */ }
+        }
+        const result = await researchAndWriteMethodology(hdr, env, dash(methodId), methodName, platform, productContext, !!force);
+        if (result.error) return json({ error: result.error }, 500);
+        return json(result);
       }
 
       // ── getMethodPhases ──
@@ -3884,16 +4021,14 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const { productId, methodId, augmentedNotes } = body;
         if (!productId || !methodId) return json({ error: "productId and methodId required" }, 400);
         const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
-        const prodResp = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, {
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
-        });
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const prodResp = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, { headers: hdr });
         const prodPage = await prodResp.json();
         const existing = (prodPage.properties?.["Methods"]?.relation || []).map(r => ({ id: r.id }));
         const alreadyLinked = existing.some(r => r.id.replace(/-/g,"") === methodId.replace(/-/g,""));
         if (!alreadyLinked) existing.push({ id: dashId(methodId) });
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "Methods": { relation: existing } } }),
         });
         const result = await patchResp.json();
@@ -3902,13 +4037,29 @@ Return ONLY a JSON array — no other text, no markdown fences:
         // now that the user has explicitly committed to this method.
         if (augmentedNotes) {
           await fetch(`https://api.notion.com/v1/pages/${dashId(methodId)}`, {
-            method: "PATCH",
-            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({ properties: { Notes: { rich_text: [{ type: "text", text: { content: String(augmentedNotes).slice(0, 1990) } }] } } }),
           });
         }
         // Also attach to every Campaign this product belongs to.
         await propagateMethodToCampaigns(productId, methodId);
+
+        // Reusing an EXISTING method still needs to be "fully researched" —
+        // best-effort; researchAndWriteMethodology no-ops if this method
+        // already has a substantial framework, so this is safe to run on
+        // every attach without re-researching methods that don't need it.
+        try {
+          const methodPage = await fetch(`https://api.notion.com/v1/pages/${dashId(methodId)}`, { headers: hdr }).then(r => r.json());
+          const methodName = (methodPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Method";
+          const platform = methodPage.properties?.Platform?.select?.name || "";
+          const ppc = prodPage.properties || {};
+          const productContext = [
+            (ppc.Name?.title || []).map(t => t.plain_text).join(""),
+            (ppc.Description?.rich_text || []).map(t => t.plain_text).join(""),
+          ].filter(Boolean).join(" — ");
+          await researchAndWriteMethodology(hdr, env, dashId(methodId), methodName, platform, productContext, false);
+        } catch(e) { /* best-effort — method stays usable as-is */ }
+
         return json({ success: true });
       }
 
