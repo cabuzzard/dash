@@ -110,16 +110,18 @@
   </div>
 </div>
 
-<!-- SEC 1.5: one-col — Strategy & Titles, per attached method. TRANSITIONAL:
-     this still writes a per-method Strategy DB record scoped by
-     Product+Method (the pre-"Product Strategy" design) for methods whose
-     framework hasn't been audited into STRATEGY_FIELD_PHASE_MAP yet.
-     Destination (Needs Traffic Plan) methods get per-phase Generate, then
-     Generate Titles once a phase has content, with the accumulated doc
-     rendered inline AND hand-editable (✎ Edit — updateMethodStrategyText).
-     Their linked traffic methods nest underneath with their own Generate
-     Titles, gated on at least one phase having content. Ordinary flat
-     methods get a plain Generate Titles. -->
+<!-- SEC 1.5: one-col — Strategy & Titles, per attached method. Per-phase
+     GENERATION into a Product+Method-scoped Strategy record was removed
+     2026-07-15 — that job now belongs entirely to the Product Strategy
+     panel above (product-level, not per-method). This panel is now
+     read/Titles-only: destination (Needs Traffic Plan) methods show
+     whatever's already in their Strategy doc (rendered inline, hand-
+     editable via ✎ Edit — updateMethodStrategyText) plus Generate Titles;
+     methods with no existing Strategy doc show neither, until the
+     method-by-method audit routes their asset-shaped content into Titles
+     directly. Traffic-child methods nest underneath with their own
+     Generate Titles, gated on the parent having a Strategy doc. Ordinary
+     flat methods get a plain Generate Titles. -->
 <div class="one-col">
   <div class="col">
     <h2>Strategy &amp; Titles</h2>
@@ -593,33 +595,26 @@ function renderStrategyPanel() {
   if (!PRODUCT_METHODS.length) { el.innerHTML = '<div class="empty">No methods attached — add one above.</div>'; return; }
   el.innerHTML = PRODUCT_METHODS.filter(m => !PRODUCT_METHOD_CHILD_IDS.has(m.id)).map(m => {
     const detail = PRODUCT_METHOD_DETAILS[m.id];
-    let controls = '', body = '', phaseRows = '', childrenHtml = '';
+    let controls = '', body = '', childrenHtml = '';
     if (detail) {
       if (detail.needsTrafficPlan) {
-        const phases = detail.phases || [];
-        const hasContent = phases.some(p => p.hasContent);
+        const hasStrategy = !!detail.strategy;
         const editing = PS_EDITING.has(m.id);
-        if (hasContent) {
+        if (hasStrategy) {
           controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',true,null)`, 'psRowTitles-' + m.id);
           controls += psRowBtn(editing ? 'Cancel' : '✎ Edit', `psToggleEdit('${m.id}')`, null);
-          if (detail.strategyUrl) controls += ` <a href="${detail.strategyUrl}" target="_blank" class="notion-link" style="font-size:11px;">↗ Notion</a>`;
-        }
-        phaseRows = phases.length
-          ? phases.map((p, i) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px 4px 22px;border-top:1px solid #161616;flex-wrap:wrap;">
-              <span style="flex:1;font-size:12px;color:${p.hasContent ? '#ccc' : '#666'};">${esc(p.name)} <span style="color:#444;font-size:10px;">(${p.itemCount} item${p.itemCount === 1 ? '' : 's'})</span>${p.hasContent ? ' <span style="color:#68d391;">✓</span>' : ''}</span>
-              ${psRowBtn(p.hasContent ? '↻' : 'Generate', `genPsPhase('${m.id}','${p.name.replace(/'/g,"\\'")}',${i})`, 'psPhase-' + m.id + '-' + i)}
-            </div>`).join('')
-          : '<div style="font-size:11px;color:#555;padding:4px 8px 4px 22px;">Loading sections…</div>';
-        if (hasContent) {
+          controls += ` <a href="${detail.strategy.url}" target="_blank" class="notion-link" style="font-size:11px;">↗ Notion</a>`;
           body = editing
             ? `<div style="margin-top:8px;">
-                <textarea id="psEditTa-${m.id}" style="width:100%;min-height:180px;background:#0d0d0d;border:1px solid #2a2a2a;color:#ddd;font-family:inherit;font-size:12px;line-height:1.6;padding:8px 10px;resize:vertical;">${esc(detail.strategy?.text || '')}</textarea>
+                <textarea id="psEditTa-${m.id}" style="width:100%;min-height:180px;background:#0d0d0d;border:1px solid #2a2a2a;color:#ddd;font-family:inherit;font-size:12px;line-height:1.6;padding:8px 10px;resize:vertical;">${esc(detail.strategy.text || '')}</textarea>
                 <div style="margin-top:6px;">${psRowBtn('Save', `psSaveStrategyEdit('${m.id}')`, null)}</div>
               </div>`
-            : `<div class="body-text" style="white-space:pre-wrap;font-size:12px;margin-top:8px;padding:8px 10px;background:#0d0d0d;border:1px solid #1a1a1a;">${esc(detail.strategy?.text || '(empty)')}</div>`;
+            : `<div class="body-text" style="white-space:pre-wrap;font-size:12px;margin-top:8px;padding:8px 10px;background:#0d0d0d;border:1px solid #1a1a1a;">${esc(detail.strategy.text || '(empty)')}</div>`;
+        } else {
+          controls = '<span style="font-size:11px;color:#555;">No strategy doc for this method yet.</span>';
         }
         childrenHtml = (detail.trafficMethods || []).map(c => {
-          const disabled = hasContent ? null : "Generate at least one section above first";
+          const disabled = hasStrategy ? null : "No parent strategy doc yet";
           return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px 6px 22px;border-top:1px solid #1a1a1a;flex-wrap:wrap;">
             <span style="font-size:10px;color:#666;">↳ traffic</span>
             <span style="flex:1;font-size:12px;color:#ccc;">${esc(c.name)}</span>
@@ -635,16 +630,19 @@ function renderStrategyPanel() {
         <a href="https://www.notion.so/${m.id}" target="_blank" rel="noopener" class="notion-link" style="flex:1;font-size:13px;">${esc(m.name)}</a>
         ${controls}
       </div>
-      ${phaseRows}
       ${body}
       ${childrenHtml}
     </div>`;
   }).join('');
 }
-// Fetches Needs-Traffic-Plan / linked-traffic-children / phase list /
-// accumulated Strategy text for every attached method, then re-renders the
-// panel so each row grows the right controls. Runs in the background after
-// loadProduct's fast render, and again after any per-row generation.
+// Fetches Needs-Traffic-Plan / linked-traffic-children / accumulated
+// Strategy text for every attached method, then re-renders the panel so
+// each row grows the right controls. Runs in the background after
+// loadProduct's fast render, and again after any per-row generation. Note:
+// per-phase generation into this Product+Method-scoped Strategy doc was
+// removed 2026-07-15 — that's now the Product Strategy panel's job
+// (product-level, not per-method). This panel is read/Titles-only until
+// the method-by-method audit routes the rest into Titles directly.
 async function refreshStrategyPanel() {
   const detailsMap = {};
   const childIds = new Set();
@@ -652,40 +650,19 @@ async function refreshStrategyPanel() {
     try {
       const d = await w('getMethodDetails', { methodId: m.id });
       if (d.error) return;
-      detailsMap[m.id] = { needsTrafficPlan: !!d.needsTrafficPlan, trafficMethods: d.trafficMethods || [], strategy: null, phases: [], strategyUrl: null };
+      detailsMap[m.id] = { needsTrafficPlan: !!d.needsTrafficPlan, trafficMethods: d.trafficMethods || [], strategy: null };
       for (const c of (d.trafficMethods || [])) childIds.add(c.id);
     } catch(e) {}
   }));
   await Promise.all(Object.keys(detailsMap).filter(id => detailsMap[id].needsTrafficPlan).map(async id => {
     try {
-      const [s, ph] = await Promise.all([
-        w('getMethodStrategy', { productId: PRODUCT_ID, methodId: id }),
-        w('getMethodPhases', { productId: PRODUCT_ID, methodId: id }),
-      ]);
+      const s = await w('getMethodStrategy', { productId: PRODUCT_ID, methodId: id });
       detailsMap[id].strategy = s.strategy || null;
-      detailsMap[id].phases = ph.phases || [];
-      detailsMap[id].strategyUrl = ph.strategyUrl || s.strategy?.url || null;
     } catch(e) {}
   }));
   PRODUCT_METHOD_DETAILS = detailsMap;
   PRODUCT_METHOD_CHILD_IDS = childIds;
   renderStrategyPanel();
-}
-async function genPsPhase(methodId, phaseName, idx) {
-  const m = PRODUCT_METHODS.find(x => x.id === methodId);
-  const btn = document.getElementById('psPhase-' + methodId + '-' + idx);
-  const status = document.getElementById('strategyStatus');
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
-  if (status) { status.textContent = `Generating "${phaseName}"…`; status.style.color = '#888'; }
-  try {
-    const r = await w('generateStrategySection', { productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined, methodId, methodName: m ? m.name : '', phase: phaseName });
-    if (r.error) throw new Error(r.error);
-    if (status) { status.textContent = `✓ "${phaseName}" generated (${r.itemCount} item${r.itemCount === 1 ? '' : 's'}).`; status.style.color = '#68d391'; }
-    await refreshStrategyPanel();
-  } catch(e) {
-    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
-    if (btn) { btn.disabled = false; btn.textContent = '↻'; }
-  }
 }
 async function genPsTitles(methodId, isDestination, parentMethodId) {
   const m = PRODUCT_METHODS.find(x => x.id === methodId);
