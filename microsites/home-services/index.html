@@ -2484,6 +2484,16 @@ function makeProductRow(p) {
   return row;
 }
 
+// Which ecosystem groups are collapsed, keyed by tag — persists across
+// re-renders within the page session (survives adds/removes elsewhere) but
+// not a page reload.
+let COLLAPSED_ECOSYSTEMS = new Set();
+function toggleEcosystemGroup(tag) {
+  if (COLLAPSED_ECOSYSTEMS.has(tag)) COLLAPSED_ECOSYSTEMS.delete(tag);
+  else COLLAPSED_ECOSYSTEMS.add(tag);
+  renderProducts();
+}
+
 function renderProducts() {
   const el = document.getElementById('product-list');
   el.innerHTML = '';
@@ -2502,14 +2512,20 @@ function renderProducts() {
     else ungrouped.push(p);
   });
   Object.keys(groups).forEach(tag => {
+    const collapsed = COLLAPSED_ECOSYSTEMS.has(tag);
     const wrap = document.createElement('div');
     wrap.style.cssText = 'border-left:2px solid #e8ff47;padding-left:8px;margin-bottom:10px;';
-    const header = document.createElement('div');
-    header.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#e8ff47;margin-bottom:4px;';
-    header.innerHTML = `🧬 ${tag}`;
-    wrap.appendChild(header);
     const members = groups[tag].slice().sort((a, b) => rankMarketingPhase(a.marketingPhase) - rankMarketingPhase(b.marketingPhase));
-    members.forEach(p => wrap.appendChild(makeProductRow(p)));
+    const header = document.createElement('div');
+    header.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#e8ff47;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;';
+    header.innerHTML = `<span style="display:inline-block;width:8px;transform:rotate(${collapsed ? '-90deg' : '0deg'});transition:transform .12s;">▾</span>🧬 ${tag} <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;">(${members.length})</span>`;
+    header.onclick = () => toggleEcosystemGroup(tag);
+    wrap.appendChild(header);
+    if (!collapsed) {
+      const body = document.createElement('div');
+      members.forEach(p => body.appendChild(makeProductRow(p)));
+      wrap.appendChild(body);
+    }
     el.appendChild(wrap);
   });
   ungrouped.forEach(p => el.appendChild(makeProductRow(p)));
