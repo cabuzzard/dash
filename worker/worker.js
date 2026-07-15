@@ -4961,6 +4961,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
             scheduled: props["Scheduled Date"]?.date?.start || "",
             productId: (props.product?.relation || [])[0]?.id?.replace(/-/g,"") || "__none__",
             methodId:  (props.method?.relation  || [])[0]?.id?.replace(/-/g,"") || "__none__",
+            assetIds:  (props.Assets?.relation || []).map(r => r.id.replace(/-/g,"")),
           };
         });
         // Resolve product + method names
@@ -4979,6 +4980,28 @@ Return ONLY a JSON array — no other text, no markdown fences:
           t.grouping = parts.length > 1 ? parts.slice(1).join(' > ').trim() : (t._rawGrouping || '');
           delete t._rawGrouping;
         });
+        // Attach asset summaries to PUBLISH-stage titles so the sites can
+        // render them as rows under each title. Dev-stage titles skip the
+        // extra fetches — assets matter once a title is being published.
+        const PUB_STAGES = new Set(["Publish", "Published", "Done"]);
+        await Promise.all(titleList.map(async t => {
+          if (!PUB_STAGES.has(t.stage) || !t.assetIds.length) { t.assets = []; return; }
+          t.assets = (await Promise.all(t.assetIds.map(async aid => {
+            try {
+              const r = await fetch(`https://api.notion.com/v1/pages/${dashify(aid)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
+              if (!r.ok) return null;
+              const p = (await r.json()).properties || {};
+              return {
+                id: aid,
+                title: p["Asset Title"]?.title?.map(x => x.plain_text).join("") || "Untitled",
+                platform: p["Platform Name"]?.select?.name || "",
+                type: p["Asset Type"]?.select?.name || "",
+                status: p["Asset Status"]?.select?.name || "",
+                designLink: p["Design Link"]?.url || "",
+              };
+            } catch(e) { return null; }
+          }))).filter(Boolean);
+        }));
         return json({ titles: titleList });
       }
 

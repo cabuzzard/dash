@@ -1246,7 +1246,23 @@ async function loadTitles() {
       const div = document.createElement('div');
       div.className = 'title-row';
       div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-build-btn" onclick="openBuildModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.productId||'__none__'}')" title="Build carousel">🎨</button><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Create asset">+</button><button class="title-asset-btn" onclick="makeProductFromTitle('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Create product from title">♻</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
-      return div;
+      if (!t.assets || !t.assets.length) return div;
+      // publish-stage titles: render each linked asset as an indented row
+      const wrap = document.createElement('div');
+      wrap.appendChild(div);
+      t.assets.forEach(a => {
+        const ar = document.createElement('div');
+        ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
+        ar.innerHTML = `<span style="font-size:9px;color:#666;flex-shrink:0;">↳</span>`
+          + (a.platform ? `<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:rgba(167,139,250,.12);color:#a78bfa;flex-shrink:0;">${esc(a.platform)}</span>` : '')
+          + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.title)}</span>`
+          + (a.type ? `<span style="font-size:10px;color:#777;flex-shrink:0;">${esc(a.type)}</span>` : '')
+          + (a.status ? `<span style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${a.status==='Published'?'#4fd1c5':(a.status==='Publish'?'#fc8181':'#888')};flex-shrink:0;">${esc(a.status)}</span>` : '')
+          + (a.designLink ? `<a href="${esc(a.designLink)}" target="_blank" rel="noopener" style="color:#4488ff;text-decoration:none;font-size:11px;flex-shrink:0;" title="Design link">🎨</a>` : '')
+          + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" style="flex-shrink:0;">↗</a>`;
+        wrap.appendChild(ar);
+      });
+      return wrap;
     }
     function renderGroupingLevel(titles, container) {
       const groupOrder = [], byGroup = {};
