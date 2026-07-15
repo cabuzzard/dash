@@ -10,7 +10,7 @@
 <style>
 /* STATUS CHANGE BUTTON */
 .title-status-btn {
-  font-size: 11px; color: #2a2a2a; background: none; border: 1px solid #1a1a1a;
+  font-size: 11px; color: #5f5f5f; background: none; border: 1px solid #5f5f5f;
   padding: 1px 6px; cursor: pointer; font-family: 'Syne', sans-serif;
   flex-shrink: 0; transition: all .15s; line-height: 1.4;
 }
@@ -22,7 +22,7 @@
 .status-opt-btn:disabled { cursor: default; }
 /* LOGIN LIST */
 .login-platform-group { margin-bottom: 14px; }
-.login-platform-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #555; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; margin-bottom: 6px; }
+.login-platform-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #555; padding-bottom: 6px; border-bottom: 1px solid #5f5f5f; margin-bottom: 6px; }
 .login-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .login-row:last-child { border-bottom: none; }
 /* TD LIST */
@@ -38,7 +38,7 @@
 .campaign-name { flex: 1; font-size: 13px; color: #c9c9c9; }
 /* METHOD SEARCH DROPDOWN (Methods modal) */
 .plat-dd-item { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #c9c9c9; border-bottom: 1px solid #1e1e1e; }
-.plat-dd-item:hover { background: #2a2a2a; }
+.plat-dd-item:hover { background: #5f5f5f; }
 </style>
 </head>
 <body>
@@ -637,12 +637,12 @@ function renderStrategyPanel() {
           controls += ` <a href="${detail.strategy.url}" target="_blank" class="notion-link" style="font-size:11px;">↗ Notion</a>`;
           body = editing
             ? `<div style="margin-top:8px;">
-                <textarea id="psEditTa-${m.id}" style="width:100%;min-height:180px;background:#0d0d0d;border:1px solid #2a2a2a;color:#ddd;font-family:inherit;font-size:12px;line-height:1.6;padding:8px 10px;resize:vertical;">${esc(detail.strategy.text || '')}</textarea>
+                <textarea id="psEditTa-${m.id}" style="width:100%;min-height:180px;background:#0d0d0d;border:1px solid #5f5f5f;color:#ddd;font-family:inherit;font-size:12px;line-height:1.6;padding:8px 10px;resize:vertical;">${esc(detail.strategy.text || '')}</textarea>
                 <div style="margin-top:6px;">${psRowBtn('Save', `psSaveStrategyEdit('${m.id}')`, null)}</div>
               </div>`
-            : `<div class="body-text" style="white-space:pre-wrap;font-size:12px;margin-top:8px;padding:8px 10px;background:#0d0d0d;border:1px solid #1a1a1a;">${esc(detail.strategy.text || '(empty)')}</div>`;
+            : `<div class="body-text" style="white-space:pre-wrap;font-size:12px;margin-top:8px;padding:8px 10px;background:#0d0d0d;border:1px solid #5f5f5f;">${esc(detail.strategy.text || '(empty)')}</div>`;
         }
-        childrenHtml = (detail.trafficMethods || []).map(c => `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px 6px 22px;border-top:1px solid #1a1a1a;flex-wrap:wrap;">
+        childrenHtml = (detail.trafficMethods || []).map(c => `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px 6px 22px;border-top:1px solid #5f5f5f;flex-wrap:wrap;">
             <span style="font-size:10px;color:#666;">↳ traffic</span>
             <span style="flex:1;font-size:12px;color:#ccc;">${esc(c.name)}</span>
             ${psRowBtn('Generate Titles', `genPsTitles('${c.id}',false,'${m.id}')`, 'psRowTitles-' + c.id)}
@@ -651,7 +651,7 @@ function renderStrategyPanel() {
         controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',false,null)`, 'psRowTitles-' + m.id);
       }
     }
-    return `<div style="border:1px solid #1a1a1a;border-radius:3px;margin-bottom:8px;">
+    return `<div style="border:1px solid #5f5f5f;border-radius:3px;margin-bottom:8px;">
       <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;flex-wrap:wrap;">
         <a href="https://www.notion.so/${m.id}" target="_blank" rel="noopener" class="notion-link" style="flex:1;font-size:13px;">${esc(m.name)}</a>
         ${controls}
@@ -849,7 +849,7 @@ async function loadDeliverables() {
 async function loadSmPosts() {
   const box = document.getElementById('smPostsBox');
   if (!box) return;
-  box.innerHTML = '<div class="empty" style="color:#2a2a2a;font-style:italic;">SM Posts coming soon — link posts to products in Notion to populate this panel.</div>';
+  box.innerHTML = '<div class="empty" style="color:#5f5f5f;font-style:italic;">SM Posts coming soon — link posts to products in Notion to populate this panel.</div>';
 }
 
 // ── Logins ─────────────────────────────────────────────────────────────
@@ -1004,7 +1004,7 @@ let PM_STAGED = [];
 function pmChildRow(child, parentIdx) {
   if (!child) return '';
   const label = child.kind === 'existing' ? child.name : `${child.name} <em style="color:#888;font-style:normal;">(new)</em>`;
-  return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px 5px 22px;border:1px solid #2a2a2a;border-top:none;border-radius:0 0 3px 3px;background:#161616;">
+  return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px 5px 22px;border:1px solid #5f5f5f;border-top:none;border-radius:0 0 3px 3px;background:#161616;">
     <span style="font-size:10px;color:#666;">↳ traffic</span>
     <span style="flex:1;font-size:12px;color:#ccc;">${label}</span>
     <button class="td-del" onclick="removePmTrafficChild(${parentIdx})" title="Remove">✕</button>
@@ -1018,7 +1018,7 @@ function renderPmList() {
     const badge = m.suggested ? '<span style="font-size:9px;color:#e8ff47;border:1px solid #3a3a2a;border-radius:3px;padding:1px 5px;margin-left:6px;">suggested</span>' : '';
     const radius = m.trafficChild ? '3px 3px 0 0' : '3px';
     return `<div>
-      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #2a2a2a;border-radius:${radius};">
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #5f5f5f;border-radius:${radius};">
         <span style="flex:1;font-size:13px;color:#ddd;">${label}${badge}</span>
         <button class="td-del" onclick="removePmStaged(${i})" title="Remove">✕</button>
       </div>
