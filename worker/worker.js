@@ -21,6 +21,36 @@ const RUNS_DB            = "21c676fd91b74137b5f3ab57167a0849";
 const DRIVES_DB          = "3751f7d3a4bb806cb133ff9182306ec8";
 const RESUMES_DB         = "3751f7d3a4bb80599583c9aef8d10b05";
 const DESIGN_SPECS_DB    = "3981f7d3a4bb817c8edad15db64fa50d";
+
+// Strategy DB (per-PRODUCT, not per-method) — a fixed positioning schema
+// true for the product regardless of which platform/method it's marketed
+// through. "Customer"/"Niche"/"Keywords" have no direct source in a
+// method's own framework and are generated from product context alone;
+// the rest map to whichever attached method's framework defines that
+// concept (best-effort — a method without a matching phase just falls
+// back to product-context-only generation for that field too).
+const STRATEGY_FIELDS = ["Customer", "Niche", "Pain Points", "Emotions", "Solution", "Benefits", "Unique Opportunity", "Transformation", "Offer Structure", "Proof Points", "Objections", "Keywords"];
+const STRATEGY_FIELD_PHASE_MAP = {
+  "Pain Points": "Problem", "Emotions": "Problem",
+  "Solution": "Solution", "Benefits": "Solution", "Unique Opportunity": "Solution", "Transformation": "Solution",
+  "Offer Structure": "Offer",
+  "Proof Points": "Proof",
+  "Objections": "Objection Handling",
+};
+const STRATEGY_FIELD_HINTS = {
+  "Customer": "Who this product is for — specific situation, identity, demographic/psychographic details.",
+  "Niche": "The specific market/positioning angle — how this fits into a broader category, what makes it a distinct niche rather than a generic offer.",
+  "Pain Points": "The specific problems, frustrations, and situations the customer is in right now.",
+  "Emotions": "The emotional state connected to the problem and the desired outcome — what they feel now, what they want to feel instead.",
+  "Solution": "The mechanism — how this product actually solves the problem, the core approach or system, not just a features list.",
+  "Benefits": "The outcomes the customer gets — framed as what they get, not what the product does.",
+  "Unique Opportunity": "Why this product/approach beats every alternative — the differentiator, the thing no one else can say.",
+  "Transformation": "Before state → after state. What changes and how life looks different.",
+  "Offer Structure": "What's included, format, duration, delivery method, pricing, guarantee.",
+  "Proof Points": "The kind of proof, results, and credibility signals this product should point to.",
+  "Objections": "The top objections a buyer would have and the honest answer to each.",
+  "Keywords": "SEO/positioning keywords this product should be associated with — real search terms, not generic category words.",
+};
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -3242,6 +3272,178 @@ Return ONLY a JSON object, no other text, no markdown fences:
           return t;
         }).filter(Boolean).join("\n");
         return json({ strategy: { id: strategyId, url: record.url, text, status: record.properties?.Status?.select?.name || "" } });
+      }
+
+      // ── getProductStrategy ──
+      // Reads the PRODUCT-level Strategy record (one per product, looked up
+      // by Product relation only — NOT scoped to a method) — all
+      // STRATEGY_FIELDS values plus Status/url. Powers the product site's
+      // Strategy panel.
+      if (body.action === "getProductStrategy") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
+        }).then(r => r.json());
+        const record = (q.results || [])[0];
+        if (!record) return json({ strategy: null });
+        const props = record.properties || {};
+        const rt = key => (props[key]?.rich_text || []).map(t => t.plain_text).join("");
+        const fields = {};
+        for (const f of STRATEGY_FIELDS) fields[f] = rt(f);
+        return json({ strategy: { id: record.id.replace(/-/g,""), url: record.url, status: props.Status?.select?.name || "", fields } });
+      }
+
+      // ── generateStrategyField ──
+      // Generates ONE field of the product-level Strategy — grounded in the
+      // product's own Title/Description/Keywords, whichever attached
+      // method's framework defines the mapped phase (best-effort, via
+      // STRATEGY_FIELD_PHASE_MAP + parseMethodPhases), and every
+      // already-generated field on this Strategy record (for coherence —
+      // e.g. Benefits should stay consistent with an already-written Pain
+      // Points). Upserts by PRODUCT only, writing just this one property —
+      // every other field is untouched.
+      if (body.action === "generateStrategyField") {
+        const { productId, field } = body;
+        if (!productId || !field) return json({ error: "productId and field required" }, 400);
+        if (!STRATEGY_FIELDS.includes(field)) return json({ error: "Unknown field: " + field }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+        const pp = productPage.properties || {};
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+        const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+
+        // Best-effort: pull the mapped phase's text from whichever attached
+        // method actually defines it.
+        let phaseSource = '', phaseSourceName = STRATEGY_FIELD_PHASE_MAP[field] || '';
+        if (phaseSourceName) {
+          const methodIds = (pp.Methods?.relation || []).map(r => r.id.replace(/-/g,""));
+          for (const mid of methodIds) {
+            try {
+              const phases = await parseMethodPhases(hdr, dash(mid));
+              const match = phases.find(p => p.name === phaseSourceName);
+              if (match) {
+                phaseSource = match.groupings.map(g => `${g.name}:\n${g.notes.map(n => `- ${n}`).join("\n")}`).join("\n\n");
+                break;
+              }
+            } catch(e) { /* try next method */ }
+          }
+        }
+
+        // Existing other fields on this Strategy record, for coherence.
+        const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
+        }).then(r => r.json());
+        const existing = (q.results || [])[0];
+        const existingProps = existing?.properties || {};
+        const otherFieldsText = STRATEGY_FIELDS.filter(f => f !== field).map(f => {
+          const v = (existingProps[f]?.rich_text || []).map(t => t.plain_text).join("");
+          return v ? `${f}: ${v}` : '';
+        }).filter(Boolean).join("\n");
+
+        const prompt = `You are a marketing strategist writing ONE field of a product's core strategy document — a fixed positioning reference used across every marketing channel this product is sold through, not tied to any one platform.
+
+PRODUCT: ${productName}
+DESCRIPTION: ${productDesc || "(none)"}
+KEYWORDS: ${productKeywords || "(none)"}
+${otherFieldsText ? `\nALREADY-ESTABLISHED STRATEGY (stay consistent with this):\n${otherFieldsText}\n` : ''}${phaseSource ? `\nRELEVANT FRAMEWORK GUIDANCE (from an attached method's "${phaseSourceName}" section — use this to inform what to write, don't just restate it verbatim):\n${phaseSource}\n` : ''}
+FIELD TO WRITE: ${field}
+${STRATEGY_FIELD_HINTS[field] || ''}
+
+Write ONLY the content for this field — 2-5 sentences, or a short bulleted list if the field is naturally list-shaped (e.g. Objections, Pain Points). No headers, no preamble, no "Here is...". Output only the field content itself.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        const text = (aiData.content?.[0]?.text || "").trim();
+        if (!text) return json({ error: "Empty response from Claude" }, 500);
+
+        const rtChunks = [];
+        for (let i = 0; i < Math.max(text.length, 1); i += 2000) rtChunks.push({ type: "text", text: { content: text.slice(i, i + 2000) } });
+
+        let strategyId, strategyUrl;
+        if (existing) {
+          strategyId = existing.id.replace(/-/g,""); strategyUrl = existing.url;
+          await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { [field]: { rich_text: rtChunks }, Status: { select: { name: "Current" } } } }),
+          });
+        } else {
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parent: { database_id: STRATEGY_DB },
+              properties: {
+                Name: { title: [{ type: "text", text: { content: `${productName} — Strategy`.slice(0, 200) } }] },
+                Product: { relation: [{ id: dash(productId) }] },
+                Status: { select: { name: "Current" } },
+                [field]: { rich_text: rtChunks },
+              },
+            }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Strategy create failed" }, createResp.status || 500);
+          strategyId = created.id.replace(/-/g,""); strategyUrl = created.url;
+        }
+
+        return json({ success: true, strategyId, url: strategyUrl, text });
+      }
+
+      // ── updateProductStrategyField ──
+      // Hand-edit / manual entry for one Strategy field — same upsert as
+      // generateStrategyField but writes a caller-supplied value directly.
+      if (body.action === "updateProductStrategyField") {
+        const { productId, field, value } = body;
+        if (!productId || !field) return json({ error: "productId and field required" }, 400);
+        if (!STRATEGY_FIELDS.includes(field)) return json({ error: "Unknown field: " + field }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rtStr = value || "";
+        const rtChunks = [];
+        for (let i = 0; i < Math.max(rtStr.length, 1); i += 2000) rtChunks.push({ type: "text", text: { content: rtStr.slice(i, i + 2000) } });
+
+        const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
+        }).then(r => r.json());
+        const existing = (q.results || [])[0];
+        if (existing) {
+          const strategyId = existing.id.replace(/-/g,"");
+          await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { [field]: { rich_text: rtChunks } } }),
+          });
+          return json({ success: true, strategyId, url: existing.url });
+        }
+        const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+        const productName = (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const createResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: STRATEGY_DB },
+            properties: {
+              Name: { title: [{ type: "text", text: { content: `${productName} — Strategy`.slice(0, 200) } }] },
+              Product: { relation: [{ id: dash(productId) }] },
+              Status: { select: { name: "Current" } },
+              [field]: { rich_text: rtChunks },
+            },
+          }),
+        });
+        const created = await createResp.json();
+        if (!createResp.ok || !created.id) return json({ error: created.message || "Strategy create failed" }, createResp.status || 500);
+        return json({ success: true, strategyId: created.id.replace(/-/g,""), url: created.url });
       }
 
       // ── getMethodPhases ──

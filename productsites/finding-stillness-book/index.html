@@ -91,16 +91,35 @@
   </div>
 </div>
 
-<!-- SEC 1.5: one-col — Strategy & Titles, per attached method. This is now
-     THE editable strategy surface for the product (replaces the old
-     Unique Angle/Avatar/Transformation/Offer Structure/Proof Points/
-     Objections fields above). Destination (Needs Traffic Plan) methods get
-     Generate Strategy, then Generate Titles once a strategy exists, with
-     the full strategy doc rendered inline AND hand-editable (✎ Edit —
-     updateMethodStrategyText) — not just a Notion link-out, so this page
-     is the complete picture. Their linked traffic methods nest underneath
-     with their own Generate Titles, gated on the parent strategy. Ordinary
-     flat methods get a plain Generate Titles. -->
+<!-- SEC 1.45: one-col — Product Strategy. Fixed positioning schema, ONE
+     record per PRODUCT (not per method) — true regardless of which
+     platform this product is marketed through. Each field is its own
+     independent Generate (grounded in product Title/Description/Keywords
+     + whichever attached method's framework defines that concept,
+     best-effort) + editable textarea + Save. This is now the canonical
+     "what to say" surface; the Strategy & Titles panel below is "what to
+     build/where" and is being reworked to route THIS content into
+     platform-specific Titles instead of duplicating strategy per method. -->
+<div class="one-col">
+  <div class="col">
+    <h2>Product Strategy</h2>
+    <div class="content">
+      <div id="strategyFieldsPanel"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div id="strategyFieldsStatus" style="font-size:12px;color:#888;margin-top:8px;min-height:16px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 1.5: one-col — Strategy & Titles, per attached method. TRANSITIONAL:
+     this still writes a per-method Strategy DB record scoped by
+     Product+Method (the pre-"Product Strategy" design) for methods whose
+     framework hasn't been audited into STRATEGY_FIELD_PHASE_MAP yet.
+     Destination (Needs Traffic Plan) methods get per-phase Generate, then
+     Generate Titles once a phase has content, with the accumulated doc
+     rendered inline AND hand-editable (✎ Edit — updateMethodStrategyText).
+     Their linked traffic methods nest underneath with their own Generate
+     Titles, gated on at least one phase having content. Ordinary flat
+     methods get a plain Generate Titles. -->
 <div class="one-col">
   <div class="col">
     <h2>Strategy &amp; Titles</h2>
@@ -438,6 +457,7 @@ async function loadProduct() {
       }
     }
     PRODUCT_CAMPAIGN_ID = (p.campaigns && p.campaigns[0]) ? p.campaigns[0].id : '';
+    loadProductStrategy(); // background — fetches the product-level Strategy fields
     renderStrategyPanel(); // fast render (no controls yet) — refreshStrategyPanel below fills them in
     refreshStrategyPanel(); // background — fetches per-method details/strategy status
 
@@ -460,6 +480,71 @@ async function saveProductMeta() {
     status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
   } finally {
     btn.disabled = false; btn.textContent = 'Save Description & Keywords';
+  }
+}
+
+// ── Product Strategy panel ────────────────────────────────────────────
+// Fixed positioning schema, ONE record per PRODUCT (not per method) — true
+// regardless of which platform/method this product is marketed through.
+// Each field generates independently (small call, grounded in product
+// context + whichever attached method's framework maps to it server-side)
+// so this never risks the same truncation problem a single big call had.
+const STRATEGY_FIELDS = ["Customer", "Niche", "Pain Points", "Emotions", "Solution", "Benefits", "Unique Opportunity", "Transformation", "Offer Structure", "Proof Points", "Objections", "Keywords"];
+let PRODUCT_STRATEGY = { fields: {}, url: null };
+function sfId(field) { return 'sf-' + field.replace(/\s+/g, '-'); }
+function renderStrategyFieldsPanel() {
+  const el = document.getElementById('strategyFieldsPanel');
+  if (!el) return;
+  el.innerHTML = STRATEGY_FIELDS.map(f => {
+    const val = PRODUCT_STRATEGY.fields[f] || '';
+    const id = sfId(f);
+    return `<div style="border-bottom:1px solid #161616;padding:8px 0;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="flex:1;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#666;">${esc(f)}</span>
+        <button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" id="${id}-btn" onclick="genStrategyField('${f}')">${val ? '↻' : 'Generate'}</button>
+        <button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" onclick="saveStrategyField('${f}')">Save</button>
+      </div>
+      <textarea id="${id}" class="modal-ta" rows="2" style="width:100%;margin-top:6px;font-size:12px;resize:vertical;min-height:44px!important;padding:6px 8px;">${esc(val)}</textarea>
+    </div>`;
+  }).join('') + (PRODUCT_STRATEGY.url ? `<div style="margin-top:8px;"><a href="${PRODUCT_STRATEGY.url}" target="_blank" class="notion-link" style="font-size:11px;">↗ Notion</a></div>` : '');
+}
+async function loadProductStrategy() {
+  try {
+    const data = await w('getProductStrategy', { productId: PRODUCT_ID });
+    PRODUCT_STRATEGY = { fields: (data.strategy && data.strategy.fields) || {}, url: data.strategy ? data.strategy.url : null };
+  } catch(e) { /* leave panel showing empty fields */ }
+  renderStrategyFieldsPanel();
+}
+async function genStrategyField(field) {
+  const btn = document.getElementById(sfId(field) + '-btn');
+  const status = document.getElementById('strategyFieldsStatus');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  if (status) { status.textContent = `Generating "${field}"…`; status.style.color = '#888'; }
+  try {
+    const r = await w('generateStrategyField', { productId: PRODUCT_ID, field });
+    if (r.error) throw new Error(r.error);
+    PRODUCT_STRATEGY.fields[field] = r.text;
+    PRODUCT_STRATEGY.url = r.url;
+    renderStrategyFieldsPanel();
+    if (status) { status.textContent = `✓ "${field}" generated.`; status.style.color = '#68d391'; }
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+    if (btn) { btn.disabled = false; btn.textContent = '↻'; }
+  }
+}
+async function saveStrategyField(field) {
+  const ta = document.getElementById(sfId(field));
+  if (!ta) return;
+  const status = document.getElementById('strategyFieldsStatus');
+  if (status) { status.textContent = `Saving "${field}"…`; status.style.color = '#888'; }
+  try {
+    const r = await w('updateProductStrategyField', { productId: PRODUCT_ID, field, value: ta.value.trim() });
+    if (r.error) throw new Error(r.error);
+    PRODUCT_STRATEGY.fields[field] = ta.value.trim();
+    PRODUCT_STRATEGY.url = r.url;
+    if (status) { status.textContent = `✓ "${field}" saved.`; status.style.color = '#68d391'; }
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
   }
 }
 
