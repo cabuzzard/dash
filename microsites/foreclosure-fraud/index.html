@@ -2440,17 +2440,19 @@ async function addMethodFromModal() {
 let PRODUCT_ITEMS = [];
 let ALL_PRODUCTS  = [];
 
-// Funnel-stage sort order within an ecosystem — the core/umbrella offer
+// Marketing-phase sort order within an ecosystem — the core/umbrella offer
 // leads, then top-of-funnel/lead-in/mid, then retention; unrecognized or
-// blank Type text sorts last rather than breaking the ordering.
-function rankProductType(t) {
-  const s = (t || '').toLowerCase();
+// blank phase text sorts last rather than breaking the ordering. This is
+// about FUNNEL ROLE (Marketing Phase), not product Type/format — those are
+// two different things (see matchProductMethod).
+function rankMarketingPhase(phase) {
+  const s = (phase || '').toLowerCase();
   if (s.includes('core')) return 0;
   if (s.includes('top') || s.includes('awareness') || s.includes('audience')) return 1;
   if (s.includes('lead') || s.includes('entry') || s.includes('diagnostic')) return 2;
   if (s.includes('mid') || s.includes('credibility')) return 3;
   if (s.includes('retention') || s.includes('membership') || s.includes('recurring') || s.includes('upsell')) return 4;
-  return t ? 5 : 6;
+  return phase ? 5 : 6;
 }
 
 function makeProductRow(p) {
@@ -2464,10 +2466,12 @@ function makeProductRow(p) {
   const psLink = p.productsite
     ? `<a href="${p.productsite}" target="_blank" rel="noopener" title="Product site" style="${psStyle}">site</a>`
     : `<button class="td-add-btn-inline" onclick="addProductSite('${p.id}', this)" title="Create product site" style="${psStyle};background:none;cursor:pointer;">+ site</button>`;
-  // Funnel-role badge — only shown when the product has a Type set (from the
-  // ecosystem pipeline's funnelStage; blank for individually-added products).
+  // Type badge = the product's FORMAT (PDF/Email/Quiz/Coaching/Membership/
+  // etc.) — shown here; Marketing Phase (funnel role) is used for sort order
+  // only and is written into the attached method's methodology text instead
+  // of being its own visible tag.
   const typeBadge = p.type
-    ? `<span title="Funnel role" style="font-size:9px;color:#888;border:1px solid #2a2a2a;border-radius:3px;padding:1px 5px;flex-shrink:0;white-space:nowrap;">${p.type}</span>`
+    ? `<span title="Type" style="font-size:9px;color:#888;border:1px solid #2a2a2a;border-radius:3px;padding:1px 5px;flex-shrink:0;white-space:nowrap;">${p.type}</span>`
     : '';
   row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
@@ -2480,10 +2484,10 @@ function renderProducts() {
   // Products spawned together by the 🧬 ecosystem pipeline share an
   // "ecosystem" tag (the seed idea's title) — group and label them so the
   // funnel is visible instead of a flat undifferentiated list. Within a
-  // group, order by funnel role (core/umbrella offer first) and show each
-  // product's Type as a badge. Products without a tag (everything created
-  // before this feature, or added individually) render exactly as before,
-  // ungrouped, in their original order.
+  // group, order by Marketing Phase (core/umbrella offer first) and show
+  // each product's Type (format) as a badge. Products without a tag
+  // (everything created before this feature, or added individually) render
+  // exactly as before, ungrouped, in their original order.
   const groups = {};
   const ungrouped = [];
   PRODUCT_ITEMS.forEach(p => {
@@ -2497,7 +2501,7 @@ function renderProducts() {
     header.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#e8ff47;margin-bottom:4px;';
     header.innerHTML = `🧬 ${tag}`;
     wrap.appendChild(header);
-    const members = groups[tag].slice().sort((a, b) => rankProductType(a.type) - rankProductType(b.type));
+    const members = groups[tag].slice().sort((a, b) => rankMarketingPhase(a.marketingPhase) - rankMarketingPhase(b.marketingPhase));
     members.forEach(p => wrap.appendChild(makeProductRow(p)));
     el.appendChild(wrap);
   });
@@ -4051,7 +4055,7 @@ async function runEcosystemBuild() {
     for (let i = 0; i < ecosystem.length; i++) {
       status.textContent = `Creating products ${i + 1} / ${ecosystem.length}…`;
       const item = ecosystem[i];
-      const r = await w('createEcosystemProduct', { name: item.name, description: item.description, campaignId: CAMPAIGN_ID, ecosystemTag: ideaTitle, type: item.funnelStage });
+      const r = await w('createEcosystemProduct', { name: item.name, description: item.description, campaignId: CAMPAIGN_ID, ecosystemTag: ideaTitle, type: item.type, marketingPhase: item.funnelStage });
       if (r.error) { status.textContent += `\n(skipped "${item.name}": ${r.error})`; continue; }
       created.push({ productId: r.productId, name: item.name });
     }

@@ -1534,9 +1534,12 @@ export default {
           // Shared tag set by the ecosystem pipeline (createEcosystemProduct) —
           // groups sibling products spawned from the same seed idea.
           ecosystem: (p.properties?.["Ecosystem"]?.rich_text || []).map(t => t.plain_text).join("") || null,
-          // Funnel role within that ecosystem (Top of funnel / Lead-in / Core
-          // offer / Retention / etc.) — orders/sub-groups rows within a group.
+          // Type = concrete FORMAT (PDF/Email/Quiz/Coaching/Membership/etc.) —
+          // shown on the row and fed into matchProductMethod's matching.
           type: (p.properties?.["Type"]?.rich_text || []).map(t => t.plain_text).join("") || null,
+          // Marketing Phase = funnel role (Top of funnel/Lead-in/Core
+          // offer/Retention) — orders rows within an ecosystem group.
+          marketingPhase: (p.properties?.["Marketing Phase"]?.rich_text || []).map(t => t.plain_text).join("") || null,
         }));
         return json({ products });
       }
@@ -2540,9 +2543,12 @@ INSTRUCTIONS:
 - Return 2-5 products total, including the seed idea itself as one of them (use the exact seed title for that one).
 - Each product needs a clear funnel role — do not invent products that don't serve getting someone to (or past) the core offer.
 - Descriptions must be concrete and specific to this idea, not generic funnel theory.
+- "type" and "funnelStage" are TWO DIFFERENT THINGS — do not conflate them:
+  - "type" = the concrete FORMAT/deliverable of the product — what it actually IS (e.g. PDF, Email, Video, Quiz, Coaching, Membership, Landing Page, Ebook, Webinar, App, Physical/Print, Course). This is what determines HOW it gets marketed.
+  - "funnelStage" = WHERE it sits in the funnel (e.g. Top of funnel, Lead-in, Core offer, Retention) — this is context for the methodology, not a format.
 
 Return ONLY a JSON array — no other text, no markdown fences:
-{ "name": "product name", "description": "1-3 sentences, specific to this idea", "funnelStage": "e.g. Top of funnel / Lead-in / Core offer / Retention" }`;
+{ "name": "product name", "description": "1-3 sentences, specific to this idea", "type": "concrete format, e.g. PDF / Email / Quiz / Coaching / Membership / Video / Landing Page", "funnelStage": "e.g. Top of funnel / Lead-in / Core offer / Retention" }`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -2570,7 +2576,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
       // with the shared Ecosystem group (the original seed idea title) so
       // sibling products can be found/displayed together later.
       if (body.action === "createEcosystemProduct") {
-        const { name, description, campaignId, ecosystemTag, type } = body;
+        const { name, description, campaignId, ecosystemTag, type, marketingPhase } = body;
         if (!name || !campaignId) return json({ error: "name and campaignId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
@@ -2581,10 +2587,13 @@ Return ONLY a JSON array — no other text, no markdown fences:
         };
         if (description) props["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
         if (ecosystemTag) props["Ecosystem"] = { rich_text: [{ type: "text", text: { content: String(ecosystemTag).slice(0, 200) } }] };
-        // Funnel role within the ecosystem (Top of funnel / Lead-in / Core
-        // offer / Retention / etc.), from researchProductEcosystem's
-        // funnelStage — drives grouping/ordering within an ecosystem in the UI.
+        // Type = concrete FORMAT (PDF, Email, Quiz, Coaching, Membership...) —
+        // this is what matchProductMethod uses to pick a method. Marketing
+        // Phase = funnel role (Top of funnel/Lead-in/Core offer/Retention) —
+        // context only, folded into the attached method's methodology text,
+        // not used to select the method itself.
         if (type) props["Type"] = { rich_text: [{ type: "text", text: { content: String(type).slice(0, 100) } }] };
+        if (marketingPhase) props["Marketing Phase"] = { rich_text: [{ type: "text", text: { content: String(marketingPhase).slice(0, 100) } }] };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ parent: { database_id: PRODUCTS_DB }, properties: props }),
@@ -2618,6 +2627,12 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const pp = productPage.properties || {};
         const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
         const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+        // Type (format — PDF/Email/Quiz/Coaching/Membership/etc.) is the
+        // PRIMARY signal for method selection. Marketing Phase (funnel role)
+        // is secondary — it doesn't pick the method, but gets folded into the
+        // methodology text below.
+        const productType = (pp.Type?.rich_text || []).map(t => t.plain_text).join("");
+        const marketingPhase = (pp["Marketing Phase"]?.rich_text || []).map(t => t.plain_text).join("");
 
         // Dedupe existing methods by NAME (case-insensitive) — the Methods DB
         // has known duplicates (e.g. "Upwork Proposal" / "upwork proposal");
@@ -2641,16 +2656,19 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const prompt = `You are a marketing strategist choosing HOW to market and sell one specific product. Below is the full list of EXISTING marketing methods already on file. Strongly prefer reusing one of them — only propose a new method if none of them genuinely fit this product's context.
 
 PRODUCT: ${productName}
+TYPE (format — this is the PRIMARY signal for which method fits): ${productType || "(not set — infer format from the name/description)"}
+MARKETING PHASE (funnel role — context only, not a format): ${marketingPhase || "(not set)"}
 DESCRIPTION: ${productDesc || "(none)"}
 
 EXISTING METHODS ON FILE:
 ${methodsBlock}
 
 INSTRUCTIONS:
-- If an existing method fits (even loosely — e.g. a generic "Campaign Page" method can serve a booking page, a waitlist page, or an offer page), choose it. Reference it by its [E#] tag.
-- Only set "isNew": true if nothing existing is even a loose fit for how this product would actually be marketed.
-- If reusing an existing method, write "augmentedNotes": a short (2-4 sentence) GENERALIZED methodology that MERGES what that method already does with this new use case — broaden the definition, don't just describe this one product. If the existing method had no notes, write a real methodology from scratch grounded in this product but written generally enough to apply to future similar products too.
-- If proposing new, give it a short reusable name (not tied to this one product's name) and a real methodology description, plus a Platform guess (e.g. Instagram, Email, YouTube, Upwork, Etsy, Other) and Category guess (Content, Outreach, Research, SEO, Ecommerce, Video).
+- Match primarily on TYPE — an Email-type product needs an email/nurture method, a PDF/Quiz/Lead Magnet needs a landing-page or download method, a Coaching-type product needs a booking/outreach method, a Membership needs a community/retention method, a Video needs a video-creation method. Don't match on the product's specific topic — match on what format it IS.
+- If an existing method fits the TYPE (even loosely — e.g. a generic "Campaign Page" method can serve a booking page, a waitlist page, or an offer page for several different types), choose it. Reference it by its [E#] tag.
+- Only set "isNew": true if nothing existing is even a loose fit for this product's TYPE.
+- If reusing an existing method, write "augmentedNotes": a short (2-4 sentence) GENERALIZED methodology that MERGES what that method already does with this new use case. Weave in the MARKETING PHASE as context (e.g. how this method behaves differently when used at a Lead-in stage vs a Retention stage) — the phase should live in this text, not be treated as a separate matching criterion. Broaden the definition, don't just describe this one product. If the existing method had no notes, write a real methodology from scratch grounded in this product's TYPE but general enough for future reuse.
+- If proposing new, give it a short reusable name tied to the TYPE, not this one product (e.g. "Email Nurture Sequence", not "${productName} Email"), and a real methodology description that also weaves in the phase context, plus a Platform guess (e.g. Instagram, Email, YouTube, Upwork, Etsy, Other) and Category guess (Content, Outreach, Research, SEO, Ecommerce, Video).
 
 Return ONLY a JSON object, no other text, no markdown fences:
 { "isNew": false, "existingTag": "E2", "augmentedNotes": "..." }
