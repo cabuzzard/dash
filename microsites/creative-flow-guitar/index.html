@@ -2725,6 +2725,12 @@ async function addProductFromModal() {
       ALL_PRODUCTS.push({ id: productId, name });
       PRODUCT_MODAL_JUST_CREATED = true;
     }
+    // Explicitly (re)save Type here, not just at creation — the name
+    // dropdown's "+ Create" can fire before this field is filled in, which
+    // would otherwise leave Type permanently blank on the created product.
+    if (PRODUCT_MODAL_JUST_CREATED && typeVal) {
+      try { await w('setProductType', { productId, type: typeVal }); } catch(e) { /* non-fatal — matching still runs */ }
+    }
     await w('addCampaignProduct', { campaignId: CAMPAIGN_ID, productId });
     if (!PRODUCT_ITEMS.some(p => p.id === productId)) {
       PRODUCT_ITEMS.push({ id: productId, name, type: typeVal || null });

@@ -1374,6 +1374,26 @@ export default {
         return json({ types: [...seen.values()].sort((a, b) => a.localeCompare(b)) });
       }
 
+      // ── setProductType ──
+      // Explicitly (re)writes a product's Type property, independent of
+      // creation. Needed because the Add Product modal's name-dropdown
+      // "+ Create" can fire before the Type field is filled in — this closes
+      // that race by letting the front-end save Type again right before
+      // matching runs, regardless of how/when the product was created.
+      if (body.action === "setProductType") {
+        const { productId, type } = body;
+        if (!productId || !type) return json({ error: "productId and type required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Type: { rich_text: [{ type: "text", text: { content: String(type).slice(0, 100) } }] } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
       if (body.action === "createProduct") {
         const { title, type } = body;
         if (!title) return json({ error: "title required" }, 400);
