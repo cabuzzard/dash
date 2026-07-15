@@ -85,7 +85,7 @@
       <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3911f7d3a4bb8173ad3fdc762df6ff8a" target="_blank" class="notion-link">↗ Product</a> &nbsp; <a href="https://www.notion.so/3911f7d3a4bb813db206cb60c2438b04" target="_blank" class="notion-link">↗ Research</a></div></div>
       <div class="field"><div class="field-label">Productsite</div><div class="field-value" id="r-productsite"></div></div>
       <div class="field"><div class="field-label">Description</div><div class="field-value"><textarea id="r-desc-input" class="modal-ta" rows="2" style="width:100%;font-size:12px;resize:vertical;min-height:44px!important;padding:5px 8px;" placeholder="What is this product, briefly…"></textarea></div></div>
-      <div class="field"><div class="field-label">Keywords <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(grounds every section below)</span></div><div class="field-value"><input id="r-keywords-input" class="modal-ta" type="text" style="width:100%;font-size:12px;height:30px;padding:5px 8px;" placeholder="comma-separated keywords…" /></div></div>
+      <div class="field"><div class="field-label">Keywords <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(grounds every Product Strategy field below)</span></div><div class="field-value"><div style="display:flex;gap:6px;align-items:flex-start;"><input id="r-keywords-input" class="modal-ta" type="text" style="flex:1;font-size:12px;height:30px;padding:5px 8px;" placeholder="comma-separated keywords…" /><button class="td-add-btn-inline" id="productKeywordsGenBtn" onclick="genProductKeywords()" style="font-size:10px;padding:2px 7px;flex-shrink:0;">↻ Generate</button></div></div></div>
       <div class="field"><div class="field-label"></div><div class="field-value"><button class="td-add-btn-inline" id="productMetaSaveBtn" onclick="saveProductMeta()" style="font-size:11px;padding:3px 9px;">Save Description &amp; Keywords</button> <span id="productMetaStatus" style="font-size:11px;color:#888;"></span></div></div>
     </div>
   </div>
@@ -484,6 +484,22 @@ async function saveProductMeta() {
     btn.disabled = false; btn.textContent = 'Save Description & Keywords';
   }
 }
+async function genProductKeywords() {
+  const btn = document.getElementById('productKeywordsGenBtn');
+  const status = document.getElementById('productMetaStatus');
+  btn.disabled = true; btn.textContent = '…';
+  status.textContent = 'Generating keywords…'; status.style.color = '#888';
+  try {
+    const r = await w('generateProductKeywords', { productId: PRODUCT_ID });
+    if (r.error) throw new Error(r.error);
+    document.getElementById('r-keywords-input').value = r.keywords;
+    status.textContent = '✓ Keywords generated.'; status.style.color = '#68d391';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
+  } finally {
+    btn.disabled = false; btn.textContent = '↻ Generate';
+  }
+}
 
 // ── Product Strategy panel ────────────────────────────────────────────
 // Fixed positioning schema, ONE record per PRODUCT (not per method) — true
@@ -491,7 +507,7 @@ async function saveProductMeta() {
 // Each field generates independently (small call, grounded in product
 // context + whichever attached method's framework maps to it server-side)
 // so this never risks the same truncation problem a single big call had.
-const STRATEGY_FIELDS = ["Customer", "Niche", "Pain Points", "Emotions", "Solution", "Benefits", "Unique Opportunity", "Transformation", "Offer Structure", "Proof Points", "Objections", "Keywords"];
+const STRATEGY_FIELDS = ["Customer", "Niche", "Pain Points", "Emotions", "Solution", "Benefits", "Unique Opportunity", "Transformation", "Offer Structure", "Proof Points", "Objections"];
 let PRODUCT_STRATEGY = { fields: {}, url: null };
 function sfId(field) { return 'sf-' + field.replace(/\s+/g, '-'); }
 function renderStrategyFieldsPanel() {

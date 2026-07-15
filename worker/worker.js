@@ -29,7 +29,10 @@ const DESIGN_SPECS_DB    = "3981f7d3a4bb817c8edad15db64fa50d";
 // the rest map to whichever attached method's framework defines that
 // concept (best-effort — a method without a matching phase just falls
 // back to product-context-only generation for that field too).
-const STRATEGY_FIELDS = ["Customer", "Niche", "Pain Points", "Emotions", "Solution", "Benefits", "Unique Opportunity", "Transformation", "Offer Structure", "Proof Points", "Objections", "Keywords"];
+// "Keywords" deliberately excluded — Products DB already has its own
+// Keywords field (generateProductKeywords), which every field below reads
+// as grounding. One canonical Keywords field, not a duplicate per record.
+const STRATEGY_FIELDS = ["Customer", "Niche", "Pain Points", "Emotions", "Solution", "Benefits", "Unique Opportunity", "Transformation", "Offer Structure", "Proof Points", "Objections"];
 const STRATEGY_FIELD_PHASE_MAP = {
   "Pain Points": "Problem", "Emotions": "Problem",
   "Solution": "Solution", "Benefits": "Solution", "Unique Opportunity": "Solution", "Transformation": "Solution",
@@ -49,7 +52,6 @@ const STRATEGY_FIELD_HINTS = {
   "Offer Structure": "What's included, format, duration, delivery method, pricing, guarantee.",
   "Proof Points": "The kind of proof, results, and credibility signals this product should point to.",
   "Objections": "The top objections a buyer would have and the honest answer to each.",
-  "Keywords": "SEO/positioning keywords this product should be associated with — real search terms, not generic category words.",
 };
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
@@ -1612,6 +1614,50 @@ export default {
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
         return json({ success: true });
+      }
+
+      // ── generateProductKeywords ──
+      // Refines/expands the product's own Keywords field, grounded in its
+      // Title + Description (+ whatever's already there, to refine rather
+      // than replace from scratch). This is the ONE place Keywords lives —
+      // the Strategy panel's fields all read this rather than having their
+      // own separate Keywords field, so there's a single "Generate" for the
+      // whole product's keyword set at the top of the page.
+      if (body.action === "generateProductKeywords") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+        const pp = productPage.properties || {};
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+        const currentKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+
+        const prompt = `You are an SEO/positioning strategist. Generate a refined, specific keyword list for this product.
+
+PRODUCT: ${productName}
+DESCRIPTION: ${productDesc || "(none)"}
+${currentKeywords ? `CURRENT KEYWORDS (refine and expand these, don't just repeat them back): ${currentKeywords}` : ''}
+
+Return 10-15 real, specific keywords/phrases this product should be associated with — a mix of category terms, buyer-intent phrases, and long-tail specifics. Comma-separated, no other text, no numbering, no explanation.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        const keywords = (aiData.content?.[0]?.text || "").trim();
+        if (!keywords) return json({ error: "Empty response from Claude" }, 500);
+
+        await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Keywords: { rich_text: [{ type: "text", text: { content: keywords.slice(0, 1990) } }] } } }),
+        });
+        return json({ success: true, keywords });
       }
 
       if (body.action === "createProduct") {
