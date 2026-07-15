@@ -4207,6 +4207,13 @@ async function runEcosystemBuild() {
     </div>
     <div class="modal-body">
       <div class="modal-hint">Suggested and currently-attached methods for this product. Remove any you don't want, search to add more, or type a new one — nothing is saved until you click Add Methods. Strategy and title generation live on the product's own site.</div>
+      <label class="lm-label" for="pmTitleInput" style="margin-top:12px;">Title</label>
+      <input class="modal-ta" id="pmTitleInput" type="text" placeholder="Product title…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" />
+      <label class="lm-label" for="pmDescInput" style="margin-top:8px;">Description <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(grounds method suggestion — edit then re-suggest)</span></label>
+      <textarea class="modal-ta" id="pmDescInput" rows="3" style="resize:vertical;min-height:56px!important;margin-top:4px;" placeholder="What is this product, briefly…"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+        <button class="td-add-btn-inline" onclick="updateProductAndResuggest()" id="pmResuggestBtn" style="font-size:11px;padding:3px 9px;">↻ Update &amp; Re-suggest Methods</button>
+      </div>
       <div id="pmList" style="margin-top:12px;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto;"></div>
       <label class="lm-label" for="pmSearchInput" style="margin-top:14px;">Add existing method</label>
       <div style="position:relative;" id="pm-search-wrap">
@@ -4266,6 +4273,8 @@ function removePmTrafficChild(i) { if (PM_STAGED[i]) PM_STAGED[i].trafficChild =
 async function openProductMethodsModal(productId, productName) {
   PM_PRODUCT_ID = productId; PM_PRODUCT_NAME = productName;
   document.getElementById('pmTitle').textContent = 'Methods — ' + productName;
+  document.getElementById('pmTitleInput').value = productName || '';
+  document.getElementById('pmDescInput').value = '';
   document.getElementById('pmSearchInput').value = '';
   document.getElementById('pmNewInput').value = '';
   document.getElementById('pmSearchDd').style.display = 'none';
@@ -4277,6 +4286,12 @@ async function openProductMethodsModal(productId, productName) {
   try {
     const data = await w('suggestProductMethod', { productId });
     if (data.error) throw new Error(data.error);
+    // Title/description come straight from Notion (via suggestProductMethod,
+    // which already fetches the product page) — pre-fill so they can be
+    // edited and re-suggested against without a separate round trip. For
+    // ecosystem/idea-derived products these already reflect the source idea.
+    if (data.productName) { PM_PRODUCT_NAME = data.productName; document.getElementById('pmTitleInput').value = data.productName; document.getElementById('pmTitle').textContent = 'Methods — ' + data.productName; }
+    document.getElementById('pmDescInput').value = data.productDescription || '';
     const already = data.alreadyAttached || [];
     PM_ORIGINAL_IDS = new Set(already.map(a => a.id));
     PM_STAGED = already.map(a => ({ kind: 'existing', id: a.id, name: a.name }));
@@ -4306,6 +4321,34 @@ async function openProductMethodsModal(productId, productName) {
 function closeProductMethodsModal() {
   document.getElementById('productMethodsModal').classList.remove('open');
   PM_PRODUCT_ID = null;
+}
+// Saves the edited title/description to Notion, then re-opens the modal for
+// the same product — suggestProductMethod always re-reads the product's
+// live Notion fields, so this is the simplest way to re-run suggestion
+// against the edit without duplicating the fetch/render logic.
+async function updateProductAndResuggest() {
+  if (!PM_PRODUCT_ID) return;
+  const title = document.getElementById('pmTitleInput').value.trim();
+  const description = document.getElementById('pmDescInput').value.trim();
+  if (!title) { document.getElementById('pmStatus').textContent = 'Title can\'t be empty.'; document.getElementById('pmStatus').style.color = '#fc8181'; return; }
+  const btn = document.getElementById('pmResuggestBtn');
+  const status = document.getElementById('pmStatus');
+  btn.disabled = true; btn.textContent = 'Updating…';
+  status.textContent = 'Saving title/description…';
+  status.style.color = '#888';
+  try {
+    const r = await w('updateProductTitleDescription', { productId: PM_PRODUCT_ID, title, description });
+    if (r.error) throw new Error(r.error);
+    // Keep the Products panel row in sync without a full reload.
+    const idx = PRODUCT_ITEMS.findIndex(p => p.id === PM_PRODUCT_ID);
+    if (idx !== -1) { PRODUCT_ITEMS[idx] = { ...PRODUCT_ITEMS[idx], name: title }; renderProducts(); }
+    await openProductMethodsModal(PM_PRODUCT_ID, title);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+  } finally {
+    btn.disabled = false; btn.textContent = '↻ Update & Re-suggest Methods';
+  }
 }
 async function filterPmSearch() {
   const q = document.getElementById('pmSearchInput').value.trim();
@@ -4345,6 +4388,18 @@ async function commitProductMethods() {
   btn.disabled = true; btn.textContent = 'Adding…';
   status.textContent = '';
   try {
+    // Best-effort — covers the case where the title/description were edited
+    // but "Add Methods" was clicked directly instead of "↻ Update &
+    // Re-suggest", so the edit isn't silently lost.
+    const titleVal = document.getElementById('pmTitleInput').value.trim();
+    const descVal = document.getElementById('pmDescInput').value.trim();
+    if (titleVal) {
+      try {
+        await w('updateProductTitleDescription', { productId: PM_PRODUCT_ID, title: titleVal, description: descVal });
+        const idx = PRODUCT_ITEMS.findIndex(p => p.id === PM_PRODUCT_ID);
+        if (idx !== -1) PRODUCT_ITEMS[idx] = { ...PRODUCT_ITEMS[idx], name: titleVal };
+      } catch(e) { /* non-fatal — method commit still proceeds */ }
+    }
     const stagedExistingIds = new Set(PM_STAGED.filter(m => m.kind === 'existing').map(m => m.id));
     // Removed: was originally attached, no longer staged.
     for (const id of PM_ORIGINAL_IDS) {
@@ -4386,6 +4441,7 @@ async function commitProductMethods() {
       }
     }
     await loadMethods();
+    renderProducts();
     status.textContent = trafficLinked ? `✓ Methods added — ${trafficLinked} traffic plan${trafficLinked === 1 ? '' : 's'} linked.` : '✓ Methods added.';
     status.style.color = '#68d391';
     setTimeout(closeProductMethodsModal, 1200);

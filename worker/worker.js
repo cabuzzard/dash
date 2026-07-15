@@ -1395,6 +1395,30 @@ export default {
         return json({ success: true });
       }
 
+      // ── updateProductTitleDescription ──
+      // Lets the ⚙ Methods modal edit a product's Name/Description in place
+      // (pre-filled from Notion when the modal opens) — since these are the
+      // PRIMARY signal suggestProductMethod reasons from, editing them here
+      // and re-suggesting is how a vague/AI-seeded product gets sharpened
+      // before methods are chosen.
+      if (body.action === "updateProductTitleDescription") {
+        const { productId, title, description } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        if (!title && description == null) return json({ error: "title or description required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const props = {};
+        if (title) props["Name"] = { title: [{ type: "text", text: { content: String(title).slice(0, 200) } }] };
+        if (description != null) props["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
       if (body.action === "createProduct") {
         const { title, type, description } = body;
         if (!title) return json({ error: "title required" }, 400);
@@ -2859,7 +2883,7 @@ OR
             const needsTrafficPlan = matched.needsTrafficPlan && !matched.hasTrafficPlan;
             const trafficSuggestion = needsTrafficPlan ? await suggestTrafficPlan(matched.name, matched.notes) : null;
             return json({
-              alreadyAttached,
+              alreadyAttached, productName, productDescription: productDesc,
               suggestion: { isExisting: true, methodId: matched.id, methodName: matched.name, notes: decision.augmentedNotes || '', researched: false, needsTrafficPlan, trafficSuggestion },
             });
           }
@@ -2896,7 +2920,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
           const needsTrafficPlan = !!researched.needsTrafficPlan;
           const trafficSuggestion = needsTrafficPlan ? await suggestTrafficPlan(researched.name || productName, researched.notes || '') : null;
           return json({
-            alreadyAttached,
+            alreadyAttached, productName, productDescription: productDesc,
             suggestion: { isExisting: false, methodName: researched.name || `Method for ${productName}`, notes: researched.notes || '', platform: researched.platform || '', category: researched.category || '', researched: true, needsTrafficPlan, trafficSuggestion },
           });
         } catch(e) {
