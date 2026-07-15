@@ -3368,8 +3368,14 @@ async function ltEnsureLists() {
         ? platCampaigns : ((await call('getCampaigns')).campaigns || []);
       LT_LISTS.campaign = camps.filter(c => c.name).map(c => ({ id: c.id, name: c.name }));
     }
-    if (!LT_LISTS.method.length)  LT_LISTS.method  = (await call('searchMethods',  { query: '' })).methods  || [];
-    if (!LT_LISTS.product.length) LT_LISTS.product = (await call('searchProducts', { query: '' })).products || [];
+    // methods/products ALWAYS refetch on open: caching-once meant records
+    // created after page load (or from another tab/session) never appeared
+    const [m, p] = await Promise.all([
+      call('searchMethods',  { query: '' }),
+      call('searchProducts', { query: '' }),
+    ]);
+    if (m.methods && m.methods.length)  LT_LISTS.method  = m.methods;
+    if (p.products && p.products.length) LT_LISTS.product = p.products;
   } catch(e) { /* lists are a convenience — typing a new name still works */ }
 }
 

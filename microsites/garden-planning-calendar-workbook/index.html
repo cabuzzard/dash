@@ -3931,14 +3931,17 @@ let AT_METHODS = [], AT_PRODUCTS = [];
 
 async function atEnsureLists() {
   try {
-    if (!AT_METHODS.length) {
-      AT_METHODS = (typeof ALL_METHODS !== 'undefined' && ALL_METHODS.length)
-        ? ALL_METHODS : ((await w('searchMethods', { query: '' })).methods || []);
-    }
-    if (!AT_PRODUCTS.length) {
-      AT_PRODUCTS = (typeof ALL_PRODUCTS !== 'undefined' && ALL_PRODUCTS.length)
-        ? ALL_PRODUCTS : ((await w('searchProducts', { query: '' })).products || []);
-    }
+    // seed instantly from the page-level caches so the dropdown isn't empty…
+    if (!AT_METHODS.length && typeof ALL_METHODS !== 'undefined' && ALL_METHODS.length) AT_METHODS = ALL_METHODS;
+    if (!AT_PRODUCTS.length && typeof ALL_PRODUCTS !== 'undefined' && ALL_PRODUCTS.length) AT_PRODUCTS = ALL_PRODUCTS;
+    // …but ALWAYS refetch: caching-once meant products/methods created after
+    // page load (or from another tab/session) never appeared in the picker
+    const [m, p] = await Promise.all([
+      w('searchMethods', { query: '' }),
+      w('searchProducts', { query: '' }),
+    ]);
+    if (m.methods && m.methods.length) AT_METHODS = m.methods;
+    if (p.products && p.products.length) AT_PRODUCTS = p.products;
   } catch(e) { /* lists are a convenience — typing a new name still works */ }
 }
 

@@ -1066,8 +1066,14 @@ let AT_METHODS = [], AT_PRODUCTS = [];
 
 async function atEnsureLists() {
   try {
-    if (!AT_METHODS.length) AT_METHODS = (await w('searchMethods', { query: '' })).methods || [];
-    if (!AT_PRODUCTS.length) AT_PRODUCTS = (await w('searchProducts', { query: '' })).products || [];
+    // ALWAYS refetch on open: caching-once meant products/methods created
+    // after page load (or from another tab/session) never appeared
+    const [m, p] = await Promise.all([
+      w('searchMethods', { query: '' }),
+      w('searchProducts', { query: '' }),
+    ]);
+    if (m.methods && m.methods.length) AT_METHODS = m.methods;
+    if (p.products && p.products.length) AT_PRODUCTS = p.products;
   } catch(e) { /* lists are a convenience — typing a new name still works */ }
 }
 

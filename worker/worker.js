@@ -2169,7 +2169,8 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           id:   m.id.replace(/-/g,""),
           name: m.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
         })).filter(m => !query || m.name.toLowerCase().includes(query.toLowerCase()));
-        return json({ methods: methods.slice(0, 50) });
+        // Same payload-guard-not-cap rationale as searchProducts.
+        return json({ methods: methods.slice(0, 500) });
       }
 
       if (body.action === "updateCampaignProducts") {
@@ -2269,7 +2270,10 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           id:   p.id.replace(/-/g,""),
           name: p.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
         })).filter(p => !query || p.name.toLowerCase().includes(query.toLowerCase()));
-        return json({ products: products.slice(0, 50) });
+        // No tight cap: pickers filter client-side over the full list — a 50
+        // cap silently hid every product past the 50th alphabetically (204 in
+        // the DB when this bit). 500 is a payload guard, not a working limit.
+        return json({ products: products.slice(0, 500) });
       }
 
       if (body.action === "uploadProductFile") {
