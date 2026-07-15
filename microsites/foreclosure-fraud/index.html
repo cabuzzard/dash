@@ -4219,11 +4219,13 @@ async function runEcosystemBuild() {
         <button class="td-add-btn-inline" onclick="addPmNewByName()" style="padding:0 10px;">+</button>
       </div>
       <div id="pmStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:16px;"></div>
+      <div id="pmStrategyLinks" style="font-size:12px;margin-top:6px;display:flex;flex-direction:column;gap:3px;"></div>
     </div>
-    <div class="modal-foot">
+    <div class="modal-foot" style="flex-wrap:wrap;">
       <button class="modal-btn cancel" onclick="closeProductMethodsModal()">Cancel</button>
       <button class="modal-btn save" id="pmCommitBtn" onclick="commitProductMethods()">Add Methods</button>
-      <button class="modal-btn save" id="pmGenBtn" onclick="generateProductTitles()" title="Generates for the methods currently attached to this product — click Add Methods first if you just changed anything">Generate Titles</button>
+      <button class="modal-btn save" id="pmStrategyBtn" onclick="generateProductStrategy()" title="Writes the planning/brief document (headlines, CTA copy, offer, proof, etc.) for each destination method currently on this product — click Add Methods first if you just changed anything">Generate Strategy</button>
+      <button class="modal-btn save" id="pmGenBtn" onclick="generateProductTitles()" title="Generates actual publishable titles — reads each method's Strategy doc as grounding where one exists">Generate Titles</button>
     </div>
   </div>
 </div>
@@ -4397,15 +4399,79 @@ async function commitProductMethods() {
   }
 }
 
-// Generates titles for this product's CURRENTLY-ATTACHED methods (freshly
-// re-fetched from Notion — ignores any uncommitted staged changes in
-// PM_STAGED; click "Add Methods" first if you just changed something). For
-// each attached method: generates the method's own deliverables (carousel /
-// Upwork Titles / generic framework — same dispatch as the campaign Methods
-// panel), AND for each of its linked Traffic Methods, generates a
-// comprehensive multi-post-type title set (generateTrafficMethodTitles) —
-// so page(1) > instagram(2) > post type(3) > sequence(3.1) all get covered
-// in one click.
+// Writes STRATEGY documents (planning/brief content — headlines, CTA copy,
+// offer structure, proof points) for this product's CURRENTLY-ATTACHED
+// DESTINATION methods (Needs Traffic Plan checked, e.g. Product Page) —
+// freshly re-fetched from Notion (click "Add Methods" first if you just
+// changed something). This is deliberately separate from Generate Titles:
+// a destination method's framework is a brief for ONE asset, not a list of
+// dozens of publishable pieces — see generateProductTitles below. Traffic
+// (non-destination) methods are skipped here; they get titles directly.
+async function generateProductStrategy() {
+  if (!PM_PRODUCT_ID) return;
+  const btn = document.getElementById('pmStrategyBtn');
+  const status = document.getElementById('pmStatus');
+  const linksEl = document.getElementById('pmStrategyLinks');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  status.textContent = 'Reading attached methods…';
+  status.style.color = '#888';
+  if (linksEl) linksEl.innerHTML = '';
+  try {
+    const mData = await w('getProductMethods', { productId: PM_PRODUCT_ID });
+    if (mData.error) throw new Error(mData.error);
+    const methods = mData.methods || [];
+    if (!methods.length) throw new Error('No methods attached yet — add one first.');
+
+    let written = 0, skipped = 0, errors = 0;
+    const links = [];
+    for (const m of methods) {
+      status.textContent = `Reading "${m.name}"…`;
+      const detail = await w('getMethodDetails', { methodId: m.id });
+      if (detail.error) { errors++; continue; }
+      if (!detail.needsTrafficPlan) { skipped++; continue; }
+
+      status.textContent = `Writing strategy for "${m.name}"…`;
+      try {
+        const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
+        if (data.error) throw new Error(data.error);
+        const r = await w('saveMethodStrategy', {
+          items: data.titles || [], campaignId: CAMPAIGN_ID, methodId: m.id, methodName: m.name,
+          productId: PM_PRODUCT_ID, productName: PM_PRODUCT_NAME,
+        });
+        if (r.error) throw new Error(r.error);
+        written++;
+        if (r.url) links.push({ name: m.name, url: r.url });
+      } catch(e) { errors++; }
+    }
+
+    if (linksEl) linksEl.innerHTML = links.map(l => `<a href="${l.url}" target="_blank" style="color:#63b3ed;">↗ View Strategy — ${l.name}</a>`).join('');
+    status.textContent = `✓ Wrote ${written} strategy doc${written === 1 ? '' : 's'}${skipped ? `, ${skipped} skipped (no traffic plan)` : ''}${errors ? `, ${errors} failed` : ''}.`;
+    status.style.color = errors ? '#f0b429' : '#68d391';
+    btn.textContent = 'Done';
+    setTimeout(() => { btn.disabled = false; btn.textContent = 'Generate Strategy'; }, 2000);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Generate Strategy';
+  }
+}
+
+// Generates actual PUBLISHABLE titles for this product's CURRENTLY-ATTACHED
+// methods (freshly re-fetched — click "Add Methods" first if you just
+// changed something). Three cases per method:
+//  - Destination method WITH a Strategy doc: generateTitlesFromStrategy —
+//    reads the strategy back and produces a handful of genuine deliverables
+//    grounded in it (not the strategy's planning decisions restated).
+//  - Destination method WITHOUT a Strategy doc yet: skipped — run
+//    "Generate Strategy" first so titles have something to be grounded in.
+//  - Traffic children of any method: generateTrafficMethodTitles (now
+//    passed parentMethodId so it can pull the destination's Strategy as
+//    grounding) — comprehensive post-type + sequence generation, so
+//    page(1) > instagram(2) > post type(3) > sequence(3.1) is covered.
+//  - Any other (non-destination, no traffic children) method — ordinary
+//    flat-title methods like Video Creation / Upwork Titles / Carousel —
+//    keeps the original direct dispatch, since those never had the
+//    strategy-dumped-as-titles problem.
 async function generateProductTitles() {
   if (!PM_PRODUCT_ID) return;
   const btn = document.getElementById('pmGenBtn');
@@ -4419,42 +4485,59 @@ async function generateProductTitles() {
     const methods = mData.methods || [];
     if (!methods.length) throw new Error('No methods attached yet — add one first.');
 
-    let parentTitles = 0, trafficTitles = 0, errors = 0;
+    let parentTitles = 0, trafficTitles = 0, errors = 0, skipped = 0;
     for (const m of methods) {
       status.textContent = `Reading "${m.name}"…`;
       const detail = await w('getMethodDetails', { methodId: m.id });
       if (detail.error) { errors++; continue; }
 
-      // The method's own deliverables — same dispatch as the Methods panel.
-      status.textContent = `Generating "${m.name}"…`;
-      try {
-        if (/carousel/i.test(m.name)) {
-          const r = await w('researchAndGenerateCarouselTitles', { campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
-          if (r.error) throw new Error(r.error);
-          parentTitles += r.created || 0;
-        } else if (/upwork/i.test(m.name) && /title|market|trend/i.test(m.name)) {
-          const r = await w('researchUpworkMarketTitles', { campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
-          if (r.error) throw new Error(r.error);
-          parentTitles += r.created || 0;
-        } else {
-          const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
-          if (data.error) throw new Error(data.error);
-          const titles = data.titles || [];
-          for (let i = 0; i < titles.length; i += 10) {
-            const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
-            if (r.error) throw new Error(r.error);
+      if (detail.needsTrafficPlan) {
+        // Destination method — titles come FROM its Strategy doc, not from
+        // re-walking the raw framework.
+        status.textContent = `Generating from strategy: "${m.name}"…`;
+        try {
+          const r = await w('generateTitlesFromStrategy', { productId: PM_PRODUCT_ID, campaignId: CAMPAIGN_ID, methodId: m.id, methodName: m.name });
+          if (r.error) {
+            if (/No Strategy found/i.test(r.error)) skipped++; else throw new Error(r.error);
+          } else {
             parentTitles += r.created || 0;
           }
-        }
-      } catch(e) { errors++; }
+        } catch(e) { errors++; }
+      } else if (!(detail.trafficMethods || []).length) {
+        // Ordinary flat-title method — no destination framing, no traffic
+        // children. Same dispatch this always used.
+        status.textContent = `Generating "${m.name}"…`;
+        try {
+          if (/carousel/i.test(m.name)) {
+            const r = await w('researchAndGenerateCarouselTitles', { campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
+            if (r.error) throw new Error(r.error);
+            parentTitles += r.created || 0;
+          } else if (/upwork/i.test(m.name) && /title|market|trend/i.test(m.name)) {
+            const r = await w('researchUpworkMarketTitles', { campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
+            if (r.error) throw new Error(r.error);
+            parentTitles += r.created || 0;
+          } else {
+            const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
+            if (data.error) throw new Error(data.error);
+            const titles = data.titles || [];
+            for (let i = 0; i < titles.length; i += 10) {
+              const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: CAMPAIGN_ID, methodId: m.id, productId: PM_PRODUCT_ID });
+              if (r.error) throw new Error(r.error);
+              parentTitles += r.created || 0;
+            }
+          }
+        } catch(e) { errors++; }
+      }
 
-      // Its traffic children — comprehensive post-type + sequence generation.
+      // Its traffic children — comprehensive post-type + sequence generation,
+      // grounded in the parent's Strategy doc where one exists.
       for (const child of (detail.trafficMethods || [])) {
         status.textContent = `Generating "${m.name} > ${child.name}"…`;
         try {
           const r = await w('generateTrafficMethodTitles', {
             productId: PM_PRODUCT_ID, campaignId: CAMPAIGN_ID,
-            parentMethodName: m.name, childMethodId: child.id, childMethodName: child.name, childMethodNotes: child.notes,
+            parentMethodName: m.name, parentMethodId: m.id,
+            childMethodId: child.id, childMethodName: child.name, childMethodNotes: child.notes,
           });
           if (r.error) throw new Error(r.error);
           trafficTitles += r.created || 0;
@@ -4463,7 +4546,7 @@ async function generateProductTitles() {
     }
 
     await loadTitles();
-    status.textContent = `✓ Generated ${parentTitles} title${parentTitles === 1 ? '' : 's'}${trafficTitles ? ` + ${trafficTitles} traffic title${trafficTitles === 1 ? '' : 's'}` : ''}${errors ? `, ${errors} step${errors === 1 ? '' : 's'} failed` : ''}.`;
+    status.textContent = `✓ Generated ${parentTitles} title${parentTitles === 1 ? '' : 's'}${trafficTitles ? ` + ${trafficTitles} traffic title${trafficTitles === 1 ? '' : 's'}` : ''}${skipped ? `, ${skipped} method${skipped === 1 ? '' : 's'} need Generate Strategy first` : ''}${errors ? `, ${errors} step${errors === 1 ? '' : 's'} failed` : ''}.`;
     status.style.color = errors ? '#f0b429' : '#68d391';
     btn.textContent = 'Done';
     setTimeout(() => { btn.disabled = false; btn.textContent = 'Generate Titles'; }, 2000);

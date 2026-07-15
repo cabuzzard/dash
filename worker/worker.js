@@ -7,6 +7,7 @@ const CONTENT_STRATEGY_DB = "9fa5f42f010b47e7a82032607e07d6a1";
 const PRODUCTS_DB        = "e92fcfce75fc4f54b553df0b7672ff48";
 const MAIN_TD_DB         = "3471f7d3a4bb80de87c1d9e850f4a426";
 const METHODS_DB         = "285ed0b668be4dad89dfd090350096bc";
+const STRATEGY_DB        = "6f7a8666944746b2ae98d41db0c4e419";
 const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
 const PLATFORMS_DB       = "8248b700ebb7428aa28d8b5246509898";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
@@ -3013,7 +3014,228 @@ Return ONLY a JSON object, no other text, no markdown fences:
               };
             }))
           : [];
-        return json({ id: methodId, name, notes, platform, trafficMethods });
+        const needsTrafficPlan = !!p["Needs Traffic Plan"]?.checkbox;
+        return json({ id: methodId, name, notes, platform, trafficMethods, needsTrafficPlan });
+      }
+
+      // ── saveMethodStrategy ──
+      // Consolidates a generateMethodTitles-shaped items array (title/phase/
+      // grouping — the SAME output that used to be exploded into N Title
+      // rows) into ONE Strategy record instead: planning/brief content
+      // (headlines, CTA copy, pricing, proof, offer structure) for a
+      // Product+Method pairing. Upserts — regenerating replaces the body with
+      // the latest pass rather than piling up duplicates. This is what
+      // "Generate Strategy" in the ⚙ modal calls; it does not create any
+      // Titles. Titles come later, via generateTitlesFromStrategy, informed
+      // by reading this document back.
+      if (body.action === "saveMethodStrategy") {
+        const { items, campaignId, methodId, methodName, productId, productName } = body;
+        if (!items?.length || !campaignId || !methodId || !productId) return json({ error: "items, campaignId, methodId, productId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        // Assemble the flat items into a structured document: Phase as H2,
+        // Grouping as H3, each item's title+notes as a bullet.
+        const byPhase = {};
+        for (const it of items) {
+          const phase = it.phase || 'General';
+          const grouping = it.grouping || 'General';
+          byPhase[phase] = byPhase[phase] || {};
+          byPhase[phase][grouping] = byPhase[phase][grouping] || [];
+          byPhase[phase][grouping].push(it);
+        }
+        let body_md = '';
+        for (const phase of Object.keys(byPhase)) {
+          body_md += `\n## ${phase}\n`;
+          for (const grouping of Object.keys(byPhase[phase])) {
+            body_md += `### ${grouping}\n`;
+            for (const it of byPhase[phase][grouping]) {
+              body_md += `- **${it.title}**${it.description ? `: ${it.description}` : ''}\n`;
+            }
+          }
+        }
+        const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const headingBlock = (level, text) => ({ object: "block", type: `heading_${level}`, [`heading_${level}`]: { rich_text: rtBlock(text) } });
+        const bulletBlock = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
+        const children = [];
+        for (const phase of Object.keys(byPhase)) {
+          children.push(headingBlock(2, phase));
+          for (const grouping of Object.keys(byPhase[phase])) {
+            children.push(headingBlock(3, grouping));
+            for (const it of byPhase[phase][grouping]) {
+              children.push(bulletBlock(`${it.title}${it.description ? `: ${it.description}` : ''}`));
+            }
+          }
+        }
+
+        // Upsert — find an existing Strategy record for this exact
+        // Product+Method pairing first.
+        const existingQuery = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Product", relation: { contains: dash(productId) } },
+            { property: "Method", relation: { contains: dash(methodId) } },
+          ] } }),
+        }).then(r => r.json());
+        const existing = (existingQuery.results || [])[0];
+
+        const strategyName = `${productName || 'Product'} — ${methodName || 'Method'} Strategy`;
+        if (existing) {
+          const strategyId = existing.id.replace(/-/g,"");
+          // Replace body wholesale — regeneration should reflect the latest pass.
+          const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(strategyId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+          const existingBlockIds = (blocksResp.results || []).map(b => b.id);
+          await Promise.all(existingBlockIds.map(id => fetch(`https://api.notion.com/v1/blocks/${id}`, { method: "DELETE", headers: hdr })));
+          await fetch(`https://api.notion.com/v1/blocks/${dash(strategyId)}/children`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children }),
+          });
+          await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { Status: { select: { name: "Current" } } } }),
+          });
+          return json({ success: true, strategyId, url: existing.url, updated: true });
+        } else {
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parent: { database_id: STRATEGY_DB },
+              properties: {
+                Name: { title: [{ type: "text", text: { content: strategyName.slice(0, 200) } }] },
+                Product: { relation: [{ id: dash(productId) }] },
+                Method: { relation: [{ id: dash(methodId) }] },
+                Campaigns: { relation: [{ id: dash(campaignId) }] },
+                Status: { select: { name: "Current" } },
+              },
+              children,
+            }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Strategy create failed" }, createResp.status || 500);
+          return json({ success: true, strategyId: created.id.replace(/-/g,""), url: created.url, updated: false });
+        }
+      }
+
+      // ── getMethodStrategy ──
+      // Reads the Strategy record (if any) for a Product+Method pairing —
+      // used both to display it in the ⚙ modal and as grounding context when
+      // generating actual Titles from it.
+      if (body.action === "getMethodStrategy") {
+        const { productId, methodId } = body;
+        if (!productId || !methodId) return json({ error: "productId and methodId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Product", relation: { contains: dash(productId) } },
+            { property: "Method", relation: { contains: dash(methodId) } },
+          ] } }),
+        }).then(r => r.json());
+        const record = (q.results || [])[0];
+        if (!record) return json({ strategy: null });
+        const strategyId = record.id.replace(/-/g,"");
+        const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(strategyId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+        const text = (blocksResp.results || []).map(b => {
+          const type = b.type; const rich = b[type]?.rich_text || [];
+          const t = rich.map(x => x.plain_text).join("");
+          if (!t) return "";
+          if (/^heading/.test(type)) return `\n${t}`;
+          if (type === "bulleted_list_item") return `- ${t}`;
+          return t;
+        }).filter(Boolean).join("\n");
+        return json({ strategy: { id: strategyId, url: record.url, text, status: record.properties?.Status?.select?.name || "" } });
+      }
+
+      // ── generateTitlesFromStrategy ──
+      // For a DESTINATION method (has a Strategy doc): reads the strategy
+      // back and produces a small set of GENUINE publishable titles informed
+      // by it — e.g. the actual page copy as one title — instead of the raw
+      // framework being exploded into dozens of planning-decision "titles".
+      if (body.action === "generateTitlesFromStrategy") {
+        const { productId, campaignId, methodId, methodName } = body;
+        if (!productId || !campaignId || !methodId) return json({ error: "productId, campaignId, methodId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Product", relation: { contains: dash(productId) } },
+            { property: "Method", relation: { contains: dash(methodId) } },
+          ] } }),
+        }).then(r => r.json());
+        const record = (q.results || [])[0];
+        if (!record) return json({ error: "No Strategy found for this method — run Generate Strategy first." }, 400);
+        const strategyId = record.id.replace(/-/g,"");
+        const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(strategyId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+        const strategyText = (blocksResp.results || []).map(b => {
+          const type = b.type; const rich = b[type]?.rich_text || [];
+          const t = rich.map(x => x.plain_text).join("");
+          if (!t) return "";
+          if (/^heading/.test(type)) return `\n${t}`;
+          if (type === "bulleted_list_item") return `- ${t}`;
+          return t;
+        }).filter(Boolean).join("\n");
+
+        const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+        const productName = (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+
+        const prompt = `You have a complete marketing STRATEGY document below for one product and destination method. Your job is to turn it into actual PUBLISHABLE deliverables — real assets with a publication destination — NOT a restatement of the strategy's planning decisions.
+
+PRODUCT: ${productName}
+METHOD: ${methodName}
+
+STRATEGY DOCUMENT:
+${strategyText.slice(0, 6000)}
+
+INSTRUCTIONS:
+- Propose 1-3 genuine publishable deliverables this strategy produces (e.g. for a landing page method: the actual assembled page itself, maybe a distinct pricing/FAQ section if it warrants its own page). Do NOT list out individual planning decisions (headlines, CTA copy, pricing framing) as separate items — those already live in the strategy above and should be USED to inform these deliverables, not repeated as their own titles.
+- Each deliverable's "content" field should be the actual assembled copy/content for that piece, written using the strategy above as its source material — a real draft, not an outline.
+
+Return ONLY a JSON array — no other text, no markdown fences:
+{ "title": "deliverable name, e.g. 'Homepage Copy — <product>'", "content": "the actual assembled copy for this deliverable, grounded in the strategy above" }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+
+        let items;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+          if (s === -1 || e === -1 || e < s) throw new Error("No JSON array found");
+          items = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+          if (!Array.isArray(items)) throw new Error("Not an array");
+        } catch(e) {
+          return json({ error: "Failed to parse titles JSON: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
+        }
+
+        const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        let created = 0;
+        for (const it of items.slice(0, 5)) {
+          const props = {
+            "Title":    { title: rtBlock(String(it.title || 'Untitled').slice(0, 200)) },
+            "Status":   { select: { name: "Development" } },
+            "Grouping": { rich_text: rtBlock(methodName || '') },
+            "Campaign": { relation: [{ id: dash(campaignId) }] },
+            "method":   { relation: [{ id: dash(methodId) }] },
+            "product":  { relation: [{ id: dash(productId) }] },
+          };
+          const children = String(it.content || '').split(/\n\n+/).filter(Boolean).map(pg => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(pg.slice(0, 1990)) } }));
+          const resp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props, children }),
+          });
+          const page = await resp.json();
+          if (page.id) created++;
+        }
+        return json({ created });
       }
 
       // ── generateTrafficMethodTitles ──
@@ -3028,7 +3250,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
       // the hierarchy (page(1) > instagram(2) > post type(3) > sequence(3.1))
       // is visible directly on every generated title.
       if (body.action === "generateTrafficMethodTitles") {
-        const { productId, campaignId, parentMethodName, childMethodId, childMethodName, childMethodNotes } = body;
+        const { productId, campaignId, parentMethodName, parentMethodId, childMethodId, childMethodName, childMethodNotes } = body;
         if (!productId || !campaignId || !childMethodId || !childMethodName) return json({ error: "productId, campaignId, childMethodId, childMethodName required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -3047,10 +3269,33 @@ Return ONLY a JSON object, no other text, no markdown fences:
         const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
         const keywords = rt(researchRaw, "Keywords");
 
+        // If the destination method has a Strategy doc, ground the traffic
+        // content in it too — so Instagram posts stay consistent with the
+        // page's actual headlines/positioning/differentiator, not just the
+        // raw product description.
+        let strategyContext = '';
+        if (parentMethodId) {
+          try {
+            const sq = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ filter: { and: [
+                { property: "Product", relation: { contains: dash(productId) } },
+                { property: "Method", relation: { contains: dash(parentMethodId) } },
+              ] } }),
+            }).then(r => r.json());
+            const rec = (sq.results || [])[0];
+            if (rec) {
+              const sid = rec.id.replace(/-/g,"");
+              const blocks = await fetch(`https://api.notion.com/v1/blocks/${dash(sid)}/children?page_size=50`, { headers: hdr }).then(r => r.json());
+              strategyContext = (blocks.results || []).map(b => (b[b.type]?.rich_text || []).map(x => x.plain_text).join("")).filter(Boolean).join("\n").slice(0, 2000);
+            }
+          } catch(e) { /* best-effort — generation still works without it */ }
+        }
+
         const prompt = `You are a content strategist planning DISTRIBUTION content to drive traffic to a destination. Organize your plan by POST TYPE (the distinct content formats this method's platform actually supports — e.g. Carousel, Reel, Picture Post for Instagram; just "Email" for an email list; "Video" for YouTube — infer the real formats from the platform/notes, don't force formats that don't fit).
 
 DESTINATION THIS TRAFFIC SERVES: ${parentMethodName || "(none — standalone)"}
-TRAFFIC METHOD: ${childMethodName}
+${strategyContext ? `DESTINATION'S STRATEGY (stay consistent with this positioning/messaging):\n${strategyContext}\n` : ''}TRAFFIC METHOD: ${childMethodName}
 METHOD NOTES: ${childMethodNotes || "(none)"}
 PRODUCT: ${productName}
 PRODUCT DESCRIPTION: ${productDesc || "(none)"}
