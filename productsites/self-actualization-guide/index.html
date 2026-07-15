@@ -102,6 +102,23 @@
   </div>
 </div>
 
+<!-- SEC 1.5: one-col — Strategy & Titles, per attached method. Destination
+     (Needs Traffic Plan) methods get Generate Strategy, then Generate
+     Titles once a strategy exists, with the full strategy doc rendered
+     inline (not just a Notion link-out) so this page is the complete
+     picture. Their linked traffic methods nest underneath with their own
+     Generate Titles, gated on the parent strategy. Ordinary flat methods
+     get a plain Generate Titles. -->
+<div class="one-col">
+  <div class="col">
+    <h2>Strategy &amp; Titles</h2>
+    <div class="content">
+      <div id="strategyPanel"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div id="strategyStatus" style="font-size:12px;color:#888;margin-top:8px;min-height:16px;"></div>
+    </div>
+  </div>
+</div>
+
 <!-- SEC 2: four col — offer structure / proof points / objections / td items -->
 <div class="four-col">
   <div class="col">
@@ -546,6 +563,19 @@ let RAW = { keywords: '' };
 let RESEARCH_ID_LIVE = '';
 let PRODUCT_NAME = '';
 let PRODUCT_METHODS = [];
+// First campaign linked to this product — Strategy/Titles worker actions
+// are campaign-scoped (Content Strategy rows, Research keywords), so this
+// is what's threaded through as campaignId for all generation below.
+let PRODUCT_CAMPAIGN_ID = '';
+// methodId -> { needsTrafficPlan, trafficMethods:[{id,name,notes}], strategy:{url,text,...}|null } —
+// populated (async, after loadProduct's fast render) for every attached
+// method, so the Strategy & Titles panel can grow the right controls and
+// render the full strategy text inline. See refreshStrategyPanel().
+let PRODUCT_METHOD_DETAILS = {};
+// ids of attached methods that are a Traffic Methods child of some OTHER
+// attached method — rendered nested under their parent, not as their own
+// top-level row.
+let PRODUCT_METHOD_CHILD_IDS = new Set();
 // Raw current value of each method-groupable strategy field, kept in sync
 // locally after every save so section-merges never need a re-fetch.
 let PRODUCT_FIELDS = { uniqueAngle: '', avatar: '', transformation: '', offerStructure: '', proofPoints: '', objections: '' };
@@ -738,6 +768,9 @@ async function loadProduct() {
         ).join('');
       }
     }
+    PRODUCT_CAMPAIGN_ID = (p.campaigns && p.campaigns[0]) ? p.campaigns[0].id : '';
+    renderStrategyPanel(); // fast render (no controls yet) — refreshStrategyPanel below fills them in
+    refreshStrategyPanel(); // background — fetches per-method details/strategy status
 
     // Research fields
     if (r) {
@@ -764,6 +797,157 @@ async function loadProduct() {
 
   } catch(e) {
     document.getElementById('r-name').textContent = 'Error: ' + e.message;
+  }
+}
+
+// ── Strategy & Titles panel ───────────────────────────────────────────
+// A destination method's (Needs Traffic Plan) Notion-page framework
+// (headlines/CTA copy/offer structure/proof points) is a BRIEF for one
+// asset, not a list of publishable pieces — Generate Strategy writes it to
+// the Strategy DB (one record per Product+Method), rendered in full here
+// (not just linked out to Notion) so this page is the complete picture.
+// Generate Titles then reads that strategy back as grounding to produce
+// real publishable deliverables. Traffic-child methods (linked under a
+// destination via Traffic Methods) nest under their parent and get their
+// own Generate Titles, gated until the parent's strategy exists so their
+// content stays consistent with the destination's positioning.
+function psRowBtn(label, onclick, id, disabled) {
+  return `<button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" ${id ? `id="${id}"` : ''} ${disabled ? `disabled title="${esc(disabled)}"` : ''} onclick="${onclick}">${label}</button>`;
+}
+function renderStrategyPanel() {
+  const el = document.getElementById('strategyPanel');
+  if (!el) return;
+  if (!PRODUCT_METHODS.length) { el.innerHTML = '<div class="empty">No methods attached — add one above.</div>'; return; }
+  el.innerHTML = PRODUCT_METHODS.filter(m => !PRODUCT_METHOD_CHILD_IDS.has(m.id)).map(m => {
+    const detail = PRODUCT_METHOD_DETAILS[m.id];
+    let controls = '', body = '', childrenHtml = '';
+    if (detail) {
+      if (detail.needsTrafficPlan) {
+        const hasStrategy = !!detail.strategy;
+        controls = psRowBtn(hasStrategy ? '↻ Re-run Strategy' : 'Generate Strategy', `genPsStrategy('${m.id}')`, 'psRowStrat-' + m.id);
+        if (hasStrategy) {
+          controls += psRowBtn('Generate Titles', `genPsTitles('${m.id}',true,null)`, 'psRowTitles-' + m.id);
+          controls += ` <a href="${detail.strategy.url}" target="_blank" class="notion-link" style="font-size:11px;">↗ Notion</a>`;
+          body = `<div class="body-text" style="white-space:pre-wrap;font-size:12px;margin-top:8px;padding:8px 10px;background:#0d0d0d;border:1px solid #1a1a1a;">${esc(detail.strategy.text || '(empty)')}</div>`;
+        }
+        childrenHtml = (detail.trafficMethods || []).map(c => {
+          const disabled = hasStrategy ? null : "Generate the parent's Strategy first";
+          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px 6px 22px;border-top:1px solid #1a1a1a;flex-wrap:wrap;">
+            <span style="font-size:10px;color:#666;">↳ traffic</span>
+            <span style="flex:1;font-size:12px;color:#ccc;">${esc(c.name)}</span>
+            ${psRowBtn('Generate Titles', `genPsTitles('${c.id}',false,'${m.id}')`, 'psRowTitles-' + c.id, disabled)}
+          </div>`;
+        }).join('');
+      } else if (!(detail.trafficMethods || []).length) {
+        controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',false,null)`, 'psRowTitles-' + m.id);
+      }
+    }
+    return `<div style="border:1px solid #1a1a1a;border-radius:3px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;flex-wrap:wrap;">
+        <a href="https://www.notion.so/${m.id}" target="_blank" rel="noopener" class="notion-link" style="flex:1;font-size:13px;">${esc(m.name)}</a>
+        ${controls}
+      </div>
+      ${body}
+      ${childrenHtml}
+    </div>`;
+  }).join('');
+}
+// Fetches Needs-Traffic-Plan / linked-traffic-children / Strategy status for
+// every attached method, then re-renders the panel so each row grows the
+// right controls and the full strategy text. Runs in the background after
+// loadProduct's fast render, and again after any per-row generation.
+async function refreshStrategyPanel() {
+  const detailsMap = {};
+  const childIds = new Set();
+  await Promise.all(PRODUCT_METHODS.map(async m => {
+    try {
+      const d = await w('getMethodDetails', { methodId: m.id });
+      if (d.error) return;
+      detailsMap[m.id] = { needsTrafficPlan: !!d.needsTrafficPlan, trafficMethods: d.trafficMethods || [], strategy: null };
+      for (const c of (d.trafficMethods || [])) childIds.add(c.id);
+    } catch(e) {}
+  }));
+  await Promise.all(Object.keys(detailsMap).filter(id => detailsMap[id].needsTrafficPlan).map(async id => {
+    try {
+      const s = await w('getMethodStrategy', { productId: PRODUCT_ID, methodId: id });
+      detailsMap[id].strategy = s.strategy || null;
+    } catch(e) {}
+  }));
+  PRODUCT_METHOD_DETAILS = detailsMap;
+  PRODUCT_METHOD_CHILD_IDS = childIds;
+  renderStrategyPanel();
+}
+async function genPsStrategy(methodId) {
+  const m = PRODUCT_METHODS.find(x => x.id === methodId);
+  if (!m) return;
+  const btn = document.getElementById('psRowStrat-' + methodId);
+  const status = document.getElementById('strategyStatus');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+  if (status) { status.textContent = `Writing strategy for "${m.name}"…`; status.style.color = '#888'; }
+  try {
+    if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
+    const data = await w('generateMethodTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
+    if (data.error) throw new Error(data.error);
+    const r = await w('saveMethodStrategy', {
+      items: data.titles || [], campaignId: PRODUCT_CAMPAIGN_ID, methodId, methodName: m.name,
+      productId: PRODUCT_ID, productName: PRODUCT_NAME,
+    });
+    if (r.error) throw new Error(r.error);
+    if (status) { status.textContent = `✓ Strategy written for "${m.name}".`; status.style.color = '#68d391'; }
+    await refreshStrategyPanel();
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Generate Strategy'; }
+  }
+}
+async function genPsTitles(methodId, isDestination, parentMethodId) {
+  const m = PRODUCT_METHODS.find(x => x.id === methodId);
+  const name = m ? m.name : 'method';
+  const btn = document.getElementById('psRowTitles-' + methodId);
+  const status = document.getElementById('strategyStatus');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+  if (status) { status.textContent = `Generating titles for "${name}"…`; status.style.color = '#888'; }
+  try {
+    if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
+    let created = 0;
+    if (isDestination) {
+      const r = await w('generateTitlesFromStrategy', { productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID, methodId, methodName: name });
+      if (r.error) throw new Error(r.error);
+      created = r.created || 0;
+    } else if (parentMethodId) {
+      const parent = PRODUCT_METHODS.find(x => x.id === parentMethodId);
+      const child = (PRODUCT_METHOD_DETAILS[parentMethodId]?.trafficMethods || []).find(c => c.id === methodId);
+      const r = await w('generateTrafficMethodTitles', {
+        productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID,
+        parentMethodName: parent ? parent.name : '', parentMethodId,
+        childMethodId: methodId, childMethodName: child ? child.name : name, childMethodNotes: child ? child.notes : '',
+      });
+      if (r.error) throw new Error(r.error);
+      created = r.created || 0;
+    } else if (/carousel/i.test(name)) {
+      const r = await w('researchAndGenerateCarouselTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
+      if (r.error) throw new Error(r.error);
+      created = r.created || 0;
+    } else if (/upwork/i.test(name) && /title|market|trend/i.test(name)) {
+      const r = await w('researchUpworkMarketTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
+      if (r.error) throw new Error(r.error);
+      created = r.created || 0;
+    } else {
+      const data = await w('generateMethodTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
+      if (data.error) throw new Error(data.error);
+      const titles = data.titles || [];
+      for (let i = 0; i < titles.length; i += 10) {
+        const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
+        if (r.error) throw new Error(r.error);
+        created += r.created || 0;
+      }
+    }
+    await loadTitles();
+    if (status) { status.textContent = `✓ Generated ${created} title${created === 1 ? '' : 's'} for "${name}".`; status.style.color = '#68d391'; }
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Generate Titles'; }
   }
 }
 

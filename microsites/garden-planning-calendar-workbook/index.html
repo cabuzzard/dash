@@ -4206,7 +4206,7 @@ async function runEcosystemBuild() {
       <button class="modal-close" onclick="closeProductMethodsModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="modal-hint">Suggested and currently-attached methods for this product. Remove any you don't want, search to add more, or type a new one — nothing is saved until you click Add Methods. Once a method is attached, its row grows Generate Strategy / Generate Titles controls.</div>
+      <div class="modal-hint">Suggested and currently-attached methods for this product. Remove any you don't want, search to add more, or type a new one — nothing is saved until you click Add Methods. Strategy and title generation live on the product's own site.</div>
       <div id="pmList" style="margin-top:12px;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto;"></div>
       <label class="lm-label" for="pmSearchInput" style="margin-top:14px;">Add existing method</label>
       <div style="position:relative;" id="pm-search-wrap">
@@ -4234,15 +4234,6 @@ let PM_ORIGINAL_IDS = new Set();
 // trafficChild (when present, only on the AI's own top-level suggestion):
 // { kind:'existing', id, name, augmentedNotes? } | { kind:'new', name, platform?, category?, notes? }
 let PM_STAGED = [];
-// methodId -> { needsTrafficPlan, trafficMethods:[{id,name,notes}], strategy:{url,...}|null } —
-// populated (async, after the fast initial render) for methods that are
-// already committed to the product, so each row can grow the right
-// Generate Strategy / Generate Titles controls. See refreshPmDetails().
-let PM_DETAILS = {};
-// ids of committed methods that are a Traffic Methods child of some OTHER
-// committed method — these render nested under their parent, not as their
-// own top-level row.
-let PM_CHILD_IDS = new Set();
 
 function pmChildRow(child, parentIdx) {
   if (!child) return '';
@@ -4253,179 +4244,24 @@ function pmChildRow(child, parentIdx) {
     <button class="td-del" onclick="removePmTrafficChild(${parentIdx})" title="Remove">✕</button>
   </div>`;
 }
-function pmRowBtn(label, onclick, id, disabled) {
-  return `<button class="td-add-btn-inline pm-row-btn" style="font-size:10px;padding:2px 7px;" ${id ? `id="${id}"` : ''} ${disabled ? `disabled title="${disabled}"` : ''} onclick="${onclick}">${label}</button>`;
-}
-// Committed traffic-child row — nested under its parent (destination)
-// method, with its own Generate Titles action (gated until the parent's
-// Strategy exists, since it's grounded in that strategy).
-function pmCommittedChildRow(child, parentId, hasStrategy) {
-  const disabled = hasStrategy ? null : 'Generate the parent\'s Strategy first';
-  return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px 5px 22px;border:1px solid #2a2a2a;border-top:none;background:#161616;flex-wrap:wrap;">
-    <span style="font-size:10px;color:#666;">↳ traffic</span>
-    <span style="flex:1;font-size:12px;color:#ccc;">${child.name}</span>
-    ${pmRowBtn('Generate Titles', `genRowTitles('${child.id}',false,'${parentId}')`, 'pmRowTitles-' + child.id, disabled)}
-  </div>`;
-}
 function renderPmList() {
   const el = document.getElementById('pmList');
   if (!PM_STAGED.length) { el.innerHTML = '<div class="empty">No methods staged — search below or add a new one.</div>'; return; }
   el.innerHTML = PM_STAGED.map((m, i) => {
-    if (m.kind === 'existing' && PM_CHILD_IDS.has(m.id)) return ''; // rendered nested under its parent instead
     const label = m.kind === 'existing' ? m.name : `${m.name} <em style="color:#888;font-style:normal;">(new${m.researched ? ', researched' : ''})</em>`;
     const badge = m.suggested ? '<span style="font-size:9px;color:#e8ff47;border:1px solid #3a3a2a;border-radius:3px;padding:1px 5px;margin-left:6px;">suggested</span>' : '';
-    const committed = m.kind === 'existing' && PM_ORIGINAL_IDS.has(m.id);
-    const detail = committed ? PM_DETAILS[m.id] : null;
-
-    let rowBtns = '', childrenHtml = '';
-    if (detail) {
-      if (detail.needsTrafficPlan) {
-        const hasStrategy = !!detail.strategy;
-        rowBtns = pmRowBtn(hasStrategy ? '↻ Re-run Strategy' : 'Generate Strategy', `genRowStrategy('${m.id}')`, 'pmRowStrat-' + m.id);
-        if (hasStrategy) {
-          rowBtns += pmRowBtn('Generate Titles', `genRowTitles('${m.id}',true,null)`, 'pmRowTitles-' + m.id);
-          rowBtns += ` <a href="${detail.strategy.url}" target="_blank" style="font-size:10px;color:#63b3ed;">↗ Strategy</a>`;
-        }
-        childrenHtml = (detail.trafficMethods || []).map(c => pmCommittedChildRow(c, m.id, hasStrategy)).join('');
-      } else if (!(detail.trafficMethods || []).length) {
-        rowBtns = pmRowBtn('Generate Titles', `genRowTitles('${m.id}',false,null)`, 'pmRowTitles-' + m.id);
-      }
-    }
-
-    const radius = (m.trafficChild || childrenHtml) ? '3px 3px 0 0' : '3px';
+    const radius = m.trafficChild ? '3px 3px 0 0' : '3px';
     return `<div>
-      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #2a2a2a;border-radius:${radius};flex-wrap:wrap;">
-        <span style="flex:1;font-size:13px;color:#ddd;min-width:110px;">${label}${badge}</span>
-        ${rowBtns}
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #2a2a2a;border-radius:${radius};">
+        <span style="flex:1;font-size:13px;color:#ddd;">${label}${badge}</span>
         <button class="td-del" onclick="removePmStaged(${i})" title="Remove">✕</button>
       </div>
-      ${childrenHtml}
       ${pmChildRow(m.trafficChild, i)}
     </div>`;
   }).join('');
 }
 function removePmStaged(i) { PM_STAGED.splice(i, 1); renderPmList(); }
 function removePmTrafficChild(i) { if (PM_STAGED[i]) PM_STAGED[i].trafficChild = null; renderPmList(); }
-
-// Fetches Needs-Traffic-Plan / linked-traffic-children / Strategy status for
-// every COMMITTED method on this product, then re-renders pmList so each
-// row grows the right Generate Strategy / Generate Titles controls. Runs
-// in the background after the modal's initial (fast) suggestion render, and
-// again after any per-row generation completes.
-async function refreshPmDetails() {
-  const committed = PM_STAGED.filter(m => m.kind === 'existing' && PM_ORIGINAL_IDS.has(m.id));
-  const detailsMap = {};
-  const childIds = new Set();
-  await Promise.all(committed.map(async m => {
-    try {
-      const d = await w('getMethodDetails', { methodId: m.id });
-      if (d.error) return;
-      detailsMap[m.id] = { needsTrafficPlan: !!d.needsTrafficPlan, trafficMethods: d.trafficMethods || [], strategy: null };
-      for (const c of (d.trafficMethods || [])) childIds.add(c.id);
-    } catch(e) {}
-  }));
-  await Promise.all(Object.keys(detailsMap).filter(id => detailsMap[id].needsTrafficPlan).map(async id => {
-    try {
-      const s = await w('getMethodStrategy', { productId: PM_PRODUCT_ID, methodId: id });
-      detailsMap[id].strategy = s.strategy || null;
-    } catch(e) {}
-  }));
-  PM_DETAILS = detailsMap;
-  PM_CHILD_IDS = childIds;
-  renderPmList();
-}
-
-// Writes the STRATEGY document (planning/brief content — headlines, CTA
-// copy, offer structure, proof points) for ONE destination method's row.
-// This is deliberately separate from Generate Titles: a destination
-// method's framework is a brief for ONE asset, not a list of dozens of
-// publishable pieces.
-async function genRowStrategy(methodId) {
-  const m = PM_STAGED.find(s => s.kind === 'existing' && s.id === methodId);
-  if (!m) return;
-  const btn = document.getElementById('pmRowStrat-' + methodId);
-  const status = document.getElementById('pmStatus');
-  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
-  status.textContent = `Writing strategy for "${m.name}"…`;
-  status.style.color = '#888';
-  try {
-    const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId, productId: PM_PRODUCT_ID });
-    if (data.error) throw new Error(data.error);
-    const r = await w('saveMethodStrategy', {
-      items: data.titles || [], campaignId: CAMPAIGN_ID, methodId, methodName: m.name,
-      productId: PM_PRODUCT_ID, productName: PM_PRODUCT_NAME,
-    });
-    if (r.error) throw new Error(r.error);
-    status.textContent = `✓ Strategy written for "${m.name}".`;
-    status.style.color = '#68d391';
-    await refreshPmDetails();
-  } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-    status.style.color = '#fc8181';
-    if (btn) { btn.disabled = false; btn.textContent = 'Generate Strategy'; }
-  }
-}
-
-// Generates actual PUBLISHABLE titles for ONE method's row:
-//  - isDestination true: generateTitlesFromStrategy — reads that method's
-//    Strategy doc back and produces genuine deliverables grounded in it.
-//  - isDestination false + parentMethodId given: this is a traffic-child
-//    row — generateTrafficMethodTitles, grounded in the parent's Strategy.
-//  - isDestination false + no parentMethodId: an ordinary flat-title
-//    method (Carousel Content / Upwork Titles / Video Creation / generic)
-//    — same direct dispatch this always used.
-async function genRowTitles(methodId, isDestination, parentMethodId) {
-  const m = PM_STAGED.find(s => s.kind === 'existing' && s.id === methodId);
-  const name = m ? m.name : 'method';
-  const btn = document.getElementById('pmRowTitles-' + methodId);
-  const status = document.getElementById('pmStatus');
-  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
-  status.textContent = `Generating titles for "${name}"…`;
-  status.style.color = '#888';
-  try {
-    let created = 0;
-    if (isDestination) {
-      const r = await w('generateTitlesFromStrategy', { productId: PM_PRODUCT_ID, campaignId: CAMPAIGN_ID, methodId, methodName: name });
-      if (r.error) throw new Error(r.error);
-      created = r.created || 0;
-    } else if (parentMethodId) {
-      const parent = PM_STAGED.find(s => s.kind === 'existing' && s.id === parentMethodId);
-      const child = (PM_DETAILS[parentMethodId]?.trafficMethods || []).find(c => c.id === methodId);
-      const r = await w('generateTrafficMethodTitles', {
-        productId: PM_PRODUCT_ID, campaignId: CAMPAIGN_ID,
-        parentMethodName: parent ? parent.name : '', parentMethodId,
-        childMethodId: methodId, childMethodName: child ? child.name : name, childMethodNotes: child ? child.notes : '',
-      });
-      if (r.error) throw new Error(r.error);
-      created = r.created || 0;
-    } else if (/carousel/i.test(name)) {
-      const r = await w('researchAndGenerateCarouselTitles', { campaignId: CAMPAIGN_ID, methodId, productId: PM_PRODUCT_ID });
-      if (r.error) throw new Error(r.error);
-      created = r.created || 0;
-    } else if (/upwork/i.test(name) && /title|market|trend/i.test(name)) {
-      const r = await w('researchUpworkMarketTitles', { campaignId: CAMPAIGN_ID, methodId, productId: PM_PRODUCT_ID });
-      if (r.error) throw new Error(r.error);
-      created = r.created || 0;
-    } else {
-      const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId, productId: PM_PRODUCT_ID });
-      if (data.error) throw new Error(data.error);
-      const titles = data.titles || [];
-      for (let i = 0; i < titles.length; i += 10) {
-        const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: CAMPAIGN_ID, methodId, productId: PM_PRODUCT_ID });
-        if (r.error) throw new Error(r.error);
-        created += r.created || 0;
-      }
-    }
-    await loadTitles();
-    status.textContent = `✓ Generated ${created} title${created === 1 ? '' : 's'} for "${name}".`;
-    status.style.color = '#68d391';
-  } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-    status.style.color = '#fc8181';
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Generate Titles'; }
-  }
-}
 
 async function openProductMethodsModal(productId, productName) {
   PM_PRODUCT_ID = productId; PM_PRODUCT_NAME = productName;
@@ -4438,7 +4274,6 @@ async function openProductMethodsModal(productId, productName) {
   document.getElementById('pmCommitBtn').textContent = 'Add Methods';
   document.getElementById('pmList').innerHTML = '<div class="loading"><div class="spinner"></div>Suggesting…</div>';
   document.getElementById('productMethodsModal').classList.add('open');
-  PM_DETAILS = {}; PM_CHILD_IDS = new Set();
   try {
     const data = await w('suggestProductMethod', { productId });
     if (data.error) throw new Error(data.error);
@@ -4464,7 +4299,6 @@ async function openProductMethodsModal(productId, productName) {
       }
     }
     renderPmList();
-    refreshPmDetails(); // background — fills in per-row Generate Strategy/Titles once loaded
   } catch(e) {
     document.getElementById('pmList').innerHTML = `<div style="font-size:12px;color:#e05;">${e.message}</div>`;
   }
