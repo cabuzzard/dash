@@ -541,6 +541,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <input class="modal-ta" id="product-modal-type" type="text" placeholder="Search existing types or add new…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" oninput="filterTypeDd()" onfocus="filterTypeDd()" />
         <div id="product-modal-type-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
       </div>
+      <label class="lm-label" for="product-modal-desc" style="margin-top:8px;">Description <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(optional — grounds the marketing funnel research)</span></label>
+      <textarea class="modal-ta" id="product-modal-desc" rows="3" style="resize:vertical;min-height:60px!important;margin-top:4px;" placeholder="What is this product, briefly…"></textarea>
       <div class="modal-status" id="productModalStatus"></div>
     </div>
     <div class="modal-foot">
@@ -2449,7 +2451,7 @@ let ALL_PRODUCTS  = [];
 // leads, then top-of-funnel/lead-in/mid, then retention; unrecognized or
 // blank phase text sorts last rather than breaking the ordering. This is
 // about FUNNEL ROLE (Marketing Phase), not product Type/format — those are
-// two different things (see matchProductMethod).
+// two different things (see suggestProductMethod).
 function rankMarketingPhase(phase) {
   const s = (phase || '').toLowerCase();
   if (s.includes('core')) return 0;
@@ -2478,24 +2480,8 @@ function makeProductRow(p) {
   const typeBadge = p.type
     ? `<span title="Type" style="font-size:9px;color:#888;border:1px solid #2a2a2a;border-radius:3px;padding:1px 5px;flex-shrink:0;white-space:nowrap;">${p.type}</span>`
     : '';
-  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}<button class="td-add-btn-inline" onclick="rematchProductMethod('${p.id}', this)" title="Match/rematch method (existing-first, also attaches to campaign)">🔁</button>${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}<button class="td-add-btn-inline" onclick="openProductMethodsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Review methods for this product">⚙</button>${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
-}
-
-// Re-runs the existing-first method matching for one product (e.g. after
-// editing its Type), and — via the worker's propagateMethodToCampaigns —
-// also attaches the matched method to this campaign's own Methods field.
-async function rematchProductMethod(productId, btn) {
-  const orig = btn.textContent; btn.disabled = true; btn.textContent = '…';
-  try {
-    const r = await w('matchProductMethod', { productId, campaignId: CAMPAIGN_ID });
-    if (r.error) throw new Error(r.error);
-    await loadMethods();
-    btn.textContent = '✓'; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
-  } catch(e) {
-    btn.textContent = orig; btn.disabled = false;
-    alert('Error matching method: ' + e.message);
-  }
 }
 
 function renderProducts() {
@@ -2578,6 +2564,7 @@ let PRODUCT_MODAL_JUST_CREATED = false;
 function openProductModal() {
   document.getElementById('product-modal-input').value = '';
   document.getElementById('product-modal-type').value = '';
+  document.getElementById('product-modal-desc').value = '';
   document.getElementById('product-modal-dd').style.display = 'none';
   document.getElementById('product-modal-type-dd').style.display = 'none';
   document.getElementById('productModalStatus').textContent = '';
@@ -2709,9 +2696,7 @@ async function addProductFromModal() {
   const name = document.getElementById('product-modal-input').value.trim();
   if (!name) return;
   const typeVal = (document.getElementById('product-modal-type')?.value || '').trim();
-  // Defensive recompute in case the field was edited without the dropdown's
-  // onmousedown handler firing (e.g. pasted then submitted without a blur).
-  const isNewType = !!typeVal && !ALL_PRODUCT_TYPES.some(t => t.toLowerCase() === typeVal.toLowerCase());
+  const descVal = (document.getElementById('product-modal-desc')?.value || '').trim();
   const btn    = document.getElementById('productModalSave');
   const status = document.getElementById('productModalStatus');
   btn.disabled = true;
@@ -2720,7 +2705,7 @@ async function addProductFromModal() {
   try {
     let productId = productModalSelectedId;
     if (!productId) {
-      const res = await w('createProduct', { title: name, type: typeVal || undefined });
+      const res = await w('createProduct', { title: name, type: typeVal || undefined, description: descVal || undefined });
       productId = res.id;
       ALL_PRODUCTS.push({ id: productId, name });
       PRODUCT_MODAL_JUST_CREATED = true;
@@ -2729,30 +2714,40 @@ async function addProductFromModal() {
     // dropdown's "+ Create" can fire before this field is filled in, which
     // would otherwise leave Type permanently blank on the created product.
     if (PRODUCT_MODAL_JUST_CREATED && typeVal) {
-      try { await w('setProductType', { productId, type: typeVal }); } catch(e) { /* non-fatal — matching still runs */ }
+      try { await w('setProductType', { productId, type: typeVal }); } catch(e) { /* non-fatal — ecosystem research still runs */ }
     }
     await w('addCampaignProduct', { campaignId: CAMPAIGN_ID, productId });
     if (!PRODUCT_ITEMS.some(p => p.id === productId)) {
       PRODUCT_ITEMS.push({ id: productId, name, type: typeVal || null });
     }
     renderProducts();
-    // A freshly-created (typed) product automatically gets a method matched
-    // — existing-first when the Type already exists, or a freshly RESEARCHED
-    // methodology (live web search) when the Type is brand-new to the
-    // system. Either way, also attaches to this campaign's Methods field.
+    // A freshly-created (typed) product runs the SAME funnel-ecosystem
+    // research as grabbing a 🧬 Product Idea — supporting products get
+    // created around it and grouped under it. No methods get chosen here;
+    // that's a separate, explicit step via each product's ⚙ Methods modal.
     if (PRODUCT_MODAL_JUST_CREATED) {
-      status.textContent = isNewType ? 'Added ✓ — researching a new methodology…' : 'Added ✓ — matching a method…';
+      status.textContent = 'Added ✓ — researching a marketing funnel…';
       status.className = 'modal-status ok';
       try {
-        const mr = await w('matchProductMethod', { productId, campaignId: CAMPAIGN_ID, isNewType });
-        if (mr.error) throw new Error(mr.error);
-        await loadMethods();
-        status.textContent = `Added ✓ — ${mr.researched ? 'researched new methodology' : (mr.wasNew ? 'created new method' : 'matched existing method')}: ${mr.methodName}`;
+        const ecoData = await w('researchProductEcosystem', { ideaTitle: name, ideaDescription: descVal, campaignId: CAMPAIGN_ID, seedType: typeVal, excludeSeed: true });
+        if (ecoData.error) throw new Error(ecoData.error);
+        const ecosystem = ecoData.ecosystem || [];
+        await w('tagProductEcosystem', { productId, ecosystemTag: name });
+        PRODUCT_ITEMS = PRODUCT_ITEMS.map(p => p.id === productId ? { ...p, ecosystem: name } : p);
+        let createdCount = 0;
+        for (let i = 0; i < ecosystem.length; i++) {
+          status.textContent = `Creating supporting products ${i + 1} / ${ecosystem.length}…`;
+          const item = ecosystem[i];
+          const r = await w('createEcosystemProduct', { name: item.name, description: item.description, campaignId: CAMPAIGN_ID, ecosystemTag: name, type: item.type, marketingPhase: item.funnelStage });
+          if (!r.error) createdCount++;
+        }
+        await loadProducts();
+        status.textContent = `Added ✓ — ${createdCount} supporting product${createdCount === 1 ? '' : 's'} created. Open ⚙ Methods on each to choose how it's marketed.`;
       } catch(e) {
-        status.textContent = 'Added ✓ — method matching failed: ' + e.message;
+        status.textContent = 'Added ✓ — funnel research failed: ' + e.message;
         status.className = 'modal-status err';
       }
-      setTimeout(closeProductModal, 2200);
+      setTimeout(closeProductModal, 2600);
     } else {
       status.textContent = 'Added ✓';
       status.className = 'modal-status ok';
@@ -4169,24 +4164,172 @@ async function runEcosystemBuild() {
     }
     if (!created.length) throw new Error('No products were created.');
 
-    let newMethods = 0, reusedMethods = 0, augmented = 0, methodErrors = 0;
-    for (let i = 0; i < created.length; i++) {
-      status.textContent = `Matching methods ${i + 1} / ${created.length}…`;
-      const r = await w('matchProductMethod', { productId: created[i].productId, campaignId: CAMPAIGN_ID });
-      if (r.error) { methodErrors++; continue; }
-      if (r.wasNew) newMethods++; else reusedMethods++;
-      if (r.augmented) augmented++;
-    }
-
+    // No method matching here — pick each product's methods via its own
+    // "⚙ Methods" review modal in the Products panel when you're ready.
     await loadProducts();
-    status.textContent = `✓ Created ${created.length} products — ${reusedMethods} used existing methods (${augmented} augmented), ${newMethods} new method${newMethods === 1 ? '' : 's'} created${methodErrors ? `, ${methodErrors} method match${methodErrors === 1 ? '' : 'es'} failed` : ''}.`;
-    status.style.color = methodErrors ? '#f0b429' : '#68d391';
+    status.textContent = `✓ Created ${created.length} product${created.length === 1 ? '' : 's'} — open each one's ⚙ Methods to choose how it's marketed.`;
+    status.style.color = '#68d391';
     btn.textContent = 'Done';
     setTimeout(closeEcosystemModal, 2600);
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.style.color = '#fc8181';
     btn.disabled = false; btn.textContent = 'Generate';
+  }
+}
+</script>
+
+<!-- PRODUCT METHODS MODAL — review AI-suggested + already-attached methods,
+     remove/add as desired, commit with "Add Methods" (nothing is written
+     until this click — that's when methods attach to the product AND
+     propagate to this campaign's Methods field). -->
+<div class="modal-overlay" id="productMethodsModal" onclick="if(event.target===this)closeProductMethodsModal()">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="pmTitle">Methods</div>
+      <button class="modal-close" onclick="closeProductMethodsModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Suggested and currently-attached methods for this product. Remove any you don't want, search to add more, or type a new one — nothing is saved until you click Add Methods.</div>
+      <div id="pmList" style="margin-top:12px;display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;"></div>
+      <label class="lm-label" for="pmSearchInput" style="margin-top:14px;">Add existing method</label>
+      <div style="position:relative;" id="pm-search-wrap">
+        <input class="modal-ta" id="pmSearchInput" type="text" placeholder="Search methods…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" oninput="filterPmSearch()" onfocus="filterPmSearch()" />
+        <div id="pmSearchDd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:160px;overflow-y:auto;"></div>
+      </div>
+      <label class="lm-label" for="pmNewInput" style="margin-top:10px;">Or add a brand-new method by name</label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <input class="modal-ta" id="pmNewInput" type="text" placeholder="New method name…" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" />
+        <button class="td-add-btn-inline" onclick="addPmNewByName()" style="padding:0 10px;">+</button>
+      </div>
+      <div id="pmStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:16px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeProductMethodsModal()">Cancel</button>
+      <button class="modal-btn save" id="pmCommitBtn" onclick="commitProductMethods()">Add Methods</button>
+    </div>
+  </div>
+</div>
+<script>
+let PM_PRODUCT_ID = null, PM_PRODUCT_NAME = '';
+let PM_ORIGINAL_IDS = new Set();
+let PM_STAGED = []; // { kind:'existing', id, name, augmentedNotes?, suggested? } | { kind:'new', name, platform?, category?, notes?, suggested?, researched? }
+
+function renderPmList() {
+  const el = document.getElementById('pmList');
+  if (!PM_STAGED.length) { el.innerHTML = '<div class="empty">No methods staged — search below or add a new one.</div>'; return; }
+  el.innerHTML = PM_STAGED.map((m, i) => {
+    const label = m.kind === 'existing' ? m.name : `${m.name} <em style="color:#888;font-style:normal;">(new${m.researched ? ', researched' : ''})</em>`;
+    const badge = m.suggested ? '<span style="font-size:9px;color:#e8ff47;border:1px solid #3a3a2a;border-radius:3px;padding:1px 5px;margin-left:6px;">suggested</span>' : '';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #2a2a2a;border-radius:3px;">
+      <span style="flex:1;font-size:13px;color:#ddd;">${label}${badge}</span>
+      <button class="td-del" onclick="removePmStaged(${i})" title="Remove">✕</button>
+    </div>`;
+  }).join('');
+}
+function removePmStaged(i) { PM_STAGED.splice(i, 1); renderPmList(); }
+
+async function openProductMethodsModal(productId, productName) {
+  PM_PRODUCT_ID = productId; PM_PRODUCT_NAME = productName;
+  document.getElementById('pmTitle').textContent = 'Methods — ' + productName;
+  document.getElementById('pmSearchInput').value = '';
+  document.getElementById('pmNewInput').value = '';
+  document.getElementById('pmSearchDd').style.display = 'none';
+  document.getElementById('pmStatus').textContent = '';
+  document.getElementById('pmCommitBtn').disabled = false;
+  document.getElementById('pmCommitBtn').textContent = 'Add Methods';
+  document.getElementById('pmList').innerHTML = '<div class="loading"><div class="spinner"></div>Suggesting…</div>';
+  document.getElementById('productMethodsModal').classList.add('open');
+  try {
+    const data = await w('suggestProductMethod', { productId });
+    if (data.error) throw new Error(data.error);
+    const already = data.alreadyAttached || [];
+    PM_ORIGINAL_IDS = new Set(already.map(a => a.id));
+    PM_STAGED = already.map(a => ({ kind: 'existing', id: a.id, name: a.name }));
+    const sug = data.suggestion;
+    if (sug) {
+      if (sug.isExisting) {
+        if (!PM_STAGED.some(m => m.kind === 'existing' && m.id === sug.methodId)) {
+          PM_STAGED.push({ kind: 'existing', id: sug.methodId, name: sug.methodName, augmentedNotes: sug.notes || '', suggested: true });
+        }
+      } else {
+        PM_STAGED.push({ kind: 'new', name: sug.methodName, platform: sug.platform, category: sug.category, notes: sug.notes, suggested: true, researched: !!sug.researched });
+      }
+    }
+    renderPmList();
+  } catch(e) {
+    document.getElementById('pmList').innerHTML = `<div style="font-size:12px;color:#e05;">${e.message}</div>`;
+  }
+}
+function closeProductMethodsModal() {
+  document.getElementById('productMethodsModal').classList.remove('open');
+  PM_PRODUCT_ID = null;
+}
+async function filterPmSearch() {
+  const q = document.getElementById('pmSearchInput').value.trim();
+  const dd = document.getElementById('pmSearchDd');
+  if (!q) { dd.style.display = 'none'; return; }
+  try {
+    const data = await w('searchMethods', { query: q });
+    const methods = (data.methods || []).filter(m => !PM_STAGED.some(s => s.kind === 'existing' && s.id === m.id)).slice(0, 10);
+    dd.innerHTML = methods.map(m => `<div class="plat-dd-item" onmousedown="addPmExisting('${m.id}','${m.name.replace(/'/g,"\\'")}')">${m.name}</div>`).join('');
+    dd.style.display = methods.length ? 'block' : 'none';
+  } catch(e) { dd.style.display = 'none'; }
+}
+function addPmExisting(id, name) {
+  if (!PM_STAGED.some(s => s.kind === 'existing' && s.id === id)) PM_STAGED.push({ kind: 'existing', id, name });
+  document.getElementById('pmSearchInput').value = '';
+  document.getElementById('pmSearchDd').style.display = 'none';
+  renderPmList();
+}
+function addPmNewByName() {
+  const name = document.getElementById('pmNewInput').value.trim();
+  if (!name) return;
+  PM_STAGED.push({ kind: 'new', name });
+  document.getElementById('pmNewInput').value = '';
+  renderPmList();
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#pm-search-wrap')) {
+    const dd = document.getElementById('pmSearchDd');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+async function commitProductMethods() {
+  if (!PM_PRODUCT_ID) return;
+  const btn = document.getElementById('pmCommitBtn');
+  const status = document.getElementById('pmStatus');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  status.textContent = '';
+  try {
+    const stagedExistingIds = new Set(PM_STAGED.filter(m => m.kind === 'existing').map(m => m.id));
+    // Removed: was originally attached, no longer staged.
+    for (const id of PM_ORIGINAL_IDS) {
+      if (!stagedExistingIds.has(id)) {
+        await w('removeProductMethod', { productId: PM_PRODUCT_ID, methodId: id });
+      }
+    }
+    // Added/kept existing (including the AI suggestion if kept).
+    for (const m of PM_STAGED) {
+      if (m.kind === 'existing' && !PM_ORIGINAL_IDS.has(m.id)) {
+        await w('addProductMethod', { productId: PM_PRODUCT_ID, methodId: m.id, augmentedNotes: m.augmentedNotes || undefined });
+      }
+    }
+    // Brand-new methods (AI-researched-and-kept, or manually typed).
+    for (const m of PM_STAGED) {
+      if (m.kind === 'new') {
+        await w('createAndAttachMethod', { productId: PM_PRODUCT_ID, campaignId: CAMPAIGN_ID, name: m.name, platform: m.platform, category: m.category, notes: m.notes });
+      }
+    }
+    await loadMethods();
+    status.textContent = '✓ Methods added.';
+    status.style.color = '#68d391';
+    setTimeout(closeProductMethodsModal, 900);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Add Methods';
   }
 }
 </script>

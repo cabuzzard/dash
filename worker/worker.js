@@ -1395,13 +1395,14 @@ export default {
       }
 
       if (body.action === "createProduct") {
-        const { title, type } = body;
+        const { title, type, description } = body;
         if (!title) return json({ error: "title required" }, 400);
         const createProps = { Name: { title: [{ type: "text", text: { content: title } }] } };
         // Type = concrete FORMAT (PDF/Email/Quiz/Coaching/Membership/etc.) —
-        // set at manual creation so matchProductMethod (called right after by
-        // the front-end) has a real signal to match a method against.
+        // set at manual creation so the ecosystem/method pipeline (run right
+        // after by the front-end) has a real signal to work from.
         if (type) createProps["Type"] = { rich_text: [{ type: "text", text: { content: String(type).slice(0, 100) } }] };
+        if (description) createProps["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -2577,7 +2578,7 @@ export default {
       // product — grounded in campaign research. Returns the proposed list
       // only; nothing is created yet (saveMethodTitles-style split).
       if (body.action === "researchProductEcosystem") {
-        const { ideaTitle, ideaDescription, campaignId } = body;
+        const { ideaTitle, ideaDescription, campaignId, seedType, excludeSeed } = body;
         if (!ideaTitle || !campaignId) return json({ error: "ideaTitle and campaignId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -2605,9 +2606,12 @@ BUYER / PAIN POINTS: ${buyerIntent}
 SEED IDEA:
 Title: ${ideaTitle}
 Description: ${ideaDescription || "(no description given — infer from the title)"}
+${seedType ? `Type (format already chosen for this seed — ground the rest of the funnel in what makes sense to pair with this format): ${seedType}` : ''}
 
 INSTRUCTIONS:
-- Return 2-5 products total, including the seed idea itself as one of them (use the exact seed title for that one).
+${excludeSeed
+  ? `- The seed product ALREADY EXISTS — do NOT include it in your returned array. Return 2-4 SUPPORTING products only (a lead-in, a credibility piece, a retention/upsell, etc. — whatever the seed's funnel role and type genuinely calls for).`
+  : `- Return 2-5 products total, including the seed idea itself as one of them (use the exact seed title for that one).`}
 - Each product needs a clear funnel role — do not invent products that don't serve getting someone to (or past) the core offer.
 - Descriptions must be concrete and specific to this idea, not generic funnel theory.
 - "type" and "funnelStage" are TWO DIFFERENT THINGS — do not conflate them:
@@ -2670,20 +2674,37 @@ Return ONLY a JSON array — no other text, no markdown fences:
         return json({ success: true, productId: result.id.replace(/-/g,""), name });
       }
 
-      // ── matchProductMethod ──
-      // For one product, checks the FULL existing Methods DB first and asks
-      // Claude to pick the best fit; only proposes a brand-new Method when
-      // nothing genuinely fits. If an existing Method is reused, its Notes
-      // are AUGMENTED (merged/generalized) with the new pattern, not
-      // overwritten — the Method gets smarter each time it's reused across
-      // products/campaigns, per the standing "prefer existing" instruction.
-      // When the CALLER already knows the product's Type is brand-new to the
-      // system (isNewType, set by the Add Product modal's type dropdown),
-      // existing-method matching is skipped entirely — there is nothing to
-      // loosely fit, so a real methodology is researched (live web search)
-      // and written from scratch instead of force-fitting an unrelated method.
-      if (body.action === "matchProductMethod") {
-        const { productId, campaignId, isNewType } = body;
+      // ── tagProductEcosystem ──
+      // Tags an ALREADY-EXISTING product into an ecosystem group. Used by the
+      // "+ Add Product" flow: the seed product is created first (with its own
+      // Type), then researchProductEcosystem runs with excludeSeed so it only
+      // returns supporting products — this call retroactively groups the
+      // already-created seed alongside them instead of duplicating it.
+      if (body.action === "tagProductEcosystem") {
+        const { productId, ecosystemTag } = body;
+        if (!productId || !ecosystemTag) return json({ error: "productId and ecosystemTag required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Ecosystem: { rich_text: [{ type: "text", text: { content: String(ecosystemTag).slice(0, 200) } }] } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── suggestProductMethod ──
+      // READ-ONLY — no Notion writes. For one product, checks the FULL
+      // existing Methods DB and asks Claude to pick the best fit; if nothing
+      // genuinely fits, automatically escalates to a web-search-grounded
+      // research pass for a from-scratch methodology. Returns the suggestion
+      // PLUS the product's currently-attached methods, so the front-end's
+      // review modal can show both and let the user accept/reject/add before
+      // anything is actually written — committing happens via a separate
+      // explicit action (addProductMethod / createAndAttachMethod).
+      if (body.action === "suggestProductMethod") {
+        const { productId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -2691,7 +2712,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
 
         const [productPage, methodsResults] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
-          isNewType ? Promise.resolve({ results: [] }) : fetch(`https://api.notion.com/v1/databases/${METHODS_DB}/query`, {
+          fetch(`https://api.notion.com/v1/databases/${METHODS_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ page_size: 100 }),
           }).then(r => r.json()),
         ]);
@@ -2699,69 +2720,40 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const pp = productPage.properties || {};
         const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
         const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
-        // Type (format — PDF/Email/Quiz/Coaching/Membership/etc.) is the
-        // PRIMARY signal for method selection. Marketing Phase (funnel role)
-        // is secondary — it doesn't pick the method, but gets folded into the
-        // methodology text below.
         const productType = (pp.Type?.rich_text || []).map(t => t.plain_text).join("");
         const marketingPhase = (pp["Marketing Phase"]?.rich_text || []).map(t => t.plain_text).join("");
 
-        let decision;
-        let existingMethods = [];
+        // Already-attached methods, resolved to names, for the modal to show
+        // alongside the fresh suggestion.
+        const attachedIds = (pp.Methods?.relation || []).map(r => r.id.replace(/-/g,""));
+        const alreadyAttached = attachedIds.length
+          ? await Promise.all(attachedIds.map(async id => {
+              try {
+                const r = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json());
+                return { id, name: (r.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled" };
+              } catch(e) { return { id, name: "?" }; }
+            }))
+          : [];
 
-        if (isNewType) {
-          // Brand-new Type — no existing method could genuinely fit. Research
-          // real, current marketing practices for this format via web search
-          // and write the canonical methodology from scratch.
-          const researchPrompt = `You are a marketing strategist. This is the FIRST product of a brand-new TYPE in this system — there is no existing playbook for it, so you need to research and write the canonical methodology that every future product of this type will reuse.
-
-PRODUCT TYPE (format): ${productType || productName}
-PRODUCT: ${productName}
-DESCRIPTION: ${productDesc || "(none)"}
-MARKETING PHASE (funnel role — weave this into the methodology's guidance, don't treat it as a separate field): ${marketingPhase || "(not set)"}
-
-Research current, real, up-to-date best practices, channels, and tactics for marketing and selling a "${productType || productName}" product. Ground the methodology in what you find — specific tactics and channels, not generic funnel theory.
-
-Return ONLY a JSON object, no other text, no markdown fences:
-{ "name": "short reusable method name tied to the TYPE, not this specific product (e.g. 'Quiz Lead Magnet Funnel', not '${productName} Quiz')", "platform": "e.g. Instagram, Email, YouTube, Landing Page, Other", "category": "Content, Outreach, Research, SEO, Ecommerce, or Video", "notes": "the researched methodology — 3-5 sentences, specific tactics grounded in what you found, incorporating the marketing phase context" }`;
-          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "web-search-2025-03-05", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }], messages: [{ role: "user", content: researchPrompt }] }),
-          });
-          const aiData = await aiResp.json();
-          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
-          let raw = '';
-          for (const block of (aiData.content || [])) { if (block.type === 'text') raw += block.text; }
-          try {
-            const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
-            if (s === -1 || e === -1 || e < s) throw new Error("No JSON object found");
-            decision = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
-            decision.isNew = true;
-          } catch(e) {
-            return json({ error: "Failed to parse researched methodology: " + e.message + " | RAW: " + raw.slice(0, 300) }, 500);
+        // Dedupe existing methods by NAME (case-insensitive) — the Methods DB
+        // has known duplicates; prefer whichever copy has real Notes.
+        const byName = new Map();
+        for (const m of (methodsResults.results || [])) {
+          const mName = (m.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+          if (!mName) continue;
+          const notes = (m.properties?.Notes?.rich_text || []).map(t => t.plain_text).join("");
+          const key = mName.toLowerCase();
+          const existing = byName.get(key);
+          if (!existing || (notes.length > existing.notes.length)) {
+            byName.set(key, { id: m.id.replace(/-/g,""), name: mName, notes, platform: m.properties?.Platform?.select?.name || "" });
           }
-        } else {
-          // Dedupe existing methods by NAME (case-insensitive) — the Methods DB
-          // has known duplicates (e.g. "Upwork Proposal" / "upwork proposal");
-          // prefer whichever copy has real Notes so the model sees the richer one.
-          const byName = new Map();
-          for (const m of (methodsResults.results || [])) {
-            const mName = (m.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
-            if (!mName) continue;
-            const notes = (m.properties?.Notes?.rich_text || []).map(t => t.plain_text).join("");
-            const key = mName.toLowerCase();
-            const existing = byName.get(key);
-            if (!existing || (notes.length > existing.notes.length)) {
-              byName.set(key, { id: m.id.replace(/-/g,""), name: mName, notes, platform: m.properties?.Platform?.select?.name || "" });
-            }
-          }
-          existingMethods = [...byName.values()];
-          const methodsBlock = existingMethods.length
-            ? existingMethods.map((m, i) => `[E${i+1}] ${m.name}${m.platform ? ` (${m.platform})` : ''}${m.notes ? ` — ${m.notes.slice(0, 200)}` : ' — (no methodology written yet)'}`).join('\n')
-            : '(no existing methods on file)';
+        }
+        const existingMethods = [...byName.values()];
+        const methodsBlock = existingMethods.length
+          ? existingMethods.map((m, i) => `[E${i+1}] ${m.name}${m.platform ? ` (${m.platform})` : ''}${m.notes ? ` — ${m.notes.slice(0, 200)}` : ' — (no methodology written yet)'}`).join('\n')
+          : '(no existing methods on file)';
 
-          const prompt = `You are a marketing strategist choosing HOW to market and sell one specific product. Below is the full list of EXISTING marketing methods already on file. Strongly prefer reusing one of them — only propose a new method if none of them genuinely fit this product's context.
+        const prompt = `You are a marketing strategist choosing HOW to market and sell one specific product. Below is the full list of EXISTING marketing methods already on file. Strongly prefer reusing one of them — only propose a new method if none of them genuinely fit this product's context.
 
 PRODUCT: ${productName}
 TYPE (format — this is the PRIMARY signal for which method fits): ${productType || "(not set — infer format from the name/description)"}
@@ -2775,77 +2767,114 @@ INSTRUCTIONS:
 - Match primarily on TYPE — an Email-type product needs an email/nurture method, a PDF/Quiz/Lead Magnet needs a landing-page or download method, a Coaching-type product needs a booking/outreach method, a Membership needs a community/retention method, a Video needs a video-creation method. Don't match on the product's specific topic — match on what format it IS.
 - If an existing method fits the TYPE (even loosely — e.g. a generic "Campaign Page" method can serve a booking page, a waitlist page, or an offer page for several different types), choose it. Reference it by its [E#] tag.
 - Only set "isNew": true if nothing existing is even a loose fit for this product's TYPE.
-- If reusing an existing method, write "augmentedNotes": a short (2-4 sentence) GENERALIZED methodology that MERGES what that method already does with this new use case. Weave in the MARKETING PHASE as context (e.g. how this method behaves differently when used at a Lead-in stage vs a Retention stage) — the phase should live in this text, not be treated as a separate matching criterion. Broaden the definition, don't just describe this one product. If the existing method had no notes, write a real methodology from scratch grounded in this product's TYPE but general enough for future reuse.
-- If proposing new, give it a short reusable name tied to the TYPE, not this one product (e.g. "Email Nurture Sequence", not "${productName} Email"), and a real methodology description that also weaves in the phase context, plus a Platform guess (e.g. Instagram, Email, YouTube, Upwork, Etsy, Other) and Category guess (Content, Outreach, Research, SEO, Ecommerce, Video).
+- If reusing an existing method, write "augmentedNotes": a short (2-4 sentence) GENERALIZED methodology that MERGES what that method already does with this new use case. Weave in the MARKETING PHASE as context. Broaden the definition, don't just describe this one product.
+- If proposing new, give it a short reusable name tied to the TYPE, not this one product (e.g. "Email Nurture Sequence", not "${productName} Email").
 
 Return ONLY a JSON object, no other text, no markdown fences:
 { "isNew": false, "existingTag": "E2", "augmentedNotes": "..." }
 OR
 { "isNew": true, "name": "...", "platform": "...", "category": "...", "notes": "..." }`;
 
-          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: prompt }] }),
-          });
-          const aiData = await aiResp.json();
-          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
 
-          try {
-            const raw = aiData.content?.[0]?.text || "";
-            const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
-            if (s === -1 || e === -1 || e < s) throw new Error("No JSON object found");
-            decision = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
-          } catch(e) {
-            return json({ error: "Failed to parse method decision: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
-          }
+        let decision;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+          if (s === -1 || e === -1 || e < s) throw new Error("No JSON object found");
+          decision = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+        } catch(e) {
+          return json({ error: "Failed to parse method decision: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
         }
 
-        let methodId, methodName, wasNew = false, augmented = false;
-        if (decision.isNew) {
-          wasNew = true;
-          methodName = decision.name || `Method for ${productName}`;
-          const createProps = { Name: { title: [{ type: "text", text: { content: String(methodName).slice(0, 200) } }] } };
-          if (decision.platform) createProps["Platform"] = { select: { name: decision.platform } };
-          if (decision.category) createProps["Category"] = { multi_select: [{ name: decision.category }] };
-          if (decision.notes) createProps["Notes"] = { rich_text: [{ type: "text", text: { content: String(decision.notes).slice(0, 1990) } }] };
-          if (campaignId) createProps["Campaigns"] = { relation: [{ id: dash(campaignId) }] };
-          const createResp = await fetch("https://api.notion.com/v1/pages", {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ parent: { database_id: METHODS_DB }, properties: createProps }),
-          });
-          const created = await createResp.json();
-          if (!createResp.ok || !created.id) return json({ error: created.message || "Method create failed" }, createResp.status || 500);
-          methodId = created.id.replace(/-/g,"");
-        } else {
+        if (!decision.isNew) {
           const tagMatch = String(decision.existingTag || '').match(/E(\d+)/i);
           const idx = tagMatch ? parseInt(tagMatch[1], 10) - 1 : -1;
           const matched = existingMethods[idx];
-          if (!matched) return json({ error: "Model referenced an unknown existing method tag: " + decision.existingTag }, 500);
-          methodId = matched.id;
-          methodName = matched.name;
-          // Augment the existing method's Notes — merge, don't overwrite blindly.
-          if (decision.augmentedNotes) {
-            await fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, {
-              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-              body: JSON.stringify({ properties: { Notes: { rich_text: [{ type: "text", text: { content: String(decision.augmentedNotes).slice(0, 1990) } }] } } }),
+          if (matched) {
+            return json({
+              alreadyAttached,
+              suggestion: { isExisting: true, methodId: matched.id, methodName: matched.name, notes: decision.augmentedNotes || '', researched: false },
             });
-            augmented = true;
           }
+          // Model referenced an unknown tag — fall through to research instead
+          // of erroring the whole suggestion.
         }
 
-        // Attach to the product's Methods relation (append, keep any existing).
-        const existingRel = (pp.Methods?.relation || []).map(r => ({ id: r.id }));
-        if (!existingRel.some(r => r.id.replace(/-/g,"") === methodId)) existingRel.push({ id: dash(methodId) });
+        // Nothing existing fits (or the match was unparseable) — auto-escalate
+        // to a web-search-grounded research pass for a from-scratch methodology.
+        const researchPrompt = `You are a marketing strategist. No existing method genuinely fits this product — research and write a real methodology from scratch.
+
+PRODUCT TYPE (format): ${productType || productName}
+PRODUCT: ${productName}
+DESCRIPTION: ${productDesc || "(none)"}
+MARKETING PHASE (funnel role — weave this into the methodology's guidance, don't treat it as a separate field): ${marketingPhase || "(not set)"}
+
+Research current, real, up-to-date best practices, channels, and tactics for marketing and selling a "${productType || productName}" product. Ground the methodology in what you find — specific tactics and channels, not generic funnel theory.
+
+Return ONLY a JSON object, no other text, no markdown fences:
+{ "name": "short reusable method name tied to the TYPE, not this specific product (e.g. 'Quiz Lead Magnet Funnel', not '${productName} Quiz')", "platform": "e.g. Instagram, Email, YouTube, Landing Page, Other", "category": "Content, Outreach, Research, SEO, Ecommerce, or Video", "notes": "the researched methodology — 3-5 sentences, specific tactics grounded in what you found, incorporating the marketing phase context" }`;
+        const researchResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "web-search-2025-03-05", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }], messages: [{ role: "user", content: researchPrompt }] }),
+        });
+        const researchData = await researchResp.json();
+        if (!researchResp.ok) return json({ error: researchData.error?.message || "Claude API error" }, 500);
+        let raw = '';
+        for (const block of (researchData.content || [])) { if (block.type === 'text') raw += block.text; }
+        try {
+          const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+          if (s === -1 || e === -1 || e < s) throw new Error("No JSON object found");
+          const researched = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+          return json({
+            alreadyAttached,
+            suggestion: { isExisting: false, methodName: researched.name || `Method for ${productName}`, notes: researched.notes || '', platform: researched.platform || '', category: researched.category || '', researched: true },
+          });
+        } catch(e) {
+          return json({ error: "Failed to parse researched methodology: " + e.message + " | RAW: " + raw.slice(0, 300) }, 500);
+        }
+      }
+
+      // ── createAndAttachMethod ──
+      // Commit step for a NEW method (AI-suggested-and-kept, or manually
+      // typed in the review modal): creates it with full metadata, attaches
+      // to the product, and propagates to every campaign the product belongs
+      // to. Nothing here runs until the user explicitly clicks "Add Methods".
+      if (body.action === "createAndAttachMethod") {
+        const { productId, name, platform, category, notes } = body;
+        if (!productId || !name) return json({ error: "productId and name required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const createProps = { Name: { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] } };
+        if (platform) createProps["Platform"] = { select: { name: platform } };
+        if (category) createProps["Category"] = { multi_select: [{ name: category }] };
+        if (notes) createProps["Notes"] = { rich_text: [{ type: "text", text: { content: String(notes).slice(0, 1990) } }] };
+        const createResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: METHODS_DB }, properties: createProps }),
+        });
+        const created = await createResp.json();
+        if (!createResp.ok || !created.id) return json({ error: created.message || "Method create failed" }, createResp.status || 500);
+        const methodId = created.id.replace(/-/g,"");
+
+        const prodResp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr });
+        const prodPage = await prodResp.json();
+        const existingRel = (prodPage.properties?.Methods?.relation || []).map(r => ({ id: r.id }));
+        existingRel.push({ id: dash(methodId) });
         await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { Methods: { relation: existingRel } } }),
         });
-        // Also attach to every Campaign this product belongs to, so it shows
-        // in the campaign microsite's Methods field, not just on the product.
         await propagateMethodToCampaigns(productId, methodId);
 
-        return json({ success: true, productId, methodId, methodName, wasNew, augmented, researched: !!isNewType });
+        return json({ success: true, methodId, methodName: name });
       }
 
       // ── addProductMethod / removeProductMethod ──
@@ -2853,7 +2882,7 @@ OR
       // available independent of the AI matching pipeline above, so a
       // product's methods can always be hand-edited/augmented directly.
       if (body.action === "addProductMethod") {
-        const { productId, methodId } = body;
+        const { productId, methodId, augmentedNotes } = body;
         if (!productId || !methodId) return json({ error: "productId and methodId required" }, 400);
         const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const prodResp = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, {
@@ -2870,6 +2899,15 @@ OR
         });
         const result = await patchResp.json();
         if (!patchResp.ok) return json({ error: result.message || "Update failed" }, patchResp.status);
+        // Optional — from suggestProductMethod's augmentedNotes, applied only
+        // now that the user has explicitly committed to this method.
+        if (augmentedNotes) {
+          await fetch(`https://api.notion.com/v1/pages/${dashId(methodId)}`, {
+            method: "PATCH",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { Notes: { rich_text: [{ type: "text", text: { content: String(augmentedNotes).slice(0, 1990) } }] } } }),
+          });
+        }
         // Also attach to every Campaign this product belongs to.
         await propagateMethodToCampaigns(productId, methodId);
         return json({ success: true });
