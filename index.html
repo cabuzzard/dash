@@ -3214,6 +3214,7 @@ function renderLinks() {
     const retryBtn = (p.status !== 'Done')
       ? '<button onclick="retryLinkRow(\'' + p.id + '\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">↺ Retry</button>'
       : '';
+    const deleteBtn = '<button onclick="deleteLinkRow(\'' + p.id + '\')" title="Delete" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0 0 0 8px;flex-shrink:0;color:var(--text3);">🗑</button>';
     const platformBadge = '<span style="font-size:10px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:10px;flex-shrink:0;' + linksPlatformStyle(p.platform) + '">' + esc(p.platform || 'Unknown') + '</span>';
     return '' +
       '<div id="linkRow_' + p.id + '" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface);">' +

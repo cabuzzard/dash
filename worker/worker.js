@@ -9573,6 +9573,20 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json(result);
       }
 
+      if (body.action === "deleteSavedPost") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const resp = await fetch(`https://api.notion.com/v1/pages/${id}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) return json({ error: data.message || "Failed to delete" }, 500);
+        return json({ ok: true });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);

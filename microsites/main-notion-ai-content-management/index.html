@@ -2270,11 +2270,16 @@ function openCreateAssetModal(titleId, titleText) {
   document.getElementById('ca-go').textContent = 'Generate';
 
   const methodEl = document.getElementById('ca-methods');
-  if (!METHOD_ITEMS.length) {
-    methodEl.innerHTML = '<div style="font-size:11px;color:#555;padding:4px 2px">No methods on this campaign yet — add one under Methods first.</div>';
+  // list EVERY method in the Methods DB, not just this campaign's —
+  // campaign-attached ones first, marked ◆ (user request: show all,
+  // clean up the DB as you go)
+  const caAttachedIds = new Set(METHOD_ITEMS.map(m => m.id));
+  const caMethodList = [...METHOD_ITEMS, ...(ALL_METHODS || []).filter(m => !caAttachedIds.has(m.id))];
+  if (!caMethodList.length) {
+    methodEl.innerHTML = '<div style="font-size:11px;color:#555;padding:4px 2px">No methods in the Methods DB yet — add one under Methods first.</div>';
   } else {
-    methodEl.innerHTML = METHOD_ITEMS.map(m =>
-      `<label class="mgp-option"><input type="radio" name="ca-method" value="${m.id}" onchange="CA_METHOD_ID=this.value;caMarkSelected(this);caCheckReady()"> ${m.name}</label>`
+    methodEl.innerHTML = caMethodList.map(m =>
+      `<label class="mgp-option"><input type="radio" name="ca-method" value="${m.id}" onchange="CA_METHOD_ID=this.value;caMarkSelected(this);caCheckReady()"> ${caAttachedIds.has(m.id) ? '<em style="color:#a78bfa">&#9670;</em> ' : ''}${m.name}</label>`
     ).join('');
   }
 
@@ -2298,7 +2303,7 @@ async function runCreateAsset() {
   const status = document.getElementById('ca-status');
   btn.disabled = true; btn.textContent = 'Generating…';
   status.style.color = '#888';
-  const caMethodName = (METHOD_ITEMS.find(m => m.id === CA_METHOD_ID) || {}).name || '';
+  const caMethodName = (METHOD_ITEMS.concat(ALL_METHODS || []).find(m => m.id === CA_METHOD_ID) || {}).name || '';
   if (/carousel/i.test(caMethodName)) {
     status.textContent = 'Researching trends and merging keywords…';
     try {
