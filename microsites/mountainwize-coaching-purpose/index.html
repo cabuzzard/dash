@@ -1331,6 +1331,20 @@ async function loadTitles() {
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset" style="flex-shrink:0;">✕</button>`;
         wrap.appendChild(ar);
       });
+      // assets still carrying the placeholder Canva search link → offer the
+      // Claude handoff that generates the real designs and saves links back
+      const pendingDesigns = t.assets.filter(a => /canva\.com\/templates\/\?query/i.test(a.designLink || ''));
+      if (pendingDesigns.length) {
+        const pr = document.createElement('div');
+        pr.style.cssText = 'display:flex;align-items:center;padding:4px 10px 6px 28px;border-bottom:1px solid rgba(255,255,255,.04);';
+        const btn = document.createElement('button');
+        btn.textContent = `🤖 Create ${pendingDesigns.length} design${pendingDesigns.length === 1 ? '' : 's'} in Claude`;
+        btn.title = 'Opens a Claude chat preloaded to generate real Canva designs for the pending assets and save the links back to Notion';
+        btn.style.cssText = 'font-size:11px;padding:3px 10px;border:1px solid #444;background:transparent;color:#a78bfa;cursor:pointer;border-radius:3px;';
+        btn.onclick = () => window.open('https://claude.ai/new?q=' + encodeURIComponent(claudeDesignPrompt(t.title, pendingDesigns)), '_blank');
+        pr.appendChild(btn);
+        wrap.appendChild(pr);
+      }
       return wrap;
     }
     function renderGroupingLevel(titles, container) {
@@ -4281,6 +4295,23 @@ async function deleteAssetRow(assetId, btn) {
     btn.disabled = false;
     alert('Error: ' + e.message);
   }
+}
+
+// The worker has no Canva access — real design generation needs a Claude
+// chat with the user's Canva + Notion connectors. This builds a fully
+// self-contained prompt and opens claude.ai with it prefilled: Claude reads
+// each pending asset's Body (a complete design brief), generates the Canva
+// design, and writes the edit link back into the asset's Design Link.
+function claudeDesignPrompt(titleName, assets) {
+  const lines = assets.map(a => '- https://www.notion.so/' + a.id + '  ("' + a.title + '")').join('\n');
+  return 'Create real Canva designs for these pending Drawing Post assets (parent title: "' + titleName + '") and save the links back to Notion.\n\n'
+    + 'Asset pages:\n' + lines + '\n\n'
+    + 'For EACH asset page above:\n'
+    + '1. Fetch the Notion page and read its "Body" property — it is a complete design brief (layout, exact on-image text, colors, fonts, caption).\n'
+    + '2. Generate a Canva design (design type instagram_post unless the brief says otherwise) using the brief faithfully — exact on-image text, spec colors and fonts.\n'
+    + '3. Save the best-matching candidate to my Canva account.\n'
+    + '4. Update the SAME Notion asset page: set its "Design Link" property to the Canva EDIT url, replacing the placeholder canva.com/templates search link.\n\n'
+    + 'Process every asset without stopping to ask questions, then give me a summary with each asset name and its new Canva link.';
 }
 
 async function submitGenAssets() {
