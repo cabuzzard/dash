@@ -803,6 +803,14 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <div id="gaMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
       </div>
 
+      <label class="lm-label">Sub method <span style="color:#777;font-weight:normal;">— target platform layer (e.g. Instagram, X); pick existing or type a new name</span></label>
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="modal-ta" id="gaSubMethodInput" type="text" placeholder="Instagram, X / Twitter, LinkedIn…" autocomplete="off"
+               oninput="gaFilter('submethod')" onfocus="gaFilter('submethod')"
+               onblur="setTimeout(()=>{const d=document.getElementById('gaSubMethodDD'); if(d) d.style.display='none';},180)" />
+        <div id="gaSubMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      </div>
+
       <label class="lm-label">Product <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
       <div style="position:relative;margin-bottom:10px;">
         <input class="modal-ta" id="gaProductInput" type="text" placeholder="Search products…" autocomplete="off"
@@ -4131,6 +4139,7 @@ async function submitAddTitle() {
 // linked to the title — they render as rows under the publish title.
 let GA_TITLE_ID = null, GA_CAMPAIGN_ID = null;
 let GA_METHOD_ID = null, GA_METHOD_NAME = '';
+let GA_SUBMETHOD_ID = null, GA_SUBMETHOD_NAME = '';
 let GA_PRODUCT_ID = null, GA_PRODUCT_NAME = '';
 let GA_TYPES = [];
 
@@ -4163,13 +4172,28 @@ function gaTypeFilter() {
   dd.style.display = (matches.length || (q && !exact)) ? 'block' : 'none';
 }
 
+const GA_KIND_CFG = {
+  method:    { input: 'gaMethodInput',    dd: 'gaMethodDD' },
+  submethod: { input: 'gaSubMethodInput', dd: 'gaSubMethodDD' },
+  product:   { input: 'gaProductInput',   dd: 'gaProductDD' },
+};
+function gaSel(kind) {
+  if (kind === 'method')    return { id: GA_METHOD_ID,    name: GA_METHOD_NAME };
+  if (kind === 'submethod') return { id: GA_SUBMETHOD_ID, name: GA_SUBMETHOD_NAME };
+  return { id: GA_PRODUCT_ID, name: GA_PRODUCT_NAME };
+}
+function gaSetSel(kind, id, name) {
+  if (kind === 'method')         { GA_METHOD_ID = id;    GA_METHOD_NAME = name; }
+  else if (kind === 'submethod') { GA_SUBMETHOD_ID = id; GA_SUBMETHOD_NAME = name; }
+  else                           { GA_PRODUCT_ID = id;   GA_PRODUCT_NAME = name; }
+}
 function gaFilter(kind) {
-  const inp  = document.getElementById(kind === 'method' ? 'gaMethodInput' : 'gaProductInput');
-  const dd   = document.getElementById(kind === 'method' ? 'gaMethodDD' : 'gaProductDD');
-  const list = kind === 'method' ? AT_METHODS : AT_PRODUCTS;
+  const cfg = GA_KIND_CFG[kind];
+  const inp  = document.getElementById(cfg.input);
+  const dd   = document.getElementById(cfg.dd);
+  const list = kind === 'product' ? AT_PRODUCTS : AT_METHODS; // sub methods live in the Methods DB too
   const q = inp.value.trim(), qL = q.toLowerCase();
-  if (kind === 'method' && q !== GA_METHOD_NAME) { GA_METHOD_ID = null; GA_METHOD_NAME = ''; }
-  if (kind === 'product' && q !== GA_PRODUCT_NAME) { GA_PRODUCT_ID = null; GA_PRODUCT_NAME = ''; }
+  if (q !== gaSel(kind).name) gaSetSel(kind, null, '');
   dd.innerHTML = '';
   const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
   matches.forEach(x => {
@@ -4179,8 +4203,7 @@ function gaFilter(kind) {
     div.onmouseleave = () => div.style.background = '';
     div.textContent = x.name;
     div.onmousedown = () => {
-      if (kind === 'method') { GA_METHOD_ID = x.id; GA_METHOD_NAME = x.name; }
-      else { GA_PRODUCT_ID = x.id; GA_PRODUCT_NAME = x.name; }
+      gaSetSel(kind, x.id, x.name);
       inp.value = x.name;
       dd.style.display = 'none';
     };
@@ -4190,24 +4213,23 @@ function gaFilter(kind) {
   if (q && !exact) {
     const div = document.createElement('div');
     div.style.cssText = 'padding:8px 12px;font-size:12px;color:#e8ff47;font-style:italic;border-bottom:1px solid #222;';
-    div.textContent = `＋ new ${kind} "${q}" will be created on Generate`;
+    div.textContent = `＋ new ${kind === 'submethod' ? 'sub method' : kind} "${q}" will be created on Generate`;
     dd.appendChild(div);
   }
   dd.style.display = (matches.length || (q && !exact)) ? 'block' : 'none';
 }
 
 async function gaResolve(kind, statusEl) {
-  const inp = document.getElementById(kind === 'method' ? 'gaMethodInput' : 'gaProductInput');
-  const val = inp.value.trim();
+  const cfg = GA_KIND_CFG[kind];
+  const val = document.getElementById(cfg.input).value.trim();
   if (!val) return { id: null };
-  const pickedId   = kind === 'method' ? GA_METHOD_ID : GA_PRODUCT_ID;
-  const pickedName = kind === 'method' ? GA_METHOD_NAME : GA_PRODUCT_NAME;
-  if (pickedId && val === pickedName) return { id: pickedId };
-  const list = kind === 'method' ? AT_METHODS : AT_PRODUCTS;
+  const picked = gaSel(kind);
+  if (picked.id && val === picked.name) return { id: picked.id };
+  const list = kind === 'product' ? AT_PRODUCTS : AT_METHODS;
   const match = list.find(x => x.name.toLowerCase() === val.toLowerCase());
   if (match) return { id: match.id };
-  statusEl.textContent = `Creating new ${kind} "${val}"…`;
-  const res = await w(kind === 'method' ? 'createMethod' : 'createProduct', { title: val });
+  statusEl.textContent = `Creating new ${kind === 'submethod' ? 'sub method' : kind} "${val}"…`;
+  const res = await w(kind === 'product' ? 'createProduct' : 'createMethod', { title: val });
   if (res.error) throw new Error(res.error);
   list.push({ id: res.id, name: val });
   return { id: res.id };
@@ -4216,8 +4238,9 @@ async function gaResolve(kind, statusEl) {
 async function openGenAssetsModal(titleId) {
   GA_TITLE_ID = titleId; GA_CAMPAIGN_ID = null;
   GA_METHOD_ID = null; GA_METHOD_NAME = '';
+  GA_SUBMETHOD_ID = null; GA_SUBMETHOD_NAME = '';
   GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
-  ['gaTitleInput','gaMethodInput','gaProductInput','gaTypeInput','gaDescInput','gaKeywordsInput','gaResearchInput'].forEach(id => {
+  ['gaTitleInput','gaMethodInput','gaSubMethodInput','gaProductInput','gaTypeInput','gaDescInput','gaKeywordsInput','gaResearchInput'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const status = document.getElementById('gaStatus');
@@ -4270,14 +4293,16 @@ async function submitGenAssets() {
   const btn = document.getElementById('gaGoBtn');
   btn.disabled = true; btn.textContent = 'Generating…';
   try {
-    const method  = await gaResolve('method', status);
-    const product = await gaResolve('product', status);
+    const method    = await gaResolve('method', status);
+    const subMethod = await gaResolve('submethod', status);
+    const product   = await gaResolve('product', status);
     status.textContent = 'Generating asset concepts…';
     const r = await w('generateTitleAssets', {
       titleId: GA_TITLE_ID,
       campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID,
-      methodId:  method.id  || undefined,
-      productId: product.id || undefined,
+      methodId:    method.id    || undefined,
+      subMethodId: subMethod.id || undefined,
+      productId:   product.id   || undefined,
       assetType,
       title,
       description:          document.getElementById('gaDescInput').value.trim()     || undefined,

@@ -5639,7 +5639,7 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
       // record in the Assets DB linked to the title via its Content Strategy
       // relation — so they render as rows under the publish title.
       if (body.action === "generateTitleAssets") {
-        const { titleId, campaignId, productId, methodId, title, description, seedKeywords, researchInstructions, assetType } = body;
+        const { titleId, campaignId, productId, methodId, subMethodId, title, description, seedKeywords, researchInstructions, assetType } = body;
         const count = Math.min(Math.max(parseInt(body.count) || 4, 1), 8);
         if (!titleId || !title) return json({ error: "titleId and title required" }, 400);
         if (!assetType) return json({ error: "assetType required — every asset must have a type" }, 400);
@@ -5672,6 +5672,17 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
             methodBody = (await extractBlocksTextRecursive(dsHdr, dsDash(methodId))).slice(0, 2500);
           } catch(e) {}
         }
+        // Optional SUB METHOD — the platform layer under the primary method
+        // (e.g. Drawing Post → Instagram). Its framework constrains formats;
+        // its name becomes the created assets' Platform Name.
+        let subMethodName = "", subMethodBody = "";
+        if (subMethodId && subMethodId !== "__none__") {
+          try {
+            const sp = await fetch(`https://api.notion.com/v1/pages/${dsDash(subMethodId)}`, { headers: dsHdr }).then(r => r.json());
+            subMethodName = (sp.properties?.Name?.title || []).map(t => t.plain_text).join("");
+            subMethodBody = (await extractBlocksTextRecursive(dsHdr, dsDash(subMethodId))).slice(0, 1500);
+          } catch(e) {}
+        }
         // Drawing Post assets get a Canva starting-point link (template
         // search built from a per-concept query — real Canva design creation
         // can't be automated from the worker, so this is the fastest manual
@@ -5681,7 +5692,7 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a senior content designer and copywriter. Create exactly ${count} DISTINCT asset concepts — options for the operator to choose between — for the content idea below. Every concept is a ${assetType} — do not propose other formats. Each must be complete enough to build immediately without further questions.
 
 IDEA / TITLE: ${title}
-${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `SEED KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${methodName ? `METHOD: ${methodName}${methodBody ? `\nMETHOD NOTES/FRAMEWORK (dictates the deliverable format):\n${methodBody}` : ""}\n` : ""}
+${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `SEED KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${methodName ? `METHOD: ${methodName}${methodBody ? `\nMETHOD NOTES/FRAMEWORK (dictates the deliverable format):\n${methodBody}` : ""}\n` : ""}${subMethodName ? `SUB METHOD / TARGET PLATFORM: ${subMethodName} — every concept must be built for ${subMethodName} specifically (its native formats, dimensions, character limits, and audience behavior).${subMethodBody ? `\nPLATFORM FRAMEWORK NOTES:\n${subMethodBody}` : ""}\n` : ""}
 DESIGN SPEC (every concept must match this aesthetic):
 Background ${spec.bg} · Ink ${spec.ink} · Accent ${spec.accent} · Headline font ${spec.headlineFont} · Body font ${spec.bodyFont}
 ${spec.notes ? `Aesthetic: ${spec.notes}` : ""}
@@ -5714,7 +5725,8 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
             "Body":         { rich_text: [{ text: { content: String(c.body || "").slice(0, 2000) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
           };
-          if (c.platform)  properties["Platform Name"] = { select: { name: String(c.platform).slice(0, 100) } };
+          const platName = subMethodName || c.platform; // sub method wins — it IS the target platform
+          if (platName) properties["Platform Name"] = { select: { name: String(platName).slice(0, 100) } };
           properties["Asset Type"] = { select: { name: String(assetType).slice(0, 100) } }; // required — every asset has a type
           if (isDrawingPost && c.canvaQuery) properties["Design Link"] = { url: "https://www.canva.com/templates/?query=" + encodeURIComponent(String(c.canvaQuery).slice(0, 80)) };
           if (campaignId)  properties["Campaign"]      = { relation: [{ id: dsDash(campaignId) }] };
