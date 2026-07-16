@@ -773,6 +773,14 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <label class="lm-label">Research instructions</label>
       <textarea class="modal-ta" id="atResearchInput" rows="3" placeholder="How research for this idea should run — sources to check, angles to take, what to look for, what to avoid…" style="margin-bottom:10px;resize:vertical;"></textarea>
 
+      <label class="lm-label">Titles to create <span style="color:#777;font-weight:normal;">— 1 saves this idea as-is; more = AI generates that many distinct titles from it</span></label>
+      <select class="modal-ta" id="atCountInput" style="margin-bottom:10px;width:200px;">
+        <option value="1">1 — just this idea</option>
+        <option value="3">3 — generate</option>
+        <option value="5">5 — generate</option>
+        <option value="10">10 — generate</option>
+      </select>
+
       <div id="addTitleStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
     </div>
     <div class="modal-foot">
@@ -4130,17 +4138,23 @@ async function submitAddTitle() {
   try {
     const method  = await atResolve('method', status);
     const product = await atResolve('product', status);
-    status.textContent = 'Creating title…';
-    await w('createDevTitle', {
-      title,
+    const atCount = parseInt(document.getElementById('atCountInput')?.value) || 1;
+    const common = {
       campaignId: CAMPAIGN_ID,
-      status: 'Development',
       methodId:  method.id  || undefined,
       productId: product.id || undefined,
       description:          document.getElementById('atDescInput').value.trim()     || undefined,
       seedKeywords:         document.getElementById('atKeywordsInput').value.trim() || undefined,
       researchInstructions: document.getElementById('atResearchInput').value.trim() || undefined,
-    });
+    };
+    if (atCount > 1) {
+      status.textContent = 'Generating ' + atCount + ' titles…';
+      const r = await w('generateIdeaTitles', { title, count: atCount, ...common });
+      status.textContent = '✓ Generated ' + r.created + ' titles' + (r.failed ? ' (' + r.failed + ' failed)' : '');
+    } else {
+      status.textContent = 'Creating title…';
+      await w('createDevTitle', { title, status: 'Development', ...common });
+    }
     closeAddTitleModal();
     loadTitles();
     // refresh side panels if we created something new mid-flow

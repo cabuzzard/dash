@@ -5573,6 +5573,83 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
         return json({ spec: merged, campaignSpec, productSpec });
       }
 
+      // ── generateIdeaTitles ──
+      // AI-generates N distinct titles from one idea (the add-title modal's
+      // generation mode) and creates each as a Content Strategy record with
+      // the same relations/fields the single-title path writes. Honors the
+      // operator's research instructions + standing research guidelines.
+      if (body.action === "generateIdeaTitles") {
+        const { title, description, seedKeywords, researchInstructions, campaignId, productId, methodId } = body;
+        const count = Math.min(Math.max(parseInt(body.count) || 5, 2), 15);
+        if (!title) return json({ error: "title required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+
+        // light grounding from the campaign + method names/context
+        let campaignCtx = "", methodName = "";
+        try {
+          if (campaignId) {
+            const cpg = await fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json());
+            const cp = cpg.properties || {};
+            const rtc = k => (cp[k]?.rich_text || []).map(t => t.plain_text).join("");
+            campaignCtx = [
+              (cp.Name?.title || []).map(t => t.plain_text).join("") ? `CAMPAIGN: ${(cp.Name.title || []).map(t => t.plain_text).join("")}` : "",
+              rtc("Key Message") ? `Key message: ${rtc("Key Message")}` : "",
+              rtc("Pain Points") ? `Audience pain points: ${rtc("Pain Points").slice(0, 500)}` : "",
+            ].filter(Boolean).join("\n");
+          }
+          if (methodId) {
+            const mp = await fetch(`https://api.notion.com/v1/pages/${dsDash(methodId)}`, { headers: dsHdr }).then(r => r.json());
+            methodName = (mp.properties?.Name?.title || []).map(t => t.plain_text).join("");
+          }
+        } catch(e) {}
+
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist. Generate exactly ${count} DISTINCT publishable content titles derived from the idea below — each a different angle, hook, or framing of the same core idea (not rewordings of each other).
+
+IDEA: ${title}
+${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `SEED KEYWORDS (work these in naturally): ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly — they override the defaults): ${researchInstructions}\n` : ""}${methodName ? `METHOD (the content format these titles are for): ${methodName}\n` : ""}${campaignCtx ? campaignCtx + "\n" : ""}
+Return ONLY a JSON array of exactly ${count} items, no markdown fences:
+[{ "title": "the publishable title", "angle": "1-2 sentence description of this title's specific angle" }]`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude error" }, 502);
+        let ideas;
+        try {
+          const raw = (aiData.content?.[0]?.text || "").replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+          ideas = JSON.parse(raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1));
+        } catch(e) { return json({ error: "Could not parse generated titles — try again" }, 502); }
+        if (!Array.isArray(ideas) || !ideas.length) return json({ error: "No titles generated — try again" }, 502);
+
+        const rtProp2 = v => ({ rich_text: [{ type: "text", text: { content: String(v).slice(0, 1990) } }] });
+        const created = [], failures = [];
+        for (const idea of ideas.slice(0, count)) {
+          const props = {
+            Title:  { title: [{ type: "text", text: { content: String(idea.title || "Untitled").slice(0, 200) } }] },
+            Status: { select: { name: "Development" } },
+          };
+          if (idea.angle) props["Core Idea"] = rtProp2(idea.angle);
+          if (seedKeywords) props["seed idea"] = rtProp2(seedKeywords);
+          if (researchInstructions) props["Notes"] = rtProp2(researchInstructions);
+          if (campaignId) props["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          if (productId && productId !== '__none__' && productId !== campaignId) props["product"] = { relation: [{ id: dsDash(productId) }] };
+          if (methodId) props["method"] = { relation: [{ id: dsDash(methodId) }] };
+          const resp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props }),
+          });
+          const result = await resp.json();
+          if (resp.ok && result.id) created.push({ id: result.id.replace(/-/g,""), title: idea.title });
+          else failures.push(result.message || "create failed");
+        }
+        if (!created.length) return json({ error: "All title creates failed: " + (failures[0] || "unknown") }, 502);
+        return json({ success: true, created: created.length, titles: created, failed: failures.length });
+      }
+
       // ── getTitleDetails ──
       // Everything the generate-assets modal needs to prefill from an
       // existing Content Strategy title: text fields + relation ids AND

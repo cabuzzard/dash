@@ -2132,6 +2132,15 @@
       <label class="modal-label">Research guidelines <span style="color:var(--text3);font-weight:400;">(optional — routing recommendations for Claude; remembered on this device, sent with every run)</span></label>
       <textarea class="modal-input" id="ltGuidelinesInput" rows="2" style="resize:vertical;" placeholder="e.g. prioritize niche forums + Reddit; US buyers only; avoid hustle-culture framing…"></textarea>
     </div>
+    <div class="modal-field">
+      <label class="modal-label">Titles to create <span style="color:var(--text3);font-weight:400;">(1 = save this idea as-is; more = AI generates that many distinct titles from it, honoring the instructions above)</span></label>
+      <select class="modal-select" id="ltCountInput" style="width:220px;">
+        <option value="1">1 — just this idea</option>
+        <option value="3">3 — generate variations</option>
+        <option value="5">5 — generate variations</option>
+        <option value="10">10 — generate variations</option>
+      </select>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeLinkTitleModal()">Cancel</button>
       <button class="btn btn-primary" id="ltSaveBtn" onclick="submitLinkTitle()">Create</button>
@@ -3448,19 +3457,26 @@ async function submitLinkTitle() {
     const campaign = await ltResolve('campaign', status);
     const method   = await ltResolve('method', status);
     const product  = await ltResolve('product', status);
-    status.textContent = 'Creating title…';
-    await call('createDevTitle', {
-      title,
-      status: 'Development',
+    const ltCount = parseInt(document.getElementById('ltCountInput')?.value) || 1;
+    const common = {
       campaignId: campaign.id || undefined,
       methodId:   method.id   || undefined,
       productId:  product.id  || undefined,
       description:          document.getElementById('ltDescInput').value.trim()     || undefined,
       seedKeywords:         document.getElementById('ltKeywordsInput').value.trim() || undefined,
       researchInstructions: document.getElementById('ltResearchInput').value.trim() || undefined,
-    });
-    closeLinkTitleModal();
-    showToast('Title created ✓', 'success');
+    };
+    if (ltCount > 1) {
+      status.textContent = 'Generating ' + ltCount + ' titles…';
+      const r = await call('generateIdeaTitles', { title, count: ltCount, ...common });
+      closeLinkTitleModal();
+      showToast('Generated ' + r.created + ' titles ✓' + (r.failed ? ' (' + r.failed + ' failed)' : ''), 'success');
+    } else {
+      status.textContent = 'Creating title…';
+      await call('createDevTitle', { title, status: 'Development', ...common });
+      closeLinkTitleModal();
+      showToast('Title created ✓', 'success');
+    }
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     btn.disabled = false; btn.textContent = 'Create';
