@@ -378,6 +378,11 @@
         <div id="gaTypeDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
       </div>
 
+      <label class="lm-label">Design spec <span style="color:#777;font-weight:normal;">— which visual system these assets use</span></label>
+      <select class="modal-ta" id="gaSpecInput" style="margin-bottom:10px;">
+        <option value="">Campaign default</option>
+      </select>
+
       <label class="lm-label">Description of content</label>
       <textarea class="modal-ta" id="gaDescInput" rows="3" style="margin-bottom:10px;resize:vertical;"></textarea>
 
@@ -1288,6 +1293,27 @@ async function gaEnsureTypes() {
   if (GA_TYPES.length) return;
   try { GA_TYPES = (await w('getAssetTypes', {})).types || []; } catch(e) {}
 }
+// Populate the design-spec picker with every spec attached to the campaign
+// (rebuilds each open, so it resets to "Campaign default" and picks up
+// newly-created specs). The default spec is labeled.
+async function gaLoadSpecs() {
+  const sel = document.getElementById('gaSpecInput');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Campaign default</option>';
+  const cid = GA_CAMPAIGN_ID
+    || (typeof CAMPAIGN_ID !== 'undefined' ? CAMPAIGN_ID : '')
+    || (typeof PRODUCT_CAMPAIGN_ID !== 'undefined' ? PRODUCT_CAMPAIGN_ID : '');
+  if (!cid) return;
+  try {
+    const d = await w('getCampaignDesignSpecs', { campaignId: cid });
+    (d.specs || []).forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.id;
+      o.textContent = s.name + (d.attachedId === s.id ? ' (default)' : '');
+      sel.appendChild(o);
+    });
+  } catch(e) { /* picker stays on Campaign default */ }
+}
 function gaTypeFilter() {
   const inp = document.getElementById('gaTypeInput');
   const dd  = document.getElementById('gaTypeDD');
@@ -1406,6 +1432,7 @@ async function openGenAssetsModal(titleId) {
     GA_CAMPAIGN_ID = PRODUCT_CAMPAIGN_ID || '';
     status.textContent = 'Could not prefill from title (' + e.message + ') — fields are editable.';
   }
+  gaLoadSpecs(); // needs GA_CAMPAIGN_ID — fire-and-forget
   btn.disabled = false;
 }
 function closeGenAssetsModal() { document.getElementById('genAssetsModal').classList.remove('open'); }
@@ -1463,6 +1490,7 @@ async function submitGenAssets() {
       subMethodId: subMethod.id || undefined,
       productId:   product.id   || undefined,
       assetType,
+      designSpecId: document.getElementById('gaSpecInput').value || undefined,
       title,
       description:          document.getElementById('gaDescInput').value.trim()     || undefined,
       seedKeywords:         document.getElementById('gaKeywordsInput').value.trim() || undefined,

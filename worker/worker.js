@@ -5646,21 +5646,27 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
 
-        // design spec: campaign default, product override, hard defaults
+        // design spec: explicit modal pick wins, else campaign default →
+        // product override → hard defaults
         let spec = { ...DESIGN_SPEC_DEFAULTS };
         try {
-          const [campPage, prodPage] = await Promise.all([
-            campaignId ? fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
-            hasProduct ? fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
-          ]);
-          const campSpecId = campPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null;
-          const prodSpecId = prodPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null;
-          const [cs, ps] = await Promise.all([
-            campSpecId ? fetch(`https://api.notion.com/v1/pages/${campSpecId}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
-            prodSpecId ? fetch(`https://api.notion.com/v1/pages/${prodSpecId}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
-          ]);
           const stripEmpty = obj => Object.fromEntries(Object.entries(obj).filter(([k, v]) => k !== "id" && k !== "name" && v));
-          spec = { ...spec, ...(cs ? stripEmpty(dsFromPage(cs)) : {}), ...(ps ? stripEmpty(dsFromPage(ps)) : {}) };
+          if (body.designSpecId) {
+            const sp = await fetch(`https://api.notion.com/v1/pages/${dsDash(body.designSpecId)}`, { headers: dsHdr }).then(r => r.json());
+            if (sp && sp.id) spec = { ...spec, ...stripEmpty(dsFromPage(sp)) };
+          } else {
+            const [campPage, prodPage] = await Promise.all([
+              campaignId ? fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
+              hasProduct ? fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
+            ]);
+            const campSpecId = campPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+            const prodSpecId = prodPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+            const [cs, ps] = await Promise.all([
+              campSpecId ? fetch(`https://api.notion.com/v1/pages/${campSpecId}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
+              prodSpecId ? fetch(`https://api.notion.com/v1/pages/${prodSpecId}`, { headers: dsHdr }).then(r => r.json()) : Promise.resolve(null),
+            ]);
+            spec = { ...spec, ...(cs ? stripEmpty(dsFromPage(cs)) : {}), ...(ps ? stripEmpty(dsFromPage(ps)) : {}) };
+          }
         } catch(e) { /* defaults are fine */ }
 
         // method grounding (name + framework text)
