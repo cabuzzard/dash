@@ -1457,10 +1457,10 @@ export default {
         if (!tsData.success) return json({ error: "CAPTCHA verification failed  -  please try again" }, 403);
       }
 
-      // --- Input validation ---
-      if (!email || !phone || !fraudType) return json({ error: "email, phone, and fraudType are required" }, 400);
+      // --- Input validation --- (phone is optional — some campaigns are email-only lead magnets)
+      if (!email || !fraudType) return json({ error: "email and fraudType are required" }, 400);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "Invalid email address" }, 400);
-      if (!/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) return json({ error: "Invalid phone number" }, 400);
+      if (phone && !/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) return json({ error: "Invalid phone number" }, 400);
       const validFraudTypes = ["Robo-signing","Chain of title fraud","Loan modification fraud","Improper procedures","Mortgage servicing fraud","MERS assignment void","Divorce - property dispute","Probate - estate sale","Will contest","Executor dispute","Coaching - one hour session","Coaching - package","Coaching - general inquiry","Webguy B2C - done-for-you system","Webguy B2C - template","Webguy B2B - content machine","Webguy B2B - AI implementation","Webguy B2B - retainer","Webguy - general inquiry","Webguy - Financial Freedom","Webguy - Retirement Ready","Webguy - Dream Home Build","Webguy - Hard Grind","Webguy - Mountainwize Purpose Coaching","Evergreen Home - Garden Planning Book","Other"];
       if (!validFraudTypes.includes(fraudType)) return json({ error: "Invalid fraud type" }, 400);
 
@@ -1476,7 +1476,7 @@ export default {
             Name:          { title:        [{ type: "text", text: { content: name } }] },
             Campaign:      { rich_text:    [{ type: "text", text: { content: campaign || "" } }] },
             Email:         { email:        email },
-            Phone:         { phone_number: phone },
+            ...(phone ? { Phone: { phone_number: phone } } : {}),
             "Fraud Type":  { select:       { name: fraudType } },
             Note:          { rich_text:    [{ type: "text", text: { content: (note || "").slice(0,600) } }] },
             Status:        { select:       { name: "New" } },
