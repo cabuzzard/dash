@@ -1737,6 +1737,24 @@
   </div>
 </div>
 
+<!-- Campaign Notes Modal (platform matrix) -->
+<div class="modal-bg" id="platNotesModal" onclick="if(event.target===this)closePlatNotesModal()">
+  <div class="modal" style="max-width:560px;width:96vw;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <div class="modal-title" id="platNotesTitle" style="margin:0;"></div>
+      <span onclick="closePlatNotesModal()" style="cursor:pointer;color:var(--text3);font-size:18px;padding:4px;">✕</span>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Notes</label>
+      <textarea class="modal-input" id="platNotesTextarea" rows="10" style="resize:vertical;font-size:13px;line-height:1.6;font-family:inherit;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closePlatNotesModal()">Cancel</button>
+      <button class="btn btn-primary" id="platNotesSaveBtn" onclick="savePlatNotes()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- New Platform Modal -->
 <div class="modal-bg" id="newPlatformModal" onclick="if(event.target===this)closeNewPlatformModal()">
   <div class="modal">
@@ -4058,6 +4076,39 @@ let platPlatforms    = [];   // Publish-status platforms only
 let platLoginIndex   = {};   // [campId][platId] -> login obj | null
 let platAllLogins    = [];   // full login list for "link existing" picker
 let platParentOf     = {};   // [childCampId] -> parentCampId
+let platNotesResearchId = null;
+let platNotesCallback   = null;
+
+function openPlatNotesModal(campName, researchId, currentNotes, onSave) {
+  platNotesResearchId = researchId;
+  platNotesCallback   = onSave;
+  document.getElementById('platNotesTitle').textContent = campName + ' — Notes';
+  document.getElementById('platNotesTextarea').value = currentNotes || '';
+  document.getElementById('platNotesSaveBtn').disabled = false;
+  document.getElementById('platNotesSaveBtn').textContent = 'Save';
+  document.getElementById('platNotesModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('platNotesTextarea').focus(), 50);
+}
+function closePlatNotesModal() {
+  document.getElementById('platNotesModal').style.display = 'none';
+  platNotesResearchId = null;
+  platNotesCallback   = null;
+}
+async function savePlatNotes() {
+  if (!platNotesResearchId) return;
+  const val = document.getElementById('platNotesTextarea').value;
+  const btn = document.getElementById('platNotesSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await call('updateResearch', { researchId: platNotesResearchId, field: 'notes', value: val });
+    if (platNotesCallback) platNotesCallback(val);
+    closePlatNotesModal();
+    showToast('Notes saved ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
 // rows are flat + sortable, no site grouping — persisted across reloads like platColumnOrder/platRowOrder
 let platSortKey = localStorage.getItem('platSortKey') || 'grouping';
 let platSortDir = parseInt(localStorage.getItem('platSortDir'), 10) || 1;
@@ -4168,6 +4219,7 @@ function comparePlatRows(a, b, key) {
     case 'name':   return (a.name || '').localeCompare(b.name || '');
     case 'domain': return (a.domain || '').localeCompare(b.domain || '');
     case 'email':  return (a.email || '').localeCompare(b.email || '');
+    case 'notes':  return ((a.research && a.research.notes) || '').localeCompare((b.research && b.research.notes) || '');
     case 'dev':    return (a.devTitles || 0) - (b.devTitles || 0);
     case 'pub':    return (a.pubTitles || 0) - (b.pubTitles || 0);
     default:       return 0;
@@ -4246,6 +4298,13 @@ function renderPlatformMatrix() {
   thEmail.style.cssText = 'text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 8px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:180px;';
   makeSortableTh(thEmail, 'email');
   hrow.appendChild(thEmail);
+
+  // Notes col header
+  const thNotes = document.createElement('th');
+  thNotes.textContent = 'Notes';
+  thNotes.style.cssText = 'text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:8px 8px;white-space:nowrap;border-bottom:2px solid #333;border-left:1px solid #444;min-width:140px;';
+  makeSortableTh(thNotes, 'notes');
+  hrow.appendChild(thNotes);
 
   // Platform col headers — draggable to reorder
   let platDragSrcIdx = null;
@@ -4560,6 +4619,34 @@ function renderPlatformMatrix() {
       emailWrap.appendChild(emailDrop);
       emailTd.appendChild(emailWrap);
       tr.appendChild(emailTd);
+
+      // Notes cell — click to open the editable Notes modal (backed by the
+      // campaign's linked Research record, same as before it was removed)
+      const notesTd = document.createElement('td');
+      notesTd.style.cssText = 'padding:6px 8px;border-left:1px solid #444;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;';
+      const setNotesCell = val => {
+        if (val) {
+          notesTd.textContent = val.length > 80 ? val.slice(0, 80) + '…' : val;
+          notesTd.style.color = 'var(--text2)';
+          notesTd.title = val.length > 200 ? val.slice(0, 200) + '…' : val;
+        } else {
+          notesTd.innerHTML = '<span style="color:var(--text3);font-style:italic;">add notes</span>';
+          notesTd.title = 'Click to add notes';
+        }
+      };
+      setNotesCell((c.research && c.research.notes) || '');
+      if (c.research) {
+        notesTd.onclick = e => {
+          e.stopPropagation();
+          openPlatNotesModal(c.name, c.research.id, c.research.notes || '', newVal => {
+            c.research.notes = newVal;
+            setNotesCell(newVal);
+          });
+        };
+        notesTd.onmouseover = () => notesTd.style.background = 'var(--surface)';
+        notesTd.onmouseout  = () => notesTd.style.background = '';
+      }
+      tr.appendChild(notesTd);
 
       // Platform cells
       platPlatforms.forEach(p => {
