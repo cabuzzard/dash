@@ -4086,11 +4086,11 @@ function openPlatNotesModal(campName, researchId, currentNotes, onSave) {
   document.getElementById('platNotesTextarea').value = currentNotes || '';
   document.getElementById('platNotesSaveBtn').disabled = false;
   document.getElementById('platNotesSaveBtn').textContent = 'Save';
-  document.getElementById('platNotesModal').style.display = 'flex';
+  document.getElementById('platNotesModal').classList.add('open');
   setTimeout(() => document.getElementById('platNotesTextarea').focus(), 50);
 }
 function closePlatNotesModal() {
-  document.getElementById('platNotesModal').style.display = 'none';
+  document.getElementById('platNotesModal').classList.remove('open');
   platNotesResearchId = null;
   platNotesCallback   = null;
 }
