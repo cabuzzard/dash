@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Webguy — AI Implementation for Founder-Led B2B Businesses</title>
-<meta name="description" content="A working AI content system installed inside your business — not more tools, not another strategy deck. Free 20-minute Content OS Audit." />
+<meta name="description" content="A working AI content system installed inside your business — not more tools, not another strategy deck. Free 20-minute Business Strategy Audit." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -15,8 +15,8 @@
     --ink-2:      #171a22;
     --paper:      #f7f5f0;
     --paper-2:    #efece4;
-    --gold:       #c9a227;
-    --gold-deep:  #a5821c;
+    --gold:       #2f7a4d;
+    --gold-deep:  #1d5636;
     --steel:      #6f9bc4;
     --text-on-ink: #f3f1ea;
     --text-on-ink-muted: rgba(243,241,234,0.68);
@@ -54,17 +54,17 @@
   header.site .wrap { display: flex; align-items: center; justify-content: space-between; }
   .cta-mini {
     font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600;
-    letter-spacing: 0.04em; color: var(--ink); background: var(--gold);
+    letter-spacing: 0.04em; color: var(--text-on-ink); background: var(--gold);
     padding: 9px 16px; border-radius: 3px; text-decoration: none;
     transition: background .15s;
   }
-  .cta-mini:hover { background: #ddb639; }
+  .cta-mini:hover { background: #3f9962; }
 
   /* ---------- Hero ---------- */
   .hero { background: var(--ink); color: var(--text-on-ink); border-bottom: 3px solid var(--gold); position: relative; overflow: hidden; }
   .hero::before {
     content: ""; position: absolute; inset: 0;
-    background-image: radial-gradient(circle at 82% 18%, rgba(201,162,39,0.10), transparent 46%);
+    background-image: radial-gradient(circle at 82% 18%, rgba(47,122,77,0.10), transparent 46%);
     pointer-events: none;
   }
   .hero .wrap { position: relative; padding: 76px 28px 68px; }
@@ -82,11 +82,11 @@
   .hero-actions { margin-top: 36px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
   .btn-primary {
     font-family: 'Inter', sans-serif; font-weight: 700; font-size: 15px;
-    background: var(--gold); color: var(--ink); padding: 15px 26px; border-radius: 4px;
+    background: var(--gold); color: var(--text-on-ink); padding: 15px 26px; border-radius: 4px;
     text-decoration: none; display: inline-block; border: none; cursor: pointer;
     transition: background .15s, transform .1s;
   }
-  .btn-primary:hover { background: #ddb639; transform: translateY(-1px); }
+  .btn-primary:hover { background: #3f9962; transform: translateY(-1px); }
   .btn-ghost {
     font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--text-on-ink-muted);
     text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
@@ -124,6 +124,12 @@
 
   /* ---------- Offer callout ---------- */
   .offer { background: var(--ink); color: var(--text-on-ink); }
+  .bottlenecks { background: var(--ink); color: var(--text-on-ink); }
+  .bottlenecks .sec-sub { color: var(--text-on-ink-muted); }
+  .bottlenecks .sec-no { color: var(--gold); }
+  .bottlenecks .form-inner { margin-top: 52px; }
+  .bottlenecks .form-group label { color: var(--text-on-ink-muted); }
+  .bottlenecks .privacy-note { color: var(--text-on-ink-muted); }
   .offer-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: center; }
   .offer h2 { color: var(--text-on-ink); }
   .offer .sec-sub { color: var(--text-on-ink-muted); }
@@ -155,10 +161,10 @@
   .form-group input:focus { border-color: var(--gold); }
   .submit-btn {
     width: 100%; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 16px;
-    background: var(--gold); color: var(--ink); padding: 16px; border: none; border-radius: 5px;
+    background: var(--gold); color: var(--text-on-ink); padding: 16px; border: none; border-radius: 5px;
     cursor: pointer; transition: background .15s; margin-top: 6px;
   }
-  .submit-btn:hover { background: #ddb639; }
+  .submit-btn:hover { background: #3f9962; }
   .submit-btn:disabled { opacity: 0.6; cursor: default; }
   .privacy-note { margin-top: 14px; font-size: 12px; color: var(--text-muted); line-height: 1.6; }
   .form-msg { display: none; margin-top: 22px; padding: 20px 22px; border-radius: 6px; font-size: 14.5px; line-height: 1.7; }
@@ -166,7 +172,7 @@
   .form-msg.success { background: var(--ink); color: var(--text-on-ink); display: block; text-align: center; }
   .form-msg.success strong { display: block; font-family: 'Fraunces', serif; font-weight: 600; font-size: 20px; margin-bottom: 10px; }
   .form-msg.success .book-btn {
-    display: inline-block; margin-top: 18px; background: var(--gold); color: var(--ink);
+    display: inline-block; margin-top: 18px; background: var(--gold); color: var(--text-on-ink);
     font-weight: 700; font-family: 'Inter', sans-serif; padding: 15px 28px; border-radius: 5px; text-decoration: none;
   }
 
@@ -200,12 +206,12 @@
     <div class="wrap">
       <a href="#" class="logo" aria-label="Webguy">
         <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <line x1="9" y1="24" x2="17" y2="9" stroke="#c9a227" stroke-width="1.4"/>
-          <line x1="17" y1="9" x2="25" y2="24" stroke="#c9a227" stroke-width="1.4"/>
-          <line x1="9" y1="24" x2="25" y2="24" stroke="#c9a227" stroke-width="1.4" stroke-opacity="0.4"/>
-          <circle cx="17" cy="9" r="3.4" fill="#c9a227"/>
-          <circle cx="9" cy="24" r="3.4" fill="none" stroke="#c9a227" stroke-width="1.4"/>
-          <circle cx="25" cy="24" r="3.4" fill="none" stroke="#c9a227" stroke-width="1.4"/>
+          <line x1="9" y1="24" x2="17" y2="9" stroke="#2f7a4d" stroke-width="1.4"/>
+          <line x1="17" y1="9" x2="25" y2="24" stroke="#2f7a4d" stroke-width="1.4"/>
+          <line x1="9" y1="24" x2="25" y2="24" stroke="#2f7a4d" stroke-width="1.4" stroke-opacity="0.4"/>
+          <circle cx="17" cy="9" r="3.4" fill="#2f7a4d"/>
+          <circle cx="9" cy="24" r="3.4" fill="none" stroke="#2f7a4d" stroke-width="1.4"/>
+          <circle cx="25" cy="24" r="3.4" fill="none" stroke="#2f7a4d" stroke-width="1.4"/>
         </svg>
         <span>
           <span class="logo-word" style="display:block;color:var(--text-on-ink);">WEBGUY</span>
@@ -219,11 +225,11 @@
   <!-- Hero -->
   <section class="hero">
     <div class="wrap">
-      <div class="eyebrow">For founder-led B2B service businesses</div>
-      <h1 class="headline">Your business doesn't need more AI tools. It needs <em>the machine</em> that runs them.</h1>
-      <p class="lede">We install a working AI content system inside your business — idea capture, research, production, and distribution, wired together and running in 1–2 weeks. Not a strategy deck. Not another subscription. The machine, installed.</p>
+      <div class="eyebrow">B2B AI Systems and Strategies. Founder-led to mid-size.</div>
+      <h1 class="headline">Saving business owners, managers, and teams time and money with <em>strategic AI implementation.</em></h1>
+      <p class="lede">Get an AI implementation plan tailored to your business needs.</p>
       <div class="hero-actions">
-        <a href="#audit" class="btn-primary">Get my free Content OS Audit →</a>
+        <a href="#audit" class="btn-primary">Get my free Business Strategy Audit →</a>
         <a href="#how" class="btn-ghost">See how it works ↓</a>
       </div>
       <div class="hero-stats">
@@ -237,85 +243,35 @@
   <!-- Pain points -->
   <section class="block pains">
     <div class="wrap">
-      <div class="sec-head"><span class="sec-no">01</span><h2>Sound familiar?</h2></div>
-      <p class="sec-sub">You're not behind because you're not trying. You're behind because nothing connects.</p>
+      <div class="sec-head"><span class="sec-no">01</span><h2>Get Back to What Is Important.</h2></div>
+      <p class="sec-sub">Having headaches finding the right tools? Losing faith in the promise of new AI tools? Get a strategy that really will save you time and money and liberate you to focus on what you do best in business. Use AI for what it's intended for — to liberate you.</p>
       <div class="pain-grid">
         <div class="pain-card">
-          <div class="pt">⚙️</div>
-          <b>AI, but no workflow</b>
-          <p>You use ChatGPT or Claude here and there — but there's no system. Every piece of content starts from a blank page.</p>
+          <div class="pt">🔗</div>
+          <b>Customer Operations</b>
+          <p>Lead generation, onboarding, sales pipeline, and CRM all running as separate, disconnected efforts — instead of one system that moves a prospect from first contact to loyal customer.</p>
         </div>
         <div class="pain-card">
-          <div class="pt">🕳️</div>
-          <b>Invisible despite the effort</b>
-          <p>You're producing something most weeks, but nothing compounds. No pipeline from idea to a published, distributed asset.</p>
+          <div class="pt">📈</div>
+          <b>Content Generation</b>
+          <p>Keyword and trend targeting, content repurposing, traffic growth, and ad optimization — built as one compounding pipeline instead of one-off posts that go nowhere.</p>
         </div>
         <div class="pain-card">
-          <div class="pt">📉</div>
-          <b>Can't prove the ROI</b>
-          <p>Money's gone to tools or agencies, and you still can't point to what it bought you. Content feels like a calendar chore, not infrastructure.</p>
+          <div class="pt">🧭</div>
+          <b>Business Operations</b>
+          <p>Communication and task coordination, team training and team coordination, organizational communication and growth — run as one system your whole team can rely on.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- How it works -->
-  <section class="block" id="how">
+  <!-- How it works + Form -->
+  <section class="block bottlenecks" id="how">
     <div class="wrap">
-      <div class="sec-head"><span class="sec-no">02</span><h2>How the machine gets installed</h2></div>
-      <p class="sec-sub">One conversation, then a build — not a retainer you have to babysit.</p>
-    </div>
-    <div class="wrap" style="padding:0;">
-      <div class="steps">
-        <div class="step">
-          <div class="ix">01 — Audit</div>
-          <h3>Free 20-minute map</h3>
-          <p>We look at how content actually moves through your business today and show you exactly where it's leaking. No pitch — just the map.</p>
-        </div>
-        <div class="step">
-          <div class="ix">02 — Build</div>
-          <h3>The system, installed</h3>
-          <p>Idea capture, market intel, production, distribution, and outreach — wired together as one working machine inside your business. Live in 1–2 weeks.</p>
-        </div>
-        <div class="step">
-          <div class="ix">03 — Run</div>
-          <h3>You own it</h3>
-          <p>It's yours to run. An optional monthly retainer keeps it tuned and extended — but nothing here locks you into a subscription to function.</p>
-        </div>
-      </div>
-    </div>
-  </section>
+      <div class="sec-head"><span class="sec-no">02</span><h2>Where Are Your Bottlenecks?</h2></div>
+      <p class="sec-sub">Call now to find the right tools and strategies to get you free of the friction that is taking your time.</p>
 
-  <!-- Offer -->
-  <section class="block offer">
-    <div class="wrap">
-      <div class="offer-grid">
-        <div>
-          <div class="sec-head"><span class="sec-no" style="color:var(--gold);">03</span><h2>What it costs</h2></div>
-          <p class="sec-sub">A one-time build, priced like an implementation project — not a forever retainer.</p>
-          <p style="color:var(--text-on-ink-muted);font-size:15px;max-width:52ch;">Start with the free audit below. If a build makes sense, this is what it looks like:</p>
-        </div>
-        <div>
-          <div class="offer-card">
-            <div class="k">Content OS Build</div>
-            <div class="price">$2,000–$5,000 <small>one-time</small></div>
-            <p>Fully custom AI content machine, built and wired inside your business. Delivered in 1–2 weeks.</p>
-          </div>
-          <div class="offer-card">
-            <div class="k">Optional retainer</div>
-            <div class="price">$1,000–$2,000 <small>/ month</small></div>
-            <p>Keeps the machine tuned, extended, and running as your business changes. Entirely optional.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Form -->
-  <section class="form-section block" id="audit">
-    <div class="wrap">
-      <div class="form-inner">
-        <div class="sec-head"><span class="sec-no">04</span><h2>Get your free Content OS Audit</h2></div>
+      <div class="form-inner" id="audit">
         <p class="sec-sub">20 minutes. We map your current workflow, show you where it's leaking, and tell you exactly what a build would cover. No pitch — just the map.</p>
 
         <form id="leadForm" novalidate>
