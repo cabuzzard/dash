@@ -6964,6 +6964,33 @@ Return ONLY a JSON object with these exact keys:
         });
       }
 
+      // Bare Research record for a campaign that doesn't have one yet — only
+      // campaigns that went through a full research-generation flow got one
+      // automatically; older/manually-created campaigns never did, which is
+      // why things like the Platforms-tab Notes cell silently did nothing
+      // for them (no researchId to write to). Creates a minimal record so
+      // that path always has something to attach to.
+      if (body.action === "createResearchForCampaign") {
+        const { campaignId, campaignName } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: RESEARCH_DB },
+            properties: {
+              Name:     { title: [{ type: "text", text: { content: campaignName || "Untitled" } }] },
+              Campaign: { relation: [{ id: dashed }] },
+              Status:   { select: { name: "Draft" } },
+            },
+          }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
+        return json({ success: true, research: { id: result.id.replace(/-/g,""), notes: "" } });
+      }
+
       // ── getProductResearch ──
       if (body.action === "getProductResearch") {
         const { productId, researchId } = body;

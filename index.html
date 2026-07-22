@@ -4635,17 +4635,30 @@ function renderPlatformMatrix() {
         }
       };
       setNotesCell((c.research && c.research.notes) || '');
-      if (c.research) {
-        notesTd.onclick = e => {
-          e.stopPropagation();
-          openPlatNotesModal(c.name, c.research.id, c.research.notes || '', newVal => {
-            c.research.notes = newVal;
-            setNotesCell(newVal);
-          });
-        };
-        notesTd.onmouseover = () => notesTd.style.background = 'var(--surface)';
-        notesTd.onmouseout  = () => notesTd.style.background = '';
-      }
+      notesTd.onclick = async e => {
+        e.stopPropagation();
+        if (!c.research) {
+          // Older/manually-created campaigns never got a Research record
+          // (only ones that went through a research-generation flow did) —
+          // create a bare one on first use so Notes works everywhere.
+          notesTd.style.opacity = '0.5';
+          try {
+            const r = await call('createResearchForCampaign', { campaignId: c.id, campaignName: c.name });
+            c.research = r.research;
+          } catch(err) {
+            notesTd.style.opacity = '1';
+            showToast('Could not create research record: ' + err.message, 'error');
+            return;
+          }
+          notesTd.style.opacity = '1';
+        }
+        openPlatNotesModal(c.name, c.research.id, c.research.notes || '', newVal => {
+          c.research.notes = newVal;
+          setNotesCell(newVal);
+        });
+      };
+      notesTd.onmouseover = () => notesTd.style.background = 'var(--surface)';
+      notesTd.onmouseout  = () => notesTd.style.background = '';
       tr.appendChild(notesTd);
 
       // Platform cells
