@@ -2263,9 +2263,39 @@ function openMethodGenModal(methodId, methodName) {
   const blendRadio = document.querySelector('input[name="mgmContext"][value="blend"]');
   if (blendRadio) blendRadio.checked = true;
   const el = document.getElementById('mgm-products');
-  const noneOpt = `<label class="mgp-option"><input type="radio" name="mgp" value="${CAMPAIGN_ID}" onchange="MGM_PRODUCT_ID=CAMPAIGN_ID;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false"> <em style="color:#a78bfa">&#9670; Campaign</em></label>`;
-  el.innerHTML = noneOpt + PRODUCT_ITEMS.map(p => `<label class="mgp-option"><input type="radio" name="mgp" value="${p.id}" onchange="MGM_PRODUCT_ID=this.value;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false"> ${p.name}</label>`).join('');
+  const noneOpt = `<label class="mgp-option"><input type="radio" name="mgp" value="${CAMPAIGN_ID}" onchange="MGM_PRODUCT_ID=CAMPAIGN_ID;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false;mgmRefreshKeywordPicker()"> <em style="color:#a78bfa">&#9670; Campaign</em></label>`;
+  el.innerHTML = noneOpt + PRODUCT_ITEMS.map(p => `<label class="mgp-option"><input type="radio" name="mgp" value="${p.id}" onchange="MGM_PRODUCT_ID=this.value;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false;mgmRefreshKeywordPicker()"> ${p.name}</label>`).join('');
   document.getElementById('method-gen-modal').classList.add('open');
+  mgmRefreshKeywordPicker();
+}
+// Seed-keyword picker for SEO Post — hidden for every other method. Research
+// Keywords fields are sometimes clustered prose, not a flat list, so this
+// asks the server to structure them into pickable groups rather than
+// silently guessing (see getSeedKeywordCandidates).
+let MGM_KEYWORD_TOKEN = 0;
+async function mgmRefreshKeywordPicker() {
+  const wrap = document.getElementById('mgm-keyword-wrap');
+  const sel = document.getElementById('mgm-keyword');
+  if (!wrap || !sel) return;
+  if (!/seo post/i.test(MGM_METHOD_NAME)) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  sel.innerHTML = '<option>Loading…</option>';
+  const myToken = ++MGM_KEYWORD_TOKEN;
+  try {
+    const productId = (MGM_PRODUCT_ID && MGM_PRODUCT_ID !== CAMPAIGN_ID) ? MGM_PRODUCT_ID : undefined;
+    const data = await w('getSeedKeywordCandidates', { campaignId: CAMPAIGN_ID, productId });
+    if (myToken !== MGM_KEYWORD_TOKEN) return;
+    const groups = data.groups || [];
+    if (!groups.length) { sel.innerHTML = '<option value="">(none found — will fall back to method name)</option>'; return; }
+    sel.innerHTML = groups.map(g => {
+      const label = g.label ? esc(g.label) : (g.source === 'product' ? 'Product Keywords' : 'Campaign Keywords');
+      const opts = (g.keywords || []).map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('');
+      return `<optgroup label="${label}">${opts}</optgroup>`;
+    }).join('');
+  } catch(e) {
+    if (myToken !== MGM_KEYWORD_TOKEN) return;
+    sel.innerHTML = '<option value="">(could not load — will fall back to method name)</option>';
+  }
 }
 
 function closeMethodGenModal() {
@@ -2314,8 +2344,9 @@ async function runMethodGenerate() {
     }
 
     const contextMode = (document.querySelector('input[name="mgmContext"]:checked') || {}).value || 'blend';
+    const seedKeyword = /seo post/i.test(MGM_METHOD_NAME) ? (document.getElementById('mgm-keyword')?.value || undefined) : undefined;
     status.textContent = contextMode === 'isolate' ? 'Reading method framework and product strategy (isolated — no campaign research)…' : 'Reading method framework and product strategy…';
-    const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID, contextMode });
+    const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID, contextMode, seedKeyword });
     if (data.error) throw new Error(data.error);
     const titles = data.titles || [];
     let saved = 0;
@@ -4532,6 +4563,10 @@ async function runRegenKeywords() {
     <div style="display:flex;gap:14px;margin-top:4px;font-size:12px;color:#ccc;">
       <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="mgmContext" value="blend" checked> Blend — campaign + product</label>
       <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="mgmContext" value="isolate"> Isolate — product only</label>
+    </div>
+    <div id="mgm-keyword-wrap" style="display:none;margin-top:10px;">
+      <div class="method-gen-subtitle">Seed keyword <span style="color:#777;font-weight:normal;">— research is clustered; pick one angle</span></div>
+      <select id="mgm-keyword" class="modal-ta" style="margin-top:4px;width:100%;"></select>
     </div>
     <div class="method-gen-actions">
       <button class="method-gen-cancel" onclick="closeMethodGenModal()">Cancel</button>

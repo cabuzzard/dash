@@ -766,6 +766,9 @@ function psContextSelect(methodId, methodName) {
   return `<select id="psRowContext-${methodId}" class="td-add-btn-inline" style="font-size:10px;padding:2px 4px;" title="Research scope for Generate Titles">
     <option value="blend" selected>Blend</option>
     <option value="isolate">Isolate</option>
+  </select>
+  <select id="psRowKeyword-${methodId}" class="td-add-btn-inline" style="font-size:10px;padding:2px 4px;max-width:180px;" title="Seed keyword — research is clustered; pick one angle">
+    <option value="">Loading keywords…</option>
   </select>`;
 }
 // Methods currently in hand-edit mode for their Strategy text — toggled by
@@ -832,6 +835,25 @@ function renderStrategyPanel() {
       ${childrenHtml}
     </div>`;
   }).join('');
+  PRODUCT_METHODS.filter(m => /seo post/i.test(m.name) && !PRODUCT_METHOD_CHILD_IDS.has(m.id)).forEach(m => psLoadKeywordOptions(m.id));
+}
+// Populates a SEO Post row's seed-keyword select after the row itself is
+// already in the DOM (the render loop above builds HTML synchronously, so
+// this runs as a separate pass right after). Research Keywords fields are
+// sometimes clustered prose, not a flat list — see getSeedKeywordCandidates.
+async function psLoadKeywordOptions(methodId) {
+  const sel = document.getElementById('psRowKeyword-' + methodId);
+  if (!sel) return;
+  try {
+    const data = await w('getSeedKeywordCandidates', { campaignId: PRODUCT_CAMPAIGN_ID || undefined, productId: PRODUCT_ID });
+    const groups = data.groups || [];
+    if (!groups.length) { sel.innerHTML = '<option value="">(none found)</option>'; return; }
+    sel.innerHTML = groups.map(g => {
+      const label = g.label ? esc(g.label) : (g.source === 'product' ? 'Product Keywords' : 'Campaign Keywords');
+      const opts = (g.keywords || []).map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('');
+      return `<optgroup label="${label}">${opts}</optgroup>`;
+    }).join('');
+  } catch(e) { sel.innerHTML = '<option value="">(could not load)</option>'; }
 }
 // Fetches Needs-Traffic-Plan / linked-traffic-children / accumulated
 // Strategy text for every attached method, then re-renders the panel so
@@ -903,7 +925,8 @@ async function genPsTitles(methodId, isDestination, parentMethodId) {
       // product's own Keywords field as the seed keyword automatically.
       if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
       const contextMode = (document.getElementById('psRowContext-' + methodId) || {}).value || 'blend';
-      const data = await w('generateMethodTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID, contextMode });
+      const seedKeyword = (document.getElementById('psRowKeyword-' + methodId) || {}).value || undefined;
+      const data = await w('generateMethodTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID, contextMode, seedKeyword });
       if (data.error) throw new Error(data.error);
       const titles = data.titles || [];
       const followUpTitles = [];

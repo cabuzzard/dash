@@ -5006,6 +5006,69 @@ Return ONLY a JSON array — no other text, no markdown fences:
       }
 
       // ── generateMethodTitles ──
+      // ── getSeedKeywordCandidates ──
+      // Structures a campaign's (and optionally a product's) Keywords text
+      // into pickable groups for the SEO Post seed-keyword picker. Research
+      // Keywords fields are sometimes plain comma lists and sometimes
+      // clustered prose (e.g. "CLUSTER category/trend hook: term, term.
+      // CLUSTER comparison/decision: term, term...") depending on how that
+      // campaign's research was run — a fixed regex tuned to one exact
+      // phrasing would break on the other, so this asks Claude to extract
+      // clean individual keyword terms grouped however the source text
+      // itself groups them (one ungrouped bucket if it's just a flat list).
+      if (body.action === "getSeedKeywordCandidates") {
+        const { campaignId, productId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
+        const [researchRaw, productPage] = await Promise.all([
+          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })),
+          hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+        ]);
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const campaignKeywords = rt(researchRaw, "Keywords");
+        const productKeywords = productPage?.properties?.Keywords?.rich_text ? (productPage.properties.Keywords.rich_text || []).map(t => t.plain_text).join("") : "";
+
+        if (!campaignKeywords && !productKeywords) return json({ groups: [] });
+
+        const naiveFlatGroups = () => {
+          const groups = [];
+          if (productKeywords) groups.push({ source: "product", label: "", keywords: productKeywords.split(/[,;\n]/).map(s => s.trim()).filter(Boolean) });
+          if (campaignKeywords) groups.push({ source: "campaign", label: "", keywords: campaignKeywords.split(/[,;\n]/).map(s => s.trim()).filter(Boolean) });
+          return groups;
+        };
+        if (!env.ANTHROPIC_API_KEY) return json({ groups: naiveFlatGroups() });
+
+        const prompt = `Extract clean, individual keyword candidates from this research text, grouped exactly as the text itself groups them — if it's organized into labeled clusters, keep those labels verbatim; if it's a plain comma-separated list with no structure, return one group with an empty label.
+
+${productKeywords ? `PRODUCT KEYWORDS:\n${productKeywords}\n\n` : ''}${campaignKeywords ? `CAMPAIGN KEYWORDS:\n${campaignKeywords}` : ''}
+
+Return ONLY a JSON array, no other text, no markdown fences:
+[{ "source": "product"|"campaign", "label": "cluster label verbatim, or empty string if flat", "keywords": ["term1", "term2", ...] }]`;
+
+        try {
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ groups: naiveFlatGroups() });
+          const raw = aiData.content?.[0]?.text || "";
+          const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+          if (s === -1 || e === -1 || e < s) return json({ groups: naiveFlatGroups() });
+          const groups = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+          if (!Array.isArray(groups) || !groups.length) return json({ groups: naiveFlatGroups() });
+          return json({ groups });
+        } catch(e) {
+          return json({ groups: naiveFlatGroups() });
+        }
+      }
+
       if (body.action === "generateMethodTitles") {
         const { campaignId, methodId, productId, parentTitle, parentTitleId } = body;
         if (!campaignId || !methodId) return json({ error: "campaignId and methodId required" }, 400);
@@ -5156,9 +5219,15 @@ No other text. No markdown fences.`;
         // fallback is skipped entirely in isolate mode, since the whole point
         // of isolate is no campaign-level data leaking in.
         if (/seo post/i.test(methodName)) {
+          // Fallback only — the UI's seed-keyword picker (getSeedKeywordCandidates)
+          // is the real answer to clustered Keywords text ("CLUSTER category/trend
+          // hook: term, term. CLUSTER comparison/decision: term, term..."). If the
+          // client didn't send an explicit pick, still don't blindly take everything
+          // before the first comma — that would grab "CLUSTER label: term" whole.
+          // Strip a leading "CLUSTER <label>:" if present, then take the first term.
+          const firstTerm = text => (text || "").replace(/^\s*CLUSTER\s+[^:]+:\s*/i, "").split(/[,;\n]/)[0].trim();
           const productKeywords = hasProduct && productPage ? (productPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("") : "";
-          const rawSeed = body.seedKeyword || productKeywords || (contextMode === "blend" ? research.keywords : "") || "";
-          const seedKeyword = rawSeed.split(/[,;\n]/)[0].trim() || methodName;
+          const seedKeyword = (body.seedKeyword && body.seedKeyword.trim()) || firstTerm(productKeywords) || (contextMode === "blend" ? firstTerm(research.keywords) : "") || methodName;
           titles = titles.slice(0, 5);
           titles.forEach(t => { t.subheadFormat = true; t.phase = null; t.grouping = seedKeyword; });
         }
