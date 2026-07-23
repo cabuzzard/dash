@@ -5134,12 +5134,18 @@ No other text. No markdown fences.`;
           titles.forEach(t => { t.slideFormat = true; });
         }
 
-        // SEO Post: cap at 5 titles and pin every title's grouping to the
-        // campaign's actual seed keyword (first term in Keywords) rather than
-        // trusting the model to reproduce it verbatim — this is what "grouped
-        // together under the seed keyword" depends on downstream.
+        // SEO Post: cap at 5 titles and pin every title's grouping to one
+        // explicit seed keyword rather than trusting the model to reproduce
+        // it verbatim — this is what "grouped together under the seed
+        // keyword" depends on downstream. Keyword source, most specific
+        // first: an explicit seedKeyword passed by the caller > the selected
+        // PRODUCT's own Keywords field (specific to what's being generated
+        // for) > the campaign's shared Research Keywords field (only when no
+        // product is selected at all).
         if (/seo post/i.test(methodName)) {
-          const seedKeyword = (research.keywords || "").split(/[,;\n]/)[0].trim() || methodName;
+          const productKeywords = hasProduct && productPage ? (productPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("") : "";
+          const rawSeed = body.seedKeyword || productKeywords || research.keywords || "";
+          const seedKeyword = rawSeed.split(/[,;\n]/)[0].trim() || methodName;
           titles = titles.slice(0, 5);
           titles.forEach(t => { t.subheadFormat = true; t.phase = null; t.grouping = seedKeyword; });
         }

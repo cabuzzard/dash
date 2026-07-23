@@ -876,6 +876,28 @@ async function genPsTitles(methodId, isDestination, parentMethodId) {
       const r = await w('researchUpworkMarketTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
       if (r.error) throw new Error(r.error);
       created = r.created || 0;
+    } else if (/seo post/i.test(name)) {
+      // Same keyword -> titles -> 3-subhead-outline pipeline as the campaign
+      // microsite (generateMethodTitles/saveMethodTitles/generateTitleSubheads)
+      // — NOT generateTitlesFromProductStrategy or generateTrafficMethodTitles,
+      // which are phase-per-deliverable and post-type/sequence models that
+      // don't fit "one keyword -> up to 5 SEO titles". The server prefers this
+      // product's own Keywords field as the seed keyword automatically.
+      if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
+      const data = await w('generateMethodTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
+      if (data.error) throw new Error(data.error);
+      const titles = data.titles || [];
+      const followUpTitles = [];
+      for (let i = 0; i < titles.length; i += 10) {
+        const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
+        if (r.error) throw new Error(r.error);
+        created += r.created || 0;
+        followUpTitles.push(...(r.titles || []));
+      }
+      for (const ft of followUpTitles) {
+        const action = ft.slideFormat ? 'generateTitleSlides' : 'generateTitleSubheads';
+        try { await w(action, { pageId: ft.id, title: ft.title, campaignId: PRODUCT_CAMPAIGN_ID }); } catch(e) { /* title stays without its outline — visible in Notion, not fatal */ }
+      }
     } else if (isDestination) {
       const r = await w('generateTitlesFromProductStrategy', { productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined, methodId, methodName: name });
       if (r.error) throw new Error(r.error);
