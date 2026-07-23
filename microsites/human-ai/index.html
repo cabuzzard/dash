@@ -26,13 +26,7 @@
   flex-shrink: 0; transition: all .15s; line-height: 1.4;
 }
 .title-asset-btn:hover { color: #63b3ed; border-color: rgba(99,179,237,.3); }
-/* BUILD CAROUSEL BUTTON + MODAL */
-.title-build-btn {
-  font-size: 11px; color: #5f5f5f; background: none; border: 1px solid #5f5f5f;
-  padding: 1px 6px; cursor: pointer; font-family: 'Syne', sans-serif;
-  flex-shrink: 0; transition: all .15s; line-height: 1.4;
-}
-.title-build-btn:hover { color: #f6ad55; border-color: rgba(246,173,85,.3); }
+/* BUILD CAROUSEL MODAL — entry point now lives inside Generate Assets, not a title-row button */
 #build-carousel-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.8); z-index:1000; align-items:center; justify-content:center; }
 #build-carousel-modal.open { display:flex; }
 .bc-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:20px; width:min(94vw, 900px); max-height:92vh; overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
@@ -96,19 +90,6 @@
 .bc-spec-chip { display:flex; align-items:center; gap:5px; padding:3px 8px; border:1px solid #333; border-radius:14px; cursor:pointer; font-size:11px; color:#c9c9c9; }
 .bc-spec-chip.active { border-color:#f6ad55; color:#f6ad55; background:rgba(246,173,85,.1); }
 .bc-spec-chip .ds-swatch { width:10px; height:10px; }
-#create-asset-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000; align-items:center; justify-content:center; }
-#create-asset-modal.open { display:flex; }
-.ca-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:24px; width:420px; max-width:92vw; max-height:86vh; overflow-y:auto; }
-.ca-box h3 { margin:0 0 4px; font-size:15px; color:#fff; }
-.ca-subtitle { font-size:12px; color:#666; margin-bottom:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ca-section { margin-bottom:16px; }
-.ca-label { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#888; margin-bottom:6px; }
-.ca-opt-list { display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto; }
-.ca-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:6px; }
-.ca-go { padding:6px 16px; background:#63b3ed; color:#000; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
-.ca-go:disabled { opacity:.5; cursor:default; }
-.ca-cancel { padding:6px 12px; background:transparent; color:#888; border:1px solid #333; border-radius:6px; font-size:13px; cursor:pointer; font-family:inherit; }
-.ca-status { font-size:12px; color:#888; margin-top:10px; text-align:center; min-height:16px; }
 /* STATUS OPTION GRID */
 .status-option-grid { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 4px; }
 .status-opt-btn { background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; transition: opacity .15s, transform .1s; }
@@ -838,15 +819,22 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeGenAssetsModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <div id="gaExistingAssets"></div>
+
       <label class="lm-label">Idea (title) <span style="color:var(--danger,#e05);">*</span></label>
       <input class="modal-ta" id="gaTitleInput" type="text" autocomplete="off" style="margin-bottom:10px;" />
 
-      <label class="lm-label">Method <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
+      <label class="lm-label">Method <span style="color:#777;font-weight:normal;">— pick existing or type a new name; drives what generation path this modal takes</span></label>
       <div style="position:relative;margin-bottom:10px;">
         <input class="modal-ta" id="gaMethodInput" type="text" placeholder="Search methods…" autocomplete="off"
                oninput="gaFilter('method')" onfocus="gaFilter('method')"
                onblur="setTimeout(()=>{const d=document.getElementById('gaMethodDD'); if(d) d.style.display='none';},180)" />
         <div id="gaMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      </div>
+
+      <div id="gaCarouselHint" style="display:none;margin:-4px 0 10px;padding:8px 10px;border:1px solid #4a4520;background:rgba(232,255,71,.06);border-radius:4px;font-size:11px;color:#e8ff47;align-items:center;gap:8px;">
+        <span style="flex:1;">Carousel method — build real slides directly instead of a text concept.</span>
+        <button type="button" class="modal-btn save" id="gaCarouselBuildBtn" style="padding:4px 10px;font-size:11px;">🎨 Build Carousel</button>
       </div>
 
       <label class="lm-label">Sub method <span style="color:#777;font-weight:normal;">— target platform layer (e.g. Instagram, X); pick existing or type a new name</span></label>
@@ -1025,7 +1013,7 @@ function esc(s) {
 // all AI research/generation prompts. A visible editable field is injected
 // into each research/generation modal when it opens — edit it anywhere and
 // the new value applies to every subsequent run on this device.
-const RG_MODAL_IDS = ['create-asset-modal','method-gen-modal','smPromptModal','fieldResearchModal','addTitleModal','genAssetsModal','ecosystemModal','productMethodsModal','design-spec-modal'];
+const RG_MODAL_IDS = ['method-gen-modal','smPromptModal','fieldResearchModal','addTitleModal','genAssetsModal','ecosystemModal','productMethodsModal','design-spec-modal'];
 function rgVal() { try { return (localStorage.getItem('rg_guidelines') || '').trim(); } catch(e) { return ''; } }
 function rgSave(v) { try { localStorage.setItem('rg_guidelines', (v || '').trim()); } catch(e) {} }
 function rgInject(modalEl) {
@@ -1037,9 +1025,7 @@ function rgInject(modalEl) {
   wrap.innerHTML = '<label class="lm-label" style="display:block;">Research guidelines <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;">(optional — routing recommendations for Claude; remembered on this device, sent with every run)</span></label>' +
     '<textarea class="modal-ta rg-ta" rows="2" placeholder="e.g. prioritize niche forums + Reddit; US buyers only; avoid hustle-culture framing; always cite live sources…" style="resize:vertical;margin-top:4px;"></textarea>';
   const body = modalEl.querySelector('.modal-body');
-  const actions = modalEl.querySelector('.ca-actions');
   if (body) body.appendChild(wrap);
-  else if (actions && actions.parentElement) actions.parentElement.insertBefore(wrap, actions);
   else (modalEl.firstElementChild || modalEl).appendChild(wrap);
   const ta = wrap.querySelector('textarea');
   ta.value = rgVal();
@@ -1381,9 +1367,12 @@ async function loadTitles() {
       .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
     const pub = titles.filter(t => ['Publish','Published','Done'].includes(t.stage));
     function makeTitleRow(t) {
+      // Cached so the Generate Assets modal can show "existing assets for
+      // this title" without a second round-trip — refreshed every loadTitles().
+      GA_TITLE_ASSETS_CACHE[t.id] = t.assets || [];
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-build-btn" onclick="openBuildModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.productId||'__none__'}')" title="Build carousel">🎨</button><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title)">🧩</button><button class="title-asset-btn" onclick="openCreateAssetModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Generate more titles seeded from this one">+</button><button class="title-asset-btn" onclick="makeProductFromTitle('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Create product from title">♻</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       if (!t.assets || !t.assets.length) return div;
       // publish-stage titles: render each linked asset as an indented row
       const wrap = document.createElement('div');
@@ -2445,162 +2434,6 @@ async function runMethodGenerate() {
     btn.disabled = false; btn.textContent = 'Generate';
   }
 }
-// ── GENERATE TITLES (per-title "+" button) — same methodology as the
-// Methods panel: pick a method, optionally a product, generate from the
-// method's framework, seeded by the title you started from. ────────────
-let CA_PARENT_ID = null, CA_PARENT_TITLE = '', CA_METHOD_ID = null, CA_PRODUCT_ID = null;
-
-function caMarkSelected(input) {
-  input.closest('.ca-opt-list').querySelectorAll('.mgp-option').forEach(o => o.classList.remove('selected'));
-  input.closest('.mgp-option').classList.add('selected');
-}
-
-function caCheckReady() {
-  document.getElementById('ca-go').disabled = !(CA_METHOD_ID && CA_PRODUCT_ID);
-}
-
-// ── CREATE PRODUCT FROM TITLE ──────────────────────────────────────────
-// Copy an existing title into a new Product (name + core idea + full body),
-// then refresh the product list. Run a method on it yourself afterward.
-async function makeProductFromTitle(titleId, titleText, btn) {
-  const orig = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
-  try {
-    const res = await w('createProductFromTitle', { titleId, campaignId: CAMPAIGN_ID });
-    if (res.error) throw new Error(res.error);
-    await loadProducts(); // refresh so the new product shows in the Products panel
-    if (btn) { btn.textContent = '✓'; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500); }
-  } catch(e) {
-    if (btn) { btn.textContent = orig; btn.disabled = false; }
-    alert('Error creating product from title: ' + e.message);
-  }
-}
-
-function openCreateAssetModal(titleId, titleText) {
-  CA_PARENT_ID = titleId; CA_PARENT_TITLE = titleText; CA_METHOD_ID = null; CA_PRODUCT_ID = null;
-  document.getElementById('ca-subtitle').textContent = 'Seeded from: ' + titleText;
-  document.getElementById('ca-status').textContent = '';
-  document.getElementById('ca-go').disabled = true;
-  document.getElementById('ca-go').textContent = 'Generate';
-
-  const methodEl = document.getElementById('ca-methods');
-  // list EVERY method in the Methods DB, not just this campaign's —
-  // campaign-attached ones first, marked ◆ (user request: show all,
-  // clean up the DB as you go)
-  const caAttachedIds = new Set(METHOD_ITEMS.map(m => m.id));
-  const caMethodList = [...METHOD_ITEMS, ...(ALL_METHODS || []).filter(m => !caAttachedIds.has(m.id))];
-  if (!caMethodList.length) {
-    methodEl.innerHTML = '<div style="font-size:11px;color:#555;padding:4px 2px">No methods in the Methods DB yet — add one under Methods first.</div>';
-  } else {
-    methodEl.innerHTML = caMethodList.map(m =>
-      `<label class="mgp-option"><input type="radio" name="ca-method" value="${m.id}" onchange="CA_METHOD_ID=this.value;caMarkSelected(this);caCheckReady()"> ${caAttachedIds.has(m.id) ? '<em style="color:#a78bfa">&#9670;</em> ' : ''}${m.name}</label>`
-    ).join('');
-  }
-
-  const prodEl = document.getElementById('ca-products');
-  const noneOpt = `<label class="mgp-option"><input type="radio" name="ca-product" value="${CAMPAIGN_ID}" onchange="CA_PRODUCT_ID=CAMPAIGN_ID;caMarkSelected(this);caCheckReady()"> <em style="color:#a78bfa">&#9670; Campaign (idea-based, no product)</em></label>`;
-  prodEl.innerHTML = noneOpt + PRODUCT_ITEMS.map(p =>
-    `<label class="mgp-option"><input type="radio" name="ca-product" value="${p.id}" onchange="CA_PRODUCT_ID=this.value;caMarkSelected(this);caCheckReady()"> ${p.name}</label>`
-  ).join('');
-
-  document.getElementById('create-asset-modal').classList.add('open');
-}
-
-function closeCreateAssetModal() {
-  document.getElementById('create-asset-modal').classList.remove('open');
-  CA_PARENT_ID = null;
-}
-
-async function runCreateAsset() {
-  if (!CA_PARENT_ID || !CA_METHOD_ID || !CA_PRODUCT_ID) return;
-  const btn = document.getElementById('ca-go');
-  const status = document.getElementById('ca-status');
-  btn.disabled = true; btn.textContent = 'Generating…';
-  status.style.color = '#888';
-  const caMethodName = (METHOD_ITEMS.concat(ALL_METHODS || []).find(m => m.id === CA_METHOD_ID) || {}).name || '';
-  if (/carousel/i.test(caMethodName)) {
-    status.textContent = 'Researching trends and merging keywords…';
-    try {
-      const data = await w('researchAndGenerateCarouselTitles', { campaignId: CAMPAIGN_ID, methodId: CA_METHOD_ID, productId: CA_PRODUCT_ID, parentTitle: CA_PARENT_TITLE, parentTitleId: CA_PARENT_ID });
-      if (data.error) throw new Error(data.error);
-      await loadTitles();
-      const trendNote = data.hasExistingTrendResearch ? `grounded in ${data.existingTrendSource}` : 'no existing trend research on file';
-      const liveNote = data.apifyConfigured ? `, benchmarked against ${data.referencesFound} live Instagram posts (${data.carouselReferencesFound} carousels)` : ', no live Instagram benchmarking (APIFY_TOKEN not configured)';
-      status.textContent = `✓ Recommended ${data.created} carousel concepts — ${trendNote}${liveNote}`;
-      status.style.color = '#68d391';
-      btn.textContent = 'Done';
-      setTimeout(closeCreateAssetModal, 2200);
-    } catch(e) {
-      status.textContent = 'Error: ' + e.message;
-      status.style.color = '#fc8181';
-      btn.disabled = false; btn.textContent = 'Generate';
-    }
-    return;
-  }
-  // "Upwork Titles"/"Upwork Market" method: find active Upwork markets for the
-  // seed and propose titles aimed at real demand (checked before proposals).
-  if (/upwork/i.test(caMethodName) && /title|market|trend/i.test(caMethodName)) {
-    status.textContent = 'Finding active Upwork markets and proposing titles…';
-    try {
-      const data = await w('researchUpworkMarketTitles', { campaignId: CAMPAIGN_ID, methodId: CA_METHOD_ID, productId: CA_PRODUCT_ID, parentTitle: CA_PARENT_TITLE, parentTitleId: CA_PARENT_ID });
-      if (data.error) throw new Error(data.error);
-      await loadTitles();
-      const activeCount = (data.markets || []).filter(m => m.adCount).length;
-      const dNote = data.hasDemand ? `found ${data.totalAds} live ads across ${activeCount} active market${activeCount === 1 ? '' : 's'}` : (data.apifyConfigured ? 'no live ads matched — titles are AI-suggested' : 'no live search (APIFY_TOKEN off) — titles are AI-suggested');
-      status.textContent = `✓ Proposed ${data.created} Upwork market titles — ${dNote}`;
-      status.style.color = data.hasDemand ? '#68d391' : '#f0b429';
-      btn.textContent = 'Done';
-      setTimeout(closeCreateAssetModal, 2600);
-    } catch(e) {
-      status.textContent = 'Error: ' + e.message;
-      status.style.color = '#fc8181';
-      btn.disabled = false; btn.textContent = 'Generate';
-    }
-    return;
-  }
-
-  status.textContent = 'Reading method framework…';
-  try {
-    const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: CA_METHOD_ID, productId: CA_PRODUCT_ID, parentTitle: CA_PARENT_TITLE, parentTitleId: CA_PARENT_ID });
-    if (data.error) throw new Error(data.error);
-    const titles = data.titles || [];
-    let saved = 0;
-    const slideTitles = [];
-    for (let i = 0; i < titles.length; i += 10) {
-      status.textContent = 'Saving ' + Math.min(i + 10, titles.length) + ' / ' + titles.length + ' titles…';
-      const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: CAMPAIGN_ID, methodId: CA_METHOD_ID, productId: CA_PRODUCT_ID });
-      if (r.error) throw new Error(r.error);
-      saved += r.created;
-      slideTitles.push(...(r.titles || []));
-    }
-    let slidesDone = 0, slidesFailed = 0, firstSlideErr = '';
-    for (const st of slideTitles) {
-      status.textContent = 'Writing slides ' + (slidesDone + slidesFailed + 1) + ' / ' + slideTitles.length + '…';
-      try {
-        const sr = await w('generateTitleSlides', { pageId: st.id, title: st.title, campaignId: CAMPAIGN_ID });
-        if (sr.error) throw new Error(sr.error);
-        slidesDone++;
-      } catch(e) { slidesFailed++; if (!firstSlideErr) firstSlideErr = e.message; }
-    }
-    await loadTitles();
-    const trendNote = data.hasTrendResearch ? ` — grounded in ${data.trendSource}` : ' — no trend research on file, ran on static campaign research only (press ⟳ search under SM Trends first for trend-grounded titles)';
-    if (!slideTitles.length) {
-      status.textContent = `✓ Created ${saved} title${saved === 1 ? '' : 's'}${trendNote} — none were flagged as carousel/slide format (check the Method name/framework)`;
-      status.style.color = '#f0b429';
-    } else {
-      status.textContent = `✓ Created ${saved} title${saved === 1 ? '' : 's'}${trendNote} (${slidesDone}/${slideTitles.length} carousel scripts written${slidesFailed ? ', ' + slidesFailed + ' failed: ' + firstSlideErr : ''})`;
-      status.style.color = slidesFailed ? '#fc8181' : (data.hasTrendResearch ? '#68d391' : '#f0b429');
-    }
-    btn.textContent = 'Done';
-    if (!slidesFailed && slideTitles.length === slidesDone && data.hasTrendResearch) setTimeout(closeCreateAssetModal, 1200);
-    else btn.disabled = false;
-  } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-    status.style.color = '#fc8181';
-    btn.disabled = false; btn.textContent = 'Generate';
-  }
-}
-
 async function loadMethods() {
   const el = document.getElementById('method-list');
   try {
@@ -4531,6 +4364,12 @@ async function submitAddTitle() {
 // linked to the title — they render as rows under the publish title.
 let GA_TITLE_ID = null, GA_CAMPAIGN_ID = null;
 let GA_METHOD_ID = null, GA_METHOD_NAME = '';
+// title.id -> that title's already-generated Asset records, populated by
+// makeTitleRow() on every loadTitles() — lets Generate Assets show what
+// already exists for a title without a second fetch on modal open.
+let GA_TITLE_ASSETS_CACHE = {};
+const GA_CAROUSEL_METHOD_RE = /carousel/i;
+const GA_CAROUSEL_ASSET_TYPE_RE = /drawing post/i;
 let GA_SUBMETHOD_ID = null, GA_SUBMETHOD_NAME = '';
 let GA_PRODUCT_ID = null, GA_PRODUCT_NAME = '';
 let GA_TYPES = [];
@@ -4630,7 +4469,7 @@ function gaFilter(kind) {
   const dd   = document.getElementById(cfg.dd);
   const list = kind === 'product' ? AT_PRODUCTS : AT_METHODS; // sub methods live in the Methods DB too
   const q = inp.value.trim(), qL = q.toLowerCase();
-  if (q !== gaSel(kind).name) { gaSetSel(kind, null, ''); if (kind === 'product') gaRefreshStrategyLink(); }
+  if (q !== gaSel(kind).name) { gaSetSel(kind, null, ''); if (kind === 'product') gaRefreshStrategyLink(); if (kind === 'method') gaUpdateCarouselHint(); }
   dd.innerHTML = '';
   const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
   matches.forEach(x => {
@@ -4644,6 +4483,7 @@ function gaFilter(kind) {
       inp.value = x.name;
       dd.style.display = 'none';
       if (kind === 'product') gaRefreshStrategyLink();
+      if (kind === 'method') { gaUpdateCarouselHint(); if (GA_CAROUSEL_METHOD_RE.test(x.name) && !document.getElementById('gaTypeInput').value.trim()) document.getElementById('gaTypeInput').value = 'drawing post'; }
     };
     dd.appendChild(div);
   });
@@ -4691,13 +4531,20 @@ async function openGenAssetsModal(titleId) {
   document.getElementById('genAssetsModal').classList.add('open');
   atEnsureLists(); // shared picker lists, refreshed on open
   gaEnsureTypes(); // asset-type options from the Assets DB schema
+  gaRenderExisting(titleId); // synchronous, from the cache makeTitleRow() populated
   try {
     const d = await w('getTitleDetails', { titleId });
     document.getElementById('gaTitleInput').value    = d.title || '';
     document.getElementById('gaDescInput').value     = d.description || '';
     document.getElementById('gaKeywordsInput').value = d.seedKeywords || '';
     document.getElementById('gaResearchInput').value = d.researchInstructions || '';
-    if (d.methodId)  { GA_METHOD_ID = d.methodId;   GA_METHOD_NAME = d.methodName || '';  document.getElementById('gaMethodInput').value  = d.methodName || ''; }
+    if (d.methodId) {
+      GA_METHOD_ID = d.methodId; GA_METHOD_NAME = d.methodName || '';
+      document.getElementById('gaMethodInput').value = d.methodName || '';
+      // Method carries its direction into asset creation: a carousel-flagged
+      // method pre-selects the matching Asset Type — still freely editable.
+      if (GA_CAROUSEL_METHOD_RE.test(GA_METHOD_NAME)) document.getElementById('gaTypeInput').value = 'drawing post';
+    }
     if (d.productId) { GA_PRODUCT_ID = d.productId; GA_PRODUCT_NAME = d.productName || ''; document.getElementById('gaProductInput').value = d.productName || ''; }
     GA_CAMPAIGN_ID = d.campaignId || CAMPAIGN_ID;
     status.textContent = '';
@@ -4705,11 +4552,74 @@ async function openGenAssetsModal(titleId) {
     GA_CAMPAIGN_ID = CAMPAIGN_ID;
     status.textContent = 'Could not prefill from title (' + e.message + ') — fields are editable.';
   }
+  gaUpdateCarouselHint();
   gaLoadSpecs(); // needs GA_CAMPAIGN_ID — fire-and-forget
   gaRefreshStrategyLink(); // reference-only link, never blended into generation
   gaLoadPlatforms(); // fire-and-forget
   btn.disabled = false;
 }
+
+// Shows a compact list of Assets already generated for this title, each
+// linking out to Notion — for carousel-flagged (drawing post) assets, a
+// direct "Build" shortcut into the existing PNG-slide renderer, since
+// building slides is a title-content operation, not a per-asset one.
+function gaRenderExisting(titleId) {
+  const el = document.getElementById('gaExistingAssets');
+  if (!el) return;
+  el.innerHTML = '';
+  const assets = GA_TITLE_ASSETS_CACHE[titleId] || [];
+  if (!assets.length) return;
+  const label = document.createElement('div');
+  label.className = 'lm-label';
+  label.textContent = 'Existing assets for this title';
+  el.appendChild(label);
+  const list = document.createElement('div');
+  list.style.cssText = 'margin-bottom:10px;';
+  assets.forEach(a => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid #333;border-radius:4px;margin-bottom:4px;';
+    row.innerHTML =
+      `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${esc(a.type || '—')}</span>` +
+      `<span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title)}</span>` +
+      `<span style="font-size:10px;color:#666;flex-shrink:0;">${esc(a.status || '')}</span>`;
+    if (GA_CAROUSEL_ASSET_TYPE_RE.test(a.type || '')) {
+      const buildBtn = document.createElement('button');
+      buildBtn.type = 'button';
+      buildBtn.className = 'modal-btn cancel';
+      buildBtn.style.cssText = 'padding:3px 8px;font-size:11px;flex-shrink:0;';
+      buildBtn.textContent = '🎨 Build';
+      buildBtn.onclick = () => {
+        const titleText = document.getElementById('gaTitleInput').value;
+        closeGenAssetsModal();
+        openBuildModal(titleId, titleText, GA_PRODUCT_ID || '__none__');
+      };
+      row.appendChild(buildBtn);
+    }
+    const link = document.createElement('a');
+    link.href = 'https://www.notion.so/' + a.id;
+    link.target = '_blank';
+    link.style.cssText = 'font-size:11px;color:#555;text-decoration:none;flex-shrink:0;';
+    link.textContent = '↗';
+    row.appendChild(link);
+    list.appendChild(row);
+  });
+  el.appendChild(list);
+}
+
+// Toggles the "Build Carousel" shortcut based on the currently selected
+// Method — this is the "asset creation gets its direction from method"
+// dispatch point: a carousel method means the real deliverable is rendered
+// slides, not a generic text-concept Asset record.
+function gaUpdateCarouselHint() {
+  const hint = document.getElementById('gaCarouselHint');
+  if (!hint) return;
+  hint.style.display = GA_CAROUSEL_METHOD_RE.test(GA_METHOD_NAME || '') ? 'flex' : 'none';
+}
+document.getElementById('gaCarouselBuildBtn')?.addEventListener('click', () => {
+  const titleText = document.getElementById('gaTitleInput').value;
+  closeGenAssetsModal();
+  openBuildModal(GA_TITLE_ID, titleText, GA_PRODUCT_ID || '__none__');
+});
 let GA_ALL_LOGINS = [];
 async function gaLoadPlatforms() {
   const sel = document.getElementById('gaPlatformInput');
@@ -4913,28 +4823,6 @@ async function runRegenKeywords() {
       <button class="method-gen-go" id="mgm-go" onclick="runMethodGenerate()" disabled>Generate</button>
     </div>
     <div class="method-gen-status" id="mgm-status"></div>
-  </div>
-</div>
-<div id="create-asset-modal" onclick="if(event.target===this)closeCreateAssetModal()">
-  <div class="ca-box">
-    <h3>Generate Titles</h3>
-    <div class="ca-subtitle" id="ca-subtitle"></div>
-
-    <div class="ca-section">
-      <div class="ca-label">Method</div>
-      <div class="ca-opt-list" id="ca-methods"></div>
-    </div>
-
-    <div class="ca-section">
-      <div class="ca-label">Product <span style="font-weight:400;text-transform:none;color:#555">— optional, for idea-based content leave on Campaign</span></div>
-      <div class="ca-opt-list" id="ca-products"></div>
-    </div>
-
-    <div class="ca-actions">
-      <button class="ca-cancel" onclick="closeCreateAssetModal()">Cancel</button>
-      <button class="ca-go" id="ca-go" onclick="runCreateAsset()">Generate</button>
-    </div>
-    <div class="ca-status" id="ca-status"></div>
   </div>
 </div>
 <div id="build-carousel-modal" onclick="if(event.target===this)closeBuildModal()">
