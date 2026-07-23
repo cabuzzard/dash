@@ -5814,6 +5814,96 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
 
+        // ── SEO Post asset type: one full written pillar post, not N visual
+        // concept options to pick between. Reuses the title's existing
+        // 3-subhead outline (written by the SEO Post method's follow-up step)
+        // as the article's structure if present, completes it with 3 fresh
+        // subheads if not, writes the full article into the new asset's page
+        // body, and publishes BOTH the asset and the source title immediately
+        // — this asset type is finished text, not a design pick-one that
+        // waits in Development for operator review.
+        if (/seo post/i.test(assetType)) {
+          const existingOutline = await extractBlocksTextRecursive(dsHdr, dsDash(titleId)).catch(() => "");
+
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO content writer. Write a complete, publish-ready pillar blog post for this title.
+
+TITLE: ${title}
+${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${existingOutline ? `EXISTING NOTES/OUTLINE ON THIS TITLE (if it already defines 3 subheads, use those headings verbatim as the article's structure — otherwise write 3 new ones):\n${existingOutline.slice(0, 2000)}\n` : ""}
+Requirements:
+- Structure the post under EXACTLY 3 subheads (H2-level sections) covering the topic in a logical order.
+- Each section is substantial, specific, useful writing — roughly 400-700 words per section, not filler.
+- Write a short 2-3 sentence intro before the first subhead, and a short concluding paragraph after the last section.
+- No meta-commentary, no "in this article we will," no headers other than the 3 subheads.
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "intro": "...", "sections": [ { "heading": "...", "body": "..." }, ... exactly 3 total ... ], "conclusion": "..." }`;
+
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+
+          let post;
+          try {
+            const raw = aiData.content?.[0]?.text || "";
+            const start = raw.indexOf('{');
+            const end = raw.lastIndexOf('}');
+            if (start === -1 || end === -1 || end < start) throw new Error("No JSON object found");
+            post = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          } catch(e) {
+            return json({ error: "Failed to parse post JSON: " + e.message }, 502);
+          }
+          const sections = (Array.isArray(post.sections) ? post.sections : []).filter(s => s && s.heading);
+          if (!sections.length) return json({ error: "No sections generated — try again" }, 502);
+
+          // Create the Asset record — published immediately, no Development review step.
+          const assetProps = {
+            "Asset Title":  { title: [{ text: { content: String(title).slice(0, 200) } }] },
+            "Asset Status": { select: { name: "Publish" } },
+            "Asset Type":   { select: { name: String(assetType).slice(0, 100) } },
+            "Body":         { rich_text: [{ text: { content: String(post.intro || "").slice(0, 2000) } }] },
+            "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+          };
+          if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          const assetResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+          });
+          const assetResult = await assetResp.json();
+          if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create SEO Post asset" }, 502);
+          const assetId = assetResult.id.replace(/-/g, "");
+
+          // Write the full article into the asset's page body.
+          const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+          const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
+          const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+          const children = [];
+          if (post.intro) children.push(para(post.intro));
+          sections.forEach(s => { children.push(heading2(s.heading)); if (s.body) children.push(para(s.body)); });
+          if (post.conclusion) children.push(para(post.conclusion));
+          if (children.length) {
+            const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dsDash(assetId)}/children`, {
+              method: "PATCH",
+              headers: { ...dsHdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ children }),
+            });
+            if (!blocksResp.ok) { const r = await blocksResp.json(); return json({ error: r.message || "Asset created but failed to write post body" }, 502); }
+          }
+
+          // Publish the source title too — the pillar post is done, not pending.
+          await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
+            method: "PATCH",
+            headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+          });
+
+          return json({ success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length });
+        }
+
         // design spec: explicit modal pick wins, else campaign default →
         // product override → hard defaults
         let spec = { ...DESIGN_SPEC_DEFAULTS };
