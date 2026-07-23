@@ -5098,9 +5098,10 @@ ${hasTrendResearch ? '- Ground titles in the trending research above wherever it
 - Titles are deliverable names (things to produce), not content post headlines.
 - Aim for 2–3 titles per grouping unless the framework specifies otherwise.
 - Flag whether each title is a multi-slide / carousel / swipe-style deliverable (the method framework describes this — look for words like "slide", "carousel", "swipe", "panel") with "slideFormat": true. Otherwise "slideFormat": false. Do NOT write the slide content itself here — that happens in a separate follow-up step. Just flag it.
+- Flag whether each title needs a 3-subhead SEO/pillar-post outline (the method framework describes this — look for words like "SEO post", "pillar", "subheads", "outline") with "subheadFormat": true. Otherwise "subheadFormat": false. Do NOT write the outline itself here — that happens in a separate follow-up step. Just flag it.
 
 Return ONLY a JSON array. Each item:
-{ "title": "...", "phase": "exact phase name from framework", "grouping": "exact grouping name from framework", "slideFormat": true|false }
+{ "title": "...", "phase": "exact phase name from framework", "grouping": "exact grouping name from framework", "slideFormat": true|false, "subheadFormat": true|false }
 No other text. No markdown fences.
 If the framework has no clear phases, use the framework section names as phase and content types as grouping.
 No other text. No markdown fences.`;
@@ -5131,6 +5132,16 @@ No other text. No markdown fences.`;
         // flag deterministically so titles never silently skip slide generation.
         if (/carousel|slide|swipe|panel/i.test(methodName)) {
           titles.forEach(t => { t.slideFormat = true; });
+        }
+
+        // SEO Post: cap at 5 titles and pin every title's grouping to the
+        // campaign's actual seed keyword (first term in Keywords) rather than
+        // trusting the model to reproduce it verbatim — this is what "grouped
+        // together under the seed keyword" depends on downstream.
+        if (/seo post/i.test(methodName)) {
+          const seedKeyword = (research.keywords || "").split(/[,;\n]/)[0].trim() || methodName;
+          titles = titles.slice(0, 5);
+          titles.forEach(t => { t.subheadFormat = true; t.phase = null; t.grouping = seedKeyword; });
         }
 
         // Return titles to client — client will save in batches via saveMethodTitles
@@ -5168,11 +5179,14 @@ No other text. No markdown fences.`;
           });
           const page = await resp.json();
           created++;
-          // slideFormat titles need a separate generateTitleSlides call per title
-          // (kept out of this batch write, and out of the generation call above,
-          // so no single request has to write dozens of full carousel scripts —
-          // that was slow enough to trip Cloudflare's 524 timeout).
-          if (t.slideFormat && page.id) saved.push({ id: page.id.replace(/-/g, ""), title: t.title, slideFormat: true });
+          // slideFormat/subheadFormat titles need a separate follow-up call per
+          // title (kept out of this batch write, and out of the generation call
+          // above, so no single request has to write dozens of full carousel
+          // scripts or outlines — that was slow enough to trip Cloudflare's 524
+          // timeout).
+          if ((t.slideFormat || t.subheadFormat) && page.id) {
+            saved.push({ id: page.id.replace(/-/g, ""), title: t.title, slideFormat: !!t.slideFormat, subheadFormat: !!t.subheadFormat });
+          }
         }
         return json({ created, titles: saved });
       }
@@ -5265,6 +5279,83 @@ Return ONLY this JSON object, no other text, no markdown fences:
         }
 
         return json({ success: true, slideCount: n });
+      }
+
+      // ── generateTitleSubheads ──
+      // Follow-up step for a subheadFormat title from saveMethodTitles (the
+      // SEO Post method): writes a 3-subhead outline into the already-created
+      // page's body. Mirrors generateTitleSlides but produces a long-form
+      // pillar-post outline instead of a carousel script.
+      if (body.action === "generateTitleSubheads") {
+        const { pageId, title, campaignId } = body;
+        if (!pageId || !title) return json({ error: "pageId and title required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        let keywords = "";
+        if (campaignId) {
+          const researchRaw = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+          keywords = rt(researchRaw, "Keywords");
+        }
+
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}Write a 3-subhead outline for this SEO pillar-post title — the structure a writer will fill in to produce a mid-length, full-page article.
+
+TITLE: ${title}
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}
+Write EXACTLY 3 subheads, no more, no fewer:
+- Each subhead is a real H2-style section heading (specific, not generic like "Introduction" or "Conclusion") that together cover the title's topic in a logical order
+- Each subhead gets a 2-3 sentence description of what that section should cover and argue — real substance, not placeholders
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "subheads": [ { "heading": "...", "description": "..." }, ... exactly 3 total ... ] }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+
+        let parsed;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('{');
+          const end = raw.lastIndexOf('}');
+          if (start === -1 || end === -1 || end < start) throw new Error("No JSON object found");
+          parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        } catch(e) {
+          return json({ error: "Failed to parse subheads JSON: " + e.message }, 500);
+        }
+
+        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const heading3 = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+        const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
+        const para = (text, opts = {}) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text, opts) } });
+
+        const subheads = (Array.isArray(parsed.subheads) ? parsed.subheads : []).filter(s => s && s.heading);
+        const children = [];
+        if (subheads.length) children.push(heading3('Outline'));
+        subheads.forEach(s => {
+          children.push(heading2(s.heading));
+          if (s.description) children.push(para(s.description));
+        });
+
+        if (children.length) {
+          const resp = await fetch(`https://api.notion.com/v1/blocks/${dash(pageId)}/children`, {
+            method: "PATCH",
+            headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children }),
+          });
+          if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Failed to write subheads to page" }, resp.status); }
+        }
+
+        return json({ success: true, subheadCount: subheads.length });
       }
 
       // ── Design Spec (reusable branding records, attached to a campaign

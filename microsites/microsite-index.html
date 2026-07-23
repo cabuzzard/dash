@@ -1323,35 +1323,37 @@ async function runMethodGenerate() {
     if (data.error) throw new Error(data.error);
     const titles = data.titles || [];
     let saved = 0;
-    const slideTitles = [];
+    const followUpTitles = [];
     for (let i = 0; i < titles.length; i += 10) {
       status.textContent = 'Saving ' + Math.min(i + 10, titles.length) + ' / ' + titles.length + ' titles…';
       const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
       if (r.error) throw new Error(r.error);
       saved += r.created;
-      slideTitles.push(...(r.titles || []));
+      followUpTitles.push(...(r.titles || []));
     }
-    // Slide/carousel-format titles get their full script written in separate,
-    // small follow-up calls (one per title) so one giant AI call doesn't time out.
-    let slidesDone = 0, slidesFailed = 0, firstSlideErr = '';
-    for (const st of slideTitles) {
-      status.textContent = 'Writing slides ' + (slidesDone + slidesFailed + 1) + ' / ' + slideTitles.length + '…';
+    // Slide/carousel-format and subhead-outline (SEO Post) titles get their
+    // content written in separate, small follow-up calls (one per title) so
+    // one giant AI call doesn't time out.
+    let followDone = 0, followFailed = 0, firstFollowErr = '';
+    for (const ft of followUpTitles) {
+      status.textContent = 'Writing ' + (ft.slideFormat ? 'slides' : 'outline') + ' ' + (followDone + followFailed + 1) + ' / ' + followUpTitles.length + '…';
       try {
-        const sr = await w('generateTitleSlides', { pageId: st.id, title: st.title, campaignId: CAMPAIGN_ID });
-        if (sr.error) throw new Error(sr.error);
-        slidesDone++;
-      } catch(e) { slidesFailed++; if (!firstSlideErr) firstSlideErr = e.message; }
+        const action = ft.slideFormat ? 'generateTitleSlides' : 'generateTitleSubheads';
+        const fr = await w(action, { pageId: ft.id, title: ft.title, campaignId: CAMPAIGN_ID });
+        if (fr.error) throw new Error(fr.error);
+        followDone++;
+      } catch(e) { followFailed++; if (!firstFollowErr) firstFollowErr = e.message; }
     }
     const trendNote = data.hasTrendResearch ? (' — grounded in ' + data.trendSource) : ' — no trend research on file, ran on static campaign research only (press ⟳ search under SM Trends first for trend-grounded titles)';
-    if (!slideTitles.length) {
-      status.textContent = '✓ Created ' + saved + ' titles' + trendNote + ' — none were flagged as carousel/slide format (check the Method name/framework)';
+    if (!followUpTitles.length) {
+      status.textContent = '✓ Created ' + saved + ' titles' + trendNote + ' — none were flagged as carousel/slide or outline format (check the Method name/framework)';
       status.style.color = '#f0b429';
     } else {
-      status.textContent = '✓ Created ' + saved + ' titles' + trendNote + ' (' + slidesDone + '/' + slideTitles.length + ' carousel scripts written' + (slidesFailed ? ', ' + slidesFailed + ' failed: ' + firstSlideErr : '') + ')';
-      status.style.color = slidesFailed ? '#fc8181' : (data.hasTrendResearch ? '#68d391' : '#f0b429');
+      status.textContent = '✓ Created ' + saved + ' titles' + trendNote + ' (' + followDone + '/' + followUpTitles.length + ' follow-ups written' + (followFailed ? ', ' + followFailed + ' failed: ' + firstFollowErr : '') + ')';
+      status.style.color = followFailed ? '#fc8181' : (data.hasTrendResearch ? '#68d391' : '#f0b429');
     }
     btn.textContent = 'Done';
-    if (!slidesFailed && slideTitles.length === slidesDone && data.hasTrendResearch) setTimeout(closeMethodGenModal, 1800);
+    if (!followFailed && followUpTitles.length === followDone && data.hasTrendResearch) setTimeout(closeMethodGenModal, 1800);
     else btn.disabled = false;
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
