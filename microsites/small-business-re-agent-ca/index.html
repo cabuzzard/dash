@@ -236,8 +236,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 1: four col — campaign meta / statement / unique opportunity / notes -->
-<div class="four-col">
+<!-- SEC 1: three col — campaign meta / statement / unique opportunity -->
+<div class="three-col">
   <div class="col">
     <h2>Campaign</h2>
     <div class="content">
@@ -265,6 +265,28 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="body-text" id="r-uniqueopportunity" style="white-space:pre-wrap;min-height:40px;"></div>
     </div>
   </div>
+</div>
+
+<!-- SEC 1b: three col — keywords / product ideas / notes -->
+<div class="three-col">
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span class="editable" onclick="openModal('keywords')">Keywords</span><button id="kwRegenBtn" onclick="runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#555;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button></h2>
+    <div class="content">
+      <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>Product Ideas</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="prodIdeasKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="prodIdeasBtn" onclick="runProductIdeas()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-prodideas"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
   <div class="col">
     <h2>Notes</h2>
     <div class="content">
@@ -273,24 +295,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 2: four col — main TD / methods / products / logins -->
-<div class="four-col">
+<!-- SEC 2: three col — products / methods / files -->
+<div class="three-col">
   <div class="col">
-    <h2>Main TD <button class="td-add-btn-inline" onclick="openTdModal()" title="Add task">+</button></h2>
+    <h2>Products <button class="td-add-btn-inline" onclick="openProductModal()" title="Add product">+</button></h2>
     <div class="content">
-      <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div class="product-list" id="product-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
     <h2>Methods <button class="td-add-btn-inline" onclick="openMethodModal()" title="Add method">+</button></h2>
     <div class="content">
       <div class="method-list" id="method-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-  <div class="col">
-    <h2>Products <button class="td-add-btn-inline" onclick="openProductModal()" title="Add product">+</button></h2>
-    <div class="content">
-      <div class="product-list" id="product-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
@@ -301,12 +317,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 3: four col — SM posts / development titles / publish titles / logins -->
-<div class="four-col">
+<!-- SEC 3: three col — logins / development titles / publish titles -->
+<div class="three-col">
   <div class="col">
-    <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Run research">&#x25B6;</button></h2>
+    <h2>Logins <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
     <div class="content">
-      <div id="smPostsBox"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
@@ -321,22 +337,10 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
-  <div class="col">
-    <h2>Logins <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
-    <div class="content">
-      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
 </div>
 
-<!-- SEC 4: three col — keywords / SM trends / news feed -->
+<!-- SEC 4: three col — SM trends / seed channels / news feed -->
 <div class="three-col">
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span class="editable" onclick="openModal('keywords')">Keywords</span><button id="kwRegenBtn" onclick="runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#555;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button></h2>
-    <div class="content">
-      <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
   <div class="col">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <span>SM Trends</span>
@@ -350,6 +354,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>Seed Channels <span style="font-size:10px;color:var(--text3,#999);font-weight:400">Video Copy</span></span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="seedKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+        <button id="seedBtn" onclick="runSeedChannels()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-seed"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
     <h2>News Feed <button class="td-add-btn-inline" onclick="openFieldResearchModal('newsFeed')" title="Generate with AI">&#x25B6;</button></h2>
     <div class="content">
       <div class="body-text" id="r-news"><div class="loading"><div class="spinner"></div>Loading…</div></div>
@@ -357,20 +373,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 5: three col — product ideas / tiktok shop / kdp best sellers -->
-<div class="three-col">
-  <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>Product Ideas</span>
-      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <input id="prodIdeasKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
-        <button id="prodIdeasBtn" onclick="runProductIdeas()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
-      </span>
-    </h2>
-    <div class="content">
-      <div id="r-prodideas"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
+<!-- SEC 5: four col — tiktok shop / kdp best sellers / SM posts / main TD -->
+<div class="four-col">
   <div class="col">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <span>TikTok Shop</span>
@@ -396,15 +400,15 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>Seed Channels <span style="font-size:10px;color:var(--text3,#999);font-weight:400">Video Copy</span></span>
-      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <input id="seedKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
-        <button id="seedBtn" onclick="runSeedChannels()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
-      </span>
-    </h2>
+    <h2>SM Posts <button class="td-add-btn-inline" onclick="openSmPromptModal()" title="Run research">&#x25B6;</button></h2>
     <div class="content">
-      <div id="r-seed"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div id="smPostsBox"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Main TD <button class="td-add-btn-inline" onclick="openTdModal()" title="Add task">+</button></h2>
+    <div class="content">
+      <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
