@@ -11,14 +11,36 @@ dash/
 ├── index.html                          # Main Hermes dashboard (all campaigns, logins matrix)
 ├── microsites/
 │   ├── style.css                       # Shared admin microsite styles
-│   ├── microsite-index.html            # CANONICAL TEMPLATE for all admin microsites
-│   └── {deploy-path}/index.html        # Per-campaign admin microsite (copy of template)
+│   ├── microsite-index.html            # STALE — not the real sync source, see below
+│   ├── hard-grind/index.html           # ACTUAL sync source (sync_microsites.py TEMPLATE)
+│   ├── sync_microsites.py              # Propagates hard-grind/index.html to every {deploy-path} below
+│   └── {deploy-path}/index.html        # Per-campaign admin microsite (copy of hard-grind)
+├── productsites/
+│   ├── operator-resilience-intensive/index.html  # ACTUAL sync source (sync_productsites.py TEMPLATE)
+│   ├── sync_productsites.py            # Propagates that file to every {product}/index.html below
+│   └── {product}/index.html            # Per-product admin page (copy of the template above)
 ├── web/
 │   └── {deploy-path}/index.html        # Public-facing live campaign pages
+├── docs/
+│   └── methods-titles-assets.md        # How the Methods/Titles/Assets modals + generation routing work
 └── worker/
     ├── worker.js                        # Cloudflare Worker (single file, all actions)
     └── wrangler.toml                    # Worker config (name: jolly-darkness-5dcc)
 ```
+
+**Editing a microsite or product-site template:** always edit `hard-grind/index.html` or
+`operator-resilience-intensive/index.html` respectively (the real sync sources), then run the matching
+`sync_*.py` script to propagate. Editing `microsite-index.html` directly does nothing — it's disconnected
+from the sync pipeline despite the name.
+
+**Deploys are automatic**: pushing to `main` triggers `.github/workflows/deploy-worker.yml` (on
+`worker/**` changes) and `.github/workflows/deploy-bluehost.yml` (on `web/**` changes, per the mapping in
+`.github/bluehost-sites.tsv`). `microsites/` and `productsites/` are plain GitHub Pages content — no
+separate deploy step, they're live as soon as the push lands.
+
+**Content generation system** (Methods → Titles → Assets, the "Add Methods"/"Generate Titles"/"Produce
+Assets" modals, and why there are several different generation code paths depending on method type): see
+`docs/methods-titles-assets.md`.
 
 ## Cloudflare Worker
 
