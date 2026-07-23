@@ -522,10 +522,44 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <option value="Paused">Paused</option>
         <option value="Inactive">Inactive</option>
       </select>
+      <label class="lm-label">Content Length <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— what this login publishes</span></label>
+      <div style="display:flex;gap:14px;margin-bottom:12px;">
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#c9c9c9;cursor:pointer;"><input type="checkbox" id="le-type-long" value="long form" /> Long form</label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#c9c9c9;cursor:pointer;"><input type="checkbox" id="le-type-short" value="short form" /> Short form</label>
+      </div>
       <label class="lm-label">Username / handle</label>
       <input class="modal-ta" id="le-usr" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
       <label class="lm-label">Account URL</label>
       <input class="modal-ta" id="le-url" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Title <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— profile/publication title</span></label>
+      <input class="modal-ta" id="le-title" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Headline <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— tagline / short position statement</span></label>
+      <input class="modal-ta" id="le-headline" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Bio</label>
+      <textarea class="modal-ta" id="le-bio" rows="4" style="padding:8px 10px;margin-bottom:12px;resize:vertical;" placeholder="Full bio / about text for this login…"></textarea>
+      <label class="lm-label">Profile Pic Brief <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— what the avatar image should look like, drawing from campaign design/research</span></label>
+      <textarea class="modal-ta" id="le-profilepic-brief" rows="2" style="padding:8px 10px;margin-bottom:12px;resize:vertical;" placeholder="e.g. Mountain man illustration — weathered, present, Sierra Nevada aesthetic."></textarea>
+      <label class="lm-label">Banner Brief</label>
+      <textarea class="modal-ta" id="le-banner-brief" rows="2" style="padding:8px 10px;margin-bottom:12px;resize:vertical;" placeholder="e.g. Wilderness landscape at golden hour, no text overlay."></textarea>
+
+      <label class="lm-label">Picture <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— the real uploaded avatar image</span></label>
+      <div id="le-picture-wrap" style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+        <div id="le-picture-thumb" style="width:48px;height:48px;border-radius:6px;background:#1e1e1e;border:1px solid #333;flex-shrink:0;background-size:cover;background-position:center;"></div>
+        <button type="button" class="modal-btn cancel" style="padding:5px 10px;font-size:11px;" onclick="document.getElementById('le-picture-file').click()">Upload…</button>
+        <button type="button" class="modal-btn cancel" id="le-picture-remove" style="padding:5px 10px;font-size:11px;display:none;" onclick="removeLePicture()">Remove</button>
+        <input type="file" id="le-picture-file" accept="image/*" style="display:none;" onchange="uploadLePicture()" />
+      </div>
+      <div class="modal-status" id="le-picture-status" style="margin-bottom:12px;"></div>
+
+      <label class="lm-label">Files <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— documents / assets attached to this login</span></label>
+      <div id="le-files-list" style="margin-bottom:6px;"></div>
+      <button type="button" class="modal-btn cancel" style="padding:5px 10px;font-size:11px;margin-bottom:4px;" onclick="document.getElementById('le-files-file').click()">+ Add file</button>
+      <input type="file" id="le-files-file" style="display:none;" onchange="uploadLeFile()" />
+      <div class="modal-status" id="le-files-status" style="margin-bottom:12px;"></div>
+
+      <label class="lm-label">Linked Assets <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— platform-specific content published under this login</span></label>
+      <div id="le-assets-list" style="margin-bottom:12px;font-size:12px;color:#555;">Loading…</div>
+
       <div style="font-size:11px;color:#555;margin-bottom:4px;">To change platform or campaign relations, open the full record in Notion:</div>
       <a id="le-notion-link" href="#" target="_blank" class="notion-link" style="font-size:12px;">↗ Open in Notion</a>
       <div class="modal-status" id="le-status-msg"></div>
@@ -3326,6 +3360,8 @@ async function addLoginFromModal() {
 
 // ── EDIT LOGIN ────────────────────────────────────────────────────────
 let LE_LOGIN_ID = '';
+let LE_PICTURE = null;   // { name, url } | null
+let LE_FILES = [];       // [{ name, url }]
 
 function openLoginEditModal(login) {
   LE_LOGIN_ID = login.id;
@@ -3339,13 +3375,31 @@ function openLoginEditModal(login) {
   document.getElementById('le-plat-dd').style.display = 'none';
   document.getElementById('le-category').value = login.category || '';
   document.getElementById('le-status').value   = login.status   || 'Planning';
+  document.getElementById('le-type-long').checked  = (login.loginType || []).includes('long form');
+  document.getElementById('le-type-short').checked = (login.loginType || []).includes('short form');
   document.getElementById('le-usr').value      = login.usr      || '';
   document.getElementById('le-url').value      = login.accountUrl || '';
+  document.getElementById('le-title').value    = login.title    || '';
+  document.getElementById('le-headline').value = login.headline || '';
+  document.getElementById('le-bio').value       = login.bio      || '';
+  document.getElementById('le-profilepic-brief').value = login.profilePic || '';
+  document.getElementById('le-banner-brief').value     = login.banner     || '';
   document.getElementById('le-notion-link').href = 'https://www.notion.so/' + login.id;
   document.getElementById('le-status-msg').textContent = '';
   document.getElementById('le-status-msg').className   = 'modal-status';
+  document.getElementById('le-picture-status').textContent = '';
+  document.getElementById('le-files-status').textContent   = '';
   document.getElementById('le-save').disabled   = false;
   document.getElementById('le-save').textContent = 'Save';
+
+  LE_PICTURE = (login.picture || [])[0] || null;
+  LE_FILES   = login.files || [];
+  renderLePicture();
+  renderLeFiles();
+
+  document.getElementById('le-assets-list').innerHTML = 'Loading…';
+  loadLeAssets(login.id);
+
   document.getElementById('loginEditModal').classList.add('open');
   setTimeout(() => document.getElementById('le-name').focus(), 100);
 }
@@ -3358,6 +3412,136 @@ document.getElementById('loginEditModal').addEventListener('click', function(e) 
   if (e.target === this) closeLoginEditModal();
 });
 
+function renderLePicture() {
+  const thumb = document.getElementById('le-picture-thumb');
+  const removeBtn = document.getElementById('le-picture-remove');
+  if (LE_PICTURE && LE_PICTURE.url) {
+    thumb.style.backgroundImage = `url('${LE_PICTURE.url}')`;
+    removeBtn.style.display = '';
+  } else {
+    thumb.style.backgroundImage = '';
+    removeBtn.style.display = 'none';
+  }
+}
+
+function renderLeFiles() {
+  const el = document.getElementById('le-files-list');
+  if (!LE_FILES.length) { el.innerHTML = '<div style="font-size:11px;color:#555;">No files yet.</div>'; return; }
+  el.innerHTML = '';
+  LE_FILES.forEach(f => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.06);';
+    row.innerHTML = `<a href="${esc(f.url)}" target="_blank" style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;">⬇ ${esc(f.name)}</a>`;
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.textContent = '✕';
+    rm.style.cssText = 'background:none;border:none;color:#555;cursor:pointer;font-size:12px;';
+    rm.onclick = () => removeLeFile(f.name);
+    row.appendChild(rm);
+    el.appendChild(row);
+  });
+}
+
+async function uploadLePicture() {
+  const file = document.getElementById('le-picture-file').files[0];
+  if (!file || !LE_LOGIN_ID) return;
+  const statusEl = document.getElementById('le-picture-status');
+  statusEl.style.color = '#888'; statusEl.textContent = 'Uploading…';
+  try {
+    const reader = new FileReader();
+    const b64 = await new Promise((res, rej) => { reader.onload = e => res(e.target.result.split(',')[1]); reader.onerror = rej; reader.readAsDataURL(file); });
+    const data = await w('uploadLoginFile', { loginId: LE_LOGIN_ID, target: 'Picture', fileName: file.name, contentType: file.type || 'application/octet-stream', fileData: b64 });
+    if (data.error) throw new Error(data.error);
+    LE_PICTURE = { name: file.name, url: data.fileUrl };
+    renderLePicture();
+    const idx = LOGIN_ITEMS.findIndex(l => l.id === LE_LOGIN_ID);
+    if (idx !== -1) LOGIN_ITEMS[idx].picture = [LE_PICTURE];
+    statusEl.style.color = '#68d391'; statusEl.textContent = 'Uploaded ✓';
+    setTimeout(() => { statusEl.textContent = ''; }, 1500);
+  } catch(e) {
+    statusEl.style.color = '#f87171'; statusEl.textContent = 'Error: ' + e.message;
+  } finally {
+    document.getElementById('le-picture-file').value = '';
+  }
+}
+
+async function removeLePicture() {
+  if (!LE_PICTURE || !LE_LOGIN_ID) return;
+  const statusEl = document.getElementById('le-picture-status');
+  statusEl.style.color = '#888'; statusEl.textContent = 'Removing…';
+  try {
+    await w('removeLoginFile', { loginId: LE_LOGIN_ID, target: 'Picture', fileName: LE_PICTURE.name });
+    LE_PICTURE = null;
+    renderLePicture();
+    const idx = LOGIN_ITEMS.findIndex(l => l.id === LE_LOGIN_ID);
+    if (idx !== -1) LOGIN_ITEMS[idx].picture = [];
+    statusEl.textContent = '';
+  } catch(e) {
+    statusEl.style.color = '#f87171'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function uploadLeFile() {
+  const file = document.getElementById('le-files-file').files[0];
+  if (!file || !LE_LOGIN_ID) return;
+  const statusEl = document.getElementById('le-files-status');
+  statusEl.style.color = '#888'; statusEl.textContent = 'Uploading…';
+  try {
+    const reader = new FileReader();
+    const b64 = await new Promise((res, rej) => { reader.onload = e => res(e.target.result.split(',')[1]); reader.onerror = rej; reader.readAsDataURL(file); });
+    const data = await w('uploadLoginFile', { loginId: LE_LOGIN_ID, target: 'Files', fileName: file.name, contentType: file.type || 'application/octet-stream', fileData: b64 });
+    if (data.error) throw new Error(data.error);
+    LE_FILES.push({ name: file.name, url: data.fileUrl });
+    renderLeFiles();
+    const idx = LOGIN_ITEMS.findIndex(l => l.id === LE_LOGIN_ID);
+    if (idx !== -1) LOGIN_ITEMS[idx].files = LE_FILES.slice();
+    statusEl.style.color = '#68d391'; statusEl.textContent = 'Uploaded ✓';
+    setTimeout(() => { statusEl.textContent = ''; }, 1500);
+  } catch(e) {
+    statusEl.style.color = '#f87171'; statusEl.textContent = 'Error: ' + e.message;
+  } finally {
+    document.getElementById('le-files-file').value = '';
+  }
+}
+
+async function removeLeFile(fileName) {
+  if (!LE_LOGIN_ID) return;
+  const statusEl = document.getElementById('le-files-status');
+  statusEl.style.color = '#888'; statusEl.textContent = 'Removing…';
+  try {
+    await w('removeLoginFile', { loginId: LE_LOGIN_ID, target: 'Files', fileName });
+    LE_FILES = LE_FILES.filter(f => f.name !== fileName);
+    renderLeFiles();
+    const idx = LOGIN_ITEMS.findIndex(l => l.id === LE_LOGIN_ID);
+    if (idx !== -1) LOGIN_ITEMS[idx].files = LE_FILES.slice();
+    statusEl.textContent = '';
+  } catch(e) {
+    statusEl.style.color = '#f87171'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function loadLeAssets(loginId) {
+  const el = document.getElementById('le-assets-list');
+  try {
+    const data = await w('getLoginAssets', { loginId });
+    const assets = data.assets || [];
+    if (!assets.length) { el.innerHTML = '<div style="font-size:11px;color:#555;">No assets linked yet.</div>'; return; }
+    el.innerHTML = '';
+    assets.forEach(a => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.06);';
+      row.innerHTML =
+        `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${esc(a.platform || a.type || '—')}</span>` +
+        `<span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title)}</span>` +
+        `<span style="font-size:10px;color:#555;flex-shrink:0;">${esc(a.status || '')}</span>` +
+        `<a href="https://www.notion.so/${a.id}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">↗</a>`;
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:11px;color:#f87171;">Error: ${esc(e.message)}</div>`;
+  }
+}
+
 async function saveLoginEdit() {
   const btn = document.getElementById('le-save');
   const msg = document.getElementById('le-status-msg');
@@ -3366,6 +3550,9 @@ async function saveLoginEdit() {
   msg.textContent = '';
   try {
     const platId = document.getElementById('le-plat-id').value || undefined;
+    const loginType = [];
+    if (document.getElementById('le-type-long').checked)  loginType.push('long form');
+    if (document.getElementById('le-type-short').checked) loginType.push('short form');
     const updated = {
       name:       document.getElementById('le-name').value.trim(),
       platformId: platId,
@@ -3373,6 +3560,12 @@ async function saveLoginEdit() {
       status:     document.getElementById('le-status').value   || undefined,
       usr:        document.getElementById('le-usr').value.trim() || undefined,
       accountUrl: document.getElementById('le-url').value.trim() || undefined,
+      title:      document.getElementById('le-title').value.trim(),
+      headline:   document.getElementById('le-headline').value.trim(),
+      bio:        document.getElementById('le-bio').value.trim(),
+      profilePic: document.getElementById('le-profilepic-brief').value.trim(),
+      banner:     document.getElementById('le-banner-brief').value.trim(),
+      loginType,
     };
     await w('updateLoginFull', { loginId: LE_LOGIN_ID, ...updated });
     // Update local cache

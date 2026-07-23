@@ -8904,11 +8904,17 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
             accountUrl:  p["Account URL"]?.url || "",
             headline:    p.Headline?.rich_text?.map(t=>t.plain_text).join("") || "",
             bio:         p.Bio?.rich_text?.map(t=>t.plain_text).join("") || "",
+            title:       p.Title?.rich_text?.map(t=>t.plain_text).join("") || "",
+            profilePic:  p["Profile Pic"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            banner:      p.Banner?.rich_text?.map(t=>t.plain_text).join("") || "",
             campaignIds: (p.Campaign?.relation || []).map(r=>r.id.replace(/-/g,"")),
             platformIds: (p.Platform?.relation || []).map(r=>r.id.replace(/-/g,"")),
             smAccountIds: (p["SM Account"]?.relation || []).map(r=>r.id.replace(/-/g,"")),
             smAccountId:  p["SM Account ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             loginType:   (p.type?.multi_select || []).map(s=>s.name),
+            picture:     (p.Picture?.files || []).map(f => ({ name: f.name, url: f.file?.url || f.external?.url || "" })),
+            files:       (p.Files?.files || []).map(f => ({ name: f.name, url: f.file?.url || f.external?.url || "" })),
+            assetIds:    (p.Assets?.relation || []).map(r=>r.id.replace(/-/g,"")),
           };
         });
         return json({ logins });
@@ -9002,7 +9008,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       }
 
       if (body.action === "updateLoginFull") {
-        const { loginId, name, category, status, usr, accountUrl, headline, bio, platformId, smAccountIds, smAccountId } = body;
+        const { loginId, name, category, status, usr, accountUrl, headline, bio, title, profilePic, banner, loginType, platformId, smAccountIds, smAccountId } = body;
         if (!loginId) return json({ error: "loginId required" }, 400);
         const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const props = {};
@@ -9013,6 +9019,10 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         if (accountUrl !== undefined) props["Account URL"] = accountUrl ? { url: accountUrl } : { url: null };
         if (headline !== undefined) props.Headline = { rich_text: headline ? [{ type:"text", text:{ content: headline } }] : [] };
         if (bio !== undefined)      props.Bio      = { rich_text: bio ? [{ type:"text", text:{ content: bio } }] : [] };
+        if (title !== undefined)    props.Title    = { rich_text: title ? [{ type:"text", text:{ content: title } }] : [] };
+        if (profilePic !== undefined) props["Profile Pic"] = { rich_text: profilePic ? [{ type:"text", text:{ content: profilePic } }] : [] };
+        if (banner !== undefined)   props.Banner   = { rich_text: banner ? [{ type:"text", text:{ content: banner } }] : [] };
+        if (loginType !== undefined) props.type    = { multi_select: (loginType || []).map(name => ({ name })) };
         if (platformId !== undefined) props.Platform = platformId ? { relation: [{ id: dash(platformId) }] } : { relation: [] };
         if (smAccountIds !== undefined) props["SM Account"] = { relation: (smAccountIds || []).map(id => ({ id: dash(id) })) };
         if (smAccountId  !== undefined) props["SM Account ID"] = { rich_text: smAccountId ? [{ type:"text", text:{ content: smAccountId } }] : [] };
@@ -9025,6 +9035,108 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
         return json({ success: true });
+      }
+
+      // â"€â"€ uploadLoginFile  -  upload to Login's Picture (replace) or Files (append) property â"€â"€
+      if (body.action === "uploadLoginFile") {
+        const { loginId, fileName, contentType, fileData, target } = body;
+        if (!loginId || !fileName || !contentType || !fileData) return json({ error: "loginId, fileName, contentType, fileData required" }, 400);
+        const prop = target === "Picture" ? "Picture" : "Files";
+        const dashId = s => { const r = s.replace(/-/g,""); return r.slice(0,8)+'-'+r.slice(8,12)+'-'+r.slice(12,16)+'-'+r.slice(16,20)+'-'+r.slice(20); };
+        const dashed = dashId(loginId);
+        const binary = atob(fileData);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const createResp = await fetch("https://api.notion.com/v1/file_uploads", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ content_type: contentType, mode: "single_part" }),
+        });
+        const createData = await createResp.json();
+        if (!createResp.ok) return json({ error: createData.message || "File upload init failed" }, createResp.status);
+        const { id: uploadId, upload_url: uploadUrl } = createData;
+        if (!uploadId) return json({ error: "File upload init returned no ID" }, 500);
+        const formData = new FormData();
+        formData.append("file", new Blob([bytes], { type: contentType }), fileName);
+        const putResp = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+          body: formData,
+        });
+        if (!putResp.ok) return json({ error: "File upload failed: " + (await putResp.text()).slice(0, 200) }, putResp.status);
+        let filesValue = [{ type: "file_upload", name: fileName, file_upload: { id: uploadId } }];
+        if (prop === "Files") {
+          // Append: fetch existing Files entries first
+          const existingResp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+          });
+          const existingData = await existingResp.json();
+          const existingFiles = (existingData.properties?.["Files"]?.files || []).flatMap(f => {
+            if (f.type === "file" && f.file?.url) return [{ type: "file", name: f.name, file: { url: f.file.url } }];
+            if (f.type === "external" && f.external?.url) return [{ type: "external", name: f.name, external: { url: f.external.url } }];
+            return [];
+          });
+          filesValue = [...existingFiles, ...filesValue];
+        }
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { [prop]: { files: filesValue } } }),
+        });
+        const patchData = await patchResp.json();
+        if (!patchResp.ok) return json({ error: patchData.message || "Failed to attach file to login" }, patchResp.status);
+        const fileUrl = patchData.properties?.[prop]?.files?.slice(-1)[0]?.file?.url || null;
+        return json({ success: true, fileName, fileUrl });
+      }
+
+      // â"€â"€ removeLoginFile  -  remove one file (by name) from Picture or Files â"€â"€
+      if (body.action === "removeLoginFile") {
+        const { loginId, target, fileName } = body;
+        if (!loginId || !fileName) return json({ error: "loginId and fileName required" }, 400);
+        const prop = target === "Picture" ? "Picture" : "Files";
+        const dashId = s => { const r = s.replace(/-/g,""); return r.slice(0,8)+'-'+r.slice(8,12)+'-'+r.slice(12,16)+'-'+r.slice(16,20)+'-'+r.slice(20); };
+        const dashed = dashId(loginId);
+        const existingResp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+        });
+        const existingData = await existingResp.json();
+        const remaining = (existingData.properties?.[prop]?.files || [])
+          .filter(f => f.name !== fileName)
+          .flatMap(f => {
+            if (f.type === "file" && f.file?.url) return [{ type: "file", name: f.name, file: { url: f.file.url } }];
+            if (f.type === "external" && f.external?.url) return [{ type: "external", name: f.name, external: { url: f.external.url } }];
+            return [];
+          });
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { [prop]: { files: remaining } } }),
+        });
+        if (!resp.ok) { const e = await resp.json(); return json({ error: e.message || "Failed" }, resp.status); }
+        return json({ success: true });
+      }
+
+      // â"€â"€ getLoginAssets  -  Assets DB records linked to this login â"€â"€
+      if (body.action === "getLoginAssets") {
+        const { loginId } = body;
+        if (!loginId) return json({ error: "loginId required" }, 400);
+        const dashId = s => { const r = s.replace(/-/g,""); return r.slice(0,8)+'-'+r.slice(8,12)+'-'+r.slice(12,16)+'-'+r.slice(16,20)+'-'+r.slice(20); };
+        const rows = await notionQuery(ASSETS_DB, {
+          filter: { property: "Login", relation: { contains: dashId(loginId) } },
+          sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
+        });
+        const assets = rows.map(pg => {
+          const p = pg.properties || {};
+          return {
+            id:         pg.id.replace(/-/g,""),
+            title:      p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
+            platform:   p["Platform Name"]?.select?.name || "",
+            type:       p["Asset Type"]?.select?.name || "",
+            status:     p["Asset Status"]?.select?.name || "",
+            designLink: p["Design Link"]?.url || "",
+          };
+        });
+        return json({ assets });
       }
 
       // â"€â"€ deleteLogin  -  archive login record â"€â"€
