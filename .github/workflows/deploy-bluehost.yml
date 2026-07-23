@@ -28,6 +28,6 @@ jobs:
             [ -z "$local" ] && continue
             case "$local" in \#*) continue ;; esac
             echo "Deploying $local -> $remote"
-            rsync -avz -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            rsync -avz -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o BatchMode=yes" \
               "$local/" "${{ secrets.BLUEHOST_USER }}@${{ secrets.BLUEHOST_HOST }}:$remote/"
           done < .github/bluehost-sites.tsv
