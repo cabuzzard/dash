@@ -1,0 +1,1720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<link rel="stylesheet" href="../style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ai business management and work management tools — Product Admin</title>
+<style>
+/* STATUS CHANGE BUTTON */
+.title-status-btn {
+  font-size: 11px; color: #5f5f5f; background: none; border: 1px solid #5f5f5f;
+  padding: 1px 6px; cursor: pointer; font-family: 'Syne', sans-serif;
+  flex-shrink: 0; transition: all .15s; line-height: 1.4;
+}
+.title-status-btn:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
+.status-option-grid { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 4px; }
+.status-opt-btn { background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; transition: opacity .15s, transform .1s; }
+.status-opt-btn:hover:not(:disabled) { transform: scale(1.05); }
+.status-opt-btn.active { opacity: .35; cursor: default; }
+.status-opt-btn:disabled { cursor: default; }
+/* LOGIN LIST */
+.login-platform-group { margin-bottom: 14px; }
+.login-platform-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #555; padding-bottom: 6px; border-bottom: 1px solid #5f5f5f; margin-bottom: 6px; }
+.login-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.login-row:last-child { border-bottom: none; }
+/* TD LIST */
+.td-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.td-row:last-child { border-bottom: none; }
+.td-name { flex: 1; font-size: 13px; color: #c9c9c9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
+.td-name:hover { color: #fff; text-decoration: underline; }
+.td-del { background: none; border: none; color: #444; cursor: pointer; font-size: 11px; padding: 0 2px; flex-shrink: 0; }
+.td-del:hover { color: #e05; }
+/* CAMPAIGN LIST */
+.campaign-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.campaign-row:last-child { border-bottom: none; }
+.campaign-name { flex: 1; font-size: 13px; color: #c9c9c9; }
+/* METHOD SEARCH DROPDOWN (Methods modal) */
+.plat-dd-item { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #c9c9c9; border-bottom: 1px solid #1e1e1e; }
+.plat-dd-item:hover { background: #5f5f5f; }
+</style>
+</head>
+<body>
+
+<!-- PIN SCREEN -->
+<div class="pin-screen" id="pinScreen">
+  <div class="pin-mark">Web<span>guy</span></div>
+  <div class="pin-label">Enter your access code</div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="d0"></div>
+    <div class="pin-dot" id="d1"></div>
+    <div class="pin-dot" id="d2"></div>
+    <div class="pin-dot" id="d3"></div>
+  </div>
+  <div class="pin-pad">
+    <button class="pin-btn" onclick="pp('1')">1</button><button class="pin-btn" onclick="pp('2')">2</button><button class="pin-btn" onclick="pp('3')">3</button>
+    <button class="pin-btn" onclick="pp('4')">4</button><button class="pin-btn" onclick="pp('5')">5</button><button class="pin-btn" onclick="pp('6')">6</button>
+    <button class="pin-btn" onclick="pp('7')">7</button><button class="pin-btn" onclick="pp('8')">8</button><button class="pin-btn" onclick="pp('9')">9</button>
+    <button class="pin-btn empty"></button><button class="pin-btn" onclick="pp('0')">0</button><button class="pin-btn del" onclick="pd()">DEL</button>
+  </div>
+  <div class="pin-error" id="pinError"></div>
+</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-left">Web<span>guy</span> — Product Admin</div>
+  <div class="topbar-right">
+    <div class="topbar-clock" id="clock">—</div>
+    <div class="topbar-lock" onclick="lockApp()">Lock</div>
+  </div>
+</div>
+
+<!-- SEC 1: one-col — product meta. Unique Angle/Avatar/Transformation/Offer
+     Structure/Proof Points/Objections were removed 2026-07-14 — that content
+     now lives IN each method's Strategy doc below (per-method, not one
+     blended product-wide guess), and is edited there. -->
+<div class="one-col">
+  <div class="col">
+    <h2>Product</h2>
+    <div class="content">
+      <div class="field"><div class="field-label">Name</div><div class="field-value" id="r-name"><div class="loading"><div class="spinner"></div>Loading…</div></div></div>
+      <div class="field"><div class="field-label">Status</div><div class="field-value" id="r-status"></div></div>
+      <div class="field"><div class="field-label">Site</div><div class="field-value" id="r-site"></div></div>
+      <div class="field"><div class="field-label">Price</div><div class="field-value" id="r-price"></div></div>
+      <div class="field"><div class="field-label">Spots</div><div class="field-value" id="r-spots"></div></div>
+      <div class="field"><div class="field-label">Methods <button class="td-add-btn-inline" onclick="openProductMethodsModal(PRODUCT_ID, PRODUCT_NAME)" title="Add method">+</button></div><div class="field-value" id="r-methods" style="font-size:12px;"></div></div>
+      <div class="field"><div class="field-label">Notion</div><div class="field-value"><a href="https://www.notion.so/3a61f7d3a4bb818ead79e4c4af282e92" target="_blank" class="notion-link">↗ Product</a> &nbsp; <a href="https://www.notion.so/36d1f7d3a4bb81968c91c98e86e444d9" target="_blank" class="notion-link">↗ Research</a></div></div>
+      <div class="field"><div class="field-label">Productsite</div><div class="field-value" id="r-productsite"></div></div>
+      <div class="field"><div class="field-label">Description</div><div class="field-value"><textarea id="r-desc-input" class="modal-ta" rows="2" style="width:100%;font-size:12px;resize:vertical;min-height:44px!important;padding:5px 8px;" placeholder="What is this product, briefly…"></textarea></div></div>
+      <div class="field"><div class="field-label">Keywords <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(grounds every Product Strategy field below)</span></div><div class="field-value"><div style="display:flex;gap:6px;align-items:flex-start;"><input id="r-keywords-input" class="modal-ta" type="text" style="flex:1;font-size:12px;height:30px;padding:5px 8px;" placeholder="comma-separated keywords…" /><button class="td-add-btn-inline" id="productKeywordsGenBtn" onclick="genProductKeywords()" style="font-size:10px;padding:2px 7px;flex-shrink:0;">↻ Generate</button></div></div></div>
+      <div class="field"><div class="field-label"></div><div class="field-value"><button class="td-add-btn-inline" id="productMetaSaveBtn" onclick="saveProductMeta()" style="font-size:11px;padding:3px 9px;">Save Description &amp; Keywords</button> <span id="productMetaStatus" style="font-size:11px;color:#888;"></span></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 1.45: one-col — Product Strategy. Fixed positioning schema, ONE
+     record per PRODUCT (not per method) — true regardless of which
+     platform this product is marketed through. Each field is its own
+     independent Generate (grounded in product Title/Description/Keywords
+     + whichever attached method's framework defines that concept,
+     best-effort) + editable textarea + Save. This is now the canonical
+     "what to say" surface; the Strategy & Titles panel below is "what to
+     build/where" and is being reworked to route THIS content into
+     platform-specific Titles instead of duplicating strategy per method. -->
+<div class="one-col">
+  <div class="col">
+    <h2>Product Strategy</h2>
+    <div class="content">
+      <div id="strategyFieldsPanel"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div id="strategyFieldsStatus" style="font-size:12px;color:#888;margin-top:8px;min-height:16px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 1.5: one-col — Strategy & Titles, per attached method. Per-phase
+     GENERATION into a Product+Method-scoped Strategy record was removed
+     2026-07-15 — that job now belongs entirely to the Product Strategy
+     panel above (product-level, not per-method). This panel is now
+     read/Titles-only: destination (Needs Traffic Plan) methods show
+     whatever's already in their Strategy doc (rendered inline, hand-
+     editable via ✎ Edit — updateMethodStrategyText) plus Generate Titles;
+     methods with no existing Strategy doc show neither, until the
+     method-by-method audit routes their asset-shaped content into Titles
+     directly. Traffic-child methods nest underneath with their own
+     Generate Titles, gated on the parent having a Strategy doc. Ordinary
+     flat methods get a plain Generate Titles. -->
+<div class="one-col">
+  <div class="col">
+    <h2>Strategy &amp; Titles <button class="td-add-btn-inline" onclick="openProductMethodsModal(PRODUCT_ID, PRODUCT_NAME)" title="Add or change methods">+</button></h2>
+    <div class="content">
+      <div id="strategyPanel"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div id="strategyStatus" style="font-size:12px;color:#888;margin-top:8px;min-height:16px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 2: one-col — TD Items. -->
+<div class="one-col">
+  <div class="col">
+    <h2>TD Items <button class="td-add-btn-inline" onclick="openTdModal()" title="Add TD item">+</button></h2>
+    <div class="content">
+      <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 3: four col — files / sm posts / dev titles / pub titles -->
+<div class="four-col">
+  <div class="col">
+    <h2>Files</h2>
+    <div class="content">
+      <div class="deliverable-list" id="deliverable-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>SM Posts</h2>
+    <div class="content">
+      <div id="smPostsBox"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Development Titles <button class="td-add-btn-inline" onclick="openAddTitleModal()" title="Add title">+</button></h2>
+    <div class="content">
+      <div class="title-list" id="devTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Publish Titles</h2>
+    <div class="content">
+      <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEC 4: two col — logins / campaigns. Keywords/SM Trends/News Feed/
+     Product Ideas/TikTok Shop/KDP Best Sellers were removed 2026-07-14 —
+     those are campaign-level Research (the same data duplicated across
+     every product site under a campaign); manage them on the campaign
+     microsite instead. A product's own grounding is its Strategy docs. -->
+<div class="two-col">
+  <div class="col">
+    <h2>Logins <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
+    <div class="content">
+      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>Campaigns</h2>
+    <div class="content">
+      <div id="campaign-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS CHANGE MODAL -->
+<div class="modal-overlay" id="statusModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="statusModalTitle">Change Status</div>
+      <button class="modal-close" onclick="closeStatusModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="statusModalHint"></div>
+      <div class="status-option-grid" id="statusOptions"></div>
+      <div class="modal-status" id="statusModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeStatusModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN ADD MODAL -->
+<div class="modal-overlay" id="loginModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Login</div>
+      <button class="modal-close" onclick="closeLoginModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Creates a login in Notion linked to this product</div>
+      <label class="lm-label">Name</label>
+      <input class="modal-ta" id="lm-name" type="text" placeholder="Login name…" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Platform</label>
+      <div style="position:relative;margin-bottom:12px;" id="lm-plat-wrap">
+        <input class="modal-ta" id="lm-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:32px;padding:5px 10px;" autocomplete="off" oninput="filterLmPlatforms()" onfocus="filterLmPlatforms()" />
+        <input type="hidden" id="lm-plat-id" value="" />
+        <div id="lm-plat-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
+      </div>
+      <label class="lm-label">Username / handle</label>
+      <input class="modal-ta" id="lm-usr" type="text" placeholder="@handle or email…" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Account URL</label>
+      <input class="modal-ta" id="lm-url" type="text" placeholder="https://…" style="height:32px;padding:5px 10px;margin-bottom:4px;" autocomplete="off" />
+      <div class="modal-status" id="lm-status-msg"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeLoginModal()">Cancel</button>
+      <button class="modal-btn save" id="lm-save" onclick="addLoginFromModal()">Add Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN EDIT MODAL -->
+<div class="modal-overlay" id="loginEditModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="le-modal-title">Edit Login</div>
+      <button class="modal-close" onclick="closeLoginEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label">Name</label>
+      <input class="modal-ta" id="le-name" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Username / handle</label>
+      <input class="modal-ta" id="le-usr" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <label class="lm-label">Account URL</label>
+      <input class="modal-ta" id="le-url" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
+      <a id="le-notion-link" href="#" target="_blank" class="notion-link" style="font-size:12px;">↗ Open in Notion</a>
+      <div class="modal-status" id="le-status-msg"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeLoginEditModal()">Cancel</button>
+      <button class="modal-btn save" id="le-save" onclick="saveLoginEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- TD ADD MODAL -->
+<div class="modal-overlay" id="tdModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Task</div>
+      <button class="modal-close" onclick="closeTdModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Task will be created in Main TD and linked to this product</div>
+      <input class="modal-ta" id="td-modal-input" type="text" placeholder="Task name…" style="height:32px;padding:5px 10px;resize:none;" />
+      <div class="modal-status" id="tdModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeTdModal()">Cancel</button>
+      <button class="modal-btn save" id="tdModalSave" onclick="addTodoFromModal()">Add Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD TITLE MODAL — idea input: title + method/product (pick or create) +
+     content description + seed keywords + research instructions. Same modal
+     as the campaign microsite; here Product is prefilled with this site's
+     product. The extra fields land on the Content Strategy record (Core Idea /
+     "seed idea" / Notes) and are read back by research flows server-side. -->
+<div class="modal-overlay" id="addTitleModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title">Add Idea</div>
+      <button class="modal-close" onclick="closeAddTitleModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <label class="lm-label">Idea (title) <span style="color:var(--danger,#e05);">*</span></label>
+      <input class="modal-ta" id="addTitleInput" type="text" placeholder="The idea — becomes the title…" autocomplete="off" style="margin-bottom:10px;" />
+
+      <label class="lm-label">Method <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="modal-ta" id="atMethodInput" type="text" placeholder="Search methods, or type a new method name…" autocomplete="off"
+               oninput="atFilter('method')" onfocus="atFilter('method')"
+               onblur="setTimeout(()=>{const d=document.getElementById('atMethodDD'); if(d) d.style.display='none';},180)" />
+        <div id="atMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      </div>
+
+      <label class="lm-label">Product <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="modal-ta" id="atProductInput" type="text" placeholder="Search products, or type a new product name…" autocomplete="off"
+               oninput="atFilter('product')" onfocus="atFilter('product')"
+               onblur="setTimeout(()=>{const d=document.getElementById('atProductDD'); if(d) d.style.display='none';},180)" />
+        <div id="atProductDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      </div>
+
+      <label class="lm-label">Description of content</label>
+      <textarea class="modal-ta" id="atDescInput" rows="3" placeholder="What this content is and should communicate…" style="margin-bottom:10px;resize:vertical;"></textarea>
+
+      <label class="lm-label">Seed keywords</label>
+      <input class="modal-ta" id="atKeywordsInput" type="text" placeholder="comma, separated, seed keywords" autocomplete="off" style="margin-bottom:10px;" />
+
+      <label class="lm-label">Research instructions</label>
+      <textarea class="modal-ta" id="atResearchInput" rows="3" placeholder="How research for this idea should run — sources to check, angles to take, what to look for, what to avoid…" style="margin-bottom:10px;resize:vertical;"></textarea>
+
+      <label class="lm-label">Titles to create <span style="color:#777;font-weight:normal;">— 1 saves this idea as-is; more = AI generates that many distinct titles from it</span></label>
+      <select class="modal-ta" id="atCountInput" style="margin-bottom:10px;width:200px;">
+        <option value="1">1 — just this idea</option>
+        <option value="3">3 — generate</option>
+        <option value="5">5 — generate</option>
+        <option value="10">10 — generate</option>
+      </select>
+
+      <div id="addTitleStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeAddTitleModal()">Cancel</button>
+      <button class="modal-btn save" id="addTitleSaveBtn" onclick="submitAddTitle()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- GENERATE ASSETS MODAL — same shape as the Add Idea modal, prefilled from
+     an existing title; on Generate it creates N real Asset records linked to
+     the title (they render as rows under the publish title). -->
+<div class="modal-overlay" id="genAssetsModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title">Generate Assets from Title</div>
+      <button class="modal-close" onclick="closeGenAssetsModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <label class="lm-label">Idea (title) <span style="color:var(--danger,#e05);">*</span></label>
+      <input class="modal-ta" id="gaTitleInput" type="text" autocomplete="off" style="margin-bottom:10px;" />
+
+      <label class="lm-label">Method <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="modal-ta" id="gaMethodInput" type="text" placeholder="Search methods…" autocomplete="off"
+               oninput="gaFilter('method')" onfocus="gaFilter('method')"
+               onblur="setTimeout(()=>{const d=document.getElementById('gaMethodDD'); if(d) d.style.display='none';},180)" />
+        <div id="gaMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      </div>
+
+      <label class="lm-label">Sub method <span style="color:#777;font-weight:normal;">— target platform layer (e.g. Instagram, X); pick existing or type a new name</span></label>
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="modal-ta" id="gaSubMethodInput" type="text" placeholder="Instagram, X / Twitter, LinkedIn…" autocomplete="off"
+               oninput="gaFilter('submethod')" onfocus="gaFilter('submethod')"
+               onblur="setTimeout(()=>{const d=document.getElementById('gaSubMethodDD'); if(d) d.style.display='none';},180)" />
+        <div id="gaSubMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      </div>
+
+      <label class="lm-label">Product <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="modal-ta" id="gaProductInput" type="text" placeholder="Search products…" autocomplete="off"
+               oninput="gaFilter('product')" onfocus="gaFilter('product')"
+               onblur="setTimeout(()=>{const d=document.getElementById('gaProductDD'); if(d) d.style.display='none';},180)" />
+        <div id="gaProductDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      </div>
+
+      <label class="lm-label">Asset type <span style="color:var(--danger,#e05);">*</span> <span style="color:#777;font-weight:normal;">— pick existing or type a new one</span></label>
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="modal-ta" id="gaTypeInput" type="text" placeholder="Post, Graphic, Reel, Video…" autocomplete="off"
+               oninput="gaTypeFilter()" onfocus="gaTypeFilter()"
+               onblur="setTimeout(()=>{const d=document.getElementById('gaTypeDD'); if(d) d.style.display='none';},180)" />
+        <div id="gaTypeDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      </div>
+
+      <label class="lm-label">Design spec <span style="color:#777;font-weight:normal;">— which visual system these assets use</span></label>
+      <select class="modal-ta" id="gaSpecInput" style="margin-bottom:10px;">
+        <option value="">Campaign default</option>
+      </select>
+
+      <label class="lm-label">Description of content</label>
+      <textarea class="modal-ta" id="gaDescInput" rows="3" style="margin-bottom:10px;resize:vertical;"></textarea>
+
+      <label class="lm-label">Seed keywords</label>
+      <input class="modal-ta" id="gaKeywordsInput" type="text" autocomplete="off" style="margin-bottom:10px;" />
+
+      <label class="lm-label">Research instructions</label>
+      <textarea class="modal-ta" id="gaResearchInput" rows="3" style="margin-bottom:10px;resize:vertical;"></textarea>
+
+      <label class="lm-label">Number of options</label>
+      <select class="modal-ta" id="gaCountInput" style="margin-bottom:10px;width:90px;">
+        <option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option>
+      </select>
+
+      <div id="gaStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeGenAssetsModal()">Cancel</button>
+      <button class="modal-btn save" id="gaGoBtn" onclick="submitGenAssets()">Generate</button>
+    </div>
+  </div>
+</div>
+
+<!-- METHODS MODAL — same review/stage/commit flow as the campaign
+     microsite's ⚙ modal: AI-suggested + already-attached methods, remove/
+     search/add-new, nothing saved until "Add Methods". New methods get
+     auto-researched into a full framework on commit (createAndAttachMethod
+     -> researchAndWriteMethodology). -->
+<div class="modal-overlay" id="productMethodsModal" onclick="if(event.target===this)closeProductMethodsModal()">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-head">
+      <div class="modal-title">Methods</div>
+      <button class="modal-close" onclick="closeProductMethodsModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Suggested and currently-attached methods for this product. Remove any you don't want, search to add more, or type a new one — nothing is saved until you click Add Methods.</div>
+      <div id="pmList" style="margin-top:12px;display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;"></div>
+      <label class="lm-label" for="pmSearchInput" style="margin-top:14px;">Add existing method</label>
+      <div style="position:relative;" id="pm-search-wrap">
+        <input class="modal-ta" id="pmSearchInput" type="text" placeholder="Search methods…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" oninput="filterPmSearch()" onfocus="filterPmSearch()" />
+        <div id="pmSearchDd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:160px;overflow-y:auto;"></div>
+      </div>
+      <label class="lm-label" for="pmNewInput" style="margin-top:10px;">Or add a brand-new method by name</label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <input class="modal-ta" id="pmNewInput" type="text" placeholder="New method name…" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" />
+        <button class="td-add-btn-inline" id="pmNewAddBtn" onclick="addPmNewByName()" style="padding:0 10px;">+</button>
+      </div>
+      <div id="pmStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:16px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeProductMethodsModal()">Cancel</button>
+      <button class="modal-btn save" id="pmCommitBtn" onclick="commitProductMethods()">Add Methods</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+const PRODUCT_ID  = "3a61f7d3a4bb818ead79e4c4af282e92"; // ai-business-management-and-work-management-tools
+const RESEARCH_ID = "36d1f7d3a4bb81968c91c98e86e444d9"; // research
+const SITE_URL    = "https://cabuzzard.github.io/dash/productsites/ai-business-management-and-work-management-tools/";
+let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
+let pin = '';
+
+if (SESSION_TOKEN) {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('pinScreen').classList.add('hidden');
+    init();
+  });
+}
+
+function pinReset(msg, isErr) {
+  pin = '';
+  const dots = document.querySelectorAll('.pin-dot');
+  dots.forEach(d => d.classList.remove('filled'));
+  if (isErr) dots.forEach(d => d.classList.add('error'));
+  document.getElementById('pinError').textContent = msg;
+  setTimeout(() => { dots.forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; }, 900);
+}
+async function pp(d) {
+  if (pin.length >= 4) return;
+  pin += d;
+  document.getElementById('d' + (pin.length-1)).classList.add('filled');
+  if (pin.length === 4) {
+    const attemptPin = pin;
+    pin = '';
+    try {
+      const ctrl = new AbortController();
+      const tid  = setTimeout(() => ctrl.abort(), 6000);
+      const resp = await fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'auth', pin: attemptPin }), signal: ctrl.signal,
+      });
+      clearTimeout(tid);
+      const data = await resp.json();
+      if (data.token) {
+        SESSION_TOKEN = data.token;
+        sessionStorage.setItem('hermes_token', SESSION_TOKEN);
+        document.getElementById('pinScreen').classList.add('hidden');
+        init();
+      } else { pinReset('incorrect code', true); }
+    } catch(e) { pinReset(e.name === 'AbortError' ? 'timeout — retry' : 'connection error', true); }
+  }
+}
+function pd() {
+  if (!pin.length) return;
+  document.getElementById('d' + (pin.length-1)).classList.remove('filled');
+  pin = pin.slice(0,-1);
+}
+function lockApp() {
+  SESSION_TOKEN = null;
+  sessionStorage.removeItem('hermes_token');
+  pin = '';
+  document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error'));
+  document.getElementById('pinError').textContent = '';
+  document.getElementById('pinScreen').classList.remove('hidden');
+}
+
+function tick() {
+  const n = new Date();
+  document.getElementById('clock').textContent =
+    String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0') + ':' + String(n.getSeconds()).padStart(2,'0');
+}
+setInterval(tick, 1000); tick();
+
+async function w(action, extra = {}) {
+  const payload = { action, token: SESSION_TOKEN, ...extra };
+  // operator research guidelines ride along on every call — the worker folds
+  // them into all AI research/generation prompts (harmless on non-AI actions).
+  // This also covers the inline Generate buttons (strategy fields, phases,
+  // titles) that don't go through a modal.
+  const rg = rgVal();
+  if (rg && payload.researchGuidelines == null) payload.researchGuidelines = rg;
+  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const d = await r.json();
+  if (r.status === 401) {
+    SESSION_TOKEN = null; sessionStorage.removeItem('hermes_token');
+    document.getElementById('pinScreen').classList.remove('hidden');
+    throw new Error('Session expired — please re-enter your code');
+  }
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
+function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Research guidelines (operator routing recommendations) ───────────
+// Same mechanism as the campaign microsites: persisted per-browser, sent
+// with every worker call, and shown as an editable field in each
+// research/generation modal when it opens.
+const RG_MODAL_IDS = ['addTitleModal','genAssetsModal','productMethodsModal'];
+function rgVal() { try { return (localStorage.getItem('rg_guidelines') || '').trim(); } catch(e) { return ''; } }
+function rgSave(v) { try { localStorage.setItem('rg_guidelines', (v || '').trim()); } catch(e) {} }
+function rgInject(modalEl) {
+  const existing = modalEl.querySelector('.rg-ta');
+  if (existing) { if (document.activeElement !== existing) existing.value = rgVal(); return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'rg-field';
+  wrap.style.cssText = 'margin:10px 0 2px;';
+  wrap.innerHTML = '<label class="lm-label" style="display:block;">Research guidelines <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;">(optional — routing recommendations for Claude; remembered on this device, sent with every run)</span></label>' +
+    '<textarea class="modal-ta rg-ta" rows="2" placeholder="e.g. prioritize niche forums + Reddit; US buyers only; avoid hustle-culture framing; always cite live sources…" style="resize:vertical;margin-top:4px;"></textarea>';
+  const body = modalEl.querySelector('.modal-body');
+  if (body) body.appendChild(wrap);
+  else (modalEl.firstElementChild || modalEl).appendChild(wrap);
+  const ta = wrap.querySelector('textarea');
+  ta.value = rgVal();
+  ta.addEventListener('change', () => rgSave(ta.value));
+  ta.addEventListener('blur', () => rgSave(ta.value));
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const rgObserver = new MutationObserver(muts => {
+    for (const m of muts) {
+      const el = m.target;
+      if (el.classList && el.classList.contains('open')) { try { rgInject(el); } catch(e) {} }
+    }
+  });
+  RG_MODAL_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) rgObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
+  });
+});
+
+let PRODUCT_NAME = '';
+let PRODUCT_METHODS = [];
+// First campaign linked to this product — Strategy/Titles worker actions
+// are campaign-scoped (Content Strategy rows, Research keywords), so this
+// is what's threaded through as campaignId for all generation below.
+let PRODUCT_CAMPAIGN_ID = '';
+// methodId -> { needsTrafficPlan, trafficMethods:[{id,name,notes}], strategy:{url,text,...}|null } —
+// populated (async, after loadProduct's fast render) for every attached
+// method, so the Strategy & Titles panel can grow the right controls and
+// render the full strategy text inline. See refreshStrategyPanel().
+let PRODUCT_METHOD_DETAILS = {};
+// ids of attached methods that are a Traffic Methods child of some OTHER
+// attached method — rendered nested under their parent, not as their own
+// top-level row.
+let PRODUCT_METHOD_CHILD_IDS = new Set();
+let ALL_PLATFORMS = [];
+let LOGIN_ITEMS = [];
+
+// ── loadProduct ────────────────────────────────────────────────────────
+async function loadProduct() {
+  try {
+    const data = await w('getProductResearch', { productId: PRODUCT_ID, researchId: RESEARCH_ID });
+    const p = data.product;
+
+    // SEC 1 — product meta
+    PRODUCT_NAME = p.name || '';
+    document.getElementById('r-name').textContent = p.name || '—';
+    const statusEl = document.getElementById('r-status');
+    const sc = (p.status || '').toLowerCase();
+    statusEl.innerHTML = p.status ? `<span class="badge ${sc}">${p.status}</span>` : '<span class="empty">—</span>';
+    document.getElementById('r-site').textContent = p.site || '—';
+    document.getElementById('r-price').textContent = p.price || '—';
+    document.getElementById('r-spots').textContent = p.spots != null ? p.spots : '—';
+    document.getElementById('r-desc-input').value = p.description || '';
+    document.getElementById('r-keywords-input').value = p.keywords || '';
+
+    // Product meta — linked Methods (feeds the Strategy & Titles panel below)
+    PRODUCT_METHODS = p.methods || [];
+    const methodsEl = document.getElementById('r-methods');
+    if (methodsEl) {
+      methodsEl.innerHTML = PRODUCT_METHODS.length
+        ? PRODUCT_METHODS.map(m => `<a href="https://www.notion.so/${m.id}" target="_blank" rel="noopener" class="notion-link" style="margin-right:8px;">${esc(m.name)}</a>`).join('')
+        : '<span class="empty">—</span>';
+    }
+
+    // SEC 5 — campaigns list
+    const campEl = document.getElementById('campaign-list');
+    if (campEl) {
+      if (!p.campaigns || !p.campaigns.length) {
+        campEl.innerHTML = '<div class="empty">No campaigns linked.</div>';
+      } else {
+        campEl.innerHTML = p.campaigns.map(c =>
+          `<div class="campaign-row"><span class="campaign-name">${esc(c.name)}</span><a href="https://www.notion.so/${c.id}" target="_blank" class="title-link">↗</a></div>`
+        ).join('');
+      }
+    }
+    PRODUCT_CAMPAIGN_ID = (p.campaigns && p.campaigns[0]) ? p.campaigns[0].id : '';
+    loadProductStrategy(); // background — fetches the product-level Strategy fields
+    renderStrategyPanel(); // fast render (no controls yet) — refreshStrategyPanel below fills them in
+    refreshStrategyPanel(); // background — fetches per-method details/strategy status
+
+  } catch(e) {
+    document.getElementById('r-name').textContent = 'Error: ' + e.message;
+  }
+}
+async function saveProductMeta() {
+  const btn = document.getElementById('productMetaSaveBtn');
+  const status = document.getElementById('productMetaStatus');
+  const description = document.getElementById('r-desc-input').value.trim();
+  const keywords = document.getElementById('r-keywords-input').value.trim();
+  btn.disabled = true; btn.textContent = 'Saving…';
+  status.textContent = '';
+  try {
+    const r = await w('updateProductTitleDescription', { productId: PRODUCT_ID, description, keywords });
+    if (r.error) throw new Error(r.error);
+    status.textContent = '✓ Saved.'; status.style.color = '#68d391';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Description & Keywords';
+  }
+}
+async function genProductKeywords() {
+  const btn = document.getElementById('productKeywordsGenBtn');
+  const status = document.getElementById('productMetaStatus');
+  btn.disabled = true; btn.textContent = '…';
+  status.textContent = 'Generating keywords…'; status.style.color = '#888';
+  try {
+    const r = await w('generateProductKeywords', { productId: PRODUCT_ID });
+    if (r.error) throw new Error(r.error);
+    document.getElementById('r-keywords-input').value = r.keywords;
+    status.textContent = '✓ Keywords generated.'; status.style.color = '#68d391';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
+  } finally {
+    btn.disabled = false; btn.textContent = '↻ Generate';
+  }
+}
+
+// ── Product Strategy panel ────────────────────────────────────────────
+// Fixed positioning schema, ONE record per PRODUCT (not per method) — true
+// regardless of which platform/method this product is marketed through.
+// Each field generates independently (small call, grounded in product
+// context + whichever attached method's framework maps to it server-side)
+// so this never risks the same truncation problem a single big call had.
+const STRATEGY_FIELDS = ["Customer", "Niche", "Pain Points", "Emotions", "Solution", "Benefits", "Unique Opportunity", "Transformation", "Offer Structure", "Proof Points", "Objections"];
+let PRODUCT_STRATEGY = { fields: {}, url: null };
+function sfId(field) { return 'sf-' + field.replace(/\s+/g, '-'); }
+function renderStrategyFieldsPanel() {
+  const el = document.getElementById('strategyFieldsPanel');
+  if (!el) return;
+  el.innerHTML = STRATEGY_FIELDS.map(f => {
+    const val = PRODUCT_STRATEGY.fields[f] || '';
+    const id = sfId(f);
+    return `<div style="border-bottom:1px solid #161616;padding:8px 0;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="flex:1;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#666;">${esc(f)}</span>
+        <button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" id="${id}-btn" onclick="genStrategyField('${f}')">${val ? '↻' : 'Generate'}</button>
+        <button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" onclick="saveStrategyField('${f}')">Save</button>
+      </div>
+      <textarea id="${id}" class="modal-ta" rows="2" style="width:100%;margin-top:6px;font-size:12px;resize:vertical;min-height:44px!important;padding:6px 8px;">${esc(val)}</textarea>
+    </div>`;
+  }).join('') + (PRODUCT_STRATEGY.url ? `<div style="margin-top:8px;"><a href="${PRODUCT_STRATEGY.url}" target="_blank" class="notion-link" style="font-size:11px;">↗ Notion</a></div>` : '');
+}
+async function loadProductStrategy() {
+  try {
+    const data = await w('getProductStrategy', { productId: PRODUCT_ID });
+    PRODUCT_STRATEGY = { fields: (data.strategy && data.strategy.fields) || {}, url: data.strategy ? data.strategy.url : null };
+  } catch(e) { /* leave panel showing empty fields */ }
+  renderStrategyFieldsPanel();
+}
+async function genStrategyField(field) {
+  const btn = document.getElementById(sfId(field) + '-btn');
+  const status = document.getElementById('strategyFieldsStatus');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  if (status) { status.textContent = `Generating "${field}"…`; status.style.color = '#888'; }
+  try {
+    const r = await w('generateStrategyField', { productId: PRODUCT_ID, field });
+    if (r.error) throw new Error(r.error);
+    PRODUCT_STRATEGY.fields[field] = r.text;
+    PRODUCT_STRATEGY.url = r.url;
+    renderStrategyFieldsPanel();
+    if (status) { status.textContent = `✓ "${field}" generated.`; status.style.color = '#68d391'; }
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+    if (btn) { btn.disabled = false; btn.textContent = '↻'; }
+  }
+}
+async function saveStrategyField(field) {
+  const ta = document.getElementById(sfId(field));
+  if (!ta) return;
+  const status = document.getElementById('strategyFieldsStatus');
+  if (status) { status.textContent = `Saving "${field}"…`; status.style.color = '#888'; }
+  try {
+    const r = await w('updateProductStrategyField', { productId: PRODUCT_ID, field, value: ta.value.trim() });
+    if (r.error) throw new Error(r.error);
+    PRODUCT_STRATEGY.fields[field] = ta.value.trim();
+    PRODUCT_STRATEGY.url = r.url;
+    if (status) { status.textContent = `✓ "${field}" saved.`; status.style.color = '#68d391'; }
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+  }
+}
+
+// ── Strategy & Titles panel ───────────────────────────────────────────
+// Generate Titles (genPsTitles -> generateTitlesFromProductStrategy) reads
+// the PRODUCT-level Strategy panel above (11 fields) + Keywords as the
+// grounding for every attached method, regardless of type — no more
+// destination/traffic-child/flat branching or per-method Strategy-doc
+// prerequisite. A legacy per-method Strategy doc, if one exists from
+// earlier work, still renders read/editable below for reference — but it's
+// no longer required before Generate Titles works. Traffic-child methods
+// (linked under a destination via Traffic Methods) nest under their
+// parent with their own Generate Titles, ungated too.
+function psRowBtn(label, onclick, id, disabled) {
+  return `<button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" ${id ? `id="${id}"` : ''} ${disabled ? `disabled title="${esc(disabled)}"` : ''} onclick="${onclick}">${label}</button>`;
+}
+// Methods currently in hand-edit mode for their Strategy text — toggled by
+// the ✎ Edit / Cancel button, read by renderStrategyPanel to swap the
+// read-only body for a textarea + Save.
+let PS_EDITING = new Set();
+function psToggleEdit(methodId) { PS_EDITING.has(methodId) ? PS_EDITING.delete(methodId) : PS_EDITING.add(methodId); renderStrategyPanel(); }
+async function psSaveStrategyEdit(methodId) {
+  const ta = document.getElementById('psEditTa-' + methodId);
+  if (!ta) return;
+  const status = document.getElementById('strategyStatus');
+  if (status) { status.textContent = 'Saving strategy…'; status.style.color = '#888'; }
+  try {
+    const r = await w('updateMethodStrategyText', { productId: PRODUCT_ID, methodId, text: ta.value });
+    if (r.error) throw new Error(r.error);
+    PS_EDITING.delete(methodId);
+    if (status) { status.textContent = '✓ Strategy saved.'; status.style.color = '#68d391'; }
+    await refreshStrategyPanel();
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+  }
+}
+function renderStrategyPanel() {
+  const el = document.getElementById('strategyPanel');
+  if (!el) return;
+  if (!PRODUCT_METHODS.length) { el.innerHTML = '<div class="empty">No methods attached — add one above.</div>'; return; }
+  el.innerHTML = PRODUCT_METHODS.filter(m => !PRODUCT_METHOD_CHILD_IDS.has(m.id)).map(m => {
+    const detail = PRODUCT_METHOD_DETAILS[m.id];
+    let controls = '', body = '', childrenHtml = '';
+    if (detail) {
+      if (detail.needsTrafficPlan) {
+        // Generate Titles is UNGATED — it reads the product-level Strategy
+        // panel above, not this method's own (legacy) Strategy doc. The old
+        // per-method doc, if one exists, is shown read/editable below purely
+        // for reference/cleanup, not as a prerequisite for titles anymore.
+        const hasStrategy = !!detail.strategy;
+        const editing = PS_EDITING.has(m.id);
+        controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',true,null)`, 'psRowTitles-' + m.id);
+        if (hasStrategy) {
+          controls += psRowBtn(editing ? 'Cancel' : '✎ Edit', `psToggleEdit('${m.id}')`, null);
+          controls += ` <a href="${detail.strategy.url}" target="_blank" class="notion-link" style="font-size:11px;">↗ Notion</a>`;
+          body = editing
+            ? `<div style="margin-top:8px;">
+                <textarea id="psEditTa-${m.id}" style="width:100%;min-height:180px;background:#0d0d0d;border:1px solid #5f5f5f;color:#ddd;font-family:inherit;font-size:12px;line-height:1.6;padding:8px 10px;resize:vertical;">${esc(detail.strategy.text || '')}</textarea>
+                <div style="margin-top:6px;">${psRowBtn('Save', `psSaveStrategyEdit('${m.id}')`, null)}</div>
+              </div>`
+            : `<div class="body-text" style="white-space:pre-wrap;font-size:12px;margin-top:8px;padding:8px 10px;background:#0d0d0d;border:1px solid #5f5f5f;">${esc(detail.strategy.text || '(empty)')}</div>`;
+        }
+        childrenHtml = (detail.trafficMethods || []).map(c => `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px 6px 22px;border-top:1px solid #5f5f5f;flex-wrap:wrap;">
+            <span style="font-size:10px;color:#666;">↳ traffic</span>
+            <span style="flex:1;font-size:12px;color:#ccc;">${esc(c.name)}</span>
+            ${psRowBtn('Generate Titles', `genPsTitles('${c.id}',false,'${m.id}')`, 'psRowTitles-' + c.id)}
+          </div>`).join('');
+      } else if (!(detail.trafficMethods || []).length) {
+        controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',false,null)`, 'psRowTitles-' + m.id);
+      }
+    }
+    return `<div style="border:1px solid #5f5f5f;border-radius:3px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;flex-wrap:wrap;">
+        <a href="https://www.notion.so/${m.id}" target="_blank" rel="noopener" class="notion-link" style="flex:1;font-size:13px;">${esc(m.name)}</a>
+        ${controls}
+      </div>
+      ${body}
+      ${childrenHtml}
+    </div>`;
+  }).join('');
+}
+// Fetches Needs-Traffic-Plan / linked-traffic-children / accumulated
+// Strategy text for every attached method, then re-renders the panel so
+// each row grows the right controls. Runs in the background after
+// loadProduct's fast render, and again after any per-row generation. Note:
+// per-phase generation into this Product+Method-scoped Strategy doc was
+// removed 2026-07-15 — that's now the Product Strategy panel's job
+// (product-level, not per-method). This panel is read/Titles-only until
+// the method-by-method audit routes the rest into Titles directly.
+async function refreshStrategyPanel() {
+  const detailsMap = {};
+  const childIds = new Set();
+  await Promise.all(PRODUCT_METHODS.map(async m => {
+    try {
+      const d = await w('getMethodDetails', { methodId: m.id });
+      if (d.error) return;
+      detailsMap[m.id] = { needsTrafficPlan: !!d.needsTrafficPlan, trafficMethods: d.trafficMethods || [], strategy: null };
+      for (const c of (d.trafficMethods || [])) childIds.add(c.id);
+    } catch(e) {}
+  }));
+  await Promise.all(Object.keys(detailsMap).filter(id => detailsMap[id].needsTrafficPlan).map(async id => {
+    try {
+      const s = await w('getMethodStrategy', { productId: PRODUCT_ID, methodId: id });
+      detailsMap[id].strategy = s.strategy || null;
+    } catch(e) {}
+  }));
+  PRODUCT_METHOD_DETAILS = detailsMap;
+  PRODUCT_METHOD_CHILD_IDS = childIds;
+  renderStrategyPanel();
+}
+// Generates titles for ANY attached method — no destination/traffic-child/
+// destination/growth split. Destination methods (needsTrafficPlan — a
+// landing page, a booking form) are component-based: generateTitlesFrom-
+// ProductStrategy, one deliverable per asset phase. Growth/distribution
+// methods (Instagram, X, Pinterest, Email — a platform grown ON, not
+// landed on) are arc/sequence-based: generateTrafficMethodTitles, grounded
+// in the method's own researched [Arc] structure + Product Strategy, post-
+// type + Sequence Order. Works whether or not it's formally linked as a
+// traffic child of a destination (parentMethodId is optional context, not
+// a requirement — a growth method is worth generating for on its own).
+// Carousel/Upwork-Titles methods keep their dedicated live-research
+// pipelines (Instagram benchmarking / Upwork job scraping) since those
+// genuinely need real-time external data the Strategy fields can't provide.
+async function genPsTitles(methodId, isDestination, parentMethodId) {
+  const m = PRODUCT_METHODS.find(x => x.id === methodId);
+  const name = m ? m.name : 'method';
+  const btn = document.getElementById('psRowTitles-' + methodId);
+  const status = document.getElementById('strategyStatus');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+  if (status) { status.textContent = `Generating titles for "${name}"…`; status.style.color = '#888'; }
+  try {
+    let created = 0;
+    if (/carousel/i.test(name)) {
+      if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
+      const r = await w('researchAndGenerateCarouselTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
+      if (r.error) throw new Error(r.error);
+      created = r.created || 0;
+    } else if (/upwork/i.test(name) && /title|market|trend/i.test(name)) {
+      if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
+      const r = await w('researchUpworkMarketTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
+      if (r.error) throw new Error(r.error);
+      created = r.created || 0;
+    } else if (isDestination) {
+      const r = await w('generateTitlesFromProductStrategy', { productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined, methodId, methodName: name });
+      if (r.error) throw new Error(r.error);
+      created = r.created || 0;
+    } else {
+      const parent = parentMethodId ? PRODUCT_METHODS.find(x => x.id === parentMethodId) : null;
+      const r = await w('generateTrafficMethodTitles', {
+        productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined,
+        parentMethodId: parentMethodId || undefined, parentMethodName: parent ? parent.name : undefined,
+        childMethodId: methodId, childMethodName: name, childMethodNotes: '',
+      });
+      if (r.error) throw new Error(r.error);
+      created = r.created || 0;
+    }
+    await loadTitles();
+    if (status) { status.textContent = `✓ Generated ${created} title${created === 1 ? '' : 's'} for "${name}".`; status.style.color = '#68d391'; }
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Generate Titles'; }
+  }
+}
+
+// ── loadTitles ─────────────────────────────────────────────────────────
+const SC = { Development:'ts-write', Writing:'ts-write', Review:'ts-review', Approved:'ts-appr', Publish:'ts-pub', Published:'ts-done', Done:'ts-done', Explode:'ts-explode' };
+
+async function loadTitles() {
+  const devEl = document.getElementById('devTitles');
+  const pubEl = document.getElementById('pubTitles');
+  try {
+    const data = await w('getTitles', { stages: ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'], productId: PRODUCT_ID });
+    const titles = data.titles || [];
+    const DEV_ORDER = { Explode:0, Approved:1, Review:2, Writing:3, Development:4 };
+    const dev = titles.filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage))
+                      .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
+    const pub = titles.filter(t => ['Publish','Published','Done'].includes(t.stage));
+    function makeTitleRow(t) {
+      const div = document.createElement('div');
+      div.className = 'title-row';
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${esc(t.title)}</span><button class="title-status-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title)">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a>`;
+      if (!t.assets || !t.assets.length) return div;
+      // publish-stage titles: render each linked asset as an indented row
+      const wrap = document.createElement('div');
+      wrap.appendChild(div);
+      t.assets.forEach(a => {
+        const ar = document.createElement('div');
+        ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
+        ar.innerHTML = `<span style="font-size:9px;color:#666;flex-shrink:0;">↳</span>`
+          + (a.platform ? `<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:rgba(167,139,250,.12);color:#a78bfa;flex-shrink:0;">${esc(a.platform)}</span>` : '')
+          + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.title)}</span>`
+          + (a.type ? `<span style="font-size:10px;color:#777;flex-shrink:0;">${esc(a.type)}</span>` : '')
+          + (a.status ? `<span style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${a.status==='Published'?'#4fd1c5':(a.status==='Publish'?'#fc8181':'#888')};flex-shrink:0;">${esc(a.status)}</span>` : '')
+          + (a.designLink ? `<a href="${esc(a.designLink)}" target="_blank" rel="noopener" style="color:#4488ff;text-decoration:none;font-size:11px;flex-shrink:0;" title="Design link">🎨</a>` : '')
+          + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" style="flex-shrink:0;">↗</a>`
+          + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset" style="flex-shrink:0;">✕</button>`;
+        wrap.appendChild(ar);
+      });
+      // assets still carrying the placeholder Canva search link → offer the
+      // Claude handoff that generates the real designs and saves links back
+      const pendingDesigns = t.assets.filter(a => /canva\.com\/templates\/\?query/i.test(a.designLink || ''));
+      if (pendingDesigns.length) {
+        const pr = document.createElement('div');
+        pr.style.cssText = 'display:flex;align-items:center;padding:4px 10px 6px 28px;border-bottom:1px solid rgba(255,255,255,.04);';
+        const btn = document.createElement('button');
+        btn.textContent = `🤖 Create ${pendingDesigns.length} design${pendingDesigns.length === 1 ? '' : 's'} in Claude`;
+        btn.title = 'Opens a Claude chat preloaded to generate real Canva designs for the pending assets and save the links back to Notion';
+        btn.style.cssText = 'font-size:11px;padding:3px 10px;border:1px solid #444;background:transparent;color:#a78bfa;cursor:pointer;border-radius:3px;';
+        btn.onclick = () => window.open('https://claude.ai/new?q=' + encodeURIComponent(claudeDesignPrompt(t.title, pendingDesigns)), '_blank');
+        pr.appendChild(btn);
+        wrap.appendChild(pr);
+      }
+      return wrap;
+    }
+    devEl.innerHTML = ''; pubEl.innerHTML = '';
+    if (!dev.length) devEl.innerHTML = '<div class="empty">No development titles.</div>';
+    else dev.forEach(t => devEl.appendChild(makeTitleRow(t)));
+    if (!pub.length) pubEl.innerHTML = '<div class="empty">No publish titles.</div>';
+    else pub.forEach(t => pubEl.appendChild(makeTitleRow(t)));
+  } catch(e) {
+    devEl.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`;
+    pubEl.innerHTML = '';
+  }
+}
+
+// ── Status modal ───────────────────────────────────────────────────────
+let STATUS_TITLE_ID = '', STATUS_CURRENT = '';
+const STAGES = ['Development','Writing','Review','Approved','Explode','Publish','Published','Done'];
+const STAGE_COLORS = { Development:'#718096', Writing:'#63b3ed', Review:'#f6ad55', Approved:'#68d391', Explode:'#a78bfa', Publish:'#fc8181', Published:'#4fd1c5', Done:'#a0aec0' };
+
+function openStatusModal(id, title, current) {
+  STATUS_TITLE_ID = id; STATUS_CURRENT = current;
+  document.getElementById('statusModalTitle').textContent = 'Change Status';
+  document.getElementById('statusModalHint').textContent = title;
+  const grid = document.getElementById('statusOptions');
+  grid.innerHTML = STAGES.map(s => {
+    const color = STAGE_COLORS[s] || '#888';
+    const isActive = s === current;
+    return `<button class="status-opt-btn${isActive?' active':''}" onclick="setTitleStatus('${s}')" ${isActive?'disabled':''} style="opacity:${isActive?.4:1}"><span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;background:${color}22;color:${color};border:1px solid ${color}55;">${s}</span></button>`;
+  }).join('');
+  document.getElementById('statusModalStatus').textContent = '';
+  document.getElementById('statusModal').classList.add('open');
+}
+function closeStatusModal() { document.getElementById('statusModal').classList.remove('open'); }
+async function setTitleStatus(stage) {
+  document.getElementById('statusModalStatus').textContent = 'Saving…';
+  try {
+    await w('updateTitleStage', { titleId: STATUS_TITLE_ID, stage });
+    document.getElementById('statusModalStatus').textContent = 'Done.';
+    setTimeout(async () => { closeStatusModal(); await loadTitles(); }, 700);
+  } catch(e) { document.getElementById('statusModalStatus').textContent = 'Error: ' + e.message; }
+}
+
+// ── TD Items ───────────────────────────────────────────────────────────
+async function loadTodos() {
+  const el = document.getElementById('td-list');
+  try {
+    const data = await w('getProductTodos', { productId: PRODUCT_ID });
+    const todos = data.todos || [];
+    if (!todos.length) { el.innerHTML = '<div class="empty">No TD items.</div>'; return; }
+    el.innerHTML = '';
+    todos.forEach(t => {
+      const row = document.createElement('div'); row.className = 'td-row';
+      row.innerHTML = `<a class="td-name" href="https://www.notion.so/${t.id}" target="_blank" rel="noopener">${esc(t.name)}</a>`;
+      el.appendChild(row);
+    });
+  } catch(e) { el.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`; }
+}
+
+function openTdModal(prefill) {
+  document.getElementById('td-modal-input').value = prefill || '';
+  document.getElementById('tdModalStatus').textContent = '';
+  document.getElementById('tdModal').classList.add('open');
+  setTimeout(() => document.getElementById('td-modal-input').focus(), 80);
+}
+function closeTdModal() { document.getElementById('tdModal').classList.remove('open'); }
+async function addTodoFromModal() {
+  const name = document.getElementById('td-modal-input').value.trim();
+  if (!name) return;
+  const statusEl = document.getElementById('tdModalStatus');
+  statusEl.textContent = 'Creating…';
+  try {
+    const res = await w('createProductTodo', { name, productId: PRODUCT_ID });
+    if (res.error) throw new Error(res.error);
+    statusEl.textContent = 'Created.';
+    setTimeout(async () => { closeTdModal(); await loadTodos(); }, 600);
+  } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Files / Deliverables ───────────────────────────────────────────────
+async function loadDeliverables() {
+  const el = document.getElementById('deliverable-list');
+  if (!el) return;
+  try {
+    const data = await w('getProductDeliverables', { productId: PRODUCT_ID });
+    const items = data.deliverables || [];
+    if (!items.length) { el.innerHTML = '<div class="empty">No files yet.</div>'; return; }
+    el.innerHTML = '';
+    const statusColor = { Draft: '#718096', Review: '#c9a800', Final: '#68d391' };
+    items.forEach(d => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid rgba(255,255,255,.04);';
+      const linkHref = d.isFile ? d.url : `https://www.notion.so/${d.id}`;
+      const linkLabel = d.isFile ? '⬇' : '↗';
+      row.innerHTML = `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${d.type||'—'}</span><span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(d.name)}</span>${d.status?`<span style="font-size:10px;color:${statusColor[d.status]||'#555'};flex-shrink:0;">${d.status}</span>`:''}<a href="${linkHref}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">${linkLabel}</a>`;
+      el.appendChild(row);
+    });
+  } catch(e) { el.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`; }
+}
+
+// ── SM Posts ───────────────────────────────────────────────────────────
+async function loadSmPosts() {
+  const box = document.getElementById('smPostsBox');
+  if (!box) return;
+  box.innerHTML = '<div class="empty" style="color:#5f5f5f;font-style:italic;">SM Posts coming soon — link posts to products in Notion to populate this panel.</div>';
+}
+
+// ── Logins ─────────────────────────────────────────────────────────────
+function renderLogins() {
+  const el = document.getElementById('login-list');
+  if (!el) return;
+  if (!LOGIN_ITEMS.length) { el.innerHTML = '<div class="empty">No logins linked.</div>'; return; }
+  const byPlatform = {};
+  LOGIN_ITEMS.forEach(l => {
+    const plat = l.platformName || 'Other';
+    if (!byPlatform[plat]) byPlatform[plat] = [];
+    byPlatform[plat].push(l);
+  });
+  el.innerHTML = '';
+  Object.entries(byPlatform).forEach(([plat, items]) => {
+    const grp = document.createElement('div'); grp.className = 'login-platform-group';
+    const lbl = document.createElement('div'); lbl.className = 'login-platform-label'; lbl.textContent = plat;
+    grp.appendChild(lbl);
+    items.forEach(l => {
+      const row = document.createElement('div'); row.className = 'login-row';
+      const catColors = { Personal:'#63b3ed', 'Company Page':'#68d391', Client:'#f6ad55', Shared:'#a78bfa', Affiliate:'#fc8181' };
+      const cat = l.category || '';
+      row.innerHTML = `${cat ? `<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:${(catColors[cat]||'#555')}22;color:${(catColors[cat]||'#555')};flex-shrink:0;">${cat}</span>` : ''}<span style="flex:1;font-size:13px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" onclick="openLoginEditModal('${l.id}')">${esc(l.name)}</span>${l.accountUrl ? `<a href="${esc(l.accountUrl)}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">↗</a>` : ''}`;
+      grp.appendChild(row);
+    });
+    el.appendChild(grp);
+  });
+}
+
+async function loadLogins() {
+  const el = document.getElementById('login-list');
+  try {
+    const [loginData, platData] = await Promise.all([
+      w('getLogins'),
+      w('getPlatforms'),
+    ]);
+    ALL_PLATFORMS = platData.platforms || [];
+    LOGIN_ITEMS = (loginData.logins || []).filter(l =>
+      (l.campaignIds || []).includes(PRODUCT_ID)
+    );
+    renderLogins();
+  } catch(e) { el.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`; }
+}
+
+function openLoginModal() {
+  document.getElementById('lm-name').value = '';
+  document.getElementById('lm-plat-input').value = '';
+  document.getElementById('lm-plat-id').value = '';
+  document.getElementById('lm-usr').value = '';
+  document.getElementById('lm-url').value = '';
+  document.getElementById('lm-status-msg').textContent = '';
+  document.getElementById('lm-plat-dd').style.display = 'none';
+  document.getElementById('loginModal').classList.add('open');
+  setTimeout(() => document.getElementById('lm-name').focus(), 80);
+}
+function closeLoginModal() { document.getElementById('loginModal').classList.remove('open'); }
+
+function filterLmPlatforms() {
+  const q = (document.getElementById('lm-plat-input').value || '').toLowerCase();
+  const dd = document.getElementById('lm-plat-dd');
+  const matches = ALL_PLATFORMS.filter(p => !q || p.name.toLowerCase().includes(q)).slice(0, 12);
+  dd.innerHTML = '';
+  matches.forEach(p => {
+    const div = document.createElement('div'); div.className = 'plat-dd-item';
+    div.textContent = p.name;
+    div.onmousedown = () => { document.getElementById('lm-plat-input').value = p.name; document.getElementById('lm-plat-id').value = p.id; dd.style.display = 'none'; };
+    dd.appendChild(div);
+  });
+  dd.style.display = matches.length ? 'block' : 'none';
+}
+
+async function addLoginFromModal() {
+  const name = document.getElementById('lm-name').value.trim();
+  const platId = document.getElementById('lm-plat-id').value;
+  const usr = document.getElementById('lm-usr').value.trim();
+  const url = document.getElementById('lm-url').value.trim();
+  if (!name) return;
+  const statusEl = document.getElementById('lm-status-msg');
+  statusEl.textContent = 'Creating…';
+  try {
+    await w('createLogin', { title: name, platformId: platId, username: usr, accountUrl: url, campaignId: PRODUCT_ID });
+    statusEl.textContent = 'Created.';
+    setTimeout(async () => { closeLoginModal(); await loadLogins(); }, 600);
+  } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
+}
+
+function openLoginEditModal(id) {
+  const l = LOGIN_ITEMS.find(x => x.id === id); if (!l) return;
+  document.getElementById('le-modal-title').textContent = 'Edit Login';
+  document.getElementById('le-name').value = l.name || '';
+  document.getElementById('le-usr').value = l.username || '';
+  document.getElementById('le-url').value = l.accountUrl || '';
+  document.getElementById('le-notion-link').href = 'https://www.notion.so/' + l.id;
+  document.getElementById('le-status-msg').textContent = '';
+  document.getElementById('le-save').dataset.id = id;
+  document.getElementById('loginEditModal').classList.add('open');
+}
+function closeLoginEditModal() { document.getElementById('loginEditModal').classList.remove('open'); }
+async function saveLoginEdit() {
+  const id = document.getElementById('le-save').dataset.id;
+  const name = document.getElementById('le-name').value.trim();
+  const usr = document.getElementById('le-usr').value.trim();
+  const url = document.getElementById('le-url').value.trim();
+  const statusEl = document.getElementById('le-status-msg');
+  statusEl.textContent = 'Saving…';
+  try {
+    await w('updateLogin', { loginId: id, name, username: usr, accountUrl: url });
+    statusEl.textContent = 'Saved.';
+    const item = LOGIN_ITEMS.find(x => x.id === id);
+    if (item) { item.name = name; item.username = usr; item.accountUrl = url; }
+    renderLogins();
+    setTimeout(closeLoginEditModal, 600);
+  } catch(e) { statusEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Add Title (idea input) ─────────────────────────────────────────────
+// Same modal as the campaign microsite's Add Idea: method/product are
+// search-and-pick over the full DBs (typing an unmatched name creates it on
+// save), plus content description, seed keywords, and research instructions
+// that land on the Content Strategy record (Core Idea / "seed idea" / Notes)
+// for the research flows to read back. Product is prefilled with this site's
+// product but stays editable.
+let AT_METHOD_ID = null, AT_METHOD_NAME = '';
+let AT_PRODUCT_ID = null, AT_PRODUCT_NAME = '';
+let AT_METHODS = [], AT_PRODUCTS = [];
+
+async function atEnsureLists() {
+  try {
+    // ALWAYS refetch on open: caching-once meant products/methods created
+    // after page load (or from another tab/session) never appeared
+    const [m, p] = await Promise.all([
+      w('searchMethods', { query: '' }),
+      w('searchProducts', { query: '' }),
+    ]);
+    if (m.methods && m.methods.length) AT_METHODS = m.methods;
+    if (p.products && p.products.length) AT_PRODUCTS = p.products;
+  } catch(e) { /* lists are a convenience — typing a new name still works */ }
+}
+
+function atFilter(kind) {
+  const inp  = document.getElementById(kind === 'method' ? 'atMethodInput' : 'atProductInput');
+  const dd   = document.getElementById(kind === 'method' ? 'atMethodDD' : 'atProductDD');
+  const list = kind === 'method' ? AT_METHODS : AT_PRODUCTS;
+  const q = inp.value.trim(), qL = q.toLowerCase();
+  if (kind === 'method' && q !== AT_METHOD_NAME) { AT_METHOD_ID = null; AT_METHOD_NAME = ''; }
+  if (kind === 'product' && q !== AT_PRODUCT_NAME) { AT_PRODUCT_ID = null; AT_PRODUCT_NAME = ''; }
+  dd.innerHTML = '';
+  const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
+  matches.forEach(x => {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#c9c9c9;border-bottom:1px solid #222;';
+    div.onmouseenter = () => div.style.background = '#333';
+    div.onmouseleave = () => div.style.background = '';
+    div.textContent = x.name;
+    div.onmousedown = () => {
+      if (kind === 'method') { AT_METHOD_ID = x.id; AT_METHOD_NAME = x.name; }
+      else { AT_PRODUCT_ID = x.id; AT_PRODUCT_NAME = x.name; }
+      inp.value = x.name;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+  const exact = list.some(x => x.name.toLowerCase() === qL);
+  if (q && !exact) {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;font-size:12px;color:#e8ff47;font-style:italic;border-bottom:1px solid #222;';
+    div.textContent = `＋ new ${kind} "${q}" will be created on Create`;
+    dd.appendChild(div);
+  }
+  dd.style.display = (matches.length || (q && !exact)) ? 'block' : 'none';
+}
+
+async function atResolve(kind, statusEl) {
+  const inp = document.getElementById(kind === 'method' ? 'atMethodInput' : 'atProductInput');
+  const val = inp.value.trim();
+  if (!val) return { id: null, created: false };
+  const pickedId   = kind === 'method' ? AT_METHOD_ID : AT_PRODUCT_ID;
+  const pickedName = kind === 'method' ? AT_METHOD_NAME : AT_PRODUCT_NAME;
+  if (pickedId && val === pickedName) return { id: pickedId, created: false };
+  const list = kind === 'method' ? AT_METHODS : AT_PRODUCTS;
+  const match = list.find(x => x.name.toLowerCase() === val.toLowerCase());
+  if (match) return { id: match.id, created: false };
+  statusEl.textContent = `Creating new ${kind} "${val}"…`;
+  const res = await w(kind === 'method' ? 'createMethod' : 'createProduct', { title: val });
+  if (res.error) throw new Error(res.error);
+  list.push({ id: res.id, name: val });
+  return { id: res.id, created: true };
+}
+
+function openAddTitleModal() {
+  ['addTitleInput','atMethodInput','atDescInput','atKeywordsInput','atResearchInput'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  AT_METHOD_ID = null; AT_METHOD_NAME = '';
+  // prefill with this site's product (editable)
+  AT_PRODUCT_ID = PRODUCT_ID; AT_PRODUCT_NAME = PRODUCT_NAME || '';
+  document.getElementById('atProductInput').value = PRODUCT_NAME || '';
+  document.getElementById('addTitleStatus').textContent = '';
+  document.getElementById('addTitleSaveBtn').disabled = false;
+  document.getElementById('addTitleSaveBtn').textContent = 'Create';
+  document.getElementById('addTitleModal').classList.add('open');
+  atEnsureLists(); // fire-and-forget — dropdowns populate when it lands
+  setTimeout(() => document.getElementById('addTitleInput').focus(), 80);
+}
+function closeAddTitleModal() { document.getElementById('addTitleModal').classList.remove('open'); }
+async function submitAddTitle() {
+  const title = document.getElementById('addTitleInput').value.trim();
+  if (!title) { document.getElementById('addTitleInput').focus(); return; }
+  const statusEl = document.getElementById('addTitleStatus');
+  const btn = document.getElementById('addTitleSaveBtn');
+  btn.disabled = true; btn.textContent = 'Creating…'; statusEl.textContent = '';
+  try {
+    const method  = await atResolve('method', statusEl);
+    const product = await atResolve('product', statusEl);
+    const atCount = parseInt(document.getElementById('atCountInput')?.value) || 1;
+    // product prefills to this site's product; if cleared entirely, fall back
+    // to PRODUCT_ID so a product-site title is never orphaned from its product
+    const common = {
+      campaignId: PRODUCT_CAMPAIGN_ID || undefined,
+      productId: product.id || PRODUCT_ID,
+      methodId:  method.id  || undefined,
+      description:          document.getElementById('atDescInput').value.trim()     || undefined,
+      seedKeywords:         document.getElementById('atKeywordsInput').value.trim() || undefined,
+      researchInstructions: document.getElementById('atResearchInput').value.trim() || undefined,
+    };
+    if (atCount > 1) {
+      statusEl.textContent = 'Generating ' + atCount + ' titles…';
+      const r = await w('generateIdeaTitles', { title, count: atCount, ...common });
+      statusEl.textContent = '✓ Generated ' + r.created + ' titles' + (r.failed ? ' (' + r.failed + ' failed)' : '');
+    } else {
+      statusEl.textContent = 'Creating title…';
+      await w('createDevTitle', { title, status: 'Development', ...common });
+      statusEl.textContent = 'Created.';
+    }
+    setTimeout(async () => { closeAddTitleModal(); await loadTitles(); }, 600);
+  } catch(e) {
+    statusEl.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Create';
+    return;
+  }
+  btn.disabled = false; btn.textContent = 'Create';
+}
+
+// ── GENERATE ASSETS MODAL (🧩 per title row) ───────────────────────────
+// Prefills every field from the existing title (getTitleDetails), lets the
+// operator adjust, then generateTitleAssets creates N real Asset records
+// linked to the title — they render as rows under the publish title.
+let GA_TITLE_ID = null, GA_CAMPAIGN_ID = null;
+let GA_METHOD_ID = null, GA_METHOD_NAME = '';
+let GA_SUBMETHOD_ID = null, GA_SUBMETHOD_NAME = '';
+let GA_PRODUCT_ID = null, GA_PRODUCT_NAME = '';
+let GA_TYPES = [];
+
+async function gaEnsureTypes() {
+  if (GA_TYPES.length) return;
+  try { GA_TYPES = (await w('getAssetTypes', {})).types || []; } catch(e) {}
+}
+// Populate the design-spec picker with every spec attached to the campaign
+// (rebuilds each open, so it resets to "Campaign default" and picks up
+// newly-created specs). The default spec is labeled.
+async function gaLoadSpecs() {
+  const sel = document.getElementById('gaSpecInput');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Campaign default</option>';
+  const cid = GA_CAMPAIGN_ID
+    || (typeof CAMPAIGN_ID !== 'undefined' ? CAMPAIGN_ID : '')
+    || (typeof PRODUCT_CAMPAIGN_ID !== 'undefined' ? PRODUCT_CAMPAIGN_ID : '');
+  if (!cid) return;
+  try {
+    const d = await w('getCampaignDesignSpecs', { campaignId: cid });
+    (d.specs || []).forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.id;
+      o.textContent = s.name + (d.attachedId === s.id ? ' (default)' : '');
+      sel.appendChild(o);
+    });
+  } catch(e) { /* picker stays on Campaign default */ }
+}
+function gaTypeFilter() {
+  const inp = document.getElementById('gaTypeInput');
+  const dd  = document.getElementById('gaTypeDD');
+  const q = inp.value.trim(), qL = q.toLowerCase();
+  dd.innerHTML = '';
+  const matches = GA_TYPES.filter(t => !q || t.toLowerCase().includes(qL)).slice(0, 12);
+  matches.forEach(t => {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#c9c9c9;border-bottom:1px solid #222;';
+    div.onmouseenter = () => div.style.background = '#333';
+    div.onmouseleave = () => div.style.background = '';
+    div.textContent = t;
+    div.onmousedown = () => { inp.value = t; dd.style.display = 'none'; };
+    dd.appendChild(div);
+  });
+  const exact = GA_TYPES.some(t => t.toLowerCase() === qL);
+  if (q && !exact) {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;font-size:12px;color:#e8ff47;font-style:italic;border-bottom:1px solid #222;';
+    div.textContent = `＋ new type "${q}" will be created on Generate`;
+    dd.appendChild(div);
+  }
+  dd.style.display = (matches.length || (q && !exact)) ? 'block' : 'none';
+}
+
+const GA_KIND_CFG = {
+  method:    { input: 'gaMethodInput',    dd: 'gaMethodDD' },
+  submethod: { input: 'gaSubMethodInput', dd: 'gaSubMethodDD' },
+  product:   { input: 'gaProductInput',   dd: 'gaProductDD' },
+};
+function gaSel(kind) {
+  if (kind === 'method')    return { id: GA_METHOD_ID,    name: GA_METHOD_NAME };
+  if (kind === 'submethod') return { id: GA_SUBMETHOD_ID, name: GA_SUBMETHOD_NAME };
+  return { id: GA_PRODUCT_ID, name: GA_PRODUCT_NAME };
+}
+function gaSetSel(kind, id, name) {
+  if (kind === 'method')         { GA_METHOD_ID = id;    GA_METHOD_NAME = name; }
+  else if (kind === 'submethod') { GA_SUBMETHOD_ID = id; GA_SUBMETHOD_NAME = name; }
+  else                           { GA_PRODUCT_ID = id;   GA_PRODUCT_NAME = name; }
+}
+function gaFilter(kind) {
+  const cfg = GA_KIND_CFG[kind];
+  const inp  = document.getElementById(cfg.input);
+  const dd   = document.getElementById(cfg.dd);
+  const list = kind === 'product' ? AT_PRODUCTS : AT_METHODS; // sub methods live in the Methods DB too
+  const q = inp.value.trim(), qL = q.toLowerCase();
+  if (q !== gaSel(kind).name) gaSetSel(kind, null, '');
+  dd.innerHTML = '';
+  const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
+  matches.forEach(x => {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#c9c9c9;border-bottom:1px solid #222;';
+    div.onmouseenter = () => div.style.background = '#333';
+    div.onmouseleave = () => div.style.background = '';
+    div.textContent = x.name;
+    div.onmousedown = () => {
+      gaSetSel(kind, x.id, x.name);
+      inp.value = x.name;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+  const exact = list.some(x => x.name.toLowerCase() === qL);
+  if (q && !exact) {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;font-size:12px;color:#e8ff47;font-style:italic;border-bottom:1px solid #222;';
+    div.textContent = `＋ new ${kind === 'submethod' ? 'sub method' : kind} "${q}" will be created on Generate`;
+    dd.appendChild(div);
+  }
+  dd.style.display = (matches.length || (q && !exact)) ? 'block' : 'none';
+}
+
+async function gaResolve(kind, statusEl) {
+  const cfg = GA_KIND_CFG[kind];
+  const val = document.getElementById(cfg.input).value.trim();
+  if (!val) return { id: null };
+  const picked = gaSel(kind);
+  if (picked.id && val === picked.name) return { id: picked.id };
+  const list = kind === 'product' ? AT_PRODUCTS : AT_METHODS;
+  const match = list.find(x => x.name.toLowerCase() === val.toLowerCase());
+  if (match) return { id: match.id };
+  statusEl.textContent = `Creating new ${kind === 'submethod' ? 'sub method' : kind} "${val}"…`;
+  const res = await w(kind === 'product' ? 'createProduct' : 'createMethod', { title: val });
+  if (res.error) throw new Error(res.error);
+  list.push({ id: res.id, name: val });
+  return { id: res.id };
+}
+
+async function openGenAssetsModal(titleId) {
+  GA_TITLE_ID = titleId; GA_CAMPAIGN_ID = null;
+  GA_METHOD_ID = null; GA_METHOD_NAME = '';
+  GA_SUBMETHOD_ID = null; GA_SUBMETHOD_NAME = '';
+  GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
+  ['gaTitleInput','gaMethodInput','gaSubMethodInput','gaProductInput','gaTypeInput','gaDescInput','gaKeywordsInput','gaResearchInput'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const status = document.getElementById('gaStatus');
+  status.textContent = 'Loading title details…';
+  const btn = document.getElementById('gaGoBtn');
+  btn.disabled = true; btn.textContent = 'Generate';
+  document.getElementById('genAssetsModal').classList.add('open');
+  atEnsureLists(); // shared picker lists, refreshed on open
+  gaEnsureTypes(); // asset-type options from the Assets DB schema
+  try {
+    const d = await w('getTitleDetails', { titleId });
+    document.getElementById('gaTitleInput').value    = d.title || '';
+    document.getElementById('gaDescInput').value     = d.description || '';
+    document.getElementById('gaKeywordsInput').value = d.seedKeywords || '';
+    document.getElementById('gaResearchInput').value = d.researchInstructions || '';
+    if (d.methodId)  { GA_METHOD_ID = d.methodId;   GA_METHOD_NAME = d.methodName || '';  document.getElementById('gaMethodInput').value  = d.methodName || ''; }
+    if (d.productId) { GA_PRODUCT_ID = d.productId; GA_PRODUCT_NAME = d.productName || ''; document.getElementById('gaProductInput').value = d.productName || ''; }
+    else { GA_PRODUCT_ID = PRODUCT_ID; GA_PRODUCT_NAME = PRODUCT_NAME || ''; document.getElementById('gaProductInput').value = PRODUCT_NAME || ''; }
+    GA_CAMPAIGN_ID = d.campaignId || PRODUCT_CAMPAIGN_ID || '';
+    status.textContent = '';
+  } catch(e) {
+    GA_CAMPAIGN_ID = PRODUCT_CAMPAIGN_ID || '';
+    status.textContent = 'Could not prefill from title (' + e.message + ') — fields are editable.';
+  }
+  gaLoadSpecs(); // needs GA_CAMPAIGN_ID — fire-and-forget
+  btn.disabled = false;
+}
+function closeGenAssetsModal() { document.getElementById('genAssetsModal').classList.remove('open'); }
+document.getElementById('genAssetsModal').addEventListener('click', function(e) {
+  if (e.target === this) closeGenAssetsModal();
+});
+
+async function deleteAssetRow(assetId, btn) {
+  if (!confirm('Delete this asset?\nThis archives it in Notion.')) return;
+  btn.disabled = true;
+  try {
+    await w('deleteAsset', { assetId });
+    await loadTitles();
+  } catch(e) {
+    btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+}
+
+// The worker has no Canva access — real design generation needs a Claude
+// chat with the user's Canva + Notion connectors. This builds a fully
+// self-contained prompt and opens claude.ai with it prefilled: Claude reads
+// each pending asset's Body (a complete design brief), generates the Canva
+// design, and writes the edit link back into the asset's Design Link.
+function claudeDesignPrompt(titleName, assets) {
+  const lines = assets.map(a => '- https://www.notion.so/' + a.id + '  ("' + a.title + '")').join('\n');
+  return 'Create real Canva designs for these pending Drawing Post assets (parent title: "' + titleName + '") and save the links back to Notion.\n\n'
+    + 'Asset pages:\n' + lines + '\n\n'
+    + 'For EACH asset page above:\n'
+    + '1. Fetch the Notion page and read its "Body" property — it is a complete design brief (layout, exact on-image text, colors, fonts, caption).\n'
+    + '2. Generate a Canva design (design type instagram_post unless the brief says otherwise) using the brief faithfully — exact on-image text, spec colors and fonts.\n'
+    + '3. Save the best-matching candidate to my Canva account.\n'
+    + '4. Update the SAME Notion asset page: set its "Design Link" property to the Canva EDIT url, replacing the placeholder canva.com/templates search link.\n\n'
+    + 'Process every asset without stopping to ask questions, then give me a summary with each asset name and its new Canva link.';
+}
+
+async function submitGenAssets() {
+  const title = document.getElementById('gaTitleInput').value.trim();
+  if (!title) { document.getElementById('gaTitleInput').focus(); return; }
+  const assetType = document.getElementById('gaTypeInput').value.trim();
+  const status = document.getElementById('gaStatus');
+  if (!assetType) { status.textContent = 'Asset type is required — every asset must have a type.'; status.style.color = '#fc8181'; document.getElementById('gaTypeInput').focus(); return; }
+  status.style.color = '#888';
+  const btn = document.getElementById('gaGoBtn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  try {
+    const method    = await gaResolve('method', status);
+    const subMethod = await gaResolve('submethod', status);
+    const product   = await gaResolve('product', status);
+    status.textContent = 'Generating asset concepts…';
+    const r = await w('generateTitleAssets', {
+      titleId: GA_TITLE_ID,
+      campaignId: GA_CAMPAIGN_ID || PRODUCT_CAMPAIGN_ID || undefined,
+      methodId:    method.id    || undefined,
+      subMethodId: subMethod.id || undefined,
+      productId:   product.id   || undefined,
+      assetType,
+      designSpecId: document.getElementById('gaSpecInput').value || undefined,
+      title,
+      description:          document.getElementById('gaDescInput').value.trim()     || undefined,
+      seedKeywords:         document.getElementById('gaKeywordsInput').value.trim() || undefined,
+      researchInstructions: document.getElementById('gaResearchInput').value.trim() || undefined,
+      count: parseInt(document.getElementById('gaCountInput').value) || 4,
+    });
+    status.textContent = `✓ Created ${r.created} asset option${r.created === 1 ? '' : 's'}${r.failed ? ` (${r.failed} failed)` : ''} — they appear under the title once it's in Publish.`;
+    status.style.color = '#68d391';
+    btn.textContent = 'Done';
+    await loadTitles();
+    setTimeout(closeGenAssetsModal, 2200);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Generate';
+  }
+}
+
+
+// ── Methods modal ──────────────────────────────────────────────────────
+// Full parity with the campaign microsite's ⚙ modal: AI-suggested +
+// already-attached methods, remove/search/add-new, nothing saved until
+// "Add Methods". Kept independent of the AI ecosystem/method-matching
+// pipeline elsewhere — this is always available to hand-edit a product's
+// methods directly. New methods get auto-researched into a full
+// Phase>Grouping framework on commit (createAndAttachMethod already does
+// this server-side — see researchAndWriteMethodology).
+let PM_PRODUCT_ID = null, PM_PRODUCT_NAME = '';
+let PM_ORIGINAL_IDS = new Set();
+// { kind:'existing', id, name, augmentedNotes?, suggested?, trafficChild? } |
+// { kind:'new', name, platform?, category?, notes?, suggested?, researched?, needsTrafficPlan?, trafficChild? }
+let PM_STAGED = [];
+function pmChildRow(child, parentIdx) {
+  if (!child) return '';
+  const label = child.kind === 'existing' ? child.name : `${child.name} <em style="color:#888;font-style:normal;">(new)</em>`;
+  return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px 5px 22px;border:1px solid #5f5f5f;border-top:none;border-radius:0 0 3px 3px;background:#161616;">
+    <span style="font-size:10px;color:#666;">↳ traffic</span>
+    <span style="flex:1;font-size:12px;color:#ccc;">${label}</span>
+    <button class="td-del" onclick="removePmTrafficChild(${parentIdx})" title="Remove">✕</button>
+  </div>`;
+}
+function renderPmList() {
+  const el = document.getElementById('pmList');
+  if (!PM_STAGED.length) { el.innerHTML = '<div class="empty">No methods staged — search below or add a new one.</div>'; return; }
+  el.innerHTML = PM_STAGED.map((m, i) => {
+    const label = m.kind === 'existing' ? m.name : `${m.name} <em style="color:#888;font-style:normal;">(new${m.researched ? ', researched' : ''})</em>`;
+    const badge = m.suggested ? '<span style="font-size:9px;color:#e8ff47;border:1px solid #3a3a2a;border-radius:3px;padding:1px 5px;margin-left:6px;">suggested</span>' : '';
+    const radius = m.trafficChild ? '3px 3px 0 0' : '3px';
+    return `<div>
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #5f5f5f;border-radius:${radius};">
+        <span style="flex:1;font-size:13px;color:#ddd;">${label}${badge}</span>
+        <button class="td-del" onclick="removePmStaged(${i})" title="Remove">✕</button>
+      </div>
+      ${pmChildRow(m.trafficChild, i)}
+    </div>`;
+  }).join('');
+}
+function removePmStaged(i) { PM_STAGED.splice(i, 1); renderPmList(); }
+function removePmTrafficChild(i) { if (PM_STAGED[i]) PM_STAGED[i].trafficChild = null; renderPmList(); }
+
+let PM_OPEN_TOKEN = 0;
+function setPmStagingLocked(locked) {
+  ['pmSearchInput', 'pmNewInput', 'pmNewAddBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = locked;
+  });
+}
+async function openProductMethodsModal(productId, productName) {
+  const myToken = ++PM_OPEN_TOKEN;
+  PM_PRODUCT_ID = productId; PM_PRODUCT_NAME = productName;
+  PM_STAGED = [];
+  PM_ORIGINAL_IDS = new Set();
+  document.getElementById('pmSearchInput').value = '';
+  document.getElementById('pmNewInput').value = '';
+  document.getElementById('pmSearchDd').style.display = 'none';
+  document.getElementById('pmStatus').textContent = '';
+  document.getElementById('pmCommitBtn').disabled = true;
+  document.getElementById('pmCommitBtn').textContent = 'Add Methods';
+  document.getElementById('pmList').innerHTML = '<div class="loading"><div class="spinner"></div>Suggesting…</div>';
+  document.getElementById('productMethodsModal').classList.add('open');
+  setPmStagingLocked(true);
+  try {
+    const data = await w('suggestProductMethod', { productId });
+    if (myToken !== PM_OPEN_TOKEN) return;
+    if (data.error) throw new Error(data.error);
+    const already = data.alreadyAttached || [];
+    PM_ORIGINAL_IDS = new Set(already.map(a => a.id));
+    PM_STAGED = already.map(a => ({ kind: 'existing', id: a.id, name: a.name }));
+    const sug = data.suggestion;
+    if (sug) {
+      const ts = sug.trafficSuggestion;
+      const trafficChild = ts
+        ? (ts.isExisting ? { kind: 'existing', id: ts.methodId, name: ts.methodName, augmentedNotes: ts.notes || '' }
+                          : { kind: 'new', name: ts.methodName, platform: ts.platform, category: ts.category, notes: ts.notes })
+        : null;
+      if (sug.isExisting) {
+        if (!PM_STAGED.some(m => m.kind === 'existing' && m.id === sug.methodId)) {
+          PM_STAGED.push({ kind: 'existing', id: sug.methodId, name: sug.methodName, augmentedNotes: sug.notes || '', suggested: true, trafficChild });
+        }
+      } else {
+        PM_STAGED.push({ kind: 'new', name: sug.methodName, platform: sug.platform, category: sug.category, notes: sug.notes, suggested: true, researched: !!sug.researched, needsTrafficPlan: !!sug.needsTrafficPlan, trafficChild });
+      }
+    }
+    renderPmList();
+  } catch(e) {
+    if (myToken !== PM_OPEN_TOKEN) return;
+    document.getElementById('pmList').innerHTML = `<div style="font-size:12px;color:#e05;">${esc(e.message)}</div>`;
+  } finally {
+    if (myToken === PM_OPEN_TOKEN) { setPmStagingLocked(false); document.getElementById('pmCommitBtn').disabled = false; }
+  }
+}
+function closeProductMethodsModal() {
+  document.getElementById('productMethodsModal').classList.remove('open');
+  PM_PRODUCT_ID = null;
+}
+async function filterPmSearch() {
+  const q = document.getElementById('pmSearchInput').value.trim();
+  const dd = document.getElementById('pmSearchDd');
+  if (!q) { dd.style.display = 'none'; return; }
+  try {
+    const data = await w('searchMethods', { query: q });
+    const methods = (data.methods || []).filter(m => !PM_STAGED.some(s => s.kind === 'existing' && s.id === m.id)).slice(0, 10);
+    dd.innerHTML = methods.map(m => `<div class="plat-dd-item" onmousedown="addPmExisting('${m.id}','${m.name.replace(/'/g,"\\'")}')">${esc(m.name)}</div>`).join('');
+    dd.style.display = methods.length ? 'block' : 'none';
+  } catch(e) { dd.style.display = 'none'; }
+}
+function addPmExisting(id, name) {
+  if (!PM_STAGED.some(s => s.kind === 'existing' && s.id === id)) PM_STAGED.push({ kind: 'existing', id, name });
+  document.getElementById('pmSearchInput').value = '';
+  document.getElementById('pmSearchDd').style.display = 'none';
+  renderPmList();
+}
+function addPmNewByName() {
+  const name = document.getElementById('pmNewInput').value.trim();
+  if (!name) return;
+  PM_STAGED.push({ kind: 'new', name });
+  document.getElementById('pmNewInput').value = '';
+  renderPmList();
+}
+async function commitProductMethods() {
+  if (!PM_PRODUCT_ID) return;
+  const btn = document.getElementById('pmCommitBtn');
+  const status = document.getElementById('pmStatus');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  status.textContent = '';
+  try {
+    const stagedExistingIds = new Set(PM_STAGED.filter(m => m.kind === 'existing').map(m => m.id));
+    for (const id of PM_ORIGINAL_IDS) {
+      if (!stagedExistingIds.has(id)) await w('removeProductMethod', { productId: PM_PRODUCT_ID, methodId: id });
+    }
+    let trafficLinked = 0;
+    for (const m of PM_STAGED) {
+      let parentId = null;
+      if (m.kind === 'existing') {
+        parentId = m.id;
+        if (!PM_ORIGINAL_IDS.has(m.id)) {
+          await w('addProductMethod', { productId: PM_PRODUCT_ID, methodId: m.id, augmentedNotes: m.augmentedNotes || undefined });
+        }
+      } else {
+        const r = await w('createAndAttachMethod', { productId: PM_PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined, name: m.name, platform: m.platform, category: m.category, notes: m.notes, needsTrafficPlan: m.needsTrafficPlan || (!!m.trafficChild) });
+        if (r.error) throw new Error(r.error);
+        parentId = r.methodId;
+      }
+      if (m.trafficChild && parentId) {
+        const c = m.trafficChild;
+        let childId = null;
+        if (c.kind === 'existing') {
+          childId = c.id;
+          await w('addProductMethod', { productId: PM_PRODUCT_ID, methodId: c.id, augmentedNotes: c.augmentedNotes || undefined });
+        } else {
+          const r = await w('createAndAttachMethod', { productId: PM_PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined, name: c.name, platform: c.platform, category: c.category, notes: c.notes });
+          if (!r.error) childId = r.methodId;
+        }
+        if (childId) { await w('linkTrafficMethod', { parentMethodId: parentId, childMethodId: childId }); trafficLinked++; }
+      }
+    }
+    await loadProduct();
+    status.textContent = trafficLinked ? `✓ Methods added — ${trafficLinked} traffic plan${trafficLinked === 1 ? '' : 's'} linked.` : '✓ Methods added — new methods are being researched into a full framework in the background.';
+    status.style.color = '#68d391';
+    setTimeout(closeProductMethodsModal, 1400);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Add Methods';
+  }
+}
+
+// ── Overlay close on backdrop click ───────────────────────────────────
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay')) {
+    e.target.classList.remove('open');
+  }
+});
+
+// ── init ───────────────────────────────────────────────────────────────
+function init() {
+  const psEl = document.getElementById('r-productsite');
+  if (psEl) {
+    if (typeof SITE_URL !== 'undefined' && SITE_URL) {
+      const display = SITE_URL.replace('https://cabuzzard.github.io/dash/','').replace(/\/$/,'');
+      psEl.innerHTML = '<a href="' + SITE_URL + '" target="_blank" class="notion-link" style="font-size:12px;">↗ ' + display + '</a>';
+    } else { psEl.innerHTML = '<span class="empty">—</span>'; }
+  }
+  loadProduct();
+  loadTitles();
+  loadTodos();
+  loadLogins();
+  loadSmPosts();
+  loadDeliverables();
+}
+</script>
+</body>
+</html>
