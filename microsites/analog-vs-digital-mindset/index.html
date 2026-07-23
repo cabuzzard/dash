@@ -826,6 +826,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
                onblur="setTimeout(()=>{const d=document.getElementById('gaProductDD'); if(d) d.style.display='none';},180)" />
         <div id="gaProductDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
       </div>
+      <div id="gaStrategyLink" style="margin:-4px 0 10px;"></div>
 
       <label class="lm-label">Asset type <span style="color:var(--danger,#e05);">*</span> <span style="color:#777;font-weight:normal;">— pick existing or type a new one</span></label>
       <div style="position:relative;margin-bottom:10px;">
@@ -4263,13 +4264,28 @@ function gaSetSel(kind, id, name) {
   else if (kind === 'submethod') { GA_SUBMETHOD_ID = id; GA_SUBMETHOD_NAME = name; }
   else                           { GA_PRODUCT_ID = id;   GA_PRODUCT_NAME = name; }
 }
+// Fetches the product's Strategy doc (if any) and shows a link to it, purely
+// for the operator to reference — never merged into asset generation, per
+// the earlier explicit "don't blend product strategy into assets" call.
+async function gaRefreshStrategyLink() {
+  const el = document.getElementById('gaStrategyLink');
+  if (!el) return;
+  if (!GA_PRODUCT_ID) { el.innerHTML = ''; return; }
+  el.innerHTML = '<span style="font-size:11px;color:#666;">Loading strategy…</span>';
+  try {
+    const r = await w('getProductStrategy', { productId: GA_PRODUCT_ID });
+    el.innerHTML = r.strategy
+      ? `<a href="${r.strategy.url}" target="_blank" rel="noopener" class="notion-link" style="font-size:11px;">↗ View Product Strategy${r.strategy.status ? ' (' + esc(r.strategy.status) + ')' : ''}</a>`
+      : '<span style="font-size:11px;color:#666;">No Strategy doc on file for this product yet.</span>';
+  } catch(e) { el.innerHTML = ''; }
+}
 function gaFilter(kind) {
   const cfg = GA_KIND_CFG[kind];
   const inp  = document.getElementById(cfg.input);
   const dd   = document.getElementById(cfg.dd);
   const list = kind === 'product' ? AT_PRODUCTS : AT_METHODS; // sub methods live in the Methods DB too
   const q = inp.value.trim(), qL = q.toLowerCase();
-  if (q !== gaSel(kind).name) gaSetSel(kind, null, '');
+  if (q !== gaSel(kind).name) { gaSetSel(kind, null, ''); if (kind === 'product') gaRefreshStrategyLink(); }
   dd.innerHTML = '';
   const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
   matches.forEach(x => {
@@ -4282,6 +4298,7 @@ function gaFilter(kind) {
       gaSetSel(kind, x.id, x.name);
       inp.value = x.name;
       dd.style.display = 'none';
+      if (kind === 'product') gaRefreshStrategyLink();
     };
     dd.appendChild(div);
   });
@@ -4344,6 +4361,7 @@ async function openGenAssetsModal(titleId) {
     status.textContent = 'Could not prefill from title (' + e.message + ') — fields are editable.';
   }
   gaLoadSpecs(); // needs GA_CAMPAIGN_ID — fire-and-forget
+  gaRefreshStrategyLink(); // reference-only link, never blended into generation
   btn.disabled = false;
 }
 function closeGenAssetsModal() { document.getElementById('genAssetsModal').classList.remove('open'); }
