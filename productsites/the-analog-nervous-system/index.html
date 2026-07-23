@@ -379,6 +379,16 @@
       </div>
       <div id="gaStrategyLink" style="margin:-4px 0 10px;"></div>
 
+      <label class="lm-label">Platform <span style="color:#777;font-weight:normal;">— from the Platforms DB; what this asset is packaged for (optional)</span></label>
+      <select id="gaPlatformInput" class="modal-ta" style="margin-bottom:10px;" onchange="gaFilterLoginsByPlatform()">
+        <option value="">— none —</option>
+      </select>
+
+      <label class="lm-label">Login <span style="color:#777;font-weight:normal;">— which account this publishes through (optional)</span></label>
+      <select id="gaLoginInput" class="modal-ta" style="margin-bottom:10px;">
+        <option value="">— none —</option>
+      </select>
+
       <label class="lm-label">Asset type <span style="color:var(--danger,#e05);">*</span> <span style="color:#777;font-weight:normal;">— pick existing or type a new one</span></label>
       <div style="position:relative;margin-bottom:10px;">
         <input class="modal-ta" id="gaTypeInput" type="text" placeholder="Post, Graphic, Reel, Video…" autocomplete="off"
@@ -1537,7 +1547,30 @@ async function openGenAssetsModal(titleId) {
   }
   gaLoadSpecs(); // needs GA_CAMPAIGN_ID — fire-and-forget
   gaRefreshStrategyLink(); // reference-only link, never blended into generation
+  gaLoadPlatforms(); // fire-and-forget
   btn.disabled = false;
+}
+let GA_ALL_LOGINS = [];
+async function gaLoadPlatforms() {
+  const sel = document.getElementById('gaPlatformInput');
+  if (!sel) return;
+  try {
+    const [platData, loginData] = await Promise.all([w('getPlatforms'), w('getLogins')]);
+    const platforms = platData.platforms || [];
+    sel.innerHTML = '<option value="">— none —</option>' + platforms.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    GA_ALL_LOGINS = loginData.logins || [];
+    gaFilterLoginsByPlatform();
+  } catch(e) { /* dropdowns stay on "— none —" */ }
+}
+// Narrows the Login picker to accounts on the chosen Platform — a Login is a
+// specific account instance of a Platform, so most of the time you only want
+// to see the ones that actually match what's selected above.
+function gaFilterLoginsByPlatform() {
+  const platformId = document.getElementById('gaPlatformInput')?.value || '';
+  const loginSel = document.getElementById('gaLoginInput');
+  if (!loginSel) return;
+  const list = platformId ? GA_ALL_LOGINS.filter(l => (l.platformIds || []).includes(platformId)) : GA_ALL_LOGINS;
+  loginSel.innerHTML = '<option value="">— none —</option>' + list.map(l => `<option value="${l.id}">${esc(l.name)}</option>`).join('');
 }
 function closeGenAssetsModal() { document.getElementById('genAssetsModal').classList.remove('open'); }
 document.getElementById('genAssetsModal').addEventListener('click', function(e) {
@@ -1601,6 +1634,9 @@ async function submitGenAssets() {
       researchInstructions: document.getElementById('gaResearchInput').value.trim() || undefined,
       count: parseInt(document.getElementById('gaCountInput').value) || 4,
       contextMode: (document.querySelector('input[name="gaContext"]:checked') || {}).value || 'isolate',
+      platformId: document.getElementById('gaPlatformInput')?.value || undefined,
+      platformName: document.getElementById('gaPlatformInput')?.value ? document.getElementById('gaPlatformInput').selectedOptions[0].textContent : undefined,
+      loginId: document.getElementById('gaLoginInput')?.value || undefined,
     });
     status.textContent = r.sectionCount != null
       ? `✓ Wrote the full post (${r.sectionCount} sections${r.contextMode === 'blend' ? ', blended with campaign + product context' : ''}) and published it.`

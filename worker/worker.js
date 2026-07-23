@@ -6010,7 +6010,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       // record in the Assets DB linked to the title via its Content Strategy
       // relation — so they render as rows under the publish title.
       if (body.action === "generateTitleAssets") {
-        const { titleId, campaignId, productId, methodId, subMethodId, title, description, seedKeywords, researchInstructions, assetType } = body;
+        const { titleId, campaignId, productId, methodId, subMethodId, title, description, seedKeywords, researchInstructions, assetType, platformName, platformId, loginId } = body;
         const count = Math.min(Math.max(parseInt(body.count) || 4, 1), 8);
         if (!titleId || !title) return json({ error: "titleId and title required" }, 400);
         if (!assetType) return json({ error: "assetType required — every asset must have a type" }, 400);
@@ -6067,7 +6067,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO content writer. Write a complete, publish-ready pillar blog post for this title.
 
 TITLE: ${title}
-${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${blendBlock}${existingOutline ? `EXISTING NOTES/OUTLINE ON THIS TITLE (if it already defines 3 subheads, use those headings verbatim as the article's structure — otherwise write 3 new ones):\n${existingOutline.slice(0, 2000)}\n` : ""}
+${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${platformName ? `PUBLISHING TO: ${platformName} — write for that platform's norms if it isn't a standard blog destination.\n` : ""}${blendBlock}${existingOutline ? `EXISTING NOTES/OUTLINE ON THIS TITLE (if it already defines 3 subheads, use those headings verbatim as the article's structure — otherwise write 3 new ones):\n${existingOutline.slice(0, 2000)}\n` : ""}
 Requirements:
 - Structure the post under EXACTLY 3 subheads (H2-level sections) covering the topic in a logical order.
 - Each section is substantial, specific, useful writing — roughly 400-700 words per section, not filler.
@@ -6107,6 +6107,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
           };
           if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          // Explicit Platform pick (from the real Platforms DB) wins over
+          // anything guessed — this asset is "packaged for" that platform.
+          if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
+          if (platformId) assetProps["Platform"] = { relation: [{ id: dsDash(platformId) }] };
+          if (loginId) assetProps["Login"] = { relation: [{ id: dsDash(loginId) }] };
           const assetResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { ...dsHdr, "Content-Type": "application/json" },
@@ -6195,7 +6200,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a senior content designer and copywriter. Create exactly ${count} DISTINCT asset concepts — options for the operator to choose between — for the content idea below. Every concept is a ${assetType} — do not propose other formats. Each must be complete enough to build immediately without further questions.
 
 IDEA / TITLE: ${title}
-${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `SEED KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${methodName ? `METHOD: ${methodName}${methodBody ? `\nMETHOD NOTES/FRAMEWORK (dictates the deliverable format):\n${methodBody}` : ""}\n` : ""}${subMethodName ? `SUB METHOD / TARGET PLATFORM: ${subMethodName} — every concept must be built for ${subMethodName} specifically (its native formats, dimensions, character limits, and audience behavior).${subMethodBody ? `\nPLATFORM FRAMEWORK NOTES:\n${subMethodBody}` : ""}\n` : ""}
+${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `SEED KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${methodName ? `METHOD: ${methodName}${methodBody ? `\nMETHOD NOTES/FRAMEWORK (dictates the deliverable format):\n${methodBody}` : ""}\n` : ""}${platformName ? `PLATFORM (from the Platforms DB — this asset is being packaged for publishing here, every concept must fit its native format/length/conventions): ${platformName}\n` : ""}${subMethodName ? `SUB METHOD / TARGET PLATFORM: ${subMethodName} — every concept must be built for ${subMethodName} specifically (its native formats, dimensions, character limits, and audience behavior).${subMethodBody ? `\nPLATFORM FRAMEWORK NOTES:\n${subMethodBody}` : ""}\n` : ""}
 DESIGN SPEC (every concept must match this aesthetic):
 Background ${spec.bg} · Ink ${spec.ink} · Accent ${spec.accent} · Headline font ${spec.headlineFont} · Body font ${spec.bodyFont}
 ${spec.notes ? `Aesthetic: ${spec.notes}` : ""}
@@ -6228,8 +6233,10 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
             "Body":         { rich_text: [{ text: { content: String(c.body || "").slice(0, 2000) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
           };
-          const platName = subMethodName || c.platform; // sub method wins — it IS the target platform
+          const platName = platformName || subMethodName || c.platform; // explicit pick > sub method > AI-guessed
           if (platName) properties["Platform Name"] = { select: { name: String(platName).slice(0, 100) } };
+          if (platformId) properties["Platform"] = { relation: [{ id: dsDash(platformId) }] };
+          if (loginId) properties["Login"] = { relation: [{ id: dsDash(loginId) }] };
           properties["Asset Type"] = { select: { name: String(assetType).slice(0, 100) } }; // required — every asset has a type
           if (isDrawingPost && c.canvaQuery) properties["Design Link"] = { url: "https://www.canva.com/templates/?query=" + encodeURIComponent(String(c.canvaQuery).slice(0, 80)) };
           if (campaignId)  properties["Campaign"]      = { relation: [{ id: dsDash(campaignId) }] };
