@@ -405,6 +405,14 @@
         <option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option>
       </select>
 
+      <div id="gaContextModeWrap" style="display:none;margin-bottom:10px;">
+        <label class="lm-label">Research scope</label>
+        <div style="display:flex;gap:14px;margin-top:4px;font-size:12px;color:#ccc;">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="gaContext" value="isolate" checked> Isolate — title only</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="gaContext" value="blend"> Blend — add campaign + product</label>
+        </div>
+      </div>
+
       <div id="gaStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
     </div>
     <div class="modal-foot">
@@ -750,6 +758,15 @@ async function saveStrategyField(field) {
 function psRowBtn(label, onclick, id, disabled) {
   return `<button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" ${id ? `id="${id}"` : ''} ${disabled ? `disabled title="${esc(disabled)}"` : ''} onclick="${onclick}">${label}</button>`;
 }
+// Research-scope choice for Generate Titles — only meaningful for SEO Post
+// (the only method type genPsTitles reads it for), so only rendered there.
+function psContextSelect(methodId, methodName) {
+  if (!/seo post/i.test(methodName)) return '';
+  return `<select id="psRowContext-${methodId}" class="td-add-btn-inline" style="font-size:10px;padding:2px 4px;" title="Research scope for Generate Titles">
+    <option value="blend" selected>Blend</option>
+    <option value="isolate">Isolate</option>
+  </select>`;
+}
 // Methods currently in hand-edit mode for their Strategy text — toggled by
 // the ✎ Edit / Cancel button, read by renderStrategyPanel to swap the
 // read-only body for a textarea + Save.
@@ -785,7 +802,7 @@ function renderStrategyPanel() {
         // for reference/cleanup, not as a prerequisite for titles anymore.
         const hasStrategy = !!detail.strategy;
         const editing = PS_EDITING.has(m.id);
-        controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',true,null)`, 'psRowTitles-' + m.id);
+        controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',true,null)`, 'psRowTitles-' + m.id) + psContextSelect(m.id, m.name);
         if (hasStrategy) {
           controls += psRowBtn(editing ? 'Cancel' : '✎ Edit', `psToggleEdit('${m.id}')`, null);
           controls += ` <a href="${detail.strategy.url}" target="_blank" class="notion-link" style="font-size:11px;">↗ Notion</a>`;
@@ -802,7 +819,7 @@ function renderStrategyPanel() {
             ${psRowBtn('Generate Titles', `genPsTitles('${c.id}',false,'${m.id}')`, 'psRowTitles-' + c.id)}
           </div>`).join('');
       } else if (!(detail.trafficMethods || []).length) {
-        controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',false,null)`, 'psRowTitles-' + m.id);
+        controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',false,null)`, 'psRowTitles-' + m.id) + psContextSelect(m.id, m.name);
       }
     }
     return `<div style="border:1px solid #5f5f5f;border-radius:3px;margin-bottom:8px;">
@@ -884,7 +901,8 @@ async function genPsTitles(methodId, isDestination, parentMethodId) {
       // don't fit "one keyword -> up to 5 SEO titles". The server prefers this
       // product's own Keywords field as the seed keyword automatically.
       if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
-      const data = await w('generateMethodTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
+      const contextMode = (document.getElementById('psRowContext-' + methodId) || {}).value || 'blend';
+      const data = await w('generateMethodTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID, contextMode });
       if (data.error) throw new Error(data.error);
       const titles = data.titles || [];
       const followUpTitles = [];
@@ -1362,7 +1380,7 @@ function gaTypeFilter() {
     div.onmouseenter = () => div.style.background = '#333';
     div.onmouseleave = () => div.style.background = '';
     div.textContent = t;
-    div.onmousedown = () => { inp.value = t; dd.style.display = 'none'; };
+    div.onmousedown = () => { inp.value = t; dd.style.display = 'none'; gaUpdateContextVisibility(); };
     dd.appendChild(div);
   });
   const exact = GA_TYPES.some(t => t.toLowerCase() === qL);
@@ -1373,6 +1391,15 @@ function gaTypeFilter() {
     dd.appendChild(div);
   }
   dd.style.display = (matches.length || (q && !exact)) ? 'block' : 'none';
+  gaUpdateContextVisibility();
+}
+// Research-scope choice only matters for the SEO Post asset type (it's the
+// only one that reads it server-side) — hide it otherwise so it doesn't
+// imply an effect it doesn't have on other asset types.
+function gaUpdateContextVisibility() {
+  const wrap = document.getElementById('gaContextModeWrap');
+  if (!wrap) return;
+  wrap.style.display = /seo post/i.test(document.getElementById('gaTypeInput').value.trim()) ? 'block' : 'none';
 }
 
 const GA_KIND_CFG = {
@@ -1446,6 +1473,9 @@ async function openGenAssetsModal(titleId) {
   ['gaTitleInput','gaMethodInput','gaSubMethodInput','gaProductInput','gaTypeInput','gaDescInput','gaKeywordsInput','gaResearchInput'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
+  const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
+  if (isolateRadio) isolateRadio.checked = true;
+  gaUpdateContextVisibility();
   const status = document.getElementById('gaStatus');
   status.textContent = 'Loading title details…';
   const btn = document.getElementById('gaGoBtn');
@@ -1532,8 +1562,11 @@ async function submitGenAssets() {
       seedKeywords:         document.getElementById('gaKeywordsInput').value.trim() || undefined,
       researchInstructions: document.getElementById('gaResearchInput').value.trim() || undefined,
       count: parseInt(document.getElementById('gaCountInput').value) || 4,
+      contextMode: (document.querySelector('input[name="gaContext"]:checked') || {}).value || 'isolate',
     });
-    status.textContent = `✓ Created ${r.created} asset option${r.created === 1 ? '' : 's'}${r.failed ? ` (${r.failed} failed)` : ''} — they appear under the title once it's in Publish.`;
+    status.textContent = r.sectionCount != null
+      ? `✓ Wrote the full post (${r.sectionCount} sections${r.contextMode === 'blend' ? ', blended with campaign + product context' : ''}) and published it.`
+      : `✓ Created ${r.created} asset option${r.created === 1 ? '' : 's'}${r.failed ? ` (${r.failed} failed)` : ''} — they appear under the title once it's in Publish.`;
     status.style.color = '#68d391';
     btn.textContent = 'Done';
     await loadTitles();

@@ -854,6 +854,14 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option>
       </select>
 
+      <div id="gaContextModeWrap" style="display:none;margin-bottom:10px;">
+        <label class="lm-label">Research scope</label>
+        <div style="display:flex;gap:14px;margin-top:4px;font-size:12px;color:#ccc;">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="gaContext" value="isolate" checked> Isolate — title only</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="gaContext" value="blend"> Blend — add campaign + product</label>
+        </div>
+      </div>
+
       <div id="gaStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
     </div>
     <div class="modal-foot">
@@ -2251,6 +2259,8 @@ function openMethodGenModal(methodId, methodName) {
   document.getElementById('mgm-title').textContent = 'Generate: ' + methodName;
   document.getElementById('mgm-status').textContent = '';
   document.getElementById('mgm-go').disabled = true;
+  const blendRadio = document.querySelector('input[name="mgmContext"][value="blend"]');
+  if (blendRadio) blendRadio.checked = true;
   const el = document.getElementById('mgm-products');
   const noneOpt = `<label class="mgp-option"><input type="radio" name="mgp" value="${CAMPAIGN_ID}" onchange="MGM_PRODUCT_ID=CAMPAIGN_ID;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false"> <em style="color:#a78bfa">&#9670; Campaign</em></label>`;
   el.innerHTML = noneOpt + PRODUCT_ITEMS.map(p => `<label class="mgp-option"><input type="radio" name="mgp" value="${p.id}" onchange="MGM_PRODUCT_ID=this.value;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false"> ${p.name}</label>`).join('');
@@ -2302,8 +2312,9 @@ async function runMethodGenerate() {
       return;
     }
 
-    status.textContent = 'Reading method framework and product strategy…';
-    const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
+    const contextMode = (document.querySelector('input[name="mgmContext"]:checked') || {}).value || 'blend';
+    status.textContent = contextMode === 'isolate' ? 'Reading method framework and product strategy (isolated — no campaign research)…' : 'Reading method framework and product strategy…';
+    const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID, contextMode });
     if (data.error) throw new Error(data.error);
     const titles = data.titles || [];
     let saved = 0;
@@ -4215,7 +4226,7 @@ function gaTypeFilter() {
     div.onmouseenter = () => div.style.background = '#333';
     div.onmouseleave = () => div.style.background = '';
     div.textContent = t;
-    div.onmousedown = () => { inp.value = t; dd.style.display = 'none'; };
+    div.onmousedown = () => { inp.value = t; dd.style.display = 'none'; gaUpdateContextVisibility(); };
     dd.appendChild(div);
   });
   const exact = GA_TYPES.some(t => t.toLowerCase() === qL);
@@ -4226,6 +4237,15 @@ function gaTypeFilter() {
     dd.appendChild(div);
   }
   dd.style.display = (matches.length || (q && !exact)) ? 'block' : 'none';
+  gaUpdateContextVisibility();
+}
+// Research-scope choice only matters for the SEO Post asset type (it's the
+// only one that reads it server-side) — hide it otherwise so it doesn't
+// imply an effect it doesn't have on other asset types.
+function gaUpdateContextVisibility() {
+  const wrap = document.getElementById('gaContextModeWrap');
+  if (!wrap) return;
+  wrap.style.display = /seo post/i.test(document.getElementById('gaTypeInput').value.trim()) ? 'block' : 'none';
 }
 
 const GA_KIND_CFG = {
@@ -4299,6 +4319,9 @@ async function openGenAssetsModal(titleId) {
   ['gaTitleInput','gaMethodInput','gaSubMethodInput','gaProductInput','gaTypeInput','gaDescInput','gaKeywordsInput','gaResearchInput'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
+  const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
+  if (isolateRadio) isolateRadio.checked = true;
+  gaUpdateContextVisibility();
   const status = document.getElementById('gaStatus');
   status.textContent = 'Loading title details…';
   const btn = document.getElementById('gaGoBtn');
@@ -4384,8 +4407,11 @@ async function submitGenAssets() {
       seedKeywords:         document.getElementById('gaKeywordsInput').value.trim() || undefined,
       researchInstructions: document.getElementById('gaResearchInput').value.trim() || undefined,
       count: parseInt(document.getElementById('gaCountInput').value) || 4,
+      contextMode: (document.querySelector('input[name="gaContext"]:checked') || {}).value || 'isolate',
     });
-    status.textContent = `✓ Created ${r.created} asset option${r.created === 1 ? '' : 's'}${r.failed ? ` (${r.failed} failed)` : ''} — they appear under the title once it's in Publish.`;
+    status.textContent = r.sectionCount != null
+      ? `✓ Wrote the full post (${r.sectionCount} sections${r.contextMode === 'blend' ? ', blended with campaign + product context' : ''}) and published it.`
+      : `✓ Created ${r.created} asset option${r.created === 1 ? '' : 's'}${r.failed ? ` (${r.failed} failed)` : ''} — they appear under the title once it's in Publish.`;
     status.style.color = '#68d391';
     btn.textContent = 'Done';
     await loadTitles();
@@ -4484,6 +4510,11 @@ async function runRegenKeywords() {
     <h3 id="mgm-title">Generate Titles</h3>
     <div class="method-gen-subtitle">Select a product to generate content titles for this method</div>
     <div class="method-gen-products" id="mgm-products"></div>
+    <div class="method-gen-subtitle" style="margin-top:10px;">Research scope</div>
+    <div style="display:flex;gap:14px;margin-top:4px;font-size:12px;color:#ccc;">
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="mgmContext" value="blend" checked> Blend — campaign + product</label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="mgmContext" value="isolate"> Isolate — product only</label>
+    </div>
     <div class="method-gen-actions">
       <button class="method-gen-cancel" onclick="closeMethodGenModal()">Cancel</button>
       <button class="method-gen-go" id="mgm-go" onclick="runMethodGenerate()" disabled>Generate</button>

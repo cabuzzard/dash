@@ -5010,6 +5010,13 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const { campaignId, methodId, productId, parentTitle, parentTitleId } = body;
         if (!campaignId || !methodId) return json({ error: "campaignId and methodId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        // "blend" (default) = campaign research + product context together, as
+        // this action has always behaved. "isolate" = product context only,
+        // no campaign research block at all — requires a product to isolate to.
+        const contextMode = body.contextMode === "isolate" ? "isolate" : "blend";
+        if (contextMode === "isolate" && (!productId || productId === "__none__" || productId === campaignId)) {
+          return json({ error: "Isolate mode requires a product to isolate to — pick a product, or use Blend." }, 400);
+        }
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const parentSeed = await buildTitleSeedContext(hdr, parentTitleId, parentTitle);
@@ -5067,15 +5074,15 @@ Unique Angle: ${ptxt("Unique Angle")}`;
         }
 
         // Prefer live-researched TikTok Trends (real scraped post data) over the
-        // Haiku-guessed Trend Intelligence niches; use whichever exists.
+        // Haiku-guessed Trend Intelligence niches; use whichever exists. Trend
+        // research lives on the campaign's Research record, so isolate mode
+        // (no campaign context at all) excludes it too.
         const trendResearch = research.tiktokTrends || research.trendIntelligence || "";
         const trendSource = research.tiktokTrends ? "TikTok Trends (live research)" : (research.trendIntelligence ? "Trend Intelligence (AI-suggested niches)" : "");
-        const hasTrendResearch = !!trendResearch;
+        const hasTrendResearch = contextMode === "blend" && !!trendResearch;
+        const isolateNote = contextMode === "isolate" ? "\n(Isolate mode — this run intentionally excludes campaign-level research; grounded in this product's own fields only.)\n" : "";
 
-        // Call Claude to generate titles
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist. Generate all deliverable titles for a method, grounded in the campaign research${hasProduct ? " and product strategy" : ""}${hasTrendResearch ? " and current trend research" : ""}.
-
-CAMPAIGN: ${campaignName}
+        const campaignResearchBlock = contextMode === "blend" ? `CAMPAIGN: ${campaignName}
 CAMPAIGN RESEARCH:
 Keywords: ${research.keywords}
 Statement: ${research.statement}
@@ -5083,7 +5090,12 @@ Unique Opportunity: ${research.uniqueOpportunity}
 Key Message: ${research.keyMessage}
 Campaign Goal: ${research.campaignGoal}
 Pain Points: ${research.painPoints}
-${hasTrendResearch ? `\nTRENDING RESEARCH (${trendSource}):\n${trendResearch.slice(0, 1500)}\n` : '\n(No trend research on file for this campaign — titles below are grounded in static campaign research only, not current trends.)\n'}
+${hasTrendResearch ? `\nTRENDING RESEARCH (${trendSource}):\n${trendResearch.slice(0, 1500)}\n` : '\n(No trend research on file for this campaign — titles below are grounded in static campaign research only, not current trends.)\n'}` : isolateNote;
+
+        // Call Claude to generate titles
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist. Generate all deliverable titles for a method, grounded in ${contextMode === "blend" ? `the campaign research${hasProduct ? " and product strategy" : ""}${hasTrendResearch ? " and current trend research" : ""}` : "this product's own strategy only (isolated from campaign-level research)"}.
+
+${campaignResearchBlock}
 METHOD: ${methodName}
 METHOD FRAMEWORK:
 ${methodBody || "(No framework defined — infer phases and groupings from method name and best practices)"}
@@ -5093,7 +5105,7 @@ ${parentSeed.text ? `\nSEED IDEA (this run was started from an existing title �
 INSTRUCTIONS:
 - Read the method framework carefully. Each Phase heading in the framework is a Phase. Each Grouping heading is a Grouping.
 - Generate titles for EVERY phase and grouping defined in the framework.
-- Each title must be specific to this campaign${hasProduct ? " and product" : ""}${parentSeed.text ? " and should extend or riff on the seed idea above where it fits naturally" : ""} — use real names, real keywords, real positioning language. No generic titles.
+- Each title must be specific to this ${contextMode === "blend" ? "campaign" : "product"}${hasProduct && contextMode === "blend" ? " and product" : ""}${parentSeed.text ? " and should extend or riff on the seed idea above where it fits naturally" : ""} — use real names, real keywords, real positioning language. No generic titles.
 ${hasTrendResearch ? '- Ground titles in the trending research above wherever it fits the pillar/grouping — especially any pillar about timing, seasonality, or current moments. Prefer angles the trend research shows real demand for over generic ones.' : ''}
 - Titles are deliverable names (things to produce), not content post headlines.
 - Aim for 2–3 titles per grouping unless the framework specifies otherwise.
@@ -5140,18 +5152,19 @@ No other text. No markdown fences.`;
         // keyword" depends on downstream. Keyword source, most specific
         // first: an explicit seedKeyword passed by the caller > the selected
         // PRODUCT's own Keywords field (specific to what's being generated
-        // for) > the campaign's shared Research Keywords field (only when no
-        // product is selected at all).
+        // for) > the campaign's shared Research Keywords field — the campaign
+        // fallback is skipped entirely in isolate mode, since the whole point
+        // of isolate is no campaign-level data leaking in.
         if (/seo post/i.test(methodName)) {
           const productKeywords = hasProduct && productPage ? (productPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("") : "";
-          const rawSeed = body.seedKeyword || productKeywords || research.keywords || "";
+          const rawSeed = body.seedKeyword || productKeywords || (contextMode === "blend" ? research.keywords : "") || "";
           const seedKeyword = rawSeed.split(/[,;\n]/)[0].trim() || methodName;
           titles = titles.slice(0, 5);
           titles.forEach(t => { t.subheadFormat = true; t.phase = null; t.grouping = seedKeyword; });
         }
 
         // Return titles to client — client will save in batches via saveMethodTitles
-        return json({ titles, hasTrendResearch, trendSource: hasTrendResearch ? trendSource : null });
+        return json({ titles, hasTrendResearch, trendSource: hasTrendResearch ? trendSource : null, contextMode });
       }
 
       // ── saveMethodTitles ──
@@ -5829,12 +5842,48 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         // — this asset type is finished text, not a design pick-one that
         // waits in Development for operator review.
         if (/seo post/i.test(assetType)) {
-          const existingOutline = await extractBlocksTextRecursive(dsHdr, dsDash(titleId)).catch(() => "");
+          // "blend" (opt-in) adds campaign + product strategy as grounding on
+          // top of the title's own description/keywords/outline. "isolate"
+          // (default — matches this asset type's original behavior) uses only
+          // the title's own fields, no campaign/product fetch at all.
+          const contextMode = body.contextMode === "blend" ? "blend" : "isolate";
+          const [existingOutline, blendBlock] = await Promise.all([
+            extractBlocksTextRecursive(dsHdr, dsDash(titleId)).catch(() => ""),
+            contextMode === "blend" ? (async () => {
+              const [researchRaw, prodPage] = await Promise.all([
+                campaignId ? fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+                  method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+                  body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dsDash(campaignId) } } }),
+                }).then(r => r.json()).catch(() => ({ results: [] })) : Promise.resolve({ results: [] }),
+                hasProduct ? fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+              ]);
+              const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+              const campaignPart = [
+                rt(researchRaw, "Statement")          && `Statement: ${rt(researchRaw, "Statement")}`,
+                rt(researchRaw, "Unique Opportunity")  && `Unique Opportunity: ${rt(researchRaw, "Unique Opportunity")}`,
+                rt(researchRaw, "Pain Points")          && `Pain Points: ${rt(researchRaw, "Pain Points")}`,
+              ].filter(Boolean).join("\n");
+              let productPart = "";
+              if (prodPage?.properties) {
+                const pp = prodPage.properties;
+                const ptxt = prop => (pp[prop]?.rich_text || []).map(x => x.plain_text).join("") || "";
+                productPart = [
+                  ptxt("Avatar")          && `Avatar: ${ptxt("Avatar")}`,
+                  ptxt("Transformation")  && `Transformation: ${ptxt("Transformation")}`,
+                  ptxt("Offer Structure") && `Offer Structure: ${ptxt("Offer Structure")}`,
+                  ptxt("Proof Points")    && `Proof Points: ${ptxt("Proof Points")}`,
+                  ptxt("Unique Angle")    && `Unique Angle: ${ptxt("Unique Angle")}`,
+                ].filter(Boolean).join("\n");
+              }
+              const parts = [campaignPart && `CAMPAIGN CONTEXT:\n${campaignPart}`, productPart && `PRODUCT CONTEXT:\n${productPart}`].filter(Boolean);
+              return parts.length ? parts.join("\n\n") + "\n" : "";
+            })() : Promise.resolve(""),
+          ]);
 
           const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO content writer. Write a complete, publish-ready pillar blog post for this title.
 
 TITLE: ${title}
-${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${existingOutline ? `EXISTING NOTES/OUTLINE ON THIS TITLE (if it already defines 3 subheads, use those headings verbatim as the article's structure — otherwise write 3 new ones):\n${existingOutline.slice(0, 2000)}\n` : ""}
+${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${blendBlock}${existingOutline ? `EXISTING NOTES/OUTLINE ON THIS TITLE (if it already defines 3 subheads, use those headings verbatim as the article's structure — otherwise write 3 new ones):\n${existingOutline.slice(0, 2000)}\n` : ""}
 Requirements:
 - Structure the post under EXACTLY 3 subheads (H2-level sections) covering the topic in a logical order.
 - Each section is substantial, specific, useful writing — roughly 400-700 words per section, not filler.
@@ -5907,7 +5956,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
           });
 
-          return json({ success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length });
+          return json({ success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode });
         }
 
         // design spec: explicit modal pick wins, else campaign default →
