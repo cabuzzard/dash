@@ -3323,11 +3323,18 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
-        const [productPage, methodsResults] = await Promise.all([
+        const [productPage, methodsResults, strategyQ] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
           fetch(`https://api.notion.com/v1/databases/${METHODS_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ page_size: 100 }),
           }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { and: [
+              { property: "Product", relation: { contains: dash(productId) } },
+              { property: "Method", relation: { is_empty: true } },
+            ] } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })),
         ]);
         if (productPage.object === "error" || !productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
         const pp = productPage.properties || {};
@@ -3335,6 +3342,19 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
         const productType = (pp.Type?.rich_text || []).map(t => t.plain_text).join("");
         const marketingPhase = (pp["Marketing Phase"]?.rich_text || []).map(t => t.plain_text).join("");
+
+        // Once a Product Strategy exists, ground the method suggestion in it —
+        // the positioning (who it's for, what problem, what's unique) narrows
+        // which method actually fits better than Type/Description alone can.
+        const stratRecord = (strategyQ.results || [])[0];
+        let strategyBlock = "";
+        if (stratRecord) {
+          const sp = stratRecord.properties || {};
+          const srt = key => (sp[key]?.rich_text || []).map(t => t.plain_text).join("");
+          const lines = ["Customer", "Pain Points", "Solution", "Unique Opportunity", "Offer Structure"]
+            .map(f => srt(f) && `${f}: ${srt(f)}`).filter(Boolean);
+          if (lines.length) strategyBlock = `\nPRODUCT STRATEGY (use this to sharpen the match — it's the real positioning, weighs more than Type alone):\n${lines.join("\n")}\n`;
+        }
 
         // Already-attached methods, resolved to names, for the modal to show
         // alongside the fresh suggestion.
@@ -3379,7 +3399,7 @@ PRODUCT: ${productName}
 TYPE (format — this is the PRIMARY signal for which method fits): ${productType || "(not set — infer format from the name/description)"}
 MARKETING PHASE (funnel role — context only, not a format): ${marketingPhase || "(not set)"}
 DESCRIPTION: ${productDesc || "(none)"}
-
+${strategyBlock}
 EXISTING METHODS ON FILE:
 ${methodsBlock}
 
@@ -3774,10 +3794,17 @@ Return ONLY a JSON object, no other text, no markdown fences:
       }
 
       // ── getProductStrategy ──
-      // Reads the PRODUCT-level Strategy record (one per product, looked up
-      // by Product relation only — NOT scoped to a method) — all
-      // STRATEGY_FIELDS values plus Status/url. Powers the product site's
-      // Strategy panel.
+      // Reads the PRODUCT-level Strategy record — the positioning doc (one
+      // per product): STRATEGY_FIELDS values plus Status/url. Powers the
+      // product site's Strategy panel.
+      //
+      // The Strategy DB holds two DIFFERENT things under one schema: this
+      // product-level positioning record (Method relation empty) and
+      // separate per-method Briefs (Method relation set — see
+      // getMethodStrategy/saveMethodStrategy). Both share the same Product
+      // relation, so filtering on Product alone and taking the first result
+      // could silently return a Brief instead of the actual strategy — this
+      // now explicitly excludes records with a Method set.
       if (body.action === "getProductStrategy") {
         const { productId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
@@ -3785,7 +3812,10 @@ Return ONLY a JSON object, no other text, no markdown fences:
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
+          body: JSON.stringify({ filter: { and: [
+            { property: "Product", relation: { contains: dash(productId) } },
+            { property: "Method", relation: { is_empty: true } },
+          ] } }),
         }).then(r => r.json());
         const record = (q.results || [])[0];
         if (!record) return json({ strategy: null });
@@ -3794,6 +3824,51 @@ Return ONLY a JSON object, no other text, no markdown fences:
         const fields = {};
         for (const f of STRATEGY_FIELDS) fields[f] = rt(f);
         return json({ strategy: { id: record.id.replace(/-/g,""), url: record.url, status: props.Status?.select?.name || "", fields } });
+      }
+
+      // ── getCampaignStrategies ──
+      // Lists every product under a campaign with its Product Strategy
+      // (positioning) status/link and any Method Briefs under it — the
+      // campaign-wide "where are the strategies" view, since today they're
+      // only visible one product page at a time.
+      if (body.action === "getCampaignStrategies") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+        const productRels = campPage.properties?.["Products"]?.relation || [];
+        if (!productRels.length) return json({ products: [] });
+
+        const productPages = await Promise.all(productRels.map(r =>
+          fetch(`https://api.notion.com/v1/pages/${r.id}`, { headers: hdr }).then(res => res.json())
+        ));
+        const results = await Promise.all(productPages.map(async p => {
+          const productId = p.id.replace(/-/g, "");
+          const productName = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled";
+          const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const records = q.results || [];
+          const strategyRec = records.find(r => !(r.properties?.Method?.relation || []).length);
+          const briefRecs = records.filter(r => (r.properties?.Method?.relation || []).length);
+          const briefs = await Promise.all(briefRecs.map(async r => {
+            const methodRelId = r.properties.Method.relation[0]?.id;
+            let methodName = "Method";
+            if (methodRelId) {
+              const mp = await fetch(`https://api.notion.com/v1/pages/${methodRelId}`, { headers: hdr }).then(res => res.json()).catch(() => null);
+              methodName = (mp?.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Method";
+            }
+            return { id: r.id.replace(/-/g, ""), url: r.url, methodName, status: r.properties?.Status?.select?.name || "" };
+          }));
+          return {
+            productId, productName,
+            strategy: strategyRec ? { id: strategyRec.id.replace(/-/g, ""), url: strategyRec.url, status: strategyRec.properties?.Status?.select?.name || "" } : null,
+            briefs,
+          };
+        }));
+        return json({ products: results });
       }
 
       // ── generateStrategyField ──
@@ -3837,9 +3912,14 @@ Return ONLY a JSON object, no other text, no markdown fences:
         }
 
         // Existing other fields on this Strategy record, for coherence.
+        // Method: is_empty excludes per-method Briefs, which share this same
+        // Product relation but are a different record (see getProductStrategy).
         const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
+          body: JSON.stringify({ filter: { and: [
+            { property: "Product", relation: { contains: dash(productId) } },
+            { property: "Method", relation: { is_empty: true } },
+          ] } }),
         }).then(r => r.json());
         const existing = (q.results || [])[0];
         const existingProps = existing?.properties || {};
@@ -3915,7 +3995,10 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
 
         const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
+          body: JSON.stringify({ filter: { and: [
+            { property: "Product", relation: { contains: dash(productId) } },
+            { property: "Method", relation: { is_empty: true } },
+          ] } }),
         }).then(r => r.json());
         const existing = (q.results || [])[0];
         if (existing) {
@@ -4224,9 +4307,15 @@ Return ONLY a JSON array, no other text, no markdown fences:
 
         const [productPage, stratQ, phases] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+          // Method: is_empty excludes per-method Briefs (a separate record
+          // sharing this same Product relation) — this needs the actual
+          // product-level Strategy, not whichever record sorts first.
           fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
+            body: JSON.stringify({ filter: { and: [
+              { property: "Product", relation: { contains: dash(productId) } },
+              { property: "Method", relation: { is_empty: true } },
+            ] } }),
           }).then(r => r.json()),
           parseMethodPhases(hdr, dash(methodId)),
         ]);
@@ -4423,9 +4512,13 @@ Return ONLY a JSON array — no other text, no markdown fences:
 
         const [productPage, stratQ, arcPhases] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+          // Method: is_empty — see generateTitlesFromProductStrategy.
           fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
+            body: JSON.stringify({ filter: { and: [
+              { property: "Product", relation: { contains: dash(productId) } },
+              { property: "Method", relation: { is_empty: true } },
+            ] } }),
           }).then(r => r.json()),
           parseMethodPhases(hdr, dash(childMethodId)),
         ]);

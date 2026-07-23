@@ -301,6 +301,20 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- SEC 2.5: Strategies — every product's Product Strategy (positioning) and
+     any Method Briefs under it, in one place instead of one product page at
+     a time. Product Strategy = STRATEGY_FIELDS record with Method empty.
+     Method Brief = a separate record with Method set, method-specific
+     planning content that pulls from the Product Strategy. -->
+<div class="one-col">
+  <div class="col">
+    <h2>Strategies</h2>
+    <div class="content">
+      <div id="strategies-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
 <!-- SEC 3: four col — SM posts / development titles / publish titles / logins -->
 <div class="four-col">
   <div class="col">
@@ -3425,6 +3439,40 @@ function init() {
   loadSmPosts();
   loadDeliverables();
   loadDesignSpecs();
+  loadStrategies();
+}
+// ── STRATEGIES ──────────────────────────────────────────────────────────
+async function loadStrategies() {
+  const el = document.getElementById('strategies-list');
+  if (!el) return;
+  try {
+    const data = await w('getCampaignStrategies', { campaignId: CAMPAIGN_ID });
+    const products = data.products || [];
+    if (!products.length) { el.innerHTML = '<div class="empty">No products under this campaign yet.</div>'; return; }
+    const statusColor = s => s === 'Current' ? '#68d391' : (s === 'Stale' ? '#f0b429' : '#888');
+    el.innerHTML = products.map(p => {
+      const strat = p.strategy
+        ? `<a href="${p.strategy.url}" target="_blank" rel="noopener" class="notion-link" style="font-size:12px;">↗ Product Strategy</a> <span style="font-size:10px;color:${statusColor(p.strategy.status)};">${esc(p.strategy.status || '')}</span>`
+        : `<span style="font-size:12px;color:#666;">No Product Strategy yet</span>`;
+      const briefs = (p.briefs || []).map(b =>
+        `<div style="display:flex;align-items:center;gap:8px;padding:4px 0 4px 18px;">
+          <span style="font-size:10px;color:#666;">↳ brief</span>
+          <span style="flex:1;font-size:12px;color:#ccc;">${esc(b.methodName)}</span>
+          <a href="${b.url}" target="_blank" rel="noopener" class="notion-link" style="font-size:11px;">↗</a>
+          <span style="font-size:10px;color:${statusColor(b.status)};">${esc(b.status || '')}</span>
+        </div>`
+      ).join('');
+      return `<div style="border:1px solid #333;border-radius:3px;margin-bottom:8px;padding:8px 10px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="flex:1;font-size:13px;">${esc(p.productName)}</span>
+          ${strat}
+        </div>
+        ${briefs}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`;
+  }
 }
 
 // ── DELIVERABLES ─────────────────────────────────────────────────────
