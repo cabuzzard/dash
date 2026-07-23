@@ -1,172 +1,203 @@
-# Methods → Titles → Assets: how the content pipeline actually works
+# Keywords → Strategy → Methods → Titles → Assets: how the content pipeline works
 
-This documents the modals and generation logic behind the "Methods" system,
+This documents the modals and generation logic behind the content system,
 used on both campaign microsites (`microsites/{campaign}/index.html`) and
-product sites (`productsites/{product}/index.html`). It exists because the
-routing logic here is non-obvious — there are several different generation
-pipelines that look similar from the UI but do very different things.
+product sites (`productsites/{product}/index.html`).
 
-## The three layers
+## The flow
 
-1. **Method** (Methods DB) — a reusable content "recipe." Its own Notion page
-   body is the framework Claude reads when generating from it (e.g. "SEO
-   Post," "Drawing Post," "Upwork Proposal," "carousel — Growth").
-2. **Title** (Content Strategy DB) — one planned deliverable, produced from a
-   Method. Starts at Status "Development."
-3. **Asset** (Assets DB) — the actual produced content for a Title (image
-   concepts, a written post, a carousel script). Starts at "Asset Status"
-   Development, except where noted below.
+```
+Keywords → Research fields → Products → Product Strategy → Methods → Platforms → Titles → Assets → Logins
+```
+
+1. **Keywords** — seed terms, sometimes clustered prose (see "Clustered
+   Keywords" below), living in campaign Research and optionally on each
+   Product's own Keywords field.
+2. **Research fields** — Statement, Unique Opportunity, Key Message,
+   Campaign Goal, Pain Points, trend research — campaign-level context.
+3. **Products** — created under a campaign (Name, Type, Description, own
+   Keywords).
+4. **Product Strategy** — one record per product (Strategy DB, `Method`
+   relation empty): Customer, Pain Points, Solution, Benefits, Emotions,
+   Niche, Unique Opportunity, Offer Structure. The positioning doc.
+5. **Methods** — reusable content recipes (Methods DB). Suggested against
+   the Product Strategy once one exists (`suggestProductMethod`), or
+   attached first and reconciled against whatever context already exists.
+6. **Platforms** — the real Platforms DB (LinkedIn, Instagram, Substack,
+   etc.) — a dimension independent of Method, picked explicitly when
+   producing an asset.
+7. **Titles** — planned deliverables (Content Strategy DB), generated the
+   same way for every method type (see Modal 2).
+8. **Assets** — the produced content for a Title (Assets DB), packaged for
+   a Platform (see Modal 3).
+9. **Logins** — a specific account instance of a Platform (Logins DB) — the
+   actual publish target an Asset's `Login` relation points to.
 
 A Method can be attached to a **Campaign** and/or specific **Products**
-within it. These are separate relations — attaching to a product does NOT
-automatically make it usable the same way at the campaign level, and vice
-versa. This distinction is the single most common source of "it's not
-showing up" confusion.
+within it — separate relations. Attaching to a product does NOT
+automatically make it usable at the campaign level, and vice versa.
+`getProductResearch` (which supplies a product page's method list) reads
+strictly the product's own `Methods` relation, no fallback to campaign-level
+attachment — this is the most common source of "it's not showing up."
+
+---
+
+## Two things both called "Strategy" — don't conflate them
+
+The Strategy DB holds two different records under one schema, distinguished
+by whether `Method` is set:
+
+- **Product Strategy** (`Method` empty) — the positioning doc, one per
+  product. Built field-by-field via `generateStrategyField`, read via
+  `getProductStrategy`. This is what step 4 above means.
+- **Method Brief** (`Method` set) — a separate, per-method planning
+  document. `saveMethodStrategy`/`getMethodStrategy`/
+  `generateTitlesFromStrategy` are its actions, but **none of them have any
+  active UI caller anymore** — this is a legacy display-only remnant.
+  Existing Briefs still render read-only in a product's Strategy & Titles
+  panel "for reference/cleanup," but nothing creates new ones.
+
+Every Strategy DB query filters `Method: is_empty: true` when it wants the
+real Product Strategy — both records share the same `Product` relation, so
+querying by Product alone and taking the first result can silently return a
+Brief instead. (This was a real bug, fixed across six call sites.)
 
 ---
 
 ## Modal 1 — "Add Methods" (the `+` next to "Methods" / "Strategy & Titles")
 
-Worker actions: `suggestProductMethod` (on open) → `searchMethods` (as you
-type) → `addProductMethod` or `createAndAttachMethod` (on commit).
+Worker actions: `suggestProductMethod` (on open, now also grounded in the
+Product Strategy's Customer/Pain Points/Solution/Unique Opportunity/Offer
+Structure if one exists) → `searchMethods` (as you type) →
+`addProductMethod` or `createAndAttachMethod` (on commit).
 
-**On open:** calls `suggestProductMethod`, which returns methods already in
-this **product's own** `Methods` relation (not the campaign's) plus one
-AI-suggested method. These populate the list at the top of the modal.
+**On open:** shows methods already in this **product's own** `Methods`
+relation, plus one AI suggestion.
 
-**Search box ("Add existing method"):** searches the whole Methods DB by
-name (case-insensitive substring). Clicking a result **stages** it into the
-same list at the top — it is NOT saved yet.
+**Search box:** searches the whole Methods DB by name. Clicking a result
+**stages** it — not saved yet.
 
-**"Or add a brand-new method by name":** stages a `kind: 'new'` entry. On
-commit this calls `createAndAttachMethod`, which **always creates a new
-Method page** — there is no dedupe-by-name check. Typing the name of an
-existing method here creates a duplicate. Use the search box instead for
-anything that might already exist.
+**"Add a brand-new method by name":** always creates a new Method page, no
+dedupe check. Use search for anything that might already exist.
 
-**"Add Methods" button (commit) — this is the step that actually writes
-anything to Notion.** Nothing in the list above is saved until this is
-clicked. For each staged item:
-- `kind: 'existing'` → `addProductMethod` (only if not already in
-  `PM_ORIGINAL_IDS`, i.e. wasn't already attached when the modal opened).
-- `kind: 'new'` → `createAndAttachMethod`.
+**"Add Methods" (commit)** — the only step that writes to Notion. For each
+staged item: existing → `addProductMethod`; new → `createAndAttachMethod`.
 
-**What `addProductMethod` does, in order:**
-1. Writes the method into the **product's own** `Methods` relation.
-2. `propagateMethodToCampaigns` — reads the product's own `Campaigns`
-   relation, and for each one, adds the method to **that campaign's**
-   `Methods` relation too. (Methods DB's `Campaigns` property and Campaigns
-   DB's `Methods` property are a synced two-way relation, so this shows up
-   as the method having a `Campaigns` value even though the code only ever
-   writes the Campaign side.)
-3. `researchAndWriteMethodology` (best-effort) — **auto-researches and
-   completely replaces the method's page body** if it looks "thin": fewer
-   than 3 top-level Phase headings (`heading_1`/`heading_2` blocks), as
-   found by `parseMethodPhases`. This is a destructive rewrite — it deletes
-   every existing block and writes a freshly Claude-researched framework
-   instead. **If you hand-write a method's framework doc, give it at least 3
-   top-level headings**, or the first time it's attached to anything, your
-   content gets silently wiped and replaced.
-
-**Practical effect:** attaching a method to a product is what makes
-"Generate Titles" appear for it on that product's Strategy & Titles panel.
-Attaching to a campaign (only) makes it usable from the campaign microsite,
-but invisible on any product page — `getProductResearch` (which supplies the
-product page's method list) reads strictly the product's own `Methods`
-relation, with no fallback to campaign-level attachment.
+**What `addProductMethod` does:**
+1. Writes the method into the product's own `Methods` relation.
+2. `propagateMethodToCampaigns` — adds it to the campaign's `Methods`
+   relation too (a synced two-way relation with the Method's `Campaigns`
+   property, so writing one side updates both).
+3. `researchAndWriteMethodology` (best-effort) — **destructively rewrites**
+   the method's page body if it has fewer than 3 top-level Phase headings.
+   Give a hand-written method framework at least 3 top-level headings or it
+   gets silently wiped on first attach.
 
 ---
 
 ## Modal 2 — "Generate Titles" (per attached method)
 
-This is NOT one code path. The client (`genPsTitles` on product sites,
-`runMethodGenerate` on campaign microsites) branches on the **method's
-name**, checked in this order, before falling back to a type-based default.
-Both files must be kept in sync for a method to behave the same from either
-surface — that de-sync is exactly what caused SEO Post to misbehave when
-run from a product page while working fine from a campaign microsite.
+**One pipeline for every method type**, `generateMethodTitles`, except two
+that keep dedicated live-research actions because they need real external
+data a prompt can't provide:
 
-| Method name matches | Worker action | Model | Grounded in |
-|---|---|---|---|
-| `/carousel/i` | `researchAndGenerateCarouselTitles` | 10 fixed titles + descriptions, optional live Instagram benchmarking | campaign+product keywords, existing trend research |
-| `/upwork/i` AND `/title\|market\|trend/i` | `researchUpworkMarketTitles` | seed keyword → real Upwork search phrases → live ad-count scrape → titles for active markets | campaign/product keywords, live Apify scrape |
-| `/seo post/i` | `generateMethodTitles` → `saveMethodTitles` → per-title `generateTitleSubheads` | up to 5 titles, one seed keyword, grouped together, each gets a 3-subhead outline | campaign research (always) **+** product strategy (if selected) **+** the method's own framework page |
-| *(product page only)* method has "Needs Traffic Plan" checked (**Destination**) | `generateTitlesFromProductStrategy` | ONE deliverable per Phase in the method's own framework (`parseMethodPhases`), e.g. one title per major page section | the product's **Strategy doc** (Strategy DB record for this product×method), not raw campaign research |
-| *(product page only)* everything else (**flat/traffic**) | `generateTrafficMethodTitles` | 2-4 "post types," each a rollout SEQUENCE with `sequenceOrder` | the product's Strategy doc + the method's researched growth Arcs |
-| *(campaign microsite only)* everything else | `generateMethodTitles` → `saveMethodTitles` | titles for every Phase/Grouping literally found in the method's framework text | campaign research + product strategy (if selected) |
+| Method name matches | Worker action | What it does |
+|---|---|---|
+| `/carousel/i` | `researchAndGenerateCarouselTitles` | 10 titles + descriptions, optional live Instagram benchmarking |
+| `/upwork/i` AND `/title\|market\|trend/i` | `researchUpworkMarketTitles` | seed keyword → real Upwork search phrases → live ad-count scrape → titles for active markets |
+| everything else | `generateMethodTitles` → `saveMethodTitles` → per-title follow-up (`generateTitleSlides` for carousel-flagged titles, `generateTitleSubheads` for SEO Post) | titles for every Phase/Grouping in the method's own framework text |
 
-**Why the destination/flat split exists (product sites only):** a
-Destination method (a landing page, a booking form) is component-based — a
-page has a Headline, a CTA, a Guarantee — so titles come one-per-section
-from a Strategy doc. A flat/growth method (Instagram, email) is arc/sequence
-based — what matters is the STRUCTURE of a rollout, not a components list —
-so titles come from `generateTrafficMethodTitles`'s post-type/sequence
-model instead. **SEO Post is neither of these** — it's a third shape
-(keyword → N discrete titles), which is why it needs its own explicit
-branch rather than falling into either default.
+There is no more Destination-vs-flat/traffic split. That used to route to
+`generateTitlesFromProductStrategy` (one deliverable per phase) or
+`generateTrafficMethodTitles` (post-type/sequence) based on the method's
+"Needs Traffic Plan" checkbox — both still exist server-side but nothing
+calls them. The method's own framework text already drives phase/grouping
+shape generically, so a different code path per type wasn't needed.
 
-**`generateMethodTitles` info merge (the SEO Post / campaign-microsite-generic
-path):** always includes, unconditionally: Campaign name, Campaign Research
-(Keywords, Statement, Unique Opportunity, Key Message, Campaign Goal, Pain
-Points), and trend research if any exists on the campaign. If a product is
-selected, it ALSO adds that product's Avatar/Transformation/Offer
-Structure/Price/Proof Points/Objections/Unique Angle. **This merge is not
-configurable per-call** — selecting a product adds product context on top of
-campaign context, it never replaces it.
+**What `generateMethodTitles` merges in, for every method:**
+- **Campaign Research** (Keywords, Statement, Unique Opportunity, Key
+  Message, Campaign Goal, Pain Points, trend research) — included in
+  **Blend** mode, excluded in **Isolate**.
+- **Product page fields** (Avatar, Transformation, Offer Structure, Price,
+  Proof Points, Objections, Unique Angle) + **Product Strategy**
+  (Customer/Pain Points/Solution/Benefits/Emotions/Niche/Unique
+  Opportunity/Offer Structure) — included whenever a product is selected,
+  in **both** Blend and Isolate (Isolate only excludes campaign-level data).
+- **Seed keyword** (optional, picked via the UI dropdown or typed) — steers
+  what the model writes about. For **SEO Post specifically**, this is also
+  a deterministic override: every title's grouping is forced to match it
+  exactly, capped at 5 titles — that behavior is unique to SEO Post; for
+  every other method a picked keyword is grounding, not a hard rule.
 
-**Seed keyword for SEO Post specifically** (the one deterministic override,
-not left to the model): explicit `seedKeyword` param, if passed → else the
-selected product's own `Keywords` field → else the campaign's shared
-Research `Keywords` field. Every title from one run is force-grouped under
-whichever of these resolves, and capped at 5 titles regardless of what the
-model returns.
+**Blend/Isolate and the seed-keyword picker** show in the Generate Titles
+UI for every non-bespoke method (previously SEO-Post-only).
+
+### Clustered Keywords
+
+Research Keywords fields aren't always a flat comma list — some campaigns'
+research phase produces clustered prose (`"CLUSTER category/trend hook:
+term, term. CLUSTER comparison/decision: term, term..."`). A naive
+first-comma split against that text grabs the cluster label, not a real
+keyword. `getSeedKeywordCandidates` asks Claude to structure whichever
+Keywords text exists (product + campaign) into clean groups exactly as the
+source groups them — cluster labels preserved if present, one flat group if
+not — and the picker UI renders it as `<optgroup>`s. The server-side
+fallback (when no explicit pick arrives) also strips a leading `CLUSTER
+<label>:` before taking a term, so it degrades to a real keyword either way.
 
 ---
 
 ## Modal 3 — "Produce Assets" (🧩, per title)
 
-Worker action: `generateTitleAssets`. Reachable from both campaign
-microsites and product sites — same modal, same action, prefilled from
-`getTitleDetails`.
+Worker action: `generateTitleAssets`. Same modal, same action, on both
+surfaces, prefilled from `getTitleDetails`.
 
-**Default behavior (most asset types):** generates N (1-8, default 4)
-**distinct visual concept options** for the operator to choose between —
-image/design-oriented (Design Spec colors/fonts, Canva query if the method
-is "Drawing Post"), each saved as its own Asset at "Asset Status":
-**Development** (awaiting review/pick), short `Body` (2000-char cap).
+**Default behavior (most asset types):** N (1-8, default 4) **distinct
+visual concept options** to choose between — Design Spec colors/fonts,
+Canva query if the method is "Drawing Post" — each saved as its own Asset
+at **Development** status.
 
-**Special case: `assetType` matches `/seo post/i`** — completely different
-shape, triggered before any of the generic concept-generation logic runs:
+**`assetType` matches `/seo post/i`** — different shape entirely:
 - Produces exactly **one** finished article, not N options.
-- Reads the title's existing page body first; if it already has a 3-subhead
-  outline (written by the SEO Post title-generation step), uses those
-  headings verbatim as the article's structure. Otherwise writes 3 new ones.
-- Full article body (intro + 3 sections + conclusion) is written into the
-  **Asset's own page content** (blocks), not the `Body` property — the
-  property just gets a short preview (the intro).
-- Creates the Asset directly at **Publish** status (no Development/review
-  step), and also flips the **source Title's** own Status to Publish.
-- `count` is ignored for this asset type.
+- Uses the title's existing 3-subhead outline verbatim if present
+  (written by the SEO Post title-generation follow-up), else writes 3 new.
+- Full article written into the **Asset's page content** (blocks); the
+  `Body` property just gets the intro as a preview.
+- Created directly at **Publish** status, and flips the source Title to
+  Publish too. `count` is ignored.
+- **Blend/Isolate** here defaults to **Isolate** (its original behavior —
+  title/description/keywords/outline only). **Blend** is opt-in and adds
+  Campaign Statement/Unique Opportunity/Pain Points + Product
+  Avatar/Transformation/Offer/Proof Points/Unique Angle as grounding.
+  **Never includes the Product Strategy doc** — deliberately excluded.
+
+**Platform and Login** (both asset shapes): a Platform picker (from the
+real Platforms DB via `getPlatforms`) feeds the asset-writing prompt
+("write for this platform's norms") and sets both the Asset's `Platform
+Name` (quick-reference select) and its real `Platform` relation. A Login
+picker, auto-filtered to accounts on the chosen Platform (`getLogins`'
+`platformIds`), sets the Asset's `Login` relation — since a Login is one
+specific account instance of a Platform. Both are optional.
+
+**The Produce Assets modal also links the product's Strategy doc** (via
+`getProductStrategy`) for the operator to reference manually — this is
+purely informational, never merged into generation.
 
 ---
 
-## Quick answers to "where does X come from"
+## Quick reference: where each field comes from
 
-- **Campaign Research** (Keywords, Statement, Unique Opportunity, Key
-  Message, Campaign Goal, Pain Points, trend research): one record per
-  campaign in the Research DB. Always pulled into `generateMethodTitles`.
-- **Product's own fields** (Keywords, Avatar, Transformation, Offer
+- **Campaign Research**: one Research DB record per campaign. Pulled into
+  `generateMethodTitles` in Blend mode.
+- **Product page fields** (Keywords, Avatar, Transformation, Offer
   Structure, Price, Proof Points, Objections, Unique Angle): properties
-  directly on the Product page. Used by every product-scoped generator
-  (`generateTitlesFromProductStrategy`, `generateTrafficMethodTitles`, and
-  now the SEO Post seed-keyword resolution in `generateMethodTitles`).
-- **Product's Strategy doc**: a separate Strategy DB record, one per
-  product×method, containing the actual worked-out positioning/copy for
-  that method. Only `generateTitlesFromProductStrategy` and
-  `generateTrafficMethodTitles` read this — `generateMethodTitles` (the SEO
-  Post path) does not, it reads the Method's framework page instead.
+  directly on the Product page.
+- **Product Strategy**: Strategy DB record, `Method` empty, one per
+  product. Pulled into `generateMethodTitles` whenever a product is
+  selected, and into `suggestProductMethod`'s method suggestion.
+- **Method Brief**: Strategy DB record, `Method` set. Legacy — display only,
+  not read by any active generation path.
 - **Method's own framework page**: the Notion page body of the Method
-  itself. Read as free text by `generateMethodTitles` (loose,
-  prompt-injected) and as strictly-parsed Phase/Grouping blocks by
-  `parseMethodPhases` (used by the Destination and flat/traffic paths, and
-  by the "already researched, don't auto-rewrite" check).
+  itself, read as free text by `generateMethodTitles`.
+- **Platforms/Logins**: real relations on the Asset record (`Platform`,
+  `Login`), set explicitly via the Produce Assets modal — not AI-guessed.
