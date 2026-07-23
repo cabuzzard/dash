@@ -873,7 +873,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       </div>
 
       <label class="lm-label">Design spec <span style="color:#777;font-weight:normal;">— which visual system these assets use</span></label>
-      <select class="modal-ta" id="gaSpecInput" style="margin-bottom:10px;">
+      <select class="modal-ta" id="gaSpecInput" style="margin-bottom:10px;" onchange="gaSpecInputChanged()">
         <option value="">Campaign default</option>
       </select>
 
@@ -4399,6 +4399,99 @@ async function gaLoadSpecs() {
       sel.appendChild(o);
     });
   } catch(e) { /* picker stays on Campaign default */ }
+  const genOpt = document.createElement('option');
+  genOpt.value = '__generate__';
+  genOpt.textContent = '✨ Generate new spec…';
+  sel.appendChild(genOpt);
+}
+
+// Picking "Generate new spec" opens the preview flow instead of using the
+// value directly — revert the select to whatever it was showing before so
+// generation-in-progress never accidentally submits with an invalid value.
+let GA_SPEC_PREV_VALUE = '';
+function gaSpecInputChanged() {
+  const sel = document.getElementById('gaSpecInput');
+  if (sel.value === '__generate__') {
+    sel.value = GA_SPEC_PREV_VALUE;
+    openSpecPreviewModal();
+  } else {
+    GA_SPEC_PREV_VALUE = sel.value;
+  }
+}
+
+// ── DESIGN SPEC PREVIEW (demo sheet) ────────────────────────────────────
+// Two-phase: generateDesignSpecPreview produces a real reference image
+// (OpenAI gpt-image-1) + spec fields WITHOUT writing to Notion. Nothing is
+// persisted until "Approve & Use" — which is what "approval" means here:
+// creating the real Design Spec record, attaching it to the campaign, and
+// selecting it for the asset generation already in progress.
+let SP_LATEST = null; // { spec, demoSheetImage, demoSheetPrompt }
+
+function openSpecPreviewModal() {
+  document.getElementById('spStyleInput').value = '';
+  document.getElementById('spStatus').textContent = '';
+  document.getElementById('spStatus').style.color = '#888';
+  document.getElementById('spPreview').style.display = 'none';
+  document.getElementById('spGenBtn').disabled = false;
+  document.getElementById('spGenBtn').textContent = 'Generate demo sheet';
+  SP_LATEST = null;
+  document.getElementById('specPreviewModal').classList.add('open');
+}
+function closeSpecPreviewModal() { document.getElementById('specPreviewModal').classList.remove('open'); }
+document.getElementById('specPreviewModal').addEventListener('click', function(e) {
+  if (e.target === this) closeSpecPreviewModal();
+});
+
+async function spGenerate() {
+  const btn = document.getElementById('spGenBtn');
+  const status = document.getElementById('spStatus');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  status.style.color = '#888';
+  status.textContent = 'Researching campaign + generating demo sheet (real image, can take ~30s)…';
+  document.getElementById('spPreview').style.display = 'none';
+  try {
+    const r = await w('generateDesignSpecPreview', {
+      campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID,
+      productId: GA_PRODUCT_ID || undefined,
+      styleDirection: document.getElementById('spStyleInput').value.trim() || undefined,
+    });
+    if (r.error) throw new Error(r.error);
+    SP_LATEST = r;
+    document.getElementById('spImage').src = 'data:image/png;base64,' + r.demoSheetImage;
+    document.getElementById('spName').textContent = r.spec.name || 'Untitled spec';
+    document.getElementById('spAesthetic').textContent = r.spec.aesthetic || '';
+    document.getElementById('spPreview').style.display = 'block';
+    status.textContent = '';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+  } finally {
+    btn.disabled = false; btn.textContent = SP_LATEST ? '↻ Regenerate' : 'Generate demo sheet';
+  }
+}
+
+async function spApprove() {
+  if (!SP_LATEST) return;
+  const status = document.getElementById('spStatus');
+  status.style.color = '#888'; status.textContent = 'Saving…';
+  try {
+    const r = await w('approveDesignSpecPreview', {
+      campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID,
+      productId: GA_PRODUCT_ID || undefined,
+      name: SP_LATEST.spec.name, bg: SP_LATEST.spec.bg, ink: SP_LATEST.spec.ink, accent: SP_LATEST.spec.accent,
+      headlineFont: SP_LATEST.spec.headlineFont, bodyFont: SP_LATEST.spec.bodyFont, aesthetic: SP_LATEST.spec.aesthetic,
+      demoSheetImage: SP_LATEST.demoSheetImage, demoSheetPrompt: SP_LATEST.demoSheetPrompt,
+    });
+    if (r.error) throw new Error(r.error);
+    closeSpecPreviewModal();
+    await gaLoadSpecs();
+    const sel = document.getElementById('gaSpecInput');
+    sel.value = r.id;
+    GA_SPEC_PREV_VALUE = r.id;
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+  }
 }
 function gaTypeFilter() {
   const inp = document.getElementById('gaTypeInput');
@@ -4856,6 +4949,29 @@ async function runRegenKeywords() {
       <button class="secondary" onclick="closeBuildModal()">Close</button>
       <button class="secondary" id="bc-canva-btn" onclick="window.open('https://www.canva.com/create/instagram-posts/','_blank')" style="display:none">Open Canva ↗</button>
       <button id="bc-download-btn" onclick="bcDownloadAll()" style="display:none">Download All PNGs</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="specPreviewModal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div class="modal-title">Generate Design Spec</div>
+      <button class="modal-close" onclick="closeSpecPreviewModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:75vh;overflow-y:auto;">
+      <label class="lm-label">Style direction <span style="color:#777;font-weight:normal;">— optional, describe the look you want; leave blank to let it research the campaign</span></label>
+      <textarea class="modal-ta" id="spStyleInput" rows="2" style="margin-bottom:10px;resize:vertical;" placeholder="e.g. bold and high-contrast, editorial minimal, warm and handmade…"></textarea>
+      <button class="modal-btn save" id="spGenBtn" onclick="spGenerate()">Generate demo sheet</button>
+      <div id="spStatus" style="font-size:12px;color:#888;min-height:16px;margin-top:6px;"></div>
+      <div id="spPreview" style="display:none;margin-top:12px;">
+        <img id="spImage" alt="Design spec demo sheet" style="width:100%;border-radius:6px;border:1px solid #333;display:block;" />
+        <div id="spName" style="font-size:14px;font-weight:700;margin-top:10px;"></div>
+        <div id="spAesthetic" style="font-size:12px;color:#999;margin-top:4px;"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button class="modal-btn cancel" onclick="spGenerate()">↻ Try again</button>
+          <button class="modal-btn save" onclick="spApprove()">✓ Approve &amp; Use</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
