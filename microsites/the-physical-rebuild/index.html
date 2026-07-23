@@ -301,20 +301,6 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- SEC 2.5: Strategies — every product's Product Strategy (positioning) and
-     any Method Briefs under it, in one place instead of one product page at
-     a time. Product Strategy = STRATEGY_FIELDS record with Method empty.
-     Method Brief = a separate record with Method set, method-specific
-     planning content that pulls from the Product Strategy. -->
-<div class="one-col">
-  <div class="col">
-    <h2>Strategies</h2>
-    <div class="content">
-      <div id="strategies-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-    </div>
-  </div>
-</div>
-
 <!-- SEC 3: four col — SM posts / development titles / publish titles / logins -->
 <div class="four-col">
   <div class="col">
@@ -2783,7 +2769,12 @@ function makeProductRow(p) {
   const typeBadge = p.type
     ? `<span title="Type" style="font-size:9px;color:#888;border:1px solid #5f5f5f;border-radius:3px;padding:1px 5px;flex-shrink:0;white-space:nowrap;">${p.type}</span>`
     : '';
-  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}<button class="td-add-btn-inline" onclick="openProductMethodsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Review methods for this product">⚙</button>${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+  // Small per-row Strategy link — opens the editable Strategy modal instead
+  // of a dedicated page section. Dot colour reflects Status when a Strategy
+  // record already exists (Current=green, Stale=yellow, Draft/none=grey).
+  const stratColor = p.strategyStatus === 'Current' ? '#68d391' : (p.strategyStatus === 'Stale' ? '#f0b429' : '#555');
+  const stratLink = `<button class="td-add-btn-inline" onclick="openStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Product Strategy" style="${psStyle};background:none;cursor:pointer;color:${stratColor};">strategy</button>`;
+  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}<button class="td-add-btn-inline" onclick="openProductMethodsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Review methods for this product">⚙</button>${stratLink}${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
 }
 
@@ -2853,12 +2844,19 @@ async function addProductSite(productId, btn) {
 async function loadProducts() {
   const el = document.getElementById('product-list');
   try {
-    const [campData, allData] = await Promise.all([
+    const [campData, allData, stratData] = await Promise.all([
       w('getCampaignProducts', { campaignId: CAMPAIGN_ID }),
       w('searchProducts', { query: '' }),
+      w('getCampaignStrategies', { campaignId: CAMPAIGN_ID }).catch(() => ({ products: [] })),
     ]);
     PRODUCT_ITEMS = campData.products || [];
     ALL_PRODUCTS  = allData.products || [];
+    const stratByProduct = {};
+    (stratData.products || []).forEach(p => { stratByProduct[p.productId] = p.strategy || null; });
+    PRODUCT_ITEMS.forEach(p => {
+      const s = stratByProduct[p.id];
+      p.strategyStatus = s ? (s.status || 'Draft') : '';
+    });
     renderProducts();
   } catch(e) {
     el.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
@@ -3651,40 +3649,6 @@ function init() {
   loadSmPosts();
   loadDeliverables();
   loadDesignSpecs();
-  loadStrategies();
-}
-// ── STRATEGIES ──────────────────────────────────────────────────────────
-async function loadStrategies() {
-  const el = document.getElementById('strategies-list');
-  if (!el) return;
-  try {
-    const data = await w('getCampaignStrategies', { campaignId: CAMPAIGN_ID });
-    const products = data.products || [];
-    if (!products.length) { el.innerHTML = '<div class="empty">No products under this campaign yet.</div>'; return; }
-    const statusColor = s => s === 'Current' ? '#68d391' : (s === 'Stale' ? '#f0b429' : '#888');
-    el.innerHTML = products.map(p => {
-      const strat = p.strategy
-        ? `<a href="${p.strategy.url}" target="_blank" rel="noopener" class="notion-link" style="font-size:12px;">↗ Product Strategy</a> <span style="font-size:10px;color:${statusColor(p.strategy.status)};">${esc(p.strategy.status || '')}</span>`
-        : `<span style="font-size:12px;color:#666;">No Product Strategy yet</span>`;
-      const briefs = (p.briefs || []).map(b =>
-        `<div style="display:flex;align-items:center;gap:8px;padding:4px 0 4px 18px;">
-          <span style="font-size:10px;color:#666;">↳ brief</span>
-          <span style="flex:1;font-size:12px;color:#ccc;">${esc(b.methodName)}</span>
-          <a href="${b.url}" target="_blank" rel="noopener" class="notion-link" style="font-size:11px;">↗</a>
-          <span style="font-size:10px;color:${statusColor(b.status)};">${esc(b.status || '')}</span>
-        </div>`
-      ).join('');
-      return `<div style="border:1px solid #333;border-radius:3px;margin-bottom:8px;padding:8px 10px;">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span style="flex:1;font-size:13px;">${esc(p.productName)}</span>
-          ${strat}
-        </div>
-        ${briefs}
-      </div>`;
-    }).join('');
-  } catch(e) {
-    el.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`;
-  }
 }
 
 // ── DELIVERABLES ─────────────────────────────────────────────────────
@@ -3725,6 +3689,92 @@ async function loadDeliverables() {
     });
   } catch(e) {
     el.innerHTML = '<div class="empty" style="color:#f87171;">Error: ' + e.message + '</div>';
+  }
+}
+
+// ── PRODUCT STRATEGY MODAL ───────────────────────────────────────────
+// Fixed positioning schema, ONE record per PRODUCT (not per method) — same
+// 11 fields / same actions as the product-site Strategy panel, surfaced
+// here as a per-row modal instead of a dedicated page section.
+const STRATEGY_FIELDS = ["Customer", "Niche", "Pain Points", "Emotions", "Solution", "Benefits", "Unique Opportunity", "Transformation", "Offer Structure", "Proof Points", "Objections"];
+let SM_PRODUCT_ID = null;
+let SM_STRATEGY = { fields: {}, url: null };
+function sfId(field) { return 'sf-' + field.replace(/\s+/g, '-'); }
+
+function renderSmFields() {
+  const el = document.getElementById('sm-fields');
+  if (!el) return;
+  el.innerHTML = STRATEGY_FIELDS.map(f => {
+    const val = SM_STRATEGY.fields[f] || '';
+    const id = sfId(f);
+    return `<div style="border-bottom:1px solid #161616;padding:8px 0;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="flex:1;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#666;">${esc(f)}</span>
+        <button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" id="${id}-btn" onclick="genSmField('${f}')">${val ? '↻' : 'Generate'}</button>
+        <button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" onclick="saveSmField('${f}')">Save</button>
+      </div>
+      <textarea id="${id}" class="modal-ta" rows="2" style="width:100%;margin-top:6px;font-size:12px;resize:vertical;min-height:44px!important;padding:6px 8px;">${esc(val)}</textarea>
+    </div>`;
+  }).join('') + (SM_STRATEGY.url ? `<div style="margin-top:8px;"><a href="${SM_STRATEGY.url}" target="_blank" class="notion-link" style="font-size:11px;">↗ Open in Notion</a></div>` : '');
+}
+
+function openStrategyModal(productId, productName) {
+  SM_PRODUCT_ID = productId;
+  SM_STRATEGY = { fields: {}, url: null };
+  document.getElementById('sm-modal-title').textContent = (productName || 'Product') + ' — Strategy';
+  document.getElementById('sm-fields').innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  document.getElementById('strategyFieldsStatus').textContent = '';
+  document.getElementById('strategyModal').classList.add('open');
+  loadSmStrategy();
+}
+
+function closeStrategyModal() {
+  document.getElementById('strategyModal').classList.remove('open');
+}
+
+async function loadSmStrategy() {
+  try {
+    const data = await w('getProductStrategy', { productId: SM_PRODUCT_ID });
+    SM_STRATEGY = { fields: (data.strategy && data.strategy.fields) || {}, url: data.strategy ? data.strategy.url : null };
+  } catch(e) { /* leave panel showing empty fields */ }
+  renderSmFields();
+}
+
+async function genSmField(field) {
+  const btn = document.getElementById(sfId(field) + '-btn');
+  const status = document.getElementById('strategyFieldsStatus');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  if (status) { status.textContent = `Generating "${field}"…`; status.style.color = '#888'; }
+  try {
+    const r = await w('generateStrategyField', { productId: SM_PRODUCT_ID, field });
+    if (r.error) throw new Error(r.error);
+    SM_STRATEGY.fields[field] = r.text;
+    SM_STRATEGY.url = r.url;
+    renderSmFields();
+    if (status) { status.textContent = `✓ "${field}" generated.`; status.style.color = '#68d391'; }
+    const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
+    if (idx !== -1) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; renderProducts(); }
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+    if (btn) { btn.disabled = false; btn.textContent = '↻'; }
+  }
+}
+
+async function saveSmField(field) {
+  const ta = document.getElementById(sfId(field));
+  if (!ta) return;
+  const status = document.getElementById('strategyFieldsStatus');
+  if (status) { status.textContent = `Saving "${field}"…`; status.style.color = '#888'; }
+  try {
+    const r = await w('updateProductStrategyField', { productId: SM_PRODUCT_ID, field, value: ta.value.trim() });
+    if (r.error) throw new Error(r.error);
+    SM_STRATEGY.fields[field] = ta.value.trim();
+    SM_STRATEGY.url = r.url;
+    if (status) { status.textContent = `✓ "${field}" saved.`; status.style.color = '#68d391'; }
+    const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
+    if (idx !== -1 && !PRODUCT_ITEMS[idx].strategyStatus) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; renderProducts(); }
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
   }
 }
 
@@ -4981,6 +5031,18 @@ async function runRegenKeywords() {
     <div class="modal-actions">
       <button class="modal-btn cancel" onclick="closeFileUploadModal()">Cancel</button>
       <button class="modal-btn save" id="fum-save" onclick="submitFileUpload()" disabled>Upload</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="strategyModal" onclick="if(event.target===this)closeStrategyModal()">
+  <div class="modal" style="max-width:600px;padding:20px;max-height:85vh;overflow-y:auto;">
+    <div class="modal-title" id="sm-modal-title">Product Strategy</div>
+    <button class="modal-close" onclick="closeStrategyModal()">✕</button>
+    <div style="font-size:11px;color:#666;margin:6px 0 12px;">Fixed positioning — true regardless of which platform/method this product is marketed through.</div>
+    <div id="sm-fields"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    <div id="strategyFieldsStatus" style="font-size:12px;min-height:16px;margin-top:8px;"></div>
+    <div class="modal-actions">
+      <button class="modal-btn cancel" onclick="closeStrategyModal()">Close</button>
     </div>
   </div>
 </div>
