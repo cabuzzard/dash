@@ -295,6 +295,172 @@ async function parseMethodPhases(hdr, methodId) {
   return phases;
 }
 
+// ── CONTENT GRADING — "graded by skill not human" ──────────────────────
+// A generated concept only counts as done once it passes: it must clearly
+// serve the product's actual Strategy (the whole point of doing Strategy
+// work is that virality is judged against real positioning, not in the
+// abstract) AND execute a real, named viral hook framework. Mechanical
+// hygiene (banned filler words, em-dashes) is checked in CODE, not asked
+// of the model — deterministic rules can't be talked out of by a generous
+// grader, mirroring the hard pre-publish checks other tools use.
+const GRADE_PASS_THRESHOLD = 7; // out of 10
+const GRADE_MAX_ATTEMPTS   = 3; // 1 initial + up to 2 regenerate-and-regrade passes
+const GRADE_BANNED_WORDS = [
+  "unlock", "unleash", "elevate", "seamless", "seamlessly", "dive in", "dive into",
+  "game-changer", "game changer", "revolutionize", "supercharge", "next-level",
+  "in today's world", "in today's fast-paced", "navigate the", "delve into",
+  "it's important to note", "boost your", "take it to the next level",
+];
+const GRADE_HOOK_FORMS = [
+  "Reverse Hook (say the opposite of the common advice)",
+  "Contrarian Claim (a polarizing take, pick-a-side)",
+  "Specific Numbers / Receipts (real, precise figures instead of vague claims)",
+  "Curiosity Gap (withholds the payoff to force a read-on)",
+  "Pattern Interrupt (breaks the expected format/opening for the platform)",
+  "Before/After Transformation (concrete then-vs-now contrast)",
+  "Social Proof (real results, real people, real numbers behind them)",
+];
+
+function gradeMechanicalCheck(text) {
+  const t = String(text || "");
+  const issues = [];
+  if (/—/.test(t)) issues.push("contains an em-dash (—)");
+  const lower = t.toLowerCase();
+  GRADE_BANNED_WORDS.forEach(w => { if (lower.includes(w)) issues.push(`contains banned phrase "${w}"`); });
+  return { ok: issues.length === 0, issues };
+}
+
+// Pulls the product's real Strategy record (the 11 STRATEGY_FIELDS,
+// Product-only per the current schema — Method relation must be empty, see
+// getProductStrategy) so grading judges against actual positioning, not
+// virality in a vacuum. Falls back to campaign-level Statement/Unique
+// Opportunity/Pain Points when no product is attached. `productId`/
+// `campaignId` must already be dashed (caller's responsibility, same
+// convention as extractBlocksTextRecursive).
+async function fetchStrategyForGrading(hdr, campaignId, productId, hasProduct) {
+  if (hasProduct) {
+    try {
+      const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+        method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ filter: { and: [
+          { property: "Product", relation: { contains: productId } },
+          { property: "Method", relation: { is_empty: true } },
+        ] } }),
+      }).then(r => r.json());
+      const record = (q.results || [])[0];
+      if (record) {
+        const props = record.properties || {};
+        const rt = key => (props[key]?.rich_text || []).map(t => t.plain_text).join("");
+        const lines = STRATEGY_FIELDS.map(f => { const v = rt(f); return v ? `${f}: ${v}` : ""; }).filter(Boolean);
+        if (lines.length) return lines.join("\n");
+      }
+    } catch(e) { /* fall through to campaign-level fallback */ }
+  }
+  try {
+    const researchRaw = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+      method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: campaignId } } }),
+    }).then(r => r.json());
+    const rt = key => { for (const r of (researchRaw.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+    const lines = [
+      rt("Statement")          && `Statement: ${rt("Statement")}`,
+      rt("Unique Opportunity") && `Unique Opportunity: ${rt("Unique Opportunity")}`,
+      rt("Pain Points")        && `Pain Points: ${rt("Pain Points")}`,
+    ].filter(Boolean);
+    return lines.join("\n");
+  } catch(e) { return ""; }
+}
+
+// One Claude call: scores strategy fit (0-5) + viral hook execution (0-5).
+// Mechanical hygiene is checked in code and hard-caps the final score at 5
+// when it fails, so a slick-sounding grade can never paper over a literal
+// banned word or em-dash.
+async function gradeConcept(env, { body, assetType, strategyBlock, keywords, platformName }) {
+  const mech = gradeMechanicalCheck(body);
+  if (!env.ANTHROPIC_API_KEY) {
+    // No grading available — pass through on mechanical check alone rather
+    // than block content creation entirely on a missing key.
+    return { score: mech.ok ? 10 : 5, passed: mech.ok, hookForm: "", notes: mech.ok ? "Not graded (no ANTHROPIC_API_KEY) — mechanical check only." : "Mechanical issues: " + mech.issues.join("; "), fixInstructions: mech.issues.join("; ") };
+  }
+  const prompt = `You are a strict content grader. Score this ${assetType}${platformName ? ` for ${platformName}` : ""} on exactly two dimensions.
+
+CONTENT TO GRADE:
+${body}
+
+${strategyBlock ? `PRODUCT/CAMPAIGN STRATEGY (the content must clearly serve THIS positioning — virality that ignores strategy is not a pass):\n${strategyBlock}\n` : "(No strategy on file — grade strategy fit as neutral/3, note that strategy is missing.)\n"}${keywords ? `KEYWORDS it should naturally reflect: ${keywords}\n` : ""}
+RECOGNIZED VIRAL HOOK FORMS (the content must clearly execute ONE of these, not a vague good-vibes opener):
+${GRADE_HOOK_FORMS.map(f => "- " + f).join("\n")}
+
+Score:
+1. STRATEGY FIT (0-5): does it speak to the customer/pain points/emotions/benefits/unique opportunity above, and naturally include the keywords?
+2. VIRAL FORM (0-5): does it clearly execute one named hook form above, well?
+
+Return ONLY this JSON, no other text:
+{ "strategyScore": 0-5, "viralScore": 0-5, "hookForm": "which form it uses, or 'none'", "strategyNotes": "1-2 sentences", "fixInstructions": "if scoring below 4/5 on either, specific actionable rewrite instructions — otherwise empty string" }`;
+
+  try {
+    const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: prompt }] }),
+    });
+    const aiData = await aiResp.json();
+    if (!aiResp.ok) throw new Error(aiData.error?.message || "grading call failed");
+    const raw = (aiData.content?.[0]?.text || "").replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+    const strategyScore = Math.max(0, Math.min(5, Number(parsed.strategyScore) || 0));
+    const viralScore    = Math.max(0, Math.min(5, Number(parsed.viralScore) || 0));
+    let score = strategyScore + viralScore;
+    const notesParts = [`Hook form: ${parsed.hookForm || "none"}.`, parsed.strategyNotes || ""];
+    if (!mech.ok) { score = Math.min(score, 5); notesParts.push("Mechanical issues: " + mech.issues.join("; ") + "."); }
+    return {
+      score,
+      passed: score >= GRADE_PASS_THRESHOLD && mech.ok,
+      hookForm: parsed.hookForm || "",
+      notes: notesParts.filter(Boolean).join(" "),
+      fixInstructions: [parsed.fixInstructions || "", !mech.ok ? "Also fix: " + mech.issues.join("; ") : ""].filter(Boolean).join(" "),
+    };
+  } catch(e) {
+    return { score: 0, passed: false, hookForm: "", notes: "Grading failed: " + e.message, fixInstructions: "" };
+  }
+}
+
+// Regenerates ONE failing concept in isolation — reads the grader's fix
+// instructions and keeps every sibling option's title in view so the
+// rewrite stays distinct from the rest of the batch. Same grounding as the
+// original batch generation. Returns the original concept unchanged if
+// regeneration itself fails, so a flaky retry never loses the last-good copy.
+async function regenerateConcept(env, { original, assetType, title, description, seedKeywords, researchInstructions, methodName, methodBody, subMethodName, subMethodBody, platformName, spec, isDrawingPost, siblingTitles, fixInstructions, guidelines }) {
+  if (!env.ANTHROPIC_API_KEY) return original;
+  const prompt = `${researchGuidelinesBlock(guidelines)}You are revising ONE content concept that failed a quality grade. Fix it — do not start over from scratch unless the fix requires it.
+
+ORIGINAL CONCEPT: ${original.assetTitle || ""}
+${original.body || ""}
+
+WHAT NEEDS TO CHANGE: ${fixInstructions || "Strengthen strategy fit and viral hook execution."}
+
+IDEA / TITLE: ${title}
+${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `SEED KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS: ${researchInstructions}\n` : ""}${methodName ? `METHOD: ${methodName}${methodBody ? `\nMETHOD NOTES: ${methodBody}` : ""}\n` : ""}${platformName ? `PLATFORM: ${platformName}\n` : ""}${subMethodName ? `SUB METHOD: ${subMethodName}${subMethodBody ? `\n${subMethodBody}` : ""}\n` : ""}
+DESIGN SPEC: Background ${spec.bg} · Ink ${spec.ink} · Accent ${spec.accent} · Headline font ${spec.headlineFont} · Body font ${spec.bodyFont}
+${(siblingTitles || []).length ? `OTHER OPTIONS ALREADY IN THIS BATCH (stay distinct from these): ${siblingTitles.filter(t => t !== original.assetTitle).join(", ")}\n` : ""}
+Every concept is a ${assetType} — do not propose other formats. Must be complete enough to build immediately.
+${isDrawingPost ? `Also include "canvaQuery": a short 2-4 word Canva template search phrase.\n` : ""}
+Return ONLY this JSON, no other text: { "assetTitle": "short distinct option name", "platform": "${original.platform || "Instagram"}", "body": "full revised concept: on-image text, layout, spec usage, caption"${isDrawingPost ? ', "canvaQuery": "2-4 word Canva search phrase"' : ""} }`;
+
+  try {
+    const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }),
+    });
+    const aiData = await aiResp.json();
+    if (!aiResp.ok) return original;
+    const raw = (aiData.content?.[0]?.text || "").replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+    return { assetTitle: parsed.assetTitle || original.assetTitle, platform: parsed.platform || original.platform, body: parsed.body || original.body, canvaQuery: parsed.canvaQuery || original.canvaQuery };
+  } catch(e) { return original; }
+}
+
 // Researches and writes a COMPLETE Phase>Grouping>items methodology
 // framework for a method — the "replenish until fully researched" step.
 // Skips (returns {skipped:true}) if the method already has a substantial
@@ -5073,12 +5239,14 @@ Return ONLY a JSON array — no other text, no markdown fences:
           t.grouping = parts.length > 1 ? parts.slice(1).join(' > ').trim() : (t._rawGrouping || '');
           delete t._rawGrouping;
         });
-        // Attach asset summaries to PUBLISH-stage titles so the sites can
-        // render them as rows under each title. Dev-stage titles skip the
-        // extra fetches — assets matter once a title is being published.
-        const PUB_STAGES = new Set(["Publish", "Published", "Done"]);
+        // Attach asset summaries to any title that already has generated
+        // Assets — regardless of stage, since Generate Assets now runs
+        // directly from Development titles too (not just Publish-stage) and
+        // both the title row and the Generate Assets modal's "existing
+        // assets" panel need to see them. Titles with no assetIds cost
+        // nothing extra either way.
         await Promise.all(titleList.map(async t => {
-          if (!PUB_STAGES.has(t.stage) || !t.assetIds.length) { t.assets = []; return; }
+          if (!t.assetIds.length) { t.assets = []; return; }
           t.assets = (await Promise.all(t.assetIds.map(async aid => {
             try {
               const r = await fetch(`https://api.notion.com/v1/pages/${dashify(aid)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
@@ -5091,6 +5259,9 @@ Return ONLY a JSON array — no other text, no markdown fences:
                 type: p["Asset Type"]?.select?.name || "",
                 status: p["Asset Status"]?.select?.name || "",
                 designLink: p["Design Link"]?.url || "",
+                gradeScore: p["Grade Score"]?.number ?? null,
+                gradeStatus: p["Status"]?.select?.name || "",
+                gradeNotes: p["Grade Notes"]?.rich_text?.map(x => x.plain_text).join("") || "",
               };
             } catch(e) { return null; }
           }))).filter(Boolean);
@@ -6224,21 +6395,52 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         } catch(e) { return json({ error: "Could not parse generated concepts — try again" }, 502); }
         if (!Array.isArray(concepts) || !concepts.length) return json({ error: "No concepts generated — try again" }, 502);
 
+        // ── GRADING GATE — the last stage of generation, not a separate
+        // human review step. Every concept is scored against the product's
+        // real Strategy + a named viral hook form before it's saved; a
+        // failing concept gets regenerated (with the grader's specific fix
+        // instructions fed back in) up to GRADE_MAX_ATTEMPTS times. Concepts
+        // that still fail after that are saved anyway (never silently
+        // dropped) but tagged Status="Needs Revision" instead of "Ready".
+        const strategyBlock = await fetchStrategyForGrading(dsHdr, dsDash(campaignId), hasProduct ? dsDash(productId) : "", hasProduct);
+        const keywordsForGrading = [seedKeywords].filter(Boolean).join(", ");
+        const siblingTitles = concepts.map(c => c.assetTitle).filter(Boolean);
+
         const created = [];
         const failures = [];
         for (const c of concepts.slice(0, count)) {
+          let current = c;
+          let grade = null;
+          for (let attempt = 1; attempt <= GRADE_MAX_ATTEMPTS; attempt++) {
+            grade = await gradeConcept(env, {
+              body: current.body, assetType, strategyBlock, keywords: keywordsForGrading,
+              platformName: platformName || subMethodName || current.platform,
+            });
+            if (grade.passed || attempt === GRADE_MAX_ATTEMPTS) break;
+            current = await regenerateConcept(env, {
+              original: current, assetType, title, description, seedKeywords, researchInstructions,
+              methodName, methodBody, subMethodName, subMethodBody,
+              platformName: platformName || subMethodName || current.platform,
+              spec, isDrawingPost, siblingTitles, fixInstructions: grade.fixInstructions,
+              guidelines: body.researchGuidelines,
+            });
+          }
+          const passed = !!(grade && grade.passed);
           const properties = {
-            "Asset Title":  { title: [{ text: { content: String(c.assetTitle || "Untitled option").slice(0, 200) } }] },
+            "Asset Title":  { title: [{ text: { content: String(current.assetTitle || "Untitled option").slice(0, 200) } }] },
             "Asset Status": { select: { name: "Development" } },
-            "Body":         { rich_text: [{ text: { content: String(c.body || "").slice(0, 2000) } }] },
+            "Body":         { rich_text: [{ text: { content: String(current.body || "").slice(0, 2000) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+            "Status":       { select: { name: passed ? "Ready" : "Needs Revision" } },
+            "Grade Score":  { number: grade ? grade.score : null },
+            "Grade Notes":  { rich_text: [{ text: { content: String((grade && grade.notes) || "").slice(0, 2000) } }] },
           };
-          const platName = platformName || subMethodName || c.platform; // explicit pick > sub method > AI-guessed
+          const platName = platformName || subMethodName || current.platform; // explicit pick > sub method > AI-guessed
           if (platName) properties["Platform Name"] = { select: { name: String(platName).slice(0, 100) } };
           if (platformId) properties["Platform"] = { relation: [{ id: dsDash(platformId) }] };
           if (loginId) properties["Login"] = { relation: [{ id: dsDash(loginId) }] };
           properties["Asset Type"] = { select: { name: String(assetType).slice(0, 100) } }; // required — every asset has a type
-          if (isDrawingPost && c.canvaQuery) properties["Design Link"] = { url: "https://www.canva.com/templates/?query=" + encodeURIComponent(String(c.canvaQuery).slice(0, 80)) };
+          if (isDrawingPost && current.canvaQuery) properties["Design Link"] = { url: "https://www.canva.com/templates/?query=" + encodeURIComponent(String(current.canvaQuery).slice(0, 80)) };
           if (campaignId)  properties["Campaign"]      = { relation: [{ id: dsDash(campaignId) }] };
           const resp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
@@ -6246,11 +6448,15 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
             body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties }),
           });
           const result = await resp.json();
-          if (resp.ok && result.id) created.push({ id: result.id.replace(/-/g,""), title: c.assetTitle || "Untitled option" });
+          if (resp.ok && result.id) created.push({ id: result.id.replace(/-/g,""), title: current.assetTitle || "Untitled option", gradeScore: grade ? grade.score : null, passed });
           else failures.push(result.message || "create failed");
         }
         if (!created.length) return json({ error: "All asset creates failed: " + (failures[0] || "unknown") }, 502);
-        return json({ success: true, created: created.length, assets: created, failed: failures.length });
+        return json({
+          success: true, created: created.length, assets: created, failed: failures.length,
+          passedCount: created.filter(a => a.passed).length,
+          revisionCount: created.filter(a => !a.passed).length,
+        });
       }
 
       // ── researchAndGenerateCarouselTitles ──

@@ -1374,7 +1374,7 @@ async function loadTitles() {
       div.className = 'title-row';
       div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       if (!t.assets || !t.assets.length) return div;
-      // publish-stage titles: render each linked asset as an indented row
+      // render each linked asset as an indented row, with its grade badge
       const wrap = document.createElement('div');
       wrap.appendChild(div);
       t.assets.forEach(a => {
@@ -1385,6 +1385,7 @@ async function loadTitles() {
           + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.title)}</span>`
           + (a.type ? `<span style="font-size:10px;color:#777;flex-shrink:0;">${esc(a.type)}</span>` : '')
           + (a.status ? `<span style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${a.status==='Published'?'#4fd1c5':(a.status==='Publish'?'#fc8181':'#888')};flex-shrink:0;">${esc(a.status)}</span>` : '')
+          + (a.gradeScore != null ? `<span title="${esc(a.gradeNotes || '')}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;flex-shrink:0;background:${a.gradeStatus==='Needs Revision'?'rgba(252,129,129,.12)':'rgba(104,211,145,.12)'};color:${a.gradeStatus==='Needs Revision'?'#fc8181':'#68d391'};">${a.gradeStatus==='Needs Revision'?'⚠':'✓'} ${a.gradeScore}/10</span>` : '')
           + (a.designLink ? `<a href="${esc(a.designLink)}" target="_blank" rel="noopener" style="color:#4488ff;text-decoration:none;font-size:11px;flex-shrink:0;" title="Design link">🎨</a>` : '')
           + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" style="flex-shrink:0;">↗</a>`
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset" style="flex-shrink:0;">✕</button>`;
@@ -4581,7 +4582,8 @@ function gaRenderExisting(titleId) {
     row.innerHTML =
       `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${esc(a.type || '—')}</span>` +
       `<span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title)}</span>` +
-      `<span style="font-size:10px;color:#666;flex-shrink:0;">${esc(a.status || '')}</span>`;
+      `<span style="font-size:10px;color:#666;flex-shrink:0;">${esc(a.status || '')}</span>` +
+      (a.gradeScore != null ? `<span title="${esc(a.gradeNotes || '')}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;flex-shrink:0;background:${a.gradeStatus==='Needs Revision'?'rgba(252,129,129,.12)':'rgba(104,211,145,.12)'};color:${a.gradeStatus==='Needs Revision'?'#fc8181':'#68d391'};">${a.gradeStatus==='Needs Revision'?'⚠':'✓'} ${a.gradeScore}/10</span>` : '');
     if (GA_CAROUSEL_ASSET_TYPE_RE.test(a.type || '')) {
       const buildBtn = document.createElement('button');
       buildBtn.type = 'button';
@@ -4708,10 +4710,14 @@ async function submitGenAssets() {
       platformName: document.getElementById('gaPlatformInput')?.value ? document.getElementById('gaPlatformInput').selectedOptions[0].textContent : undefined,
       loginId: document.getElementById('gaLoginInput')?.value || undefined,
     });
-    status.textContent = r.sectionCount != null
-      ? `✓ Wrote the full post (${r.sectionCount} sections${r.contextMode === 'blend' ? ', blended with campaign + product context' : ''}) and published it.`
-      : `✓ Created ${r.created} asset option${r.created === 1 ? '' : 's'}${r.failed ? ` (${r.failed} failed)` : ''} — they appear under the title once it's in Publish.`;
-    status.style.color = '#68d391';
+    if (r.sectionCount != null) {
+      status.textContent = `✓ Wrote the full post (${r.sectionCount} sections${r.contextMode === 'blend' ? ', blended with campaign + product context' : ''}) and published it.`;
+      status.style.color = '#68d391';
+    } else {
+      const revised = r.revisionCount || 0;
+      status.textContent = `✓ Created ${r.created} asset option${r.created === 1 ? '' : 's'}${r.failed ? ` (${r.failed} failed)` : ''} — ${r.passedCount || 0} passed grading${revised ? `, ${revised} flagged Needs Revision after retries` : ''}.`;
+      status.style.color = revised ? '#f0b429' : '#68d391';
+    }
     btn.textContent = 'Done';
     await loadTitles();
     setTimeout(closeGenAssetsModal, 2200);
