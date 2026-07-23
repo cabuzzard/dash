@@ -2291,7 +2291,13 @@ async function mgmRefreshKeywordPicker() {
   const wrap = document.getElementById('mgm-keyword-wrap');
   const sel = document.getElementById('mgm-keyword');
   if (!wrap || !sel) return;
-  if (!/seo post/i.test(MGM_METHOD_NAME)) { wrap.style.display = 'none'; return; }
+  // Carousel and Upwork-market methods use their own bespoke live-research
+  // flows (see runMethodGenerate) and don't read a seed keyword at all.
+  // Every other method goes through the unified generateMethodTitles
+  // pipeline, where a picked keyword is optional grounding — SEO Post is the
+  // only one that forces every title's grouping to match it deterministically.
+  const isBespoke = /carousel/i.test(MGM_METHOD_NAME) || (/upwork/i.test(MGM_METHOD_NAME) && /title|market|trend/i.test(MGM_METHOD_NAME));
+  if (isBespoke) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'block';
   sel.innerHTML = '<option>Loading…</option>';
   const myToken = ++MGM_KEYWORD_TOKEN;
@@ -2300,8 +2306,10 @@ async function mgmRefreshKeywordPicker() {
     const data = await w('getSeedKeywordCandidates', { campaignId: CAMPAIGN_ID, productId });
     if (myToken !== MGM_KEYWORD_TOKEN) return;
     const groups = data.groups || [];
-    if (!groups.length) { sel.innerHTML = '<option value="">(none found — will fall back to method name)</option>'; return; }
-    sel.innerHTML = groups.map(g => {
+    const isSeoPost = /seo post/i.test(MGM_METHOD_NAME);
+    const noneOpt = isSeoPost ? '' : '<option value="">(none — let the method framework decide)</option>';
+    if (!groups.length) { sel.innerHTML = noneOpt || '<option value="">(none found — will fall back to method name)</option>'; return; }
+    sel.innerHTML = noneOpt + groups.map(g => {
       const label = g.label ? esc(g.label) : (g.source === 'product' ? 'Product Keywords' : 'Campaign Keywords');
       const opts = (g.keywords || []).map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('');
       return `<optgroup label="${label}">${opts}</optgroup>`;
@@ -2358,7 +2366,8 @@ async function runMethodGenerate() {
     }
 
     const contextMode = (document.querySelector('input[name="mgmContext"]:checked') || {}).value || 'blend';
-    const seedKeyword = /seo post/i.test(MGM_METHOD_NAME) ? (document.getElementById('mgm-keyword')?.value || undefined) : undefined;
+    const mgmIsBespoke = /carousel/i.test(MGM_METHOD_NAME) || (/upwork/i.test(MGM_METHOD_NAME) && /title|market|trend/i.test(MGM_METHOD_NAME));
+    const seedKeyword = mgmIsBespoke ? undefined : (document.getElementById('mgm-keyword')?.value || undefined);
     status.textContent = contextMode === 'isolate' ? 'Reading method framework and product strategy (isolated — no campaign research)…' : 'Reading method framework and product strategy…';
     const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID, contextMode, seedKeyword });
     if (data.error) throw new Error(data.error);
@@ -4613,7 +4622,7 @@ async function runRegenKeywords() {
       <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="mgmContext" value="isolate"> Isolate — product only</label>
     </div>
     <div id="mgm-keyword-wrap" style="display:none;margin-top:10px;">
-      <div class="method-gen-subtitle">Seed keyword <span style="color:#777;font-weight:normal;">— research is clustered; pick one angle</span></div>
+      <div class="method-gen-subtitle">Seed keyword <span style="color:#777;font-weight:normal;">— optional grounding (required-in-effect for SEO Post); research is sometimes clustered, pick one angle</span></div>
       <select id="mgm-keyword" class="modal-ta" style="margin-top:4px;width:100%;"></select>
     </div>
     <div class="method-gen-actions">

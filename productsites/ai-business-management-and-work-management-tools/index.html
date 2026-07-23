@@ -759,15 +759,17 @@ async function saveStrategyField(field) {
 function psRowBtn(label, onclick, id, disabled) {
   return `<button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" ${id ? `id="${id}"` : ''} ${disabled ? `disabled title="${esc(disabled)}"` : ''} onclick="${onclick}">${label}</button>`;
 }
-// Research-scope choice for Generate Titles — only meaningful for SEO Post
-// (the only method type genPsTitles reads it for), so only rendered there.
+// Research-scope + seed-keyword choice for Generate Titles — shown for every
+// method that goes through the unified generateMethodTitles pipeline.
+// Carousel and Upwork-market methods use their own bespoke live-research
+// actions instead (see genPsTitles) and don't read either of these.
 function psContextSelect(methodId, methodName) {
-  if (!/seo post/i.test(methodName)) return '';
+  if (/carousel/i.test(methodName) || (/upwork/i.test(methodName) && /title|market|trend/i.test(methodName))) return '';
   return `<select id="psRowContext-${methodId}" class="td-add-btn-inline" style="font-size:10px;padding:2px 4px;" title="Research scope for Generate Titles">
     <option value="blend" selected>Blend</option>
     <option value="isolate">Isolate</option>
   </select>
-  <select id="psRowKeyword-${methodId}" class="td-add-btn-inline" style="font-size:10px;padding:2px 4px;max-width:180px;" title="Seed keyword — research is clustered; pick one angle">
+  <select id="psRowKeyword-${methodId}" class="td-add-btn-inline" style="font-size:10px;padding:2px 4px;max-width:180px;" title="Seed keyword — optional, sharpens the angle">
     <option value="">Loading keywords…</option>
   </select>`;
 }
@@ -820,7 +822,7 @@ function renderStrategyPanel() {
         childrenHtml = (detail.trafficMethods || []).map(c => `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px 6px 22px;border-top:1px solid #5f5f5f;flex-wrap:wrap;">
             <span style="font-size:10px;color:#666;">↳ traffic</span>
             <span style="flex:1;font-size:12px;color:#ccc;">${esc(c.name)}</span>
-            ${psRowBtn('Generate Titles', `genPsTitles('${c.id}',false,'${m.id}')`, 'psRowTitles-' + c.id)}
+            ${psRowBtn('Generate Titles', `genPsTitles('${c.id}',false,'${m.id}')`, 'psRowTitles-' + c.id)}${psContextSelect(c.id, c.name)}
           </div>`).join('');
       } else if (!(detail.trafficMethods || []).length) {
         controls = psRowBtn('Generate Titles', `genPsTitles('${m.id}',false,null)`, 'psRowTitles-' + m.id) + psContextSelect(m.id, m.name);
@@ -835,9 +837,11 @@ function renderStrategyPanel() {
       ${childrenHtml}
     </div>`;
   }).join('');
-  PRODUCT_METHODS.filter(m => /seo post/i.test(m.name) && !PRODUCT_METHOD_CHILD_IDS.has(m.id)).forEach(m => psLoadKeywordOptions(m.id));
+  const bespoke = n => /carousel/i.test(n) || (/upwork/i.test(n) && /title|market|trend/i.test(n));
+  PRODUCT_METHODS.filter(m => !bespoke(m.name) && !PRODUCT_METHOD_CHILD_IDS.has(m.id)).forEach(m => psLoadKeywordOptions(m.id));
+  PRODUCT_METHODS.forEach(m => (PRODUCT_METHOD_DETAILS[m.id]?.trafficMethods || []).forEach(c => { if (!bespoke(c.name)) psLoadKeywordOptions(c.id); }));
 }
-// Populates a SEO Post row's seed-keyword select after the row itself is
+// Populates a method row's seed-keyword select after the row itself is
 // already in the DOM (the render loop above builds HTML synchronously, so
 // this runs as a separate pass right after). Research Keywords fields are
 // sometimes clustered prose, not a flat list — see getSeedKeywordCandidates.
@@ -884,19 +888,21 @@ async function refreshStrategyPanel() {
   PRODUCT_METHOD_CHILD_IDS = childIds;
   renderStrategyPanel();
 }
-// Generates titles for ANY attached method — no destination/traffic-child/
-// destination/growth split. Destination methods (needsTrafficPlan — a
-// landing page, a booking form) are component-based: generateTitlesFrom-
-// ProductStrategy, one deliverable per asset phase. Growth/distribution
-// methods (Instagram, X, Pinterest, Email — a platform grown ON, not
-// landed on) are arc/sequence-based: generateTrafficMethodTitles, grounded
-// in the method's own researched [Arc] structure + Product Strategy, post-
-// type + Sequence Order. Works whether or not it's formally linked as a
-// traffic child of a destination (parentMethodId is optional context, not
-// a requirement — a growth method is worth generating for on its own).
+// Generates titles for ANY attached method through ONE pipeline —
+// generateMethodTitles: Keywords -> Research -> Product Strategy -> Method
+// (framework) -> Title, for every method type. There is no more
+// destination/traffic-child/growth split — that used to route to
+// generateTitlesFromProductStrategy (one deliverable per phase) or
+// generateTrafficMethodTitles (post-type/sequence) depending on the
+// method's "Needs Traffic Plan" checkbox; both still exist server-side but
+// nothing calls them anymore. The method's own framework text (Phase/
+// Grouping headings) already drives the output shape generically, so a
+// different code path per method type wasn't actually needed.
 // Carousel/Upwork-Titles methods keep their dedicated live-research
 // pipelines (Instagram benchmarking / Upwork job scraping) since those
 // genuinely need real-time external data the Strategy fields can't provide.
+// isDestination/parentMethodId are accepted for call-site compatibility but
+// no longer change behavior.
 async function genPsTitles(methodId, isDestination, parentMethodId) {
   const m = PRODUCT_METHODS.find(x => x.id === methodId);
   const name = m ? m.name : 'method';
@@ -916,13 +922,17 @@ async function genPsTitles(methodId, isDestination, parentMethodId) {
       const r = await w('researchUpworkMarketTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
       if (r.error) throw new Error(r.error);
       created = r.created || 0;
-    } else if (/seo post/i.test(name)) {
-      // Same keyword -> titles -> 3-subhead-outline pipeline as the campaign
-      // microsite (generateMethodTitles/saveMethodTitles/generateTitleSubheads)
-      // — NOT generateTitlesFromProductStrategy or generateTrafficMethodTitles,
-      // which are phase-per-deliverable and post-type/sequence models that
-      // don't fit "one keyword -> up to 5 SEO titles". The server prefers this
-      // product's own Keywords field as the seed keyword automatically.
+    } else {
+      // Unified pipeline for every other method type — Keywords -> Research ->
+      // Product Strategy -> Method (framework) -> Title, the same call
+      // regardless of method type. Replaces what used to be three different
+      // pipelines here (generic/SEO-Post via generateMethodTitles, one-per-
+      // phase via generateTitlesFromProductStrategy for Destination methods,
+      // post-type/sequence via generateTrafficMethodTitles for flat methods)
+      // — the method's own framework text already drives phase/grouping
+      // shape generically, so a different code path per method type isn't
+      // needed. generateTitlesFromProductStrategy/generateTrafficMethodTitles
+      // still exist server-side but nothing calls them anymore.
       if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
       const contextMode = (document.getElementById('psRowContext-' + methodId) || {}).value || 'blend';
       const seedKeyword = (document.getElementById('psRowKeyword-' + methodId) || {}).value || undefined;
@@ -940,19 +950,6 @@ async function genPsTitles(methodId, isDestination, parentMethodId) {
         const action = ft.slideFormat ? 'generateTitleSlides' : 'generateTitleSubheads';
         try { await w(action, { pageId: ft.id, title: ft.title, campaignId: PRODUCT_CAMPAIGN_ID }); } catch(e) { /* title stays without its outline — visible in Notion, not fatal */ }
       }
-    } else if (isDestination) {
-      const r = await w('generateTitlesFromProductStrategy', { productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined, methodId, methodName: name });
-      if (r.error) throw new Error(r.error);
-      created = r.created || 0;
-    } else {
-      const parent = parentMethodId ? PRODUCT_METHODS.find(x => x.id === parentMethodId) : null;
-      const r = await w('generateTrafficMethodTitles', {
-        productId: PRODUCT_ID, campaignId: PRODUCT_CAMPAIGN_ID || undefined,
-        parentMethodId: parentMethodId || undefined, parentMethodName: parent ? parent.name : undefined,
-        childMethodId: methodId, childMethodName: name, childMethodNotes: '',
-      });
-      if (r.error) throw new Error(r.error);
-      created = r.created || 0;
     }
     await loadTitles();
     if (status) { status.textContent = `✓ Generated ${created} title${created === 1 ? '' : 's'} for "${name}".`; status.style.color = '#68d391'; }

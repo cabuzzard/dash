@@ -5182,7 +5182,8 @@ Return ONLY a JSON array, no other text, no markdown fences:
         // the campaign page gets fetched and read as if it were a product.
         const hasProduct = productId && productId !== '__none__' && productId !== campaignId;
 
-        // Fetch research, method page+body, and optionally product in parallel
+        // Fetch research, method page+body, and optionally product (+ its
+        // Strategy record) in parallel
         const fetches = [
           fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
@@ -5191,8 +5192,15 @@ Return ONLY a JSON array, no other text, no markdown fences:
           fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
           fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, { headers: hdr }).then(r => r.json()),
           hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
+          hasProduct ? fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { and: [
+              { property: "Product", relation: { contains: dash(productId) } },
+              { property: "Method", relation: { is_empty: true } },
+            ] } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })) : Promise.resolve({ results: [] }),
         ];
-        const [researchRaw, campRaw, methodPage, productPage] = await Promise.all(fetches);
+        const [researchRaw, campRaw, methodPage, productPage, strategyQ] = await Promise.all(fetches);
         const methodBody = await extractBlocksTextRecursive(hdr, dash(methodId));
 
         // Extract research
@@ -5213,7 +5221,12 @@ Return ONLY a JSON array, no other text, no markdown fences:
         // Extract method info
         const methodName = (methodPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Unknown Method";
 
-        // Extract product strategy (optional)
+        // Extract product strategy (optional) — the product's own page
+        // fields, plus its Strategy DB record (positioning: Customer, Pain
+        // Points, Solution, Benefits, Emotions, Unique Opportunity — the
+        // deeper worked-out doc, not just the page's short fields). Included
+        // whenever a product is selected, in both Blend and Isolate — Isolate
+        // only excludes CAMPAIGN-level data, product-level data stays either way.
         let productSection = "No product — this is a campaign-level page.";
         if (hasProduct && productPage) {
           const pp = productPage.properties || {};
@@ -5227,6 +5240,15 @@ Price: ${ptxt("Price")}
 Proof Points: ${ptxt("Proof Points")}
 Objections: ${ptxt("Objections")}
 Unique Angle: ${ptxt("Unique Angle")}`;
+
+          const stratRecord = (strategyQ.results || [])[0];
+          if (stratRecord) {
+            const sp = stratRecord.properties || {};
+            const srt = key => (sp[key]?.rich_text || []).map(t => t.plain_text).join("");
+            const stratLines = ["Customer", "Pain Points", "Solution", "Benefits", "Emotions", "Niche", "Unique Opportunity", "Offer Structure"]
+              .map(f => srt(f) && `${f}: ${srt(f)}`).filter(Boolean);
+            if (stratLines.length) productSection += `\n\nPRODUCT STRATEGY (the worked-out positioning doc — weighs more than the fields above where they overlap):\n${stratLines.join("\n")}`;
+          }
         }
 
         // Prefer live-researched TikTok Trends (real scraped post data) over the
@@ -5257,7 +5279,7 @@ METHOD FRAMEWORK:
 ${methodBody || "(No framework defined — infer phases and groupings from method name and best practices)"}
 
 ${productSection}
-${parentSeed.text ? `\nSEED IDEA (this run was started from an existing title — use it as inspiration/starting point for the angle, still organized across the framework's phases and groupings, not a rewrite of the seed itself):\n${parentSeed.text}\n` : ''}
+${parentSeed.text ? `\nSEED IDEA (this run was started from an existing title — use it as inspiration/starting point for the angle, still organized across the framework's phases and groupings, not a rewrite of the seed itself):\n${parentSeed.text}\n` : ''}${body.seedKeyword ? `\nSEED KEYWORD (operator-picked — every title should target this specific keyword/angle, not the campaign's keyword list broadly):\n${body.seedKeyword}\n` : ''}
 INSTRUCTIONS:
 - Read the method framework carefully. Each Phase heading in the framework is a Phase. Each Grouping heading is a Grouping.
 - Generate titles for EVERY phase and grouping defined in the framework.
