@@ -1,0 +1,3 @@
+# local_path	remote_path (relative to Bluehost home dir)
+# Add one line per live site under web/{campaign}/. Same Bluehost account/SSH key for all.
+web/b2b-content-machine	public_html/webguyleadgeneration

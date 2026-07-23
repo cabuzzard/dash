@@ -1,0 +1,33 @@
+name: Deploy live sites to Bluehost
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/bluehost-sites.tsv'
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.BLUEHOST_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.BLUEHOST_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy each mapped site
+        run: |
+          set -e
+          while IFS=$'\t' read -r local remote; do
+            [ -z "$local" ] && continue
+            case "$local" in \#*) continue ;; esac
+            echo "Deploying $local -> $remote"
+            rsync -avz -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+              "$local/" "${{ secrets.BLUEHOST_USER }}@${{ secrets.BLUEHOST_HOST }}:$remote/"
+          done < .github/bluehost-sites.tsv
