@@ -10994,11 +10994,19 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return await resp.arrayBuffer();
         };
 
-        let pngBuffers;
+        // Sequential, not Promise.all — Workers cap simultaneous outbound
+        // connections, and 7 concurrent calls to a slow, headless-browser-
+        // backed API can blow past that and crash the whole invocation
+        // (a bare platform 502 with no application-level error body, rather
+        // than a catchable rejection). One at a time is slower but reliable,
+        // and a failure names exactly which slide broke.
+        const pngBuffers = [];
         try {
-          pngBuffers = await Promise.all(slides.map((s, i) => renderSlide(slideHtml(s, i, slides.length))));
+          for (let i = 0; i < slides.length; i++) {
+            pngBuffers.push(await renderSlide(slideHtml(slides[i], i, slides.length)));
+          }
         } catch (e) {
-          return json({ error: e.message }, 502);
+          return json({ error: `Slide ${pngBuffers.length + 1}: ${e.message}` }, 502);
         }
 
         // ── Step 5: commit PNGs + a gallery page to GitHub Pages ──
