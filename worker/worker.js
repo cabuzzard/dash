@@ -10984,14 +10984,27 @@ Return ONLY this JSON object, no other text, no markdown fences:
   <div class="counter">${idx + 1} / ${total}</div>
 </body></html>`;
 
+        // Browser Rendering's /screenshot endpoint is a "Quick Action" —
+        // capped at 1 request per 10s on the free tier (10/s on paid).
+        // Sequential calls with no delay still exceed that, so retry on 429
+        // using the Retry-After header (falling back to 11s if absent).
+        const sleep = ms => new Promise(res => setTimeout(res, ms));
         const renderSlide = async (html) => {
-          const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ html, viewport: { width: 1080, height: 1350, deviceScaleFactor: 1 }, screenshotOptions: { type: "png" } }),
-          });
-          if (!resp.ok) { const t = await resp.text(); throw new Error(`Browser Rendering failed (HTTP ${resp.status}): ${t.slice(0, 300)}`); }
-          return await resp.arrayBuffer();
+          for (let attempt = 0; attempt < 5; attempt++) {
+            const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ html, viewport: { width: 1080, height: 1350, deviceScaleFactor: 1 }, screenshotOptions: { type: "png" } }),
+            });
+            if (resp.status === 429) {
+              const retryAfter = parseInt(resp.headers.get("Retry-After") || "11", 10);
+              await sleep((retryAfter + 1) * 1000);
+              continue;
+            }
+            if (!resp.ok) { const t = await resp.text(); throw new Error(`Browser Rendering failed (HTTP ${resp.status}): ${t.slice(0, 300)}`); }
+            return await resp.arrayBuffer();
+          }
+          throw new Error("Browser Rendering stayed rate-limited after 5 retries — try again shortly.");
         };
 
         // Sequential, not Promise.all — Workers cap simultaneous outbound

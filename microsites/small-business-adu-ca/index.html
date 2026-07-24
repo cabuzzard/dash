@@ -4781,7 +4781,7 @@ async function submitGenAssets() {
   const skillMatch = gaMatchSkill(GA_METHOD_NAME);
   if (skillMatch && skillMatch.workerAction) {
     btn.textContent = 'Rendering…';
-    status.textContent = 'Writing slide script (if needed) and rendering 7 slides, one at a time — this can take a minute or two.';
+    status.textContent = 'Writing slide script (if needed) and rendering 7 slides, one at a time — can take a couple of minutes if Cloudflare rate-limits the render calls. Leave this open.';
     try {
       const r = await w(skillMatch.workerAction, { titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID });
       if (r.error) throw new Error(r.error);
