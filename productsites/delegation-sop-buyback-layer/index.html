@@ -6,7 +6,7 @@
 <meta http-equiv="X-Frame-Options" content="DENY">
 <link rel="stylesheet" href="../style.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Delegation & SOP Buyback Layer — Product Admin</title>
+<title>Webguy — Product Admin</title>
 <style>
 /* STATUS CHANGE BUTTON */
 .title-status-btn {
@@ -362,6 +362,11 @@
         <div id="gaMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
       </div>
 
+      <div id="gaSkillHint" style="display:none;margin:-4px 0 10px;padding:8px 10px;border:1px solid #3a4a4a;background:rgba(79,209,197,.06);border-radius:4px;font-size:11px;color:#4fd1c5;align-items:center;gap:8px;">
+        <span id="gaSkillHintText" style="flex:1;"></span>
+        <button type="button" class="modal-btn save" id="gaSkillHintBtn" style="padding:4px 10px;font-size:11px;white-space:nowrap;"></button>
+      </div>
+
       <label class="lm-label">Sub method <span style="color:#777;font-weight:normal;">— target platform layer (e.g. Instagram, X); pick existing or type a new name</span></label>
       <div style="position:relative;margin-bottom:10px;">
         <input class="modal-ta" id="gaSubMethodInput" type="text" placeholder="Instagram, X / Twitter, LinkedIn…" autocomplete="off"
@@ -428,6 +433,7 @@
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeGenAssetsModal()">Cancel</button>
+      <button class="modal-btn cancel" id="gaStrategyBtn" onclick="submitGenerateStrategy()" title="Separate from Generate below — this produces new sub-titles from this method's Strategy doc, not assets for the current title.">Generate Strategy</button>
       <button class="modal-btn save" id="gaGoBtn" onclick="submitGenAssets()">Generate</button>
     </div>
   </div>
@@ -544,7 +550,11 @@ async function w(action, extra = {}) {
   const rg = rgVal();
   if (rg && payload.researchGuidelines == null) payload.researchGuidelines = rg;
   const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-  const d = await r.json();
+  // A non-JSON response (e.g. Cloudflare's own HTML error page on a gateway
+  // timeout) shouldn't surface as an opaque "Unexpected token <" parse error.
+  let d;
+  try { d = await r.json(); }
+  catch (e) { throw new Error(`Server returned an unexpected response (HTTP ${r.status}) — check Notion, the generation may have still gone through, or try again.`); }
   if (r.status === 401) {
     SESSION_TOKEN = null; sessionStorage.removeItem('hermes_token');
     document.getElementById('pinScreen').classList.remove('hidden');
@@ -1469,7 +1479,7 @@ function gaFilter(kind) {
   const dd   = document.getElementById(cfg.dd);
   const list = kind === 'product' ? AT_PRODUCTS : AT_METHODS; // sub methods live in the Methods DB too
   const q = inp.value.trim(), qL = q.toLowerCase();
-  if (q !== gaSel(kind).name) { gaSetSel(kind, null, ''); if (kind === 'product') gaRefreshStrategyLink(); }
+  if (q !== gaSel(kind).name) { gaSetSel(kind, null, ''); if (kind === 'product') gaRefreshStrategyLink(); if (kind === 'method') { gaUpdateSkillHint(); } }
   dd.innerHTML = '';
   const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
   matches.forEach(x => {
@@ -1483,6 +1493,7 @@ function gaFilter(kind) {
       inp.value = x.name;
       dd.style.display = 'none';
       if (kind === 'product') gaRefreshStrategyLink();
+      if (kind === 'method') { gaUpdateSkillHint(); if (GA_CAROUSEL_METHOD_RE.test(x.name) && !document.getElementById('gaTypeInput').value.trim()) document.getElementById('gaTypeInput').value = 'drawing post'; }
     };
     dd.appendChild(div);
   });
@@ -1512,6 +1523,58 @@ async function gaResolve(kind, statusEl) {
   return { id: res.id };
 }
 
+const GA_CAROUSEL_METHOD_RE = /carousel/i;
+// ── Method -> production SKILL routing ──────────────────────────────────
+// Most of these methods need a real chat-only production skill (a real
+// Canva design via the Canva MCP, or a real Remotion video render — no
+// bundling/browser-automation binding available to this no_bundle Worker
+// for those). Carousel is the exception: generateCarouselPreview renders
+// real PNGs via Cloudflare's Browser Rendering REST API and hosts them on
+// GitHub Pages, entirely inside the Worker — no chat tab, one button here.
+const GA_SKILL_METHODS = [
+  { test: /carousel/i,              workerAction: 'generateCarouselPreview', label: 'Carousel',
+    hint: 'The one carousel path, entirely in-dashboard — writes the 7-slide script to this title in Notion (if it doesn\'t have one yet), renders each slide as a real image, and publishes a hosted preview page for approval. Don\'t like it? Edit the slide text on this title in Notion, then run it again — it rebuilds the preview from your edits. Instagram publishing is a separate step, not done here yet.' },
+  { test: /text pic/i,              skill: 'make-text-pic',      label: 'Text Pic',
+    hint: 'Full production skill available — writes a hook-driven line and builds it as a real Canva image in the campaign\'s design spec.' },
+  { test: /short form video|\breel\b/i, skill: 'make-reel-script', label: 'Short Form Video / Reel',
+    hint: 'Full production skill available — writes a filmable reel script, then make-reel-video renders it (ElevenLabs voiceover + captions, via Remotion).' },
+  { test: /avatar/i,                skill: 'make-avatar-script',  label: 'Avatar Video',
+    hint: 'Full production skill available — writes a presenter-to-camera script for an AI-avatar reel.' },
+  { test: /video copy/i,            skill: 'make-video-copy',     label: 'Video Copy — Growth',
+    hint: 'Full production skill available — models outlier YouTube videos into an original long-form script, ready to produce.' },
+];
+function gaMatchSkill(methodName) {
+  return GA_SKILL_METHODS.find(m => m.test.test(methodName || '')) || null;
+}
+function gaUpdateSkillHint() {
+  const hint = document.getElementById('gaSkillHint');
+  if (!hint) return;
+  const match = gaMatchSkill(GA_METHOD_NAME);
+  if (!match) { hint.style.display = 'none'; return; }
+  hint.style.display = 'flex';
+  document.getElementById('gaSkillHintText').textContent = match.hint;
+  const btn = document.getElementById('gaSkillHintBtn');
+
+  if (match.workerAction) {
+    // No second button here — the previews ARE the asset, so the one
+    // "Generate" button at the bottom of the modal does this directly for
+    // a carousel method (see submitGenAssets). This box is informational
+    // only for that case.
+    document.getElementById('gaSkillHintBtn').style.display = 'none';
+    return;
+  }
+  document.getElementById('gaSkillHintBtn').style.display = '';
+
+  btn.textContent = `Run ${match.skill} in Claude`;
+  btn.onclick = () => {
+    const titleId = GA_TITLE_ID;
+    const titleText = document.getElementById('gaTitleInput').value;
+    const campaignId = GA_CAMPAIGN_ID || PRODUCT_CAMPAIGN_ID;
+    const prompt = `Run the ${match.skill} skill for the Content Strategy title "${titleText}" (page ID: ${titleId}), campaign ID: ${campaignId}, product "${PRODUCT_NAME || PRODUCT_ID}" (Products DB page ID: ${PRODUCT_ID}).`;
+    window.open('https://claude.ai/new?q=' + encodeURIComponent(prompt), '_blank');
+  };
+}
+
 async function openGenAssetsModal(titleId) {
   GA_TITLE_ID = titleId; GA_CAMPAIGN_ID = null;
   GA_METHOD_ID = null; GA_METHOD_NAME = '';
@@ -1536,7 +1599,10 @@ async function openGenAssetsModal(titleId) {
     document.getElementById('gaDescInput').value     = d.description || '';
     document.getElementById('gaKeywordsInput').value = d.seedKeywords || '';
     document.getElementById('gaResearchInput').value = d.researchInstructions || '';
-    if (d.methodId)  { GA_METHOD_ID = d.methodId;   GA_METHOD_NAME = d.methodName || '';  document.getElementById('gaMethodInput').value  = d.methodName || ''; }
+    if (d.methodId)  { GA_METHOD_ID = d.methodId;   GA_METHOD_NAME = d.methodName || '';  document.getElementById('gaMethodInput').value  = d.methodName || '';
+      // Method carries its direction into asset creation: a carousel-flagged
+      // method pre-selects the matching Asset Type — still freely editable.
+      if (GA_CAROUSEL_METHOD_RE.test(GA_METHOD_NAME)) document.getElementById('gaTypeInput').value = 'drawing post'; }
     if (d.productId) { GA_PRODUCT_ID = d.productId; GA_PRODUCT_NAME = d.productName || ''; document.getElementById('gaProductInput').value = d.productName || ''; }
     else { GA_PRODUCT_ID = PRODUCT_ID; GA_PRODUCT_NAME = PRODUCT_NAME || ''; document.getElementById('gaProductInput').value = PRODUCT_NAME || ''; }
     GA_CAMPAIGN_ID = d.campaignId || PRODUCT_CAMPAIGN_ID || '';
@@ -1545,6 +1611,7 @@ async function openGenAssetsModal(titleId) {
     GA_CAMPAIGN_ID = PRODUCT_CAMPAIGN_ID || '';
     status.textContent = 'Could not prefill from title (' + e.message + ') — fields are editable.';
   }
+  gaUpdateSkillHint();
   gaLoadSpecs(); // needs GA_CAMPAIGN_ID — fire-and-forget
   gaRefreshStrategyLink(); // reference-only link, never blended into generation
   gaLoadPlatforms(); // fire-and-forget
@@ -1615,6 +1682,30 @@ async function submitGenAssets() {
   status.style.color = '#888';
   const btn = document.getElementById('gaGoBtn');
   btn.disabled = true; btn.textContent = 'Generating…';
+
+  // Carousel is a Worker-native render, not a text concept — one button,
+  // routed by method, instead of a second "Render carousel preview" button
+  // next to this one (the previews ARE the asset).
+  const skillMatch = gaMatchSkill(GA_METHOD_NAME);
+  if (skillMatch && skillMatch.workerAction) {
+    btn.textContent = 'Rendering…';
+    status.textContent = 'Writing slide script (if needed) and rendering 7 slides, one at a time — can take a couple of minutes if Cloudflare rate-limits the render calls. Leave this open.';
+    try {
+      const r = await w(skillMatch.workerAction, { titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || PRODUCT_CAMPAIGN_ID });
+      if (r.error) throw new Error(r.error);
+      status.textContent = `✓ Rendered ${r.slideCount} slides — preview: ${r.previewUrl}`;
+      status.style.color = '#68d391';
+      btn.textContent = 'Done';
+      await loadTitles();
+      setTimeout(closeGenAssetsModal, 3000);
+    } catch(e) {
+      status.textContent = 'Error: ' + e.message;
+      status.style.color = '#fc8181';
+      btn.disabled = false; btn.textContent = 'Generate';
+    }
+    return;
+  }
+
   try {
     const method    = await gaResolve('method', status);
     const subMethod = await gaResolve('submethod', status);
@@ -1649,6 +1740,43 @@ async function submitGenAssets() {
     status.textContent = 'Error: ' + e.message;
     status.style.color = '#fc8181';
     btn.disabled = false; btn.textContent = 'Generate';
+  }
+}
+
+// Deliberately separate from submitGenAssets/"Generate" — that one writes
+// content for the CURRENT title; this one reads this method's Strategy doc
+// (product + method + campaign, not the title) and produces new sub-titles
+// from it via generateTitlesFromStrategy. Requires a Strategy doc to already
+// exist for this product+method (the action returns a clear error naming
+// that if one doesn't).
+async function submitGenerateStrategy() {
+  const status = document.getElementById('gaStatus');
+  const btn = document.getElementById('gaStrategyBtn');
+  const method  = await gaResolve('method', status).catch(e => { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; return null; });
+  if (!method || !method.id) { status.textContent = 'Pick or create a Method first — Generate Strategy needs one.'; status.style.color = '#fc8181'; return; }
+  const product = await gaResolve('product', status).catch(e => { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; return null; });
+  if (!product || !product.id) { status.textContent = 'Pick or create a Product first — Generate Strategy needs one.'; status.style.color = '#fc8181'; return; }
+  const campaignId = GA_CAMPAIGN_ID || PRODUCT_CAMPAIGN_ID;
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Generating…';
+  status.textContent = 'Reading the Strategy doc for this product + method and drafting sub-titles from it…';
+  status.style.color = '#888';
+  try {
+    const r = await w('generateTitlesFromStrategy', {
+      productId: product.id,
+      campaignId,
+      methodId: method.id,
+      methodName: document.getElementById('gaMethodInput').value.trim(),
+    });
+    if (r.error) throw new Error(r.error);
+    status.textContent = `✓ Created ${r.created} sub-title${r.created === 1 ? '' : 's'} from the Strategy doc — check Development.`;
+    status.style.color = '#68d391';
+    btn.textContent = 'Done';
+    await loadTitles();
+    setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 2500);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = orig;
   }
 }
 
