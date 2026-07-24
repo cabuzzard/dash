@@ -903,6 +903,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeGenAssetsModal()">Cancel</button>
+      <button class="modal-btn cancel" id="gaStrategyBtn" onclick="submitGenerateStrategy()" title="Separate from Generate below — this produces new sub-titles from this method's Strategy doc, not assets for the current title.">Generate Strategy</button>
       <button class="modal-btn save" id="gaGoBtn" onclick="submitGenAssets()">Generate</button>
     </div>
   </div>
@@ -4840,6 +4841,46 @@ async function submitGenAssets() {
     // generation failed — reload so any assets that did land show up
     // instead of leaving the operator to check Notion manually.
     loadTitles().catch(() => {});
+  }
+}
+
+// Deliberately separate from submitGenAssets/"Generate" — that one writes
+// content for the CURRENT title; this one reads this method's Strategy doc
+// (product + method + campaign, not the title) and produces new sub-titles
+// from it via generateTitlesFromStrategy. Not the destination for the
+// title→sub-titles clustering-by-strategy-and-asset-type workflow being
+// designed next — this wires up the existing building block that gets
+// refined once the per-asset-type generation (carousel/SEO post/reel) is
+// solid. Requires a Strategy doc to already exist for this product+method
+// (the action returns a clear error naming that if one doesn't).
+async function submitGenerateStrategy() {
+  const status = document.getElementById('gaStatus');
+  const btn = document.getElementById('gaStrategyBtn');
+  const method  = await gaResolve('method', status).catch(e => { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; return null; });
+  if (!method || !method.id) { status.textContent = 'Pick or create a Method first — Generate Strategy needs one.'; status.style.color = '#fc8181'; return; }
+  const product = await gaResolve('product', status).catch(e => { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; return null; });
+  if (!product || !product.id) { status.textContent = 'Pick or create a Product first — Generate Strategy needs one.'; status.style.color = '#fc8181'; return; }
+  const campaignId = GA_CAMPAIGN_ID || CAMPAIGN_ID;
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Generating…';
+  status.textContent = 'Reading the Strategy doc for this product + method and drafting sub-titles from it…';
+  status.style.color = '#888';
+  try {
+    const r = await w('generateTitlesFromStrategy', {
+      productId: product.id,
+      campaignId,
+      methodId: method.id,
+      methodName: document.getElementById('gaMethodInput').value.trim(),
+    });
+    if (r.error) throw new Error(r.error);
+    status.textContent = `✓ Created ${r.created} sub-title${r.created === 1 ? '' : 's'} from the Strategy doc — check Development.`;
+    status.style.color = '#68d391';
+    btn.textContent = 'Done';
+    await loadTitles();
+    setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 2500);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = orig;
   }
 }
 
