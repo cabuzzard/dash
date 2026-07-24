@@ -1,83 +1,86 @@
 # make-carousel
 
-Research what's trending on the topic, write original carousel copy inspired by it, generate a full Instagram carousel in Canva, merge all slides into one multi-page design, save the Canva link to the matching drive in Notion, and log everything to Notion SM Posts DB.
+The **one** carousel-build path: research what's trending, write original slide copy, save that copy into the Content Strategy title's own Notion page (so it's readable and editable there), build a real multi-slide Canva design from it, merge it into one design, and log the Canva link back to Notion. Re-running this on a title that already has slide copy rebuilds the Canva design from whatever's currently in Notion — edit the slides in Notion, run this again, get an updated Canva design. No separate "quick local build" or "text-only concept" path for carousels; this is the only one.
 
-**Growth alignment:** carousels are the authority/save engine — read the "carousel" method's "Growth Strategy (2026)" section and the master [📈 Account Growth OS](https://app.notion.com/p/39a1f7d3a4bb818a8653e60a1b6cf6f7). Engineer every carousel for **saves + shares** (weighted 3–5× a like): slide 1 = ~80% of the weight (open a gap in <10 words, "is this for me? / what do I get?"), 6–10 slides, campaign keywords in the on-screen text of the slides + caption for SEO, and a last slide that's a saveable recap + a `save this` / `send this to…` / `comment [KEYWORD]` CTA.
+This is the render step for the **"carousel" Method** (Methods DB — read its page body for the campaign's Growth Strategy / arc before writing copy, same as every other method-driven skill here).
 
 ## Trigger phrases
-"make a carousel", "new carousel", "generate carousel", "next carousel", "carousel about X", "research and make a carousel about X"
+"make a carousel", "new carousel", "generate carousel", "carousel about X", "research and make a carousel about X", "run make-carousel", or the dashboard's "Run make-carousel in Claude" hand-off (arrives as: *Run the make-carousel skill for the Content Strategy title "{title}" (page ID: {titleId}), campaign "{campaignName}" (Campaigns DB page ID: {campaignId})*).
+
+## ⚠️ Boundary — why this isn't a dashboard button
+The Worker has no Canva access. Real design generation needs a live Claude Code chat with the Canva MCP connector. The dashboard can write a *text concept* of a carousel or render a local canvas preview, but it can't produce an actual Canva file — that's this skill's job, and the only one that does it end-to-end.
+
+## Prerequisites
+- **Canva MCP connected** — `generate-design`, `create-design-from-candidate`, `merge-designs` must be available. If not, stop and tell the user to connect the Canva connector rather than improvising a substitute (no local-render fallback — that's the point of retiring the old quick-build path).
+- **Notion connector** — all reads/writes here go through it, no PIN needed (chat-only skill, same as every other production skill in this repo).
 
 ## Inputs
-- **topic / keywords** — the carousel subject (required-ish). If not given, pick the highest-opportunity calm productivity angle not yet covered (see list at bottom).
-- **product** — defaults to "Coaching Carousels" product in Notion.
-- **campaign** (optional) — if the user names a specific microsite/campaign, check its Research DB entry in Notion for existing "TikTok Trends" / "Trend Intelligence" fields before doing a fresh web search — reuse that data if it's recent.
+- **titleId** — the Content Strategy title's Notion page ID (from the dashboard hand-off, or resolved by name/search if invoked ad-hoc from chat).
+- **campaignId** — for Research DB / Design Spec grounding.
+- If invoked with a bare topic and no title exists yet, create the Content Strategy title first (Status: Development, Method: carousel) before proceeding — everything else here assumes a title page to read/write against.
 
-## Style rules (ALWAYS follow)
-- 7 slides
-- Editorial minimal: warm cream/off-white background, elegant thin serif font, delicate botanical branch accent
-- Slide 1: hook headline + italic subtext + slide counter "1/7"
-- Slides 2–6: number (01–05) top left, bold headline, 2–3 sentence body, counter
-- Slide 7: CTA — centered quote, save/follow prompt, counter "7/7"
-- No photography, no faces, no loud colors
+## Constants
+Research DB `557e6b7b8c434a578d45ecb0a8329f63` · Design Specs DB `3981f7d3a4bb817c8edad15db64fa50d` · Assets DB `e91bdb6e770b4d298e9f62166a0fd5de` · Methods DB `285ed0b668be4dad89dfd090350096bc` (carousel method page: `3981f7d3a4bb81528824c30b891ef157`).
 
-## Workflow (execute every step, no skipping)
+## Workflow
 
-### Step 0 — Research trending content
-- If a campaign was named, first check Notion Research DB (collection lookup by Campaign relation) for a "TikTok Trends" / "Trend Intelligence" field. If present and recent, use it as your primary source and skip live search.
-- Otherwise, use WebSearch to find what's currently resonating on the topic — queries like `"<topic>" tiktok trending`, `"<topic>" instagram carousel viral`, `"<topic>" reels hook`, `"<topic>" short form video ideas`.
-- Pull 5–8 real top-performing posts. Note each one's **hook style, angle, and structure only** — not verbatim wording. This is inspiration, not source material.
-- Pick the single most resonant angle for this carousel given what's trending right now.
+### Step 0 — Check for existing slide copy on the title (this decides fresh vs. regenerate)
+Fetch the title page's body via the Notion connector. It uses a fixed block structure — a `heading_3` "Slide N (N/total)" followed by a bold paragraph (headline) and a plain paragraph (body), repeated per slide, then a `Caption` heading and a `Hashtags` heading. This is the exact structure the dashboard's own carousel tooling reads and writes, so staying compatible with it means slide copy is always editable from Notion regardless of which path (this skill, or the dashboard) touched it last.
 
-### Step 1 — Write content (rewritten, never copied)
-Use the researched hooks/angles to shape structure and pacing, but every word must be original — do not lift phrasing from the source posts. Write all 7 slide scripts before generating any designs. Include:
-- Hook headline (slide 1)
-- 5 insight headlines + body copy (slides 2–6)
-- CTA quote + call to action (slide 7)
-- Instagram caption (150–200 words)
-- 10 hashtags
+- **If slide content already exists:** default to **regenerate mode** — treat the current Notion text as final and skip straight to Step 3 (Canva build). This is the "I tweaked it in Notion, rebuild Canva" loop — don't re-research or rewrite unasked. Ask exactly one clarifying question only if it's genuinely ambiguous whether the user wants a fresh angle instead ("Rebuild Canva from the current slide text on this title, or do a fresh research + rewrite pass first?"); otherwise just proceed with what's there.
+- **If no slide content exists:** this is a **fresh build** — continue to Step 1.
 
-### Step 2 — Generate slides in parallel
-Call `generate-design` (design_type: instagram_post) for all 7 slides simultaneously.
-Pick the best candidate from each (prefer clean botanical, minimal cream).
-Call `create-design-from-candidate` to save all 7.
+### Step 1 — Research trending content (fresh build only)
+- Read the campaign's Research DB record (Campaign relation) for a "TikTok Trends" / "Trend Intelligence" field first. If present and recent, use it as primary source and skip live search.
+- Otherwise, WebSearch what's currently resonating on the topic — queries like `"<topic>" tiktok trending`, `"<topic>" instagram carousel viral`, `"<topic>" reels hook`.
+- Pull 5-8 real top-performing posts. Note **hook style, angle, structure only** — never verbatim wording, this is inspiration not source material.
+- Pick the single most resonant angle given what's trending right now, and given the campaign's own Pain Points / Key Message / Unique Opportunity (Research DB / Campaign page).
 
-### Step 3 — Merge into one design (ALWAYS do this)
-- Call `merge-designs` type: create_new_design with slide 1
-- Then call `merge-designs` type: modify_existing_design to insert slides 2–7 one at a time
-- Result: one multi-page Canva design ready to publish as a carousel
-- Save the merged design's edit_url as the canva link
+### Step 2 — Write the slide script and save it to Notion (fresh build only)
+Read the "carousel" method's page body for the Growth Strategy arc, and the campaign's Design Spec (colors/fonts) if one exists — ground the copy in both rather than writing generic content.
 
-### Step 4 — Create drive in Notion
-Call `notion-create-pages` on the Drives DB (collection://3751f7d3-a4bb-80c1-b4f6-000b4decf331):
-- Name: "Carousel NN — [Topic]"
-- product: link to Coaching Carousels product page
-- canva link: the merged design edit_url
-- Page content: all 7 Canva slide edit links, caption, hashtags
+Write, all original (rewritten from the researched angles, never lifted):
+- **Slide 1 (hook):** short punchy headline + one-line subtext
+- **Slides 2-6 (insights):** 5 slides, each a short headline + 2-3 sentence body — real substance, not placeholders
+- **Slide 7 (CTA):** quote/summary headline + save/follow/next-step prompt as body
+- **Caption:** 150-200 words, campaign keywords worked in naturally for SEO
+- **Hashtags:** 8-10, no `#` needed in the stored text
 
-### Step 5 — Update drive canva link via worker
-Call `updateDrive` with the drive ID and canvaLink so it appears in the Products tab.
+Save this into the title page's body using the Notion connector, in the exact block structure described in Step 0 (`heading_3` "Slide N (N/7)" → bold-paragraph headline → plain-paragraph body → divider, repeated, then `Caption` and `Hashtags` headings). Replace any existing body content on this title with this — it's a fresh build, so old content (if any) has already been ruled out in Step 0.
 
-### Step 6 — Log to SM Posts DB
-Call `notion-create-pages` on SM Posts DB (collection://ec422a5d-7161-42e6-843f-39a09893737b):
-- Post Title: carousel title
-- Status: Draft
-- Platform: Instagram
-- Caption: generated caption
-- Hashtags: generated hashtags
-- Page content: merged Canva design link + all individual slide links
+### Step 3 — Generate slides in Canva
+Using whichever slide text is now current (either just written in Step 2, or the pre-existing Notion content in regenerate mode) and the campaign's Design Spec (fall back to editorial-minimal — warm cream background, thin serif font, delicate botanical accent, no photography/faces/loud color — only if no spec exists):
+- Call `generate-design` (design_type: instagram_post) for all 7 slides simultaneously.
+- Pick the best candidate from each (match the design spec / editorial-minimal aesthetic).
+- Call `create-design-from-candidate` to save all 7.
 
-### Step 7 — Report back
-Confirm:
-- Which trending posts/angles inspired this carousel (topic + why it's timely right now)
-- Merged Canva design link (ready to open and publish)
-- Notion drive link
+### Step 4 — Merge into one design (always)
+- `merge-designs` type: `create_new_design` with slide 1.
+- `merge-designs` type: `modify_existing_design` to insert slides 2-7 one at a time.
+- Result: one multi-page Canva design ready to open and publish. Save the merged design's `edit_url`.
+- If the final page count isn't 7, warn the user — a source slide likely had multiple pages.
+
+### Step 5 — Log the result to Notion (upsert, don't duplicate)
+Check the Assets DB for an existing record linked to this title (`Content Strategy` relation contains titleId, `Asset Type` = "carousel"). Update it if found (this is what makes regenerate-mode non-duplicating — same asset record, new Design Link every rebuild); create it if not:
+- **Asset Title:** the carousel's working title
+- **Asset Type:** "carousel"
+- **Content Strategy:** relation → titleId
+- **Campaign:** relation → campaignId
+- **Design Link:** the merged Canva `edit_url`
+- **Status:** "Ready"
+- **Asset Status:** "Publish" (ready to post — not auto-published, see Notes)
+- **Body:** the caption
+- **Notes:** the hashtags
+- **Platform Name:** "Instagram" (or whatever the title/method specifies)
+
+### Step 6 — Report back
+- Which trending posts/angles inspired this carousel (fresh build) or that this was rebuilt from existing Notion content (regenerate)
+- The merged Canva design link — ready to open and publish
+- The Notion asset link
 - Caption + hashtags ready to paste
-- Reminder that posting to Instagram is a manual step (see Notes) — status is set to Draft, not published
+- Remind: **to revise, edit the slide text on this title in Notion and run make-carousel again** — it rebuilds Canva from those edits rather than starting over
+- Remind: posting to Instagram is manual — no auto-posting exists in this repo. Asset Status is "Publish" (ready), not "Published".
 
 ## Notes
-- **No auto-posting exists in this repo.** There is no Instagram/Meta Graph API integration wired up here — "posted" means: download/export the merged design from Canva, then post it manually from the Instagram app using the generated caption + hashtags. Always say this explicitly at the end so it's never assumed to be automatic.
-- Canva MCP tools (`generate-design`, `create-design-from-candidate`, `merge-designs`) must be connected in the session for Steps 2–3. If they're not available, stop and tell the user to connect the Canva connector first rather than improvising a substitute.
-- The merged design will always be in the user's Canva account under the title
-- If page count is > 7 after merging, warn the user — a source slide had multiple pages
-- For future carousels, number them sequentially (Carousel 04, 05, etc.)
-- Calm Productivity content angles not yet used: morning routines, deep work, saying no to meetings, single-tasking, digital minimalism, energy management, weekly reviews
+- **No competing carousel path.** The dashboard's Generate Assets modal used to offer three different things for a carousel method (a text-only concept, a local canvas-render-and-download tool, and this skill) — that's been retired down to just this skill being the one recommended action, specifically because doing three different half-measures was more confusing than doing one thing completely.
+- **Regenerate is the default once slide copy exists.** Don't re-research or rewrite copy that's already there unless explicitly asked to — the entire point is that editing in Notion and re-running should be cheap and predictable.

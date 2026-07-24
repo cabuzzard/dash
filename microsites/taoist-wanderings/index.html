@@ -832,11 +832,6 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <div id="gaMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
       </div>
 
-      <div id="gaCarouselHint" style="display:none;margin:-4px 0 10px;padding:8px 10px;border:1px solid #4a4520;background:rgba(232,255,71,.06);border-radius:4px;font-size:11px;color:#e8ff47;align-items:center;gap:8px;">
-        <span style="flex:1;">Carousel method — build real slides directly instead of a text concept.</span>
-        <button type="button" class="modal-btn save" id="gaCarouselBuildBtn" style="padding:4px 10px;font-size:11px;">🎨 Build Carousel</button>
-      </div>
-
       <div id="gaSkillHint" style="display:none;margin:-4px 0 10px;padding:8px 10px;border:1px solid #3a4a4a;background:rgba(79,209,197,.06);border-radius:4px;font-size:11px;color:#4fd1c5;align-items:center;gap:8px;">
         <span id="gaSkillHintText" style="flex:1;"></span>
         <button type="button" class="modal-btn save" id="gaSkillHintBtn" style="padding:4px 10px;font-size:11px;white-space:nowrap;"></button>
@@ -4423,7 +4418,7 @@ const GA_CAROUSEL_ASSET_TYPE_RE = /drawing post/i;
 // path per method, no parallel/competing implementation.
 const GA_SKILL_METHODS = [
   { test: /carousel/i,              skill: 'make-carousel',      label: 'Carousel',
-    hint: 'Full production skill available — researches trends, writes original copy, builds a real multi-slide Canva design, and logs it.' },
+    hint: 'The one carousel path — researches trends, writes the slide script into this title in Notion, builds the real multi-slide Canva design from it, and logs the Canva link back. Don’t like the result? Edit the slide text on this title in Notion, then run it again — it rebuilds Canva from your edits instead of starting over.' },
   { test: /text pic/i,              skill: 'make-text-pic',      label: 'Text Pic',
     hint: 'Full production skill available — writes a hook-driven line and builds it as a real Canva image in the campaign\'s design spec.' },
   { test: /short form video|\breel\b/i, skill: 'make-reel-script', label: 'Short Form Video / Reel',
@@ -4577,7 +4572,7 @@ function gaFilter(kind) {
   const dd   = document.getElementById(cfg.dd);
   const list = kind === 'product' ? AT_PRODUCTS : AT_METHODS; // sub methods live in the Methods DB too
   const q = inp.value.trim(), qL = q.toLowerCase();
-  if (q !== gaSel(kind).name) { gaSetSel(kind, null, ''); if (kind === 'product') gaRefreshStrategyLink(); if (kind === 'method') { gaUpdateCarouselHint(); gaUpdateSkillHint(); } }
+  if (q !== gaSel(kind).name) { gaSetSel(kind, null, ''); if (kind === 'product') gaRefreshStrategyLink(); if (kind === 'method') { gaUpdateSkillHint(); } }
   dd.innerHTML = '';
   const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
   matches.forEach(x => {
@@ -4591,7 +4586,7 @@ function gaFilter(kind) {
       inp.value = x.name;
       dd.style.display = 'none';
       if (kind === 'product') gaRefreshStrategyLink();
-      if (kind === 'method') { gaUpdateCarouselHint(); gaUpdateSkillHint(); if (GA_CAROUSEL_METHOD_RE.test(x.name) && !document.getElementById('gaTypeInput').value.trim()) document.getElementById('gaTypeInput').value = 'drawing post'; }
+      if (kind === 'method') { gaUpdateSkillHint(); if (GA_CAROUSEL_METHOD_RE.test(x.name) && !document.getElementById('gaTypeInput').value.trim()) document.getElementById('gaTypeInput').value = 'drawing post'; }
     };
     dd.appendChild(div);
   });
@@ -4660,7 +4655,6 @@ async function openGenAssetsModal(titleId) {
     GA_CAMPAIGN_ID = CAMPAIGN_ID;
     status.textContent = 'Could not prefill from title (' + e.message + ') — fields are editable.';
   }
-  gaUpdateCarouselHint();
   gaUpdateSkillHint();
   gaLoadSpecs(); // needs GA_CAMPAIGN_ID — fire-and-forget
   gaRefreshStrategyLink(); // reference-only link, never blended into generation
@@ -4716,20 +4710,6 @@ function gaRenderExisting(titleId) {
   el.appendChild(list);
 }
 
-// Toggles the "Build Carousel" shortcut based on the currently selected
-// Method — this is the "asset creation gets its direction from method"
-// dispatch point: a carousel method means the real deliverable is rendered
-// slides, not a generic text-concept Asset record.
-function gaUpdateCarouselHint() {
-  const hint = document.getElementById('gaCarouselHint');
-  if (!hint) return;
-  hint.style.display = GA_CAROUSEL_METHOD_RE.test(GA_METHOD_NAME || '') ? 'flex' : 'none';
-}
-document.getElementById('gaCarouselBuildBtn')?.addEventListener('click', () => {
-  const titleText = document.getElementById('gaTitleInput').value;
-  closeGenAssetsModal();
-  openBuildModal(GA_TITLE_ID, titleText, GA_PRODUCT_ID || '__none__');
-});
 let GA_ALL_LOGINS = [];
 async function gaLoadPlatforms() {
   const sel = document.getElementById('gaPlatformInput');
