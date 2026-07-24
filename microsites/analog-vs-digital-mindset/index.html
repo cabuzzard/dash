@@ -984,31 +984,18 @@ function tick() {
 }
 setInterval(tick, 1000); tick();
 
-// timeoutMs is optional — omit it and this behaves exactly as before (no
-// abort, waits indefinitely). Pass it for any action that can run long
-// server-side (multi-step AI generation/grading loops) so a hung request
-// surfaces as a visible error instead of leaving a button stuck on
-// "Generating…" forever with no way to tell it died.
-async function w(action, extra = {}, timeoutMs) {
+async function w(action, extra = {}) {
   const payload = { action, token: SESSION_TOKEN, ...extra };
   // operator research guidelines ride along on every call — the worker folds
   // them into all AI research/generation prompts (harmless on non-AI actions)
   const rg = rgVal();
   if (rg && payload.researchGuidelines == null) payload.researchGuidelines = rg;
-  const controller = timeoutMs ? new AbortController() : null;
-  const timer = timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;
-  let r;
-  try {
-    r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload), signal: controller ? controller.signal : undefined });
-  } catch (e) {
-    if (e.name === 'AbortError') throw new Error(`Timed out after ${Math.round(timeoutMs / 1000)}s — the server may still be finishing this in the background. Check Notion in a minute, or try again.`);
-    throw e;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  // A non-JSON response (e.g. Cloudflare's own HTML error page on a gateway
+  // timeout) shouldn't surface as an opaque "Unexpected token <" parse error.
   let d;
   try { d = await r.json(); }
-  catch (e) { throw new Error(`Server returned an unexpected response (HTTP ${r.status}) — it likely timed out mid-request. Check Notion, or try again.`); }
+  catch (e) { throw new Error(`Server returned an unexpected response (HTTP ${r.status}) — check Notion, the generation may have still gone through, or try again.`); }
   if (r.status === 401) {
     SESSION_TOKEN = null;
     sessionStorage.removeItem('hermes_token');
@@ -4410,15 +4397,16 @@ const GA_CAROUSEL_METHOD_RE = /carousel/i;
 const GA_CAROUSEL_ASSET_TYPE_RE = /drawing post/i;
 
 // ── Method -> production SKILL routing ──────────────────────────────────
-// These 5 methods each have a real chat-only production skill
-// (.claude/skills/*.md) that does something the Worker fundamentally can't:
-// a real Canva design via the Canva MCP, or a real Remotion video render.
-// Rather than half-reimplementing either in worker.js, the dashboard's job
-// is to recognize the method and route to the right skill — one current
-// path per method, no parallel/competing implementation.
+// These methods each have a real production path that does something the
+// plain Generate button can't. Most still need a chat-only skill (a real
+// Canva design via the Canva MCP, or a real Remotion video render — no
+// bundling/browser-automation binding available to this no_bundle Worker
+// for those). Carousel is the exception: generateCarouselPreview renders
+// real PNGs via Cloudflare's Browser Rendering REST API and hosts them on
+// GitHub Pages, entirely inside the Worker — no chat tab, one button here.
 const GA_SKILL_METHODS = [
-  { test: /carousel/i,              skill: 'make-carousel',      label: 'Carousel',
-    hint: 'The one carousel path — researches trends, writes the slide script into this title in Notion, builds the real multi-slide Canva design from it, and logs the Canva link back. Don’t like the result? Edit the slide text on this title in Notion, then run it again — it rebuilds Canva from your edits instead of starting over.' },
+  { test: /carousel/i,              workerAction: 'generateCarouselPreview', label: 'Carousel',
+    hint: 'The one carousel path, entirely in-dashboard — writes the 7-slide script to this title in Notion (if it doesn\'t have one yet), renders each slide as a real image, and publishes a hosted preview page for approval. Don\'t like it? Edit the slide text on this title in Notion, then run it again — it rebuilds the preview from your edits. Instagram publishing is a separate step, not done here yet.' },
   { test: /text pic/i,              skill: 'make-text-pic',      label: 'Text Pic',
     hint: 'Full production skill available — writes a hook-driven line and builds it as a real Canva image in the campaign\'s design spec.' },
   { test: /short form video|\breel\b/i, skill: 'make-reel-script', label: 'Short Form Video / Reel',
@@ -4439,6 +4427,33 @@ function gaUpdateSkillHint() {
   hint.style.display = 'flex';
   document.getElementById('gaSkillHintText').textContent = match.hint;
   const btn = document.getElementById('gaSkillHintBtn');
+
+  if (match.workerAction) {
+    btn.textContent = 'Render carousel preview';
+    btn.onclick = async () => {
+      const status = document.getElementById('gaStatus');
+      const titleId = GA_TITLE_ID;
+      const campaignId = GA_CAMPAIGN_ID || CAMPAIGN_ID;
+      btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Rendering…';
+      status.textContent = 'Writing slide script (if needed) and rendering 7 slides — this can take a minute.';
+      status.style.color = '#888';
+      try {
+        const r = await w(match.workerAction, { titleId, campaignId });
+        if (r.error) throw new Error(r.error);
+        status.textContent = `✓ Rendered ${r.slideCount} slides — preview: ${r.previewUrl}`;
+        status.style.color = '#68d391';
+        btn.textContent = 'Done';
+        await loadTitles();
+        setTimeout(closeGenAssetsModal, 3000);
+      } catch(e) {
+        status.textContent = 'Error: ' + e.message;
+        status.style.color = '#fc8181';
+        btn.disabled = false; btn.textContent = orig;
+      }
+    };
+    return;
+  }
+
   btn.textContent = `Run ${match.skill} in Claude`;
   btn.onclick = () => {
     const titleId = GA_TITLE_ID;
@@ -4779,10 +4794,7 @@ async function submitGenAssets() {
     const method    = await gaResolve('method', status);
     const subMethod = await gaResolve('submethod', status);
     const product   = await gaResolve('product', status);
-    status.textContent = 'Generating asset concepts… (this can take a couple minutes — each concept may go through several grade-and-retry passes)';
-    // 170s timeout — generous for a multi-concept generate/grade/retry loop,
-    // but bounded so a hung request fails visibly instead of leaving this
-    // button stuck on "Generating…" forever.
+    status.textContent = 'Generating asset concepts… (this can take a couple minutes — each concept may go through several grade-and-retry passes). Leave this tab open.';
     const r = await w('generateTitleAssets', {
       titleId: GA_TITLE_ID,
       campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID,
@@ -4800,7 +4812,7 @@ async function submitGenAssets() {
       platformId: document.getElementById('gaPlatformInput')?.value || undefined,
       platformName: document.getElementById('gaPlatformInput')?.value ? document.getElementById('gaPlatformInput').selectedOptions[0].textContent : undefined,
       loginId: document.getElementById('gaLoginInput')?.value || undefined,
-    }, 170000);
+    });
     if (r.sectionCount != null) {
       status.textContent = `✓ Wrote the full post (${r.sectionCount} sections${r.contextMode === 'blend' ? ', blended with campaign + product context' : ''}) and published it.`;
       status.style.color = '#68d391';

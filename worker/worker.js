@@ -10810,6 +10810,290 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ ok: true });
       }
 
+      // ── generateCarouselPreview ──
+      // The Worker-native carousel path: no Canva, no chat tab. Writes the
+      // 7-slide script to the title (if it doesn't have one yet — same
+      // prompt as generateTitleSlides), renders each slide as a real PNG via
+      // Cloudflare's Browser Rendering REST API (plain HTTPS, no bundling —
+      // this project runs no_bundle so the @cloudflare/puppeteer binding
+      // isn't usable here), commits the PNGs + a gallery page to GitHub
+      // Pages, and upserts an Assets DB record pointing at it. Re-running
+      // this after editing the slide text on the title re-renders from
+      // those edits — same "regenerate" contract as the make-carousel skill,
+      // just without ever leaving the dashboard.
+      //
+      // Deliberately stops at "ready for approval" — Status: Review (title)
+      // / Ready (asset), never Publish. Actual Instagram publishing is a
+      // separate, not-yet-built step (see chat history — upload-post.com is
+      // the planned integration, UPLOAD_POST_API_KEY is already provisioned
+      // but unused).
+      if (body.action === "generateCarouselPreview") {
+        const { titleId, campaignId } = body;
+        if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
+        const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
+        if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return json({ error: "CF_ACCOUNT_ID / CF_API_TOKEN not configured — run: wrangler secret put CF_ACCOUNT_ID, wrangler secret put CF_API_TOKEN (a Cloudflare API token with Browser Rendering permission — create one at dash.cloudflare.com/profile/api-tokens)" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
+
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+        // ── Step 1: read the title, and its existing slide script if any ──
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const titleName = (titlePage.properties.Title?.title || []).map(t => t.plain_text).join("") || "Carousel";
+
+        const parseSlides = async () => {
+          const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+          const blocks = blocksResp.results || [];
+          const sections = [];
+          let current = null;
+          for (const b of blocks) {
+            if (b.type === "heading_3") {
+              current = { heading: (b.heading_3?.rich_text || []).map(t => t.plain_text).join(""), lines: [] };
+              sections.push(current);
+            } else if (current && (b.type === "paragraph" || b.type === "bulleted_list_item")) {
+              const rt = b[b.type]?.rich_text || [];
+              const text = rt.map(t => t.plain_text).join("");
+              const bold = !!rt[0]?.annotations?.bold;
+              if (text) current.lines.push({ text, bold });
+            }
+          }
+          const findSection = name => sections.find(s => s.heading.toLowerCase() === name.toLowerCase());
+          const slides = sections
+            .filter(s => /^Slide \d+/i.test(s.heading))
+            .map(s => ({
+              headline: (s.lines.find(l => l.bold) || s.lines[0] || {}).text || "",
+              body: (s.lines.find(l => !l.bold) || {}).text || "",
+            }));
+          const caption = findSection("Caption")?.lines?.[0]?.text || "";
+          const hashtags = findSection("Hashtags")?.lines?.[0]?.text || "";
+          return { slides, caption, hashtags };
+        };
+
+        let { slides, caption, hashtags } = await parseSlides();
+
+        // ── Step 2: no slide script yet — write one (same prompt as generateTitleSlides) ──
+        if (!slides.length) {
+          let keywords = "";
+          const researchRaw = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+          keywords = rt(researchRaw, "Keywords");
+
+          const slidePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}Write a full 7-slide Instagram carousel script for this specific title.
+
+TITLE: ${titleName}
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}
+Write EXACTLY 7 slides, no more, no fewer:
+- Slide 1 (hook): short punchy headline + one-line subtext as "body"
+- Slides 2-6 (insights): 5 slides, each a short headline + 2-3 sentence body — real substance, not placeholders
+- Slide 7 (CTA): short quote/summary line as headline + save/follow/next-step prompt as "body"
+- Instagram caption (150-200 words) — required, never leave empty
+- 3-5 hashtags (no # prefix needed) — required, never leave empty
+
+Every slide must have both a non-empty "headline" and a non-empty "body". No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "slides": [ { "headline": "...", "body": "..." }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`;
+
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: slidePrompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+          let parsed;
+          try {
+            const raw = aiData.content?.[0]?.text || "";
+            const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+            if (start === -1 || end === -1) throw new Error("No JSON object found");
+            parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          } catch(e) { return json({ error: "Failed to parse slides JSON: " + e.message }, 500); }
+
+          const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: !!opts.bold, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+          const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+          const para = (text, opts = {}) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text, opts) } });
+          const divider = () => ({ object: "block", type: "divider", divider: {} });
+          const writtenSlides = (Array.isArray(parsed.slides) ? parsed.slides : []).filter(s => s && (s.headline || s.body));
+          const n = writtenSlides.length;
+          const children = [];
+          writtenSlides.forEach((s, idx) => {
+            children.push(heading(`Slide ${idx + 1} (${idx + 1}/${n})`));
+            if (s.headline) children.push(para(s.headline, { bold: true }));
+            if (s.body) children.push(para(s.body));
+            children.push(divider());
+          });
+          if (parsed.caption) { children.push(heading('Caption')); children.push(para(parsed.caption)); }
+          if (Array.isArray(parsed.hashtags) && parsed.hashtags.length) {
+            children.push(heading('Hashtags'));
+            children.push(para(parsed.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ')));
+          }
+          if (children.length) {
+            const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ children }),
+            });
+            if (!writeResp.ok) { const r = await writeResp.json(); return json({ error: r.message || "Failed to write slides to title" }, writeResp.status); }
+          }
+          ({ slides, caption, hashtags } = await parseSlides());
+          if (!slides.length) return json({ error: "Wrote a slide script but couldn't parse it back — try again" }, 500);
+        }
+
+        // ── Step 3: design spec + deploy path ──
+        const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+        const specRelId = campPage.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+        let spec = { ...DESIGN_SPEC_DEFAULTS };
+        if (specRelId) {
+          const specPage = await fetch(`https://api.notion.com/v1/pages/${specRelId}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          if (specPage?.properties) {
+            const s = dsFromPage(specPage);
+            spec = { ...spec, ...Object.fromEntries(Object.entries(s).filter(([k, v]) => k !== "id" && k !== "name" && v)) };
+          }
+        }
+        const liveUrl = campPage.properties?.["live site"]?.url || campPage.properties?.["microsite"]?.url || "";
+        const deployMatch = liveUrl.match(/\/web\/([^\/?#]+)/) || liveUrl.match(/\/microsites\/([^\/?#]+)/);
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const deployPath = deployMatch ? deployMatch[1] : (slugify(campPage.properties?.Name?.title?.map(t=>t.plain_text).join("")) || 'campaign');
+        const titleSlug = slugify(titleName) || 'carousel';
+
+        // ── Step 4: render each slide to a real PNG via Browser Rendering ──
+        const slideHtml = (slide, idx, total) => `<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(spec.headlineFont)}:wght@600;700&family=${encodeURIComponent(spec.bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { width:1080px; height:1350px; background:${spec.bg}; font-family:'${spec.bodyFont}',serif; display:flex; flex-direction:column; justify-content:center; padding:100px 90px; position:relative; overflow:hidden; }
+  .num { font-family:'IBM Plex Mono',monospace; font-size:22px; color:${spec.accent}; letter-spacing:0.14em; text-transform:uppercase; margin-bottom:32px; }
+  h1 { font-family:'${spec.headlineFont}',serif; font-size:58px; line-height:1.18; color:${spec.ink}; margin-bottom:30px; font-weight:600; }
+  p { font-family:'${spec.bodyFont}',serif; font-size:29px; line-height:1.55; color:${spec.ink}; opacity:0.82; }
+  .counter { position:absolute; bottom:64px; right:74px; font-family:'IBM Plex Mono',monospace; font-size:19px; color:${spec.accent}; }
+  .rule { position:absolute; left:90px; right:90px; top:70px; height:1px; background:${spec.accent}; opacity:0.35; }
+</style></head><body>
+  <div class="rule"></div>
+  <div class="num">${String(idx + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}</div>
+  <h1>${esc(slide.headline)}</h1>
+  <p>${esc(slide.body)}</p>
+  <div class="counter">${idx + 1} / ${total}</div>
+</body></html>`;
+
+        const renderSlide = async (html) => {
+          const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ html, viewport: { width: 1080, height: 1350, deviceScaleFactor: 1 }, screenshotOptions: { type: "png" } }),
+          });
+          if (!resp.ok) { const t = await resp.text(); throw new Error(`Browser Rendering failed (HTTP ${resp.status}): ${t.slice(0, 300)}`); }
+          return await resp.arrayBuffer();
+        };
+
+        let pngBuffers;
+        try {
+          pngBuffers = await Promise.all(slides.map((s, i) => renderSlide(slideHtml(s, i, slides.length))));
+        } catch (e) {
+          return json({ error: e.message }, 502);
+        }
+
+        // ── Step 5: commit PNGs + a gallery page to GitHub Pages ──
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const toB64Bin = buf => { const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+        const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+        const basePath = `web/${deployPath}/carousels/${titleSlug}`;
+
+        const putFile = async (path, b64, message) => {
+          const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+          let sha = null;
+          if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch(e) {} }
+          const putBody = { message, content: b64, branch: BRANCH };
+          if (sha) putBody.sha = sha;
+          const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+            method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+          });
+          if (!putResp.ok) { const r = await putResp.json(); throw new Error(`GitHub commit failed for ${path} (HTTP ${putResp.status}): ${r.message || 'unknown'}`); }
+        };
+
+        try {
+          for (let i = 0; i < pngBuffers.length; i++) {
+            await putFile(`${basePath}/slide-${String(i + 1).padStart(2, '0')}.png`, toB64Bin(pngBuffers[i]), `Carousel preview: ${titleName} — slide ${i + 1}`);
+          }
+          const galleryHtml = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${esc(titleName)} — Carousel Preview</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#111; font-family:system-ui,sans-serif; padding:32px 20px; }
+  h1 { color:#fff; font-size:20px; margin-bottom:6px; }
+  .sub { color:#888; font-size:13px; margin-bottom:28px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; max-width:1200px; margin:0 auto; }
+  .grid img { width:100%; border-radius:6px; display:block; box-shadow:0 4px 20px rgba(0,0,0,.4); }
+  .cap { max-width:640px; margin:36px auto 0; color:#ccc; font-size:14px; line-height:1.7; white-space:pre-wrap; }
+  .tags { max-width:640px; margin:14px auto 0; color:#666; font-size:12px; }
+</style></head><body>
+  <h1>${esc(titleName)}</h1>
+  <div class="sub">Carousel preview — ${slides.length} slides — for approval / layout review, not yet published</div>
+  <div class="grid">${pngBuffers.map((_, i) => `<img src="slide-${String(i + 1).padStart(2, '0')}.png" alt="Slide ${i + 1}">`).join('')}</div>
+  ${caption ? `<div class="cap">${esc(caption)}</div>` : ''}
+  ${hashtags ? `<div class="tags">${esc(hashtags)}</div>` : ''}
+</body></html>`;
+          await putFile(`${basePath}/index.html`, toB64Text(galleryHtml), `Carousel preview: ${titleName} — gallery page`);
+        } catch (e) {
+          return json({ error: e.message }, 502);
+        }
+
+        const previewUrl = `https://cabuzzard.github.io/dash/${basePath}/`;
+
+        // ── Step 6: upsert the Assets DB record + move the title to Review ──
+        const assetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Content Strategy", relation: { contains: dash(titleId) } },
+            { property: "Asset Type", select: { equals: "carousel" } },
+          ] } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const existingAsset = (assetQuery.results || []).find(a => !a.archived);
+
+        const assetProps = {
+          "Design Link": { url: previewUrl },
+          "Status": { select: { name: "Ready" } },
+          "Asset Status": { select: { name: "Development" } },
+          "Body": { rich_text: [{ type: "text", text: { content: caption.slice(0, 1990) } }] },
+          "Notes": { rich_text: [{ type: "text", text: { content: hashtags.slice(0, 1990) } }] },
+          "Platform Name": { select: { name: "Instagram" } },
+        };
+        let assetId;
+        if (existingAsset) {
+          assetId = existingAsset.id.replace(/-/g, "");
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: assetProps }),
+          });
+        } else {
+          assetProps["Asset Title"] = { title: [{ type: "text", text: { content: `${titleName} — Carousel`.slice(0, 200) } }] };
+          assetProps["Asset Type"] = { select: { name: "carousel" } };
+          assetProps["Content Strategy"] = { relation: [{ id: dash(titleId) }] };
+          assetProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Asset create failed" }, createResp.status || 500);
+          assetId = created.id.replace(/-/g, "");
+        }
+
+        await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Status": { select: { name: "Review" } } } }),
+        });
+
+        return json({ success: true, previewUrl, slideCount: slides.length, assetId, titleId });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);
