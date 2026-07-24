@@ -10822,8 +10822,10 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       // those edits — same "regenerate" contract as the make-carousel skill,
       // just without ever leaving the dashboard.
       //
-      // Deliberately stops at "ready for approval" — Status: Review (title)
-      // / Ready (asset), never Publish. Actual Instagram publishing is a
+      // Sets the title's Status to "Publish" (the value this dashboard
+      // actually surfaces/tracks — "Review" isn't used anywhere) and the
+      // Asset's Status to "Ready" once the preview is rendered. This is a
+      // rendered-and-hosted preview, not an actual Instagram post — that's a
       // separate, not-yet-built step (see chat history — upload-post.com is
       // the planned integration, UPLOAD_POST_API_KEY is already provisioned
       // but unused).
@@ -11088,7 +11090,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
 
         await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Status": { select: { name: "Review" } } } }),
+          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
         });
 
         return json({ success: true, previewUrl, slideCount: slides.length, assetId, titleId });
