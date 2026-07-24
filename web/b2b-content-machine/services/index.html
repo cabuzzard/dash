@@ -90,7 +90,6 @@
   section.block { padding: 68px 0; }
   section.block + section.block { border-top: 1px solid var(--line-ink); }
   .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; }
-  .sec-no { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--gold-deep); font-weight: 600; }
   h2 { font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(24px, 3.2vw, 33px); line-height: 1.15; }
   .sec-sub { color: var(--text-muted); max-width: 62ch; margin-bottom: 36px; font-size: 15.5px; }
 
@@ -100,7 +99,6 @@
     background: #fff; border: 1px solid var(--line-ink); border-radius: 7px; padding: 22px 22px 20px;
     display: flex; flex-direction: column; gap: 10px;
   }
-  .svc-card .num { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--gold-deep); font-weight: 600; letter-spacing: 0.04em; }
   .svc-card h3 { font-family: 'Fraunces', serif; font-weight: 600; font-size: 18.5px; line-height: 1.25; }
   .svc-card p { font-size: 14px; color: var(--text-muted); line-height: 1.62; }
   .svc-card .tools {
@@ -112,7 +110,6 @@
   .band-alt { background: var(--paper-2); }
   .band-ink { background: var(--ink); color: var(--text-on-ink); }
   .band-ink .sec-sub { color: var(--text-on-ink-muted); }
-  .band-ink .sec-no { color: var(--gold); }
   .band-ink .svc-card { background: var(--ink-2); border-color: var(--line); }
   .band-ink .svc-card p { color: var(--text-on-ink-muted); }
   .band-ink .svc-card .tools { border-color: var(--line); color: var(--text-on-ink-muted); }
@@ -193,47 +190,40 @@
   <!-- AI Implementation & Automation -->
   <section class="block" id="implementation">
     <div class="wrap">
-      <div class="sec-head"><span class="sec-no">01</span><h2>AI Implementation &amp; Automation</h2></div>
+      <div class="sec-head"><h2>AI Implementation &amp; Automation</h2></div>
       <p class="sec-sub">The operational layer — the parts of your business that currently run on manual effort, sticky notes, and someone remembering to follow up.</p>
       <div class="svc-grid">
         <div class="svc-card">
-          <span class="num">01</span>
           <h3>AI Voice Receptionist &amp; Booking Agent</h3>
           <p>Answers inbound calls, qualifies the lead, and books the appointment automatically — built for businesses that can't staff a 24/7 front desk.</p>
           <div class="tools"><b>Built with:</b> voice AI agents (Breezy / VAPI-class), automated outbound qualification &amp; scheduling</div>
         </div>
         <div class="svc-card">
-          <span class="num">02</span>
           <h3>Lead Intake &amp; CRM/Funnel Setup</h3>
           <p>A CRM and lead-capture funnel so inbound leads are tracked, tagged, and followed up automatically instead of falling through the cracks.</p>
           <div class="tools"><b>Built with:</b> GoHighLevel-class CRM &amp; funnel tooling</div>
         </div>
         <div class="svc-card">
-          <span class="num">03</span>
           <h3>Back-Office Workflow Automation</h3>
           <p>Onboarding, admin, and scheduling wired end-to-end across the apps you already use, so manual busywork runs itself.</p>
           <div class="tools"><b>Built with:</b> Zapier / Make / n8n-class automation platforms</div>
         </div>
         <div class="svc-card">
-          <span class="num">04</span>
           <h3>Custom Internal Tools &amp; Mini-Apps</h3>
           <p>Lightweight custom software — internal tools, client portals, calculators — built for your exact workflow instead of bending to an off-the-shelf SaaS.</p>
           <div class="tools"><b>Built with:</b> AI-assisted development (Lovable / Cursor-class tooling)</div>
         </div>
         <div class="svc-card">
-          <span class="num">05</span>
           <h3>Payment &amp; Checkout Setup</h3>
           <p>A working payment and checkout flow so you can actually collect money for the new offer or service being built.</p>
           <div class="tools"><b>Built with:</b> Stripe</div>
         </div>
         <div class="svc-card">
-          <span class="num">06</span>
           <h3>SOP Documentation &amp; Process Capture</h3>
           <p>How your team actually works, captured and turned into written, repeatable SOPs — the foundation every other automation gets built on top of.</p>
           <div class="tools"><b>Built with:</b> guided SOP-capture tooling</div>
         </div>
         <div class="svc-card">
-          <span class="num">07</span>
           <h3>Financial Monitoring &amp; Fraud Detection Add-On</h3>
           <p>An ongoing monitoring layer that watches your books for anomalies and cash-flow risk — offered as an add-on alongside a core build.</p>
           <div class="tools"><b>Built with:</b> automated anomaly-detection tooling</div>
@@ -245,29 +235,25 @@
   <!-- Content & Marketing Production -->
   <section class="block band-alt" id="content">
     <div class="wrap">
-      <div class="sec-head"><span class="sec-no">02</span><h2>Content &amp; Marketing Production</h2></div>
+      <div class="sec-head"><h2>Content &amp; Marketing Production</h2></div>
       <p class="sec-sub">The layer that keeps you visible without eating your week — production that runs on a system, not on you remembering to post.</p>
       <div class="svc-grid">
         <div class="svc-card">
-          <span class="num">08</span>
           <h3>AI Video/Avatar Content Production</h3>
           <p>On-brand video content produced with an AI avatar — scales your content output without a camera, a studio, or a production team.</p>
           <div class="tools"><b>Built with:</b> HeyGen-class AI avatar video</div>
         </div>
         <div class="svc-card">
-          <span class="num">09</span>
           <h3>Branded Voice Cloning for Audio Content</h3>
           <p>Your voice, cloned for ads, podcast segments, or phone systems — produced at scale without re-recording every line yourself.</p>
           <div class="tools"><b>Built with:</b> ElevenLabs-class voice cloning</div>
         </div>
         <div class="svc-card">
-          <span class="num">10</span>
           <h3>Text-to-Deck / Presentation Generation</h3>
           <p>Long-form written content turned into a polished visual deck or one-pager automatically — ready for sales calls and lead magnets.</p>
           <div class="tools"><b>Built with:</b> Gamma-class presentation generation</div>
         </div>
         <div class="svc-card">
-          <span class="num">11</span>
           <h3>Founder Knowledge Base / Content Engine</h3>
           <p>Your own expertise, captured once and repurposed into an ongoing content engine — no new interview required every time you need something new to say.</p>
           <div class="tools"><b>Built with:</b> founder knowledge-capture &amp; repurposing tooling</div>
@@ -279,23 +265,20 @@
   <!-- Strategy & Systems -->
   <section class="block band-ink" id="strategy">
     <div class="wrap">
-      <div class="sec-head"><span class="sec-no">03</span><h2>Strategy &amp; Systems</h2></div>
+      <div class="sec-head"><h2>Strategy &amp; Systems</h2></div>
       <p class="sec-sub">The layer above the tools — how the offer is priced, how the numbers get watched, and how you get your own time back once the system is running.</p>
       <div class="svc-grid">
         <div class="svc-card">
-          <span class="num">12</span>
           <h3>Productized High-Ticket Offer Packaging</h3>
           <p>Your service repackaged into a fixed-scope, fixed-price offer — a one-page offer instead of open-ended hourly billing, so prospects know exactly what they're buying.</p>
           <div class="tools"><b>Included with:</b> any implementation engagement</div>
         </div>
         <div class="svc-card">
-          <span class="num">13</span>
           <h3>Founder KPI Dashboard</h3>
           <p>One place to see the numbers that actually matter — revenue, pipeline, churn — with alerts, instead of digging through five different tools.</p>
           <div class="tools"><b>Built with:</b> Precision-class reporting &amp; KPI dashboards</div>
         </div>
         <div class="svc-card">
-          <span class="num">14</span>
           <h3>Delegation &amp; SOP Buyback Layer</h3>
           <p>The layer underneath everything else: your own recurring work documented and handed off, so you actually have time to sell and run what gets built.</p>
           <div class="tools"><b>Built with:</b> SOP capture + VA/EA hand-off planning</div>
@@ -308,7 +291,7 @@
   <!-- Final CTA -->
   <section class="block final-cta">
     <div class="wrap">
-      <div class="sec-head" style="justify-content:center;"><span class="sec-no">04</span><h2>Not sure which pieces you need?</h2></div>
+      <div class="sec-head" style="justify-content:center;"><h2>Not sure which pieces you need?</h2></div>
       <p class="sec-sub">That's what the audit is for. 20 minutes, no pitch — just a map of your current workflow and exactly which of these would close the gap.</p>
       <a href="../#audit" class="btn-primary">Get my free Business Strategy Audit →</a>
     </div>
