@@ -989,14 +989,31 @@ function tick() {
 }
 setInterval(tick, 1000); tick();
 
-async function w(action, extra = {}) {
+// timeoutMs is optional — omit it and this behaves exactly as before (no
+// abort, waits indefinitely). Pass it for any action that can run long
+// server-side (multi-step AI generation/grading loops) so a hung request
+// surfaces as a visible error instead of leaving a button stuck on
+// "Generating…" forever with no way to tell it died.
+async function w(action, extra = {}, timeoutMs) {
   const payload = { action, token: SESSION_TOKEN, ...extra };
   // operator research guidelines ride along on every call — the worker folds
   // them into all AI research/generation prompts (harmless on non-AI actions)
   const rg = rgVal();
   if (rg && payload.researchGuidelines == null) payload.researchGuidelines = rg;
-  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-  const d = await r.json();
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let r;
+  try {
+    r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload), signal: controller ? controller.signal : undefined });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`Timed out after ${Math.round(timeoutMs / 1000)}s — the server may still be finishing this in the background. Check Notion in a minute, or try again.`);
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  let d;
+  try { d = await r.json(); }
+  catch (e) { throw new Error(`Server returned an unexpected response (HTTP ${r.status}) — it likely timed out mid-request. Check Notion, or try again.`); }
   if (r.status === 401) {
     SESSION_TOKEN = null;
     sessionStorage.removeItem('hermes_token');
@@ -4782,7 +4799,10 @@ async function submitGenAssets() {
     const method    = await gaResolve('method', status);
     const subMethod = await gaResolve('submethod', status);
     const product   = await gaResolve('product', status);
-    status.textContent = 'Generating asset concepts…';
+    status.textContent = 'Generating asset concepts… (this can take a couple minutes — each concept may go through several grade-and-retry passes)';
+    // 170s timeout — generous for a multi-concept generate/grade/retry loop,
+    // but bounded so a hung request fails visibly instead of leaving this
+    // button stuck on "Generating…" forever.
     const r = await w('generateTitleAssets', {
       titleId: GA_TITLE_ID,
       campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID,
@@ -4800,7 +4820,7 @@ async function submitGenAssets() {
       platformId: document.getElementById('gaPlatformInput')?.value || undefined,
       platformName: document.getElementById('gaPlatformInput')?.value ? document.getElementById('gaPlatformInput').selectedOptions[0].textContent : undefined,
       loginId: document.getElementById('gaLoginInput')?.value || undefined,
-    });
+    }, 170000);
     if (r.sectionCount != null) {
       status.textContent = `✓ Wrote the full post (${r.sectionCount} sections${r.contextMode === 'blend' ? ', blended with campaign + product context' : ''}) and published it.`;
       status.style.color = '#68d391';
@@ -4816,6 +4836,10 @@ async function submitGenAssets() {
     status.textContent = 'Error: ' + e.message;
     status.style.color = '#fc8181';
     btn.disabled = false; btn.textContent = 'Generate';
+    // A timeout on the client doesn't necessarily mean the server-side
+    // generation failed — reload so any assets that did land show up
+    // instead of leaving the operator to check Notion manually.
+    loadTitles().catch(() => {});
   }
 }
 
