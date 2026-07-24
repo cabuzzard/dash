@@ -5886,8 +5886,25 @@ function renderTable() {
     tr.appendChild(hlTd);
 
     tr.insertAdjacentHTML('beforeend',
-      '<td class="link"><a href="' + notionUrl + '" target="_blank" title="Notion DB">↗</a></td>' +
-      '<td class="link">' + (c.siteUrl ? '<a href="' + c.siteUrl + '" target="_blank" title="Microsite">↗</a>' : '') + '</td>' +
+      '<td class="link"><a href="' + notionUrl + '" target="_blank" title="Notion DB">↗</a></td>'
+    );
+
+    // STE cell — link to the microsite if one exists, else a "+ site" button
+    // that deploys one (createMicrosite: commits microsites/{slug}/ via the
+    // Worker's GitHub API call, creating a Research record first if the
+    // campaign doesn't have one yet).
+    const steTd = document.createElement('td');
+    steTd.className = 'link';
+    const renderSteCell = () => {
+      steTd.innerHTML = c.siteUrl
+        ? '<a href="' + c.siteUrl + '" target="_blank" title="Microsite">↗</a>'
+        : '<button title="Create microsite" style="background:none;border:none;cursor:pointer;font-size:10px;color:var(--text3);padding:0;" onclick="event.stopPropagation();createMicrositeForCampaign(\'' + c.id + '\', this)">+site</button>';
+    };
+    renderSteCell();
+    steTd._render = renderSteCell;
+    tr.appendChild(steTd);
+
+    tr.insertAdjacentHTML('beforeend',
       '<td class="link">' + (c.campaignPage ? '<a href="' + c.campaignPage + '" target="_blank" title="Live Site">↗</a>' : '') + '</td>' +
       '<td class="link">' + (c.research ? '<a href="https://www.notion.so/' + c.research.id + '" target="_blank" title="ROI Notes">↗</a>' : '') + '</td>'
     );
@@ -8652,6 +8669,28 @@ function filterSiteDropdown() {
     dd.appendChild(div);
   });
   dd.style.display = 'block';
+}
+
+// STE column "+site" button — deploys microsites/{slug}/ via the Worker's
+// GitHub API call (createMicrosite), creating a Research record first if the
+// campaign doesn't have one yet. No confirm dialog — inline button state,
+// toast on success/failure, same pattern as the microsite admin page's own
+// "+ site" button for products.
+async function createMicrositeForCampaign(campaignId, btn) {
+  const c = ovData.find(x => x.id === campaignId);
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const res = await call('createMicrosite', { campaignId });
+    if (res.error) throw new Error(res.error);
+    if (c) c.siteUrl = res.url;
+    const td = btn.closest('td');
+    if (td && td._render) td._render();
+    showToast(res.researchCreated ? 'Microsite + Research created ✓' : 'Microsite created ✓', 'success');
+  } catch (e) {
+    btn.disabled = false; btn.textContent = orig;
+    showToast('Failed: ' + e.message, 'error');
+  }
 }
 
 async function saveEditSite() {

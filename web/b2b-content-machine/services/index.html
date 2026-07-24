@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Services — Webguy AI Implementation for Founder-Led B2B Businesses</title>
+<meta name="description" content="Every piece of the AI system, sold separately or as one build: voice agents, CRM/funnel setup, workflow automation, custom internal tools, and the content engine that feeds them all." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+  :root {
+    --ink:        #0e1015;
+    --ink-2:      #171a22;
+    --paper:      #f7f5f0;
+    --paper-2:    #efece4;
+    --gold:       #2f7a4d;
+    --gold-deep:  #1d5636;
+    --steel:      #6f9bc4;
+    --text-on-ink: #f3f1ea;
+    --text-on-ink-muted: rgba(243,241,234,0.68);
+    --text-ink:   #1b1d24;
+    --text-muted: #5a5d68;
+    --line:       rgba(243,241,234,0.14);
+    --line-ink:   rgba(27,29,36,0.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--paper);
+    color: var(--text-ink);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .serif { font-family: 'Fraunces', serif; }
+  .mono  { font-family: 'IBM Plex Mono', monospace; }
+  .wrap  { max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+  /* ---------- Logo ---------- */
+  .logo { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; }
+  .logo svg { flex-shrink: 0; }
+  .logo-word { font-family: 'Fraunces', serif; font-weight: 600; font-size: 20px; letter-spacing: 0.02em; line-height: 1; }
+  .logo-sub  { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; margin-top: 3px; opacity: 0.6; }
+
+  /* ---------- Header ---------- */
+  header.site {
+    background: var(--ink); color: var(--text-on-ink);
+    padding: 22px 0;
+  }
+  header.site .wrap { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+  .nav-links { display: flex; align-items: center; gap: 26px; }
+  .nav-link {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; letter-spacing: 0.04em;
+    color: var(--text-on-ink-muted); text-decoration: none; transition: color .15s;
+  }
+  .nav-link:hover, .nav-link.active { color: var(--text-on-ink); }
+  .cta-mini {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600;
+    letter-spacing: 0.04em; color: var(--text-on-ink); background: var(--gold);
+    padding: 9px 16px; border-radius: 3px; text-decoration: none;
+    transition: background .15s;
+  }
+  .cta-mini:hover { background: #3f9962; }
+
+  /* ---------- Page hero (shorter than homepage) ---------- */
+  .page-hero { background: var(--ink); color: var(--text-on-ink); border-bottom: 3px solid var(--gold); position: relative; overflow: hidden; }
+  .page-hero::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(circle at 82% 18%, rgba(47,122,77,0.10), transparent 46%);
+    pointer-events: none;
+  }
+  .page-hero .wrap { position: relative; padding: 58px 28px 50px; }
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--gold); margin-bottom: 20px; display: inline-flex; align-items: center; gap: 12px;
+  }
+  .eyebrow::before { content: ""; width: 32px; height: 1.5px; background: var(--gold); }
+  h1.headline {
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(30px, 4.4vw, 46px);
+    line-height: 1.1; letter-spacing: -0.01em; max-width: 22ch;
+  }
+  h1.headline em { font-style: normal; color: var(--gold); }
+  .page-hero p.lede { margin-top: 20px; font-size: clamp(15px, 1.6vw, 17.5px); color: var(--text-on-ink-muted); max-width: 60ch; }
+
+  /* ---------- Section scaffold ---------- */
+  section.block { padding: 68px 0; }
+  section.block + section.block { border-top: 1px solid var(--line-ink); }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; }
+  .sec-no { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--gold-deep); font-weight: 600; }
+  h2 { font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(24px, 3.2vw, 33px); line-height: 1.15; }
+  .sec-sub { color: var(--text-muted); max-width: 62ch; margin-bottom: 36px; font-size: 15.5px; }
+
+  /* ---------- Service cards ---------- */
+  .svc-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .svc-card {
+    background: #fff; border: 1px solid var(--line-ink); border-radius: 7px; padding: 22px 22px 20px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .svc-card .num { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--gold-deep); font-weight: 600; letter-spacing: 0.04em; }
+  .svc-card h3 { font-family: 'Fraunces', serif; font-weight: 600; font-size: 18.5px; line-height: 1.25; }
+  .svc-card p { font-size: 14px; color: var(--text-muted); line-height: 1.62; }
+  .svc-card .tools {
+    margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line-ink);
+    font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.03em;
+    color: var(--text-muted); opacity: 0.85;
+  }
+  .svc-card .tools b { color: var(--text-ink); font-weight: 600; }
+  .band-alt { background: var(--paper-2); }
+  .band-ink { background: var(--ink); color: var(--text-on-ink); }
+  .band-ink .sec-sub { color: var(--text-on-ink-muted); }
+  .band-ink .sec-no { color: var(--gold); }
+  .band-ink .svc-card { background: var(--ink-2); border-color: var(--line); }
+  .band-ink .svc-card p { color: var(--text-on-ink-muted); }
+  .band-ink .svc-card .tools { border-color: var(--line); color: var(--text-on-ink-muted); }
+  .band-ink .svc-card .tools b { color: var(--text-on-ink); }
+
+  /* ---------- Framework note ---------- */
+  .note-strip {
+    background: #fff; border: 1px dashed var(--line-ink); border-radius: 7px; padding: 18px 20px;
+    font-size: 13.5px; color: var(--text-muted); margin-top: 4px;
+  }
+
+  /* ---------- Bottom CTA ---------- */
+  .final-cta { background: var(--ink); color: var(--text-on-ink); text-align: center; }
+  .final-cta h2 { color: var(--text-on-ink); }
+  .final-cta .sec-sub { margin-left: auto; margin-right: auto; text-align: center; color: var(--text-on-ink-muted); }
+  .btn-primary {
+    font-family: 'Inter', sans-serif; font-weight: 700; font-size: 15px;
+    background: var(--gold); color: var(--text-on-ink); padding: 15px 26px; border-radius: 4px;
+    text-decoration: none; display: inline-block; border: none; cursor: pointer;
+    transition: background .15s, transform .1s;
+  }
+  .btn-primary:hover { background: #3f9962; transform: translateY(-1px); }
+
+  /* ---------- Footer ---------- */
+  footer { background: var(--ink); color: var(--text-on-ink-muted); padding: 40px 0; border-top: 1px solid var(--line); }
+  footer .wrap { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+  footer .foot-logo { opacity: 0.9; }
+  footer .foot-meta { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; text-align: right; line-height: 1.8; }
+
+  @media (max-width: 860px) {
+    .svc-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 520px) {
+    .wrap { padding: 0 18px; }
+    .page-hero .wrap { padding: 48px 18px 40px; }
+    .nav-links { display: none; }
+    footer .wrap { flex-direction: column; align-items: flex-start; }
+    footer .foot-meta { text-align: left; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="site">
+    <div class="wrap">
+      <a href="../" class="logo" aria-label="Webguy">
+        <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <line x1="9" y1="24" x2="17" y2="9" stroke="#2f7a4d" stroke-width="1.4"/>
+          <line x1="17" y1="9" x2="25" y2="24" stroke="#2f7a4d" stroke-width="1.4"/>
+          <line x1="9" y1="24" x2="25" y2="24" stroke="#2f7a4d" stroke-width="1.4" stroke-opacity="0.4"/>
+          <circle cx="17" cy="9" r="3.4" fill="#2f7a4d"/>
+          <circle cx="9" cy="24" r="3.4" fill="none" stroke="#2f7a4d" stroke-width="1.4"/>
+          <circle cx="25" cy="24" r="3.4" fill="none" stroke="#2f7a4d" stroke-width="1.4"/>
+        </svg>
+        <span>
+          <span class="logo-word" style="display:block;color:var(--text-on-ink);">WEBGUY</span>
+          <span class="logo-sub" style="color:var(--text-on-ink);">AI Implementation</span>
+        </span>
+      </a>
+      <div class="nav-links">
+        <a href="../#how" class="nav-link">How it works</a>
+        <a href="./" class="nav-link active">Services</a>
+        <a href="../#audit" class="cta-mini">Get the free audit →</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Page hero -->
+  <section class="page-hero">
+    <div class="wrap">
+      <div class="eyebrow">The Full Menu</div>
+      <h1 class="headline">Every piece of the system — <em>sold separately, or built as one.</em></h1>
+      <p class="lede">Most agencies sell a strategy deck and leave you to figure out delivery. This is the opposite: fourteen concrete, working pieces you can pick from individually, or bundle into the full Content OS build. No tool you don't need, no retainer you can't cancel.</p>
+    </div>
+  </section>
+
+  <!-- AI Implementation & Automation -->
+  <section class="block" id="implementation">
+    <div class="wrap">
+      <div class="sec-head"><span class="sec-no">01</span><h2>AI Implementation &amp; Automation</h2></div>
+      <p class="sec-sub">The operational layer — the parts of your business that currently run on manual effort, sticky notes, and someone remembering to follow up.</p>
+      <div class="svc-grid">
+        <div class="svc-card">
+          <span class="num">01</span>
+          <h3>AI Voice Receptionist &amp; Booking Agent</h3>
+          <p>Answers inbound calls, qualifies the lead, and books the appointment automatically — built for businesses that can't staff a 24/7 front desk.</p>
+          <div class="tools"><b>Built with:</b> voice AI agents (Breezy / VAPI-class), automated outbound qualification &amp; scheduling</div>
+        </div>
+        <div class="svc-card">
+          <span class="num">02</span>
+          <h3>Lead Intake &amp; CRM/Funnel Setup</h3>
+          <p>A CRM and lead-capture funnel so inbound leads are tracked, tagged, and followed up automatically instead of falling through the cracks.</p>
+          <div class="tools"><b>Built with:</b> GoHighLevel-class CRM &amp; funnel tooling</div>
+        </div>
+        <div class="svc-card">
+          <span class="num">03</span>
+          <h3>Back-Office Workflow Automation</h3>
+          <p>Onboarding, admin, and scheduling wired end-to-end across the apps you already use, so manual busywork runs itself.</p>
+          <div class="tools"><b>Built with:</b> Zapier / Make / n8n-class automation platforms</div>
+        </div>
+        <div class="svc-card">
+          <span class="num">04</span>
+          <h3>Custom Internal Tools &amp; Mini-Apps</h3>
+          <p>Lightweight custom software — internal tools, client portals, calculators — built for your exact workflow instead of bending to an off-the-shelf SaaS.</p>
+          <div class="tools"><b>Built with:</b> AI-assisted development (Lovable / Cursor-class tooling)</div>
+        </div>
+        <div class="svc-card">
+          <span class="num">05</span>
+          <h3>Payment &amp; Checkout Setup</h3>
+          <p>A working payment and checkout flow so you can actually collect money for the new offer or service being built.</p>
+          <div class="tools"><b>Built with:</b> Stripe</div>
+        </div>
+        <div class="svc-card">
+          <span class="num">06</span>
+          <h3>SOP Documentation &amp; Process Capture</h3>
+          <p>How your team actually works, captured and turned into written, repeatable SOPs — the foundation every other automation gets built on top of.</p>
+          <div class="tools"><b>Built with:</b> guided SOP-capture tooling</div>
+        </div>
+        <div class="svc-card">
+          <span class="num">07</span>
+          <h3>Financial Monitoring &amp; Fraud Detection Add-On</h3>
+          <p>An ongoing monitoring layer that watches your books for anomalies and cash-flow risk — offered as an add-on alongside a core build.</p>
+          <div class="tools"><b>Built with:</b> automated anomaly-detection tooling</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Content & Marketing Production -->
+  <section class="block band-alt" id="content">
+    <div class="wrap">
+      <div class="sec-head"><span class="sec-no">02</span><h2>Content &amp; Marketing Production</h2></div>
+      <p class="sec-sub">The layer that keeps you visible without eating your week — production that runs on a system, not on you remembering to post.</p>
+      <div class="svc-grid">
+        <div class="svc-card">
+          <span class="num">08</span>
+          <h3>AI Video/Avatar Content Production</h3>
+          <p>On-brand video content produced with an AI avatar — scales your content output without a camera, a studio, or a production team.</p>
+          <div class="tools"><b>Built with:</b> HeyGen-class AI avatar video</div>
+        </div>
+        <div class="svc-card">
+          <span class="num">09</span>
+          <h3>Branded Voice Cloning for Audio Content</h3>
+          <p>Your voice, cloned for ads, podcast segments, or phone systems — produced at scale without re-recording every line yourself.</p>
+          <div class="tools"><b>Built with:</b> ElevenLabs-class voice cloning</div>
+        </div>
+        <div class="svc-card">
+          <span class="num">10</span>
+          <h3>Text-to-Deck / Presentation Generation</h3>
+          <p>Long-form written content turned into a polished visual deck or one-pager automatically — ready for sales calls and lead magnets.</p>
+          <div class="tools"><b>Built with:</b> Gamma-class presentation generation</div>
+        </div>
+        <div class="svc-card">
+          <span class="num">11</span>
+          <h3>Founder Knowledge Base / Content Engine</h3>
+          <p>Your own expertise, captured once and repurposed into an ongoing content engine — no new interview required every time you need something new to say.</p>
+          <div class="tools"><b>Built with:</b> founder knowledge-capture &amp; repurposing tooling</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Strategy & Systems -->
+  <section class="block band-ink" id="strategy">
+    <div class="wrap">
+      <div class="sec-head"><span class="sec-no">03</span><h2>Strategy &amp; Systems</h2></div>
+      <p class="sec-sub">The layer above the tools — how the offer is priced, how the numbers get watched, and how you get your own time back once the system is running.</p>
+      <div class="svc-grid">
+        <div class="svc-card">
+          <span class="num">12</span>
+          <h3>Productized High-Ticket Offer Packaging</h3>
+          <p>Your service repackaged into a fixed-scope, fixed-price offer — a one-page offer instead of open-ended hourly billing, so prospects know exactly what they're buying.</p>
+          <div class="tools"><b>Included with:</b> any implementation engagement</div>
+        </div>
+        <div class="svc-card">
+          <span class="num">13</span>
+          <h3>Founder KPI Dashboard</h3>
+          <p>One place to see the numbers that actually matter — revenue, pipeline, churn — with alerts, instead of digging through five different tools.</p>
+          <div class="tools"><b>Built with:</b> Precision-class reporting &amp; KPI dashboards</div>
+        </div>
+        <div class="svc-card">
+          <span class="num">14</span>
+          <h3>Delegation &amp; SOP Buyback Layer</h3>
+          <p>The layer underneath everything else: your own recurring work documented and handed off, so you actually have time to sell and run what gets built.</p>
+          <div class="tools"><b>Built with:</b> SOP capture + VA/EA hand-off planning</div>
+        </div>
+      </div>
+      <p class="note-strip" style="margin-top:20px;background:var(--ink-2);border-color:var(--line);color:var(--text-on-ink-muted);">Most clients don't need all fourteen. The free audit tells you which 3–5 actually move the needle in your business — then we scope a build around just those.</p>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="block final-cta">
+    <div class="wrap">
+      <div class="sec-head" style="justify-content:center;"><span class="sec-no">04</span><h2>Not sure which pieces you need?</h2></div>
+      <p class="sec-sub">That's what the audit is for. 20 minutes, no pitch — just a map of your current workflow and exactly which of these would close the gap.</p>
+      <a href="../#audit" class="btn-primary">Get my free Business Strategy Audit →</a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="wrap">
+      <div class="foot-logo">
+        <span class="logo-word" style="font-size:16px;">WEBGUY</span>
+      </div>
+      <div class="foot-meta">
+        info@webguyleadgeneration.com<br />
+        AI implementation for founder-led B2B service businesses
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

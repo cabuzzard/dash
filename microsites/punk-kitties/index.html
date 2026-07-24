@@ -1360,6 +1360,18 @@ async function saveNotes() {
 
 const SC = { Development:'ts-write', Writing:'ts-write', Review:'ts-review', Approved:'ts-appr', Publish:'ts-pub', Published:'ts-done', Done:'ts-done', Explode:'ts-explode' };
 
+// Collapsed/expanded state of the Product/Method/Phase/Grouping headers in
+// the Development + Publish title lists, persisted per-campaign so it
+// survives page reloads and the re-render every loadTitles() does (title
+// add/delete/status-change all call it). Keyed by section ('dev'/'pub') +
+// level + the group's own key so it can't collide across levels or sections.
+// Groups default to collapsed (matches the pre-existing behavior) unless a
+// prior session recorded them open.
+const TITLE_COLLAPSE_KEY = 'titleGroupsOpen_' + CAMPAIGN_ID;
+let titleGroupsOpen = {};
+try { titleGroupsOpen = JSON.parse(localStorage.getItem(TITLE_COLLAPSE_KEY) || '{}'); } catch(e) {}
+function saveTitleGroupsOpen() { try { localStorage.setItem(TITLE_COLLAPSE_KEY, JSON.stringify(titleGroupsOpen)); } catch(e) {} }
+
 async function loadTitles() {
   const devEl = document.getElementById('devTitles');
   const pubEl = document.getElementById('pubTitles');
@@ -1412,7 +1424,7 @@ async function loadTitles() {
       }
       return wrap;
     }
-    function renderGroupingLevel(titles, container) {
+    function renderGroupingLevel(titles, container, section) {
       const groupOrder = [], byGroup = {};
       titles.forEach(t => {
         const gk = t.grouping || 'Ungrouped';
@@ -1424,21 +1436,23 @@ async function loadTitles() {
       }
       groupOrder.forEach(gk => {
         const gTitles = byGroup[gk];
+        const stateKey = section + '|grp|' + gk;
+        const isOpen = !!titleGroupsOpen[stateKey];
         const gHdr = document.createElement('div');
         gHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;user-select:none;';
-        const gArrow = document.createElement('span'); gArrow.textContent = '▶'; gArrow.style.cssText = 'font-size:8px;color:#555;flex-shrink:0;';
+        const gArrow = document.createElement('span'); gArrow.textContent = isOpen ? '▾' : '▶'; gArrow.style.cssText = 'font-size:8px;color:#555;flex-shrink:0;';
         const gLabel = document.createElement('span'); gLabel.style.cssText = 'flex:1;font-size:11px;color:#888;'; gLabel.textContent = gk;
         const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:#555;'; gCount.textContent = gTitles.length;
         gHdr.appendChild(gArrow); gHdr.appendChild(gLabel); gHdr.appendChild(gCount);
-        const gBody = document.createElement('div'); gBody.style.display = 'none';
+        const gBody = document.createElement('div'); gBody.style.display = isOpen ? 'block' : 'none';
         gTitles.forEach(t => gBody.appendChild(makeTitleRow(t)));
-        gHdr.onclick = () => { const o = gBody.style.display !== 'none'; gBody.style.display = o ? 'none' : 'block'; gArrow.textContent = o ? '▶' : '▾'; };
+        gHdr.onclick = () => { const o = gBody.style.display !== 'none'; gBody.style.display = o ? 'none' : 'block'; gArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
         container.appendChild(gHdr); container.appendChild(gBody);
       });
     }
-    function renderPhaseLevel(titles, container) {
+    function renderPhaseLevel(titles, container, section) {
       const hasPhase = titles.some(t => t.phase);
-      if (!hasPhase) { renderGroupingLevel(titles, container); return; }
+      if (!hasPhase) { renderGroupingLevel(titles, container, section); return; }
       const phaseOrder = [], byPhase = {};
       titles.forEach(t => {
         const pk = t.phase || '';
@@ -1447,22 +1461,24 @@ async function loadTitles() {
       });
       phaseOrder.forEach(pk => {
         const pTitles = byPhase[pk];
-        if (!pk) { renderGroupingLevel(pTitles, container); return; }
+        if (!pk) { renderGroupingLevel(pTitles, container, section); return; }
+        const stateKey = section + '|phase|' + pk;
+        const isOpen = !!titleGroupsOpen[stateKey];
         const pH = document.createElement('div');
         pH.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 14px;background:rgba(139,92,246,.08);border-left:2px solid rgba(139,92,246,.4);border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;user-select:none;';
-        const pA = document.createElement('span'); pA.textContent = '▶'; pA.style.cssText = 'font-size:8px;color:#7c5cbf;flex-shrink:0;';
+        const pA = document.createElement('span'); pA.textContent = isOpen ? '▾' : '▶'; pA.style.cssText = 'font-size:8px;color:#7c5cbf;flex-shrink:0;';
         const pL = document.createElement('span'); pL.style.cssText = 'flex:1;font-size:11px;color:#a78bfa;font-weight:600;letter-spacing:.3px;'; pL.textContent = pk;
         const pC = document.createElement('span'); pC.style.cssText = 'font-size:10px;color:#555;'; pC.textContent = pTitles.length;
         pH.appendChild(pA); pH.appendChild(pL); pH.appendChild(pC);
-        const pB = document.createElement('div'); pB.style.display = 'none';
-        renderGroupingLevel(pTitles, pB);
-        pH.onclick = () => { const o = pB.style.display !== 'none'; pB.style.display = o ? 'none' : 'block'; pA.textContent = o ? '▶' : '▾'; };
+        const pB = document.createElement('div'); pB.style.display = isOpen ? 'block' : 'none';
+        renderGroupingLevel(pTitles, pB, section);
+        pH.onclick = () => { const o = pB.style.display !== 'none'; pB.style.display = o ? 'none' : 'block'; pA.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
         container.appendChild(pH); container.appendChild(pB);
       });
     }
-    function renderMethodLevel(titles, container) {
+    function renderMethodLevel(titles, container, section) {
       const hasMeth = titles.some(t => t.methodId && t.methodId !== '__none__');
-      if (!hasMeth) { renderPhaseLevel(titles, container); return; }
+      if (!hasMeth) { renderPhaseLevel(titles, container, section); return; }
       const methOrder = [], byMeth = {};
       titles.forEach(t => {
         const mk = (t.methodId || '__none__') + '||' + (t.methodName || 'No Method');
@@ -1472,24 +1488,26 @@ async function loadTitles() {
       methOrder.forEach(mk => {
         const mTitles = byMeth[mk];
         const methName = mk.split('||')[1];
-        if (methOrder.length === 1 && mk.startsWith('__none__')) { renderGroupingLevel(mTitles, container); return; }
+        if (methOrder.length === 1 && mk.startsWith('__none__')) { renderGroupingLevel(mTitles, container, section); return; }
+        const stateKey = section + '|meth|' + mk;
+        const isOpen = !!titleGroupsOpen[stateKey];
         const mHdr = document.createElement('div');
         mHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px;background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.07);cursor:pointer;user-select:none;';
-        const mArrow = document.createElement('span'); mArrow.textContent = '▶'; mArrow.style.cssText = 'font-size:8px;color:#666;flex-shrink:0;';
+        const mArrow = document.createElement('span'); mArrow.textContent = isOpen ? '▾' : '▶'; mArrow.style.cssText = 'font-size:8px;color:#666;flex-shrink:0;';
         const mLabel = document.createElement('span'); mLabel.style.cssText = 'flex:1;font-size:12px;color:#aaa;'; mLabel.textContent = methName;
         const mCount = document.createElement('span'); mCount.style.cssText = 'font-size:10px;color:#555;'; mCount.textContent = mTitles.length;
         mHdr.appendChild(mArrow); mHdr.appendChild(mLabel); mHdr.appendChild(mCount);
-        const mBody = document.createElement('div'); mBody.style.display = 'none';
-        renderPhaseLevel(mTitles, mBody);
-        mHdr.onclick = () => { const o = mBody.style.display !== 'none'; mBody.style.display = o ? 'none' : 'block'; mArrow.textContent = o ? '▶' : '▾'; };
+        const mBody = document.createElement('div'); mBody.style.display = isOpen ? 'block' : 'none';
+        renderPhaseLevel(mTitles, mBody, section);
+        mHdr.onclick = () => { const o = mBody.style.display !== 'none'; mBody.style.display = o ? 'none' : 'block'; mArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
         container.appendChild(mHdr); container.appendChild(mBody);
       });
     }
-    function renderTitlesNested(arr, el) {
+    function renderTitlesNested(arr, el, section) {
       el.innerHTML = '';
       if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
       const hasProd = arr.some(t => t.productId && t.productId !== '__none__');
-      if (!hasProd) { renderMethodLevel(arr, el); return; }
+      if (!hasProd) { renderMethodLevel(arr, el, section); return; }
       const prodOrder = [], byProd = {};
       arr.forEach(t => {
         const pk = (t.productId || '__none__') + '||' + (t.productName || 'No Product');
@@ -1500,21 +1518,23 @@ async function loadTitles() {
       prodOrder.forEach(pk => {
         const pTitles = byProd[pk];
         const prodName = pk.split('||')[1];
-        if (prodOrder.length === 1 && pk.startsWith('__none__')) { renderMethodLevel(pTitles, el); return; }
+        if (prodOrder.length === 1 && pk.startsWith('__none__')) { renderMethodLevel(pTitles, el, section); return; }
+        const stateKey = section + '|prod|' + pk;
+        const isOpen = !!titleGroupsOpen[stateKey];
         const pHdr = document.createElement('div');
         pHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);cursor:pointer;user-select:none;';
-        const pArrow = document.createElement('span'); pArrow.textContent = '▶'; pArrow.style.cssText = 'font-size:8px;color:#777;flex-shrink:0;';
+        const pArrow = document.createElement('span'); pArrow.textContent = isOpen ? '▾' : '▶'; pArrow.style.cssText = 'font-size:8px;color:#777;flex-shrink:0;';
         const pLabel = document.createElement('span'); pLabel.style.cssText = 'flex:1;font-size:12px;color:#c9c9c9;font-weight:600;'; pLabel.textContent = prodName;
         const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:#666;'; pCount.textContent = pTitles.length;
         pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
-        const pBody = document.createElement('div'); pBody.style.display = 'none';
-        renderMethodLevel(pTitles, pBody);
-        pHdr.onclick = () => { const o = pBody.style.display !== 'none'; pBody.style.display = o ? 'none' : 'block'; pArrow.textContent = o ? '▶' : '▾'; };
+        const pBody = document.createElement('div'); pBody.style.display = isOpen ? 'block' : 'none';
+        renderMethodLevel(pTitles, pBody, section);
+        pHdr.onclick = () => { const o = pBody.style.display !== 'none'; pBody.style.display = o ? 'none' : 'block'; pArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
         el.appendChild(pHdr); el.appendChild(pBody);
       });
     }
-    renderTitlesNested(dev, devEl);
-    renderTitlesNested(pub, pubEl);
+    renderTitlesNested(dev, devEl, 'dev');
+    renderTitlesNested(pub, pubEl, 'pub');
   } catch(e) {
     devEl.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
     pubEl.innerHTML = '<div class="empty">—</div>';

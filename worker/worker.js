@@ -3339,6 +3339,110 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         return json({ success: true, url: siteUrl, slug, updated: !!existingSha, commit: putResult.commit?.sha || null });
       }
 
+      // ── createMicrosite ──
+      // Mirrors createProductSite above, but for the campaign-level admin
+      // microsite (the STE column on the dashboard Overview table). Commits
+      // microsites/{slug}/index.html from the hard-grind template, filling in
+      // CAMPAIGN_ID / RESEARCH_ID / SITE_URL / Notion links, then sets the
+      // Campaign's "microsite" URL property. Campaigns manually created (not
+      // through a research-generation flow) often have no Research record at
+      // all — the microsite template hard-requires a RESEARCH_ID, so this
+      // creates a minimal Research record first when one is missing, same as
+      // the standalone createResearchForCampaign action.
+      if (body.action === "createMicrosite") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN (a GitHub PAT with 'repo' / Contents write scope for cabuzzard/dash)" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const REPO = "cabuzzard/dash", BRANCH = "main", TEMPLATE_PATH = "microsites/hard-grind/index.html";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+
+        const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+        if (campPage.object === "error" || !campPage.properties) return json({ error: campPage.message || "Campaign not found" }, 404);
+        const campaignName = (campPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Campaign";
+        if (campPage.properties?.["microsite"]?.url) return json({ error: "This campaign already has a microsite set." }, 400);
+        const slug = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || ('campaign-' + campaignId.slice(0, 8));
+
+        // Find (or create) the campaign's Research record — a bare microsite
+        // with no RESEARCH_ID would leave every research-panel feature on the
+        // page silently broken.
+        const rq = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } }, page_size: 1 }),
+        }).then(r => r.json());
+        let researchId = (rq.results?.[0]?.id || "").replace(/-/g, "");
+        let researchCreated = false;
+        if (!researchId) {
+          const rCreate = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parent: { database_id: RESEARCH_DB },
+              properties: {
+                Name:     { title: [{ type: "text", text: { content: campaignName } }] },
+                Campaign: { relation: [{ id: dash(campaignId) }] },
+                Status:   { select: { name: "Draft" } },
+              },
+            }),
+          }).then(r => r.json());
+          if (!rCreate.id) return json({ error: rCreate.message || "Could not create Research record" }, 500);
+          researchId = rCreate.id.replace(/-/g, "");
+          researchCreated = true;
+        }
+
+        const siteUrl = `https://cabuzzard.github.io/dash/microsites/${slug}/`;
+
+        // Fetch the template (via the GitHub API so it works even if the repo
+        // is private — uses the same token).
+        const tmplResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${TEMPLATE_PATH}?ref=${BRANCH}`, {
+          headers: { ...gh, "Accept": "application/vnd.github.raw" },
+        });
+        if (!tmplResp.ok) return json({ error: `Could not fetch microsite template from GitHub (HTTP ${tmplResp.status}) — check GITHUB_TOKEN scope` }, 502);
+        let html = await tmplResp.text();
+
+        // Substitute the site-specific constants (mirrors sync_microsites.py's
+        // "unique header block": WORKER_URL is identical across sites, so
+        // only CAMPAIGN_ID / RESEARCH_ID / SITE_URL + the Notion links change).
+        html = html.replace(/const CAMPAIGN_ID\s*=\s*"[^"]*";[^\n]*/, `const CAMPAIGN_ID = "${campaignId}"; // ${slug}`);
+        html = html.replace(/const RESEARCH_ID\s*=\s*"[^"]*";[^\n]*/, `const RESEARCH_ID = "${researchId}"; // research`);
+        html = html.replace(/const SITE_URL\s*=\s*"[^"]*";/, `const SITE_URL    = "${siteUrl}";`);
+        const notionLinks = `<a href="https://www.notion.so/${campaignId}" target="_blank" class="notion-link">↗ Campaign</a> &nbsp; <a href="https://www.notion.so/${researchId}" target="_blank" class="notion-link">↗ Research</a>`;
+        html = html.replace(/<a href="https:\/\/www\.notion\.so\/[^"]+" target="_blank" class="notion-link">↗ \w+<\/a>(?:\s*&nbsp;\s*<a href="https:\/\/www\.notion\.so\/[^"]+" target="_blank" class="notion-link">↗ \w+<\/a>)?/, notionLinks);
+
+        // Commit microsites/{slug}/index.html (create, or overwrite if a stale
+        // file exists at that path from an earlier attempt).
+        const targetPath = `microsites/${slug}/index.html`;
+        const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${targetPath}?ref=${BRANCH}`, { headers: gh });
+        let existingSha = null;
+        if (getResp.ok) { try { existingSha = (await getResp.json()).sha || null; } catch(e) {} }
+        const toB64 = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+        const putBody = { message: `Add microsite: ${slug}`, content: toB64(html), branch: BRANCH };
+        if (existingSha) putBody.sha = existingSha;
+        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${targetPath}`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+        });
+        const putResult = await putResp.json();
+        if (!putResp.ok) return json({ error: `GitHub commit failed (HTTP ${putResp.status}): ${putResult.message || 'unknown'}` }, 502);
+
+        // Point the campaign's "microsite" URL property at the new site (feeds
+        // the STE column) and the Research record's "Web Page URL" (per the
+        // documented manual deploy steps in CLAUDE.md — same field the
+        // research-panel features expect to be populated).
+        await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "microsite": { url: siteUrl } } }),
+          }),
+          fetch(`https://api.notion.com/v1/pages/${dash(researchId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Web Page URL": { url: siteUrl } } }),
+          }),
+        ]);
+
+        return json({ success: true, url: siteUrl, slug, researchId, researchCreated, updated: !!existingSha, commit: putResult.commit?.sha || null });
+      }
+
       // ══════════════════════════════════════════════════════════════════
       // PRODUCT ECOSYSTEM PIPELINE — idea → funnel ecosystem of Products →
       // Methods matched (existing-first) → reused Methods' methodology
