@@ -64,6 +64,67 @@ Brief instead. (This was a real bug, fixed across six call sites.)
 
 ---
 
+## Two execution paths: dashboard (Worker) vs. skills (chat) — don't duplicate either
+
+Everything above lives in the same Notion databases regardless of which path
+created it. But there are genuinely **two different ways content gets made**,
+and which one applies is a hard capability boundary, not a preference:
+
+- **Dashboard / Worker path** — the campaign microsite's modals, calling
+  `worker.js` actions over HTTPS. This is everything a Cloudflare Worker can
+  actually do: Claude text-generation calls, Notion reads/writes, Apify
+  scraping. It's fast, needs only the PIN, and is what Modal 2/3 below
+  describe.
+- **Skill path** (`.claude/skills/*.md`, run in a Claude Code **chat**
+  session, never from a webpage button) — for the things a Worker
+  fundamentally cannot do: a real, editable **Canva design** (needs the Canva
+  MCP connector) or a real **video render** (needs local Node/ffmpeg/Remotion
+  — hundreds of MB of packages, not something that runs at Cloudflare's edge).
+  These skills read/write Notion directly via the **Notion connector** (no
+  PIN needed) and use the Canva MCP / WebSearch / ElevenLabs as needed.
+
+**Current skill → Method routing** (each skill's own file documents its full
+workflow — this is just the map):
+
+| Method name matches | Skill | Produces |
+|---|---|---|
+| `/carousel/i` | `make-carousel` | Trend research → original copy → real multi-page Canva carousel → logged to SM Posts |
+| `text pic` | `make-text-pic` | One hook-driven line → real single Canva image |
+| `Short Form Video` / "reel" | `make-reel-script` → `make-reel-video` | Filmable reel script → rendered MP4 (ElevenLabs voiceover + word-by-word captions + Ken Burns, via Remotion) |
+| `Avatar Video` | `make-avatar-script` | Presenter-to-camera script for an AI-avatar reel (render step not built yet) |
+| `Video Copy — Growth` | `make-video-copy` | Outlier-modeled original long-form YouTube script |
+| (any) design specs | `create-design-specs` | Real Canva-backed Design Spec records (not just colors/fonts text) |
+
+**The Generate Assets modal (Modal 3) is the router**, not a second
+implementation: when the selected Method matches one of the rows above, it
+shows a hint box with a **"Run `<skill>` in Claude"** button that opens
+`claude.ai/new` with a prefilled prompt (title ID + campaign ID) — the skill
+takes it from there. The dashboard's own generic `generateTitleAssets` path
+(text-concept options + the grading gate below) stays available underneath
+for every method **not** covered by a skill, and as a fast/no-connector
+fallback even for ones that are (e.g. quick carousel text concepts, or
+rendering an already-scripted title's slides in-browser via **Build
+Carousel** — that's a different, still-valid thing from `make-carousel`: it
+renders a title's *existing* slide script as PNGs client-side, no research,
+no new copy, no Canva).
+
+**Do not build a third implementation of anything in this table inside
+`worker.js`.** A prior session did exactly that for design specs (a flat
+OpenAI-generated "demo sheet" image) before discovering `create-design-specs`
+already existed and did it better (a real editable Canva file) — it was
+removed. If a method needs a capability a Worker can't provide, the answer is
+a skill handoff, not a workaround.
+
+**Known separate thing, not part of this pipeline:** `worker.js` also has a
+Kie.ai-backed `generateVideo`/`generateImage` (Kling/Flux-2) pair, but it's
+wired into the **root Hermes dashboard's SM Posts panel** (`dash/index.html`),
+not the campaign microsite or this Method/Asset flow. Remotion (via
+`make-reel-video`) is the real video path for content produced here — don't
+reach for Kie.ai when building anything in this pipeline without a specific
+reason to.
+
+---
+
 ## Modal 1 — "Add Methods" (the `+` next to "Methods" / "Strategy & Titles")
 
 Worker actions: `suggestProductMethod` (on open, now also grounded in the
@@ -147,17 +208,59 @@ fallback (when no explicit pick arrives) also strips a leading `CLUSTER
 
 ---
 
-## Modal 3 — "Produce Assets" (🧩, per title)
+## Modal 3 — "Generate Assets" (🧩, the only button left on a title row)
 
 Worker action: `generateTitleAssets`. Same modal, same action, on both
-surfaces, prefilled from `getTitleDetails`.
+surfaces, prefilled from `getTitleDetails`. This is now the **single**
+per-title action — the old separate Build Carousel (🎨), Generate More
+Titles (+), and Create Product From Title (♻) buttons were removed as
+redundant entry points; see "Two execution paths" above for where their
+functionality lives now (skill handoffs, or the title-generation dispatch
+already covered by Modal 2 / a product's own Methods panel).
 
-**Default behavior (most asset types):** N (1-8, default 4) **distinct
-visual concept options** to choose between — Design Spec colors/fonts,
-Canva query if the method is "Drawing Post" — each saved as its own Asset
-at **Development** status.
+**On open, the modal shows:**
+- **Existing assets already generated for this title** (from
+  `getTitles`, which now attaches asset summaries at *any* title stage with
+  linked assets, not just Publish-stage) — so you see what's already there,
+  including its grade, before generating more.
+- **Method/Product prefilled** from the title. If the Method matches a row
+  in the skills table above, a hint box offers the real production skill;
+  a carousel method additionally offers **Build Carousel** (render an
+  existing slide script in-browser).
 
-**`assetType` matches `/seo post/i`** — different shape entirely:
+**Default generation behavior (most asset types):** N (1-8, default 4)
+**distinct visual concept options** to choose between — Design Spec
+colors/fonts, Canva query if the method is Drawing Post/Carousel-flagged
+(Asset Type auto-suggests `drawing post`, still editable) — each run through
+the **grading gate** below before being saved.
+
+### The grading gate — every concept is graded by skill, not by a human
+
+The last stage of `generateTitleAssets` (not a separate review step) scores
+each concept 0-10 and only lets it through at **≥ 7**:
+- **Strategy Fit (0-5)** — against the product's real Strategy record
+  (Customer/Pain Points/Emotions/Benefits/Unique Opportunity/etc., falling
+  back to campaign Statement/Unique Opportunity/Pain Points if no product is
+  attached). Virality that ignores the actual positioning is not a pass —
+  that's the reason Strategy exists.
+- **Viral Form (0-5)** — must clearly execute one named hook framework
+  (Reverse Hook, Contrarian Claim, Specific Numbers/Receipts, Curiosity Gap,
+  Pattern Interrupt, Before/After Transformation, Social Proof).
+- **Mechanical hygiene** — em-dashes and a banned-filler-word list are
+  checked in **code** (`gradeMechanicalCheck`), not left to the model's
+  judgment, and hard-cap the score at 5 if violated.
+
+A failing concept gets regenerated with the grader's specific fix
+instructions fed back in, up to `GRADE_MAX_ATTEMPTS` (3) total attempts.
+Still-failing concepts are **saved anyway, never silently dropped**, but
+tagged `Status = "Needs Revision"` instead of `"Ready"` (reusing the Assets
+DB's existing, previously-unused `Status` field — separate from the
+publish-pipeline `Asset Status` field). Grade score/notes are stored on
+`Grade Score` / `Grade Notes`. The grade badge (✓ 8/10 / ⚠ 5/10) shows
+wherever assets render — under a title and in the existing-assets panel.
+
+**`assetType` matches `/seo post/i`** — different shape entirely, skips
+grading (it's a single finished article, not concept options):
 - Produces exactly **one** finished article, not N options.
 - Uses the title's existing 3-subhead outline verbatim if present
   (written by the SEO Post title-generation follow-up), else writes 3 new.
@@ -179,7 +282,14 @@ picker, auto-filtered to accounts on the chosen Platform (`getLogins`'
 `platformIds`), sets the Asset's `Login` relation — since a Login is one
 specific account instance of a Platform. Both are optional.
 
-**The Produce Assets modal also links the product's Strategy doc** (via
+**Design Spec picker** offers: an existing campaign spec, "Campaign
+default," or **"✨ Generate new spec (opens Claude)"** — which hands off to
+the `create-design-specs` skill (real Canva-backed spec) rather than
+reimplementing spec generation in the Worker. There is no dashboard-native
+"generate a new spec" action anymore — see "Two execution paths" above for
+why.
+
+**The Generate Assets modal also links the product's Strategy doc** (via
 `getProductStrategy`) for the operator to reference manually — this is
 purely informational, never merged into generation.
 
@@ -200,4 +310,10 @@ purely informational, never merged into generation.
 - **Method's own framework page**: the Notion page body of the Method
   itself, read as free text by `generateMethodTitles`.
 - **Platforms/Logins**: real relations on the Asset record (`Platform`,
-  `Login`), set explicitly via the Produce Assets modal — not AI-guessed.
+  `Login`), set explicitly via the Generate Assets modal — not AI-guessed.
+- **Grade Score / Grade Notes / Status** (Ready / Needs Revision): written
+  only by the dashboard's `generateTitleAssets` grading gate. Content
+  produced via a skill (chat path) writes straight through the Notion
+  connector and does **not** currently pass through this grading — a real
+  gap if you want every asset graded regardless of which path made it, not
+  yet built.

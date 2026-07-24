@@ -837,6 +837,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <button type="button" class="modal-btn save" id="gaCarouselBuildBtn" style="padding:4px 10px;font-size:11px;">🎨 Build Carousel</button>
       </div>
 
+      <div id="gaSkillHint" style="display:none;margin:-4px 0 10px;padding:8px 10px;border:1px solid #3a4a4a;background:rgba(79,209,197,.06);border-radius:4px;font-size:11px;color:#4fd1c5;align-items:center;gap:8px;">
+        <span id="gaSkillHintText" style="flex:1;"></span>
+        <button type="button" class="modal-btn save" id="gaSkillHintBtn" style="padding:4px 10px;font-size:11px;white-space:nowrap;"></button>
+      </div>
+
       <label class="lm-label">Sub method <span style="color:#777;font-weight:normal;">— target platform layer (e.g. Instagram, X); pick existing or type a new name</span></label>
       <div style="position:relative;margin-bottom:10px;">
         <input class="modal-ta" id="gaSubMethodInput" type="text" placeholder="Instagram, X / Twitter, LinkedIn…" autocomplete="off"
@@ -4371,6 +4376,48 @@ let GA_METHOD_ID = null, GA_METHOD_NAME = '';
 let GA_TITLE_ASSETS_CACHE = {};
 const GA_CAROUSEL_METHOD_RE = /carousel/i;
 const GA_CAROUSEL_ASSET_TYPE_RE = /drawing post/i;
+
+// ── Method -> production SKILL routing ──────────────────────────────────
+// These 5 methods each have a real chat-only production skill
+// (.claude/skills/*.md) that does something the Worker fundamentally can't:
+// a real Canva design via the Canva MCP, or a real Remotion video render.
+// Rather than half-reimplementing either in worker.js, the dashboard's job
+// is to recognize the method and route to the right skill — one current
+// path per method, no parallel/competing implementation.
+const GA_SKILL_METHODS = [
+  { test: /carousel/i,              skill: 'make-carousel',      label: 'Carousel',
+    hint: 'Full production skill available — researches trends, writes original copy, builds a real multi-slide Canva design, and logs it.' },
+  { test: /text pic/i,              skill: 'make-text-pic',      label: 'Text Pic',
+    hint: 'Full production skill available — writes a hook-driven line and builds it as a real Canva image in the campaign\'s design spec.' },
+  { test: /short form video|\breel\b/i, skill: 'make-reel-script', label: 'Short Form Video / Reel',
+    hint: 'Full production skill available — writes a filmable reel script, then make-reel-video renders it (ElevenLabs voiceover + captions, via Remotion).' },
+  { test: /avatar/i,                skill: 'make-avatar-script',  label: 'Avatar Video',
+    hint: 'Full production skill available — writes a presenter-to-camera script for an AI-avatar reel.' },
+  { test: /video copy/i,            skill: 'make-video-copy',     label: 'Video Copy — Growth',
+    hint: 'Full production skill available — models outlier YouTube videos into an original long-form script, ready to produce.' },
+];
+function gaMatchSkill(methodName) {
+  return GA_SKILL_METHODS.find(m => m.test.test(methodName || '')) || null;
+}
+function gaUpdateSkillHint() {
+  const hint = document.getElementById('gaSkillHint');
+  if (!hint) return;
+  const match = gaMatchSkill(GA_METHOD_NAME);
+  if (!match) { hint.style.display = 'none'; return; }
+  hint.style.display = 'flex';
+  document.getElementById('gaSkillHintText').textContent = match.hint;
+  const btn = document.getElementById('gaSkillHintBtn');
+  btn.textContent = `Run ${match.skill} in Claude`;
+  btn.onclick = () => {
+    const titleId = GA_TITLE_ID;
+    const titleText = document.getElementById('gaTitleInput').value;
+    const campaignId = GA_CAMPAIGN_ID || CAMPAIGN_ID;
+    const campaignName = (document.getElementById('r-name')?.textContent || '').trim();
+    const prompt = `Run the ${match.skill} skill for the Content Strategy title "${titleText}" (page ID: ${titleId}), campaign "${campaignName || campaignId}" (Campaigns DB page ID: ${campaignId}).`;
+    window.open('https://claude.ai/new?q=' + encodeURIComponent(prompt), '_blank');
+  };
+}
+
 let GA_SUBMETHOD_ID = null, GA_SUBMETHOD_NAME = '';
 let GA_PRODUCT_ID = null, GA_PRODUCT_NAME = '';
 let GA_TYPES = [];
@@ -4401,96 +4448,26 @@ async function gaLoadSpecs() {
   } catch(e) { /* picker stays on Campaign default */ }
   const genOpt = document.createElement('option');
   genOpt.value = '__generate__';
-  genOpt.textContent = '✨ Generate new spec…';
+  genOpt.textContent = '✨ Generate new spec (opens Claude)…';
   sel.appendChild(genOpt);
 }
 
-// Picking "Generate new spec" opens the preview flow instead of using the
-// value directly — revert the select to whatever it was showing before so
-// generation-in-progress never accidentally submits with an invalid value.
+// Picking "Generate new spec" hands off to the create-design-specs SKILL
+// (chat-only — it's the real thing: a Canva-backed design via the Canva
+// MCP, not a flat AI image the worker could fake) instead of trying to
+// reimplement design generation here. Revert the select afterward so this
+// never accidentally submits with the sentinel value.
 let GA_SPEC_PREV_VALUE = '';
 function gaSpecInputChanged() {
   const sel = document.getElementById('gaSpecInput');
   if (sel.value === '__generate__') {
     sel.value = GA_SPEC_PREV_VALUE;
-    openSpecPreviewModal();
+    const campaignId = GA_CAMPAIGN_ID || CAMPAIGN_ID;
+    const campaignName = (document.getElementById('r-name')?.textContent || '').trim();
+    const prompt = `Run the create-design-specs skill for campaign "${campaignName || campaignId}" (Campaigns DB page ID: ${campaignId}). Generate 3 researched, Canva-backed design specs.`;
+    window.open('https://claude.ai/new?q=' + encodeURIComponent(prompt), '_blank');
   } else {
     GA_SPEC_PREV_VALUE = sel.value;
-  }
-}
-
-// ── DESIGN SPEC PREVIEW (demo sheet) ────────────────────────────────────
-// Two-phase: generateDesignSpecPreview produces a real reference image
-// (OpenAI gpt-image-1) + spec fields WITHOUT writing to Notion. Nothing is
-// persisted until "Approve & Use" — which is what "approval" means here:
-// creating the real Design Spec record, attaching it to the campaign, and
-// selecting it for the asset generation already in progress.
-let SP_LATEST = null; // { spec, demoSheetImage, demoSheetPrompt }
-
-function openSpecPreviewModal() {
-  document.getElementById('spStyleInput').value = '';
-  document.getElementById('spStatus').textContent = '';
-  document.getElementById('spStatus').style.color = '#888';
-  document.getElementById('spPreview').style.display = 'none';
-  document.getElementById('spGenBtn').disabled = false;
-  document.getElementById('spGenBtn').textContent = 'Generate demo sheet';
-  SP_LATEST = null;
-  document.getElementById('specPreviewModal').classList.add('open');
-}
-function closeSpecPreviewModal() { document.getElementById('specPreviewModal').classList.remove('open'); }
-document.getElementById('specPreviewModal').addEventListener('click', function(e) {
-  if (e.target === this) closeSpecPreviewModal();
-});
-
-async function spGenerate() {
-  const btn = document.getElementById('spGenBtn');
-  const status = document.getElementById('spStatus');
-  btn.disabled = true; btn.textContent = 'Generating…';
-  status.style.color = '#888';
-  status.textContent = 'Researching campaign + generating demo sheet (real image, can take ~30s)…';
-  document.getElementById('spPreview').style.display = 'none';
-  try {
-    const r = await w('generateDesignSpecPreview', {
-      campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID,
-      productId: GA_PRODUCT_ID || undefined,
-      styleDirection: document.getElementById('spStyleInput').value.trim() || undefined,
-    });
-    if (r.error) throw new Error(r.error);
-    SP_LATEST = r;
-    document.getElementById('spImage').src = 'data:image/png;base64,' + r.demoSheetImage;
-    document.getElementById('spName').textContent = r.spec.name || 'Untitled spec';
-    document.getElementById('spAesthetic').textContent = r.spec.aesthetic || '';
-    document.getElementById('spPreview').style.display = 'block';
-    status.textContent = '';
-  } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-    status.style.color = '#fc8181';
-  } finally {
-    btn.disabled = false; btn.textContent = SP_LATEST ? '↻ Regenerate' : 'Generate demo sheet';
-  }
-}
-
-async function spApprove() {
-  if (!SP_LATEST) return;
-  const status = document.getElementById('spStatus');
-  status.style.color = '#888'; status.textContent = 'Saving…';
-  try {
-    const r = await w('approveDesignSpecPreview', {
-      campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID,
-      productId: GA_PRODUCT_ID || undefined,
-      name: SP_LATEST.spec.name, bg: SP_LATEST.spec.bg, ink: SP_LATEST.spec.ink, accent: SP_LATEST.spec.accent,
-      headlineFont: SP_LATEST.spec.headlineFont, bodyFont: SP_LATEST.spec.bodyFont, aesthetic: SP_LATEST.spec.aesthetic,
-      demoSheetImage: SP_LATEST.demoSheetImage, demoSheetPrompt: SP_LATEST.demoSheetPrompt,
-    });
-    if (r.error) throw new Error(r.error);
-    closeSpecPreviewModal();
-    await gaLoadSpecs();
-    const sel = document.getElementById('gaSpecInput');
-    sel.value = r.id;
-    GA_SPEC_PREV_VALUE = r.id;
-  } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-    status.style.color = '#fc8181';
   }
 }
 function gaTypeFilter() {
@@ -4563,7 +4540,7 @@ function gaFilter(kind) {
   const dd   = document.getElementById(cfg.dd);
   const list = kind === 'product' ? AT_PRODUCTS : AT_METHODS; // sub methods live in the Methods DB too
   const q = inp.value.trim(), qL = q.toLowerCase();
-  if (q !== gaSel(kind).name) { gaSetSel(kind, null, ''); if (kind === 'product') gaRefreshStrategyLink(); if (kind === 'method') gaUpdateCarouselHint(); }
+  if (q !== gaSel(kind).name) { gaSetSel(kind, null, ''); if (kind === 'product') gaRefreshStrategyLink(); if (kind === 'method') { gaUpdateCarouselHint(); gaUpdateSkillHint(); } }
   dd.innerHTML = '';
   const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
   matches.forEach(x => {
@@ -4577,7 +4554,7 @@ function gaFilter(kind) {
       inp.value = x.name;
       dd.style.display = 'none';
       if (kind === 'product') gaRefreshStrategyLink();
-      if (kind === 'method') { gaUpdateCarouselHint(); if (GA_CAROUSEL_METHOD_RE.test(x.name) && !document.getElementById('gaTypeInput').value.trim()) document.getElementById('gaTypeInput').value = 'drawing post'; }
+      if (kind === 'method') { gaUpdateCarouselHint(); gaUpdateSkillHint(); if (GA_CAROUSEL_METHOD_RE.test(x.name) && !document.getElementById('gaTypeInput').value.trim()) document.getElementById('gaTypeInput').value = 'drawing post'; }
     };
     dd.appendChild(div);
   });
@@ -4647,6 +4624,7 @@ async function openGenAssetsModal(titleId) {
     status.textContent = 'Could not prefill from title (' + e.message + ') — fields are editable.';
   }
   gaUpdateCarouselHint();
+  gaUpdateSkillHint();
   gaLoadSpecs(); // needs GA_CAMPAIGN_ID — fire-and-forget
   gaRefreshStrategyLink(); // reference-only link, never blended into generation
   gaLoadPlatforms(); // fire-and-forget
@@ -4949,29 +4927,6 @@ async function runRegenKeywords() {
       <button class="secondary" onclick="closeBuildModal()">Close</button>
       <button class="secondary" id="bc-canva-btn" onclick="window.open('https://www.canva.com/create/instagram-posts/','_blank')" style="display:none">Open Canva ↗</button>
       <button id="bc-download-btn" onclick="bcDownloadAll()" style="display:none">Download All PNGs</button>
-    </div>
-  </div>
-</div>
-<div class="modal-overlay" id="specPreviewModal">
-  <div class="modal" style="max-width:640px;">
-    <div class="modal-head">
-      <div class="modal-title">Generate Design Spec</div>
-      <button class="modal-close" onclick="closeSpecPreviewModal()">✕</button>
-    </div>
-    <div class="modal-body" style="max-height:75vh;overflow-y:auto;">
-      <label class="lm-label">Style direction <span style="color:#777;font-weight:normal;">— optional, describe the look you want; leave blank to let it research the campaign</span></label>
-      <textarea class="modal-ta" id="spStyleInput" rows="2" style="margin-bottom:10px;resize:vertical;" placeholder="e.g. bold and high-contrast, editorial minimal, warm and handmade…"></textarea>
-      <button class="modal-btn save" id="spGenBtn" onclick="spGenerate()">Generate demo sheet</button>
-      <div id="spStatus" style="font-size:12px;color:#888;min-height:16px;margin-top:6px;"></div>
-      <div id="spPreview" style="display:none;margin-top:12px;">
-        <img id="spImage" alt="Design spec demo sheet" style="width:100%;border-radius:6px;border:1px solid #333;display:block;" />
-        <div id="spName" style="font-size:14px;font-weight:700;margin-top:10px;"></div>
-        <div id="spAesthetic" style="font-size:12px;color:#999;margin-top:4px;"></div>
-        <div style="display:flex;gap:8px;margin-top:12px;">
-          <button class="modal-btn cancel" onclick="spGenerate()">↻ Try again</button>
-          <button class="modal-btn save" onclick="spApprove()">✓ Approve &amp; Use</button>
-        </div>
-      </div>
     </div>
   </div>
 </div>
