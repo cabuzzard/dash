@@ -4429,30 +4429,14 @@ function gaUpdateSkillHint() {
   const btn = document.getElementById('gaSkillHintBtn');
 
   if (match.workerAction) {
-    btn.textContent = 'Render carousel preview';
-    btn.onclick = async () => {
-      const status = document.getElementById('gaStatus');
-      const titleId = GA_TITLE_ID;
-      const campaignId = GA_CAMPAIGN_ID || CAMPAIGN_ID;
-      btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Rendering…';
-      status.textContent = 'Writing slide script (if needed) and rendering 7 slides — this can take a minute.';
-      status.style.color = '#888';
-      try {
-        const r = await w(match.workerAction, { titleId, campaignId });
-        if (r.error) throw new Error(r.error);
-        status.textContent = `✓ Rendered ${r.slideCount} slides — preview: ${r.previewUrl}`;
-        status.style.color = '#68d391';
-        btn.textContent = 'Done';
-        await loadTitles();
-        setTimeout(closeGenAssetsModal, 3000);
-      } catch(e) {
-        status.textContent = 'Error: ' + e.message;
-        status.style.color = '#fc8181';
-        btn.disabled = false; btn.textContent = orig;
-      }
-    };
+    // No second button here — the previews ARE the asset, so the one
+    // "Generate" button at the bottom of the modal does this directly for
+    // a carousel method (see submitGenAssets). This box is informational
+    // only for that case.
+    document.getElementById('gaSkillHintBtn').style.display = 'none';
     return;
   }
+  document.getElementById('gaSkillHintBtn').style.display = '';
 
   btn.textContent = `Run ${match.skill} in Claude`;
   btn.onclick = () => {
@@ -4790,6 +4774,30 @@ async function submitGenAssets() {
   status.style.color = '#888';
   const btn = document.getElementById('gaGoBtn');
   btn.disabled = true; btn.textContent = 'Generating…';
+
+  // Carousel is a Worker-native render, not a text concept — one button,
+  // routed by method, instead of a second "Render carousel preview" button
+  // next to this one (the previews ARE the asset).
+  const skillMatch = gaMatchSkill(GA_METHOD_NAME);
+  if (skillMatch && skillMatch.workerAction) {
+    btn.textContent = 'Rendering…';
+    status.textContent = 'Writing slide script (if needed) and rendering 7 slides, one at a time — this can take a minute or two.';
+    try {
+      const r = await w(skillMatch.workerAction, { titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID });
+      if (r.error) throw new Error(r.error);
+      status.textContent = `✓ Rendered ${r.slideCount} slides — preview: ${r.previewUrl}`;
+      status.style.color = '#68d391';
+      btn.textContent = 'Done';
+      await loadTitles();
+      setTimeout(closeGenAssetsModal, 3000);
+    } catch(e) {
+      status.textContent = 'Error: ' + e.message;
+      status.style.color = '#fc8181';
+      btn.disabled = false; btn.textContent = 'Generate';
+    }
+    return;
+  }
+
   try {
     const method    = await gaResolve('method', status);
     const subMethod = await gaResolve('submethod', status);
