@@ -10994,6 +10994,18 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (!slides.length) return json({ error: "Wrote a slide script but couldn't parse it back — try again" }, 500);
         }
 
+        const result = await publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides, caption, hashtags });
+        if (result instanceof Response) return result;
+        return json({ success: true, previewUrl: result.previewUrl, slideCount: slides.length, assetId: result.assetId, titleId });
+      }
+
+      // Shared render+publish tail for both generateCarouselPreview and
+      // refineCarouselPreview: renders each slide via Browser Rendering,
+      // commits the PNGs + a gallery page to GitHub Pages, and upserts the
+      // Assets DB record. Returns a Response to short-circuit on failure
+      // (callers must check `result instanceof Response` and return it
+      // as-is), or { previewUrl, assetId } on success.
+      async function publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides, caption, hashtags }) {
         // ── Step 3: design spec + deploy path ──
         const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
         const specRelId = campPage.properties?.["Design Spec"]?.relation?.[0]?.id || null;
@@ -11138,12 +11150,76 @@ Return ONLY this JSON object, no other text, no markdown fences:
   .grid img { width:100%; border-radius:6px; display:block; box-shadow:0 4px 20px rgba(0,0,0,.4); }
   .cap { max-width:640px; margin:36px auto 0; color:#ccc; font-size:14px; line-height:1.7; white-space:pre-wrap; }
   .tags { max-width:640px; margin:14px auto 0; color:#666; font-size:12px; }
+  .refine { max-width:640px; margin:32px auto 0; padding-top:24px; border-top:1px solid #262626; }
+  .refine input, .refine textarea, .refine button { font-family:inherit; font-size:13px; }
+  .refine input[type=password] { width:90px; padding:9px 10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; letter-spacing:0.2em; }
+  .refine textarea { width:100%; padding:10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; resize:vertical; box-sizing:border-box; }
+  .refine button { padding:9px 16px; background:#333; color:#fff; border:none; border-radius:4px; cursor:pointer; }
+  .refine button:hover { background:#444; }
+  .refine button:disabled { opacity:0.5; cursor:default; }
+  .refine .row { display:flex; gap:8px; align-items:center; }
+  .refine .err { color:#e66; font-size:12px; margin-top:6px; min-height:14px; }
+  .refine .status { color:#888; font-size:12px; margin-top:8px; min-height:14px; }
+  .refine .hint { color:#666; font-size:12px; margin-bottom:10px; }
 </style></head><body>
   <h1>${esc(titleName)}</h1>
   <div class="sub">Carousel preview — ${slides.length} slides — for approval / layout review, not yet published</div>
   <div class="grid">${pngBuffers.map((_, i) => `<img src="slide-${String(i + 1).padStart(2, '0')}.png" alt="Slide ${i + 1}">`).join('')}</div>
   ${caption ? `<div class="cap">${esc(caption)}</div>` : ''}
   ${hashtags ? `<div class="tags">${esc(hashtags)}</div>` : ''}
+  <div class="refine">
+    <div class="hint">Want a change made? Describe it below and it'll be edited and re-rendered in place — no need to go back to Generate Assets.</div>
+    <div class="row" id="refinePinRow">
+      <input type="password" id="refinePin" maxlength="4" inputmode="numeric" placeholder="PIN">
+      <button id="refineUnlockBtn">Unlock</button>
+    </div>
+    <div class="err" id="refineErr"></div>
+    <div id="refineEditRow" style="display:none;">
+      <textarea id="refineInput" rows="2" placeholder="e.g. 'make slide 4 punchier' or 'swap the accent color to a deep blue'"></textarea>
+      <div style="margin-top:8px;"><button id="refineBtn">Refine design</button></div>
+      <div class="status" id="refineStatus"></div>
+    </div>
+  </div>
+  <script>
+    var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+    var TITLE_ID = ${JSON.stringify(titleId)};
+    var CAMPAIGN_ID = ${JSON.stringify(campaignId)};
+    var CAROUSEL_TYPE = ${JSON.stringify(carouselType || 'triple-hook')};
+    var refineToken = null;
+    document.getElementById('refineUnlockBtn').addEventListener('click', function () {
+      var pin = document.getElementById('refinePin').value.trim();
+      var errEl = document.getElementById('refineErr');
+      errEl.textContent = '';
+      fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auth', pin: pin }) })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.token) { errEl.textContent = d.error || 'Wrong PIN'; return; }
+          refineToken = d.token;
+          document.getElementById('refinePinRow').style.display = 'none';
+          document.getElementById('refineEditRow').style.display = 'block';
+        })
+        .catch(function () { errEl.textContent = 'Connection error'; });
+    });
+    document.getElementById('refineBtn').addEventListener('click', function () {
+      var instruction = document.getElementById('refineInput').value.trim();
+      var statusEl = document.getElementById('refineStatus');
+      var btn = document.getElementById('refineBtn');
+      if (!instruction) { statusEl.textContent = 'Describe what to change first.'; return; }
+      statusEl.textContent = 'Refining… slides render one at a time, this can take a minute or two.';
+      btn.disabled = true;
+      fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'refineCarouselPreview', token: refineToken, titleId: TITLE_ID, campaignId: CAMPAIGN_ID, carouselType: CAROUSEL_TYPE, instruction: instruction }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
+          statusEl.textContent = 'Done — reloading…';
+          setTimeout(function () { location.href = location.pathname + '?refined=' + Date.now(); }, 900);
+        })
+        .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
+    });
+  </script>
 </body></html>`;
           await putFile(`${basePath}/index.html`, toB64Text(galleryHtml), `Carousel preview: ${titleName} — gallery page`);
         } catch (e) {
@@ -11195,7 +11271,127 @@ Return ONLY this JSON object, no other text, no markdown fences:
           body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
         });
 
-        return json({ success: true, previewUrl, slideCount: slides.length, assetId, titleId });
+        return { previewUrl, assetId };
+      }
+
+      // ── refineCarouselPreview ──
+      // Edits an EXISTING carousel in place from a free-text instruction,
+      // instead of the all-or-nothing "wipe and regenerate" of
+      // generateCarouselPreview. Reads the current slide script off the
+      // title, asks Claude to apply only the requested change (preserving
+      // everything else), overwrites the title's body with the result, then
+      // reuses the exact same render/commit/upsert tail as generate. Called
+      // from a text box embedded directly on the hosted carousel preview
+      // page (see galleryHtml above) — that page has its own lightweight
+      // PIN prompt since it's public GitHub Pages with no dashboard session.
+      if (body.action === "refineCarouselPreview") {
+        const { titleId, campaignId, carouselType, instruction } = body;
+        if (!titleId || !campaignId || !instruction) return json({ error: "titleId, campaignId, and instruction required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
+        const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
+        if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return json({ error: "CF_ACCOUNT_ID / CF_API_TOKEN not configured" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const titleName = (titlePage.properties.Title?.title || []).map(t => t.plain_text).join("") || "Carousel";
+
+        const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+        const blocks = blocksResp.results || [];
+        const sections = [];
+        let current = null;
+        for (const b of blocks) {
+          if (b.type === "heading_3") {
+            current = { heading: (b.heading_3?.rich_text || []).map(t => t.plain_text).join(""), lines: [] };
+            sections.push(current);
+          } else if (current && (b.type === "paragraph" || b.type === "bulleted_list_item")) {
+            const rt = b[b.type]?.rich_text || [];
+            const text = rt.map(t => t.plain_text).join("");
+            const bold = !!rt[0]?.annotations?.bold;
+            if (text) current.lines.push({ text, bold });
+          }
+        }
+        const findSection = name => sections.find(s => s.heading.toLowerCase() === name.toLowerCase());
+        const slides = sections
+          .filter(s => /^Slide \d+/i.test(s.heading))
+          .map(s => ({
+            headline: (s.lines.find(l => l.bold) || s.lines[0] || {}).text || "",
+            body: (s.lines.find(l => !l.bold) || {}).text || "",
+          }));
+        const caption = findSection("Caption")?.lines?.[0]?.text || "";
+        const hashtags = findSection("Hashtags")?.lines?.[0]?.text || "";
+        if (!slides.length) return json({ error: "No existing carousel found on this title — generate one first before refining." }, 400);
+
+        const refinePrompt = `You are refining an existing ${slides.length}-slide Instagram carousel script for this title, per a specific edit request. Change ONLY what the request asks for — keep everything else exactly as-is unless the request clearly implies a broader change.
+
+TITLE: ${titleName}
+CAROUSEL FORMAT: ${carouselType || 'triple-hook'}
+${carouselType === 'hidden-potential' ? 'Each slide is a paired split: "headline" = STRESS (left side, 3-8 words) and "body" = BENEFIT (right side, 3-8 words) that resolves that exact stress. Keep both sides within that length whenever you touch a slide.' : ''}
+
+CURRENT SLIDES (JSON):
+${JSON.stringify({ slides, caption, hashtags })}
+
+REQUESTED EDIT: ${instruction}
+
+Return the FULL updated set — all ${slides.length} slides plus caption and hashtags — reflecting the edit applied. Return ONLY this JSON object, no other text, no markdown fences:
+{ "slides": [ { "headline": "...", "body": "..." }, ... exactly ${slides.length} total ... ], "caption": "...", "hashtags": ["...", "..."] }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: refinePrompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let parsed;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+          if (start === -1 || end === -1) throw new Error("No JSON object found");
+          parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        } catch(e) { return json({ error: "Failed to parse refined slides JSON: " + e.message }, 500); }
+
+        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: !!opts.bold, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+        const para = (text, opts = {}) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text, opts) } });
+        const divider = () => ({ object: "block", type: "divider", divider: {} });
+        const newSlides = (Array.isArray(parsed.slides) ? parsed.slides : []).filter(s => s && (s.headline || s.body));
+        if (!newSlides.length) return json({ error: "Refine returned no usable slides — try rephrasing the request." }, 500);
+        const n = newSlides.length;
+        const children = [];
+        newSlides.forEach((s, idx) => {
+          children.push(heading(`Slide ${idx + 1} (${idx + 1}/${n})`));
+          if (s.headline) children.push(para(s.headline, { bold: true }));
+          if (s.body) children.push(para(s.body));
+          children.push(divider());
+        });
+        const newCaption = parsed.caption || caption;
+        const newHashtagsArr = Array.isArray(parsed.hashtags) && parsed.hashtags.length ? parsed.hashtags : null;
+        const newHashtags = newHashtagsArr ? newHashtagsArr.map(h => h.startsWith('#') ? h : '#' + h).join(' ') : hashtags;
+        if (newCaption) { children.push(heading('Caption')); children.push(para(newCaption)); }
+        if (newHashtags) { children.push(heading('Hashtags')); children.push(para(newHashtags)); }
+
+        // Replace the title's body wholesale — refine always supersedes
+        // whatever's currently there, same "regenerate" contract the
+        // carousel tooling already uses elsewhere.
+        await Promise.all(blocks.map(b => fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: "DELETE", headers: hdr })));
+        for (let i = 0; i < children.length; i += 90) {
+          const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children: children.slice(i, i + 90) }),
+          });
+          if (!writeResp.ok) { const r = await writeResp.json(); return json({ error: r.message || "Failed to write refined slides to title" }, writeResp.status); }
+        }
+
+        const result = await publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides: newSlides, caption: newCaption, hashtags: newHashtags });
+        if (result instanceof Response) return result;
+        return json({ success: true, previewUrl: result.previewUrl, slideCount: newSlides.length, assetId: result.assetId, titleId });
       }
 
       return json({ error: "Unknown action" }, 400);
