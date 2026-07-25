@@ -369,10 +369,10 @@
 
       <div id="gaCarouselTypeWrap" style="display:none;margin-bottom:10px;">
         <label class="lm-label">Carousel style <span style="color:#777;font-weight:normal;">— text-only styles for now; photo-based styles (Hidden Potential, Blur Reveal, etc.) aren't built yet</span></label>
-        <select id="gaCarouselTypeInput" class="modal-ta">
+        <select id="gaCarouselTypeInput" class="modal-ta" onchange="try{localStorage.setItem('gaCarouselType', this.value);}catch(e){}">
           <option value="triple-hook">Triple Hook (default) — slides 1-3 each a standalone hook, then substance, then CTA</option>
           <option value="curated-collection">Curated Collection — 7 standalone theme/quote slides, no narrative arc</option>
-          <option value="hidden-potential">Hidden Potential — split "what you see / what you don't" contrast per slide, color vs. grayscale</option>
+          <option value="hidden-potential">Hidden Potential — split stress / benefit contrast per slide, grayscale vs. color, chevron divider</option>
         </select>
       </div>
 
@@ -1618,7 +1618,11 @@ async function openGenAssetsModal(titleId) {
   const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
   if (isolateRadio) isolateRadio.checked = true;
   const carouselTypeSel = document.getElementById('gaCarouselTypeInput');
-  if (carouselTypeSel) carouselTypeSel.value = 'triple-hook';
+  // Remembers the last style picked in THIS browser, rather than silently
+  // resetting to Triple Hook every time the modal opens — that reset was
+  // causing accidental regenerate-with-wrong-style, since it's easy not to
+  // notice the dropdown snapped back before hitting Generate.
+  if (carouselTypeSel) { let savedType = 'triple-hook'; try { savedType = localStorage.getItem('gaCarouselType') || 'triple-hook'; } catch(e) {} carouselTypeSel.value = savedType; }
   gaUpdateContextVisibility();
   const status = document.getElementById('gaStatus');
   status.textContent = 'Loading title details…';
