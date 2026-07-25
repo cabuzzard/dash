@@ -10915,15 +10915,15 @@ No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge
 Return ONLY this JSON object, no other text, no markdown fences:
 { "slides": [ { "headline": "...", "body": "..." }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`
             : isHiddenPotential
-            ? `${researchGuidelinesBlock(body.researchGuidelines)}Write a HIDDEN POTENTIAL Instagram carousel for this specific title — every slide is a split "what you see / what you don't" contrast: the polished, outward-facing surface vs. the real, unglamorous truth behind it.
+            ? `${researchGuidelinesBlock(body.researchGuidelines)}Write a HIDDEN POTENTIAL Instagram carousel for this specific title — every slide is a split "stress → benefit" contrast: the real friction/pain point on the left vs. the payoff waiting on the other side of it, on the right.
 
 TITLE: ${titleName}
 ${keywords ? `KEYWORDS: ${keywords}\n` : ''}
 Write EXACTLY 7 slides, no more, no fewer. For each slide, write TWO very short paired lines (3-8 words each, they'll be rendered side by side, so brevity is critical):
-- "headline" = the "WHAT YOU SEE" side — the outward-facing, positive-looking surface claim
-- "body" = the "WHAT YOU DON'T" side — the real, honest, behind-the-scenes truth that contrasts with it
+- "headline" = the STRESS side — a specific, honest pain point, friction, or fear tied to the topic
+- "body" = the BENEFIT side — the specific, concrete payoff on the other side of that exact stress (not a generic platitude — it must resolve the specific stress just named)
 
-Every pair must be a genuine, specific contrast (surface vs. reality) grounded in the actual title/topic — not generic filler. Vary the 7 pairs so the carousel builds a fuller picture across slides, not the same contrast repeated.
+Every pair must be a genuine, specific stress-to-benefit arc grounded in the actual title/topic — not generic filler. Vary the 7 pairs so the carousel builds a fuller picture across slides, not the same contrast repeated.
 
 - Instagram caption (150-200 words) — required, never leave empty
 - 3-5 hashtags (no # prefix needed) — required, never leave empty
@@ -11030,27 +11030,29 @@ Return ONLY this JSON object, no other text, no markdown fences:
   <div class="counter">${idx + 1} / ${total}</div>
 </body></html>`;
 
-        // Hidden Potential: split slide, "what you see" in full Design Spec
-        // color, "what you don't" as the SAME palette run through
-        // filter:grayscale(100%) — the color-vs-black&white trick applied
-        // to a color block instead of a photo, so no image upload needed.
+        // Hidden Potential: split slide, "stress" in muted grayscale on the
+        // left, "benefit" in full Design Spec color on the right — the
+        // color-vs-black&white trick applied to a color block instead of a
+        // photo, so no image upload needed. The boundary between the two is
+        // a blunt right-pointing chevron (via complementary clip-paths on
+        // each half, with a thin accent-colored seam showing through the
+        // gap between them) instead of a straight line, reinforcing the
+        // left-to-right stress -> benefit read.
         const slideHtmlHiddenPotential = (slide, idx, total) => `<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(spec.headlineFont)}:wght@600;700&family=${encodeURIComponent(spec.bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { width:1080px; height:1350px; overflow:hidden; }
-  body { display:flex; font-family:'${spec.bodyFont}',serif; position:relative; }
-  .half { flex:1; height:1350px; display:flex; flex-direction:column; justify-content:center; padding:70px 56px; position:relative; }
-  .seen { background:${spec.bg}; }
-  .unseen { background:${spec.bg}; filter:grayscale(100%) brightness(0.82); }
+  body { font-family:'${spec.bodyFont}',serif; position:relative; background:${spec.accent}; }
+  .half { position:absolute; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; padding:70px 100px; }
+  .stress { background:${spec.bg}; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); }
+  .benefit { background:${spec.bg}; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); }
   .label { font-family:'IBM Plex Mono',monospace; font-size:16px; letter-spacing:0.14em; text-transform:uppercase; color:${spec.accent}; margin-bottom:22px; }
   .line { font-family:'${spec.headlineFont}',serif; font-size:40px; line-height:1.22; color:${spec.ink}; font-weight:600; }
-  .divider { position:absolute; left:50%; top:0; bottom:0; width:1px; background:${spec.accent}; opacity:0.4; }
   .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:${spec.ink}; opacity:0.6; z-index:2; }
 </style></head><body>
-  <div class="half seen"><div class="label">What you see</div><div class="line">${esc(slide.headline)}</div></div>
-  <div class="half unseen"><div class="label">What you don't</div><div class="line">${esc(slide.body)}</div></div>
-  <div class="divider"></div>
+  <div class="half stress"><div class="label">Stress</div><div class="line">${esc(slide.headline)}</div></div>
+  <div class="half benefit"><div class="label">Benefit</div><div class="line">${esc(slide.body)}</div></div>
   <div class="counter">${idx + 1} / ${total}</div>
 </body></html>`;
 
