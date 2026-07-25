@@ -10891,11 +10891,14 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           // Two text-only carousel types — both reuse the exact same slide
           // block format (heading_3 "Slide N" -> bold headline -> plain body
           // -> divider), so no rendering-pipeline changes are needed, only a
-          // different generation prompt. Photo-required types (Hidden
-          // Potential, Blur Reveal, etc. — see "Building Viral Carousels
-          // with Claude") aren't built yet; this branch is deliberately
-          // just these two until image upload/generation lands.
+          // different generation prompt. Most photo-required types (Blur
+          // Reveal, Collage, etc. — see "Building Viral Carousels with
+          // Claude") still aren't built. Hidden Potential is the exception:
+          // its "color vs black & white" split doesn't actually need a
+          // photo — grayscale-filtering a solid color block gets the same
+          // vivid-vs-muted contrast, so it's a third text/color-only type.
           const isCollection = carouselType === 'curated-collection';
+          const isHiddenPotential = carouselType === 'hidden-potential';
 
           const slidePrompt = isCollection
             ? `${researchGuidelinesBlock(body.researchGuidelines)}Write a CURATED COLLECTION Instagram carousel for this specific title — a set of standalone slides under one theme, NOT a narrative with a beginning/middle/end.
@@ -10905,6 +10908,24 @@ ${keywords ? `KEYWORDS: ${keywords}\n` : ''}
 Write EXACTLY 7 slides, no more, no fewer. Every single slide must work completely on its own — a viewer who sees ONLY that one slide, with zero other context, must still get the full point. Do NOT write a hook-then-insights-then-CTA arc; do NOT reference "the next slide" or build on a previous one. Each slide is a self-contained short statement, insight, or quote-style line related to the theme (e.g. "your headline" = the standalone statement, "body" = an optional one-line elaboration or attribution — can be empty if the headline says it all).
 
 - Instagram caption (150-200 words) tying the collection's theme together — required, never leave empty
+- 3-5 hashtags (no # prefix needed) — required, never leave empty
+
+No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "slides": [ { "headline": "...", "body": "..." }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`
+            : isHiddenPotential
+            ? `${researchGuidelinesBlock(body.researchGuidelines)}Write a HIDDEN POTENTIAL Instagram carousel for this specific title — every slide is a split "what you see / what you don't" contrast: the polished, outward-facing surface vs. the real, unglamorous truth behind it.
+
+TITLE: ${titleName}
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}
+Write EXACTLY 7 slides, no more, no fewer. For each slide, write TWO very short paired lines (3-8 words each, they'll be rendered side by side, so brevity is critical):
+- "headline" = the "WHAT YOU SEE" side — the outward-facing, positive-looking surface claim
+- "body" = the "WHAT YOU DON'T" side — the real, honest, behind-the-scenes truth that contrasts with it
+
+Every pair must be a genuine, specific contrast (surface vs. reality) grounded in the actual title/topic — not generic filler. Vary the 7 pairs so the carousel builds a fuller picture across slides, not the same contrast repeated.
+
+- Instagram caption (150-200 words) — required, never leave empty
 - 3-5 hashtags (no # prefix needed) — required, never leave empty
 
 No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
@@ -10991,7 +11012,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const titleSlug = slugify(titleName) || 'carousel';
 
         // ── Step 4: render each slide to a real PNG via Browser Rendering ──
-        const slideHtml = (slide, idx, total) => `<!doctype html><html><head><meta charset="utf-8">
+        const slideHtmlDefault = (slide, idx, total) => `<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(spec.headlineFont)}:wght@600;700&family=${encodeURIComponent(spec.bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -11008,6 +11029,32 @@ Return ONLY this JSON object, no other text, no markdown fences:
   <p>${esc(slide.body)}</p>
   <div class="counter">${idx + 1} / ${total}</div>
 </body></html>`;
+
+        // Hidden Potential: split slide, "what you see" in full Design Spec
+        // color, "what you don't" as the SAME palette run through
+        // filter:grayscale(100%) — the color-vs-black&white trick applied
+        // to a color block instead of a photo, so no image upload needed.
+        const slideHtmlHiddenPotential = (slide, idx, total) => `<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(spec.headlineFont)}:wght@600;700&family=${encodeURIComponent(spec.bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:1080px; height:1350px; overflow:hidden; }
+  body { display:flex; font-family:'${spec.bodyFont}',serif; position:relative; }
+  .half { flex:1; height:1350px; display:flex; flex-direction:column; justify-content:center; padding:70px 56px; position:relative; }
+  .seen { background:${spec.bg}; }
+  .unseen { background:${spec.bg}; filter:grayscale(100%) brightness(0.82); }
+  .label { font-family:'IBM Plex Mono',monospace; font-size:16px; letter-spacing:0.14em; text-transform:uppercase; color:${spec.accent}; margin-bottom:22px; }
+  .line { font-family:'${spec.headlineFont}',serif; font-size:40px; line-height:1.22; color:${spec.ink}; font-weight:600; }
+  .divider { position:absolute; left:50%; top:0; bottom:0; width:1px; background:${spec.accent}; opacity:0.4; }
+  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:${spec.ink}; opacity:0.6; z-index:2; }
+</style></head><body>
+  <div class="half seen"><div class="label">What you see</div><div class="line">${esc(slide.headline)}</div></div>
+  <div class="half unseen"><div class="label">What you don't</div><div class="line">${esc(slide.body)}</div></div>
+  <div class="divider"></div>
+  <div class="counter">${idx + 1} / ${total}</div>
+</body></html>`;
+
+        const slideHtml = carouselType === 'hidden-potential' ? slideHtmlHiddenPotential : slideHtmlDefault;
 
         // Browser Rendering's /screenshot endpoint is a "Quick Action" —
         // capped at 1 request per 10s on the free tier (10/s on paid).
