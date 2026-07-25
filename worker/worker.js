@@ -11044,11 +11044,18 @@ Return ONLY this JSON object, no other text, no markdown fences:
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { width:1080px; height:1350px; overflow:hidden; }
   body { font-family:'${spec.bodyFont}',serif; position:relative; background:${spec.accent}; }
-  .half { position:absolute; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; padding:70px 100px; }
-  .stress { background:${spec.bg}; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); }
-  .benefit { background:${spec.bg}; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); }
+  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }
+  /* Content is inset separately per half, not via shared padding — the
+     visible area of each half is defined by its clip-path, not its box, so
+     text has to be positioned (and width-capped) to land inside its own
+     half's visible region rather than the shared 0-1080 box. Stress's
+     pinch point (narrowest visible width) is at the top/bottom edges;
+     benefit's pinch point is at the vertical center, where the text
+     actually sits — so benefit needs a bigger left inset than stress. */
+  .stress { background:${spec.bg}; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }
+  .benefit { background:${spec.bg}; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }
   .label { font-family:'IBM Plex Mono',monospace; font-size:16px; letter-spacing:0.14em; text-transform:uppercase; color:${spec.accent}; margin-bottom:22px; }
-  .line { font-family:'${spec.headlineFont}',serif; font-size:40px; line-height:1.22; color:${spec.ink}; font-weight:600; }
+  .line { font-family:'${spec.headlineFont}',serif; font-size:40px; line-height:1.22; color:${spec.ink}; font-weight:600; max-width:400px; }
   .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:${spec.ink}; opacity:0.6; z-index:2; }
 </style></head><body>
   <div class="half stress"><div class="label">Stress</div><div class="line">${esc(slide.headline)}</div></div>
