@@ -10830,7 +10830,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       // the planned integration, UPLOAD_POST_API_KEY is already provisioned
       // but unused).
       if (body.action === "generateCarouselPreview") {
-        const { titleId, campaignId } = body;
+        const { titleId, campaignId, carouselType } = body;
         if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
@@ -10888,13 +10888,38 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
           keywords = rt(researchRaw, "Keywords");
 
-          const slidePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}Write a full 7-slide Instagram carousel script for this specific title.
+          // Two text-only carousel types — both reuse the exact same slide
+          // block format (heading_3 "Slide N" -> bold headline -> plain body
+          // -> divider), so no rendering-pipeline changes are needed, only a
+          // different generation prompt. Photo-required types (Hidden
+          // Potential, Blur Reveal, etc. — see "Building Viral Carousels
+          // with Claude") aren't built yet; this branch is deliberately
+          // just these two until image upload/generation lands.
+          const isCollection = carouselType === 'curated-collection';
+
+          const slidePrompt = isCollection
+            ? `${researchGuidelinesBlock(body.researchGuidelines)}Write a CURATED COLLECTION Instagram carousel for this specific title — a set of standalone slides under one theme, NOT a narrative with a beginning/middle/end.
 
 TITLE: ${titleName}
 ${keywords ? `KEYWORDS: ${keywords}\n` : ''}
+Write EXACTLY 7 slides, no more, no fewer. Every single slide must work completely on its own — a viewer who sees ONLY that one slide, with zero other context, must still get the full point. Do NOT write a hook-then-insights-then-CTA arc; do NOT reference "the next slide" or build on a previous one. Each slide is a self-contained short statement, insight, or quote-style line related to the theme (e.g. "your headline" = the standalone statement, "body" = an optional one-line elaboration or attribution — can be empty if the headline says it all).
+
+- Instagram caption (150-200 words) tying the collection's theme together — required, never leave empty
+- 3-5 hashtags (no # prefix needed) — required, never leave empty
+
+No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "slides": [ { "headline": "...", "body": "..." }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`
+            : `${researchGuidelinesBlock(body.researchGuidelines)}Write a full 7-slide Instagram carousel script for this specific title, using the TRIPLE HOOK framework.
+
+TITLE: ${titleName}
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}
+Instagram re-serves an unswiped carousel's next slide to the same viewer later (slide 2 today, slide 3 tomorrow) — so slides 1, 2, AND 3 each need to work as an independent cold-open hook capable of stopping a scroller with ZERO context, not just slide 1. None of the first three should read as "part 2 of the story" or require the slide before it to make sense.
+
 Write EXACTLY 7 slides, no more, no fewer:
-- Slide 1 (hook): short punchy headline + one-line subtext as "body"
-- Slides 2-6 (insights): 5 slides, each a short headline + 2-3 sentence body — real substance, not placeholders
+- Slides 1-3 (triple hook): each a short, punchy, fully standalone headline + one-line subtext as "body" — three separate entry points into the same topic, not a continuation of each other
+- Slides 4-6 (substance): 3 slides, each a short headline + 2-3 sentence body — real substance, not placeholders
 - Slide 7 (CTA): short quote/summary line as headline + save/follow/next-step prompt as "body"
 - Instagram caption (150-200 words) — required, never leave empty
 - 3-5 hashtags (no # prefix needed) — required, never leave empty
