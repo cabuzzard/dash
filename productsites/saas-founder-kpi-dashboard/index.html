@@ -376,32 +376,40 @@
         </select>
       </div>
 
-      <label class="lm-label">Sub method <span style="color:#777;font-weight:normal;">— target platform layer (e.g. Instagram, X); pick existing or type a new name</span></label>
-      <div style="position:relative;margin-bottom:10px;">
-        <input class="modal-ta" id="gaSubMethodInput" type="text" placeholder="Instagram, X / Twitter, LinkedIn…" autocomplete="off"
-               oninput="gaFilter('submethod')" onfocus="gaFilter('submethod')"
-               onblur="setTimeout(()=>{const d=document.getElementById('gaSubMethodDD'); if(d) d.style.display='none';},180)" />
-        <div id="gaSubMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      <div class="ga-hide-for-carousel">
+        <label class="lm-label">Sub method <span style="color:#777;font-weight:normal;">— target platform layer (e.g. Instagram, X); pick existing or type a new name</span></label>
+        <div style="position:relative;margin-bottom:10px;">
+          <input class="modal-ta" id="gaSubMethodInput" type="text" placeholder="Instagram, X / Twitter, LinkedIn…" autocomplete="off"
+                 oninput="gaFilter('submethod')" onfocus="gaFilter('submethod')"
+                 onblur="setTimeout(()=>{const d=document.getElementById('gaSubMethodDD'); if(d) d.style.display='none';},180)" />
+          <div id="gaSubMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+        </div>
       </div>
 
-      <label class="lm-label">Product <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
-      <div style="position:relative;margin-bottom:10px;">
-        <input class="modal-ta" id="gaProductInput" type="text" placeholder="Search products…" autocomplete="off"
-               oninput="gaFilter('product')" onfocus="gaFilter('product')"
-               onblur="setTimeout(()=>{const d=document.getElementById('gaProductDD'); if(d) d.style.display='none';},180)" />
-        <div id="gaProductDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+      <div class="ga-hide-for-carousel">
+        <label class="lm-label">Product <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
+        <div style="position:relative;margin-bottom:10px;">
+          <input class="modal-ta" id="gaProductInput" type="text" placeholder="Search products…" autocomplete="off"
+                 oninput="gaFilter('product')" onfocus="gaFilter('product')"
+                 onblur="setTimeout(()=>{const d=document.getElementById('gaProductDD'); if(d) d.style.display='none';},180)" />
+          <div id="gaProductDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+        </div>
+        <div id="gaStrategyLink" style="margin:-4px 0 10px;"></div>
       </div>
-      <div id="gaStrategyLink" style="margin:-4px 0 10px;"></div>
 
-      <label class="lm-label">Platform <span style="color:#777;font-weight:normal;">— from the Platforms DB; what this asset is packaged for (optional)</span></label>
-      <select id="gaPlatformInput" class="modal-ta" style="margin-bottom:10px;" onchange="gaFilterLoginsByPlatform()">
-        <option value="">— none —</option>
-      </select>
+      <div class="ga-hide-for-carousel">
+        <label class="lm-label">Platform <span style="color:#777;font-weight:normal;">— from the Platforms DB; what this asset is packaged for (optional)</span></label>
+        <select id="gaPlatformInput" class="modal-ta" style="margin-bottom:10px;" onchange="gaFilterLoginsByPlatform()">
+          <option value="">— none —</option>
+        </select>
+      </div>
 
-      <label class="lm-label">Login <span style="color:#777;font-weight:normal;">— which account this publishes through (optional)</span></label>
-      <select id="gaLoginInput" class="modal-ta" style="margin-bottom:10px;">
-        <option value="">— none —</option>
-      </select>
+      <div class="ga-hide-for-carousel">
+        <label class="lm-label">Login <span style="color:#777;font-weight:normal;">— which account this publishes through (optional)</span></label>
+        <select id="gaLoginInput" class="modal-ta" style="margin-bottom:10px;">
+          <option value="">— none —</option>
+        </select>
+      </div>
 
       <label class="lm-label">Asset type <span style="color:var(--danger,#e05);">*</span> <span style="color:#777;font-weight:normal;">— pick existing or type a new one</span></label>
       <div style="position:relative;margin-bottom:10px;">
@@ -411,24 +419,34 @@
         <div id="gaTypeDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
       </div>
 
-      <label class="lm-label">Design spec <span style="color:#777;font-weight:normal;">— which visual system these assets use</span></label>
-      <select class="modal-ta" id="gaSpecInput" style="margin-bottom:10px;">
-        <option value="">Campaign default</option>
-      </select>
+      <div class="ga-hide-for-carousel">
+        <label class="lm-label">Design spec <span style="color:#777;font-weight:normal;">— which visual system these assets use</span></label>
+        <select class="modal-ta" id="gaSpecInput" style="margin-bottom:10px;">
+          <option value="">Campaign default</option>
+        </select>
+      </div>
 
-      <label class="lm-label">Description of content</label>
-      <textarea class="modal-ta" id="gaDescInput" rows="3" style="margin-bottom:10px;resize:vertical;"></textarea>
+      <div class="ga-hide-for-carousel">
+        <label class="lm-label">Description of content</label>
+        <textarea class="modal-ta" id="gaDescInput" rows="3" style="margin-bottom:10px;resize:vertical;"></textarea>
+      </div>
 
-      <label class="lm-label">Seed keywords</label>
-      <input class="modal-ta" id="gaKeywordsInput" type="text" autocomplete="off" style="margin-bottom:10px;" />
+      <div class="ga-hide-for-carousel">
+        <label class="lm-label">Seed keywords</label>
+        <input class="modal-ta" id="gaKeywordsInput" type="text" autocomplete="off" style="margin-bottom:10px;" />
+      </div>
 
-      <label class="lm-label">Research instructions</label>
-      <textarea class="modal-ta" id="gaResearchInput" rows="3" style="margin-bottom:10px;resize:vertical;"></textarea>
+      <div class="ga-hide-for-carousel">
+        <label class="lm-label">Research instructions</label>
+        <textarea class="modal-ta" id="gaResearchInput" rows="3" style="margin-bottom:10px;resize:vertical;"></textarea>
+      </div>
 
-      <label class="lm-label">Number of options</label>
-      <select class="modal-ta" id="gaCountInput" style="margin-bottom:10px;width:90px;">
-        <option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option>
-      </select>
+      <div class="ga-hide-for-carousel">
+        <label class="lm-label">Number of options</label>
+        <select class="modal-ta" id="gaCountInput" style="margin-bottom:10px;width:90px;">
+          <option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option>
+        </select>
+      </div>
 
       <div id="gaContextModeWrap" style="display:none;margin-bottom:10px;">
         <label class="lm-label">Research scope</label>
@@ -1560,6 +1578,8 @@ function gaUpdateSkillHint() {
   if (!hint) return;
   const typeWrap = document.getElementById('gaCarouselTypeWrap');
   const match = gaMatchSkill(GA_METHOD_NAME);
+  const isCarousel = match?.workerAction === 'generateCarouselPreview';
+  document.querySelectorAll('.ga-hide-for-carousel').forEach(el => { el.style.display = isCarousel ? 'none' : ''; });
   if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; return; }
   hint.style.display = 'flex';
   document.getElementById('gaSkillHintText').textContent = match.hint;
@@ -1571,7 +1591,7 @@ function gaUpdateSkillHint() {
     // a carousel method (see submitGenAssets). This box is informational
     // only for that case.
     document.getElementById('gaSkillHintBtn').style.display = 'none';
-    if (typeWrap) typeWrap.style.display = match.workerAction === 'generateCarouselPreview' ? 'block' : 'none';
+    if (typeWrap) typeWrap.style.display = isCarousel ? 'block' : 'none';
     return;
   }
   if (typeWrap) typeWrap.style.display = 'none';
