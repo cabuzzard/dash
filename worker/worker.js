@@ -11078,11 +11078,18 @@ Return ONLY this JSON object, no other text, no markdown fences:
 
         // Browser Rendering's /screenshot endpoint is a "Quick Action" —
         // capped at 1 request per 10s on the free tier (10/s on paid).
-        // Sequential calls with no delay still exceed that, so retry on 429
-        // using the Retry-After header (falling back to 11s if absent).
+        // Each retry is its OWN subrequest, and Workers cap total
+        // subrequests per invocation (50 on Free/Bundled) — a render step
+        // that reactively hits 429 on 6 of 7 slides can burn 12-15
+        // subrequests just retrying, which combined with the Notion +
+        // GitHub calls elsewhere in this pipeline was enough to trip
+        // "Too many subrequests by single Worker invocation". So slides
+        // after the first proactively wait out the window instead of
+        // firing immediately and retrying — 1 subrequest per slide in the
+        // normal case, with the 429 retry loop kept only as a fallback.
         const sleep = ms => new Promise(res => setTimeout(res, ms));
         const renderSlide = async (html) => {
-          for (let attempt = 0; attempt < 5; attempt++) {
+          for (let attempt = 0; attempt < 3; attempt++) {
             const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
               method: "POST",
               headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
@@ -11096,7 +11103,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             if (!resp.ok) { const t = await resp.text(); throw new Error(`Browser Rendering failed (HTTP ${resp.status}): ${t.slice(0, 300)}`); }
             return await resp.arrayBuffer();
           }
-          throw new Error("Browser Rendering stayed rate-limited after 5 retries — try again shortly.");
+          throw new Error("Browser Rendering stayed rate-limited after 3 retries — try again shortly.");
         };
 
         // Sequential, not Promise.all — Workers cap simultaneous outbound
@@ -11108,6 +11115,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const pngBuffers = [];
         try {
           for (let i = 0; i < slides.length; i++) {
+            if (i > 0) await sleep(11000); // proactively clear the 1-req/10s window
             pngBuffers.push(await renderSlide(slideHtml(slides[i], i, slides.length)));
           }
         } catch (e) {
@@ -11121,12 +11129,24 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
         const basePath = `web/${deployPath}/carousels/${titleSlug}`;
 
+        // One folder listing instead of a per-file existence check — GitHub's
+        // Contents API returns every entry's sha in a single call when the
+        // path is a directory, so this replaces what used to be 8 separate
+        // GET-for-sha subrequests (one per file) with 1. A 404 just means
+        // the folder doesn't exist yet (fresh carousel) — every file is new.
+        const shaMap = {};
+        try {
+          const listResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${basePath}?ref=${BRANCH}`, { headers: gh });
+          if (listResp.ok) {
+            const entries = await listResp.json();
+            if (Array.isArray(entries)) for (const e of entries) shaMap[e.name] = e.sha;
+          }
+        } catch (e) {}
+
         const putFile = async (path, b64, message) => {
-          const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
-          let sha = null;
-          if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch(e) {} }
+          const name = path.slice(path.lastIndexOf('/') + 1);
           const putBody = { message, content: b64, branch: BRANCH };
-          if (sha) putBody.sha = sha;
+          if (shaMap[name]) putBody.sha = shaMap[name];
           const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
             method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
           });
