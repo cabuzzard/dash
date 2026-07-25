@@ -11066,12 +11066,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
      actually sits — so benefit needs a bigger left inset than stress. */
   .stress { background:${spec.bg}; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }
   .benefit { background:${spec.bg}; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }
-  .label { font-family:'IBM Plex Mono',monospace; font-size:16px; letter-spacing:0.14em; text-transform:uppercase; color:${spec.accent}; margin-bottom:22px; }
   .line { font-family:'${spec.headlineFont}',serif; font-size:40px; line-height:1.22; color:${spec.ink}; font-weight:600; max-width:400px; }
   .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:${spec.ink}; opacity:0.6; z-index:2; }
 </style></head><body>
-  <div class="half stress"><div class="label">Stress</div><div class="line">${esc(slide.headline)}</div></div>
-  <div class="half benefit"><div class="label">Benefit</div><div class="line">${esc(slide.body)}</div></div>
+  <div class="half stress"><div class="line">${esc(slide.headline)}</div></div>
+  <div class="half benefit"><div class="line">${esc(slide.body)}</div></div>
   <div class="counter">${idx + 1} / ${total}</div>
 </body></html>`;
 
