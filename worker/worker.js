@@ -11333,18 +11333,21 @@ Return ONLY this JSON object, no other text, no markdown fences:
             const rt = b[b.type]?.rich_text || [];
             const text = rt.map(t => t.plain_text).join("");
             const bold = !!rt[0]?.annotations?.bold;
-            if (text) current.lines.push({ text, bold });
+            if (text) current.lines.push({ id: b.id, text, bold });
           }
         }
         const findSection = name => sections.find(s => s.heading.toLowerCase() === name.toLowerCase());
-        const slides = sections
-          .filter(s => /^Slide \d+/i.test(s.heading))
-          .map(s => ({
-            headline: (s.lines.find(l => l.bold) || s.lines[0] || {}).text || "",
-            body: (s.lines.find(l => !l.bold) || {}).text || "",
-          }));
-        const caption = findSection("Caption")?.lines?.[0]?.text || "";
-        const hashtags = findSection("Hashtags")?.lines?.[0]?.text || "";
+        const slideSections = sections.filter(s => /^Slide \d+/i.test(s.heading));
+        const slides = slideSections.map(s => ({
+          headline: (s.lines.find(l => l.bold) || s.lines[0] || {}).text || "",
+          body: (s.lines.find(l => !l.bold) || {}).text || "",
+          headlineId: (s.lines.find(l => l.bold) || s.lines[0] || {}).id || null,
+          bodyId: (s.lines.find(l => !l.bold) || {}).id || null,
+        }));
+        const captionSection = findSection("Caption");
+        const hashtagsSection = findSection("Hashtags");
+        const caption = captionSection?.lines?.[0]?.text || "";
+        const hashtags = hashtagsSection?.lines?.[0]?.text || "";
         if (!slides.length) return json({ error: "No existing carousel found on this title — generate one first before refining." }, 400);
 
         const refinePrompt = `You are refining an existing ${slides.length}-slide Instagram carousel script for this title, per a specific edit request. Change ONLY what the request asks for — keep everything else exactly as-is unless the request clearly implies a broader change.
@@ -11382,30 +11385,58 @@ Return the FULL updated set — all ${slides.length} slides plus caption and has
         const divider = () => ({ object: "block", type: "divider", divider: {} });
         const newSlides = (Array.isArray(parsed.slides) ? parsed.slides : []).filter(s => s && (s.headline || s.body));
         if (!newSlides.length) return json({ error: "Refine returned no usable slides — try rephrasing the request." }, 500);
-        const n = newSlides.length;
-        const children = [];
-        newSlides.forEach((s, idx) => {
-          children.push(heading(`Slide ${idx + 1} (${idx + 1}/${n})`));
-          if (s.headline) children.push(para(s.headline, { bold: true }));
-          if (s.body) children.push(para(s.body));
-          children.push(divider());
-        });
         const newCaption = parsed.caption || caption;
         const newHashtagsArr = Array.isArray(parsed.hashtags) && parsed.hashtags.length ? parsed.hashtags : null;
         const newHashtags = newHashtagsArr ? newHashtagsArr.map(h => h.startsWith('#') ? h : '#' + h).join(' ') : hashtags;
-        if (newCaption) { children.push(heading('Caption')); children.push(para(newCaption)); }
-        if (newHashtags) { children.push(heading('Hashtags')); children.push(para(newHashtags)); }
 
-        // Replace the title's body wholesale — refine always supersedes
-        // whatever's currently there, same "regenerate" contract the
-        // carousel tooling already uses elsewhere.
-        await Promise.all(blocks.map(b => fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: "DELETE", headers: hdr })));
-        for (let i = 0; i < children.length; i += 90) {
-          const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ children: children.slice(i, i + 90) }),
+        // A refine touches a handful of lines, not the whole script — Claude
+        // is told to return the full set but preserve everything untouched,
+        // so most slides come back identical. Deleting and recreating all
+        // ~30+ blocks on every refine (as generate does for a from-scratch
+        // build) was the actual cause of "too many subrequests": each
+        // delete is its own call, so a 7-slide carousel meant 30+
+        // subrequests before this pipeline's other Notion/render/GitHub
+        // calls even started. When the slide count is unchanged (the
+        // normal case), patch only the blocks whose text actually changed
+        // in place — a one- or two-line edit costs one or two subrequests,
+        // not thirty. Only fall back to full delete+recreate if Claude
+        // changed the slide count.
+        if (newSlides.length === slides.length) {
+          const patchOps = [];
+          newSlides.forEach((s, idx) => {
+            const old = slides[idx];
+            if (old.headlineId && s.headline !== old.headline) patchOps.push({ id: old.headlineId, text: s.headline, bold: true });
+            if (old.bodyId && s.body !== old.body) patchOps.push({ id: old.bodyId, text: s.body, bold: false });
           });
-          if (!writeResp.ok) { const r = await writeResp.json(); return json({ error: r.message || "Failed to write refined slides to title" }, writeResp.status); }
+          const capId = captionSection?.lines?.[0]?.id;
+          if (capId && newCaption !== caption) patchOps.push({ id: capId, text: newCaption, bold: false });
+          const hashId = hashtagsSection?.lines?.[0]?.id;
+          if (hashId && newHashtags !== hashtags) patchOps.push({ id: hashId, text: newHashtags, bold: false });
+
+          await Promise.all(patchOps.map(op => fetch(`https://api.notion.com/v1/blocks/${op.id}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ paragraph: { rich_text: rtBlock(op.text, { bold: op.bold }) } }),
+          })));
+        } else {
+          const n = newSlides.length;
+          const children = [];
+          newSlides.forEach((s, idx) => {
+            children.push(heading(`Slide ${idx + 1} (${idx + 1}/${n})`));
+            if (s.headline) children.push(para(s.headline, { bold: true }));
+            if (s.body) children.push(para(s.body));
+            children.push(divider());
+          });
+          if (newCaption) { children.push(heading('Caption')); children.push(para(newCaption)); }
+          if (newHashtags) { children.push(heading('Hashtags')); children.push(para(newHashtags)); }
+
+          await Promise.all(blocks.map(b => fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: "DELETE", headers: hdr })));
+          for (let i = 0; i < children.length; i += 90) {
+            const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ children: children.slice(i, i + 90) }),
+            });
+            if (!writeResp.ok) { const r = await writeResp.json(); return json({ error: r.message || "Failed to write refined slides to title" }, writeResp.status); }
+          }
         }
 
         const result = await publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides: newSlides, caption: newCaption, hashtags: newHashtags });
