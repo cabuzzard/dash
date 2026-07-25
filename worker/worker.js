@@ -11022,11 +11022,27 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
         const deployPath = deployMatch ? deployMatch[1] : (slugify(campPage.properties?.Name?.title?.map(t=>t.plain_text).join("")) || 'campaign');
         const titleSlug = slugify(titleName) || 'carousel';
+        const basePath = `web/${deployPath}/carousels/${titleSlug}`;
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
 
         // ── Step 4: render each slide to a real PNG via Browser Rendering ──
-        const slideHtmlDefault = (slide, idx, total) => `<!doctype html><html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(spec.headlineFont)}:wght@600;700&family=${encodeURIComponent(spec.bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
-<style>
+        // CSS lives separately from the HTML skeleton (rather than inline in
+        // one template string) so the gallery page's HTML/CSS editor (see
+        // galleryHtml below) can show the exact same values it'll render —
+        // no drift between "what generate/refine produces" and "what the
+        // editor starts from".
+        const isHiddenPotential = carouselType === 'hidden-potential';
+        const defaultCss = isHiddenPotential ? `
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:1080px; height:1350px; overflow:hidden; }
+  body { font-family:'${spec.bodyFont}',serif; position:relative; background:${spec.accent}; }
+  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }
+  .stress { background:${spec.bg}; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }
+  .benefit { background:${spec.bg}; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }
+  .line { font-family:'${spec.headlineFont}',serif; font-size:40px; line-height:1.22; color:${spec.ink}; font-weight:600; max-width:400px; }
+  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:${spec.ink}; opacity:0.6; z-index:2; }
+` : `
   * { margin:0; padding:0; box-sizing:border-box; }
   body { width:1080px; height:1350px; background:${spec.bg}; font-family:'${spec.bodyFont}',serif; display:flex; flex-direction:column; justify-content:center; padding:100px 90px; position:relative; overflow:hidden; }
   .num { font-family:'IBM Plex Mono',monospace; font-size:22px; color:${spec.accent}; letter-spacing:0.14em; text-transform:uppercase; margin-bottom:32px; }
@@ -11034,13 +11050,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
   p { font-family:'${spec.bodyFont}',serif; font-size:29px; line-height:1.55; color:${spec.ink}; opacity:0.82; }
   .counter { position:absolute; bottom:64px; right:74px; font-family:'IBM Plex Mono',monospace; font-size:19px; color:${spec.accent}; }
   .rule { position:absolute; left:90px; right:90px; top:70px; height:1px; background:${spec.accent}; opacity:0.35; }
-</style></head><body>
-  <div class="rule"></div>
-  <div class="num">${String(idx + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}</div>
-  <h1>${esc(slide.headline)}</h1>
-  <p>${esc(slide.body)}</p>
-  <div class="counter">${idx + 1} / ${total}</div>
-</body></html>`;
+`;
 
         // Hidden Potential: split slide, "stress" in muted grayscale on the
         // left, "benefit" in full Design Spec color on the right — the
@@ -11050,31 +11060,26 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // each half, with a thin accent-colored seam showing through the
         // gap between them) instead of a straight line, reinforcing the
         // left-to-right stress -> benefit read.
-        const slideHtmlHiddenPotential = (slide, idx, total) => `<!doctype html><html><head><meta charset="utf-8">
+        const slideHtmlDefault = (slide, idx, total, css) => `<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(spec.headlineFont)}:wght@600;700&family=${encodeURIComponent(spec.bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html, body { width:1080px; height:1350px; overflow:hidden; }
-  body { font-family:'${spec.bodyFont}',serif; position:relative; background:${spec.accent}; }
-  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }
-  /* Content is inset separately per half, not via shared padding — the
-     visible area of each half is defined by its clip-path, not its box, so
-     text has to be positioned (and width-capped) to land inside its own
-     half's visible region rather than the shared 0-1080 box. Stress's
-     pinch point (narrowest visible width) is at the top/bottom edges;
-     benefit's pinch point is at the vertical center, where the text
-     actually sits — so benefit needs a bigger left inset than stress. */
-  .stress { background:${spec.bg}; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }
-  .benefit { background:${spec.bg}; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }
-  .line { font-family:'${spec.headlineFont}',serif; font-size:40px; line-height:1.22; color:${spec.ink}; font-weight:600; max-width:400px; }
-  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:${spec.ink}; opacity:0.6; z-index:2; }
-</style></head><body>
+<style>${css}</style></head><body>
+  <div class="rule"></div>
+  <div class="num">${String(idx + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}</div>
+  <h1>${esc(slide.headline)}</h1>
+  <p>${esc(slide.body)}</p>
+  <div class="counter">${idx + 1} / ${total}</div>
+</body></html>`;
+
+        const slideHtmlHiddenPotential = (slide, idx, total, css) => `<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(spec.headlineFont)}:wght@600;700&family=${encodeURIComponent(spec.bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
+<style>${css}</style></head><body>
   <div class="half stress"><div class="line">${esc(slide.headline)}</div></div>
   <div class="half benefit"><div class="line">${esc(slide.body)}</div></div>
   <div class="counter">${idx + 1} / ${total}</div>
 </body></html>`;
 
-        const slideHtml = carouselType === 'hidden-potential' ? slideHtmlHiddenPotential : slideHtmlDefault;
+        const slideHtml = isHiddenPotential ? slideHtmlHiddenPotential : slideHtmlDefault;
+        const effectiveCss = defaultCss;
 
         // Browser Rendering's /screenshot endpoint is a "Quick Action" —
         // capped at 1 request per 10s on the free tier (10/s on paid).
@@ -11116,18 +11121,15 @@ Return ONLY this JSON object, no other text, no markdown fences:
         try {
           for (let i = 0; i < slides.length; i++) {
             if (i > 0) await sleep(11000); // proactively clear the 1-req/10s window
-            pngBuffers.push(await renderSlide(slideHtml(slides[i], i, slides.length)));
+            pngBuffers.push(await renderSlide(slideHtml(slides[i], i, slides.length, effectiveCss)));
           }
         } catch (e) {
           return json({ error: `Slide ${pngBuffers.length + 1}: ${e.message}` }, 502);
         }
 
         // ── Step 5: commit PNGs + a gallery page to GitHub Pages ──
-        const REPO = "cabuzzard/dash", BRANCH = "main";
-        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
         const toB64Bin = buf => { const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
         const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
-        const basePath = `web/${deployPath}/carousels/${titleSlug}`;
 
         // One folder listing instead of a per-file existence check — GitHub's
         // Contents API returns every entry's sha in a single call when the
@@ -11180,10 +11182,16 @@ Return ONLY this JSON object, no other text, no markdown fences:
   .refine .err { color:#e66; font-size:12px; margin-top:6px; min-height:14px; }
   .refine .status { color:#888; font-size:12px; margin-top:8px; min-height:14px; }
   .refine .hint { color:#666; font-size:12px; margin-bottom:10px; }
+  .editor { max-width:900px; margin:28px auto 0; padding-top:20px; border-top:1px solid #262626; }
+  .editor .row2 { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; margin-top:10px; }
+  .editor select { background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; padding:6px 8px; font-size:12px; }
+  .editor textarea { flex:1; min-width:260px; height:300px; padding:10px; background:#1a1a1a; border:1px solid #333; color:#ddd; border-radius:4px; resize:vertical; box-sizing:border-box; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; line-height:1.5; }
+  .editor .preview-wrap { width:216px; height:270px; overflow:hidden; position:relative; border:1px solid #333; border-radius:4px; flex-shrink:0; background:#000; }
+  .editor .preview-wrap iframe { width:1080px; height:1350px; border:0; transform:scale(0.2); transform-origin:top left; position:absolute; top:0; left:0; }
 </style></head><body>
   <h1>${esc(titleName)}</h1>
   <div class="sub">Carousel preview — ${slides.length} slides — for approval / layout review, not yet published</div>
-  <div class="grid">${pngBuffers.map((_, i) => `<img src="slide-${String(i + 1).padStart(2, '0')}.png" alt="Slide ${i + 1}">`).join('')}</div>
+  <div class="grid">${pngBuffers.map((_, i) => `<img id="slideImg${i}" src="slide-${String(i + 1).padStart(2, '0')}.png" alt="Slide ${i + 1}">`).join('')}</div>
   ${caption ? `<div class="cap">${esc(caption)}</div>` : ''}
   ${hashtags ? `<div class="tags">${esc(hashtags)}</div>` : ''}
   <div class="refine">
@@ -11199,11 +11207,22 @@ Return ONLY this JSON object, no other text, no markdown fences:
       <div class="status" id="refineStatus"></div>
     </div>
   </div>
+  <div class="editor" id="editorRow" style="display:none;">
+    <div class="hint" style="color:#666;font-size:12px;">Direct HTML/CSS edit, one slide at a time — the preview updates as you type. Render commits it as that slide's image (this only changes the picture, not the stored slide text — a future Generate/Refine still uses the built-in design).</div>
+    <label style="font-size:12px;color:#888;">Slide <select id="editorSlideSelect"></select></label>
+    <div class="row2">
+      <textarea id="editorHtmlInput" spellcheck="false"></textarea>
+      <div class="preview-wrap"><iframe id="editorPreview"></iframe></div>
+    </div>
+    <div style="margin-top:8px;"><button id="editorRenderBtn">Render to PNG</button></div>
+    <div class="status" id="editorStatus"></div>
+  </div>
   <script>
     var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
     var TITLE_ID = ${JSON.stringify(titleId)};
     var CAMPAIGN_ID = ${JSON.stringify(campaignId)};
     var CAROUSEL_TYPE = ${JSON.stringify(carouselType || 'triple-hook')};
+    var SLIDE_HTMLS = ${JSON.stringify(slides.map((s, i) => slideHtml(s, i, slides.length, effectiveCss)))};
     var refineToken = null;
     document.getElementById('refineUnlockBtn').addEventListener('click', function () {
       var pin = document.getElementById('refinePin').value.trim();
@@ -11216,6 +11235,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           refineToken = d.token;
           document.getElementById('refinePinRow').style.display = 'none';
           document.getElementById('refineEditRow').style.display = 'block';
+          document.getElementById('editorRow').style.display = 'block';
         })
         .catch(function () { errEl.textContent = 'Connection error'; });
     });
@@ -11235,6 +11255,49 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
           statusEl.textContent = 'Done — reloading…';
           setTimeout(function () { location.href = location.pathname + '?refined=' + Date.now(); }, 900);
+        })
+        .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
+    });
+
+    var editorIdx = 0;
+    function editorUpdatePreview() {
+      document.getElementById('editorPreview').srcdoc = document.getElementById('editorHtmlInput').value;
+    }
+    function editorLoadSlide(i) {
+      editorIdx = i;
+      document.getElementById('editorHtmlInput').value = SLIDE_HTMLS[i];
+      editorUpdatePreview();
+    }
+    (function () {
+      var sel = document.getElementById('editorSlideSelect');
+      for (var i = 0; i < SLIDE_HTMLS.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = i; opt.textContent = 'Slide ' + (i + 1);
+        sel.appendChild(opt);
+      }
+      sel.addEventListener('change', function () { editorLoadSlide(parseInt(sel.value, 10)); });
+    })();
+    document.getElementById('editorHtmlInput').addEventListener('input', editorUpdatePreview);
+    editorLoadSlide(0);
+
+    document.getElementById('editorRenderBtn').addEventListener('click', function () {
+      var html = document.getElementById('editorHtmlInput').value;
+      var statusEl = document.getElementById('editorStatus');
+      var btn = document.getElementById('editorRenderBtn');
+      var num = String(editorIdx + 1).padStart(2, '0');
+      var base = location.pathname.replace(/^\\/dash\\//, '').replace(/\\/$/, '');
+      var path = base + '/slide-' + num + '.png';
+      statusEl.textContent = 'Rendering…';
+      btn.disabled = true;
+      fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'renderSlideHtml', token: refineToken, path: path, html: html }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
+          statusEl.textContent = 'Rendered — reloading…';
+          setTimeout(function () { location.href = location.pathname + '?edited=' + Date.now(); }, 700);
         })
         .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
     });
@@ -11442,6 +11505,56 @@ Return the FULL updated set — all ${slides.length} slides plus caption and has
         const result = await publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides: newSlides, caption: newCaption, hashtags: newHashtags });
         if (result instanceof Response) return result;
         return json({ success: true, previewUrl: result.previewUrl, slideCount: newSlides.length, assetId: result.assetId, titleId });
+      }
+
+      // ── renderSlideHtml ──
+      // Renders arbitrary raw HTML to a PNG and commits it directly over one
+      // slide's file. This is the save step for the HTML/CSS editor
+      // embedded on the gallery page (see galleryHtml in
+      // publishCarouselSlides) — the user edits a slide's exact source,
+      // watches a live iframe preview, and this is what "Render" calls.
+      // Deliberately has NO Notion involvement: it only overwrites the
+      // rendered image at an exact path, not the stored slide script, so
+      // it's a one-off visual override for that image — a future
+      // Generate/Refine still produces the built-in template's look, since
+      // that's driven by the CSS baked into this file, not by anything
+      // saved here. `path` is computed client-side from the page's own URL,
+      // so this action only needs to trust the token, not titleId/campaignId.
+      if (body.action === "renderSlideHtml") {
+        const { path, html } = body;
+        if (!path || !html) return json({ error: "path and html required" }, 400);
+        if (!/^web\/[^\/]+\/carousels\/[^\/]+\/slide-\d{2}\.png$/.test(path)) return json({ error: "invalid path" }, 400);
+        const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
+        const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
+        if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return json({ error: "CF_ACCOUNT_ID / CF_API_TOKEN not configured" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+
+        const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ html, viewport: { width: 1080, height: 1350, deviceScaleFactor: 1 }, screenshotOptions: { type: "png" } }),
+        });
+        if (!resp.ok) {
+          if (resp.status === 429) return json({ error: "Rendering is rate-limited right now — wait ~10s and try again." }, 429);
+          const t = await resp.text();
+          return json({ error: `Browser Rendering failed (HTTP ${resp.status}): ${t.slice(0, 300)}` }, 502);
+        }
+        const buf = await resp.arrayBuffer();
+        const toB64Bin = b => { const bytes = new Uint8Array(b); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+        let sha = null;
+        if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
+        const putBody = { message: `Manual slide edit: ${path}`, content: toB64Bin(buf), branch: BRANCH };
+        if (sha) putBody.sha = sha;
+        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+        });
+        if (!putResp.ok) { const r = await putResp.json(); return json({ error: `GitHub commit failed (HTTP ${putResp.status}): ${r.message || 'unknown'}` }, 502); }
+        return json({ success: true });
       }
 
       return json({ error: "Unknown action" }, 400);
