@@ -10,6 +10,17 @@
   .grid img { width:100%; border-radius:6px; display:block; box-shadow:0 4px 20px rgba(0,0,0,.4); }
   .cap { max-width:640px; margin:36px auto 0; color:#ccc; font-size:14px; line-height:1.7; white-space:pre-wrap; }
   .tags { max-width:640px; margin:14px auto 0; color:#666; font-size:12px; }
+  .refine { max-width:640px; margin:32px auto 0; padding-top:24px; border-top:1px solid #262626; }
+  .refine input, .refine textarea, .refine button { font-family:inherit; font-size:13px; }
+  .refine input[type=password] { width:90px; padding:9px 10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; letter-spacing:0.2em; }
+  .refine textarea { width:100%; padding:10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; resize:vertical; box-sizing:border-box; }
+  .refine button { padding:9px 16px; background:#333; color:#fff; border:none; border-radius:4px; cursor:pointer; }
+  .refine button:hover { background:#444; }
+  .refine button:disabled { opacity:0.5; cursor:default; }
+  .refine .row { display:flex; gap:8px; align-items:center; }
+  .refine .err { color:#e66; font-size:12px; margin-top:6px; min-height:14px; }
+  .refine .status { color:#888; font-size:12px; margin-top:8px; min-height:14px; }
+  .refine .hint { color:#666; font-size:12px; margin-bottom:10px; }
 </style></head><body>
   <h1>app development at the speed of ideas</h1>
   <div class="sub">Carousel preview — 7 slides — for approval / layout review, not yet published</div>
@@ -24,4 +35,57 @@ Your ideas deserve to exist. Start with one tool, one task, one win. The rest fo
 
 Save this carousel and come back to it when the idea hits.</div>
   <div class="tags">#aiforsmallbusiness #nocodebusiness #aiautomation #smallbusinessgrowth #entrepreneurmindset</div>
+  <div class="refine">
+    <div class="hint">Want a change made? Describe it below and it'll be edited and re-rendered in place — no need to go back to Generate Assets.</div>
+    <div class="row" id="refinePinRow">
+      <input type="password" id="refinePin" maxlength="4" inputmode="numeric" placeholder="PIN">
+      <button id="refineUnlockBtn">Unlock</button>
+    </div>
+    <div class="err" id="refineErr"></div>
+    <div id="refineEditRow" style="display:none;">
+      <textarea id="refineInput" rows="2" placeholder="e.g. 'make slide 4 punchier' or 'swap the accent color to a deep blue'"></textarea>
+      <div style="margin-top:8px;"><button id="refineBtn">Refine design</button></div>
+      <div class="status" id="refineStatus"></div>
+    </div>
+  </div>
+  <script>
+    var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+    var TITLE_ID = "3a81f7d3a4bb81d9933fd6a45c6d8e5a";
+    var CAMPAIGN_ID = "35c1f7d3a4bb81568338f64d95ef3a36";
+    var CAROUSEL_TYPE = "triple-hook";
+    var refineToken = null;
+    document.getElementById('refineUnlockBtn').addEventListener('click', function () {
+      var pin = document.getElementById('refinePin').value.trim();
+      var errEl = document.getElementById('refineErr');
+      errEl.textContent = '';
+      fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auth', pin: pin }) })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.token) { errEl.textContent = d.error || 'Wrong PIN'; return; }
+          refineToken = d.token;
+          document.getElementById('refinePinRow').style.display = 'none';
+          document.getElementById('refineEditRow').style.display = 'block';
+        })
+        .catch(function () { errEl.textContent = 'Connection error'; });
+    });
+    document.getElementById('refineBtn').addEventListener('click', function () {
+      var instruction = document.getElementById('refineInput').value.trim();
+      var statusEl = document.getElementById('refineStatus');
+      var btn = document.getElementById('refineBtn');
+      if (!instruction) { statusEl.textContent = 'Describe what to change first.'; return; }
+      statusEl.textContent = 'Refining… slides render one at a time, this can take a minute or two.';
+      btn.disabled = true;
+      fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'refineCarouselPreview', token: refineToken, titleId: TITLE_ID, campaignId: CAMPAIGN_ID, carouselType: CAROUSEL_TYPE, instruction: instruction }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
+          statusEl.textContent = 'Done — reloading…';
+          setTimeout(function () { location.href = location.pathname + '?refined=' + Date.now(); }, 900);
+        })
+        .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
+    });
+  </script>
 </body></html>
