@@ -11081,6 +11081,29 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const slideHtml = isHiddenPotential ? slideHtmlHiddenPotential : slideHtmlDefault;
         const effectiveCss = defaultCss;
 
+        // A combined multi-page HTML source for Canva import — each slide's
+        // <body> content wrapped in its own data-document-role="page" div
+        // (Canva's importer decomposes this into a real editable design,
+        // not a flattened image), with the position:relative/width/height
+        // that used to live on <body> moved onto each page div instead,
+        // since all 7 pages now share one body. Committed alongside the
+        // PNGs on every render so it's always current — the "Send to
+        // Canva" link on the gallery page just points straight at it,
+        // no rebuilding needed from wherever that link is opened.
+        const bodyInnerOf = html => (html.match(/<body>([\s\S]*)<\/body>/) || [, ''])[1].trim();
+        const pageWrapperStyle = isHiddenPotential
+          ? `width:1080px;height:1350px;overflow:hidden;position:relative;background:${spec.accent};font-family:'${spec.bodyFont}',serif;`
+          : `width:1080px;height:1350px;overflow:hidden;position:relative;background:${spec.bg};font-family:'${spec.bodyFont}',serif;display:flex;flex-direction:column;justify-content:center;padding:100px 90px;`;
+        const canvaSourceHtml = `<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(spec.headlineFont)}:wght@600;700&family=${encodeURIComponent(spec.bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
+<style>${effectiveCss}
+body { width:auto; height:auto; overflow:visible; }
+</style></head><body>
+${slides.map((s, i) => `  <div data-document-role="page" data-label="Slide ${i + 1}" style="${pageWrapperStyle}">
+${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
+  </div>`).join('\n')}
+</body></html>`;
+
         // Browser Rendering's /screenshot endpoint is a "Quick Action" —
         // capped at 1 request per 10s on the free tier (10/s on paid).
         // Each retry is its OWN subrequest, and Workers cap total
@@ -11155,6 +11178,14 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (!putResp.ok) { const r = await putResp.json(); throw new Error(`GitHub commit failed for ${path} (HTTP ${putResp.status}): ${r.message || 'unknown'}`); }
         };
 
+        // Pre-filled hand-off to a fresh Claude chat (Notion + Canva MCP,
+        // no Bash/git needed) — it just points at the already-hosted
+        // canva-source.html above, imports it, and writes the resulting
+        // edit link onto this title's Asset record. This is the "Send to
+        // Canva" link on the gallery page.
+        const canvaPromptText = `Import this Instagram carousel design into Canva using the Canva MCP import-design-from-url tool: https://cabuzzard.github.io/dash/${basePath}/canva-source.html — name it "${titleName} — Carousel". Then find the Notion Asset page in the Assets DB (e91bdb6e770b4d298e9f62166a0fd5de) whose Content Strategy relation contains ${titleId} and whose Asset Type is "carousel", and set its "Canva Link" property to the resulting Canva edit URL. Report the Canva edit link back to me.`;
+        const canvaPromptUrl = `https://claude.ai/new?q=${encodeURIComponent(canvaPromptText)}`;
+
         try {
           for (let i = 0; i < pngBuffers.length; i++) {
             await putFile(`${basePath}/slide-${String(i + 1).padStart(2, '0')}.png`, toB64Bin(pngBuffers[i]), `Carousel preview: ${titleName} — slide ${i + 1}`);
@@ -11216,6 +11247,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
     </div>
     <div style="margin-top:8px;"><button id="editorRenderBtn">Render to PNG</button></div>
     <div class="status" id="editorStatus"></div>
+  </div>
+  <div style="max-width:900px;margin:20px auto 0;">
+    <a href="${canvaPromptUrl}" target="_blank" style="display:inline-block;padding:9px 16px;background:#00C4CC;color:#111;text-decoration:none;border-radius:4px;font-size:13px;font-weight:600;">Send to Canva →</a>
+    <div style="color:#666;font-size:12px;margin-top:6px;">Opens a new Claude chat with the import + Notion save-back already spelled out — just hit send.</div>
   </div>
   <script>
     var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -11304,6 +11339,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
   </script>
 </body></html>`;
           await putFile(`${basePath}/index.html`, toB64Text(galleryHtml), `Carousel preview: ${titleName} — gallery page`);
+          await putFile(`${basePath}/canva-source.html`, toB64Text(canvaSourceHtml), `Carousel preview: ${titleName} — Canva source`);
         } catch (e) {
           return json({ error: e.message }, 502);
         }
