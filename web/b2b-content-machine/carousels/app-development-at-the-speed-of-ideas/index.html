@@ -21,10 +21,16 @@
   .refine .err { color:#e66; font-size:12px; margin-top:6px; min-height:14px; }
   .refine .status { color:#888; font-size:12px; margin-top:8px; min-height:14px; }
   .refine .hint { color:#666; font-size:12px; margin-bottom:10px; }
+  .editor { max-width:900px; margin:28px auto 0; padding-top:20px; border-top:1px solid #262626; }
+  .editor .row2 { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; margin-top:10px; }
+  .editor select { background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; padding:6px 8px; font-size:12px; }
+  .editor textarea { flex:1; min-width:260px; height:300px; padding:10px; background:#1a1a1a; border:1px solid #333; color:#ddd; border-radius:4px; resize:vertical; box-sizing:border-box; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; line-height:1.5; }
+  .editor .preview-wrap { width:216px; height:270px; overflow:hidden; position:relative; border:1px solid #333; border-radius:4px; flex-shrink:0; background:#000; }
+  .editor .preview-wrap iframe { width:1080px; height:1350px; border:0; transform:scale(0.2); transform-origin:top left; position:absolute; top:0; left:0; }
 </style></head><body>
   <h1>app development at the speed of ideas</h1>
   <div class="sub">Carousel preview — 7 slides — for approval / layout review, not yet published</div>
-  <div class="grid"><img src="slide-01.png" alt="Slide 1"><img src="slide-02.png" alt="Slide 2"><img src="slide-03.png" alt="Slide 3"><img src="slide-04.png" alt="Slide 4"><img src="slide-05.png" alt="Slide 5"><img src="slide-06.png" alt="Slide 6"><img src="slide-07.png" alt="Slide 7"></div>
+  <div class="grid"><img id="slideImg0" src="slide-01.png" alt="Slide 1"><img id="slideImg1" src="slide-02.png" alt="Slide 2"><img id="slideImg2" src="slide-03.png" alt="Slide 3"><img id="slideImg3" src="slide-04.png" alt="Slide 4"><img id="slideImg4" src="slide-05.png" alt="Slide 5"><img id="slideImg5" src="slide-06.png" alt="Slide 6"><img id="slideImg6" src="slide-07.png" alt="Slide 7"></div>
   <div class="cap">You do not need a technical background to build something real. The gap between a business idea and a working app used to cost time, money, and a development team you could not afford. That gap is closing fast.
 
 AI tools built for non-technical business owners mean you can automate tasks, build workflows, and create functional tools without writing a single line of code. Small businesses and solo operators are doing this right now, quietly, and saving thousands in the process.
@@ -48,11 +54,22 @@ Save this carousel and come back to it when the idea hits.</div>
       <div class="status" id="refineStatus"></div>
     </div>
   </div>
+  <div class="editor" id="editorRow" style="display:none;">
+    <div class="hint" style="color:#666;font-size:12px;">Direct HTML/CSS edit, one slide at a time — the preview updates as you type. Render commits it as that slide's image (this only changes the picture, not the stored slide text — a future Generate/Refine still uses the built-in design).</div>
+    <label style="font-size:12px;color:#888;">Slide <select id="editorSlideSelect"></select></label>
+    <div class="row2">
+      <textarea id="editorHtmlInput" spellcheck="false"></textarea>
+      <div class="preview-wrap"><iframe id="editorPreview"></iframe></div>
+    </div>
+    <div style="margin-top:8px;"><button id="editorRenderBtn">Render to PNG</button></div>
+    <div class="status" id="editorStatus"></div>
+  </div>
   <script>
     var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
     var TITLE_ID = "3a81f7d3a4bb81d9933fd6a45c6d8e5a";
     var CAMPAIGN_ID = "35c1f7d3a4bb81568338f64d95ef3a36";
     var CAROUSEL_TYPE = "hidden-potential";
+    var SLIDE_HTMLS = ["<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">No coding skills, no app</div></div>\n  <div class=\"half benefit\"><div class=\"line\">Build it anyway, today</div></div>\n  <div class=\"counter\">1 / 7</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">Ideas die waiting for developers</div></div>\n  <div class=\"half benefit\"><div class=\"line\">Ship before the idea cools</div></div>\n  <div class=\"counter\">2 / 7</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">Tech costs eat your budget</div></div>\n  <div class=\"half benefit\"><div class=\"line\">AI tools cost less than lunch</div></div>\n  <div class=\"counter\">3 / 7</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">Too complex to figure out alone</div></div>\n  <div class=\"half benefit\"><div class=\"line\">Plain English gets results now</div></div>\n  <div class=\"counter\">4 / 7</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">Automating feels risky and unknown</div></div>\n  <div class=\"half benefit\"><div class=\"line\">Start small, see wins fast</div></div>\n  <div class=\"counter\">5 / 7</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">Your process still runs manually</div></div>\n  <div class=\"half benefit\"><div class=\"line\">Repetitive tasks run themselves</div></div>\n  <div class=\"counter\">6 / 7</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">Competitors moved faster than you</div></div>\n  <div class=\"half benefit\"><div class=\"line\">Your next idea ships first</div></div>\n  <div class=\"counter\">7 / 7</div>\n</body></html>"];
     var refineToken = null;
     document.getElementById('refineUnlockBtn').addEventListener('click', function () {
       var pin = document.getElementById('refinePin').value.trim();
@@ -65,6 +82,7 @@ Save this carousel and come back to it when the idea hits.</div>
           refineToken = d.token;
           document.getElementById('refinePinRow').style.display = 'none';
           document.getElementById('refineEditRow').style.display = 'block';
+          document.getElementById('editorRow').style.display = 'block';
         })
         .catch(function () { errEl.textContent = 'Connection error'; });
     });
@@ -84,6 +102,49 @@ Save this carousel and come back to it when the idea hits.</div>
           if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
           statusEl.textContent = 'Done — reloading…';
           setTimeout(function () { location.href = location.pathname + '?refined=' + Date.now(); }, 900);
+        })
+        .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
+    });
+
+    var editorIdx = 0;
+    function editorUpdatePreview() {
+      document.getElementById('editorPreview').srcdoc = document.getElementById('editorHtmlInput').value;
+    }
+    function editorLoadSlide(i) {
+      editorIdx = i;
+      document.getElementById('editorHtmlInput').value = SLIDE_HTMLS[i];
+      editorUpdatePreview();
+    }
+    (function () {
+      var sel = document.getElementById('editorSlideSelect');
+      for (var i = 0; i < SLIDE_HTMLS.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = i; opt.textContent = 'Slide ' + (i + 1);
+        sel.appendChild(opt);
+      }
+      sel.addEventListener('change', function () { editorLoadSlide(parseInt(sel.value, 10)); });
+    })();
+    document.getElementById('editorHtmlInput').addEventListener('input', editorUpdatePreview);
+    editorLoadSlide(0);
+
+    document.getElementById('editorRenderBtn').addEventListener('click', function () {
+      var html = document.getElementById('editorHtmlInput').value;
+      var statusEl = document.getElementById('editorStatus');
+      var btn = document.getElementById('editorRenderBtn');
+      var num = String(editorIdx + 1).padStart(2, '0');
+      var base = location.pathname.replace(/^\/dash\//, '').replace(/\/$/, '');
+      var path = base + '/slide-' + num + '.png';
+      statusEl.textContent = 'Rendering…';
+      btn.disabled = true;
+      fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'renderSlideHtml', token: refineToken, path: path, html: html }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
+          statusEl.textContent = 'Rendered — reloading…';
+          setTimeout(function () { location.href = location.pathname + '?edited=' + Date.now(); }, 700);
         })
         .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
     });
