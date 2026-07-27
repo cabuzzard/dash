@@ -1431,6 +1431,7 @@ async function loadTitles() {
           + (a.status ? `<span style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${a.status==='Published'?'#4fd1c5':(a.status==='Publish'?'#fc8181':'#888')};flex-shrink:0;">${esc(a.status)}</span>` : '')
           + (a.gradeScore != null ? `<span title="${esc(a.gradeNotes || '')}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;flex-shrink:0;background:${a.gradeStatus==='Needs Revision'?'rgba(252,129,129,.12)':'rgba(104,211,145,.12)'};color:${a.gradeStatus==='Needs Revision'?'#fc8181':'#68d391'};">${a.gradeStatus==='Needs Revision'?'⚠':'✓'} ${a.gradeScore}/10</span>` : '')
           + (a.designLink ? `<a href="${esc(a.designLink)}" target="_blank" rel="noopener" style="color:#4488ff;text-decoration:none;font-size:11px;flex-shrink:0;" title="Design link">🎨</a>` : '')
+          + (a.canvaLink ? `<a href="${esc(a.canvaLink)}" target="_blank" rel="noopener" style="color:#00C4CC;text-decoration:none;font-size:11px;flex-shrink:0;" title="Canva design (editable)">✏️</a>` : '')
           + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" style="flex-shrink:0;">↗</a>`
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset" style="flex-shrink:0;">✕</button>`;
         wrap.appendChild(ar);

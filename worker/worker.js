@@ -5363,6 +5363,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
                 type: p["Asset Type"]?.select?.name || "",
                 status: p["Asset Status"]?.select?.name || "",
                 designLink: p["Design Link"]?.url || "",
+                canvaLink: p["Canva Link"]?.url || "",
                 gradeScore: p["Grade Score"]?.number ?? null,
                 gradeStatus: p["Status"]?.select?.name || "",
                 gradeNotes: p["Grade Notes"]?.rich_text?.map(x => x.plain_text).join("") || "",
