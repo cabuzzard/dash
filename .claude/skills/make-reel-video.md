@@ -39,8 +39,25 @@ Hand the pieces to the **`video-voiceover`** skill and follow its steps exactly 
 - render: `npx remotion render VoiceoverVideo out/video.mp4` (add `--concurrency=1` on Windows if it hangs).
 Apply any caption/voice/motion tweaks the user asks for using that skill's Customization table.
 
-### Step 4 — Deliver + log
-Give the user the MP4 path (e.g. `out/video.mp4`) and offer to preview (`npm run dev`). Optionally, via the Notion connector, note the render (and, if the user uploads it somewhere, its link) on the reel-script title and move its Status forward. Publishing to Instagram/TikTok is always manual.
+### Step 4 — Host the MP4 and upsert the Assets DB record
+This is what takes the title from Development/Publish (script-only) to a real **text video** Asset with a working Design Link — mirrors exactly how `make-avatar-reel`'s Step 5 and the carousel pipeline (`publishCarouselSlides` in `worker.js`) close their own loop, so all three asset types behave consistently in the dashboard.
+
+- **Host the file.** Commit the rendered MP4 to this repo (you have git access — this whole skill already runs in chat) at:
+  `web/{deployPath}/mp4/{titleSlug}.mp4`
+  - `deployPath` — from the campaign's `live site` or `microsite` URL property, matching `/web/{path}` or `/microsites/{path}`; fall back to a slugified campaign name if neither is set.
+  - `titleSlug` — the title, lowercased, non-alphanumerics collapsed to `-`.
+  - Push. Live URL: `https://cabuzzard.github.io/dash/web/{deployPath}/mp4/{titleSlug}.mp4`.
+- **Upsert the Assets DB record** (Assets DB `e91bdb6e770b4d298e9f62166a0fd5de`). Query for an existing, non-archived record where `Content Strategy` contains this title AND `Asset Type` = `text video`; update it if found (this is what makes a re-render non-duplicating), else create a new one:
+  - **Asset Title:** `{title} — Text Video`
+  - **Asset Type:** `text video`
+  - **Content Strategy:** relation → this title
+  - **Campaign:** relation → the campaign
+  - **Design Link:** the hosted MP4 URL above
+  - **Status:** `Ready`
+  - **Asset Status:** `Publish`
+  - **Platform Name:** ask if not already implied by the title/method (Instagram Reels, TikTok, YouTube Shorts, etc.)
+  - Leave **Body**/**Notes** as whatever `generateTextVideoScript` already wrote (voiceover script / hashtags) — don't overwrite them here.
+- Confirm the title's `Status` is already `Publish` (set when the script was generated) — no change needed unless it was somehow reset.
 
 ## Notes
 - Confirm the exact spoken text before rendering — ElevenLabs credits are spent per generation.

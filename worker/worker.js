@@ -11820,6 +11820,152 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ presenterCharacter });
       }
 
+      // ── generateTextVideoScript ──
+      // Worker-native script step for the "Text Video" method (the
+      // renamed Short Form Video / Reel method — ElevenLabs voiceover +
+      // word captions + Ken Burns motion over a background image, no face
+      // on camera). Same pattern as generateAvatarScript/
+      // generateCarouselPreview: writes the script, upserts a "text
+      // video" Asset, sets the title to Publish, entirely server-side.
+      // The actual render (make-reel-video — needs local Remotion/
+      // ffmpeg/ElevenLabs) still can't run in a Worker, so that stays a
+      // chat-driven step off the resulting asset row's 🎬 button.
+      if (body.action === "generateTextVideoScript") {
+        const { titleId, campaignId } = body;
+        if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const titleName = (titlePage.properties.Title?.title || []).map(t => t.plain_text).join("") || "Text Video";
+        const productRel = titlePage.properties.product?.relation || [];
+        const productId = productRel[0]?.id?.replace(/-/g,"") || null;
+
+        const existingBlocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+        const existingBlocks = existingBlocksResp.results || [];
+        const alreadyScripted = existingBlocks.some(b => b.type === "heading_3" && /voiceover script/i.test((b.heading_3?.rich_text || []).map(t => t.plain_text).join("")));
+
+        const strategyBlock = await fetchStrategyForGrading(hdr, dash(campaignId), productId ? dash(productId) : null, !!productId);
+
+        let keywords = "";
+        const researchRaw = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        keywords = rt(researchRaw, "Keywords");
+
+        let assetId;
+        if (!alreadyScripted) {
+          const scriptPrompt = `Write a faceless Reel script — ElevenLabs voiceover over Ken Burns motion/B-roll with on-screen text and word captions, NO avatar or presenter on camera. This is for the "Text Video" method: pure discovery-format content, engineered to be found by strangers.
+
+TITLE: ${titleName}
+${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}
+
+SCRIPT RULES:
+- Arc: Hook (0-3s, pattern interrupt / contrarian claim / "after"-as-fact, survives with zero context) -> Reframe (3-8s, why this matters to the viewer) -> Payoff (8s-end, the real value, one beat per 3-5s, no throat-clearing) -> Close (last 2-3s).
+- On-screen text on every line, mirroring the spoken hook near-verbatim (most viewers watch muted).
+- Grounded in the research reference/context — a specific number, detail, or stake. Generic advice gets skipped.
+- 15-45s spoken for a single sharp idea, up to 90s only if every added second earns its place.
+- One idea only — if it needs two, it should have been two reels.
+- Close on a ranking-signal CTA — "send this to someone who..." or "comment [KEYWORD] and I'll send you...".
+- No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
+- Shot/B-roll note per beat — what visual accompanies each line (a stat graphic, a b-roll clip, motion text, etc.), since there's no face carrying the frame.
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "hookArcNote": "which hook shape was used and why it fits", "voiceoverScript": "the spoken lines only, continuous prose, NO labels/timestamps/cues — exactly what TTS will speak", "onScreenText": ["line 1", "line 2", "..."], "shotNotes": ["beat 1 shot/B-roll note", "beat 2 shot/B-roll note", "..."], "caption": "150-200 word caption, campaign keywords worked in naturally for SEO", "hashtags": ["...", "..."] }`;
+
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: scriptPrompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+          let parsed;
+          try {
+            const raw = aiData.content?.[0]?.text || "";
+            const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+            if (start === -1 || end === -1) throw new Error("No JSON object found");
+            parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          } catch(e) { return json({ error: "Failed to parse script JSON: " + e.message }, 500); }
+          if (!parsed.voiceoverScript) return json({ error: "Script generation returned no voiceover script — try again" }, 500);
+
+          const rtBlock = text => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+          const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+          const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+          const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
+          const hashtagsLine = (Array.isArray(parsed.hashtags) && parsed.hashtags.length) ? parsed.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ') : '';
+          const children = [
+            heading("Voiceover Script (to-camera)"), para(parsed.voiceoverScript),
+            heading("On-Screen Text"), ...((parsed.onScreenText || []).map(bullet)),
+            heading("Shot / B-Roll Notes"), ...((parsed.shotNotes || []).map(bullet)),
+            heading("Caption"), para(parsed.caption || ''),
+            heading("Hashtags"), para(hashtagsLine),
+            heading("Hook Arc + Reference"), para(parsed.hookArcNote || ""),
+          ];
+          const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children }),
+          });
+          if (!writeResp.ok) { const r = await writeResp.json(); return json({ error: r.message || "Failed to write script to title" }, writeResp.status); }
+
+          const assetProps = {
+            "Body": { rich_text: [{ type: "text", text: { content: parsed.voiceoverScript.slice(0, 1990) } }] },
+            "Notes": { rich_text: [{ type: "text", text: { content: hashtagsLine.slice(0, 1990) } }] },
+            "Status": { select: { name: "Ready" } },
+            "Asset Status": { select: { name: "Publish" } },
+          };
+          const existingAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { and: [
+              { property: "Content Strategy", relation: { contains: dash(titleId) } },
+              { property: "Asset Type", select: { equals: "text video" } },
+            ] } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const existingAsset = (existingAssetQuery.results || []).find(a => !a.archived);
+          if (existingAsset) {
+            assetId = existingAsset.id.replace(/-/g, "");
+            await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: assetProps }),
+            });
+          } else {
+            assetProps["Asset Title"] = { title: [{ type: "text", text: { content: `${titleName} — Text Video`.slice(0, 200) } }] };
+            assetProps["Asset Type"] = { select: { name: "text video" } };
+            assetProps["Content Strategy"] = { relation: [{ id: dash(titleId) }] };
+            assetProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+            const createResp = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+            });
+            const created = await createResp.json();
+            if (!createResp.ok || !created.id) return json({ error: created.message || "Asset create failed" }, createResp.status || 500);
+            assetId = created.id.replace(/-/g, "");
+          }
+        } else {
+          const existingAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { and: [
+              { property: "Content Strategy", relation: { contains: dash(titleId) } },
+              { property: "Asset Type", select: { equals: "text video" } },
+            ] } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const existingAsset = (existingAssetQuery.results || []).find(a => !a.archived);
+          assetId = existingAsset?.id?.replace(/-/g, "") || null;
+        }
+
+        await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+        });
+
+        return json({ success: true, titleId, assetId, alreadyScripted });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);
