@@ -1039,6 +1039,7 @@ async function loadTitles() {
           + (a.designLink ? `<a href="${esc(a.designLink)}" target="_blank" rel="noopener" style="color:#4488ff;text-decoration:none;font-size:11px;flex-shrink:0;" title="Design link">🎨</a>` : '')
           + (a.canvaLink ? `<a href="${esc(a.canvaLink)}" target="_blank" rel="noopener" style="color:#00C4CC;text-decoration:none;font-size:11px;flex-shrink:0;" title="Canva design (editable)">✏️</a>` : '')
           + (a.canvaLink ? `<button class="td-canva-sync" data-title="${esc(t.title)}" data-titleid="${t.id}" data-canvalink="${esc(a.canvaLink)}" onclick="syncFromCanva(this)" title="Copy a prompt to sync this Canva design's edits back into the carousel template — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #00C4CC;background:transparent;color:#00C4CC;border-radius:9px;cursor:pointer;flex-shrink:0;">↺ Sync</button>` : '')
+          + (a.type === 'avatar video' && !a.designLink ? `<button class="td-avatar-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="generateAvatarVideo(this)" title="Copy a prompt to render this script into a video (make-avatar-reel) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
           + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" style="flex-shrink:0;">↗</a>`
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset" style="flex-shrink:0;">✕</button>`;
         wrap.appendChild(ar);
@@ -1567,8 +1568,8 @@ const GA_SKILL_METHODS = [
     hint: 'Full production skill available — writes a hook-driven line and builds it as a real Canva image in the campaign\'s design spec.' },
   { test: /short form video|\breel\b/i, skill: 'make-reel-script', label: 'Short Form Video / Reel',
     hint: 'Full production skill available — writes a filmable reel script, then make-reel-video renders it (ElevenLabs voiceover + captions, via Remotion).' },
-  { test: /avatar/i,                skill: 'make-avatar-script',  label: 'Avatar Video',
-    hint: 'Full production skill available — writes a presenter-to-camera script for an AI-avatar reel.' },
+  { test: /avatar/i,                workerAction: 'generateAvatarScript', label: 'Avatar Video',
+    hint: 'Writes a presenter-to-camera script for this title and sets it to Publish — entirely in-dashboard, same as Carousel. The actual video render (HeyGen + Hyperframes) still needs a Claude Code chat; once the script is ready, use the 🎬 button on the asset row below.' },
   { test: /video copy/i,            skill: 'make-video-copy',     label: 'Video Copy — Growth',
     hint: 'Full production skill available — models outlier YouTube videos into an original long-form script, ready to produce.' },
 ];
@@ -1581,7 +1582,8 @@ function gaUpdateSkillHint() {
   const typeWrap = document.getElementById('gaCarouselTypeWrap');
   const match = gaMatchSkill(GA_METHOD_NAME);
   const isCarousel = match?.workerAction === 'generateCarouselPreview';
-  document.querySelectorAll('.ga-hide-for-carousel').forEach(el => { el.style.display = isCarousel ? 'none' : ''; });
+  const isWorkerAction = !!match?.workerAction;
+  document.querySelectorAll('.ga-hide-for-carousel').forEach(el => { el.style.display = isWorkerAction ? 'none' : ''; });
   if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; return; }
   hint.style.display = 'flex';
   document.getElementById('gaSkillHintText').textContent = match.hint;
@@ -1714,6 +1716,24 @@ async function syncFromCanva(btn) {
   }
 }
 
+// Same reasoning as syncFromCanva: rendering an avatar video needs local
+// Hyperframes (bun/ffmpeg/headless Chrome) plus HeyGen + ElevenLabs calls —
+// a plain claude.ai web chat can't do any of that, only a Claude Code
+// session with Bash access can. Copies a ready-to-paste make-avatar-reel
+// task rather than opening a web link.
+async function generateAvatarVideo(btn) {
+  const title = btn.dataset.title, titleId = btn.dataset.titleid, assetId = btn.dataset.assetid;
+  const prompt = `Run make-avatar-reel for the Content Strategy title "${title}" (https://www.notion.so/${titleId}) — the script is already written on the title (Voiceover Script / On-Screen Text / Delivery Cues / Callout Notes / Presenter Character sections). Its Asset record is https://www.notion.so/${assetId} (Asset Type: avatar video). Render it, host the MP4, and update that same Asset record per the skill's Step 5.`;
+  try {
+    await navigator.clipboard.writeText(prompt);
+    const orig = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    setTimeout(() => { btn.textContent = orig; }, 1400);
+  } catch(e) {
+    alert(prompt);
+  }
+}
+
 // The worker has no Canva access — real design generation needs a Claude
 // chat with the user's Canva + Notion connectors. This builds a fully
 // self-contained prompt and opens claude.ai with it prefilled: Claude reads
@@ -1741,18 +1761,23 @@ async function submitGenAssets() {
   const btn = document.getElementById('gaGoBtn');
   btn.disabled = true; btn.textContent = 'Generating…';
 
-  // Carousel is a Worker-native render, not a text concept — one button,
-  // routed by method, instead of a second "Render carousel preview" button
-  // next to this one (the previews ARE the asset).
+  // Carousel and Avatar Video are both Worker-native — one button, routed
+  // by method, instead of a second button next to this one (the render/
+  // script output IS the asset).
   const skillMatch = gaMatchSkill(GA_METHOD_NAME);
   if (skillMatch && skillMatch.workerAction) {
-    btn.textContent = 'Rendering…';
-    status.textContent = 'Writing slide script (if needed) and rendering 7 slides, one at a time — can take a couple of minutes if Cloudflare rate-limits the render calls. Leave this open.';
+    const isAvatarScript = skillMatch.workerAction === 'generateAvatarScript';
+    btn.textContent = isAvatarScript ? 'Writing…' : 'Rendering…';
+    status.textContent = isAvatarScript
+      ? 'Writing the to-camera script and saving it to this title. Video rendering is a separate step, after this.'
+      : 'Writing slide script (if needed) and rendering 7 slides, one at a time — can take a couple of minutes if Cloudflare rate-limits the render calls. Leave this open.';
     try {
       const carouselType = document.getElementById('gaCarouselTypeInput')?.value || undefined;
       const r = await w(skillMatch.workerAction, { titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || PRODUCT_CAMPAIGN_ID, carouselType });
       if (r.error) throw new Error(r.error);
-      status.textContent = `✓ Rendered ${r.slideCount} slides — preview: ${r.previewUrl}`;
+      status.textContent = isAvatarScript
+        ? (r.alreadyScripted ? '✓ Script already existed — confirmed the asset and title status.' : '✓ Script written, saved, and set to Publish — use the 🎬 button on the asset row below to render the video.')
+        : `✓ Rendered ${r.slideCount} slides — preview: ${r.previewUrl}`;
       status.style.color = '#68d391';
       btn.textContent = 'Done';
       await loadTitles();

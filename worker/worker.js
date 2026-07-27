@@ -11616,6 +11616,176 @@ Return the FULL updated set — all ${slides.length} slides plus caption and has
         return json({ success: true });
       }
 
+      // ── generateAvatarScript ──
+      // Worker-native script step for the "Avatar Video" method — the
+      // one-click "Generate" counterpart to generateCarouselPreview's
+      // script-writing half. Writes a presenter-to-camera Reel script to
+      // the title and upserts an "avatar video" Asset, entirely
+      // server-side, same as carousel. Deliberately stops there: the
+      // actual video render (make-avatar-reel — HeyGen + ElevenLabs +
+      // local Hyperframes overlay pass) can't run in a Worker, so that
+      // stays a chat-driven step, triggered from the resulting asset row.
+      if (body.action === "generateAvatarScript") {
+        const { titleId, campaignId } = body;
+        if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        // ── Step 1: title + presenter reuse + grounding context ──
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const titleName = (titlePage.properties.Title?.title || []).map(t => t.plain_text).join("") || "Avatar Video";
+        const productRel = titlePage.properties.product?.relation || [];
+        const productId = productRel[0]?.id?.replace(/-/g,"") || null;
+
+        // Already scripted? Reuse, same "don't clobber an edit" contract as
+        // generateCarouselPreview — re-running this is then just a cheap
+        // no-op that re-confirms the Asset/title state.
+        const existingBlocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+        const existingBlocks = existingBlocksResp.results || [];
+        const alreadyScripted = existingBlocks.some(b => b.type === "heading_3" && /voiceover script/i.test((b.heading_3?.rich_text || []).map(t => t.plain_text).join("")));
+
+        const strategyBlock = await fetchStrategyForGrading(hdr, dash(campaignId), productId ? dash(productId) : null, !!productId);
+
+        const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+        const specRelId = campPage.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+        let spec = { ...DESIGN_SPEC_DEFAULTS };
+        if (specRelId) {
+          const specPage = await fetch(`https://api.notion.com/v1/pages/${specRelId}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          if (specPage?.properties) {
+            const s = dsFromPage(specPage);
+            spec = { ...spec, ...Object.fromEntries(Object.entries(s).filter(([k, v]) => k !== "id" && k !== "name" && v)) };
+          }
+        }
+
+        // Reuse the SAME presenter character across a campaign's avatar
+        // reels — recognition compounds, per make-avatar-script's own
+        // rule — by checking a prior avatar-video asset's Notes field.
+        const priorAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+            { property: "Asset Type", select: { equals: "avatar video" } },
+          ] } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const priorAsset = (priorAssetQuery.results || []).find(a => !a.archived);
+        const priorPresenter = priorAsset?.properties?.Notes?.rich_text?.map(t => t.plain_text).join("") || "";
+
+        let assetId;
+        if (!alreadyScripted) {
+          // ── Step 2: write the script (Claude) ──
+          const scriptPrompt = `Write a presenter-led Reel script for an AI avatar animated from a still photo/illustration — spoken TO CAMERA. This is for the "Avatar Video" method: a recurring presenter character that speaks every reel becomes a recognizable brand character.
+
+TITLE: ${titleName}
+${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}
+${priorPresenter ? `EXISTING PRESENTER CHARACTER (reuse verbatim — consistency compounds):\n${priorPresenter}\n` : `No presenter character exists yet for this campaign — propose one: a cartoon/mascot or stylized photo persona matched to the audience and this palette (bg ${spec.bg}, ink ${spec.ink}, accent ${spec.accent}), plus a suggested voice register.`}
+
+SCRIPT RULES:
+- Direct address ("you"), conversational, contractions — must sound like a person talking, not a written paragraph.
+- Short, clear sentences, one clause per line — AI lip-sync/TTS reads these far more naturally than run-ons.
+- Arc: Hook (0-3s, punchy, stands alone with zero context) -> Reframe (3-8s) -> Payoff (8s-end, one beat per 3-5s) -> Close (last 2-3s).
+- Delivery cue per beat — tone/emphasis/pace, e.g. "(slower, lower)" on the hook, "(build energy)" on the payoff.
+- Minimal physical action — no fast/intricate gestures, no big head turns (glitch avoidance); energy comes from expression + voice.
+- 15-90s spoken (30-90s sweet spot), one idea only.
+- Close on a ranking-signal CTA — "send this to someone who..." or "comment [KEYWORD] and I'll send you...".
+- No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "hookArcNote": "which hook shape was used and why it fits", "presenterCharacter": "persona description + suggested voice (verbatim reused, or newly proposed)", "voiceoverScript": "the spoken lines only, continuous prose, NO labels/timestamps/cues — exactly what TTS will speak", "onScreenText": ["line 1", "line 2", "..."], "deliveryCues": ["beat 1 cue", "beat 2 cue", "..."], "calloutNotes": ["where a stat/graphic/B-roll cutaway overlays the presenter", "..."] }`;
+
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: scriptPrompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+          let parsed;
+          try {
+            const raw = aiData.content?.[0]?.text || "";
+            const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+            if (start === -1 || end === -1) throw new Error("No JSON object found");
+            parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          } catch(e) { return json({ error: "Failed to parse script JSON: " + e.message }, 500); }
+          if (!parsed.voiceoverScript) return json({ error: "Script generation returned no voiceover script — try again" }, 500);
+
+          // ── Step 3: write to the title body (Notion connector) ──
+          const rtBlock = text => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+          const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+          const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+          const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
+          const children = [
+            heading("Voiceover Script (to-camera)"), para(parsed.voiceoverScript),
+            heading("On-Screen Text"), ...((parsed.onScreenText || []).map(bullet)),
+            heading("Delivery Cues"), ...((parsed.deliveryCues || []).map(bullet)),
+            heading("Callout / B-Roll Notes"), ...((parsed.calloutNotes || []).map(bullet)),
+            heading("Presenter Character"), para(parsed.presenterCharacter || priorPresenter),
+            heading("Hook Arc + Reference"), para(parsed.hookArcNote || ""),
+          ];
+          const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children }),
+          });
+          if (!writeResp.ok) { const r = await writeResp.json(); return json({ error: r.message || "Failed to write script to title" }, writeResp.status); }
+
+          // ── Step 4: upsert the Assets DB record ──
+          const assetProps = {
+            "Body": { rich_text: [{ type: "text", text: { content: parsed.voiceoverScript.slice(0, 1990) } }] },
+            "Notes": { rich_text: [{ type: "text", text: { content: (parsed.presenterCharacter || priorPresenter || "").slice(0, 1990) } }] },
+            "Status": { select: { name: "Ready" } },
+            "Asset Status": { select: { name: "Publish" } },
+          };
+          const existingAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { and: [
+              { property: "Content Strategy", relation: { contains: dash(titleId) } },
+              { property: "Asset Type", select: { equals: "avatar video" } },
+            ] } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const existingAsset = (existingAssetQuery.results || []).find(a => !a.archived);
+          if (existingAsset) {
+            assetId = existingAsset.id.replace(/-/g, "");
+            await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: assetProps }),
+            });
+          } else {
+            assetProps["Asset Title"] = { title: [{ type: "text", text: { content: `${titleName} — Avatar Video`.slice(0, 200) } }] };
+            assetProps["Asset Type"] = { select: { name: "avatar video" } };
+            assetProps["Content Strategy"] = { relation: [{ id: dash(titleId) }] };
+            assetProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+            const createResp = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+            });
+            const created = await createResp.json();
+            if (!createResp.ok || !created.id) return json({ error: created.message || "Asset create failed" }, createResp.status || 500);
+            assetId = created.id.replace(/-/g, "");
+          }
+        } else {
+          // Already scripted — just make sure an Asset exists and the
+          // title is where it should be (idempotent re-run).
+          const existingAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { and: [
+              { property: "Content Strategy", relation: { contains: dash(titleId) } },
+              { property: "Asset Type", select: { equals: "avatar video" } },
+            ] } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const existingAsset = (existingAssetQuery.results || []).find(a => !a.archived);
+          assetId = existingAsset?.id?.replace(/-/g, "") || null;
+        }
+
+        // ── Step 5: title -> Publish ──
+        await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+        });
+
+        return json({ success: true, titleId, assetId, alreadyScripted });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);
