@@ -31,10 +31,11 @@ Read the title's page body and extract, verbatim:
 - **On-screen text**, **Delivery cues**, **Callout / B-roll notes** — these drive Hyperframes' overlay pass in Step 4, not the avatar render itself.
 Also pull the campaign's **Design Spec** (colors/fonts) for the overlay styling.
 
-### Step 1 — Source the presenter reference image
-HeyGen Avatar IV animates from a **photo or illustration** — the Presenter character note is a text description, not an image, so one has to exist before you can render.
-- Check whether this campaign already has a saved reference image for this persona (a prior avatar title's render notes, a campaign asset, or something the user names).
-- If not: generate one via the Canva MCP (`generate-design`) matching the Presenter character description + the Design Spec's palette — a clean, front-facing, well-lit portrait or illustration works best for lip-sync quality. Export it and save the link on the title's page ("Presenter reference image: <url>") so future avatar reels for this campaign reuse the exact same image — consistency compounds, don't regenerate a new face every time.
+### Step 1 — Source the presenter (reference image OR an existing HeyGen avatar)
+HeyGen Avatar IV animates from a **photo or illustration** — the Presenter character note is a text description, not an image, so one has to exist before you can render. There are three ways this gets satisfied, in priority order:
+- **User already has a live HeyGen avatar** (built in HeyGen's own avatar studio, e.g. a `create-v4` URL) — use its `avatar_id` directly via HeyGen's API. No reference image needs sourcing at all; skip straight to Step 3 using that ID. Save the avatar_id on the title ("Presenter avatar_id: <id>") so future reels for this campaign reuse the same one.
+- **Campaign already has a saved reference image** for this persona (a prior avatar title's render notes, a campaign asset, or something the user names) — reuse it.
+- **Neither exists** — generate one via the Canva MCP (`generate-design`) matching the Presenter character description + the Design Spec's palette — a clean, front-facing, well-lit portrait or illustration works best for lip-sync quality. Export it and save the link on the title's page ("Presenter reference image: <url>") so future avatar reels for this campaign reuse the exact same image — consistency compounds, don't regenerate a new face every time.
 - If the user supplies their own image, use that instead.
 
 ### Step 2 — Generate the voice track (ElevenLabs)
@@ -52,11 +53,29 @@ Feed the raw HeyGen MP4 into Hyperframes' `/talking-head-recut` skill along with
 - Word-level captions on by default (avatar Reels are watched muted as often as filmed ones).
 Review the storyboard/pass before the full render if Hyperframes offers one; iterate on any overlay/graphic that doesn't land, same as `make-diagram-explainer`.
 
-### Step 5 — Save to Notion (Notion connector)
-Update the avatar-script title: note the final MP4 path, the presenter reference image used (for reuse), and move Status → Review. Optionally log to SM Posts DB (Draft status, Platform, caption) if ready to queue.
+### Step 5 — Host the MP4 and upsert the Assets DB record
+This is what actually takes the title from Development/Review to a real **avatar video** Asset in **Publish** — mirrors exactly how the carousel pipeline (`generateCarouselPreview`/`publishCarouselSlides` in `worker.js`) closes its own loop, so the two asset types behave consistently in the dashboard.
+
+- **Host the file.** Commit the rendered MP4 to this repo (you have git access — this whole skill already runs in chat) at:
+  `web/{deployPath}/mp4/{titleSlug}.mp4`
+  - `deployPath` — same derivation the carousel pipeline uses: from the campaign's `live site` or `microsite` URL property, matching `/web/{path}` or `/microsites/{path}`; fall back to a slugified campaign name if neither URL is set.
+  - `titleSlug` — the title, lowercased, non-alphanumerics collapsed to `-` (identical slugify used for carousel folders).
+  - Push. Live URL: `https://cabuzzard.github.io/dash/web/{deployPath}/mp4/{titleSlug}.mp4`.
+- **Upsert the Assets DB record** (Assets DB `e91bdb6e770b4d298e9f62166a0fd5de`). Query for an existing, non-archived record where `Content Strategy` contains this title AND `Asset Type` = `avatar video`; update it if found (this is what makes a re-render non-duplicating), else create a new one:
+  - **Asset Title:** `{title} — Avatar Video`
+  - **Asset Type:** `avatar video`
+  - **Content Strategy:** relation → this title
+  - **Campaign:** relation → the campaign
+  - **Design Link:** the hosted MP4 URL above
+  - **Status:** `Ready`
+  - **Asset Status:** `Publish`
+  - **Platform Name:** ask if not already implied by the title/method (YouTube, Instagram Reels, TikTok, etc.)
+  - **Notes:** the presenter avatar_id or reference image link (for reuse on the campaign's next avatar reel)
+- **Set the title's own `Status` → `Publish`.** Same convention the carousel pipeline uses — a finished, hosted asset means the title is done, not merely "in review."
+- Optionally also log to SM Posts DB (Draft status, Platform, caption) if ready to queue for posting.
 
 ### Step 6 — Report
-Give: the MP4 path (offer to preview), the presenter image used (and where it's saved for reuse), total render cost incurred (HeyGen + ElevenLabs), and where it saved in Notion. Posting is manual.
+Give: the hosted MP4 URL, the presenter avatar_id or reference image used (and where it's saved for reuse), total render cost incurred (HeyGen + ElevenLabs), and the Notion Asset link. Posting is manual.
 
 ## Notes
 - **Reuse the same presenter image and voice across a campaign's avatar Reels.** Recognition compounds — regenerating a new face/voice each time defeats the point of a recurring brand character.
