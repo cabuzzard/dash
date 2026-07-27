@@ -1432,6 +1432,7 @@ async function loadTitles() {
           + (a.gradeScore != null ? `<span title="${esc(a.gradeNotes || '')}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;flex-shrink:0;background:${a.gradeStatus==='Needs Revision'?'rgba(252,129,129,.12)':'rgba(104,211,145,.12)'};color:${a.gradeStatus==='Needs Revision'?'#fc8181':'#68d391'};">${a.gradeStatus==='Needs Revision'?'⚠':'✓'} ${a.gradeScore}/10</span>` : '')
           + (a.designLink ? `<a href="${esc(a.designLink)}" target="_blank" rel="noopener" style="color:#4488ff;text-decoration:none;font-size:11px;flex-shrink:0;" title="Design link">🎨</a>` : '')
           + (a.canvaLink ? `<a href="${esc(a.canvaLink)}" target="_blank" rel="noopener" style="color:#00C4CC;text-decoration:none;font-size:11px;flex-shrink:0;" title="Canva design (editable)">✏️</a>` : '')
+          + (a.canvaLink ? `<button class="td-canva-sync" data-title="${esc(t.title)}" data-titleid="${t.id}" data-canvalink="${esc(a.canvaLink)}" onclick="syncFromCanva(this)" title="Copy a prompt to sync this Canva design's edits back into the carousel template — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #00C4CC;background:transparent;color:#00C4CC;border-radius:9px;cursor:pointer;flex-shrink:0;">↺ Sync</button>` : '')
           + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" style="flex-shrink:0;">↗</a>`
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset" style="flex-shrink:0;">✕</button>`;
         wrap.appendChild(ar);
@@ -4785,6 +4786,24 @@ async function deleteAssetRow(assetId, btn) {
   } catch(e) {
     btn.disabled = false;
     alert('Error: ' + e.message);
+  }
+}
+
+// Copies a ready-to-paste task for a Claude Code session (Bash + git +
+// MCP) — NOT a claude.ai web link like the Canva hand-off below, because
+// actually applying a Canva edit means editing worker.js and deploying it,
+// which a plain web chat can't do (no filesystem/git access, only MCP
+// connectors). This just gets the right instruction into the clipboard.
+async function syncFromCanva(btn) {
+  const title = btn.dataset.title, titleId = btn.dataset.titleid, canvaLink = btn.dataset.canvalink;
+  const prompt = `Sync the Canva edits from this design back into the carousel template: ${canvaLink}\n\nThis is for the Content Strategy title "${title}" (https://www.notion.so/${titleId}). Read the current Canva design (read-design + a fresh export/thumbnail), figure out what changed versus the CSS currently used for this carousel type in worker.js's publishCarouselSlides, update that CSS to match, deploy the Worker, then regenerate this carousel.`;
+  try {
+    await navigator.clipboard.writeText(prompt);
+    const orig = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    setTimeout(() => { btn.textContent = orig; }, 1400);
+  } catch(e) {
+    alert(prompt);
   }
 }
 
