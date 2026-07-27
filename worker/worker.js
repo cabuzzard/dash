@@ -11796,6 +11796,30 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true, titleId, assetId, alreadyScripted, presenterCharacter: resolvedPresenter, presenterWasSpecified: !!(presenterOverride || '').trim() });
       }
 
+      // ── getCampaignPresenter ──
+      // Lets the Generate Assets modal show what's already saved BEFORE
+      // generating anything, instead of the presenter only surfacing after
+      // the fact — same lookup generateAvatarScript does server-side to
+      // auto-reuse, exposed here so the dashboard can pre-fill the field
+      // and make clear there's already a saved avatar_id to reuse or
+      // override.
+      if (body.action === "getCampaignPresenter") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const q = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+            { property: "Asset Type", select: { equals: "avatar video" } },
+          ] } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const asset = (q.results || []).find(a => !a.archived);
+        const presenterCharacter = asset?.properties?.Notes?.rich_text?.map(t => t.plain_text).join("") || "";
+        return json({ presenterCharacter });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);

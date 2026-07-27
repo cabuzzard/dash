@@ -377,7 +377,7 @@
       </div>
 
       <div id="gaAvatarPresenterWrap" style="display:none;margin-bottom:10px;">
-        <label class="lm-label">Presenter avatar <span style="color:#777;font-weight:normal;">— HeyGen avatar_id or reference image URL (optional). Leave blank to reuse this campaign's existing presenter, or let Claude propose one.</span></label>
+        <label class="lm-label">Presenter avatar <span id="gaAvatarPresenterLabel" style="color:#777;font-weight:normal;">— checking for a saved campaign presenter…</span></label>
         <input class="modal-ta" id="gaAvatarPresenterInput" type="text" placeholder="e.g. a HeyGen avatar_id, or a reference image URL" autocomplete="off" />
       </div>
 
@@ -1604,6 +1604,7 @@ function gaUpdateSkillHint() {
     document.getElementById('gaSkillHintBtn').style.display = 'none';
     if (typeWrap) typeWrap.style.display = isCarousel ? 'block' : 'none';
     if (avatarWrap) avatarWrap.style.display = isAvatar ? 'block' : 'none';
+    if (isAvatar) gaLoadCampaignPresenter();
     return;
   }
   if (typeWrap) typeWrap.style.display = 'none';
@@ -1618,6 +1619,33 @@ function gaUpdateSkillHint() {
     const prompt = `Run the ${match.skill} skill for the Content Strategy title "${titleText}" (page ID: ${titleId}), campaign ID: ${campaignId}, product "${PRODUCT_NAME || PRODUCT_ID}" (Products DB page ID: ${PRODUCT_ID}).`;
     window.open('https://claude.ai/new?q=' + encodeURIComponent(prompt), '_blank');
   };
+}
+
+// Shows what's already saved to the campaign BEFORE generating anything —
+// the field used to just be blank every time, with no way to tell whether
+// leaving it blank meant "nothing saved" or "reuse the campaign's avatar".
+// Cached per campaign so reopening the modal for another title in the
+// same campaign doesn't re-fetch, but still re-populates the (cleared)
+// field each time.
+let GA_PRESENTER_CACHE = { campaignId: null, presenterCharacter: '' };
+function gaApplyPresenterToField(presenterCharacter) {
+  const input = document.getElementById('gaAvatarPresenterInput');
+  const label = document.getElementById('gaAvatarPresenterLabel');
+  if (presenterCharacter) {
+    if (input && !input.value.trim()) input.value = presenterCharacter;
+    if (label) label.textContent = '— already saved for this campaign (shown above). Edit to use a different avatar, or clear the field to have Claude propose a new one instead.';
+  } else if (label) {
+    label.textContent = '— HeyGen avatar_id or reference image URL (optional). Nothing saved for this campaign yet — leave blank to let Claude propose one from research.';
+  }
+}
+function gaLoadCampaignPresenter() {
+  const campaignId = GA_CAMPAIGN_ID || PRODUCT_CAMPAIGN_ID;
+  if (!campaignId) return;
+  if (GA_PRESENTER_CACHE.campaignId === campaignId) { gaApplyPresenterToField(GA_PRESENTER_CACHE.presenterCharacter); return; }
+  w('getCampaignPresenter', { campaignId }).then(r => {
+    GA_PRESENTER_CACHE = { campaignId, presenterCharacter: r.presenterCharacter || '' };
+    gaApplyPresenterToField(GA_PRESENTER_CACHE.presenterCharacter);
+  }).catch(() => {});
 }
 
 async function openGenAssetsModal(titleId) {
@@ -1792,6 +1820,7 @@ async function submitGenAssets() {
         // it, or overwrite it with their own avatar and re-run.
         const presenterInput = document.getElementById('gaAvatarPresenterInput');
         if (presenterInput && r.presenterCharacter && !r.presenterWasSpecified) presenterInput.value = r.presenterCharacter;
+        if (r.presenterCharacter) GA_PRESENTER_CACHE = { campaignId: GA_CAMPAIGN_ID || PRODUCT_CAMPAIGN_ID, presenterCharacter: r.presenterCharacter };
         status.textContent = r.alreadyScripted
           ? '✓ Script already existed — confirmed the asset and title status.'
           : `✓ Script written, saved, and set to Publish.${r.presenterWasSpecified ? '' : ` Presenter (researched): "${r.presenterCharacter}" — edit the field above and hit Generate again to use your own instead.`}`;
