@@ -1,0 +1,154 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Avatar Video Production — Carousel Preview</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#111; font-family:system-ui,sans-serif; padding:32px 20px; }
+  h1 { color:#fff; font-size:20px; margin-bottom:6px; }
+  .sub { color:#888; font-size:13px; margin-bottom:28px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; max-width:1200px; margin:0 auto; }
+  .grid img { width:100%; border-radius:6px; display:block; box-shadow:0 4px 20px rgba(0,0,0,.4); }
+  .cap { max-width:640px; margin:36px auto 0; color:#ccc; font-size:14px; line-height:1.7; white-space:pre-wrap; }
+  .tags { max-width:640px; margin:14px auto 0; color:#666; font-size:12px; }
+  .refine { max-width:640px; margin:32px auto 0; padding-top:24px; border-top:1px solid #262626; }
+  .refine input, .refine textarea, .refine button { font-family:inherit; font-size:13px; }
+  .refine input[type=password] { width:90px; padding:9px 10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; letter-spacing:0.2em; }
+  .refine textarea { width:100%; padding:10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; resize:vertical; box-sizing:border-box; }
+  .refine button { padding:9px 16px; background:#333; color:#fff; border:none; border-radius:4px; cursor:pointer; }
+  .refine button:hover { background:#444; }
+  .refine button:disabled { opacity:0.5; cursor:default; }
+  .refine .row { display:flex; gap:8px; align-items:center; }
+  .refine .err { color:#e66; font-size:12px; margin-top:6px; min-height:14px; }
+  .refine .status { color:#888; font-size:12px; margin-top:8px; min-height:14px; }
+  .refine .hint { color:#666; font-size:12px; margin-bottom:10px; }
+  .editor { max-width:900px; margin:28px auto 0; padding-top:20px; border-top:1px solid #262626; }
+  .editor .row2 { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; margin-top:10px; }
+  .editor select { background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; padding:6px 8px; font-size:12px; }
+  .editor textarea { flex:1; min-width:260px; height:300px; padding:10px; background:#1a1a1a; border:1px solid #333; color:#ddd; border-radius:4px; resize:vertical; box-sizing:border-box; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; line-height:1.5; }
+  .editor .preview-wrap { width:216px; height:270px; overflow:hidden; position:relative; border:1px solid #333; border-radius:4px; flex-shrink:0; background:#000; }
+  .editor .preview-wrap iframe { width:1080px; height:1350px; border:0; transform:scale(0.2); transform-origin:top left; position:absolute; top:0; left:0; }
+</style></head><body>
+  <h1>AI Avatar Video Production</h1>
+  <div class="sub">Carousel preview — 7 slides — for approval / layout review, not yet published</div>
+  <div class="grid"><img id="slideImg0" src="slide-01.png" alt="Slide 1"><img id="slideImg1" src="slide-02.png" alt="Slide 2"><img id="slideImg2" src="slide-03.png" alt="Slide 3"><img id="slideImg3" src="slide-04.png" alt="Slide 4"><img id="slideImg4" src="slide-05.png" alt="Slide 5"><img id="slideImg5" src="slide-06.png" alt="Slide 6"><img id="slideImg6" src="slide-07.png" alt="Slide 7"></div>
+  <div class="cap">Most small business owners know AI is moving fast. The part nobody talks about? You do not need a tech background to actually use it.
+
+AI avatar video production is one of the most practical entry points for non-technical entrepreneurs right now. No camera. No editor. No expensive production crew. Just a simple platform, your script, and a digital presenter that looks and sounds professional every time.
+
+The businesses quietly pulling ahead are not the ones with the biggest budgets. They are the ones willing to try one tool, run one test, and build from there.
+
+If you have been waiting for the right moment to bring AI into your workflow without drowning in complexity, this is it. Swipe through and see exactly where the friction is hiding and what is waiting on the other side of it.</div>
+  <div class="tags">#AIforSmallBusiness #NoCodeAI #AIAvatarVideo #SmallBusinessGrowth #AIAutomation</div>
+  <div class="refine">
+    <div class="hint">Want a change made? Describe it below and it'll be edited and re-rendered in place — no need to go back to Generate Assets.</div>
+    <div class="row" id="refinePinRow">
+      <input type="password" id="refinePin" maxlength="4" inputmode="numeric" placeholder="PIN">
+      <button id="refineUnlockBtn">Unlock</button>
+    </div>
+    <div class="err" id="refineErr"></div>
+    <div id="refineEditRow" style="display:none;">
+      <textarea id="refineInput" rows="2" placeholder="e.g. 'make slide 4 punchier' or 'swap the accent color to a deep blue'"></textarea>
+      <div style="margin-top:8px;"><button id="refineBtn">Refine design</button></div>
+      <div class="status" id="refineStatus"></div>
+    </div>
+  </div>
+  <div class="editor" id="editorRow" style="display:none;">
+    <div class="hint" style="color:#666;font-size:12px;">Direct HTML/CSS edit, one slide at a time — the preview updates as you type. Render commits it as that slide's image (this only changes the picture, not the stored slide text — a future Generate/Refine still uses the built-in design).</div>
+    <label style="font-size:12px;color:#888;">Slide <select id="editorSlideSelect"></select></label>
+    <div class="row2">
+      <textarea id="editorHtmlInput" spellcheck="false"></textarea>
+      <div class="preview-wrap"><iframe id="editorPreview"></iframe></div>
+    </div>
+    <div style="margin-top:8px;"><button id="editorRenderBtn">Render to PNG</button></div>
+    <div class="status" id="editorStatus"></div>
+  </div>
+  <div style="max-width:900px;margin:20px auto 0;">
+    <a href="https://claude.ai/new?q=Import%20this%20Instagram%20carousel%20design%20into%20Canva%20using%20the%20Canva%20MCP%20import-design-from-url%20tool%3A%20https%3A%2F%2Fcabuzzard.github.io%2Fdash%2Fweb%2Fb2b-content-machine%2Fcarousels%2Fai-avatar-video-production%2Fcanva-source.html%20%E2%80%94%20name%20it%20%22AI%20Avatar%20Video%20Production%20%E2%80%94%20Carousel%22.%20Then%20find%20the%20Notion%20Asset%20page%20in%20the%20Assets%20DB%20(e91bdb6e770b4d298e9f62166a0fd5de)%20whose%20Content%20Strategy%20relation%20contains%203a71f7d3a4bb81f6ad93d7a78166f950%20and%20whose%20Asset%20Type%20is%20%22carousel%22%2C%20and%20set%20its%20%22Canva%20Link%22%20property%20to%20the%20resulting%20Canva%20edit%20URL.%20Report%20the%20Canva%20edit%20link%20back%20to%20me." target="_blank" style="display:inline-block;padding:9px 16px;background:#00C4CC;color:#111;text-decoration:none;border-radius:4px;font-size:13px;font-weight:600;">Send to Canva →</a>
+    <div style="color:#666;font-size:12px;margin-top:6px;">Opens a new Claude chat with the import + Notion save-back already spelled out — just hit send.</div>
+  </div>
+  <script>
+    var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+    var TITLE_ID = "3a71f7d3a4bb81f6ad93d7a78166f950";
+    var CAMPAIGN_ID = "35c1f7d3a4bb81568338f64d95ef3a36";
+    var CAROUSEL_TYPE = "hidden-potential";
+    var SLIDE_HTMLS = ["<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">No tech skills, no clue where to start</div></div>\n  <div class=\"half benefit\"><div class=\"line\">AI avatars need zero coding knowledge</div></div>\n  <div class=\"counter\">1 / 7</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">Hiring video talent drains your budget</div></div>\n  <div class=\"half benefit\"><div class=\"line\">One avatar replaces recurring production costs</div></div>\n  <div class=\"counter\">2 / 7</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">Filming yourself feels awkward and slow</div></div>\n  <div class=\"half benefit\"><div class=\"line\">Your digital twin records in minutes</div></div>\n  <div class=\"counter\">3 / 7</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">Inconsistent content stalls your growth</div></div>\n  <div class=\"half benefit\"><div class=\"line\">Automated video ships on your schedule</div></div>\n  <div class=\"counter\">4 / 7</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">Complex tools overwhelm non-technical owners</div></div>\n  <div class=\"half benefit\"><div class=\"line\">No-code platforms guide every single step</div></div>\n  <div class=\"counter\">5 / 7</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">Translation and reach feel out of reach</div></div>\n  <div class=\"half benefit\"><div class=\"line\">Avatars speak dozens of languages instantly</div></div>\n  <div class=\"counter\">6 / 7</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@600;700&family=EB%20Garamond:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  html, body { width:1080px; height:1350px; overflow:hidden; }\n  body { font-family:'EB Garamond',serif; position:relative; background:#8A6D4B; }\n  .half { position:absolute; left:0; top:0; width:1080px; height:1350px; display:flex; flex-direction:column; justify-content:center; }\n  .stress { background:#F7F1E6; filter:grayscale(100%) brightness(0.82); clip-path:polygon(0 0, 538px 0, 598px 675px, 538px 1350px, 0 1350px); padding-left:90px; }\n  .benefit { background:#F7F1E6; clip-path:polygon(542px 0, 1080px 0, 1080px 1350px, 542px 1350px, 602px 675px); padding-left:650px; padding-right:90px; }\n  .line { font-family:'Playfair Display',serif; font-size:40px; line-height:1.22; color:#2B2620; font-weight:600; max-width:400px; }\n  .counter { position:absolute; bottom:40px; right:40px; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#2B2620; opacity:0.6; z-index:2; }\n</style></head><body>\n  <div class=\"half stress\"><div class=\"line\">You know AI matters but stay frozen</div></div>\n  <div class=\"half benefit\"><div class=\"line\">First video live before the week ends</div></div>\n  <div class=\"counter\">7 / 7</div>\n</body></html>"];
+    var refineToken = null;
+    document.getElementById('refineUnlockBtn').addEventListener('click', function () {
+      var pin = document.getElementById('refinePin').value.trim();
+      var errEl = document.getElementById('refineErr');
+      errEl.textContent = '';
+      fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auth', pin: pin }) })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.token) { errEl.textContent = d.error || 'Wrong PIN'; return; }
+          refineToken = d.token;
+          document.getElementById('refinePinRow').style.display = 'none';
+          document.getElementById('refineEditRow').style.display = 'block';
+          document.getElementById('editorRow').style.display = 'block';
+        })
+        .catch(function () { errEl.textContent = 'Connection error'; });
+    });
+    document.getElementById('refineBtn').addEventListener('click', function () {
+      var instruction = document.getElementById('refineInput').value.trim();
+      var statusEl = document.getElementById('refineStatus');
+      var btn = document.getElementById('refineBtn');
+      if (!instruction) { statusEl.textContent = 'Describe what to change first.'; return; }
+      statusEl.textContent = 'Refining… slides render one at a time, this can take a minute or two.';
+      btn.disabled = true;
+      fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'refineCarouselPreview', token: refineToken, titleId: TITLE_ID, campaignId: CAMPAIGN_ID, carouselType: CAROUSEL_TYPE, instruction: instruction }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
+          statusEl.textContent = 'Done — reloading…';
+          setTimeout(function () { location.href = location.pathname + '?refined=' + Date.now(); }, 900);
+        })
+        .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
+    });
+
+    var editorIdx = 0;
+    function editorUpdatePreview() {
+      document.getElementById('editorPreview').srcdoc = document.getElementById('editorHtmlInput').value;
+    }
+    function editorLoadSlide(i) {
+      editorIdx = i;
+      document.getElementById('editorHtmlInput').value = SLIDE_HTMLS[i];
+      editorUpdatePreview();
+    }
+    (function () {
+      var sel = document.getElementById('editorSlideSelect');
+      for (var i = 0; i < SLIDE_HTMLS.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = i; opt.textContent = 'Slide ' + (i + 1);
+        sel.appendChild(opt);
+      }
+      sel.addEventListener('change', function () { editorLoadSlide(parseInt(sel.value, 10)); });
+    })();
+    document.getElementById('editorHtmlInput').addEventListener('input', editorUpdatePreview);
+    editorLoadSlide(0);
+
+    document.getElementById('editorRenderBtn').addEventListener('click', function () {
+      var html = document.getElementById('editorHtmlInput').value;
+      var statusEl = document.getElementById('editorStatus');
+      var btn = document.getElementById('editorRenderBtn');
+      var num = String(editorIdx + 1).padStart(2, '0');
+      var base = location.pathname.replace(/^\/dash\//, '').replace(/\/$/, '');
+      var path = base + '/slide-' + num + '.png';
+      statusEl.textContent = 'Rendering…';
+      btn.disabled = true;
+      fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'renderSlideHtml', token: refineToken, path: path, html: html }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
+          statusEl.textContent = 'Rendered — reloading…';
+          setTimeout(function () { location.href = location.pathname + '?edited=' + Date.now(); }, 700);
+        })
+        .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
+    });
+  </script>
+</body></html>
