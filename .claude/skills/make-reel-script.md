@@ -2,18 +2,18 @@
 
 Turn one keyword + research reference into a **ready-to-film Reel script** (15–45s, one idea, one hook), grounded in the campaign's research and audience, built on a currently-converting hook/arc, and written into a Content Strategy title so it's ready to film and later hand to `make-reel-video`.
 
-This is the production skill for the **"Short Form Video"** Method (Notion Methods DB → "Short Form Video", id `38f1f7d3a4bb81669984e453292206e4`). That method's page body holds the framework (script structure, arc toolkit, production standards) **plus a "Growth Strategy (2026)" section** — read it, and the master [📈 Account Growth OS](https://app.notion.com/p/39a1f7d3a4bb818a8653e60a1b6cf6f7), before scripting. Reels are the discovery format (~55% non-follower views): engineer for **watch-completion + sends**, not likes — hook in the first 3s, on-screen text mirrors the spoken hook, campaign keywords placed in on-screen text + caption for SEO, and close on a `send this to…` / `comment [KEYWORD]` CTA.
+This is the production skill for the **"Text Video"** Method (Notion Methods DB → "Text Video", id `38f1f7d3a4bb81669984e453292206e4`). That method's page body holds the framework (script structure, arc toolkit, production standards) **plus a "Growth Strategy (2026)" section** — read it, and the master [📈 Account Growth OS](https://app.notion.com/p/39a1f7d3a4bb818a8653e60a1b6cf6f7), before scripting. Reels are the discovery format (~55% non-follower views): engineer for **watch-completion + sends**, not likes — hook in the first 3s, on-screen text mirrors the spoken hook, campaign keywords placed in on-screen text + caption for SEO, and close on a `send this to…` / `comment [KEYWORD]` CTA.
 
 ## Trigger phrases
 "make a reel script", "write a reel script", "reel script from this", "run make-reel-script", "reel scripts for <campaign>", "turn this into a reel"
 
 ## Inputs
-- **keyword / topic** — the search term or topic language the audience uses (required), OR an existing Short-Form-Video title from the Content Strategy DB.
+- **keyword / topic** — the search term or topic language the audience uses (required), OR an existing Text-Video title from the Content Strategy DB.
 - **research reference** — the source the script is grounded in: an article, data point, personal-experience note, prior high-performer, etc. If none is supplied, pull one via WebSearch before scripting — a hook with no real substance behind it dies at the 3-second mark.
 - **campaign** — name or Campaigns-DB page ID (to pull research/audience/voice). If starting from a title, read its `Campaign` relation.
 
 ## Constants
-- Research DB `557e6b7b8c434a578d45ecb0a8329f63` · Campaigns DB `087b1163b4e64975bc7a4b686ff801de` · Content Strategy DB `9fa5f42f010b47e7a82032607e07d6a1` · Methods "Short Form Video" `38f1f7d3a4bb81669984e453292206e4`.
+- Research DB `557e6b7b8c434a578d45ecb0a8329f63` · Campaigns DB `087b1163b4e64975bc7a4b686ff801de` · Content Strategy DB `9fa5f42f010b47e7a82032607e07d6a1` · Methods "Text Video" `38f1f7d3a4bb81669984e453292206e4`.
 
 **Auth / data access:** the dashboard Worker gates every action behind the admin session token (needs the PIN). This skill runs in chat, so do **all** Notion reads/writes through the **Notion connector** — no PIN needed. Use WebSearch for live hook research.
 
@@ -44,7 +44,7 @@ Show the hook line to the user first; iterate before writing the rest if they wa
 
 ### Step 3 — Save to Notion (Notion connector)
 - If starting from an existing title: append the script to that title's page body; set Status → Writing/Review.
-- If from a raw keyword: create a Content Strategy page — Title = the reel's working title; Status: Development; `Campaign` relation set; `method` → Short Form Video; **Format** = `Reel`; `Scheduled Date` if the user gives one (this is what feeds the dashboard's Weekly Content Output tracker). Page body, clearly sectioned:
+- If from a raw keyword: create a Content Strategy page — Title = the reel's working title; Status: Development; `Campaign` relation set; `method` → Text Video; **Format** = `Reel`; `Scheduled Date` if the user gives one (this is what feeds the dashboard's Weekly Content Output tracker). Page body, clearly sectioned:
   - **Voiceover script** (the continuous spoken prose — labeled so `make-reel-video` can grab it)
   - **On-screen text** (per line)
   - **Shot notes** (per beat)
