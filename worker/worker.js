@@ -11117,21 +11117,33 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         // normal case, with the 429 retry loop kept only as a fallback.
         const sleep = ms => new Promise(res => setTimeout(res, ms));
         const renderSlide = async (html) => {
-          for (let attempt = 0; attempt < 3; attempt++) {
+          for (let attempt = 0; attempt < 4; attempt++) {
             const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
               method: "POST",
               headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ html, viewport: { width: 1080, height: 1350, deviceScaleFactor: 1 }, screenshotOptions: { type: "png" } }),
+              // gotoOptions.waitUntil defaults to waiting for the page's
+              // full network-idle load, which includes the Google Fonts
+              // request — when that stalls (flaky, not our HTML's fault),
+              // the whole screenshot times out with a 422. Fonts are a
+              // progressive enhancement here, not required content, so
+              // it's safe to only wait for the DOM itself.
+              body: JSON.stringify({ html, viewport: { width: 1080, height: 1350, deviceScaleFactor: 1 }, gotoOptions: { waitUntil: "domcontentloaded", timeout: 15000 }, screenshotOptions: { type: "png" } }),
             });
             if (resp.status === 429) {
               const retryAfter = parseInt(resp.headers.get("Retry-After") || "11", 10);
               await sleep((retryAfter + 1) * 1000);
               continue;
             }
+            if (resp.status === 422 && attempt < 3) {
+              // Usually a transient render timeout, not a real problem with
+              // the HTML — worth a quick retry before surfacing an error.
+              await sleep(3000);
+              continue;
+            }
             if (!resp.ok) { const t = await resp.text(); throw new Error(`Browser Rendering failed (HTTP ${resp.status}): ${t.slice(0, 300)}`); }
             return await resp.arrayBuffer();
           }
-          throw new Error("Browser Rendering stayed rate-limited after 3 retries — try again shortly.");
+          throw new Error("Browser Rendering stayed rate-limited/timed out after retries — try again shortly.");
         };
 
         // Sequential, not Promise.all — Workers cap simultaneous outbound
@@ -11566,11 +11578,13 @@ Return the FULL updated set — all ${slides.length} slides plus caption and has
         const GT = (env.GITHUB_TOKEN || '').trim();
         if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
 
-        const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
+        const doRender = () => fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ html, viewport: { width: 1080, height: 1350, deviceScaleFactor: 1 }, screenshotOptions: { type: "png" } }),
+          body: JSON.stringify({ html, viewport: { width: 1080, height: 1350, deviceScaleFactor: 1 }, gotoOptions: { waitUntil: "domcontentloaded", timeout: 15000 }, screenshotOptions: { type: "png" } }),
         });
+        let resp = await doRender();
+        if (resp.status === 422) resp = await doRender(); // usually a transient render timeout — one retry before giving up
         if (!resp.ok) {
           if (resp.status === 429) return json({ error: "Rendering is rate-limited right now — wait ~10s and try again." }, 429);
           const t = await resp.text();
