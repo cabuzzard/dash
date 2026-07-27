@@ -11626,7 +11626,7 @@ Return the FULL updated set — all ${slides.length} slides plus caption and has
       // local Hyperframes overlay pass) can't run in a Worker, so that
       // stays a chat-driven step, triggered from the resulting asset row.
       if (body.action === "generateAvatarScript") {
-        const { titleId, campaignId } = body;
+        const { titleId, campaignId, presenter: presenterOverride } = body;
         if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
 
@@ -11673,6 +11673,13 @@ Return the FULL updated set — all ${slides.length} slides plus caption and has
         const priorAsset = (priorAssetQuery.results || []).find(a => !a.archived);
         const priorPresenter = priorAsset?.properties?.Notes?.rich_text?.map(t => t.plain_text).join("") || "";
 
+        // A user-specified presenter (HeyGen avatar_id, or a note pointing
+        // at one) always wins — over both a prior campaign presenter and
+        // Claude's own proposal. This is how you tell it "use MY avatar"
+        // instead of leaving Step 1 of make-avatar-reel to figure one out
+        // (or Claude proposing a generic persona) later at render time.
+        const effectivePresenter = (presenterOverride || '').trim() || priorPresenter;
+
         let assetId;
         if (!alreadyScripted) {
           // ── Step 2: write the script (Claude) ──
@@ -11680,7 +11687,7 @@ Return the FULL updated set — all ${slides.length} slides plus caption and has
 
 TITLE: ${titleName}
 ${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}
-${priorPresenter ? `EXISTING PRESENTER CHARACTER (reuse verbatim — consistency compounds):\n${priorPresenter}\n` : `No presenter character exists yet for this campaign — propose one: a cartoon/mascot or stylized photo persona matched to the audience and this palette (bg ${spec.bg}, ink ${spec.ink}, accent ${spec.accent}), plus a suggested voice register.`}
+${effectivePresenter ? `PRESENTER CHARACTER (use this verbatim, do not change or reinterpret it — this is the specific avatar to render with):\n${effectivePresenter}\n` : `No presenter character exists yet for this campaign — propose one: a cartoon/mascot or stylized photo persona matched to the audience and this palette (bg ${spec.bg}, ink ${spec.ink}, accent ${spec.accent}), plus a suggested voice register.`}
 
 SCRIPT RULES:
 - Direct address ("you"), conversational, contractions — must sound like a person talking, not a written paragraph.
@@ -11721,7 +11728,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             heading("On-Screen Text"), ...((parsed.onScreenText || []).map(bullet)),
             heading("Delivery Cues"), ...((parsed.deliveryCues || []).map(bullet)),
             heading("Callout / B-Roll Notes"), ...((parsed.calloutNotes || []).map(bullet)),
-            heading("Presenter Character"), para(parsed.presenterCharacter || priorPresenter),
+            heading("Presenter Character"), para(effectivePresenter || parsed.presenterCharacter || ''),
             heading("Hook Arc + Reference"), para(parsed.hookArcNote || ""),
           ];
           const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
@@ -11733,7 +11740,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           // ── Step 4: upsert the Assets DB record ──
           const assetProps = {
             "Body": { rich_text: [{ type: "text", text: { content: parsed.voiceoverScript.slice(0, 1990) } }] },
-            "Notes": { rich_text: [{ type: "text", text: { content: (parsed.presenterCharacter || priorPresenter || "").slice(0, 1990) } }] },
+            "Notes": { rich_text: [{ type: "text", text: { content: (effectivePresenter || parsed.presenterCharacter || "").slice(0, 1990) } }] },
             "Status": { select: { name: "Ready" } },
             "Asset Status": { select: { name: "Publish" } },
           };

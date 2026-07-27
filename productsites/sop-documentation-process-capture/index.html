@@ -376,6 +376,11 @@
         </select>
       </div>
 
+      <div id="gaAvatarPresenterWrap" style="display:none;margin-bottom:10px;">
+        <label class="lm-label">Presenter avatar <span style="color:#777;font-weight:normal;">— HeyGen avatar_id or reference image URL (optional). Leave blank to reuse this campaign's existing presenter, or let Claude propose one.</span></label>
+        <input class="modal-ta" id="gaAvatarPresenterInput" type="text" placeholder="e.g. a HeyGen avatar_id, or a reference image URL" autocomplete="off" />
+      </div>
+
       <div class="ga-hide-for-carousel">
         <label class="lm-label">Sub method <span style="color:#777;font-weight:normal;">— target platform layer (e.g. Instagram, X); pick existing or type a new name</span></label>
         <div style="position:relative;margin-bottom:10px;">
@@ -1580,11 +1585,13 @@ function gaUpdateSkillHint() {
   const hint = document.getElementById('gaSkillHint');
   if (!hint) return;
   const typeWrap = document.getElementById('gaCarouselTypeWrap');
+  const avatarWrap = document.getElementById('gaAvatarPresenterWrap');
   const match = gaMatchSkill(GA_METHOD_NAME);
   const isCarousel = match?.workerAction === 'generateCarouselPreview';
+  const isAvatar = match?.workerAction === 'generateAvatarScript';
   const isWorkerAction = !!match?.workerAction;
   document.querySelectorAll('.ga-hide-for-carousel').forEach(el => { el.style.display = isWorkerAction ? 'none' : ''; });
-  if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; return; }
+  if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; if (avatarWrap) avatarWrap.style.display = 'none'; return; }
   hint.style.display = 'flex';
   document.getElementById('gaSkillHintText').textContent = match.hint;
   const btn = document.getElementById('gaSkillHintBtn');
@@ -1596,9 +1603,11 @@ function gaUpdateSkillHint() {
     // only for that case.
     document.getElementById('gaSkillHintBtn').style.display = 'none';
     if (typeWrap) typeWrap.style.display = isCarousel ? 'block' : 'none';
+    if (avatarWrap) avatarWrap.style.display = isAvatar ? 'block' : 'none';
     return;
   }
   if (typeWrap) typeWrap.style.display = 'none';
+  if (avatarWrap) avatarWrap.style.display = 'none';
   document.getElementById('gaSkillHintBtn').style.display = '';
 
   btn.textContent = `Run ${match.skill} in Claude`;
@@ -1616,7 +1625,7 @@ async function openGenAssetsModal(titleId) {
   GA_METHOD_ID = null; GA_METHOD_NAME = '';
   GA_SUBMETHOD_ID = null; GA_SUBMETHOD_NAME = '';
   GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
-  ['gaTitleInput','gaMethodInput','gaSubMethodInput','gaProductInput','gaTypeInput','gaDescInput','gaKeywordsInput','gaResearchInput'].forEach(id => {
+  ['gaTitleInput','gaMethodInput','gaSubMethodInput','gaProductInput','gaTypeInput','gaDescInput','gaKeywordsInput','gaResearchInput','gaAvatarPresenterInput'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
@@ -1773,7 +1782,8 @@ async function submitGenAssets() {
       : 'Writing slide script (if needed) and rendering 7 slides, one at a time — can take a couple of minutes if Cloudflare rate-limits the render calls. Leave this open.';
     try {
       const carouselType = document.getElementById('gaCarouselTypeInput')?.value || undefined;
-      const r = await w(skillMatch.workerAction, { titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || PRODUCT_CAMPAIGN_ID, carouselType });
+      const presenter = document.getElementById('gaAvatarPresenterInput')?.value.trim() || undefined;
+      const r = await w(skillMatch.workerAction, { titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || PRODUCT_CAMPAIGN_ID, carouselType, presenter });
       if (r.error) throw new Error(r.error);
       status.textContent = isAvatarScript
         ? (r.alreadyScripted ? '✓ Script already existed — confirmed the asset and title status.' : '✓ Script written, saved, and set to Publish — use the 🎬 button on the asset row below to render the video.')
