@@ -5355,7 +5355,15 @@ Return ONLY a JSON array — no other text, no markdown fences:
             try {
               const r = await fetch(`https://api.notion.com/v1/pages/${dashify(aid)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
               if (!r.ok) return null;
-              const p = (await r.json()).properties || {};
+              const page = await r.json();
+              // Skip archived/trashed assets — a title's Assets relation
+              // accumulates every asset page ever linked to it, including
+              // ones later archived (e.g. a duplicate carousel-record
+              // upsert that missed the live one and created a fresh one
+              // instead). Rendering those as rows just buries the current
+              // one under dead duplicates.
+              if (page.archived || page.in_trash) return null;
+              const p = page.properties || {};
               return {
                 id: aid,
                 title: p["Asset Title"]?.title?.map(x => x.plain_text).join("") || "Untitled",
