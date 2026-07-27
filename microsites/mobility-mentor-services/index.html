@@ -4878,13 +4878,29 @@ async function submitGenAssets() {
       const presenter = document.getElementById('gaAvatarPresenterInput')?.value.trim() || undefined;
       const r = await w(skillMatch.workerAction, { titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, carouselType, presenter });
       if (r.error) throw new Error(r.error);
-      status.textContent = isAvatarScript
-        ? (r.alreadyScripted ? '✓ Script already existed — confirmed the asset and title status.' : '✓ Script written, saved, and set to Publish — use the 🎬 button on the asset row below to render the video.')
-        : `✓ Rendered ${r.slideCount} slides — preview: ${r.previewUrl}`;
-      status.style.color = '#68d391';
-      btn.textContent = 'Done';
-      await loadTitles();
-      setTimeout(closeGenAssetsModal, 3000);
+      if (isAvatarScript) {
+        // Surface whichever presenter actually got used — if it was
+        // Claude's own research-grounded proposal (not something typed
+        // in), show it back in the field so the user can see it, keep
+        // it, or overwrite it with their own avatar and re-run.
+        const presenterInput = document.getElementById('gaAvatarPresenterInput');
+        if (presenterInput && r.presenterCharacter && !r.presenterWasSpecified) presenterInput.value = r.presenterCharacter;
+        status.textContent = r.alreadyScripted
+          ? '✓ Script already existed — confirmed the asset and title status.'
+          : `✓ Script written, saved, and set to Publish.${r.presenterWasSpecified ? '' : ` Presenter (researched): "${r.presenterCharacter}" — edit the field above and hit Generate again to use your own instead.`}`;
+        status.style.color = '#68d391';
+        btn.textContent = 'Done';
+        btn.disabled = false;
+        await loadTitles();
+        // No auto-close here — the researched presenter is worth reading
+        // before the modal disappears.
+      } else {
+        status.textContent = `✓ Rendered ${r.slideCount} slides — preview: ${r.previewUrl}`;
+        status.style.color = '#68d391';
+        btn.textContent = 'Done';
+        await loadTitles();
+        setTimeout(closeGenAssetsModal, 3000);
+      }
     } catch(e) {
       status.textContent = 'Error: ' + e.message;
       status.style.color = '#fc8181';

@@ -11681,6 +11681,7 @@ Return the FULL updated set — all ${slides.length} slides plus caption and has
         const effectivePresenter = (presenterOverride || '').trim() || priorPresenter;
 
         let assetId;
+        let resolvedPresenter = '';
         if (!alreadyScripted) {
           // ── Step 2: write the script (Claude) ──
           const scriptPrompt = `Write a presenter-led Reel script for an AI avatar animated from a still photo/illustration — spoken TO CAMERA. This is for the "Avatar Video" method: a recurring presenter character that speaks every reel becomes a recognizable brand character.
@@ -11717,6 +11718,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
           } catch(e) { return json({ error: "Failed to parse script JSON: " + e.message }, 500); }
           if (!parsed.voiceoverScript) return json({ error: "Script generation returned no voiceover script — try again" }, 500);
+          resolvedPresenter = effectivePresenter || parsed.presenterCharacter || '';
 
           // ── Step 3: write to the title body (Notion connector) ──
           const rtBlock = text => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
@@ -11782,6 +11784,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           }).then(r => r.json()).catch(() => ({ results: [] }));
           const existingAsset = (existingAssetQuery.results || []).find(a => !a.archived);
           assetId = existingAsset?.id?.replace(/-/g, "") || null;
+          resolvedPresenter = existingAsset?.properties?.Notes?.rich_text?.map(t => t.plain_text).join("") || effectivePresenter;
         }
 
         // ── Step 5: title -> Publish ──
@@ -11790,7 +11793,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
         });
 
-        return json({ success: true, titleId, assetId, alreadyScripted });
+        return json({ success: true, titleId, assetId, alreadyScripted, presenterCharacter: resolvedPresenter, presenterWasSpecified: !!(presenterOverride || '').trim() });
       }
 
       return json({ error: "Unknown action" }, 400);
