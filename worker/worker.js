@@ -6024,26 +6024,35 @@ Return ONLY this JSON, no other text, no markdown fences:
       // before this existed. Vision-analysis and image-hosting failures are
       // caught and swallowed, never thrown: a bad reference image degrades
       // to notes+spec only rather than blocking generation.
-      async function buildCreativeBrief({ designNotes, referenceImageBase64, referenceImageFilename, campaignId, productId, hdr, dash, env, GT, ownerKey }) {
+      async function buildCreativeBrief({ designNotes, referenceImageBase64, referenceImageFilename, campaignId, productId, designSpecId, hdr, dash, env, GT, ownerKey }) {
         const hasNotes = !!(designNotes && String(designNotes).trim());
         const hasImage = !!(referenceImageBase64 && referenceImageFilename);
-        if (!hasNotes && !hasImage) return { briefText: null, imageUrl: null, resolvedSpec: null };
+        const hasExplicitSpec = !!designSpecId;
+        if (!hasNotes && !hasImage && !hasExplicitSpec) return { briefText: null, imageUrl: null, resolvedSpec: null };
 
-        const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
-        const [campPage, prodPage] = await Promise.all([
-          campaignId ? fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
-          hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
-        ]);
         const stripEmpty = obj => Object.fromEntries(Object.entries(obj || {}).filter(([k, v]) => k !== "id" && k !== "name" && v));
-        const campSpecId = campPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null;
-        const prodSpecId = hasProduct ? (prodPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null) : null;
-        const [campSpecPage, prodSpecPage] = await Promise.all([
-          campSpecId ? fetch(`https://api.notion.com/v1/pages/${campSpecId}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
-          prodSpecId ? fetch(`https://api.notion.com/v1/pages/${prodSpecId}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
-        ]);
-        const campaignSpec = campSpecPage?.properties ? dsFromPage(campSpecPage) : null;
-        const productSpec = prodSpecPage?.properties ? dsFromPage(prodSpecPage) : null;
-        let resolvedSpec = { ...DESIGN_SPEC_DEFAULTS, ...stripEmpty(campaignSpec), ...stripEmpty(productSpec) };
+        let resolvedSpec;
+        if (hasExplicitSpec) {
+          // Operator picked a specific spec from the Design Spec dropdown —
+          // use it directly instead of the campaign/product auto-merge.
+          const specPage = await fetch(`https://api.notion.com/v1/pages/${dash(designSpecId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          resolvedSpec = { ...DESIGN_SPEC_DEFAULTS, ...(specPage?.properties ? stripEmpty(dsFromPage(specPage)) : {}) };
+        } else {
+          const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
+          const [campPage, prodPage] = await Promise.all([
+            campaignId ? fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+            hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          ]);
+          const campSpecId = campPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+          const prodSpecId = hasProduct ? (prodPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null) : null;
+          const [campSpecPage, prodSpecPage] = await Promise.all([
+            campSpecId ? fetch(`https://api.notion.com/v1/pages/${campSpecId}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+            prodSpecId ? fetch(`https://api.notion.com/v1/pages/${prodSpecId}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          ]);
+          const campaignSpec = campSpecPage?.properties ? dsFromPage(campSpecPage) : null;
+          const productSpec = prodSpecPage?.properties ? dsFromPage(prodSpecPage) : null;
+          resolvedSpec = { ...DESIGN_SPEC_DEFAULTS, ...stripEmpty(campaignSpec), ...stripEmpty(productSpec) };
+        }
 
         let imageUrl = null;
         let imageStyleNotes = '';
@@ -6063,7 +6072,15 @@ Return ONLY this JSON, no other text, no markdown fences:
         }
 
         const lines = ['CREATIVE BRIEF (operator-supplied design direction — honor this over your own default instincts):'];
-        if (hasNotes) lines.push(`- Operator notes: ${String(designNotes).trim()}`);
+        if (hasNotes) {
+          lines.push(`- Operator notes: ${String(designNotes).trim()}`);
+          // These notes are the one true "override guidelines" field — they
+          // can redefine STRUCTURE (slide/scene count, format, layout), not
+          // just tone/palette. Say so explicitly so a note like "use a
+          // 5-slide listicle instead" actually overrides the format preset
+          // below rather than getting read as a stylistic aside.
+          lines.push(`- If the operator notes above specify a different slide/scene count, structure, or an entirely custom format than what's described below, FOLLOW THE OPERATOR NOTES INSTEAD — they override the default format, not just its tone.`);
+        }
         if (imageStyleNotes) lines.push(`- Reference image style: ${imageStyleNotes}`);
         lines.push(`- Palette: background ${resolvedSpec.bg}, ink ${resolvedSpec.ink}, accent ${resolvedSpec.accent}`);
         lines.push(`- Typography: headline font "${resolvedSpec.headlineFont}", body font "${resolvedSpec.bodyFont}"`);
@@ -10975,7 +10992,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       // the planned integration, UPLOAD_POST_API_KEY is already provisioned
       // but unused).
       if (body.action === "generateCarouselPreview") {
-        const { titleId, campaignId, carouselType } = body;
+        const { titleId, campaignId, carouselType, description, seedKeywords, researchInstructions, designSpecId } = body;
         if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
@@ -11001,14 +11018,18 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           designNotes: body.designNotes,
           referenceImageBase64: body.referenceImageBase64,
           referenceImageFilename: body.referenceImageFilename,
-          campaignId, productId, hdr, dash, env, GT,
+          campaignId, productId, designSpecId, hdr, dash, env, GT,
           ownerKey: `pending-${titleId}`,
         });
         const briefBlock = brief.briefText ? `\n${brief.briefText}\n` : '';
-        const visualFieldsInstruction = brief.briefText
-          ? ' Also include, per slide: "purpose" (its narrative role in the arc), "visualObjective" (what it should visually accomplish), and "illustrationDirection" (a concrete illustration/imagery direction, or "none — pure typographic treatment" if none is warranted).'
-          : '';
-        const visualFieldsSchema = brief.briefText ? `, "purpose": "...", "visualObjective": "...", "illustrationDirection": "..."` : '';
+        // Description/Research Instructions — separate from the Creative
+        // Brief (that's visual direction; these are content grounding) but
+        // spliced in at the same point in each prompt below.
+        const overrideBlockLines = [
+          description ? `CONTENT DESCRIPTION (operator-supplied): ${description}` : '',
+          researchInstructions ? `RESEARCH INSTRUCTIONS (operator-supplied): ${researchInstructions}` : '',
+        ].filter(Boolean);
+        const overrideBlock = overrideBlockLines.length ? `\n${overrideBlockLines.join('\n')}\n` : '';
 
         const parseSlides = async () => {
           const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
@@ -11049,6 +11070,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           }).then(r => r.json()).catch(() => ({ results: [] }));
           const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
           keywords = rt(researchRaw, "Keywords");
+          if (seedKeywords) keywords = [keywords, seedKeywords].filter(Boolean).join(', ');
 
           // Two text-only carousel types — both reuse the exact same slide
           // block format (heading_3 "Slide N" -> bold headline -> plain body
@@ -11062,60 +11084,58 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           const isCollection = carouselType === 'curated-collection';
           const isHiddenPotential = carouselType === 'hidden-potential';
 
-          const slidePrompt = isCollection
-            ? `${researchGuidelinesBlock(body.researchGuidelines)}Write a CURATED COLLECTION Instagram carousel for this specific title — a set of standalone slides under one theme, NOT a narrative with a beginning/middle/end.
-
-TITLE: ${titleName}
-${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}
-Write EXACTLY 7 slides, no more, no fewer. Every single slide must work completely on its own — a viewer who sees ONLY that one slide, with zero other context, must still get the full point. Do NOT write a hook-then-insights-then-CTA arc; do NOT reference "the next slide" or build on a previous one. Each slide is a self-contained short statement, insight, or quote-style line related to the theme (e.g. "your headline" = the standalone statement, "body" = an optional one-line elaboration or attribution — can be empty if the headline says it all).${visualFieldsInstruction}
-
-- Instagram caption (150-200 words) tying the collection's theme together — required, never leave empty
-- 3-5 hashtags (no # prefix needed) — required, never leave empty
-
-No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
-
-Return ONLY this JSON object, no other text, no markdown fences:
-{ "slides": [ { "headline": "...", "body": "..."${visualFieldsSchema} }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`
+          // Format-specific headline/body semantics only — everything else
+          // (per-slide production/visual-planning metadata, carousel-level
+          // packages) is shared across all three formats in one prompt, per
+          // the "Generate Carousel Asset Package" spec below.
+          const formatDirective = isCollection
+            ? `FORMAT: CURATED COLLECTION — a set of standalone slides under one theme, NOT a narrative with a beginning/middle/end. Every single slide must work completely on its own — a viewer who sees ONLY that one slide, with zero other context, must still get the full point. Do NOT write a hook-then-insights-then-CTA arc; do NOT reference "the next slide" or build on a previous one. Each slide's "headline" is a self-contained short statement, insight, or quote-style line related to the theme; "body" is an optional one-line elaboration or attribution (can be empty if the headline says it all).`
             : isHiddenPotential
-            ? `${researchGuidelinesBlock(body.researchGuidelines)}Write a HIDDEN POTENTIAL Instagram carousel for this specific title — every slide is a split "stress → benefit" contrast: the real friction/pain point on the left vs. the payoff waiting on the other side of it, on the right.
+            ? `FORMAT: HIDDEN POTENTIAL — every slide is a split "stress → benefit" contrast. For each slide write TWO very short paired lines (3-8 words each, rendered side by side, so brevity is critical): "headline" = the STRESS side (a specific, honest pain point, friction, or fear tied to the topic); "body" = the BENEFIT side (the specific, concrete payoff on the other side of that exact stress — not a generic platitude, it must resolve the specific stress just named). Every pair must be a genuine, specific stress-to-benefit arc grounded in the actual title/topic — not generic filler. Vary the 7 pairs so the carousel builds a fuller picture across slides, not the same contrast repeated.`
+            : `FORMAT: TRIPLE HOOK — Instagram re-serves an unswiped carousel's next slide to the same viewer later (slide 2 today, slide 3 tomorrow), so slides 1, 2, AND 3 each need to work as an independent cold-open hook capable of stopping a scroller with ZERO context, not just slide 1. None of the first three should read as "part 2 of the story" or require the slide before it to make sense. Slides 1-3 (triple hook): each a short, punchy, fully standalone "headline" + one-line subtext as "body" — three separate entry points into the same topic, not a continuation of each other. Slides 4-6 (substance): 3 slides, each a short "headline" + 2-3 sentence "body" — real substance, not placeholders. Slide 7 (CTA): short quote/summary line as "headline" + save/follow/next-step prompt as "body".`;
+
+          // Unified "Generate Carousel Asset Package" prompt — produces slide
+          // copy plus the full planning package (content summary, hook
+          // package, per-slide production + visual-planning flags, content
+          // flow, educational assets, SEO/publishing variants, production
+          // checklist). Per the spec: visual planning is yes/no flags ONLY —
+          // no image prompts, no illustration-style descriptions; a separate
+          // Visual Director stage owns all visual decisions downstream.
+          const slidePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing a full Carousel Asset Package for this title — not just slide copy. Write EXACTLY 7 slides, no more, no fewer.
 
 TITLE: ${titleName}
-${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}
-Write EXACTLY 7 slides, no more, no fewer. For each slide, write TWO very short paired lines (3-8 words each, they'll be rendered side by side, so brevity is critical):
-- "headline" = the STRESS side — a specific, honest pain point, friction, or fear tied to the topic
-- "body" = the BENEFIT side — the specific, concrete payoff on the other side of that exact stress (not a generic platitude — it must resolve the specific stress just named)
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}${overrideBlock}
+${formatDirective}
 
-Every pair must be a genuine, specific stress-to-benefit arc grounded in the actual title/topic — not generic filler. Vary the 7 pairs so the carousel builds a fuller picture across slides, not the same contrast repeated.${visualFieldsInstruction}
+Every slide must have a non-empty "headline". No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
+
+For EACH slide, also provide:
+- "role": its narrative role (e.g. "hook", "insight", "proof", "cta")
+- "objective": what this specific slide needs to accomplish
+- "keyTakeaway": the one thing a viewer should remember from this slide alone
+- "speakerNotes": a one-line internal note on intent/delivery (not shown to viewers)
+- "cta": this slide's specific call to action, if any — empty string if none
+- "production": a compact object — "layoutType" (e.g. "text-only", "text+stat", "split-contrast"), "textHierarchy" (what reads first/second), "informationDensity" ("light"/"medium"/"heavy"), "visualComplexity" ("simple"/"moderate"/"rich"), "reusableVisualCandidate" (true/false — could this slide's visual treatment be reused across future carousels), "existingAssetCandidate" (true/false — could an existing brand asset/photo cover this slide instead of a new one)
+- "visualPlanning": yes/no decisions ONLY — do NOT generate image prompts and do NOT describe illustration styles here, a separate Visual Director stage owns all visual decisions and only needs to know what kind of visual support (if any) this slide will need: "needsCustomVisual" (true/false), "needsDataViz" (true/false), "needsIconOrGraphic" (true/false), "needsPhotoOrIllustration" (true/false)
+
+Also provide, once for the whole carousel:
+- "contentSummary": { "coreMessage": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "..." }
+- "hookPackage": { "primary": "...", "alt1": "...", "alt2": "..." } — three distinct hook angles for this carousel's opening, for the operator to choose between
+- "contentFlow": one paragraph on how the 7 slides connect into a coherent whole
+- "educationalAssets": one paragraph recapping the key teaching points a viewer walks away with
+- "productionChecklist": an array of 4-6 short strings — concrete pre-publish checks (e.g. "confirm stat source cited", "verify CTA link is live")
+- "seoPublishing": { "linkedinCaption": "...", "xPost": "...", "description": "...", "keywords": "...", "altText": "...", "searchIntent": "..." } — platform variants beyond the core Instagram caption/hashtags below
 
 - Instagram caption (150-200 words) — required, never leave empty
 - 3-5 hashtags (no # prefix needed) — required, never leave empty
 
-No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
-
 Return ONLY this JSON object, no other text, no markdown fences:
-{ "slides": [ { "headline": "...", "body": "..."${visualFieldsSchema} }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`
-            : `${researchGuidelinesBlock(body.researchGuidelines)}Write a full 7-slide Instagram carousel script for this specific title, using the TRIPLE HOOK framework.
-
-TITLE: ${titleName}
-${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}
-Instagram re-serves an unswiped carousel's next slide to the same viewer later (slide 2 today, slide 3 tomorrow) — so slides 1, 2, AND 3 each need to work as an independent cold-open hook capable of stopping a scroller with ZERO context, not just slide 1. None of the first three should read as "part 2 of the story" or require the slide before it to make sense.
-
-Write EXACTLY 7 slides, no more, no fewer:
-- Slides 1-3 (triple hook): each a short, punchy, fully standalone headline + one-line subtext as "body" — three separate entry points into the same topic, not a continuation of each other
-- Slides 4-6 (substance): 3 slides, each a short headline + 2-3 sentence body — real substance, not placeholders
-- Slide 7 (CTA): short quote/summary line as headline + save/follow/next-step prompt as "body"
-- Instagram caption (150-200 words) — required, never leave empty
-- 3-5 hashtags (no # prefix needed) — required, never leave empty
-
-Every slide must have both a non-empty "headline" and a non-empty "body".${visualFieldsInstruction} No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
-
-Return ONLY this JSON object, no other text, no markdown fences:
-{ "slides": [ { "headline": "...", "body": "..."${visualFieldsSchema} }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`;
+{ "slides": [ { "headline": "...", "body": "...", "role": "...", "objective": "...", "keyTakeaway": "...", "speakerNotes": "...", "cta": "...", "production": { "layoutType": "...", "textHierarchy": "...", "informationDensity": "...", "visualComplexity": "...", "reusableVisualCandidate": true, "existingAssetCandidate": false }, "visualPlanning": { "needsCustomVisual": true, "needsDataViz": false, "needsIconOrGraphic": false, "needsPhotoOrIllustration": true } }, ... exactly 7 total ... ], "contentSummary": { "coreMessage": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "..." }, "hookPackage": { "primary": "...", "alt1": "...", "alt2": "..." }, "contentFlow": "...", "educationalAssets": "...", "productionChecklist": ["...", "..."], "seoPublishing": { "linkedinCaption": "...", "xPost": "...", "description": "...", "keywords": "...", "altText": "...", "searchIntent": "..." }, "caption": "...", "hashtags": ["...", "..."] }`;
 
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: slidePrompt }] }),
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: slidePrompt }] }),
           });
           const aiData = await aiResp.json();
           if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
@@ -11136,7 +11156,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
               const repairResp = await fetch("https://api.anthropic.com/v1/messages", {
                 method: "POST",
                 headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-                body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: `${slidePrompt}\n\nYour previous response failed to parse as JSON (${firstErr.message}). Return ONLY the corrected JSON object this time, no other text, no markdown fences.` }] }),
+                body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: `${slidePrompt}\n\nYour previous response failed to parse as JSON (${firstErr.message}). Return ONLY the corrected JSON object this time, no other text, no markdown fences.` }] }),
               });
               const repairData = await repairResp.json();
               if (!repairResp.ok) throw new Error(repairData.error?.message || "Claude API error on repair attempt");
@@ -11165,31 +11185,87 @@ Return ONLY this JSON object, no other text, no markdown fences:
             children.push(heading('Hashtags'));
             children.push(para(parsed.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ')));
           }
-          // Visual Plan — a NEW section appended AFTER Hashtags, invisible to
-          // parseSlides() (it only looks for "Slide N"/"Caption"/"Hashtags"
-          // headings), so this never touches the existing slide-block parser
-          // that generateCarouselPreview/refineCarouselPreview/make-carousel
-          // all share. Only written when the brief actually requested these
-          // fields (brief.briefText truthy) and at least one slide has them.
-          if (brief.briefText && writtenSlides.some(s => s.purpose || s.visualObjective || s.illustrationDirection)) {
-            children.push(heading('Visual Plan'));
+          // Asset Package sections — all appended AFTER Hashtags, invisible
+          // to parseSlides() (it only looks for "Slide N"/"Caption"/
+          // "Hashtags" headings), so this never touches the existing
+          // slide-block parser that generateCarouselPreview/
+          // refineCarouselPreview/make-carousel all share. Kept dense (one
+          // bullet per slide for production/visual-planning, not a heading
+          // each) to stay well under Notion's 100-children-per-request
+          // limit even with the richer schema.
+          const cs = parsed.contentSummary || {};
+          if (cs.coreMessage || cs.targetAudience || cs.funnelStage || cs.primaryGoal) {
+            children.push(heading('Content Summary'));
+            const csParts = [
+              cs.coreMessage ? `Core message: ${cs.coreMessage}` : '',
+              cs.targetAudience ? `Audience: ${cs.targetAudience}` : '',
+              cs.funnelStage ? `Funnel stage: ${cs.funnelStage}` : '',
+              cs.primaryGoal ? `Primary goal: ${cs.primaryGoal}` : '',
+            ].filter(Boolean);
+            if (csParts.length) children.push(para(csParts.join(' | ')));
+          }
+          const hp = parsed.hookPackage || {};
+          if (hp.primary || hp.alt1 || hp.alt2) {
+            children.push(heading('Hook Package'));
+            if (hp.primary) children.push(bullet(`Primary: ${hp.primary}`));
+            if (hp.alt1) children.push(bullet(`Alt 1: ${hp.alt1}`));
+            if (hp.alt2) children.push(bullet(`Alt 2: ${hp.alt2}`));
+          }
+          if (writtenSlides.some(s => s.role || s.objective || s.keyTakeaway || s.production || s.visualPlanning)) {
+            children.push(heading('Slide Production Notes'));
             writtenSlides.forEach((s, idx) => {
-              const parts = [s.purpose, s.visualObjective, s.illustrationDirection].filter(Boolean);
-              if (parts.length) children.push(bullet(`Slide ${idx + 1}: ${parts.join(' — ')}`));
+              const p = s.production || {};
+              const vp = s.visualPlanning || {};
+              const vpFlags = ['needsCustomVisual', 'needsDataViz', 'needsIconOrGraphic', 'needsPhotoOrIllustration']
+                .filter(k => vp[k]).map(k => k.replace(/^needs/, ''));
+              const parts = [
+                s.role, s.objective, s.keyTakeaway,
+                p.layoutType ? `layout: ${p.layoutType}` : '',
+                p.informationDensity ? `density: ${p.informationDensity}` : '',
+                p.visualComplexity ? `complexity: ${p.visualComplexity}` : '',
+                p.reusableVisualCandidate ? 'reusable visual candidate' : '',
+                p.existingAssetCandidate ? 'existing asset candidate' : '',
+                vpFlags.length ? `needs: ${vpFlags.join(', ')}` : 'needs: none',
+              ].filter(Boolean);
+              children.push(bullet(`Slide ${idx + 1}: ${parts.join(' — ')}`));
             });
           }
+          if (parsed.contentFlow) { children.push(heading('Content Flow')); children.push(para(parsed.contentFlow)); }
+          if (parsed.educationalAssets) { children.push(heading('Educational Assets')); children.push(para(parsed.educationalAssets)); }
+          const sp = parsed.seoPublishing || {};
+          if (sp.linkedinCaption || sp.xPost || sp.description || sp.keywords || sp.altText || sp.searchIntent) {
+            children.push(heading('SEO / Publishing'));
+            if (sp.linkedinCaption) children.push(bullet(`LinkedIn caption: ${sp.linkedinCaption}`));
+            if (sp.xPost) children.push(bullet(`X post: ${sp.xPost}`));
+            if (sp.description) children.push(bullet(`Description: ${sp.description}`));
+            if (sp.keywords) children.push(bullet(`Keywords: ${sp.keywords}`));
+            if (sp.altText) children.push(bullet(`Alt text: ${sp.altText}`));
+            if (sp.searchIntent) children.push(bullet(`Search intent: ${sp.searchIntent}`));
+          }
+          if (Array.isArray(parsed.productionChecklist) && parsed.productionChecklist.length) {
+            children.push(heading('Production Checklist'));
+            parsed.productionChecklist.forEach(item => children.push(bullet(String(item))));
+          }
           if (children.length) {
-            const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
-              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-              body: JSON.stringify({ children }),
-            });
-            if (!writeResp.ok) { const r = await writeResp.json(); return json({ error: r.message || "Failed to write slides to title" }, writeResp.status); }
+            // Notion's PATCH /blocks/{id}/children accepts max 100 children
+            // per call — chunk in batches of 90 as a safety margin (same
+            // pattern refineCarouselPreview's full-rewrite branch already
+            // uses), since the richer Asset Package schema can push the
+            // total block count well past a single slide script's.
+            for (let i = 0; i < children.length; i += 90) {
+              const batch = children.slice(i, i + 90);
+              const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
+                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ children: batch }),
+              });
+              if (!writeResp.ok) { const r = await writeResp.json(); return json({ error: r.message || "Failed to write slides to title" }, writeResp.status); }
+            }
           }
           ({ slides, caption, hashtags } = await parseSlides());
           if (!slides.length) return json({ error: "Wrote a slide script but couldn't parse it back — try again" }, 500);
         }
 
-        const result = await publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides, caption, hashtags });
+        const result = await publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides, caption, hashtags, designSpecId });
         if (result instanceof Response) return result;
 
         // Persist the operator's design reference onto the resulting Asset
@@ -11215,10 +11291,12 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // Assets DB record. Returns a Response to short-circuit on failure
       // (callers must check `result instanceof Response` and return it
       // as-is), or { previewUrl, assetId } on success.
-      async function publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides, caption, hashtags }) {
+      async function publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides, caption, hashtags, designSpecId }) {
         // ── Step 3: design spec + deploy path ──
         const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
-        const specRelId = campPage.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+        // An operator-picked spec (Design Spec dropdown) wins over the
+        // campaign's default attachment — same override as buildCreativeBrief.
+        const specRelId = designSpecId ? dash(designSpecId) : (campPage.properties?.["Design Spec"]?.relation?.[0]?.id || null);
         let spec = { ...DESIGN_SPEC_DEFAULTS };
         if (specRelId) {
           const specPage = await fetch(`https://api.notion.com/v1/pages/${specRelId}`, { headers: hdr }).then(r => r.json()).catch(() => null);
@@ -11625,7 +11703,7 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
       // page (see galleryHtml above) — that page has its own lightweight
       // PIN prompt since it's public GitHub Pages with no dashboard session.
       if (body.action === "refineCarouselPreview") {
-        const { titleId, campaignId, carouselType, instruction } = body;
+        const { titleId, campaignId, carouselType, instruction, description, seedKeywords, researchInstructions, designSpecId } = body;
         if (!titleId || !campaignId || !instruction) return json({ error: "titleId, campaignId, and instruction required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
@@ -11649,10 +11727,16 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           designNotes: body.designNotes,
           referenceImageBase64: body.referenceImageBase64,
           referenceImageFilename: body.referenceImageFilename,
-          campaignId, productId, hdr, dash, env, GT,
+          campaignId, productId, designSpecId, hdr, dash, env, GT,
           ownerKey: `pending-${titleId}`,
         });
         const briefBlock = brief.briefText ? `\n${brief.briefText}\n` : '';
+        const overrideBlockLines = [
+          description ? `CONTENT DESCRIPTION (operator-supplied): ${description}` : '',
+          researchInstructions ? `RESEARCH INSTRUCTIONS (operator-supplied): ${researchInstructions}` : '',
+          seedKeywords ? `ADDITIONAL KEYWORDS (operator-supplied): ${seedKeywords}` : '',
+        ].filter(Boolean);
+        const overrideBlock = overrideBlockLines.length ? `\n${overrideBlockLines.join('\n')}\n` : '';
 
         const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
         const blocks = blocksResp.results || [];
@@ -11688,7 +11772,7 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
 TITLE: ${titleName}
 CAROUSEL FORMAT: ${carouselType || 'triple-hook'}
 ${carouselType === 'hidden-potential' ? 'Each slide is a paired split: "headline" = STRESS (left side, 3-8 words) and "body" = BENEFIT (right side, 3-8 words) that resolves that exact stress. Keep both sides within that length whenever you touch a slide.' : ''}
-${briefBlock}
+${briefBlock}${overrideBlock}
 CURRENT SLIDES (JSON):
 ${JSON.stringify({ slides, caption, hashtags })}
 
@@ -11788,7 +11872,7 @@ Return the FULL updated set — all ${slides.length} slides plus caption and has
           }
         }
 
-        const result = await publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides: newSlides, caption: newCaption, hashtags: newHashtags });
+        const result = await publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides: newSlides, caption: newCaption, hashtags: newHashtags, designSpecId });
         if (result instanceof Response) return result;
 
         // Same best-effort design-ref persistence as generateCarouselPreview.
@@ -12083,7 +12167,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // local Remotion/ffmpeg/ElevenLabs) still can't run in a Worker, so
       // that stays a chat-driven step off each asset row's own 🎬 button.
       if (body.action === "generateTextVideoScript") {
-        const { titleId, campaignId } = body;
+        const { titleId, campaignId, description, seedKeywords, researchInstructions, designSpecId } = body;
         if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
 
@@ -12117,26 +12201,32 @@ Return ONLY this JSON object, no other text, no markdown fences:
         }).then(r => r.json()).catch(() => ({ results: [] }));
         const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
         keywords = rt(researchRaw, "Keywords");
+        if (seedKeywords) keywords = [keywords, seedKeywords].filter(Boolean).join(', ');
 
         // Operator-supplied creative direction, shared across the whole
         // batch (one brief, one Claude call, all 5 scripts) — briefText is
-        // null when neither notes nor an image were supplied, so the prompt
+        // null when neither notes/image/spec were supplied, so the prompt
         // below is byte-identical to before this existed in that case.
         const brief = await buildCreativeBrief({
           designNotes: body.designNotes,
           referenceImageBase64: body.referenceImageBase64,
           referenceImageFilename: body.referenceImageFilename,
-          campaignId, productId, hdr, dash, env, GT: (env.GITHUB_TOKEN || '').trim(),
+          campaignId, productId, designSpecId, hdr, dash, env, GT: (env.GITHUB_TOKEN || '').trim(),
           ownerKey: `pending-${titleId}`,
         });
         const briefBlock = brief.briefText ? `\n${brief.briefText}\n` : '';
+        const overrideBlockLines = [
+          description ? `CONTENT DESCRIPTION (operator-supplied): ${description}` : '',
+          researchInstructions ? `RESEARCH INSTRUCTIONS (operator-supplied): ${researchInstructions}` : '',
+        ].filter(Boolean);
+        const overrideBlock = overrideBlockLines.length ? `\n${overrideBlockLines.join('\n')}\n` : '';
 
         const BATCH_SIZE = 5;
         const scriptPrompt = `Write ${BATCH_SIZE} DISTINCT faceless Reel scripts for the same title — ElevenLabs voiceover over Ken Burns motion/B-roll with on-screen text and word captions, NO avatar or presenter on camera. This is for the "Text Video" method: pure discovery-format content, engineered to be found by strangers. Each of the ${BATCH_SIZE} must use a DIFFERENT hook arc from the toolkit below and take a genuinely different angle on the topic — not five rewordings of the same script.
 
 TITLE: ${titleName}
 ${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}
-${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}${overrideBlock}
 HOOK ARC TOOLKIT (use ${BATCH_SIZE} different ones, one per script): Contrarian claim, Cold-open confession, Stat/number hook, Direct callout, Question hook, Before/after compression.
 
 SCRIPT RULES (apply to EACH of the ${BATCH_SIZE}):
