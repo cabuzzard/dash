@@ -11831,12 +11831,17 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // Worker-native script step for the "Text Video" method (the
       // renamed Short Form Video / Reel method — ElevenLabs voiceover +
       // word captions + Ken Burns motion over a background image, no face
-      // on camera). Same pattern as generateAvatarScript/
-      // generateCarouselPreview: writes the script, upserts a "text
-      // video" Asset, sets the title to Publish, entirely server-side.
-      // The actual render (make-reel-video — needs local Remotion/
-      // ffmpeg/ElevenLabs) still can't run in a Worker, so that stays a
-      // chat-driven step off the resulting asset row's 🎬 button.
+      // on camera). Unlike generateAvatarScript/generateExplainerScript,
+      // this is deliberately NOT an upsert: every call writes a fresh
+      // batch of 5 distinct scripts (different hook arcs), each as its
+      // OWN "text video" Asset, additive — re-running never deletes a
+      // prior batch, by design (short-form Reels are cheap to overproduce
+      // and pick winners from; the operator prunes manually). Each
+      // script's full structured body lives on ITS OWN Asset page, not
+      // the title's, since 5 scripts can't coexist unambiguously on one
+      // shared title body. The actual render (make-reel-video — needs
+      // local Remotion/ffmpeg/ElevenLabs) still can't run in a Worker, so
+      // that stays a chat-driven step off each asset row's own 🎬 button.
       if (body.action === "generateTextVideoScript") {
         const { titleId, campaignId } = body;
         if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
@@ -11851,13 +11856,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const productRel = titlePage.properties.product?.relation || [];
         const productId = productRel[0]?.id?.replace(/-/g,"") || null;
 
-        // Already scripted FOR THIS METHOD? Keyed off whether a live
-        // "text video" Asset already exists — not whether the page body
-        // has *some* "Voiceover Script" heading, since Avatar Video
-        // scripts use that identical heading text. A title previously run
-        // through Avatar Video (or any other method) would otherwise be
-        // misdetected as "already has a text-video script" and silently
-        // skip writing anything, producing no asset at all.
+        // How many "text video" assets already exist under this title —
+        // purely for numbering the new batch (#6-#10, not #1-#5 again),
+        // never for skipping generation.
         const priorTextVideoAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ filter: { and: [
@@ -11865,8 +11866,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             { property: "Asset Type", select: { equals: "text video" } },
           ] } }),
         }).then(r => r.json()).catch(() => ({ results: [] }));
-        const existingTextVideoAsset = (priorTextVideoAssetQuery.results || []).find(a => !a.archived);
-        const alreadyScripted = !!existingTextVideoAsset;
+        const priorCount = (priorTextVideoAssetQuery.results || []).filter(a => !a.archived).length;
 
         const strategyBlock = await fetchStrategyForGrading(hdr, dash(campaignId), productId ? dash(productId) : null, !!productId);
 
@@ -11878,57 +11878,79 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
         keywords = rt(researchRaw, "Keywords");
 
-        let assetId;
-        if (!alreadyScripted) {
-          const scriptPrompt = `Write a faceless Reel script — ElevenLabs voiceover over Ken Burns motion/B-roll with on-screen text and word captions, NO avatar or presenter on camera. This is for the "Text Video" method: pure discovery-format content, engineered to be found by strangers.
+        const BATCH_SIZE = 5;
+        const scriptPrompt = `Write ${BATCH_SIZE} DISTINCT faceless Reel scripts for the same title — ElevenLabs voiceover over Ken Burns motion/B-roll with on-screen text and word captions, NO avatar or presenter on camera. This is for the "Text Video" method: pure discovery-format content, engineered to be found by strangers. Each of the ${BATCH_SIZE} must use a DIFFERENT hook arc from the toolkit below and take a genuinely different angle on the topic — not five rewordings of the same script.
 
 TITLE: ${titleName}
 ${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}
 ${keywords ? `KEYWORDS: ${keywords}\n` : ''}
 
-SCRIPT RULES:
-- Arc: Hook (0-3s, pattern interrupt / contrarian claim / "after"-as-fact, survives with zero context) -> Reframe (3-8s, why this matters to the viewer) -> Payoff (8s-end, the real value, one beat per 3-5s, no throat-clearing) -> Close (last 2-3s).
+HOOK ARC TOOLKIT (use ${BATCH_SIZE} different ones, one per script): Contrarian claim, Cold-open confession, Stat/number hook, Direct callout, Question hook, Before/after compression.
+
+SCRIPT RULES (apply to EACH of the ${BATCH_SIZE}):
+- Arc: Hook (0-3s, survives with zero context) -> Reframe (3-8s, why this matters to the viewer) -> Payoff (8s-end, the real value, one beat per 3-5s, no throat-clearing) -> Close (last 2-3s).
 - On-screen text on every line, mirroring the spoken hook near-verbatim (most viewers watch muted).
 - Grounded in the research reference/context — a specific number, detail, or stake. Generic advice gets skipped.
-- 15-45s spoken for a single sharp idea, up to 90s only if every added second earns its place.
+- Target 45-65 spoken words (~25-30s at natural pace). Cut anything that doesn't earn its place.
 - One idea only — if it needs two, it should have been two reels.
 - Close on a ranking-signal CTA — "send this to someone who..." or "comment [KEYWORD] and I'll send you...".
 - No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
 - Shot/B-roll note per beat — what visual accompanies each line (a stat graphic, a b-roll clip, motion text, etc.), since there's no face carrying the frame.
 
-Return ONLY this JSON object, no other text, no markdown fences:
-{ "hookArcNote": "which hook shape was used and why it fits", "voiceoverScript": "the spoken lines only, continuous prose, NO labels/timestamps/cues — exactly what TTS will speak", "onScreenText": ["line 1", "line 2", "..."], "shotNotes": ["beat 1 shot/B-roll note", "beat 2 shot/B-roll note", "..."], "caption": "150-200 word caption, campaign keywords worked in naturally for SEO", "hashtags": ["...", "..."] }`;
+Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no markdown fences:
+[{ "hookArcNote": "which hook shape was used and why it fits", "voiceoverScript": "the spoken lines only, continuous prose, NO labels/timestamps/cues — exactly what TTS will speak", "onScreenText": ["line 1", "line 2", "..."], "shotNotes": ["beat 1 shot/B-roll note", "beat 2 shot/B-roll note", "..."], "caption": "150-200 word caption, campaign keywords worked in naturally for SEO", "hashtags": ["...", "..."] }, ...]`;
 
-          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: scriptPrompt }] }),
-          });
-          const aiData = await aiResp.json();
-          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
-          let parsed;
-          try {
-            const raw = aiData.content?.[0]?.text || "";
-            const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-            if (start === -1 || end === -1) throw new Error("No JSON object found");
-            parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
-          } catch(e) { return json({ error: "Failed to parse script JSON: " + e.message }, 500); }
-          if (!parsed.voiceoverScript) return json({ error: "Script generation returned no voiceover script — try again" }, 500);
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: scriptPrompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let parsedList;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('['), end = raw.lastIndexOf(']');
+          if (start === -1 || end === -1) throw new Error("No JSON array found");
+          parsedList = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        } catch(e) { return json({ error: "Failed to parse script batch JSON: " + e.message }, 500); }
+        if (!Array.isArray(parsedList) || !parsedList.length) return json({ error: "Script generation returned no scripts — try again" }, 500);
+        parsedList = parsedList.filter(p => p && p.voiceoverScript).slice(0, BATCH_SIZE);
+        if (!parsedList.length) return json({ error: "Script generation returned no usable scripts — try again" }, 500);
 
-          // Clear any leftover body content (e.g. from a different method
-          // previously run on this title) before writing this method's
-          // script, so the two don't end up mixed together on the page —
-          // alreadyScripted being false means this page's body is treated
-          // as this method's to (re)write cleanly.
-          const staleBlocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
-          const staleBlocks = staleBlocksResp.results || [];
-          if (staleBlocks.length) await Promise.all(staleBlocks.map(b => fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: "DELETE", headers: hdr })));
+        const rtBlock = text => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+        const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+        const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
 
-          const rtBlock = text => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
-          const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
-          const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
-          const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
+        const assetIds = [];
+        for (let i = 0; i < parsedList.length; i++) {
+          const parsed = parsedList[i];
+          const n = priorCount + i + 1;
           const hashtagsLine = (Array.isArray(parsed.hashtags) && parsed.hashtags.length) ? parsed.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ') : '';
+
+          const assetProps = {
+            "Asset Title": { title: [{ type: "text", text: { content: `${titleName} — Text Video #${n}`.slice(0, 200) } }] },
+            "Asset Type": { select: { name: "text video" } },
+            "Content Strategy": { relation: [{ id: dash(titleId) }] },
+            "Campaign": { relation: [{ id: dash(campaignId) }] },
+            "Body": { rich_text: [{ type: "text", text: { content: parsed.voiceoverScript.slice(0, 1990) } }] },
+            "Notes": { rich_text: [{ type: "text", text: { content: hashtagsLine.slice(0, 1990) } }] },
+            "Status": { select: { name: "Ready" } },
+            "Asset Status": { select: { name: "Publish" } },
+          };
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || `Asset create failed for script #${n}`, assetIds }, createResp.status || 500);
+          const assetId = created.id.replace(/-/g, "");
+          assetIds.push(assetId);
+
+          // Full structured script lives on THIS asset's own page body —
+          // not the title's — since 5 scripts can't share one title body
+          // unambiguously. The 🎬 prompt for each asset points here.
           const children = [
             heading("Voiceover Script (to-camera)"), para(parsed.voiceoverScript),
             heading("On-Screen Text"), ...((parsed.onScreenText || []).map(bullet)),
@@ -11937,42 +11959,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
             heading("Hashtags"), para(hashtagsLine),
             heading("Hook Arc + Reference"), para(parsed.hookArcNote || ""),
           ];
-          const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
+          await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children`, {
             method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({ children }),
           });
-          if (!writeResp.ok) { const r = await writeResp.json(); return json({ error: r.message || "Failed to write script to title" }, writeResp.status); }
-
-          // existingTextVideoAsset was already resolved above, before the
-          // Claude call — reused here instead of querying again.
-          const assetProps = {
-            "Body": { rich_text: [{ type: "text", text: { content: parsed.voiceoverScript.slice(0, 1990) } }] },
-            "Notes": { rich_text: [{ type: "text", text: { content: hashtagsLine.slice(0, 1990) } }] },
-            "Status": { select: { name: "Ready" } },
-            "Asset Status": { select: { name: "Publish" } },
-          };
-          if (existingTextVideoAsset) {
-            assetId = existingTextVideoAsset.id.replace(/-/g, "");
-            await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
-              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: assetProps }),
-            });
-          } else {
-            assetProps["Asset Title"] = { title: [{ type: "text", text: { content: `${titleName} — Text Video`.slice(0, 200) } }] };
-            assetProps["Asset Type"] = { select: { name: "text video" } };
-            assetProps["Content Strategy"] = { relation: [{ id: dash(titleId) }] };
-            assetProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
-            const createResp = await fetch("https://api.notion.com/v1/pages", {
-              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-              body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
-            });
-            const created = await createResp.json();
-            if (!createResp.ok || !created.id) return json({ error: created.message || "Asset create failed" }, createResp.status || 500);
-            assetId = created.id.replace(/-/g, "");
-          }
-        } else {
-          // Already scripted — existingTextVideoAsset is the live Asset,
-          // no re-query needed (idempotent re-run, just re-confirm state).
-          assetId = existingTextVideoAsset.id.replace(/-/g, "");
         }
 
         await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
@@ -11980,7 +11970,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
         });
 
-        return json({ success: true, titleId, assetId, alreadyScripted });
+        return json({ success: true, titleId, assetIds, count: assetIds.length });
       }
 
       // ── generateExplainerScript ──
@@ -12138,6 +12128,71 @@ Return ONLY this JSON object, no other text, no markdown fences:
         });
 
         return json({ success: true, titleId, assetId, alreadyScripted });
+      }
+
+      // ── saveAssetDesignRef ──
+      // Attaches an optional sample-image reference + free-text design
+      // guidelines to a script Asset (avatar video / text video / explainer
+      // video) BEFORE the 🎬 render prompt is copied, so the chat-driven
+      // render skill (make-avatar-reel / make-reel-video / make-explainer-
+      // video) has something concrete to honor instead of inventing its own
+      // look. The image (if any) is committed straight to the repo — same
+      // GitHub-contents pattern as the carousel/slide-edit paths — since
+      // there's no other asset host wired into this Worker; Notion's "files"
+      // property then just points at that hosted URL as an external file.
+      if (body.action === "saveAssetDesignRef") {
+        const { assetId, campaignId, imageBase64, imageFilename, designNotes } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        if (!imageBase64 && !designNotes) return json({ error: "imageBase64 and/or designNotes required — nothing to save" }, 400);
+
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const properties = {};
+        let imageUrl = null;
+
+        if (imageBase64) {
+          if (!imageFilename) return json({ error: "imageFilename required alongside imageBase64" }, 400);
+          const GT = (env.GITHUB_TOKEN || '').trim();
+          if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+
+          let deployPath = 'campaign';
+          if (campaignId) {
+            const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+            const liveUrl = campPage?.properties?.["live site"]?.url || campPage?.properties?.["microsite"]?.url || "";
+            const deployMatch = liveUrl.match(/\/web\/([^\/?#]+)/) || liveUrl.match(/\/microsites\/([^\/?#]+)/);
+            const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+            deployPath = deployMatch ? deployMatch[1] : (slugify(campPage?.properties?.Name?.title?.map(t=>t.plain_text).join("")) || 'campaign');
+          }
+          const extMatch = imageFilename.match(/\.([a-zA-Z0-9]+)$/);
+          const ext = (extMatch ? extMatch[1] : 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+          const path = `web/${deployPath}/design-refs/${assetId}.${ext}`;
+
+          const REPO = "cabuzzard/dash", BRANCH = "main";
+          const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+          const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+          let sha = null;
+          if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
+          const putBody = { message: `Design reference for asset ${assetId}`, content: imageBase64, branch: BRANCH };
+          if (sha) putBody.sha = sha;
+          const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+            method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+          });
+          if (!putResp.ok) { const r = await putResp.json(); return json({ error: `GitHub commit failed (HTTP ${putResp.status}): ${r.message || 'unknown'}` }, 502); }
+          imageUrl = `https://cabuzzard.github.io/dash/${path}`;
+          properties["Images"] = { files: [{ name: imageFilename, type: "external", external: { url: imageUrl } }] };
+        }
+
+        if (designNotes) {
+          properties["Design Notes"] = { rich_text: [{ type: "text", text: { content: String(designNotes).slice(0, 1990) } }] };
+        }
+
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json(); return json({ error: r.message || "Failed to save to Asset record" }, patchResp.status); }
+
+        return json({ success: true, imageUrl });
       }
 
       return json({ error: "Unknown action" }, 400);

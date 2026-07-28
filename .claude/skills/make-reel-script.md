@@ -1,6 +1,6 @@
 # make-reel-script
 
-Turn one keyword + research reference into a **ready-to-film Reel script** (15–45s, one idea, one hook), grounded in the campaign's research and audience, built on a currently-converting hook/arc, and written into a Content Strategy title so it's ready to film and later hand to `make-reel-video`.
+Turn one keyword + research reference into a **ready-to-film Reel script** (45–65 spoken words, ~25–30s, one idea, one hook), grounded in the campaign's research and audience, built on a currently-converting hook/arc, and written into a Content Strategy title so it's ready to film and later hand to `make-reel-video`.
 
 This is the production skill for the **"Text Video"** Method (Notion Methods DB → "Text Video", id `38f1f7d3a4bb81669984e453292206e4`). That method's page body holds the framework (script structure, arc toolkit, production standards) **plus a "Growth Strategy (2026)" section** — read it, and the master [📈 Account Growth OS](https://app.notion.com/p/39a1f7d3a4bb818a8653e60a1b6cf6f7), before scripting. Reels are the discovery format (~55% non-follower views): engineer for **watch-completion + sends**, not likes — hook in the first 3s, on-screen text mirrors the spoken hook, campaign keywords placed in on-screen text + caption for SEO, and close on a `send this to…` / `comment [KEYWORD]` CTA.
 

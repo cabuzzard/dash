@@ -16,20 +16,24 @@ The render is a local Node/Remotion/ffmpeg pipeline that needs the ElevenLabs AP
 - **A background image** (JPG/PNG, vertical works best) — see Step 2 for how to source one.
 
 ## Inputs
-- **reel-script title** — a Content Strategy page produced by [make-reel-script] (has a "Voiceover script" section in its body), OR a raw script pasted by the user.
+- **reel-script Asset** — a Text Video Asset record (dashboard's "Generate Assets" now writes each script's full body onto its OWN Asset page, since a title can hold up to 5 distinct script assets at once), OR an older reel-script title (has a "Voiceover script" section in its body, from before the multi-script format), OR a raw script pasted by the user.
 - **voice** (optional) — default: pick an ElevenLabs voice matching the campaign's register (e.g. deep male "George" JBFqnCBsd6RMkjVDRZzb for a hard/operator brand; calm female "Rachel" 21m00Tcm4TlvDq8ikWAM for a softer one). The user can override ("use the Rachel voice").
 - **background** (optional) — a specific image path/URL, or let Step 2 source one.
 
 ## Workflow
 
 ### Step 0 — Get the voiceover script (Notion connector)
-Read the reel-script title's page body and extract the **"Voiceover script"** section only — the clean spoken prose. Do NOT include on-screen-text markup, shot notes, timestamps, or `[Hook]`-style labels; those break text-to-speech. If the user pasted a raw script, use that. Confirm the exact spoken text with the user before spending an ElevenLabs render.
+If handed a specific Asset record (the normal case — the dashboard's 🎬 button links to one), read **that Asset page's own body** and extract the **"Voiceover Script (to-camera)"** section — the clean spoken prose. Only fall back to the parent title's page body if the Asset page itself has no script section (an older asset predating the per-asset format). Do NOT include on-screen-text markup, shot notes, timestamps, or `[Hook]`-style labels; those break text-to-speech. If the user pasted a raw script, use that. Confirm the exact spoken text with the user before spending an ElevenLabs render.
+
+Also check the Asset record's **Design Notes** property and **Images** file property. If either is set, treat them as required direction, not suggestions:
+- **Design Notes** — palette/tone/do-and-don't guidance from the operator. Apply it to caption styling and Step 2's background choice, overriding your own default judgment where they conflict.
+- **Images** — a sample/reference image the operator attached. Use it as the background (skip Step 2's sourcing) unless it's clearly unsuitable (wrong orientation, too busy for captions) — say so before substituting your own.
 
 ### Step 1 — Pick the voice
 Choose an ElevenLabs voice ID that matches the campaign voice/avatar (read the campaign's register from its Research/Notes if unsure), or use the user's override.
 
 ### Step 2 — Get a background image
-In priority order: (a) an image the user provides; (b) if the reel's campaign/spec has a usable visual, export a still from its Canva design via the Canva MCP `export-design` and use that; (c) generate one with the Canva MCP `generate-design` (a mood-appropriate vertical background in the campaign's design-spec palette, minimal so captions stay legible) and export it; (d) otherwise ask the user for one. Save it as the background the render step expects.
+Skip this if Step 0 already found a usable Images attachment on the Asset. Otherwise, in priority order: (a) an image the user provides; (b) if the reel's campaign/spec has a usable visual, export a still from its Canva design via the Canva MCP `export-design` and use that; (c) generate one with the Canva MCP `generate-design` (a mood-appropriate vertical background in the campaign's design-spec palette, minimal so captions stay legible, honoring any Design Notes from Step 0) and export it; (d) otherwise ask the user for one. Save it as the background the render step expects.
 
 ### Step 3 — Render via the video-voiceover skill
 Hand the pieces to the **`video-voiceover`** skill and follow its steps exactly (it owns the Remotion mechanics):

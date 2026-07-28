@@ -35,6 +35,7 @@ Don't hand Hyperframes a bare topic — a generic explainer is forgettable, and 
 - If a **product** is linked: read its Strategy record (Strategy DB, `Product` relation contains the product, `Method` relation empty) — Customer, Pain Points, Emotions, Benefits, Unique Opportunity.
 - **Design Spec**: the campaign's attached spec — Background/Ink/Accent hex colors, Headline/Body fonts, Aesthetic Description. This is the palette/type Hyperframes should build in — never let it invent its own.
 - If starting from an existing title: read its page body for whatever script/outline is already there (hook, reframe, payoff beats, close/CTA, research references) — don't re-derive from scratch if it's already written.
+- Check the Asset record itself (Asset Type: explainer video) for **Design Notes** and an **Images** attachment — the operator may have attached a sample image / guidelines from the dashboard's 🎬 modal before copying this prompt. If present, these override the Design Spec/your own visual-metaphor instincts where they conflict (see Step 2).
 
 ### Step 1 — Write or confirm the script (per the method's Script Rules)
 If the title doesn't have a script yet, write one following the Explainer Video method's structure: **Hook (0-3s) → Reframe (3-8s) → Payoff (8s-end, one visual metaphor, beat-marked) → Close/CTA (last 2-3s)**. Every claim traces back to the Research reference gathered in Step 0 — no unsupported stats. Confirm the script with the user before spending render time.
@@ -43,7 +44,8 @@ If the title doesn't have a script yet, write one following the Explainer Video 
 Compose a brief for `/faceless-explainer` (or `/motion-graphics` for something shorter/simpler) that includes:
 - The script from Step 1, with its visual-beat markers.
 - Target duration and orientation (ask if unclear — 9:16 for Reels/Shorts/TikTok is the method's default; landscape for YouTube/LinkedIn).
-- The Design Spec's exact hex colors + font names.
+- The Design Spec's exact hex colors + font names — unless Step 0 found Design Notes, which take precedence over the spec for anything they explicitly address.
+- If Step 0 found an Images attachment, pass it to Hyperframes as a required visual reference (style board, mood, or literal element to incorporate) — don't invent a competing look.
 - Campaign keywords worked into on-screen text (SEO, same principle as carousels/text pics/avatar Reels).
 - One clear visual metaphor — not several competing ones.
 - "Keep it fast to render" for a first pass.

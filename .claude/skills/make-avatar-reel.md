@@ -29,14 +29,15 @@ Read the title's page body and extract, verbatim:
 - **Voiceover script (to-camera)** — clean spoken prose only. This drives both ElevenLabs and HeyGen; confirm it with the user before spending render credits on either (HeyGen bills per minute of output).
 - **Presenter character** note (persona description + suggested voice).
 - **On-screen text**, **Delivery cues**, **Callout / B-roll notes** — these drive Hyperframes' overlay pass in Step 4, not the avatar render itself.
-Also pull the campaign's **Design Spec** (colors/fonts) for the overlay styling.
+Also pull the campaign's **Design Spec** (colors/fonts) for the overlay styling, and check the Asset record itself (Asset Type: avatar video) for **Design Notes** and an **Images** attachment — the operator may have attached a sample image / guidelines from the dashboard's 🎬 modal before copying this prompt. If present, treat both as required direction (see Step 1).
 
 ### Step 1 — Source the presenter (reference image OR an existing HeyGen avatar)
-HeyGen Avatar IV animates from a **photo or illustration** — the Presenter character note is a text description, not an image, so one has to exist before you can render. There are three ways this gets satisfied, in priority order:
+HeyGen Avatar IV animates from a **photo or illustration** — the Presenter character note is a text description, not an image, so one has to exist before you can render. In priority order:
+- **The Asset record's Images attachment is set** (from Step 0) — use that image directly as the presenter reference; skip sourcing entirely. This is an explicit operator choice and wins over everything below. Apply any Design Notes text as additional constraints (palette, expression, styling) when you get to Step 3/4's overlay pass.
 - **User already has a live HeyGen avatar** (built in HeyGen's own avatar studio, e.g. a `create-v4` URL) — use its `avatar_id` directly via HeyGen's API. No reference image needs sourcing at all; skip straight to Step 3 using that ID. Save the avatar_id on the title ("Presenter avatar_id: <id>") so future reels for this campaign reuse the same one.
 - **Campaign already has a saved reference image** for this persona (a prior avatar title's render notes, a campaign asset, or something the user names) — reuse it.
-- **Neither exists** — generate one via the Canva MCP (`generate-design`) matching the Presenter character description + the Design Spec's palette — a clean, front-facing, well-lit portrait or illustration works best for lip-sync quality. Export it and save the link on the title's page ("Presenter reference image: <url>") so future avatar reels for this campaign reuse the exact same image — consistency compounds, don't regenerate a new face every time.
-- If the user supplies their own image, use that instead.
+- **Neither exists** — generate one via the Canva MCP (`generate-design`) matching the Presenter character description + the Design Spec's palette (and any Design Notes from Step 0) — a clean, front-facing, well-lit portrait or illustration works best for lip-sync quality. Export it and save the link on the title's page ("Presenter reference image: <url>") so future avatar reels for this campaign reuse the exact same image — consistency compounds, don't regenerate a new face every time.
+- If the user supplies their own image directly in chat, use that instead.
 
 ### Step 2 — Generate the voice track (ElevenLabs)
 Call ElevenLabs' text-to-speech API with the Voiceover script and the voice noted in Presenter character (or ask the user which voice — same voice-picking logic as `make-reel-video`: match the campaign's register). Save the resulting audio file locally; note its duration.

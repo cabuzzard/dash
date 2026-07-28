@@ -682,6 +682,31 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- GENERATE VIDEO PROMPT MODAL (avatar / text / explainer — the 🎬 button on a script asset row) -->
+<div class="modal-overlay" id="videoGenModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="videoGenModalTitle">Generate Video</div>
+      <button class="modal-close" onclick="closeVideoGenModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Both optional — give the render skill a concrete visual to match instead of letting it invent one. Saved to this Asset record, then baked into the copied prompt.</div>
+      <label class="lm-label" style="margin-top:14px;">Sample Image <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— presenter photo, style/mood reference, or background</span></label>
+      <input class="modal-ta" id="vgImageInput" type="file" accept="image/*" style="height:auto;padding:8px 10px;" />
+      <div id="vgImagePreviewWrap" style="display:none;margin-top:8px;">
+        <img id="vgImagePreview" style="max-width:100%;max-height:180px;border-radius:6px;border:1px solid #333;" />
+      </div>
+      <label class="lm-label" style="margin-top:14px;">Design Guidelines <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— palette, tone, do/don't notes</span></label>
+      <textarea class="modal-ta" id="vgDesignNotes" rows="4" placeholder="e.g. stick to the campaign's parchment/ink/brown palette; keep the presenter's expression calm, not hype-reel energy; avoid stock-photo look..." style="font-size:12px;line-height:1.5;resize:vertical;"></textarea>
+      <div class="modal-status" id="vgStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeVideoGenModal()">Cancel</button>
+      <button class="modal-btn save" id="vgCopyBtn" onclick="submitVideoGenModal()">Copy Prompt</button>
+    </div>
+  </div>
+</div>
+
 <!-- RENDER VIDEO MODAL -->
 <div class="modal-overlay" id="renderModal">
   <div class="modal" style="max-width:520px;">
@@ -1438,9 +1463,9 @@ async function loadTitles() {
           + (a.designLink ? `<a href="${esc(a.designLink)}" target="_blank" rel="noopener" style="color:#4488ff;text-decoration:none;font-size:11px;flex-shrink:0;" title="Design link">🎨</a>` : '')
           + (a.canvaLink ? `<a href="${esc(a.canvaLink)}" target="_blank" rel="noopener" style="color:#00C4CC;text-decoration:none;font-size:11px;flex-shrink:0;" title="Canva design (editable)">✏️</a>` : '')
           + (a.canvaLink ? `<button class="td-canva-sync" data-title="${esc(t.title)}" data-titleid="${t.id}" data-canvalink="${esc(a.canvaLink)}" onclick="syncFromCanva(this)" title="Copy a prompt to sync this Canva design's edits back into the carousel template — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #00C4CC;background:transparent;color:#00C4CC;border-radius:9px;cursor:pointer;flex-shrink:0;">↺ Sync</button>` : '')
-          + (a.type === 'avatar video' && !a.designLink ? `<button class="td-avatar-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="generateAvatarVideo(this)" title="Copy a prompt to render this script into a video (make-avatar-reel) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
-          + (a.type === 'text video' && !a.designLink ? `<button class="td-textvideo-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="generateTextVideo(this)" title="Copy a prompt to render this script into a video (make-reel-video) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
-          + (a.type === 'explainer video' && !a.designLink ? `<button class="td-explainer-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="generateExplainerVideo(this)" title="Copy a prompt to render this script into a video (make-explainer-video) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
+          + (a.type === 'avatar video' && !a.designLink ? `<button class="td-avatar-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="openVideoGenModal('avatar', this)" title="Attach a sample image / design guidelines (optional), then copy a prompt to render this script into a video (make-avatar-reel) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
+          + (a.type === 'text video' && !a.designLink ? `<button class="td-textvideo-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="openVideoGenModal('text', this)" title="Attach a sample image / design guidelines (optional), then copy a prompt to render this script into a video (make-reel-video) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
+          + (a.type === 'explainer video' && !a.designLink ? `<button class="td-explainer-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="openVideoGenModal('explainer', this)" title="Attach a sample image / design guidelines (optional), then copy a prompt to render this script into a video (make-explainer-video) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
           + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" style="flex-shrink:0;">↗</a>`
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset" style="flex-shrink:0;">✕</button>`;
         wrap.appendChild(ar);
@@ -4448,7 +4473,7 @@ const GA_SKILL_METHODS = [
   { test: /text pic/i,              skill: 'make-text-pic',      label: 'Text Pic',
     hint: 'Full production skill available — writes a hook-driven line and builds it as a real Canva image in the campaign\'s design spec.' },
   { test: /text video|short form video|\breel\b/i, workerAction: 'generateTextVideoScript', label: 'Text Video',
-    hint: 'Writes a faceless reel script (voiceover + on-screen text + shot notes) for this title and sets it to Publish — entirely in-dashboard, same as Carousel. The actual video render (ElevenLabs + Remotion) still needs a Claude Code chat; once the script is ready, use the 🎬 button on the asset row below.' },
+    hint: 'Writes 5 DISTINCT faceless reel scripts (different hooks, ~25-30s each) as 5 separate assets under this title and sets it to Publish — entirely in-dashboard, same as Carousel. Additive: running again adds another 5, it never overwrites. The actual video render (ElevenLabs + Remotion) still needs a Claude Code chat; once a script is ready, use the 🎬 button on its own asset row below.' },
   { test: /avatar/i,                workerAction: 'generateAvatarScript', label: 'Avatar Video',
     hint: 'Writes a presenter-to-camera script for this title and sets it to Publish — entirely in-dashboard, same as Carousel. The actual video render (HeyGen + Hyperframes) still needs a Claude Code chat; once the script is ready, use the 🎬 button on the asset row below.' },
   { test: /explainer video/i,       workerAction: 'generateExplainerScript', label: 'Explainer Video',
@@ -4850,53 +4875,101 @@ async function syncFromCanva(btn) {
   }
 }
 
-// Same reasoning as syncFromCanva: rendering an avatar video needs local
-// Hyperframes (bun/ffmpeg/headless Chrome) plus HeyGen + ElevenLabs calls —
-// a plain claude.ai web chat can't do any of that, only a Claude Code
-// session with Bash access can. Copies a ready-to-paste make-avatar-reel
-// task rather than opening a web link.
-async function generateAvatarVideo(btn) {
-  const title = btn.dataset.title, titleId = btn.dataset.titleid, assetId = btn.dataset.assetid;
-  const prompt = `Run make-avatar-reel for the Content Strategy title "${title}" (https://www.notion.so/${titleId}) — the script is already written on the title (Voiceover Script / On-Screen Text / Delivery Cues / Callout Notes / Presenter Character sections). Its Asset record is https://www.notion.so/${assetId} (Asset Type: avatar video). Render it, host the MP4, and update that same Asset record per the skill's Step 5.`;
-  try {
-    await navigator.clipboard.writeText(prompt);
-    const orig = btn.textContent;
-    btn.textContent = 'Copied ✓';
-    setTimeout(() => { btn.textContent = orig; }, 1400);
-  } catch(e) {
-    alert(prompt);
+// Same reasoning as syncFromCanva: rendering any of these three needs local
+// tooling (Hyperframes/Remotion + ffmpeg + HeyGen/ElevenLabs calls) — a
+// plain claude.ai web chat can't do any of that, only a Claude Code session
+// with Bash access can. These build the ready-to-paste render task; the
+// design-ref modal below (openVideoGenModal/submitVideoGenModal) is what
+// actually fires on the 🎬 button click, then calls one of these to build
+// the final prompt once any sample image + guidelines are saved.
+function buildVideoPrompt(kind, title, titleId, assetId, extra) {
+  const extraBlock = extra ? `\n\nDesign reference for this render (use it, don't invent your own): ${extra}` : '';
+  if (kind === 'avatar') {
+    return `Run make-avatar-reel for the Content Strategy title "${title}" (https://www.notion.so/${titleId}) — the script is already written on the title (Voiceover Script / On-Screen Text / Delivery Cues / Callout Notes / Presenter Character sections). Its Asset record is https://www.notion.so/${assetId} (Asset Type: avatar video). Render it, host the MP4, and update that same Asset record per the skill's Step 5.${extraBlock}`;
   }
+  if (kind === 'text') {
+    return `Run make-reel-video for the Content Strategy title "${title}" (https://www.notion.so/${titleId}) — the script is already written on this Asset record (https://www.notion.so/${assetId}, Asset Type: text video — Voiceover Script / On-Screen Text / Shot-B-Roll Notes / Caption / Hashtags sections; check the title page instead if this is an older asset predating the per-asset script format). Render it, host the MP4, and update that same Asset record per the skill's Step 4.${extraBlock}`;
+  }
+  return `Run make-explainer-video for the Content Strategy title "${title}" (https://www.notion.so/${titleId}) — the script is already written on the title (Voiceover Script / On-Screen Text / Visual Metaphor / Visual Beats / Research Notes / Caption / Hashtags sections). Its Asset record is https://www.notion.so/${assetId} (Asset Type: explainer video). Render it, host the MP4, and update that same Asset record per the skill's Step 5.${extraBlock}`;
 }
 
-// Same reasoning again: rendering a text video needs local Remotion/
-// ffmpeg plus an ElevenLabs call — only a Claude Code session with Bash
-// access can do that, not a plain claude.ai web chat.
-async function generateTextVideo(btn) {
-  const title = btn.dataset.title, titleId = btn.dataset.titleid, assetId = btn.dataset.assetid;
-  const prompt = `Run make-reel-video for the Content Strategy title "${title}" (https://www.notion.so/${titleId}) — the script is already written on the title (Voiceover Script / On-Screen Text / Shot-B-Roll Notes / Caption / Hashtags sections). Its Asset record is https://www.notion.so/${assetId} (Asset Type: text video). Render it, host the MP4, and update that same Asset record per the skill's Step 4.`;
-  try {
-    await navigator.clipboard.writeText(prompt);
-    const orig = btn.textContent;
-    btn.textContent = 'Copied ✓';
-    setTimeout(() => { btn.textContent = orig; }, 1400);
-  } catch(e) {
-    alert(prompt);
-  }
-}
+let VG_STATE = null;
+let VG_IMAGE_DATA = null; // { base64, filename } once a file is chosen
 
-// Same reasoning again: rendering an explainer video needs local
-// Hyperframes (bun/ffmpeg/headless Chrome) plus an ElevenLabs call — only
-// a Claude Code session with Bash access can do that.
-async function generateExplainerVideo(btn) {
-  const title = btn.dataset.title, titleId = btn.dataset.titleid, assetId = btn.dataset.assetid;
-  const prompt = `Run make-explainer-video for the Content Strategy title "${title}" (https://www.notion.so/${titleId}) — the script is already written on the title (Voiceover Script / On-Screen Text / Visual Metaphor / Visual Beats / Research Notes / Caption / Hashtags sections). Its Asset record is https://www.notion.so/${assetId} (Asset Type: explainer video). Render it, host the MP4, and update that same Asset record per the skill's Step 5.`;
+function openVideoGenModal(kind, btn) {
+  VG_STATE = { kind, title: btn.dataset.title, titleId: btn.dataset.titleid, assetId: btn.dataset.assetid, btn };
+  VG_IMAGE_DATA = null;
+  document.getElementById('videoGenModalTitle').textContent = 'Generate Video — ' + btn.dataset.title;
+  document.getElementById('vgImageInput').value = '';
+  document.getElementById('vgImagePreviewWrap').style.display = 'none';
+  document.getElementById('vgDesignNotes').value = '';
+  document.getElementById('vgStatus').textContent = '';
+  document.getElementById('vgCopyBtn').textContent = 'Copy Prompt';
+  document.getElementById('vgCopyBtn').disabled = false;
+  document.getElementById('videoGenModal').classList.add('open');
+}
+function closeVideoGenModal() {
+  document.getElementById('videoGenModal').classList.remove('open');
+  VG_STATE = null; VG_IMAGE_DATA = null;
+}
+document.getElementById('vgImageInput')?.addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  const wrap = document.getElementById('vgImagePreviewWrap');
+  const img = document.getElementById('vgImagePreview');
+  if (!file) { wrap.style.display = 'none'; VG_IMAGE_DATA = null; return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = reader.result; // "data:image/png;base64,AAAA..."
+    const base64 = String(dataUrl).split(',')[1] || '';
+    VG_IMAGE_DATA = { base64, filename: file.name };
+    img.src = dataUrl;
+    wrap.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+});
+async function submitVideoGenModal() {
+  if (!VG_STATE) return;
+  const { kind, title, titleId, assetId, btn } = VG_STATE;
+  const designNotes = document.getElementById('vgDesignNotes').value.trim();
+  const status = document.getElementById('vgStatus');
+  const copyBtn = document.getElementById('vgCopyBtn');
+  let extraForPrompt = '';
+
+  if (VG_IMAGE_DATA || designNotes) {
+    copyBtn.disabled = true; copyBtn.textContent = 'Saving…';
+    status.style.color = '#888'; status.textContent = 'Saving to the Asset record…';
+    try {
+      const r = await w('saveAssetDesignRef', {
+        assetId,
+        campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID,
+        imageBase64: VG_IMAGE_DATA ? VG_IMAGE_DATA.base64 : undefined,
+        imageFilename: VG_IMAGE_DATA ? VG_IMAGE_DATA.filename : undefined,
+        designNotes: designNotes || undefined,
+      });
+      if (r.error) throw new Error(r.error);
+      const parts = [];
+      if (r.imageUrl) parts.push(`sample image ${r.imageUrl}`);
+      if (designNotes) parts.push(`design guidelines "${designNotes}"`);
+      extraForPrompt = parts.join('; ');
+    } catch(e) {
+      status.style.color = '#fc8181';
+      status.textContent = 'Error saving: ' + e.message + ' — copying prompt without it.';
+      copyBtn.disabled = false; copyBtn.textContent = 'Copy Prompt';
+    }
+  }
+
+  const prompt = buildVideoPrompt(kind, title, titleId, assetId, extraForPrompt);
   try {
     await navigator.clipboard.writeText(prompt);
-    const orig = btn.textContent;
-    btn.textContent = 'Copied ✓';
-    setTimeout(() => { btn.textContent = orig; }, 1400);
+    status.style.color = '#68d391';
+    status.textContent = '✓ Copied — paste into a Claude Code chat.';
+    if (btn) { const orig = 'Copied ✓'; btn.textContent = orig; setTimeout(() => { btn.textContent = '🎬 Generate video'; }, 1400); }
+    copyBtn.textContent = 'Copied ✓';
+    setTimeout(closeVideoGenModal, 1200);
   } catch(e) {
     alert(prompt);
+  } finally {
+    copyBtn.disabled = false;
   }
 }
 
@@ -4937,7 +5010,9 @@ async function submitGenAssets() {
     const isExplainerScript = skillMatch.workerAction === 'generateExplainerScript';
     const isScriptOnly = isAvatarScript || isTextVideoScript || isExplainerScript;
     btn.textContent = isScriptOnly ? 'Writing…' : 'Rendering…';
-    status.textContent = isScriptOnly
+    status.textContent = isTextVideoScript
+      ? 'Writing 5 distinct scripts (different hooks) and saving each as its own asset. Video rendering is a separate step per script, after this.'
+      : isScriptOnly
       ? 'Writing the script and saving it to this title. Video rendering is a separate step, after this.'
       : 'Writing slide script (if needed) and rendering 7 slides, one at a time — can take a couple of minutes if Cloudflare rate-limits the render calls. Leave this open.';
     try {
@@ -4962,7 +5037,13 @@ async function submitGenAssets() {
         await loadTitles();
         // No auto-close here — the researched presenter is worth reading
         // before the modal disappears.
-      } else if (isTextVideoScript || isExplainerScript) {
+      } else if (isTextVideoScript) {
+        status.textContent = `✓ Wrote ${r.count || 0} new script${(r.count || 0) === 1 ? '' : 's'}, saved, and set to Publish — use the 🎬 button on each asset row below to render its video. Run Generate again anytime for another batch of 5.`;
+        status.style.color = '#68d391';
+        btn.textContent = 'Done';
+        await loadTitles();
+        setTimeout(closeGenAssetsModal, 3000);
+      } else if (isExplainerScript) {
         status.textContent = r.alreadyScripted
           ? '✓ Script already existed — confirmed the asset and title status.'
           : '✓ Script written, saved, and set to Publish — use the 🎬 button on the asset row below to render the video.';
