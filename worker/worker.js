@@ -12489,25 +12489,22 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         return json({ success: true, titleId, assetIds, count: assetIds.length });
       }
 
-      // ── generateVisualBriefPrompt / generateVisualManifestPrompt ──
-      // Two related handoff-prompt generators sharing one context-gathering
-      // pass: gather the completed Asset Package (final slide/scene text,
-      // Asset Spec, Production Spec — all already written to Notion by
+      // ── gatherAssetProductionContext ──
+      // Shared context-gathering pass used by generateVisualBriefPrompt,
+      // generateVisualManifestPrompt, and assembleAsset: reads the
+      // completed Asset Package (final slide/scene text, Asset Spec,
+      // Production Spec — all already written to Notion by
       // generateCarouselPreview/generateTextVideoScript), campaign/research
       // context, and the resolved Design Spec ("globals" in this system —
-      // there's no separate brand/series/character-global tier), then
-      // populate the fixed ChatGPT template each action calls for. Brief =
-      // the one-shot Visual Director handoff; Manifest = the persistent
-      // Visual Production Brief document meant to be maintained across a
-      // whole approval cycle and returned for assembly once done. Neither
-      // calls an LLM or writes to Notion — the frontend copies the result
-      // straight to the clipboard. Only carousel/text video assets have a
-      // structured Asset Spec/Production Spec today (the two Live
-      // methods), so other asset types get a clear validation error
-      // instead of a half-populated prompt.
-      if (body.action === "generateVisualBriefPrompt" || body.action === "generateVisualManifestPrompt") {
+      // there's no separate brand/series/character-global tier). Only
+      // carousel/text video assets have a structured Asset Spec/Production
+      // Spec today (the two Live methods), so other asset types come back
+      // not-ready instead of half-populated. Returns { ok:false, error,
+      // status } on failure, else { ok:true, ...everything the three
+      // callers need }.
+      async function gatherAssetProductionContext(body) {
         const { assetId, titleId, campaignId } = body;
-        if (!assetId || !titleId || !campaignId) return json({ error: "assetId, titleId, and campaignId required" }, 400);
+        if (!assetId || !titleId || !campaignId) return { ok: false, error: "assetId, titleId, and campaignId required", status: 400 };
 
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
@@ -12517,19 +12514,22 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
           fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json()),
           fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
         ]);
-        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
-        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
-        if (!campPage.properties) return json({ error: campPage.message || "Campaign not found" }, 404);
+        if (!assetPage.properties) return { ok: false, error: assetPage.message || "Asset not found", status: 404 };
+        if (!titlePage.properties) return { ok: false, error: titlePage.message || "Title not found", status: 404 };
+        if (!campPage.properties) return { ok: false, error: campPage.message || "Campaign not found", status: 404 };
 
         const assetType = assetPage.properties["Asset Type"]?.select?.name || "";
         const assetName = assetPage.properties["Asset Title"]?.title?.map(t => t.plain_text).join("") || "Untitled";
         const titleName = titlePage.properties.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
         const campaignName = campPage.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
         const platformProp = assetPage.properties["Platform Name"]?.select?.name || "";
+        const designLink = assetPage.properties["Design Link"]?.url || "";
+        const imagesFile = (assetPage.properties["Images"]?.files || [])[0];
+        const imagesUrl = imagesFile ? (imagesFile.external?.url || imagesFile.file?.url || '') : '';
         const productId = (titlePage.properties.product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
 
         if (assetType !== "carousel" && assetType !== "text video") {
-          return json({ error: `Visual Brief/Manifest generation isn't available for "${assetType || 'this'}" assets yet — only carousel and text video generate a structured Asset Spec / Production Spec today.`, validation: { handoff_ready: false } }, 400);
+          return { ok: false, error: `Not available for "${assetType || 'this'}" assets yet — only carousel and text video generate a structured Asset Spec / Production Spec today.`, status: 400, validation: { handoff_ready: false } };
         }
 
         // ── Fetch & bucket the page body that holds the Asset Package.
@@ -12602,11 +12602,12 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         const contentFoundationParts = [`Working title: ${titleName}`, sectionText('Content Summary'), sectionText('Hook Package')].filter(Boolean);
         const contentFoundation = contentFoundationParts.join('\n\n');
 
-        // Small regex pull for the individual ASSET INFORMATION fields —
-        // the underlying data is already "Label: value" text this same
-        // action just read back (Content Summary / Asset Metadata lines).
+        // Small regex pull for individual fields — the underlying data is
+        // already "Label: value" text this same pass just read back
+        // (Content Summary / Asset Metadata / SEO-Publishing lines).
         const extractField = (text, label) => { const m = new RegExp(`${label}:\\s*([^|\\n]+)`, 'i').exec(text || ''); return m ? m[1].trim() : ''; };
         const metaSearchText = [sectionText('Content Summary'), sectionText('Asset Metadata')].join(' | ');
+        const seoPublishingText = [sectionText('SEO / Publishing'), sectionText('Publishing Assets')].join(' | ');
         const targetAudience = extractField(metaSearchText, 'Audience') || extractField(metaSearchText, 'Target audience') || '';
         const funnelStage = extractField(metaSearchText, 'Funnel stage') || '';
         const primaryGoal = extractField(metaSearchText, 'Primary goal') || '';
@@ -12616,6 +12617,8 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         const aspectRatio = assetType === 'carousel' ? '4:5 (1080x1350)' : '9:16 (1080x1920)';
         const targetResolution = aspectRatio.match(/\(([^)]+)\)/)?.[1] || '';
         const targetDuration = assetType === 'carousel' ? 'Not applicable (static carousel)' : (extractField(metaSearchText, 'Target duration') || '~25-30s');
+        const description = extractField(seoPublishingText, 'Description') || '';
+        const altText = extractField(seoPublishingText, 'Alt text') || '';
 
         // ── Research context ──
         const researchRaw = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
@@ -12631,6 +12634,7 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         // same helper generateTextVideoScript/generateCarouselPreview use.
         const strategyBlock = await fetchStrategyForGrading(hdr, dash(campaignId), productId ? dash(productId) : null, !!productId);
         const campaignInformation = [`Campaign: ${campaignName}`, strategyBlock].filter(Boolean).join('\n');
+        const campaignLiveUrl = campPage.properties?.["live site"]?.url || campPage.properties?.["microsite"]?.url || "";
 
         // ── Resolved globals — this system's only "global" tier today is
         // the campaign/product Design Spec (no separate brand/asset-type/
@@ -12693,10 +12697,82 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
             !validation.asset_spec_present ? 'Asset Spec' : '',
             !validation.production_spec_present ? 'Production Spec' : '',
           ].filter(Boolean).join(', ');
-          return json({ error: `Can't generate a Visual Brief/Manifest yet — missing: ${missing}. Regenerate this asset with the current Generate Assets flow first.`, validation }, 400);
+          return { ok: false, error: `Missing: ${missing}. Regenerate this asset with the current Generate Assets flow first.`, status: 400, validation };
         }
 
         const np = v => v || 'Not provided';
+        return {
+          ok: true, dash, hdr, assetPage, titlePage, campPage,
+          assetId, titleId, campaignId, assetType, assetName, titleName, campaignName,
+          designLink, imagesUrl, sections, sectionText, findSection, slideOrSceneSections, extractField,
+          finalWrittenAsset, completeAssetSpec, completeProductionSpec, contentFoundation,
+          targetAudience, funnelStage, primaryGoal, ctaGoal, desiredViewerAction, platform,
+          aspectRatio, targetResolution, targetDuration, description, altText,
+          relevantResearchContext, campaignInformation, campaignLiveUrl,
+          resolvedSpec, resolvedGlobalInstructions, sourceGlobalRefs, specRelId,
+          existingAssetsList, existingVisualAssets, validation, np,
+        };
+      }
+
+      // Adds any of `neededProps` that don't already exist on the Assets DB
+      // — Notion's PATCH /v1/databases/{id} accepts new property
+      // definitions alongside existing ones, so this only ever adds,
+      // never touches or removes what's already there. Used by
+      // assembleAsset to provision its publishing fields on first use.
+      async function ensureAssetsDbProperties(hdr, neededProps) {
+        const dbResp = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, { headers: hdr }).then(r => r.json());
+        const existing = dbResp.properties || {};
+        const toAdd = {};
+        for (const [name, def] of Object.entries(neededProps)) {
+          if (existing[name]) continue;
+          if (def.type === 'rich_text') toAdd[name] = { rich_text: {} };
+          else if (def.type === 'url') toAdd[name] = { url: {} };
+          else if (def.type === 'date') toAdd[name] = { date: {} };
+          else if (def.type === 'select') toAdd[name] = { select: { options: (def.options || []).map(o => ({ name: o })) } };
+        }
+        if (Object.keys(toAdd).length) {
+          const patchResp = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: toAdd }),
+          });
+          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); throw new Error(`Failed to add Assets DB properties: ${r.message || patchResp.status}`); }
+        }
+      }
+      const ASSEMBLE_PROPS = {
+        "Publishing":              { type: "select", options: ["Not Started", "Ready to Publish", "Scheduled", "Published"] },
+        "Final Media File":        { type: "url" },
+        "Post Caption":            { type: "rich_text" },
+        "Platform Title":          { type: "rich_text" },
+        "Description":             { type: "rich_text" },
+        "Hashtags":                { type: "rich_text" },
+        "Alt Text":                { type: "rich_text" },
+        "Thumbnail":               { type: "url" },
+        "Publishing Date":         { type: "date" },
+        "Channel":                 { type: "rich_text" },
+        "Link or CTA":             { type: "url" },
+        "Source References":      { type: "rich_text" },
+        "Visual Production Brief": { type: "rich_text" },
+        "Assembly Review Page":    { type: "url" },
+      };
+
+      // ── generateVisualBriefPrompt / generateVisualManifestPrompt ──
+      // Populate a fixed ChatGPT template from gatherAssetProductionContext.
+      // Brief = the one-shot Visual Director handoff; Manifest = the
+      // persistent Visual Production Brief document meant to be maintained
+      // across a whole approval cycle and returned for assembly once done.
+      // Neither calls an LLM or writes to Notion — the frontend copies the
+      // result straight to the clipboard.
+      if (body.action === "generateVisualBriefPrompt" || body.action === "generateVisualManifestPrompt") {
+        const ctx = await gatherAssetProductionContext(body);
+        if (!ctx.ok) return json({ error: ctx.error, validation: ctx.validation }, ctx.status);
+        const {
+          assetId, titleId, campaignId, assetType, assetName, titleName, campaignName,
+          finalWrittenAsset, completeAssetSpec, completeProductionSpec, contentFoundation,
+          targetAudience, funnelStage, primaryGoal, ctaGoal, desiredViewerAction, platform,
+          aspectRatio, targetResolution, targetDuration,
+          relevantResearchContext, campaignInformation,
+          resolvedGlobalInstructions, sourceGlobalRefs, existingVisualAssets, validation, np, sectionText,
+        } = ctx;
 
         if (body.action === "generateVisualManifestPrompt") {
           const assetMetadataBlock = [
@@ -13350,6 +13426,206 @@ None identified — this system has a single-tier Design Spec (no separate brand
 Now create the complete Visual Brief Package.`;
 
         return json({ success: true, assetId, titleId, campaignId, assetType, prompt, validation, kind: 'brief' });
+      }
+
+      // ── assembleAsset ──
+      // The final step after the operator has run the Visual Brief/
+      // Manifest through ChatGPT, produced the approved visuals, and
+      // pasted the completed Visual Production Brief back into this
+      // Asset's "Visual Production Brief" field in Notion. Assembles a
+      // hosted review page (final media + a QA checklist + all the
+      // publishing metadata pulled from the Asset Package) and writes the
+      // publishing fields onto the Asset record — creating any of those
+      // Notion properties that don't exist yet. Doesn't render or
+      // generate any new media itself — it packages what's already been
+      // produced (carousel PNGs from generateCarouselPreview, or an MP4
+      // hosted by the make-reel-video skill) for final review/handoff.
+      if (body.action === "assembleAsset") {
+        const { publishingDate } = body;
+        const ctx = await gatherAssetProductionContext(body);
+        if (!ctx.ok) return json({ error: ctx.error, validation: ctx.validation }, ctx.status);
+        const {
+          dash, hdr, assetPage, assetId, titleId, campaignId, assetType, assetName, titleName,
+          designLink, imagesUrl, slideOrSceneSections, sectionText,
+          platform, description, altText, relevantResearchContext, campaignLiveUrl, np,
+        } = ctx;
+
+        const visualBrief = (assetPage.properties["Visual Production Brief"]?.rich_text || []).map(t => t.plain_text).join("");
+        if (!visualBrief.trim()) {
+          return json({ error: 'Paste the completed Visual Production Brief (ChatGPT\'s output) into this Asset\'s "Visual Production Brief" field in Notion before assembling.', validation: { visual_brief_present: false } }, 400);
+        }
+        if (!designLink) {
+          return json({ error: "No rendered media yet on this Asset's Design Link — carousel renders automatically at generation time; text video needs the make-reel-video MP4 hosting step first." }, 400);
+        }
+
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
+
+        await ensureAssetsDbProperties(hdr, ASSEMBLE_PROPS);
+
+        const postCaption = sectionText('Caption');
+        const hashtags = sectionText('Hashtags');
+        const finalDescription = description || postCaption;
+        const finalAltText = altText || '';
+        const platformTitle = titleName;
+        const channel = platform || '';
+        const linkOrCta = campaignLiveUrl || '';
+        const sourceReferences = relevantResearchContext;
+        const slideCount = slideOrSceneSections.length;
+
+        // Thumbnail: derive slide 1 from a carousel's hosted gallery
+        // folder (Design Link IS that folder); Text Video has no frame-
+        // extraction capability in this Worker, so fall back to whatever
+        // reference Image the operator attached, if any.
+        let thumbnail = '';
+        if (assetType === 'carousel' && designLink) {
+          thumbnail = designLink.replace(/\/?$/, '/') + 'slide-01.png';
+        } else if (imagesUrl) {
+          thumbnail = imagesUrl;
+        }
+
+        // ── Build & host the assembly review page ──
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const assetSlug = slugify(assetName) || 'asset';
+        const reviewPath = `web/${deployPath}/assembled/${assetSlug}`;
+        const esc2 = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+        const mediaHtml = assetType === 'carousel'
+          ? `<div class="slides">${Array.from({ length: slideCount || 0 }, (_, i) => `<img src="${esc2(designLink)}slide-${String(i + 1).padStart(2, '0')}.png" alt="Slide ${i + 1}" loading="lazy">`).join('')}</div>`
+          : `<video controls preload="metadata" src="${esc2(designLink)}"></video>`;
+
+        const metaRows = [
+          ['Asset Type', assetType], ['Platform Title', platformTitle], ['Channel', channel || 'Not set'],
+          ['Post Caption', postCaption], ['Description', finalDescription], ['Hashtags', hashtags],
+          ['Alt Text', finalAltText], ['Link / CTA', linkOrCta || 'Not set'],
+          ['Publishing Date', publishingDate || 'Not set'], ['Source References', sourceReferences],
+        ];
+
+        const CHECKLIST_ITEMS = [
+          'Spelling', 'Cropped text', 'Safe margins', 'Slide order',
+          'Voiceover synchronization', 'Caption timing', 'Image quality',
+          'Aspect ratio', 'CTA accuracy', 'Branding', 'Duration', 'Platform requirements',
+        ];
+
+        const pageHtml = `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>${esc2(assetName)} — Assembly Review</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#0e0e11; color:#e6e6e6; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; line-height:1.5; }
+  header { padding:24px 28px; border-bottom:1px solid #262626; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+  header h1 { font-size:18px; margin:0 0 4px; }
+  header .sub { font-size:12px; color:#888; }
+  header a { color:#a78bfa; text-decoration:none; font-size:12px; margin-left:14px; }
+  main { max-width:960px; margin:0 auto; padding:28px; display:grid; gap:28px; }
+  section { background:#16161a; border:1px solid #262626; border-radius:8px; padding:20px 22px; }
+  section h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:#999; margin:0 0 16px; }
+  .slides { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px; }
+  .slides img { width:100%; border-radius:4px; border:1px solid #2a2a2a; }
+  video { width:100%; max-width:400px; border-radius:6px; display:block; margin:0 auto; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  table td { padding:8px 10px; vertical-align:top; border-bottom:1px solid #222; }
+  table td:first-child { color:#999; width:160px; white-space:nowrap; }
+  .checklist { display:grid; gap:8px; }
+  .checklist label { display:flex; align-items:center; gap:10px; font-size:13px; padding:6px 8px; border-radius:5px; cursor:pointer; }
+  .checklist label:hover { background:#1e1e23; }
+  .checklist input { width:16px; height:16px; accent-color:#68d391; }
+  .checklist .done { color:#68d391; text-decoration:line-through; opacity:.7; }
+  footer { text-align:center; color:#555; font-size:11px; padding:20px; }
+</style>
+</head><body>
+<header>
+  <div>
+    <h1>${esc2(assetName)}</h1>
+    <div class="sub">${esc2(assetType)}</div>
+  </div>
+  <div>
+    <a href="https://www.notion.so/${assetId}" target="_blank" rel="noopener">↗ Notion</a>
+    <a href="${esc2(designLink)}" target="_blank" rel="noopener">↗ Final media</a>
+  </div>
+</header>
+<main>
+  <section>
+    <h2>Final Media</h2>
+    ${mediaHtml}
+  </section>
+  <section>
+    <h2>Publishing Metadata</h2>
+    <table>${metaRows.map(([k, v]) => `<tr><td>${esc2(k)}</td><td>${esc2(v).replace(/\n/g, '<br>')}</td></tr>`).join('')}</table>
+  </section>
+  <section>
+    <h2>QA Checklist</h2>
+    <div class="checklist" id="checklist"></div>
+  </section>
+</main>
+<footer>Assembly review page — auto-generated, not indexed. Checklist state saves locally in this browser.</footer>
+<script>
+  var ITEMS = ${JSON.stringify(CHECKLIST_ITEMS)};
+  var KEY = 'assemble-checklist-${assetId}';
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch(e) {}
+  var wrap = document.getElementById('checklist');
+  ITEMS.forEach(function(item) {
+    var label = document.createElement('label');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!state[item];
+    var span = document.createElement('span');
+    span.textContent = item;
+    if (cb.checked) span.className = 'done';
+    cb.onchange = function() {
+      state[item] = cb.checked;
+      span.className = cb.checked ? 'done' : '';
+      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e) {}
+    };
+    label.appendChild(cb); label.appendChild(span);
+    wrap.appendChild(label);
+  });
+</script>
+</body></html>`;
+
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+        const filePath = `${reviewPath}/index.html`;
+        const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${filePath}?ref=${BRANCH}`, { headers: gh });
+        let sha = null;
+        if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
+        const putBody = { message: `Assembly review: ${assetName}`, content: toB64Text(pageHtml), branch: BRANCH };
+        if (sha) putBody.sha = sha;
+        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${filePath}`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+        });
+        if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || putResp.status}` }, 500); }
+        const reviewUrl = `https://cabuzzard.github.io/dash/${reviewPath}/`;
+
+        // ── Write the publishing fields onto the Asset ──
+        const props = {
+          "Publishing": { select: { name: "Ready to Publish" } },
+          "Final Media File": { url: designLink },
+          "Post Caption": { rich_text: [{ text: { content: postCaption.slice(0, 1990) } }] },
+          "Platform Title": { rich_text: [{ text: { content: platformTitle.slice(0, 1990) } }] },
+          "Description": { rich_text: [{ text: { content: finalDescription.slice(0, 1990) } }] },
+          "Hashtags": { rich_text: [{ text: { content: hashtags.slice(0, 1990) } }] },
+          "Alt Text": { rich_text: [{ text: { content: finalAltText.slice(0, 1990) } }] },
+          "Thumbnail": { url: thumbnail || null },
+          "Channel": { rich_text: [{ text: { content: channel.slice(0, 1990) } }] },
+          "Link or CTA": { url: linkOrCta || null },
+          "Source References": { rich_text: [{ text: { content: sourceReferences.slice(0, 1990) } }] },
+          "Assembly Review Page": { url: reviewUrl },
+        };
+        if (publishingDate) props["Publishing Date"] = { date: { start: publishingDate } };
+
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to write assembled fields to Asset", reviewUrl }, patchResp.status); }
+
+        return json({ success: true, assetId, reviewUrl, fieldsWritten: Object.keys(props) });
       }
 
       // ── generateExplainerScript ──
