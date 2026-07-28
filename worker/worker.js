@@ -12489,21 +12489,23 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         return json({ success: true, titleId, assetIds, count: assetIds.length });
       }
 
-      // ── generateVisualBriefPrompt ──
-      // Assembles the "ChatGPT Visual Brief Handoff Prompt" for a single
-      // Asset — gathers the completed Asset Package (final slide/scene
-      // text, Asset Spec, Production Spec — all already written to Notion
-      // by generateCarouselPreview/generateTextVideoScript), campaign/
-      // research context, and the resolved Design Spec ("globals" in this
-      // system — there's no separate brand/series/character-global tier),
-      // then populates the fixed ChatGPT template. Does NOT call an LLM
-      // and does NOT write anything back to Notion — the frontend copies
-      // the returned prompt straight to the clipboard for the operator to
-      // paste into ChatGPT. Only carousel/text video assets have a
+      // ── generateVisualBriefPrompt / generateVisualManifestPrompt ──
+      // Two related handoff-prompt generators sharing one context-gathering
+      // pass: gather the completed Asset Package (final slide/scene text,
+      // Asset Spec, Production Spec — all already written to Notion by
+      // generateCarouselPreview/generateTextVideoScript), campaign/research
+      // context, and the resolved Design Spec ("globals" in this system —
+      // there's no separate brand/series/character-global tier), then
+      // populate the fixed ChatGPT template each action calls for. Brief =
+      // the one-shot Visual Director handoff; Manifest = the persistent
+      // Visual Production Brief document meant to be maintained across a
+      // whole approval cycle and returned for assembly once done. Neither
+      // calls an LLM or writes to Notion — the frontend copies the result
+      // straight to the clipboard. Only carousel/text video assets have a
       // structured Asset Spec/Production Spec today (the two Live
       // methods), so other asset types get a clear validation error
       // instead of a half-populated prompt.
-      if (body.action === "generateVisualBriefPrompt") {
+      if (body.action === "generateVisualBriefPrompt" || body.action === "generateVisualManifestPrompt") {
         const { assetId, titleId, campaignId } = body;
         if (!assetId || !titleId || !campaignId) return json({ error: "assetId, titleId, and campaignId required" }, 400);
 
@@ -12527,7 +12529,7 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         const productId = (titlePage.properties.product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
 
         if (assetType !== "carousel" && assetType !== "text video") {
-          return json({ error: `Visual Brief Handoff isn't available for "${assetType || 'this'}" assets yet — only carousel and text video generate a structured Asset Spec / Production Spec today.`, validation: { handoff_ready: false } }, 400);
+          return json({ error: `Visual Brief/Manifest generation isn't available for "${assetType || 'this'}" assets yet — only carousel and text video generate a structured Asset Spec / Production Spec today.`, validation: { handoff_ready: false } }, 400);
         }
 
         // ── Fetch & bucket the page body that holds the Asset Package.
@@ -12691,10 +12693,302 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
             !validation.asset_spec_present ? 'Asset Spec' : '',
             !validation.production_spec_present ? 'Production Spec' : '',
           ].filter(Boolean).join(', ');
-          return json({ error: `Can't generate a Visual Brief Handoff yet — missing: ${missing}. Regenerate this asset with the current Generate Assets flow first.`, validation }, 400);
+          return json({ error: `Can't generate a Visual Brief/Manifest yet — missing: ${missing}. Regenerate this asset with the current Generate Assets flow first.`, validation }, 400);
         }
 
         const np = v => v || 'Not provided';
+
+        if (body.action === "generateVisualManifestPrompt") {
+          const assetMetadataBlock = [
+            `Asset ID: ${assetId}`, `Asset Name: ${assetName}`, `Asset Type: ${assetType}`,
+            `Platform: ${np(platform)}`, `Aspect Ratio: ${aspectRatio}`, `Resolution: ${np(targetResolution)}`,
+            `Target Duration: ${targetDuration}`, `Target Audience: ${np(targetAudience)}`, `Funnel Stage: ${np(funnelStage)}`,
+            `Primary Goal: ${np(primaryGoal)}`, `CTA Goal: ${np(ctaGoal)}`, `Desired Viewer Action: ${np(desiredViewerAction)}`,
+          ].join('\n');
+          const contentSummaryRaw = sectionText('Content Summary');
+          const manifestPrompt = `VISUAL PRODUCTION BRIEF
+
+You are the Visual Director and Art Department for this content production system.
+
+The writing phase is complete.
+
+The Asset Package and Production Specification are complete.
+
+Your responsibility is to create and maintain the Visual Production Brief.
+
+This document will become the permanent visual production record used during assembly.
+
+Treat the supplied Asset Package and Production Specification as the source of truth.
+
+Do not rewrite the written content.
+
+Do not modify the Production Specification.
+
+Your responsibilities are:
+
+1. Review the complete production package.
+
+2. Create an overall Visual Strategy.
+
+3. Determine the best visual treatment for every slide or scene.
+
+4. Create a complete Visual Production Brief.
+
+5. Generate or retrieve visual assets as required.
+
+6. Revise assets until approved.
+
+7. Continuously update this Visual Production Brief with approved assets.
+
+8. When every asset is approved, mark the Visual Production Brief as Ready For Assembly.
+
+======================================================================
+CONTENT PACKAGE
+===============
+
+# Asset Metadata
+
+${assetMetadataBlock}
+
+---
+
+# Research
+
+${np(relevantResearchContext)}
+
+---
+
+# Content Summary
+
+${np(contentSummaryRaw)}
+
+---
+
+# Final Written Asset
+
+${np(finalWrittenAsset)}
+
+---
+
+# Asset Specification
+
+${np(completeAssetSpec)}
+
+---
+
+# Production Specification
+
+${np(completeProductionSpec)}
+
+---
+
+# Campaign Information
+
+${np(campaignInformation)}
+
+---
+
+# Series Information
+
+Not provided — this system doesn't track a separate Series layer.
+
+---
+
+# Assigned Globals
+
+RESOLVED INSTRUCTIONS:
+${resolvedGlobalInstructions}
+
+SOURCE:
+${sourceGlobalRefs.join('\n')}
+
+---
+
+# Existing Visual Assets
+
+${np(existingVisualAssets)}
+
+---
+
+# Brand Assets
+
+Not provided — this system doesn't track a separate Brand Assets library; see Assigned Globals for brand palette/typography direction and Existing Visual Assets for reusable approved assets.
+
+======================================================================
+CREATE THE VISUAL PRODUCTION BRIEF
+==================================
+
+Return the following sections.
+
+# 1. Visual Strategy
+
+Summarize:
+
+* Overall visual concept
+* Visual narrative
+* Visual pacing
+* Recurring motifs
+* Brand consistency
+* Series consistency
+* Asset reuse opportunities
+* Production risks
+
+---
+
+# 2. Visual Production Brief
+
+Create one section for every slide or scene.
+
+Each section must contain:
+
+### Slide / Scene Number
+
+### Slide / Scene Role
+
+### Content Objective
+
+### Visual Purpose
+
+### Visual Treatment
+
+Choose exactly one:
+
+* Generated Illustration
+* Existing Brand Asset
+* Icon
+* Diagram
+* Screenshot
+* Stock Footage
+* Background Texture
+* Text Only
+
+### Production Action
+
+Choose exactly one:
+
+* Generate
+* Retrieve
+* Reuse
+* Edit Existing
+* Capture Screenshot
+* License Stock
+* No Asset Required
+
+### Visual Description
+
+### Primary Subject
+
+### Supporting Subjects
+
+### Information Being Communicated
+
+### Composition
+
+### Camera Angle (if applicable)
+
+### Crop
+
+### Foreground
+
+### Midground
+
+### Background
+
+### Emotion
+
+### Mood
+
+### Information Density
+
+### Visual Complexity
+
+### Text Safe Areas
+
+### Caption Safe Areas
+
+### Platform Safe Areas
+
+### Aspect Ratio
+
+### Output Format
+
+### Applied Globals
+
+### Existing Asset Reference
+
+### Image Generation Prompt
+
+(Only if Production Action = Generate)
+
+### Asset Filename
+
+(Leave blank until generated)
+
+### Asset Status
+
+One of:
+
+* Planned
+* Generating
+* Revision Required
+* Approved
+* Ready For Assembly
+
+### Approval Criteria
+
+---
+
+# 3. Asset Inventory
+
+Maintain a table containing:
+
+* Slide / Scene
+* Visual Treatment
+* Production Action
+* Filename
+* Status
+
+---
+
+# 4. Assembly Readiness
+
+Return:
+
+Visual Production Brief Status
+
+One of:
+
+* Draft
+* In Progress
+* Waiting For Images
+* Waiting For Approval
+* Ready For Assembly
+
+List:
+
+* Missing Assets
+* Assets Awaiting Approval
+* Assets Ready For Assembly
+
+======================================================================
+WORKING RULES
+=============
+
+Maintain this document throughout the visual production process.
+
+Update it whenever an asset is generated, revised, or approved.
+
+Do not create a second document.
+
+The Visual Production Brief is the single source of truth for visual production.
+
+Once every asset has been approved, the completed Visual Production Brief will be returned to Claude for assembly.
+
+Begin by reviewing the Production Specification and creating the Visual Strategy.`;
+
+          return json({ success: true, assetId, titleId, campaignId, assetType, prompt: manifestPrompt, validation, kind: 'manifest' });
+        }
+
         const prompt = `You are the Visual Director and Image Production Department for this content asset.
 
 I am providing the completed research context, final written asset, Asset Spec, Production Spec, assigned design globals, and relevant existing visual assets.
@@ -13055,7 +13349,7 @@ None identified — this system has a single-tier Design Spec (no separate brand
 
 Now create the complete Visual Brief Package.`;
 
-        return json({ success: true, assetId, titleId, campaignId, assetType, prompt, validation });
+        return json({ success: true, assetId, titleId, campaignId, assetType, prompt, validation, kind: 'brief' });
       }
 
       // ── generateExplainerScript ──
