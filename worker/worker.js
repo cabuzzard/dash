@@ -12489,6 +12489,575 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         return json({ success: true, titleId, assetIds, count: assetIds.length });
       }
 
+      // ── generateVisualBriefPrompt ──
+      // Assembles the "ChatGPT Visual Brief Handoff Prompt" for a single
+      // Asset — gathers the completed Asset Package (final slide/scene
+      // text, Asset Spec, Production Spec — all already written to Notion
+      // by generateCarouselPreview/generateTextVideoScript), campaign/
+      // research context, and the resolved Design Spec ("globals" in this
+      // system — there's no separate brand/series/character-global tier),
+      // then populates the fixed ChatGPT template. Does NOT call an LLM
+      // and does NOT write anything back to Notion — the frontend copies
+      // the returned prompt straight to the clipboard for the operator to
+      // paste into ChatGPT. Only carousel/text video assets have a
+      // structured Asset Spec/Production Spec today (the two Live
+      // methods), so other asset types get a clear validation error
+      // instead of a half-populated prompt.
+      if (body.action === "generateVisualBriefPrompt") {
+        const { assetId, titleId, campaignId } = body;
+        if (!assetId || !titleId || !campaignId) return json({ error: "assetId, titleId, and campaignId required" }, 400);
+
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const [assetPage, titlePage, campPage] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
+        ]);
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        if (!campPage.properties) return json({ error: campPage.message || "Campaign not found" }, 404);
+
+        const assetType = assetPage.properties["Asset Type"]?.select?.name || "";
+        const assetName = assetPage.properties["Asset Title"]?.title?.map(t => t.plain_text).join("") || "Untitled";
+        const titleName = titlePage.properties.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
+        const campaignName = campPage.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
+        const platformProp = assetPage.properties["Platform Name"]?.select?.name || "";
+        const productId = (titlePage.properties.product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+
+        if (assetType !== "carousel" && assetType !== "text video") {
+          return json({ error: `Visual Brief Handoff isn't available for "${assetType || 'this'}" assets yet — only carousel and text video generate a structured Asset Spec / Production Spec today.`, validation: { handoff_ready: false } }, 400);
+        }
+
+        // ── Fetch & bucket the page body that holds the Asset Package.
+        // Carousel writes its package to the TITLE's page; Text Video
+        // writes it to the ASSET's own page (5 scripts can't share one
+        // title body). Paginated since a full package can run well past
+        // 100 blocks.
+        const packagePageId = assetType === "carousel" ? dash(titleId) : dash(assetId);
+        const fetchAllBlocks = async pageId => {
+          let blocks = [], cursor;
+          do {
+            const url = `https://api.notion.com/v1/blocks/${pageId}/children?page_size=100${cursor ? `&start_cursor=${cursor}` : ''}`;
+            const resp = await fetch(url, { headers: hdr }).then(r => r.json());
+            blocks = blocks.concat(resp.results || []);
+            cursor = resp.has_more ? resp.next_cursor : undefined;
+          } while (cursor);
+          return blocks;
+        };
+        const blocks = await fetchAllBlocks(packagePageId);
+        const sections = [];
+        let current = null;
+        for (const b of blocks) {
+          if (b.type === "heading_3") {
+            current = { heading: (b.heading_3?.rich_text || []).map(t => t.plain_text).join(""), lines: [] };
+            sections.push(current);
+          } else if (current && (b.type === "paragraph" || b.type === "bulleted_list_item")) {
+            const rt = b[b.type]?.rich_text || [];
+            const text = rt.map(t => t.plain_text).join("");
+            if (text) current.lines.push(text);
+          }
+        }
+        const findSection = name => sections.find(s => s.heading.toLowerCase() === name.toLowerCase());
+        const sectionText = name => { const s = findSection(name); return s ? s.lines.join('\n') : ''; };
+        const slideOrSceneSections = sections.filter(s => /^Slide \d+/i.test(s.heading));
+
+        // ── Final Written Asset — the approved copy, preserved exactly ──
+        const finalAssetParts = [];
+        if (assetType === 'text video') {
+          const vo = sectionText('Voiceover Script (to-camera)');
+          if (vo) finalAssetParts.push(`VOICEOVER SCRIPT (full, continuous):\n${vo}`);
+        }
+        if (slideOrSceneSections.length) {
+          finalAssetParts.push(assetType === 'carousel' ? 'SLIDES:' : 'SCENES (on-screen text below; narration is the continuous script above):');
+          slideOrSceneSections.forEach(s => finalAssetParts.push(`${s.heading}\n${s.lines.join('\n')}`));
+        }
+        if (assetType === 'text video') {
+          const ost = sectionText('On-Screen Text');
+          if (ost) finalAssetParts.push(`ON-SCREEN TEXT (per scene):\n${ost}`);
+        }
+        const cap = sectionText('Caption'); if (cap) finalAssetParts.push(`CAPTION:\n${cap}`);
+        const hash = sectionText('Hashtags'); if (hash) finalAssetParts.push(`HASHTAGS:\n${hash}`);
+        const finalWrittenAsset = finalAssetParts.join('\n\n');
+
+        // ── Asset Spec — narrative/structural planning, not raw copy ──
+        const assetSpecHeadings = assetType === 'carousel'
+          ? ['Content Summary', 'Hook Package', 'Content Flow', 'Educational Assets', 'SEO / Publishing', 'Production Checklist']
+          : ['Asset Metadata', 'Content Summary', 'Hook Package', 'Video Structure', 'Educational Assets', 'Publishing Assets', 'Production Checklist'];
+        const assetSpecParts = assetSpecHeadings.map(h => { const t = sectionText(h); return t ? `${h.toUpperCase()}:\n${t}` : ''; }).filter(Boolean);
+        const completeAssetSpec = assetSpecParts.join('\n\n');
+
+        // ── Production Spec — per-slide/scene visual production notes ──
+        const productionSpecHeadings = assetType === 'carousel'
+          ? ['Slide Production Notes']
+          : ['Shot / B-Roll Notes', 'Voice Production Notes', 'Remotion Rendering Notes'];
+        const productionSpecParts = productionSpecHeadings.map(h => { const t = sectionText(h); return t ? `${h.toUpperCase()}:\n${t}` : ''; }).filter(Boolean);
+        const completeProductionSpec = productionSpecParts.join('\n\n');
+
+        // ── Content foundation (title/thesis/promise/hook) — reuses the
+        // same Content Summary + Hook Package text already bucketed above.
+        const contentFoundationParts = [`Working title: ${titleName}`, sectionText('Content Summary'), sectionText('Hook Package')].filter(Boolean);
+        const contentFoundation = contentFoundationParts.join('\n\n');
+
+        // Small regex pull for the individual ASSET INFORMATION fields —
+        // the underlying data is already "Label: value" text this same
+        // action just read back (Content Summary / Asset Metadata lines).
+        const extractField = (text, label) => { const m = new RegExp(`${label}:\\s*([^|\\n]+)`, 'i').exec(text || ''); return m ? m[1].trim() : ''; };
+        const metaSearchText = [sectionText('Content Summary'), sectionText('Asset Metadata')].join(' | ');
+        const targetAudience = extractField(metaSearchText, 'Audience') || extractField(metaSearchText, 'Target audience') || '';
+        const funnelStage = extractField(metaSearchText, 'Funnel stage') || '';
+        const primaryGoal = extractField(metaSearchText, 'Primary goal') || '';
+        const ctaGoal = extractField(metaSearchText, 'CTA goal') || '';
+        const desiredViewerAction = extractField(sectionText('Content Summary'), 'Desired outcome') || '';
+        const platform = platformProp || extractField(metaSearchText, 'Platform') || '';
+        const aspectRatio = assetType === 'carousel' ? '4:5 (1080x1350)' : '9:16 (1080x1920)';
+        const targetResolution = aspectRatio.match(/\(([^)]+)\)/)?.[1] || '';
+        const targetDuration = assetType === 'carousel' ? 'Not applicable (static carousel)' : (extractField(metaSearchText, 'Target duration') || '~25-30s');
+
+        // ── Research context ──
+        const researchRaw = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const researchFields = ['Keywords', 'Statement', 'Unique Opportunity', 'Key Message', 'Pain Points'];
+        const researchParts = researchFields.map(f => { const v = rt(researchRaw, f); return v ? `${f}: ${v}` : ''; }).filter(Boolean);
+        const relevantResearchContext = researchParts.join('\n');
+
+        // ── Strategy/audience block (campaign + product) — reuses the
+        // same helper generateTextVideoScript/generateCarouselPreview use.
+        const strategyBlock = await fetchStrategyForGrading(hdr, dash(campaignId), productId ? dash(productId) : null, !!productId);
+        const campaignInformation = [`Campaign: ${campaignName}`, strategyBlock].filter(Boolean).join('\n');
+
+        // ── Resolved globals — this system's only "global" tier today is
+        // the campaign/product Design Spec (no separate brand/asset-type/
+        // series/character-global records exist), so inheritance collapses
+        // to: DESIGN_SPEC_DEFAULTS -> campaign spec.
+        const specRelId = campPage.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+        let resolvedSpec = { ...DESIGN_SPEC_DEFAULTS };
+        let sourceGlobalRefs = ['DESIGN_SPEC_DEFAULTS (system fallback — no campaign Design Spec attached)'];
+        if (specRelId) {
+          const specPage = await fetch(`https://api.notion.com/v1/pages/${specRelId}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          if (specPage?.properties) {
+            const s = dsFromPage(specPage);
+            resolvedSpec = { ...resolvedSpec, ...Object.fromEntries(Object.entries(s).filter(([k, v]) => k !== "id" && k !== "name" && v)) };
+            sourceGlobalRefs = [`Design Spec: "${s.name}" (id ${s.id}) — attached to campaign "${campaignName}"`];
+          }
+        }
+        const resolvedGlobalInstructions = [
+          `Background: ${resolvedSpec.bg}`, `Ink/text: ${resolvedSpec.ink}`, `Accent: ${resolvedSpec.accent}`,
+          `Headline font: ${resolvedSpec.headlineFont}`, `Body font: ${resolvedSpec.bodyFont}`,
+          `Aesthetic notes: ${resolvedSpec.notes}`,
+          resolvedSpec.canvaLink ? `Reference Canva file: ${resolvedSpec.canvaLink}` : '',
+        ].filter(Boolean).join('\n');
+
+        // ── Relevant existing visual assets — other approved assets on
+        // this campaign that already have a hosted Design Link, as reuse
+        // candidates. No separate asset-library DB exists in this system.
+        const campAssetsQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+            { property: "Design Link", url: { is_not_empty: true } },
+          ] }, page_size: 15, sorts: [{ timestamp: "last_edited_time", direction: "descending" }] }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const existingAssetsList = (campAssetsQuery.results || [])
+          .filter(a => a.id.replace(/-/g, "") !== assetId)
+          .map(a => {
+            const p = a.properties || {};
+            const name = p["Asset Title"]?.title?.map(t => t.plain_text).join("") || "Untitled";
+            const type = p["Asset Type"]?.select?.name || "?";
+            const link = p["Design Link"]?.url || "";
+            const status = p["Asset Status"]?.select?.name || "";
+            return `- ${name} (${type}, ${status || 'status unknown'}): ${link}`;
+          });
+        const existingVisualAssets = existingAssetsList.join('\n');
+
+        // ── Validation (per the spec's section 8) ──
+        const validation = {
+          final_written_asset_present: !!finalWrittenAsset,
+          asset_spec_present: !!completeAssetSpec,
+          production_spec_present: !!completeProductionSpec,
+          globals_present: !!specRelId,
+          research_context_present: !!relevantResearchContext,
+          existing_assets_present: existingAssetsList.length > 0,
+          slide_or_scene_count: slideOrSceneSections.length,
+        };
+        validation.handoff_ready = validation.final_written_asset_present && validation.asset_spec_present && validation.production_spec_present;
+        if (!validation.handoff_ready) {
+          const missing = [
+            !validation.final_written_asset_present ? 'final written asset (slide/scene text)' : '',
+            !validation.asset_spec_present ? 'Asset Spec' : '',
+            !validation.production_spec_present ? 'Production Spec' : '',
+          ].filter(Boolean).join(', ');
+          return json({ error: `Can't generate a Visual Brief Handoff yet — missing: ${missing}. Regenerate this asset with the current Generate Assets flow first.`, validation }, 400);
+        }
+
+        const np = v => v || 'Not provided';
+        const prompt = `You are the Visual Director and Image Production Department for this content asset.
+
+I am providing the completed research context, final written asset, Asset Spec, Production Spec, assigned design globals, and relevant existing visual assets.
+
+Your job is to transform this production package into a complete Visual Brief Package and then help produce the required visual assets.
+
+The supplied written content and Production Spec are the source of truth.
+
+Do not rewrite the content.
+
+Do not change the title, slide text, narration, on-screen text, CTA, slide order, scene order, or intended message unless you explicitly identify a production conflict and ask for or recommend a correction.
+
+==================================================
+PRIMARY RESPONSIBILITIES
+==================================================
+
+For every slide or scene:
+
+1. Review the content purpose and Production Spec.
+
+2. Select exactly one primary visual treatment:
+
+- Generated Illustration
+- Existing Brand Asset
+- Icon
+- Diagram
+- Screenshot
+- Stock Footage
+- Background Texture
+- Text-Only Layout
+
+3. Select the asset action:
+
+- Retrieve
+- Reuse
+- Generate
+- Edit
+- Capture
+- License
+- No External Asset Required
+
+4. Create a complete visual brief.
+
+5. For any asset marked Retrieve or Reuse:
+   - identify the exact supplied existing asset;
+   - explain why it fits;
+   - identify any crop, edit, placement, or adaptation required.
+
+6. For any asset marked Generate:
+   - create a production-ready image-generation brief;
+   - apply all assigned globals;
+   - preserve brand and character consistency;
+   - leave the required text-safe areas;
+   - do not place slide text inside the generated image unless the Production Spec explicitly requires rendered text inside the visual.
+
+7. For diagrams:
+   - define the information architecture;
+   - define nodes, labels, sequence, connections, hierarchy, and visual emphasis;
+   - ensure the diagram communicates the intended idea accurately.
+
+8. For screenshots:
+   - identify exactly what screen, interface, state, crop, and annotations are needed;
+   - do not fabricate a real software interface when an authentic screenshot is required.
+
+9. For stock footage:
+   - define the shot concept;
+   - subject;
+   - action;
+   - framing;
+   - camera movement;
+   - duration;
+   - search keywords;
+   - continuity requirements.
+
+10. For text-only layouts:
+   - define hierarchy;
+   - placement;
+   - scale;
+   - emphasis;
+   - background treatment;
+   - whitespace;
+   - motion potential when applicable.
+
+11. Avoid unnecessary visual generation.
+   Prefer reuse, text-only treatment, diagrams, or existing approved assets when they communicate more clearly.
+
+12. Maintain continuity across the complete carousel or video.
+   The slides or scenes must feel like one unified visual system rather than unrelated images.
+
+==================================================
+REQUIRED VISUAL BRIEF FIELDS
+==================================================
+
+For every slide or scene return:
+
+- Visual ID
+- Asset ID
+- Slide or Scene Number
+- Slide or Scene Role
+- Content Objective
+- Visual Purpose
+- Primary Visual Treatment
+- Asset Action
+- Primary Subject
+- Supporting Subjects
+- Visual Description
+- Information to Communicate
+- Required Visual Details
+- Composition
+- Focal Point
+- Visual Hierarchy
+- Camera Angle or Viewpoint, when applicable
+- Framing or Crop
+- Foreground
+- Midground
+- Background
+- Emotion
+- Mood
+- Information Density
+- Visual Complexity
+- Text-Safe Areas
+- Caption-Safe Areas
+- Platform UI-Safe Areas
+- Aspect Ratio
+- Resolution
+- Output Format
+- Transparency Requirement
+- Layer Requirement
+- Animation or Motion Potential
+- Continuity Notes
+- Brand Global References
+- Campaign Global References
+- Series Global References
+- Asset-Type Global References
+- Character or Illustration Global References
+- Existing Asset Reference
+- Existing Asset Modification Instructions
+- Generation Requirements
+- Elements to Avoid
+- Accessibility Considerations
+- Approval Criteria
+- Final Recommended Action
+
+Only include fields that are relevant, but never omit:
+- Visual ID
+- slide or scene number
+- content objective
+- visual purpose
+- primary visual treatment
+- asset action
+- visual description
+- composition
+- text-safe areas
+- aspect ratio
+- global references
+- approval criteria
+- final recommended action
+
+==================================================
+VISUAL PACKAGE OUTPUT
+==================================================
+
+Return the results in this order:
+
+1. Visual Strategy Summary
+
+Include:
+
+- overall visual concept
+- visual narrative across the complete asset
+- repeated motifs
+- visual pacing
+- consistency rules
+- asset-reuse strategy
+- generation strategy
+- major production risks
+- global conflicts or missing information
+
+2. Visual Asset Decision Matrix
+
+For every slide or scene include:
+
+- number
+- treatment
+- action
+- asset reference or new asset ID
+- reason
+- production status
+
+3. Complete Visual Briefs
+
+Provide one complete visual brief for every slide or scene.
+
+4. Retrieval List
+
+List all existing assets that should be retrieved or reused.
+
+5. Generation List
+
+List all new assets that need to be generated.
+
+6. Edit List
+
+List all existing assets requiring editing, cropping, extension, recoloring, background removal, compositing, or other transformation.
+
+7. Capture or Licensing List
+
+List all required screenshots or stock footage.
+
+8. Text-Only Layout List
+
+List all slides or scenes requiring no external visual.
+
+9. Production Asset Manifest
+
+Map every slide or scene to its final visual asset.
+
+Use this structure:
+
+Asset ID:
+Slide or Scene:
+Treatment:
+Action:
+Source Asset:
+Planned Filename:
+Aspect Ratio:
+Output Format:
+Status:
+Placement Notes:
+
+10. Approval Checklist
+
+For each planned asset include objective approval checks such as:
+
+- matches the required concept
+- follows the assigned globals
+- preserves character consistency
+- maintains text-safe areas
+- contains no unwanted text
+- supports the slide or scene objective
+- matches the correct aspect ratio
+- has sufficient resolution
+- can be assembled using the Production Spec
+
+==================================================
+IMAGE-GENERATION BEHAVIOR
+==================================================
+
+After returning the Visual Brief Package:
+
+- begin with the highest-priority generated visual;
+- generate or edit visuals one at a time unless the user explicitly asks for a batch;
+- retain approved composition and character details during revisions;
+- do not silently alter unrelated elements during an edit;
+- treat user approval as asset-specific;
+- do not mark an asset approved unless the user approves it;
+- maintain the Production Asset Manifest as assets are approved.
+
+==================================================
+ASSET INFORMATION
+==================================================
+
+ASSET ID:
+${assetId}
+
+ASSET NAME:
+${assetName}
+
+ASSET TYPE:
+${assetType}
+
+PLATFORM:
+${np(platform)}
+
+ASPECT RATIO:
+${aspectRatio}
+
+TARGET RESOLUTION:
+${np(targetResolution)}
+
+TARGET DURATION:
+${targetDuration}
+
+CAMPAIGN:
+${np(campaignInformation)}
+
+SERIES:
+Not provided — this system doesn't track a separate Series layer.
+
+TARGET AUDIENCE:
+${np(targetAudience)}
+
+FUNNEL STAGE:
+${np(funnelStage)}
+
+PRIMARY GOAL:
+${np(primaryGoal)}
+
+DESIRED VIEWER ACTION:
+${np(desiredViewerAction)}
+
+CTA GOAL:
+${np(ctaGoal)}
+
+==================================================
+RESEARCH CONTEXT
+==================================================
+
+${np(relevantResearchContext)}
+
+==================================================
+CONTENT FOUNDATION
+==================================================
+
+${np(contentFoundation)}
+
+==================================================
+FINAL WRITTEN ASSET
+==================================================
+
+${np(finalWrittenAsset)}
+
+==================================================
+ASSET SPECIFICATION
+==================================================
+
+${np(completeAssetSpec)}
+
+==================================================
+PRODUCTION SPECIFICATION
+==================================================
+
+${np(completeProductionSpec)}
+
+==================================================
+RESOLVED GLOBAL INSTRUCTIONS
+==================================================
+
+${np(resolvedGlobalInstructions)}
+
+==================================================
+SOURCE GLOBAL REFERENCES
+==================================================
+
+${sourceGlobalRefs.join('\n')}
+
+==================================================
+RELEVANT EXISTING VISUAL ASSETS
+==================================================
+
+${np(existingVisualAssets)}
+
+==================================================
+KNOWN CONSTRAINTS OR CONFLICTS
+==================================================
+
+None identified — this system has a single-tier Design Spec (no separate brand/series/character-global layers), so there are no cross-global conflicts to flag.
+
+Now create the complete Visual Brief Package.`;
+
+        return json({ success: true, assetId, titleId, campaignId, assetType, prompt, validation });
+      }
+
       // ── generateExplainerScript ──
       // Worker-native script step for the "Explainer Video" method — no
       // avatar, no footage, invented visuals (Hyperframes /faceless-

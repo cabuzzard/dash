@@ -1436,6 +1436,7 @@ async function loadTitles() {
           + (a.type === 'text video' && !a.designLink ? `<button class="td-textvideo-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="openVideoGenModal('text', this)" title="Attach a sample image / design guidelines (optional), then copy a prompt to render this script into a video (make-reel-video) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
           + (a.type === 'text video' && a.body ? `<button class="td-copy-script" onclick="copyAssetScript('${a.id}', this)" title="Copy the voiceover script to clipboard" style="font-size:10px;padding:1px 7px;border:1px solid #4488ff;background:transparent;color:#4488ff;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Script</button>` : '')
           + (a.type === 'explainer video' && !a.designLink ? `<button class="td-explainer-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="openVideoGenModal('explainer', this)" title="Attach a sample image / design guidelines (optional), then copy a prompt to render this script into a video (make-explainer-video) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
+          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${t.id}" onclick="generateVisualBrief(this)" title="Assemble a ChatGPT Visual Brief Handoff prompt from this asset's final text + Asset Spec + Production Spec, then copy it to your clipboard to paste into ChatGPT" style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
           + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" style="flex-shrink:0;">↗</a>`
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset" style="flex-shrink:0;">✕</button>`;
         wrap.appendChild(ar);
@@ -4813,6 +4814,34 @@ async function copyAssetScript(assetId, btn) {
     setTimeout(() => { btn.textContent = orig; }, 1400);
   } catch(e) {
     alert(text);
+  }
+}
+
+// Assembles a ChatGPT "Visual Brief Handoff" prompt server-side (final
+// slide/scene text + Asset Spec + Production Spec + research/campaign
+// context + resolved Design Spec, all pulled from what
+// generateCarouselPreview/generateTextVideoScript already wrote to
+// Notion) and copies it straight to the clipboard — no chat handoff, no
+// file, just the words ready to paste into ChatGPT for visual direction.
+async function generateVisualBrief(btn) {
+  const assetId = btn.dataset.assetid, titleId = btn.dataset.titleid;
+  const orig = btn.textContent;
+  btn.textContent = '…'; btn.disabled = true;
+  try {
+    const r = await w('generateVisualBriefPrompt', { assetId, titleId, campaignId: CAMPAIGN_ID });
+    try {
+      await navigator.clipboard.writeText(r.prompt);
+      btn.textContent = 'Copied ✓';
+      setTimeout(() => { btn.textContent = orig; }, 1600);
+    } catch(e) {
+      btn.textContent = orig;
+      window.prompt('Clipboard write failed — copy manually (Ctrl+A, Ctrl+C):', r.prompt);
+    }
+  } catch(e) {
+    alert('Failed to generate Visual Brief: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    if (btn.textContent === '…') btn.textContent = orig;
   }
 }
 
