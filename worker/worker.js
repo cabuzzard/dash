@@ -11640,12 +11640,24 @@ Return the FULL updated set — all ${slides.length} slides plus caption and has
         const productRel = titlePage.properties.product?.relation || [];
         const productId = productRel[0]?.id?.replace(/-/g,"") || null;
 
-        // Already scripted? Reuse, same "don't clobber an edit" contract as
-        // generateCarouselPreview — re-running this is then just a cheap
-        // no-op that re-confirms the Asset/title state.
-        const existingBlocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
-        const existingBlocks = existingBlocksResp.results || [];
-        const alreadyScripted = existingBlocks.some(b => b.type === "heading_3" && /voiceover script/i.test((b.heading_3?.rich_text || []).map(t => t.plain_text).join("")));
+        // Already scripted FOR THIS METHOD? Keyed off whether a live
+        // "avatar video" Asset already exists — not whether the page body
+        // has *some* "Voiceover Script" heading, since Text Video scripts
+        // use that identical heading text. A title that was previously run
+        // through the Text Video method (or any other) would otherwise be
+        // misdetected as "already has an avatar script" and silently skip
+        // writing anything, producing no asset at all. Reusing an existing
+        // avatar-video Asset here is still the "don't clobber an edit"
+        // contract — it just isn't fooled by a different method's leftovers.
+        const priorAvatarAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Content Strategy", relation: { contains: dash(titleId) } },
+            { property: "Asset Type", select: { equals: "avatar video" } },
+          ] } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const existingAvatarAsset = (priorAvatarAssetQuery.results || []).find(a => !a.archived);
+        const alreadyScripted = !!existingAvatarAsset;
 
         const strategyBlock = await fetchStrategyForGrading(hdr, dash(campaignId), productId ? dash(productId) : null, !!productId);
 
@@ -11720,7 +11732,16 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (!parsed.voiceoverScript) return json({ error: "Script generation returned no voiceover script — try again" }, 500);
           resolvedPresenter = effectivePresenter || parsed.presenterCharacter || '';
 
-          // ── Step 3: write to the title body (Notion connector) ──
+          // ── Step 3: clear any leftover body content, then write the
+          // script (Notion connector) ── A title that previously went
+          // through a DIFFERENT method (or was manually edited) may still
+          // have unrelated blocks sitting on it; since alreadyScripted is
+          // now false here, this page's body is treated as this method's
+          // to (re)write cleanly rather than appending under stale content.
+          const staleBlocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+          const staleBlocks = staleBlocksResp.results || [];
+          if (staleBlocks.length) await Promise.all(staleBlocks.map(b => fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: "DELETE", headers: hdr })));
+
           const rtBlock = text => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
           const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
           const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
@@ -11739,23 +11760,17 @@ Return ONLY this JSON object, no other text, no markdown fences:
           });
           if (!writeResp.ok) { const r = await writeResp.json(); return json({ error: r.message || "Failed to write script to title" }, writeResp.status); }
 
-          // ── Step 4: upsert the Assets DB record ──
+          // ── Step 4: upsert the Assets DB record ── (existingAvatarAsset
+          // was already resolved above, before the Claude call — reused
+          // here instead of querying again.)
           const assetProps = {
             "Body": { rich_text: [{ type: "text", text: { content: parsed.voiceoverScript.slice(0, 1990) } }] },
             "Notes": { rich_text: [{ type: "text", text: { content: (effectivePresenter || parsed.presenterCharacter || "").slice(0, 1990) } }] },
             "Status": { select: { name: "Ready" } },
             "Asset Status": { select: { name: "Publish" } },
           };
-          const existingAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { and: [
-              { property: "Content Strategy", relation: { contains: dash(titleId) } },
-              { property: "Asset Type", select: { equals: "avatar video" } },
-            ] } }),
-          }).then(r => r.json()).catch(() => ({ results: [] }));
-          const existingAsset = (existingAssetQuery.results || []).find(a => !a.archived);
-          if (existingAsset) {
-            assetId = existingAsset.id.replace(/-/g, "");
+          if (existingAvatarAsset) {
+            assetId = existingAvatarAsset.id.replace(/-/g, "");
             await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
               method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: assetProps }),
             });
@@ -11773,18 +11788,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
             assetId = created.id.replace(/-/g, "");
           }
         } else {
-          // Already scripted — just make sure an Asset exists and the
-          // title is where it should be (idempotent re-run).
-          const existingAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { and: [
-              { property: "Content Strategy", relation: { contains: dash(titleId) } },
-              { property: "Asset Type", select: { equals: "avatar video" } },
-            ] } }),
-          }).then(r => r.json()).catch(() => ({ results: [] }));
-          const existingAsset = (existingAssetQuery.results || []).find(a => !a.archived);
-          assetId = existingAsset?.id?.replace(/-/g, "") || null;
-          resolvedPresenter = existingAsset?.properties?.Notes?.rich_text?.map(t => t.plain_text).join("") || effectivePresenter;
+          // Already scripted — existingAvatarAsset is the live Asset, no
+          // re-query needed (idempotent re-run, just re-confirm state).
+          assetId = existingAvatarAsset.id.replace(/-/g, "");
+          resolvedPresenter = existingAvatarAsset?.properties?.Notes?.rich_text?.map(t => t.plain_text).join("") || effectivePresenter;
         }
 
         // ── Step 5: title -> Publish ──
@@ -11844,9 +11851,22 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const productRel = titlePage.properties.product?.relation || [];
         const productId = productRel[0]?.id?.replace(/-/g,"") || null;
 
-        const existingBlocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
-        const existingBlocks = existingBlocksResp.results || [];
-        const alreadyScripted = existingBlocks.some(b => b.type === "heading_3" && /voiceover script/i.test((b.heading_3?.rich_text || []).map(t => t.plain_text).join("")));
+        // Already scripted FOR THIS METHOD? Keyed off whether a live
+        // "text video" Asset already exists — not whether the page body
+        // has *some* "Voiceover Script" heading, since Avatar Video
+        // scripts use that identical heading text. A title previously run
+        // through Avatar Video (or any other method) would otherwise be
+        // misdetected as "already has a text-video script" and silently
+        // skip writing anything, producing no asset at all.
+        const priorTextVideoAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Content Strategy", relation: { contains: dash(titleId) } },
+            { property: "Asset Type", select: { equals: "text video" } },
+          ] } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const existingTextVideoAsset = (priorTextVideoAssetQuery.results || []).find(a => !a.archived);
+        const alreadyScripted = !!existingTextVideoAsset;
 
         const strategyBlock = await fetchStrategyForGrading(hdr, dash(campaignId), productId ? dash(productId) : null, !!productId);
 
@@ -11895,6 +11915,15 @@ Return ONLY this JSON object, no other text, no markdown fences:
           } catch(e) { return json({ error: "Failed to parse script JSON: " + e.message }, 500); }
           if (!parsed.voiceoverScript) return json({ error: "Script generation returned no voiceover script — try again" }, 500);
 
+          // Clear any leftover body content (e.g. from a different method
+          // previously run on this title) before writing this method's
+          // script, so the two don't end up mixed together on the page —
+          // alreadyScripted being false means this page's body is treated
+          // as this method's to (re)write cleanly.
+          const staleBlocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+          const staleBlocks = staleBlocksResp.results || [];
+          if (staleBlocks.length) await Promise.all(staleBlocks.map(b => fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: "DELETE", headers: hdr })));
+
           const rtBlock = text => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
           const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
           const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
@@ -11914,22 +11943,16 @@ Return ONLY this JSON object, no other text, no markdown fences:
           });
           if (!writeResp.ok) { const r = await writeResp.json(); return json({ error: r.message || "Failed to write script to title" }, writeResp.status); }
 
+          // existingTextVideoAsset was already resolved above, before the
+          // Claude call — reused here instead of querying again.
           const assetProps = {
             "Body": { rich_text: [{ type: "text", text: { content: parsed.voiceoverScript.slice(0, 1990) } }] },
             "Notes": { rich_text: [{ type: "text", text: { content: hashtagsLine.slice(0, 1990) } }] },
             "Status": { select: { name: "Ready" } },
             "Asset Status": { select: { name: "Publish" } },
           };
-          const existingAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { and: [
-              { property: "Content Strategy", relation: { contains: dash(titleId) } },
-              { property: "Asset Type", select: { equals: "text video" } },
-            ] } }),
-          }).then(r => r.json()).catch(() => ({ results: [] }));
-          const existingAsset = (existingAssetQuery.results || []).find(a => !a.archived);
-          if (existingAsset) {
-            assetId = existingAsset.id.replace(/-/g, "");
+          if (existingTextVideoAsset) {
+            assetId = existingTextVideoAsset.id.replace(/-/g, "");
             await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
               method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: assetProps }),
             });
@@ -11947,15 +11970,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
             assetId = created.id.replace(/-/g, "");
           }
         } else {
-          const existingAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { and: [
-              { property: "Content Strategy", relation: { contains: dash(titleId) } },
-              { property: "Asset Type", select: { equals: "text video" } },
-            ] } }),
-          }).then(r => r.json()).catch(() => ({ results: [] }));
-          const existingAsset = (existingAssetQuery.results || []).find(a => !a.archived);
-          assetId = existingAsset?.id?.replace(/-/g, "") || null;
+          // Already scripted — existingTextVideoAsset is the live Asset,
+          // no re-query needed (idempotent re-run, just re-confirm state).
+          assetId = existingTextVideoAsset.id.replace(/-/g, "");
         }
 
         await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
