@@ -1440,6 +1440,7 @@ async function loadTitles() {
           + (a.canvaLink ? `<button class="td-canva-sync" data-title="${esc(t.title)}" data-titleid="${t.id}" data-canvalink="${esc(a.canvaLink)}" onclick="syncFromCanva(this)" title="Copy a prompt to sync this Canva design's edits back into the carousel template — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #00C4CC;background:transparent;color:#00C4CC;border-radius:9px;cursor:pointer;flex-shrink:0;">↺ Sync</button>` : '')
           + (a.type === 'avatar video' && !a.designLink ? `<button class="td-avatar-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="generateAvatarVideo(this)" title="Copy a prompt to render this script into a video (make-avatar-reel) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
           + (a.type === 'text video' && !a.designLink ? `<button class="td-textvideo-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="generateTextVideo(this)" title="Copy a prompt to render this script into a video (make-reel-video) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
+          + (a.type === 'explainer video' && !a.designLink ? `<button class="td-explainer-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="generateExplainerVideo(this)" title="Copy a prompt to render this script into a video (make-explainer-video) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
           + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" style="flex-shrink:0;">↗</a>`
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset" style="flex-shrink:0;">✕</button>`;
         wrap.appendChild(ar);
@@ -4450,6 +4451,8 @@ const GA_SKILL_METHODS = [
     hint: 'Writes a faceless reel script (voiceover + on-screen text + shot notes) for this title and sets it to Publish — entirely in-dashboard, same as Carousel. The actual video render (ElevenLabs + Remotion) still needs a Claude Code chat; once the script is ready, use the 🎬 button on the asset row below.' },
   { test: /avatar/i,                workerAction: 'generateAvatarScript', label: 'Avatar Video',
     hint: 'Writes a presenter-to-camera script for this title and sets it to Publish — entirely in-dashboard, same as Carousel. The actual video render (HeyGen + Hyperframes) still needs a Claude Code chat; once the script is ready, use the 🎬 button on the asset row below.' },
+  { test: /explainer video/i,       workerAction: 'generateExplainerScript', label: 'Explainer Video',
+    hint: 'Writes a narrated, no-avatar explainer script (voiceover + visual metaphor + beat notes) for this title and sets it to Publish — entirely in-dashboard, same as Carousel. The actual video render (Hyperframes /faceless-explainer + ElevenLabs) still needs a Claude Code chat; once the script is ready, use the 🎬 button on the asset row below.' },
   { test: /video copy/i,            skill: 'make-video-copy',     label: 'Video Copy — Growth',
     hint: 'Full production skill available — models outlier YouTube videos into an original long-form script, ready to produce.' },
 ];
@@ -4881,6 +4884,22 @@ async function generateTextVideo(btn) {
   }
 }
 
+// Same reasoning again: rendering an explainer video needs local
+// Hyperframes (bun/ffmpeg/headless Chrome) plus an ElevenLabs call — only
+// a Claude Code session with Bash access can do that.
+async function generateExplainerVideo(btn) {
+  const title = btn.dataset.title, titleId = btn.dataset.titleid, assetId = btn.dataset.assetid;
+  const prompt = `Run make-explainer-video for the Content Strategy title "${title}" (https://www.notion.so/${titleId}) — the script is already written on the title (Voiceover Script / On-Screen Text / Visual Metaphor / Visual Beats / Research Notes / Caption / Hashtags sections). Its Asset record is https://www.notion.so/${assetId} (Asset Type: explainer video). Render it, host the MP4, and update that same Asset record per the skill's Step 5.`;
+  try {
+    await navigator.clipboard.writeText(prompt);
+    const orig = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    setTimeout(() => { btn.textContent = orig; }, 1400);
+  } catch(e) {
+    alert(prompt);
+  }
+}
+
 // The worker has no Canva access — real design generation needs a Claude
 // chat with the user's Canva + Notion connectors. This builds a fully
 // self-contained prompt and opens claude.ai with it prefilled: Claude reads
@@ -4915,7 +4934,8 @@ async function submitGenAssets() {
   if (skillMatch && skillMatch.workerAction) {
     const isAvatarScript = skillMatch.workerAction === 'generateAvatarScript';
     const isTextVideoScript = skillMatch.workerAction === 'generateTextVideoScript';
-    const isScriptOnly = isAvatarScript || isTextVideoScript;
+    const isExplainerScript = skillMatch.workerAction === 'generateExplainerScript';
+    const isScriptOnly = isAvatarScript || isTextVideoScript || isExplainerScript;
     btn.textContent = isScriptOnly ? 'Writing…' : 'Rendering…';
     status.textContent = isScriptOnly
       ? 'Writing the script and saving it to this title. Video rendering is a separate step, after this.'
@@ -4942,7 +4962,7 @@ async function submitGenAssets() {
         await loadTitles();
         // No auto-close here — the researched presenter is worth reading
         // before the modal disappears.
-      } else if (isTextVideoScript) {
+      } else if (isTextVideoScript || isExplainerScript) {
         status.textContent = r.alreadyScripted
           ? '✓ Script already existed — confirmed the asset and title status.'
           : '✓ Script written, saved, and set to Publish — use the 🎬 button on the asset row below to render the video.';

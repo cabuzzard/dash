@@ -11983,6 +11983,163 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true, titleId, assetId, alreadyScripted });
       }
 
+      // ── generateExplainerScript ──
+      // Worker-native script step for the "Explainer Video" method — no
+      // avatar, no footage, invented visuals (Hyperframes /faceless-
+      // explainer). Same pattern as generateAvatarScript/
+      // generateTextVideoScript: writes the script, upserts an "explainer
+      // video" Asset, sets the title to Publish, entirely server-side.
+      // The actual render (make-explainer-video — needs local Hyperframes
+      // + ffmpeg + ElevenLabs) still can't run in a Worker, so that stays
+      // a chat-driven step off the resulting asset row's 🎬 button.
+      if (body.action === "generateExplainerScript") {
+        const { titleId, campaignId } = body;
+        if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const titleName = (titlePage.properties.Title?.title || []).map(t => t.plain_text).join("") || "Explainer Video";
+        const productRel = titlePage.properties.product?.relation || [];
+        const productId = productRel[0]?.id?.replace(/-/g,"") || null;
+
+        // Already scripted FOR THIS METHOD? Keyed off whether a live
+        // "explainer video" Asset already exists — not whether the page
+        // body has *some* "Voiceover Script" heading, since Avatar Video
+        // and Text Video scripts use that identical heading text. A title
+        // previously run through either of those (or any other method)
+        // would otherwise be misdetected as "already has an explainer
+        // script" and silently skip writing anything, producing no asset.
+        const priorExplainerAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Content Strategy", relation: { contains: dash(titleId) } },
+            { property: "Asset Type", select: { equals: "explainer video" } },
+          ] } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const existingExplainerAsset = (priorExplainerAssetQuery.results || []).find(a => !a.archived);
+        const alreadyScripted = !!existingExplainerAsset;
+
+        const strategyBlock = await fetchStrategyForGrading(hdr, dash(campaignId), productId ? dash(productId) : null, !!productId);
+
+        let keywords = "";
+        const researchRaw = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        keywords = rt(researchRaw, "Keywords");
+
+        let assetId;
+        if (!alreadyScripted) {
+          const scriptPrompt = `Write a narrated explainer-video script — ElevenLabs voiceover over invented visuals (animated diagrams, motion graphics, data viz, kinetic type) built later in Hyperframes, NO avatar or presenter on camera and NO live footage. This is for the "Explainer Video" method: a researched claim or mechanism made visually legible, one metaphor carried all the way through.
+
+TITLE: ${titleName}
+${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}
+
+SCRIPT RULES:
+- Arc: Hook (0-3s, the claim or number that stops the scroll) -> Reframe (3-8s, why it's true / why it matters to this viewer) -> Payoff (8s-end, the mechanism/comparison/process itself, one beat per 3-5s) -> Close (last 2-3s).
+- Ground every claim in the campaign/product context above — no unsupported stats or generic advice. If a number appears on screen, its source must be traceable.
+- Pick exactly ONE visual metaphor for the whole video (a mechanism, a comparison, a before/after, a process) and carry it through every beat — do not mix competing metaphors.
+- Mark a visual beat for every script section — what the composition should show, not just what's said (e.g. "two bars racing, one stalling out" not just "shows the comparison").
+- 20-90s spoken by default (fast to render, good save/share length); longer only if the user asked for LinkedIn/YouTube length.
+- One idea only — if it needs two metaphors, it should have been two videos.
+- Close on a specific trigger CTA — "comment [KEYWORD] and I'll send you..." or "save this for later", never a bare "link in bio".
+- No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "hookArcNote": "which hook shape was used and why it fits", "voiceoverScript": "the spoken lines only, continuous prose, NO labels/timestamps/cues — exactly what TTS will speak", "onScreenText": ["line 1", "line 2", "..."], "visualMetaphor": "the ONE visual metaphor/approach carried through the whole video, described concretely enough to hand to a motion designer", "visualBeats": ["beat 1 visual direction", "beat 2 visual direction", "..."], "researchNotes": ["claim -> which research reference it traces back to", "..."], "caption": "150-200 word caption, campaign keywords worked in naturally for SEO", "hashtags": ["...", "..."] }`;
+
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: scriptPrompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+          let parsed;
+          try {
+            const raw = aiData.content?.[0]?.text || "";
+            const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+            if (start === -1 || end === -1) throw new Error("No JSON object found");
+            parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          } catch(e) { return json({ error: "Failed to parse script JSON: " + e.message }, 500); }
+          if (!parsed.voiceoverScript) return json({ error: "Script generation returned no voiceover script — try again" }, 500);
+
+          // Clear any leftover body content (e.g. from a different method
+          // previously run on this title) before writing this method's
+          // script, so the two don't end up mixed together on the page —
+          // alreadyScripted being false means this page's body is treated
+          // as this method's to (re)write cleanly.
+          const staleBlocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+          const staleBlocks = staleBlocksResp.results || [];
+          if (staleBlocks.length) await Promise.all(staleBlocks.map(b => fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: "DELETE", headers: hdr })));
+
+          const rtBlock = text => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+          const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+          const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+          const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
+          const hashtagsLine = (Array.isArray(parsed.hashtags) && parsed.hashtags.length) ? parsed.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ') : '';
+          const children = [
+            heading("Voiceover Script (narration)"), para(parsed.voiceoverScript),
+            heading("On-Screen Text"), ...((parsed.onScreenText || []).map(bullet)),
+            heading("Visual Metaphor"), para(parsed.visualMetaphor || ''),
+            heading("Visual Beats / Cutaway Notes"), ...((parsed.visualBeats || []).map(bullet)),
+            heading("Research Notes"), ...((parsed.researchNotes || []).map(bullet)),
+            heading("Caption"), para(parsed.caption || ''),
+            heading("Hashtags"), para(hashtagsLine),
+            heading("Hook Arc + Reference"), para(parsed.hookArcNote || ""),
+          ];
+          const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children }),
+          });
+          if (!writeResp.ok) { const r = await writeResp.json(); return json({ error: r.message || "Failed to write script to title" }, writeResp.status); }
+
+          // existingExplainerAsset was already resolved above, before the
+          // Claude call — reused here instead of querying again.
+          const assetProps = {
+            "Body": { rich_text: [{ type: "text", text: { content: parsed.voiceoverScript.slice(0, 1990) } }] },
+            "Notes": { rich_text: [{ type: "text", text: { content: (parsed.visualMetaphor || '').slice(0, 1990) } }] },
+            "Status": { select: { name: "Ready" } },
+            "Asset Status": { select: { name: "Publish" } },
+          };
+          if (existingExplainerAsset) {
+            assetId = existingExplainerAsset.id.replace(/-/g, "");
+            await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: assetProps }),
+            });
+          } else {
+            assetProps["Asset Title"] = { title: [{ type: "text", text: { content: `${titleName} — Explainer Video`.slice(0, 200) } }] };
+            assetProps["Asset Type"] = { select: { name: "explainer video" } };
+            assetProps["Content Strategy"] = { relation: [{ id: dash(titleId) }] };
+            assetProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+            const createResp = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+            });
+            const created = await createResp.json();
+            if (!createResp.ok || !created.id) return json({ error: created.message || "Asset create failed" }, createResp.status || 500);
+            assetId = created.id.replace(/-/g, "");
+          }
+        } else {
+          // Already scripted — existingExplainerAsset is the live Asset,
+          // no re-query needed (idempotent re-run, just re-confirm state).
+          assetId = existingExplainerAsset.id.replace(/-/g, "");
+        }
+
+        await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+        });
+
+        return json({ success: true, titleId, assetId, alreadyScripted });
+      }
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);
