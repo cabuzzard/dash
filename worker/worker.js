@@ -5375,6 +5375,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
                 gradeScore: p["Grade Score"]?.number ?? null,
                 gradeStatus: p["Status"]?.select?.name || "",
                 gradeNotes: p["Grade Notes"]?.rich_text?.map(x => x.plain_text).join("") || "",
+                body: p["Body"]?.rich_text?.map(x => x.plain_text).join("") || "",
               };
             } catch(e) { return null; }
           }))).filter(Boolean);

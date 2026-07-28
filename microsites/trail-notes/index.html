@@ -1452,6 +1452,7 @@ async function loadTitles() {
       const wrap = document.createElement('div');
       wrap.appendChild(div);
       t.assets.forEach(a => {
+        if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
         const ar = document.createElement('div');
         ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
         ar.innerHTML = `<span style="font-size:9px;color:#666;flex-shrink:0;">↳</span>`
@@ -1465,6 +1466,7 @@ async function loadTitles() {
           + (a.canvaLink ? `<button class="td-canva-sync" data-title="${esc(t.title)}" data-titleid="${t.id}" data-canvalink="${esc(a.canvaLink)}" onclick="syncFromCanva(this)" title="Copy a prompt to sync this Canva design's edits back into the carousel template — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #00C4CC;background:transparent;color:#00C4CC;border-radius:9px;cursor:pointer;flex-shrink:0;">↺ Sync</button>` : '')
           + (a.type === 'avatar video' && !a.designLink ? `<button class="td-avatar-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="openVideoGenModal('avatar', this)" title="Attach a sample image / design guidelines (optional), then copy a prompt to render this script into a video (make-avatar-reel) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
           + (a.type === 'text video' && !a.designLink ? `<button class="td-textvideo-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="openVideoGenModal('text', this)" title="Attach a sample image / design guidelines (optional), then copy a prompt to render this script into a video (make-reel-video) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
+          + (a.type === 'text video' && a.body ? `<button class="td-copy-script" onclick="copyAssetScript('${a.id}', this)" title="Copy the voiceover script to clipboard" style="font-size:10px;padding:1px 7px;border:1px solid #4488ff;background:transparent;color:#4488ff;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Script</button>` : '')
           + (a.type === 'explainer video' && !a.designLink ? `<button class="td-explainer-render" data-title="${esc(t.title)}" data-titleid="${t.id}" data-assetid="${a.id}" onclick="openVideoGenModal('explainer', this)" title="Attach a sample image / design guidelines (optional), then copy a prompt to render this script into a video (make-explainer-video) — paste it into a Claude Code chat" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🎬 Generate video</button>` : '')
           + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" style="flex-shrink:0;">↗</a>`
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset" style="flex-shrink:0;">✕</button>`;
@@ -4456,6 +4458,9 @@ let GA_METHOD_ID = null, GA_METHOD_NAME = '';
 // makeTitleRow() on every loadTitles() — lets Generate Assets show what
 // already exists for a title without a second fetch on modal open.
 let GA_TITLE_ASSETS_CACHE = {};
+// asset.id -> its Body property (the plain voiceover script text), populated
+// the same way — lets the 📋 Copy Script button copy instantly, no round-trip.
+let ASSET_SCRIPT_CACHE = {};
 const GA_CAROUSEL_METHOD_RE = /carousel/i;
 const GA_CAROUSEL_ASSET_TYPE_RE = /drawing post/i;
 
@@ -4872,6 +4877,23 @@ async function syncFromCanva(btn) {
     setTimeout(() => { btn.textContent = orig; }, 1400);
   } catch(e) {
     alert(prompt);
+  }
+}
+
+// Plain clipboard copy of a text-video asset's voiceover script — no chat
+// handoff, no Notion round-trip, just the words. ASSET_SCRIPT_CACHE is
+// populated by makeTitleRow() from the same getTitles() call that renders
+// the row this button lives on.
+async function copyAssetScript(assetId, btn) {
+  const text = ASSET_SCRIPT_CACHE[assetId];
+  if (!text) { alert('No cached script for this asset — reload the page and try again.'); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    const orig = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    setTimeout(() => { btn.textContent = orig; }, 1400);
+  } catch(e) {
+    alert(text);
   }
 }
 
