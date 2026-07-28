@@ -12222,30 +12222,66 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const overrideBlock = overrideBlockLines.length ? `\n${overrideBlockLines.join('\n')}\n` : '';
 
         const BATCH_SIZE = 5;
-        const scriptPrompt = `Write ${BATCH_SIZE} DISTINCT faceless Reel scripts for the same title — ElevenLabs voiceover over Ken Burns motion/B-roll with on-screen text and word captions, NO avatar or presenter on camera. This is for the "Text Video" method: pure discovery-format content, engineered to be found by strangers. Each of the ${BATCH_SIZE} must use a DIFFERENT hook arc from the toolkit below and take a genuinely different angle on the topic — not five rewordings of the same script.
+        // Unified "Generate Remotion Video Asset Package" prompt — produces
+        // not just script copy but the full downstream production package
+        // per script: asset metadata, content summary, hook package, a
+        // scene-by-scene breakdown (each with production spec + visual-
+        // planning flags), scene flow, educational assets, publishing
+        // assets, voice production notes, Remotion rendering notes, and a
+        // production checklist. Per the spec: visual planning is yes/no
+        // flags ONLY — no image prompts, no illustration-style
+        // descriptions, no animation code; a separate Visual Director
+        // stage owns all visual direction and artwork, and Assembly
+        // constructs the Remotion project from this package. The render
+        // pipeline itself (make-reel-video: one background image + Ken
+        // Burns + word captions) is unchanged — these are richer planning
+        // fields for it to draw on, not new render inputs.
+        const scriptPrompt = `You are producing ${BATCH_SIZE} DISTINCT Remotion Video Asset Packages for the same title — full production packages for faceless Reels (ElevenLabs voiceover over Ken Burns motion/B-roll, on-screen text, word captions, NO avatar or presenter on camera). This is for the "Text Video" method: pure discovery-format content, engineered to be found by strangers. Your job is not to produce a finished video — generate every structured asset a downstream Assembly stage needs. Each of the ${BATCH_SIZE} packages must use a DIFFERENT hook arc from the toolkit below and take a genuinely different angle on the topic — not five rewordings of the same script.
 
 TITLE: ${titleName}
 ${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}
 ${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}${overrideBlock}
-HOOK ARC TOOLKIT (use ${BATCH_SIZE} different ones, one per script): Contrarian claim, Cold-open confession, Stat/number hook, Direct callout, Question hook, Before/after compression.
+HOOK ARC TOOLKIT (use ${BATCH_SIZE} different ones, one per package): Contrarian claim, Cold-open confession, Stat/number hook, Direct callout, Question hook, Before/after compression.
 
-SCRIPT RULES (apply to EACH of the ${BATCH_SIZE}):
-- Arc: Hook (0-3s, survives with zero context) -> Reframe (3-8s, why this matters to the viewer) -> Payoff (8s-end, the real value, one beat per 3-5s, no throat-clearing) -> Close (last 2-3s).
-- On-screen text on every line, mirroring the spoken hook near-verbatim (most viewers watch muted).
+SCRIPT RULES (apply to EACH of the ${BATCH_SIZE} packages):
+- Arc: Hook (0-3s, survives with zero context) -> Reframe (3-8s, why this matters to the viewer) -> Payoff (8s-end, the real value, no throat-clearing) -> Close (last 2-3s).
+- Break the arc into 3-5 scenes (Scene Role examples: Hook, Problem, Context, Teach, Demonstration, Example, Framework, Story, Summary, CTA — pick whichever roles genuinely fit this script, not a fixed template; there is no on-camera presenter in this format, so no scene is ever "talking head").
+- On-screen text on every scene, mirroring the spoken hook near-verbatim where it matters most (most viewers watch muted).
 - Grounded in the research reference/context — a specific number, detail, or stake. Generic advice gets skipped.
-- Target 45-65 spoken words (~25-30s at natural pace). Cut anything that doesn't earn its place.
+- Target 45-65 spoken words total (~25-30s at natural pace, 30fps). Cut anything that doesn't earn its place.
 - One idea only — if it needs two, it should have been two reels.
 - Close on a ranking-signal CTA — "send this to someone who..." or "comment [KEYWORD] and I'll send you...".
 - No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
-- Shot/B-roll note per beat — not just what's on screen but how: the background image itself (a concrete image-generation prompt), composition (framing/subject placement), motion direction (Ken Burns pan/zoom), timing, and the transition into the next beat. One rich descriptive note per beat, not a generic one-liner.
+
+For EACH scene, also provide:
+- "sceneObjective": what this scene needs to accomplish
+- "keyTakeaway": the one thing a viewer should remember from this scene alone
+- "speakerIntent": the emotional delivery (e.g. "calm", "excited", "serious", "curious", "inspirational", "confident")
+- "estimatedDurationSec": a number
+- "flow": one compact line covering the transition into the next scene, narrative continuity, retention reason, and viewer expectation
+- "production": one compact line covering scene type (illustration/motion graphic/diagram/workflow/b-roll/screen recording/screenshot/text-only/mixed), layout type, information density (low/medium/high), composition, camera motion suggestion, transition suggestion, and audio notes
+- "visualFlags": an array containing ONLY the flags that apply, from this fixed vocabulary — "needsIllustration", "needsMotionGraphics", "textOnly", "reuseExistingAsset", "needsBRoll", "needsWorkflowDiagram", "needsScreenshot", "needsIconAnimation", "existingAssetCandidate", "reusableVisualCandidate". These are yes/no decisions ONLY — do NOT generate image prompts and do NOT describe illustration styles anywhere in this response; a separate Visual Director stage owns all visual direction, image briefs, and artwork generation.
+
+Also provide, once for the whole package:
+- "assetMetadata": { "series": "...", "platformSuggestion": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "...", "ctaGoal": "...", "voiceStyle": "...", "captionStyle": "..." }
+- "contentSummary": { "workingTitle": "...", "finalTitle": "...", "oneSentenceSummary": "...", "coreThesis": "...", "primaryPromise": "...", "primaryEmotion": "...", "desiredViewerOutcome": "..." }
+- "hookPackage": { "hookArcUsed": "which toolkit hook shape, and why it fits", "firstThreeSecondHook": "...", "openingLine": "...", "curiosityGap": "...", "openingOnScreenText": "...", "viewerRetentionStrategy": "..." }
+- "videoStructure": { "estimatedWordCount": 0, "estimatedSceneCount": 0, "storyStructure": "...", "narrativeArc": "...", "teachingStructure": "...", "ctaPlacement": "..." } — keep estimatedSceneCount consistent with the actual number of scenes you write
+- "educationalAssets": { "keyLessons": ["..."], "keyInsights": ["..."], "frameworks": ["..."], "analogies": ["..."], "examples": ["..."], "quotes": ["..."], "statistics": ["..."] } — empty arrays where nothing genuinely applies, never invent filler
+- "voiceProductionNotes": { "overallPace": "...", "averageWPM": 0, "pauseLocations": ["..."], "emphasisWords": ["..."], "emotionalArc": "...", "pronunciationNotes": "..." }
+- "remotionRenderingNotes": { "estimatedTotalFrames": 0, "captionTimingComplexity": "low/medium/high", "motionComplexity": "low/medium/high", "renderingComplexity": "low/medium/high", "gpuIntensity": "low/medium/high", "assetCountEstimate": 0, "externalAssetRequirements": ["..."] } — assume 30fps for frame math
+- "productionChecklist": { "scriptComplete": true, "narrationReady": true, "timingComplete": true, "captionReady": true, "visualPlanningComplete": true, "motionGraphicsNeeded": false, "existingAssetCandidatesIdentified": true, "imageGenerationRequired": false, "voiceoverRequired": true, "readyForArtDirection": true }
+- "publishingAssets": { "youtubeDescription": "...", "shortsDescription": "...", "linkedinCaption": "...", "xPost": "...", "keywords": "...", "altText": "...", "searchIntent": "..." } — platform variants beyond the core Instagram caption/hashtags below
+
+Do NOT generate artwork, image prompts, illustration-style descriptions, or animation implementation code anywhere in this response. The next stage (Visual Director) owns all visual direction and artwork; the Assembly stage constructs the Remotion project from this package.
 
 Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no markdown fences:
-[{ "hookArcNote": "which hook shape was used and why it fits", "voiceoverScript": "the spoken lines only, continuous prose, NO labels/timestamps/cues — exactly what TTS will speak", "onScreenText": ["line 1", "line 2", "..."], "shotNotes": ["beat 1 shot/B-roll note", "beat 2 shot/B-roll note", "..."], "caption": "150-200 word caption, campaign keywords worked in naturally for SEO", "hashtags": ["...", "..."] }, ...]`;
+[{ "voiceoverScript": "the full spoken lines, continuous prose, NO labels/timestamps/cues — exactly what TTS will speak", "scenes": [ { "sceneRole": "...", "sceneObjective": "...", "narrationScript": "...", "onScreenText": "...", "captionText": "...", "keyTakeaway": "...", "speakerIntent": "...", "estimatedDurationSec": 4, "flow": "...", "production": "...", "visualFlags": ["..."] }, ... 3-5 scenes total ... ], "assetMetadata": {}, "contentSummary": {}, "hookPackage": {}, "videoStructure": {}, "educationalAssets": {}, "voiceProductionNotes": {}, "remotionRenderingNotes": {}, "productionChecklist": {}, "publishingAssets": {}, "caption": "150-200 word Instagram caption, campaign keywords worked in naturally for SEO", "hashtags": ["...", "..."] }, ...]`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: scriptPrompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 12000, messages: [{ role: "user", content: scriptPrompt }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
@@ -12264,7 +12300,7 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
             const repairResp = await fetch("https://api.anthropic.com/v1/messages", {
               method: "POST",
               headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-              body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: `${scriptPrompt}\n\nYour previous response failed to parse as JSON (${firstErr.message}). Return ONLY the corrected JSON array this time, no other text, no markdown fences.` }] }),
+              body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 12000, messages: [{ role: "user", content: `${scriptPrompt}\n\nYour previous response failed to parse as JSON (${firstErr.message}). Return ONLY the corrected JSON array this time, no other text, no markdown fences.` }] }),
             });
             const repairData = await repairResp.json();
             if (!repairResp.ok) throw new Error(repairData.error?.message || "Claude API error on repair attempt");
@@ -12317,21 +12353,132 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
           const assetId = created.id.replace(/-/g, "");
           assetIds.push(assetId);
 
-          // Full structured script lives on THIS asset's own page body —
-          // not the title's — since 5 scripts can't share one title body
-          // unambiguously. The 🎬 prompt for each asset points here.
+          // Full structured Asset Package lives on THIS asset's own page
+          // body — not the title's — since 5 scripts can't share one title
+          // body unambiguously. The 🎬 prompt for each asset points here.
+          // "Voiceover Script"/"On-Screen Text"/"Shot / B-Roll Notes"/
+          // "Caption"/"Hashtags" keep their original heading names (Remotion
+          // skill compatibility — make-reel-video.md reads them by name);
+          // everything else is a new dense section appended after them.
+          const scenes = Array.isArray(parsed.scenes) ? parsed.scenes : [];
+          const am = parsed.assetMetadata || {};
+          const cs = parsed.contentSummary || {};
+          const hp = parsed.hookPackage || {};
+          const vs = parsed.videoStructure || {};
+          const ea = parsed.educationalAssets || {};
+          const vp = parsed.voiceProductionNotes || {};
+          const rr = parsed.remotionRenderingNotes || {};
+          const pc = parsed.productionChecklist || {};
+          const pa = parsed.publishingAssets || {};
+
+          const amLine = [
+            'Format: Text Video (faceless Reel)', 'Aspect ratio: 9:16 (1080x1920)', 'Frame rate: 30fps', 'Target duration: 25-30s',
+            am.series ? `Series: ${am.series}` : '', am.platformSuggestion ? `Platform: ${am.platformSuggestion}` : '',
+            am.targetAudience ? `Audience: ${am.targetAudience}` : '', am.funnelStage ? `Funnel stage: ${am.funnelStage}` : '',
+            am.primaryGoal ? `Primary goal: ${am.primaryGoal}` : '', am.ctaGoal ? `CTA goal: ${am.ctaGoal}` : '',
+            am.voiceStyle ? `Voice style: ${am.voiceStyle}` : '', am.captionStyle ? `Caption style: ${am.captionStyle}` : '',
+          ].filter(Boolean).join(' | ');
+          const csLine = [
+            cs.oneSentenceSummary ? `Summary: ${cs.oneSentenceSummary}` : '', cs.coreThesis ? `Core thesis: ${cs.coreThesis}` : '',
+            cs.primaryPromise ? `Promise: ${cs.primaryPromise}` : '', cs.primaryEmotion ? `Primary emotion: ${cs.primaryEmotion}` : '',
+            cs.desiredViewerOutcome ? `Desired outcome: ${cs.desiredViewerOutcome}` : '',
+          ].filter(Boolean).join(' | ');
+          const vsLine = [
+            vs.storyStructure ? `Story structure: ${vs.storyStructure}` : '', vs.narrativeArc ? `Narrative arc: ${vs.narrativeArc}` : '',
+            vs.teachingStructure ? `Teaching structure: ${vs.teachingStructure}` : '', vs.ctaPlacement ? `CTA placement: ${vs.ctaPlacement}` : '',
+            vs.estimatedWordCount ? `~${vs.estimatedWordCount} words` : '', vs.estimatedSceneCount ? `${vs.estimatedSceneCount} scenes` : '',
+          ].filter(Boolean).join(' | ');
+
           const children = [
             heading("Voiceover Script (to-camera)"), para(parsed.voiceoverScript),
-            heading("On-Screen Text"), ...((parsed.onScreenText || []).map(bullet)),
-            heading("Shot / B-Roll Notes"), ...((parsed.shotNotes || []).map(bullet)),
+            heading("On-Screen Text"),
+            ...(scenes.filter(s => s.onScreenText).map((s, idx) => bullet(`Scene ${idx + 1}: ${s.onScreenText}`))),
+            heading("Shot / B-Roll Notes"),
+            ...(scenes.map((s, idx) => {
+              const parts = [
+                s.sceneRole, s.sceneObjective, s.keyTakeaway,
+                s.speakerIntent ? `delivery: ${s.speakerIntent}` : '',
+                s.estimatedDurationSec ? `~${s.estimatedDurationSec}s` : '',
+                s.production, s.flow,
+                Array.isArray(s.visualFlags) && s.visualFlags.length ? `needs: ${s.visualFlags.join(', ')}` : 'needs: none',
+              ].filter(Boolean);
+              return bullet(`Scene ${idx + 1}: ${parts.join(' — ')}`);
+            })),
             heading("Caption"), para(parsed.caption || ''),
             heading("Hashtags"), para(hashtagsLine),
-            heading("Hook Arc + Reference"), para(parsed.hookArcNote || ""),
+            heading('Hook Package'),
+            ...([
+              hp.hookArcUsed ? `Hook arc used: ${hp.hookArcUsed}` : '',
+              hp.firstThreeSecondHook ? `First 3s hook: ${hp.firstThreeSecondHook}` : '',
+              hp.openingLine ? `Opening line: ${hp.openingLine}` : '',
+              hp.curiosityGap ? `Curiosity gap: ${hp.curiosityGap}` : '',
+              hp.openingOnScreenText ? `Opening on-screen text: ${hp.openingOnScreenText}` : '',
+              hp.viewerRetentionStrategy ? `Retention strategy: ${hp.viewerRetentionStrategy}` : '',
+            ].filter(Boolean).map(bullet)),
+            ...(amLine ? [heading('Asset Metadata'), para(amLine)] : []),
+            ...(csLine ? [heading('Content Summary'), para(csLine)] : []),
+            ...(vsLine ? [heading('Video Structure'), para(vsLine)] : []),
+            ...((ea.keyLessons?.length || ea.keyInsights?.length || ea.frameworks?.length || ea.analogies?.length || ea.examples?.length || ea.quotes?.length || ea.statistics?.length) ? [
+              heading('Educational Assets'),
+              ...(ea.keyLessons || []).map(x => bullet(`Lesson: ${x}`)),
+              ...(ea.keyInsights || []).map(x => bullet(`Insight: ${x}`)),
+              ...(ea.frameworks || []).map(x => bullet(`Framework: ${x}`)),
+              ...(ea.analogies || []).map(x => bullet(`Analogy: ${x}`)),
+              ...(ea.examples || []).map(x => bullet(`Example: ${x}`)),
+              ...(ea.quotes || []).map(x => bullet(`Quote: ${x}`)),
+              ...(ea.statistics || []).map(x => bullet(`Stat: ${x}`)),
+            ] : []),
+            ...((pa.youtubeDescription || pa.shortsDescription || pa.linkedinCaption || pa.xPost || pa.keywords || pa.altText || pa.searchIntent) ? [
+              heading('Publishing Assets'),
+              ...(pa.youtubeDescription ? [bullet(`YouTube description: ${pa.youtubeDescription}`)] : []),
+              ...(pa.shortsDescription ? [bullet(`Shorts description: ${pa.shortsDescription}`)] : []),
+              ...(pa.linkedinCaption ? [bullet(`LinkedIn caption: ${pa.linkedinCaption}`)] : []),
+              ...(pa.xPost ? [bullet(`X post: ${pa.xPost}`)] : []),
+              ...(pa.keywords ? [bullet(`Keywords: ${pa.keywords}`)] : []),
+              ...(pa.altText ? [bullet(`Alt text: ${pa.altText}`)] : []),
+              ...(pa.searchIntent ? [bullet(`Search intent: ${pa.searchIntent}`)] : []),
+            ] : []),
+            ...((vp.overallPace || vp.averageWPM || vp.emotionalArc || vp.pronunciationNotes || vp.pauseLocations?.length || vp.emphasisWords?.length) ? [
+              heading('Voice Production Notes'),
+              ...([
+                vp.overallPace ? `Pace: ${vp.overallPace}` : '',
+                vp.averageWPM ? `Avg WPM: ${vp.averageWPM}` : '',
+                vp.emotionalArc ? `Emotional arc: ${vp.emotionalArc}` : '',
+                vp.pronunciationNotes ? `Pronunciation: ${vp.pronunciationNotes}` : '',
+                Array.isArray(vp.pauseLocations) && vp.pauseLocations.length ? `Pauses: ${vp.pauseLocations.join(', ')}` : '',
+                Array.isArray(vp.emphasisWords) && vp.emphasisWords.length ? `Emphasis: ${vp.emphasisWords.join(', ')}` : '',
+              ].filter(Boolean).map(bullet)),
+            ] : []),
+            ...((rr.estimatedTotalFrames || rr.captionTimingComplexity || rr.motionComplexity || rr.renderingComplexity || rr.gpuIntensity || rr.assetCountEstimate || rr.externalAssetRequirements?.length) ? [
+              heading('Remotion Rendering Notes'),
+              ...([
+                rr.estimatedTotalFrames ? `Estimated total frames: ${rr.estimatedTotalFrames}` : '',
+                rr.captionTimingComplexity ? `Caption timing complexity: ${rr.captionTimingComplexity}` : '',
+                rr.motionComplexity ? `Motion complexity: ${rr.motionComplexity}` : '',
+                rr.renderingComplexity ? `Rendering complexity: ${rr.renderingComplexity}` : '',
+                rr.gpuIntensity ? `GPU intensity: ${rr.gpuIntensity}` : '',
+                rr.assetCountEstimate ? `Asset count estimate: ${rr.assetCountEstimate}` : '',
+                Array.isArray(rr.externalAssetRequirements) && rr.externalAssetRequirements.length ? `External assets: ${rr.externalAssetRequirements.join(', ')}` : '',
+              ].filter(Boolean).map(bullet)),
+            ] : []),
+            ...(Object.keys(pc).length ? [
+              heading('Production Checklist'),
+              ...Object.entries(pc).map(([k, v]) => bullet(`${k.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()).trim()}: ${v ? 'Yes' : 'No'}`)),
+            ] : []),
           ];
-          await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ children }),
-          });
+          // Notion's PATCH /blocks/{id}/children accepts max 100 children
+          // per call — chunk in batches of 90 as a safety margin, same
+          // pattern generateCarouselPreview uses, since the richer Asset
+          // Package schema can push a single script's block count well
+          // past the old flat script format's.
+          for (let c = 0; c < children.length; c += 90) {
+            const batch = children.slice(c, c + 90);
+            const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ children: batch }),
+            });
+            if (!writeResp.ok) { const r = await writeResp.json().catch(() => ({})); return json({ error: r.message || `Failed to write script #${n} body`, assetIds }, writeResp.status); }
+          }
         }
 
         await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
