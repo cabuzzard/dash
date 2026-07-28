@@ -29,11 +29,13 @@ Also check the Asset record's **Design Notes** property and **Images** file prop
 - **Design Notes** — palette/tone/do-and-don't guidance from the operator. Apply it to caption styling and Step 2's background choice, overriding your own default judgment where they conflict.
 - **Images** — a sample/reference image the operator attached. Use it as the background (skip Step 2's sourcing) unless it's clearly unsuitable (wrong orientation, too busy for captions) — say so before substituting your own.
 
+Also read the Asset page's **"Shot / B-Roll Notes"** section alongside the script. A dashboard-generated script may have rich per-beat notes here — the background image itself as a concrete generation prompt, composition, Ken Burns motion direction, timing, and transition — not just a one-line "what's on screen." When present, use it directly in Step 2 (skip re-deriving a background brief from scratch) and let the motion/timing notes inform the Remotion Ken Burns config. Older or manually-written scripts may only have a plain one-liner per beat — that's fine, just less to work with; the rendering workflow itself doesn't change either way (still one background image + Ken Burns + word captions, not a multi-image sequence).
+
 ### Step 1 — Pick the voice
 Choose an ElevenLabs voice ID that matches the campaign voice/avatar (read the campaign's register from its Research/Notes if unsure), or use the user's override.
 
 ### Step 2 — Get a background image
-Skip this if Step 0 already found a usable Images attachment on the Asset. Otherwise, in priority order: (a) an image the user provides; (b) if the reel's campaign/spec has a usable visual, export a still from its Canva design via the Canva MCP `export-design` and use that; (c) generate one with the Canva MCP `generate-design` (a mood-appropriate vertical background in the campaign's design-spec palette, minimal so captions stay legible, honoring any Design Notes from Step 0) and export it; (d) otherwise ask the user for one. Save it as the background the render step expects.
+Skip this if Step 0 already found a usable Images attachment on the Asset. Otherwise, in priority order: (a) an image the user provides; (b) a background-image prompt already present in the Shot/B-Roll Notes from Step 0 — use it directly with the Canva MCP `generate-design`; (c) if the reel's campaign/spec has a usable visual, export a still from its Canva design via the Canva MCP `export-design` and use that; (d) generate one with the Canva MCP `generate-design` (a mood-appropriate vertical background in the campaign's design-spec palette, minimal so captions stay legible, honoring any Design Notes from Step 0) and export it; (e) otherwise ask the user for one. Save it as the background the render step expects.
 
 ### Step 3 — Render via the video-voiceover skill
 Hand the pieces to the **`video-voiceover`** skill and follow its steps exactly (it owns the Remotion mechanics):

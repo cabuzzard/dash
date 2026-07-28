@@ -876,6 +876,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <input class="modal-ta" id="gaAvatarPresenterInput" type="text" placeholder="e.g. a HeyGen avatar_id, or a reference image URL" autocomplete="off" />
       </div>
 
+      <div id="gaDesignRefWrap" style="display:none;margin-bottom:10px;">
+        <label class="lm-label">Design reference <span style="color:#777;font-weight:normal;">— both optional; steers the copy/visual direction before it's written, saved onto the resulting asset(s) for reuse on refine/regenerate</span></label>
+        <input class="modal-ta" id="gaDesignRefImageInput" type="file" accept="image/*" style="height:auto;padding:8px 10px;margin-bottom:8px;" />
+        <textarea class="modal-ta" id="gaDesignRefNotesInput" rows="2" placeholder="e.g. lean into the campaign's editorial palette; avoid stock-photo energy; keep hooks punchier than usual..." style="font-size:12px;line-height:1.5;resize:vertical;"></textarea>
+      </div>
+
       <div class="ga-hide-for-carousel">
         <label class="lm-label">Sub method <span style="color:#777;font-weight:normal;">— target platform layer (e.g. Instagram, X); pick existing or type a new name</span></label>
         <div style="position:relative;margin-bottom:10px;">
@@ -4494,12 +4500,14 @@ function gaUpdateSkillHint() {
   if (!hint) return;
   const typeWrap = document.getElementById('gaCarouselTypeWrap');
   const avatarWrap = document.getElementById('gaAvatarPresenterWrap');
+  const designRefWrap = document.getElementById('gaDesignRefWrap');
   const match = gaMatchSkill(GA_METHOD_NAME);
   const isCarousel = match?.workerAction === 'generateCarouselPreview';
   const isAvatar = match?.workerAction === 'generateAvatarScript';
+  const isTextVideoScript = match?.workerAction === 'generateTextVideoScript';
   const isWorkerAction = !!match?.workerAction;
   document.querySelectorAll('.ga-hide-for-carousel').forEach(el => { el.style.display = isWorkerAction ? 'none' : ''; });
-  if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; if (avatarWrap) avatarWrap.style.display = 'none'; return; }
+  if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; if (avatarWrap) avatarWrap.style.display = 'none'; if (designRefWrap) designRefWrap.style.display = 'none'; return; }
   hint.style.display = 'flex';
   document.getElementById('gaSkillHintText').textContent = match.hint;
   const btn = document.getElementById('gaSkillHintBtn');
@@ -4512,11 +4520,13 @@ function gaUpdateSkillHint() {
     document.getElementById('gaSkillHintBtn').style.display = 'none';
     if (typeWrap) typeWrap.style.display = isCarousel ? 'block' : 'none';
     if (avatarWrap) avatarWrap.style.display = isAvatar ? 'block' : 'none';
+    if (designRefWrap) designRefWrap.style.display = (isCarousel || isTextVideoScript) ? 'block' : 'none';
     if (isAvatar) gaLoadCampaignPresenter();
     return;
   }
   if (typeWrap) typeWrap.style.display = 'none';
   if (avatarWrap) avatarWrap.style.display = 'none';
+  if (designRefWrap) designRefWrap.style.display = 'none';
   document.getElementById('gaSkillHintBtn').style.display = '';
 
   btn.textContent = `Run ${match.skill} in Claude`;
@@ -4728,7 +4738,7 @@ async function openGenAssetsModal(titleId) {
   GA_METHOD_ID = null; GA_METHOD_NAME = '';
   GA_SUBMETHOD_ID = null; GA_SUBMETHOD_NAME = '';
   GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
-  ['gaTitleInput','gaMethodInput','gaSubMethodInput','gaProductInput','gaTypeInput','gaDescInput','gaKeywordsInput','gaResearchInput','gaAvatarPresenterInput'].forEach(id => {
+  ['gaTitleInput','gaMethodInput','gaSubMethodInput','gaProductInput','gaTypeInput','gaDescInput','gaKeywordsInput','gaResearchInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaDesignRefImageInput'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
@@ -4934,20 +4944,30 @@ function closeVideoGenModal() {
   document.getElementById('videoGenModal').classList.remove('open');
   VG_STATE = null; VG_IMAGE_DATA = null;
 }
-document.getElementById('vgImageInput')?.addEventListener('change', (e) => {
+// Shared by the video-gen modal's image input and the Generate Assets
+// modal's Design Reference section — reads a File into { base64, filename,
+// dataUrl } (dataUrl kept for callers that want a live <img> preview).
+function readImageAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) { resolve(null); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result; // "data:image/png;base64,AAAA..."
+      const base64 = String(dataUrl).split(',')[1] || '';
+      resolve({ base64, filename: file.name, dataUrl });
+    };
+    reader.onerror = () => reject(new Error('Failed to read image file'));
+    reader.readAsDataURL(file);
+  });
+}
+document.getElementById('vgImageInput')?.addEventListener('change', async (e) => {
   const file = e.target.files && e.target.files[0];
   const wrap = document.getElementById('vgImagePreviewWrap');
   const img = document.getElementById('vgImagePreview');
   if (!file) { wrap.style.display = 'none'; VG_IMAGE_DATA = null; return; }
-  const reader = new FileReader();
-  reader.onload = () => {
-    const dataUrl = reader.result; // "data:image/png;base64,AAAA..."
-    const base64 = String(dataUrl).split(',')[1] || '';
-    VG_IMAGE_DATA = { base64, filename: file.name };
-    img.src = dataUrl;
-    wrap.style.display = 'block';
-  };
-  reader.readAsDataURL(file);
+  VG_IMAGE_DATA = await readImageAsBase64(file);
+  img.src = VG_IMAGE_DATA.dataUrl;
+  wrap.style.display = 'block';
 });
 async function submitVideoGenModal() {
   if (!VG_STATE) return;
@@ -5040,7 +5060,19 @@ async function submitGenAssets() {
     try {
       const carouselType = document.getElementById('gaCarouselTypeInput')?.value || undefined;
       const presenter = document.getElementById('gaAvatarPresenterInput')?.value.trim() || undefined;
-      const r = await w(skillMatch.workerAction, { titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, carouselType, presenter });
+      // Design Reference (Carousel + Text Video only, per gaUpdateSkillHint's
+      // designRefWrap visibility) — optional operator-supplied creative
+      // direction, read here rather than on file-select since there's no
+      // live preview in this modal, just a one-shot read at submit time.
+      const designNotes = document.getElementById('gaDesignRefNotesInput')?.value.trim() || undefined;
+      const designRefFile = document.getElementById('gaDesignRefImageInput')?.files?.[0] || null;
+      const designRefImage = designRefFile ? await readImageAsBase64(designRefFile) : null;
+      const r = await w(skillMatch.workerAction, {
+        titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, carouselType, presenter,
+        designNotes,
+        referenceImageBase64: designRefImage?.base64,
+        referenceImageFilename: designRefImage?.filename,
+      });
       if (r.error) throw new Error(r.error);
       if (isAvatarScript) {
         // Surface whichever presenter actually got used — if it was

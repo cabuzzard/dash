@@ -29,6 +29,10 @@ Research DB `557e6b7b8c434a578d45ecb0a8329f63` · Design Specs DB `3981f7d3a4bb8
 ### Step 0 — Check for existing slide copy on the title (this decides fresh vs. regenerate)
 Fetch the title page's body via the Notion connector. It uses a fixed block structure — a `heading_3` "Slide N (N/total)" followed by a bold paragraph (headline) and a plain paragraph (body), repeated per slide, then a `Caption` heading and a `Hashtags` heading. This is the exact structure the dashboard's own carousel tooling reads and writes, so staying compatible with it means slide copy is always editable from Notion regardless of which path (this skill, or the dashboard) touched it last.
 
+A dashboard-driven generation may also have written a `## Visual Plan` heading after Hashtags (one bullet per slide: purpose / visual objective / illustration direction) — read it if present and let it inform the Canva build in Step 3, but never treat its absence as missing anything; it's optional metadata, not required structure.
+
+Also check the linked Assets DB record (Content Strategy relation contains this title, Asset Type "carousel") for **Design Notes** and an **Images** attachment — the operator may have supplied creative direction from the dashboard's Generate Assets modal before you were invoked. If present, treat both as required direction for the Canva build (Step 3), same weight as the Design Spec.
+
 - **If slide content already exists:** default to **regenerate mode** — treat the current Notion text as final and skip straight to Step 3 (Canva build). This is the "I tweaked it in Notion, rebuild Canva" loop — don't re-research or rewrite unasked. Ask exactly one clarifying question only if it's genuinely ambiguous whether the user wants a fresh angle instead ("Rebuild Canva from the current slide text on this title, or do a fresh research + rewrite pass first?"); otherwise just proceed with what's there.
 - **If no slide content exists:** this is a **fresh build** — continue to Step 1.
 
@@ -51,7 +55,7 @@ Write, all original (rewritten from the researched angles, never lifted):
 Save this into the title page's body using the Notion connector, in the exact block structure described in Step 0 (`heading_3` "Slide N (N/7)" → bold-paragraph headline → plain-paragraph body → divider, repeated, then `Caption` and `Hashtags` headings). Replace any existing body content on this title with this — it's a fresh build, so old content (if any) has already been ruled out in Step 0.
 
 ### Step 3 — Generate slides in Canva
-Using whichever slide text is now current (either just written in Step 2, or the pre-existing Notion content in regenerate mode) and the campaign's Design Spec (fall back to editorial-minimal — warm cream background, thin serif font, delicate botanical accent, no photography/faces/loud color — only if no spec exists):
+Using whichever slide text is now current (either just written in Step 2, or the pre-existing Notion content in regenerate mode), the campaign's Design Spec (fall back to editorial-minimal — warm cream background, thin serif font, delicate botanical accent, no photography/faces/loud color — only if no spec exists), and any Design Notes / reference image / Visual Plan found in Step 0 (these take precedence over the Design Spec's defaults where they conflict):
 - Call `generate-design` (design_type: instagram_post) for all 7 slides — these calls are independent of each other and can run in parallel.
 - Pick the best candidate from each (match the design spec / editorial-minimal aesthetic).
 - Call `create-design-from-candidate` to save all 7 as real editable Canva designs.

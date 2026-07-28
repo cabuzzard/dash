@@ -5908,18 +5908,13 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ specs, attachedId: attachedId ? attachedId.replace(/-/g,"") : null });
       }
 
-      // Merge the visual style of an uploaded photo/drawing into a design spec.
-      // Client sends a data URL (jpg/png, downscaled) + the current spec fields;
-      // Claude vision returns merged colors/fonts/aesthetic to fill the edit form.
-      if (body.action === "mergeSpecStyleFromImage") {
-        const { image, current } = body;
-        if (!image) return json({ error: "image required" }, 400);
-        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-        const m = /^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/i.exec(image || "");
-        if (!m) return json({ error: "image must be a base64 data URL (png/jpeg/webp)" }, 400);
-        let mediaType = m[1].toLowerCase(); if (mediaType === "image/jpg") mediaType = "image/jpeg";
-        const b64 = m[3];
-        const cur = current || {};
+      // Analyzes a reference image's visual STYLE only (palette, mood,
+      // contrast, texture, typography feel) — never its literal content —
+      // and merges that style into an existing spec-shaped object. Shared
+      // by mergeSpecStyleFromImage (the Design Spec editor's "upload a
+      // reference" flow) and buildCreativeBrief (below) so there's exactly
+      // one place this vision prompt lives.
+      async function analyzeReferenceImage(b64, mediaType, env, cur = {}) {
         const prompt = `You are a brand designer. The attached image is a reference photo or drawing. Analyze its visual style — dominant colors, mood, contrast, texture, and the kind of typography that would suit it.
 
 Merge that style INTO this existing design spec (keep what still fits, but adopt the image's palette and mood):
@@ -5952,17 +5947,135 @@ Return ONLY this JSON, no other text, no markdown fences:
           }),
         });
         const aiData = await aiResp.json();
-        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude vision error" }, 500);
-        let merged;
+        if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude vision error");
+        const raw = aiData.content?.[0]?.text || "";
+        const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+        if (s === -1 || e === -1 || e < s) throw new Error("No JSON object found");
+        return JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+      }
+
+      // Commits an uploaded reference image straight to the repo (same
+      // GitHub-contents pattern as the carousel/slide-edit paths — there's
+      // no other asset host wired into this Worker) and returns its hosted
+      // URL. `ownerKey` is an assetId when one already exists, or a
+      // `pending-{titleId}`-style key when hosting happens before any Asset
+      // is created yet (Carousel/Text Video's case via buildCreativeBrief).
+      async function hostDesignRefImage({ imageBase64, imageFilename, deployPath, ownerKey, GT }) {
+        const extMatch = imageFilename.match(/\.([a-zA-Z0-9]+)$/);
+        const ext = (extMatch ? extMatch[1] : 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+        const path = `web/${deployPath}/design-refs/${ownerKey}.${ext}`;
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+        let sha = null;
+        if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
+        const putBody = { message: `Design reference: ${ownerKey}`, content: imageBase64, branch: BRANCH };
+        if (sha) putBody.sha = sha;
+        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+        });
+        if (!putResp.ok) { const r = await putResp.json(); throw new Error(`GitHub commit failed (HTTP ${putResp.status}): ${r.message || 'unknown'}`); }
+        return `https://cabuzzard.github.io/dash/${path}`;
+      }
+
+      // Same deployPath resolution generateCarouselPreview/publishCarouselSlides
+      // already do inline — factored out for the new call sites below so it
+      // isn't triplicated. Doesn't touch the existing inline copies.
+      async function resolveDeployPath(campaignId, hdr, dash) {
+        let deployPath = 'campaign';
+        if (campaignId) {
+          const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          const liveUrl = campPage?.properties?.["live site"]?.url || campPage?.properties?.["microsite"]?.url || "";
+          const deployMatch = liveUrl.match(/\/web\/([^\/?#]+)/) || liveUrl.match(/\/microsites\/([^\/?#]+)/);
+          const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+          deployPath = deployMatch ? deployMatch[1] : (slugify(campPage?.properties?.Name?.title?.map(t=>t.plain_text).join("")) || 'campaign');
+        }
+        return deployPath;
+      }
+
+      function guessImageMediaType(filename) {
+        const ext = (String(filename || '').match(/\.([a-zA-Z0-9]+)$/) || [, ''])[1].toLowerCase();
+        if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+        if (ext === 'webp') return 'image/webp';
+        return 'image/png';
+      }
+
+      // ── buildCreativeBrief ──
+      // Assembles operator-supplied creative direction for Carousel/Text
+      // Video generation, in priority order: Operator Notes -> Reference
+      // Image (style only, via analyzeReferenceImage) -> effective Design
+      // Spec (campaign+product merge, same logic as getEffectiveDesignSpec)
+      // -> DESIGN_SPEC_DEFAULTS. Returns `briefText: null` when neither
+      // notes nor an image were supplied — callers skip splicing anything
+      // into their prompts in that case, so output is byte-identical to
+      // before this existed. Vision-analysis and image-hosting failures are
+      // caught and swallowed, never thrown: a bad reference image degrades
+      // to notes+spec only rather than blocking generation.
+      async function buildCreativeBrief({ designNotes, referenceImageBase64, referenceImageFilename, campaignId, productId, hdr, dash, env, GT, ownerKey }) {
+        const hasNotes = !!(designNotes && String(designNotes).trim());
+        const hasImage = !!(referenceImageBase64 && referenceImageFilename);
+        if (!hasNotes && !hasImage) return { briefText: null, imageUrl: null, resolvedSpec: null };
+
+        const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
+        const [campPage, prodPage] = await Promise.all([
+          campaignId ? fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+        ]);
+        const stripEmpty = obj => Object.fromEntries(Object.entries(obj || {}).filter(([k, v]) => k !== "id" && k !== "name" && v));
+        const campSpecId = campPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+        const prodSpecId = hasProduct ? (prodPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null) : null;
+        const [campSpecPage, prodSpecPage] = await Promise.all([
+          campSpecId ? fetch(`https://api.notion.com/v1/pages/${campSpecId}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          prodSpecId ? fetch(`https://api.notion.com/v1/pages/${prodSpecId}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+        ]);
+        const campaignSpec = campSpecPage?.properties ? dsFromPage(campSpecPage) : null;
+        const productSpec = prodSpecPage?.properties ? dsFromPage(prodSpecPage) : null;
+        let resolvedSpec = { ...DESIGN_SPEC_DEFAULTS, ...stripEmpty(campaignSpec), ...stripEmpty(productSpec) };
+
+        let imageUrl = null;
+        let imageStyleNotes = '';
+        if (hasImage) {
+          try {
+            const styleFromImage = await analyzeReferenceImage(referenceImageBase64, guessImageMediaType(referenceImageFilename), env, resolvedSpec);
+            resolvedSpec = { ...resolvedSpec, ...stripEmpty(styleFromImage) };
+            imageStyleNotes = styleFromImage.notes || '';
+          } catch (e) { /* non-fatal — proceed on notes+spec alone */ }
+
+          if (GT) {
+            try {
+              const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+              imageUrl = await hostDesignRefImage({ imageBase64: referenceImageBase64, imageFilename: referenceImageFilename, deployPath, ownerKey, GT });
+            } catch (e) { /* non-fatal — a hosting failure shouldn't block generation */ }
+          }
+        }
+
+        const lines = ['CREATIVE BRIEF (operator-supplied design direction — honor this over your own default instincts):'];
+        if (hasNotes) lines.push(`- Operator notes: ${String(designNotes).trim()}`);
+        if (imageStyleNotes) lines.push(`- Reference image style: ${imageStyleNotes}`);
+        lines.push(`- Palette: background ${resolvedSpec.bg}, ink ${resolvedSpec.ink}, accent ${resolvedSpec.accent}`);
+        lines.push(`- Typography: headline font "${resolvedSpec.headlineFont}", body font "${resolvedSpec.bodyFont}"`);
+        if (resolvedSpec.notes) lines.push(`- Aesthetic direction: ${resolvedSpec.notes}`);
+
+        return { briefText: lines.join('\n'), imageUrl, resolvedSpec };
+      }
+
+      // Merge the visual style of an uploaded photo/drawing into a design spec.
+      // Client sends a data URL (jpg/png, downscaled) + the current spec fields;
+      // Claude vision returns merged colors/fonts/aesthetic to fill the edit form.
+      if (body.action === "mergeSpecStyleFromImage") {
+        const { image, current } = body;
+        if (!image) return json({ error: "image required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const m = /^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/i.exec(image || "");
+        if (!m) return json({ error: "image must be a base64 data URL (png/jpeg/webp)" }, 400);
+        let mediaType = m[1].toLowerCase(); if (mediaType === "image/jpg") mediaType = "image/jpeg";
+        const b64 = m[3];
         try {
-          const raw = aiData.content?.[0]?.text || "";
-          const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
-          if (s === -1 || e === -1 || e < s) throw new Error("No JSON object found");
-          merged = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
-        } catch(e) {
+          const merged = await analyzeReferenceImage(b64, mediaType, env, current || {});
+          return json({ merged });
+        } catch (e) {
           return json({ error: "Failed to parse merged spec: " + e.message }, 500);
         }
-        return json({ merged });
       }
 
       if (body.action === "createDesignSpec") {
@@ -10857,6 +10970,23 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
         if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
         const titleName = (titlePage.properties.Title?.title || []).map(t => t.plain_text).join("") || "Carousel";
+        const productId = (titlePage.properties.product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+
+        // Operator-supplied creative direction (optional — buildCreativeBrief
+        // returns briefText: null when neither is present, so every prompt
+        // below is byte-identical to pre-Creative-Brief behavior in that case).
+        const brief = await buildCreativeBrief({
+          designNotes: body.designNotes,
+          referenceImageBase64: body.referenceImageBase64,
+          referenceImageFilename: body.referenceImageFilename,
+          campaignId, productId, hdr, dash, env, GT,
+          ownerKey: `pending-${titleId}`,
+        });
+        const briefBlock = brief.briefText ? `\n${brief.briefText}\n` : '';
+        const visualFieldsInstruction = brief.briefText
+          ? ' Also include, per slide: "purpose" (its narrative role in the arc), "visualObjective" (what it should visually accomplish), and "illustrationDirection" (a concrete illustration/imagery direction, or "none — pure typographic treatment" if none is warranted).'
+          : '';
+        const visualFieldsSchema = brief.briefText ? `, "purpose": "...", "visualObjective": "...", "illustrationDirection": "..."` : '';
 
         const parseSlides = async () => {
           const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
@@ -10914,8 +11044,8 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
             ? `${researchGuidelinesBlock(body.researchGuidelines)}Write a CURATED COLLECTION Instagram carousel for this specific title — a set of standalone slides under one theme, NOT a narrative with a beginning/middle/end.
 
 TITLE: ${titleName}
-${keywords ? `KEYWORDS: ${keywords}\n` : ''}
-Write EXACTLY 7 slides, no more, no fewer. Every single slide must work completely on its own — a viewer who sees ONLY that one slide, with zero other context, must still get the full point. Do NOT write a hook-then-insights-then-CTA arc; do NOT reference "the next slide" or build on a previous one. Each slide is a self-contained short statement, insight, or quote-style line related to the theme (e.g. "your headline" = the standalone statement, "body" = an optional one-line elaboration or attribution — can be empty if the headline says it all).
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}
+Write EXACTLY 7 slides, no more, no fewer. Every single slide must work completely on its own — a viewer who sees ONLY that one slide, with zero other context, must still get the full point. Do NOT write a hook-then-insights-then-CTA arc; do NOT reference "the next slide" or build on a previous one. Each slide is a self-contained short statement, insight, or quote-style line related to the theme (e.g. "your headline" = the standalone statement, "body" = an optional one-line elaboration or attribution — can be empty if the headline says it all).${visualFieldsInstruction}
 
 - Instagram caption (150-200 words) tying the collection's theme together — required, never leave empty
 - 3-5 hashtags (no # prefix needed) — required, never leave empty
@@ -10923,17 +11053,17 @@ Write EXACTLY 7 slides, no more, no fewer. Every single slide must work complete
 No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
 
 Return ONLY this JSON object, no other text, no markdown fences:
-{ "slides": [ { "headline": "...", "body": "..." }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`
+{ "slides": [ { "headline": "...", "body": "..."${visualFieldsSchema} }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`
             : isHiddenPotential
             ? `${researchGuidelinesBlock(body.researchGuidelines)}Write a HIDDEN POTENTIAL Instagram carousel for this specific title — every slide is a split "stress → benefit" contrast: the real friction/pain point on the left vs. the payoff waiting on the other side of it, on the right.
 
 TITLE: ${titleName}
-${keywords ? `KEYWORDS: ${keywords}\n` : ''}
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}
 Write EXACTLY 7 slides, no more, no fewer. For each slide, write TWO very short paired lines (3-8 words each, they'll be rendered side by side, so brevity is critical):
 - "headline" = the STRESS side — a specific, honest pain point, friction, or fear tied to the topic
 - "body" = the BENEFIT side — the specific, concrete payoff on the other side of that exact stress (not a generic platitude — it must resolve the specific stress just named)
 
-Every pair must be a genuine, specific stress-to-benefit arc grounded in the actual title/topic — not generic filler. Vary the 7 pairs so the carousel builds a fuller picture across slides, not the same contrast repeated.
+Every pair must be a genuine, specific stress-to-benefit arc grounded in the actual title/topic — not generic filler. Vary the 7 pairs so the carousel builds a fuller picture across slides, not the same contrast repeated.${visualFieldsInstruction}
 
 - Instagram caption (150-200 words) — required, never leave empty
 - 3-5 hashtags (no # prefix needed) — required, never leave empty
@@ -10941,11 +11071,11 @@ Every pair must be a genuine, specific stress-to-benefit arc grounded in the act
 No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
 
 Return ONLY this JSON object, no other text, no markdown fences:
-{ "slides": [ { "headline": "...", "body": "..." }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`
+{ "slides": [ { "headline": "...", "body": "..."${visualFieldsSchema} }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`
             : `${researchGuidelinesBlock(body.researchGuidelines)}Write a full 7-slide Instagram carousel script for this specific title, using the TRIPLE HOOK framework.
 
 TITLE: ${titleName}
-${keywords ? `KEYWORDS: ${keywords}\n` : ''}
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}
 Instagram re-serves an unswiped carousel's next slide to the same viewer later (slide 2 today, slide 3 tomorrow) — so slides 1, 2, AND 3 each need to work as an independent cold-open hook capable of stopping a scroller with ZERO context, not just slide 1. None of the first three should read as "part 2 of the story" or require the slide before it to make sense.
 
 Write EXACTLY 7 slides, no more, no fewer:
@@ -10955,10 +11085,10 @@ Write EXACTLY 7 slides, no more, no fewer:
 - Instagram caption (150-200 words) — required, never leave empty
 - 3-5 hashtags (no # prefix needed) — required, never leave empty
 
-Every slide must have both a non-empty "headline" and a non-empty "body". No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
+Every slide must have both a non-empty "headline" and a non-empty "body".${visualFieldsInstruction} No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
 
 Return ONLY this JSON object, no other text, no markdown fences:
-{ "slides": [ { "headline": "...", "body": "..." }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`;
+{ "slides": [ { "headline": "...", "body": "..."${visualFieldsSchema} }, ... exactly 7 total ... ], "caption": "...", "hashtags": ["...", "..."] }`;
 
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
@@ -10967,17 +11097,37 @@ Return ONLY this JSON object, no other text, no markdown fences:
           });
           const aiData = await aiResp.json();
           if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
-          let parsed;
-          try {
-            const raw = aiData.content?.[0]?.text || "";
+          // Deterministic repair before giving up: a malformed-JSON response
+          // gets one re-prompt with the parse error named, before surfacing
+          // an error to the operator — same "attempt repair, then fail
+          // honestly" philosophy as generateTitleAssets' grading retries.
+          const parseSlideJson = raw => {
             const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
             if (start === -1 || end === -1) throw new Error("No JSON object found");
-            parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
-          } catch(e) { return json({ error: "Failed to parse slides JSON: " + e.message }, 500); }
+            return JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          };
+          let parsed;
+          try {
+            parsed = parseSlideJson(aiData.content?.[0]?.text || "");
+          } catch (firstErr) {
+            try {
+              const repairResp = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+                body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: `${slidePrompt}\n\nYour previous response failed to parse as JSON (${firstErr.message}). Return ONLY the corrected JSON object this time, no other text, no markdown fences.` }] }),
+              });
+              const repairData = await repairResp.json();
+              if (!repairResp.ok) throw new Error(repairData.error?.message || "Claude API error on repair attempt");
+              parsed = parseSlideJson(repairData.content?.[0]?.text || "");
+            } catch (secondErr) {
+              return json({ error: "Failed to parse slides JSON after a repair attempt: " + secondErr.message }, 500);
+            }
+          }
 
           const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: !!opts.bold, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
           const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
           const para = (text, opts = {}) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text, opts) } });
+          const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
           const divider = () => ({ object: "block", type: "divider", divider: {} });
           const writtenSlides = (Array.isArray(parsed.slides) ? parsed.slides : []).filter(s => s && (s.headline || s.body));
           const n = writtenSlides.length;
@@ -10993,6 +11143,19 @@ Return ONLY this JSON object, no other text, no markdown fences:
             children.push(heading('Hashtags'));
             children.push(para(parsed.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ')));
           }
+          // Visual Plan — a NEW section appended AFTER Hashtags, invisible to
+          // parseSlides() (it only looks for "Slide N"/"Caption"/"Hashtags"
+          // headings), so this never touches the existing slide-block parser
+          // that generateCarouselPreview/refineCarouselPreview/make-carousel
+          // all share. Only written when the brief actually requested these
+          // fields (brief.briefText truthy) and at least one slide has them.
+          if (brief.briefText && writtenSlides.some(s => s.purpose || s.visualObjective || s.illustrationDirection)) {
+            children.push(heading('Visual Plan'));
+            writtenSlides.forEach((s, idx) => {
+              const parts = [s.purpose, s.visualObjective, s.illustrationDirection].filter(Boolean);
+              if (parts.length) children.push(bullet(`Slide ${idx + 1}: ${parts.join(' — ')}`));
+            });
+          }
           if (children.length) {
             const writeResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
               method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
@@ -11006,6 +11169,21 @@ Return ONLY this JSON object, no other text, no markdown fences:
 
         const result = await publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides, caption, hashtags });
         if (result instanceof Response) return result;
+
+        // Persist the operator's design reference onto the resulting Asset
+        // so a later refine/regenerate picks it up automatically without
+        // re-uploading — same fields Avatar/Text/Explainer Video's render
+        // modal already writes (Design Notes / Images). Best-effort: never
+        // fail the whole generation over this.
+        if ((body.designNotes && String(body.designNotes).trim()) || brief.imageUrl) {
+          const refProps = {};
+          if (body.designNotes && String(body.designNotes).trim()) refProps["Design Notes"] = { rich_text: [{ type: "text", text: { content: String(body.designNotes).trim().slice(0, 1990) } }] };
+          if (brief.imageUrl) refProps["Images"] = { files: [{ name: body.referenceImageFilename || 'reference.png', type: "external", external: { url: brief.imageUrl } }] };
+          await fetch(`https://api.notion.com/v1/pages/${dash(result.assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: refProps }),
+          }).catch(() => {});
+        }
+
         return json({ success: true, previewUrl: result.previewUrl, slideCount: slides.length, assetId: result.assetId, titleId });
       }
 
@@ -11441,6 +11619,18 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
         if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
         const titleName = (titlePage.properties.Title?.title || []).map(t => t.plain_text).join("") || "Carousel";
+        const productId = (titlePage.properties.product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+
+        // Fresh design direction for this refine, if the operator supplied
+        // any — same optional brief as generateCarouselPreview.
+        const brief = await buildCreativeBrief({
+          designNotes: body.designNotes,
+          referenceImageBase64: body.referenceImageBase64,
+          referenceImageFilename: body.referenceImageFilename,
+          campaignId, productId, hdr, dash, env, GT,
+          ownerKey: `pending-${titleId}`,
+        });
+        const briefBlock = brief.briefText ? `\n${brief.briefText}\n` : '';
 
         const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
         const blocks = blocksResp.results || [];
@@ -11476,7 +11666,7 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
 TITLE: ${titleName}
 CAROUSEL FORMAT: ${carouselType || 'triple-hook'}
 ${carouselType === 'hidden-potential' ? 'Each slide is a paired split: "headline" = STRESS (left side, 3-8 words) and "body" = BENEFIT (right side, 3-8 words) that resolves that exact stress. Keep both sides within that length whenever you touch a slide.' : ''}
-
+${briefBlock}
 CURRENT SLIDES (JSON):
 ${JSON.stringify({ slides, caption, hashtags })}
 
@@ -11492,13 +11682,29 @@ Return the FULL updated set — all ${slides.length} slides plus caption and has
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
-        let parsed;
-        try {
-          const raw = aiData.content?.[0]?.text || "";
+        // One deterministic repair attempt before failing, same as generateCarouselPreview.
+        const parseRefineJson = raw => {
           const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
           if (start === -1 || end === -1) throw new Error("No JSON object found");
-          parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
-        } catch(e) { return json({ error: "Failed to parse refined slides JSON: " + e.message }, 500); }
+          return JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        };
+        let parsed;
+        try {
+          parsed = parseRefineJson(aiData.content?.[0]?.text || "");
+        } catch (firstErr) {
+          try {
+            const repairResp = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+              body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: `${refinePrompt}\n\nYour previous response failed to parse as JSON (${firstErr.message}). Return ONLY the corrected JSON object this time, no other text, no markdown fences.` }] }),
+            });
+            const repairData = await repairResp.json();
+            if (!repairResp.ok) throw new Error(repairData.error?.message || "Claude API error on repair attempt");
+            parsed = parseRefineJson(repairData.content?.[0]?.text || "");
+          } catch (secondErr) {
+            return json({ error: "Failed to parse refined slides JSON after a repair attempt: " + secondErr.message }, 500);
+          }
+        }
 
         const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: !!opts.bold, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
         const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
@@ -11562,6 +11768,17 @@ Return the FULL updated set — all ${slides.length} slides plus caption and has
 
         const result = await publishCarouselSlides({ hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, titleId, campaignId, titleName, carouselType, slides: newSlides, caption: newCaption, hashtags: newHashtags });
         if (result instanceof Response) return result;
+
+        // Same best-effort design-ref persistence as generateCarouselPreview.
+        if ((body.designNotes && String(body.designNotes).trim()) || brief.imageUrl) {
+          const refProps = {};
+          if (body.designNotes && String(body.designNotes).trim()) refProps["Design Notes"] = { rich_text: [{ type: "text", text: { content: String(body.designNotes).trim().slice(0, 1990) } }] };
+          if (brief.imageUrl) refProps["Images"] = { files: [{ name: body.referenceImageFilename || 'reference.png', type: "external", external: { url: brief.imageUrl } }] };
+          await fetch(`https://api.notion.com/v1/pages/${dash(result.assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: refProps }),
+          }).catch(() => {});
+        }
+
         return json({ success: true, previewUrl: result.previewUrl, slideCount: newSlides.length, assetId: result.assetId, titleId });
       }
 
@@ -11879,13 +12096,25 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
         keywords = rt(researchRaw, "Keywords");
 
+        // Operator-supplied creative direction, shared across the whole
+        // batch (one brief, one Claude call, all 5 scripts) — briefText is
+        // null when neither notes nor an image were supplied, so the prompt
+        // below is byte-identical to before this existed in that case.
+        const brief = await buildCreativeBrief({
+          designNotes: body.designNotes,
+          referenceImageBase64: body.referenceImageBase64,
+          referenceImageFilename: body.referenceImageFilename,
+          campaignId, productId, hdr, dash, env, GT: (env.GITHUB_TOKEN || '').trim(),
+          ownerKey: `pending-${titleId}`,
+        });
+        const briefBlock = brief.briefText ? `\n${brief.briefText}\n` : '';
+
         const BATCH_SIZE = 5;
         const scriptPrompt = `Write ${BATCH_SIZE} DISTINCT faceless Reel scripts for the same title — ElevenLabs voiceover over Ken Burns motion/B-roll with on-screen text and word captions, NO avatar or presenter on camera. This is for the "Text Video" method: pure discovery-format content, engineered to be found by strangers. Each of the ${BATCH_SIZE} must use a DIFFERENT hook arc from the toolkit below and take a genuinely different angle on the topic — not five rewordings of the same script.
 
 TITLE: ${titleName}
 ${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}
-${keywords ? `KEYWORDS: ${keywords}\n` : ''}
-
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}
 HOOK ARC TOOLKIT (use ${BATCH_SIZE} different ones, one per script): Contrarian claim, Cold-open confession, Stat/number hook, Direct callout, Question hook, Before/after compression.
 
 SCRIPT RULES (apply to EACH of the ${BATCH_SIZE}):
@@ -11896,7 +12125,7 @@ SCRIPT RULES (apply to EACH of the ${BATCH_SIZE}):
 - One idea only — if it needs two, it should have been two reels.
 - Close on a ranking-signal CTA — "send this to someone who..." or "comment [KEYWORD] and I'll send you...".
 - No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
-- Shot/B-roll note per beat — what visual accompanies each line (a stat graphic, a b-roll clip, motion text, etc.), since there's no face carrying the frame.
+- Shot/B-roll note per beat — not just what's on screen but how: the background image itself (a concrete image-generation prompt), composition (framing/subject placement), motion direction (Ken Burns pan/zoom), timing, and the transition into the next beat. One rich descriptive note per beat, not a generic one-liner.
 
 Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no markdown fences:
 [{ "hookArcNote": "which hook shape was used and why it fits", "voiceoverScript": "the spoken lines only, continuous prose, NO labels/timestamps/cues — exactly what TTS will speak", "onScreenText": ["line 1", "line 2", "..."], "shotNotes": ["beat 1 shot/B-roll note", "beat 2 shot/B-roll note", "..."], "caption": "150-200 word caption, campaign keywords worked in naturally for SEO", "hashtags": ["...", "..."] }, ...]`;
@@ -11908,13 +12137,30 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
-        let parsedList;
-        try {
-          const raw = aiData.content?.[0]?.text || "";
+        // One deterministic repair attempt before failing, same philosophy
+        // as the carousel actions' retry.
+        const parseScriptBatchJson = raw => {
           const start = raw.indexOf('['), end = raw.lastIndexOf(']');
           if (start === -1 || end === -1) throw new Error("No JSON array found");
-          parsedList = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
-        } catch(e) { return json({ error: "Failed to parse script batch JSON: " + e.message }, 500); }
+          return JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        };
+        let parsedList;
+        try {
+          parsedList = parseScriptBatchJson(aiData.content?.[0]?.text || "");
+        } catch (firstErr) {
+          try {
+            const repairResp = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+              body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: `${scriptPrompt}\n\nYour previous response failed to parse as JSON (${firstErr.message}). Return ONLY the corrected JSON array this time, no other text, no markdown fences.` }] }),
+            });
+            const repairData = await repairResp.json();
+            if (!repairResp.ok) throw new Error(repairData.error?.message || "Claude API error on repair attempt");
+            parsedList = parseScriptBatchJson(repairData.content?.[0]?.text || "");
+          } catch (secondErr) {
+            return json({ error: "Failed to parse script batch JSON after a repair attempt: " + secondErr.message }, 500);
+          }
+        }
         if (!Array.isArray(parsedList) || !parsedList.length) return json({ error: "Script generation returned no scripts — try again" }, 500);
         parsedList = parsedList.filter(p => p && p.voiceoverScript).slice(0, BATCH_SIZE);
         if (!parsedList.length) return json({ error: "Script generation returned no usable scripts — try again" }, 500);
@@ -11940,6 +12186,16 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
             "Status": { select: { name: "Ready" } },
             "Asset Status": { select: { name: "Publish" } },
           };
+          // Shared design reference (same brief for the whole batch) onto
+          // every script asset, so a later single-script re-render/refine
+          // has it without the operator re-uploading — mirrors what
+          // generateCarouselPreview persists after its own generation.
+          if (body.designNotes && String(body.designNotes).trim()) {
+            assetProps["Design Notes"] = { rich_text: [{ type: "text", text: { content: String(body.designNotes).trim().slice(0, 1990) } }] };
+          }
+          if (brief.imageUrl) {
+            assetProps["Images"] = { files: [{ name: body.referenceImageFilename || 'reference.png', type: "external", external: { url: brief.imageUrl } }] };
+          }
           const createResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
@@ -12156,31 +12412,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (!imageFilename) return json({ error: "imageFilename required alongside imageBase64" }, 400);
           const GT = (env.GITHUB_TOKEN || '').trim();
           if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
-
-          let deployPath = 'campaign';
-          if (campaignId) {
-            const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
-            const liveUrl = campPage?.properties?.["live site"]?.url || campPage?.properties?.["microsite"]?.url || "";
-            const deployMatch = liveUrl.match(/\/web\/([^\/?#]+)/) || liveUrl.match(/\/microsites\/([^\/?#]+)/);
-            const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
-            deployPath = deployMatch ? deployMatch[1] : (slugify(campPage?.properties?.Name?.title?.map(t=>t.plain_text).join("")) || 'campaign');
-          }
-          const extMatch = imageFilename.match(/\.([a-zA-Z0-9]+)$/);
-          const ext = (extMatch ? extMatch[1] : 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-          const path = `web/${deployPath}/design-refs/${assetId}.${ext}`;
-
-          const REPO = "cabuzzard/dash", BRANCH = "main";
-          const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
-          const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
-          let sha = null;
-          if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
-          const putBody = { message: `Design reference for asset ${assetId}`, content: imageBase64, branch: BRANCH };
-          if (sha) putBody.sha = sha;
-          const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-            method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
-          });
-          if (!putResp.ok) { const r = await putResp.json(); return json({ error: `GitHub commit failed (HTTP ${putResp.status}): ${r.message || 'unknown'}` }, 502); }
-          imageUrl = `https://cabuzzard.github.io/dash/${path}`;
+          try {
+            const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+            imageUrl = await hostDesignRefImage({ imageBase64, imageFilename, deployPath, ownerKey: assetId, GT });
+          } catch (e) { return json({ error: e.message }, 502); }
           properties["Images"] = { files: [{ name: imageFilename, type: "external", external: { url: imageUrl } }] };
         }
 
