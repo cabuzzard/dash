@@ -2199,7 +2199,10 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({
             parent: { database_id: METHODS_DB },
-            properties: { Name: { title: [{ type: "text", text: { content: title } }] } }
+            // New methods start in Development — Live is a deliberate,
+            // explicit promotion once a method is actually built out, not
+            // the default for "just typed a name in."
+            properties: { Name: { title: [{ type: "text", text: { content: title } }] }, "Status": { select: { name: "Development" } } }
           }),
         });
         const result = await resp.json();
@@ -2330,7 +2333,16 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
 
       if (body.action === "searchMethods") {
         const { query } = body;
-        const rows = await notionQuery(METHODS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });
+        // Only Status = "Live" methods are offered for picking/attaching —
+        // this is THE single search action behind the Add Methods modal AND
+        // the Generate Assets modal's method field, so filtering here hides
+        // Development methods from every picker across every microsite and
+        // productsite in one place. Methods already attached to a product/
+        // campaign are untouched — this only narrows what's offered as NEW.
+        const rows = await notionQuery(METHODS_DB, {
+          filter: { property: "Status", select: { equals: "Live" } },
+          sorts: [{ property: "Name", direction: "ascending" }],
+        });
         const methods = rows.map(m => ({
           id:   m.id.replace(/-/g,""),
           name: m.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
@@ -3816,7 +3828,8 @@ Return ONLY a JSON object, no other text, no markdown fences:
         if (!productId || !name) return json({ error: "productId and name required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const createProps = { Name: { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] } };
+        // New methods start in Development — same reasoning as createMethod.
+        const createProps = { Name: { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] }, "Status": { select: { name: "Development" } } };
         if (platform) createProps["Platform"] = { select: { name: platform } };
         if (category) createProps["Category"] = { multi_select: [{ name: category }] };
         if (notes) createProps["Notes"] = { rich_text: [{ type: "text", text: { content: String(notes).slice(0, 1990) } }] };
@@ -6392,11 +6405,20 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       // Existing "Asset Type" select options from the Assets DB schema, for
       // the generate-assets modal's pick-or-create type field. (Typing a new
       // type just passes the string — Notion auto-creates select options.)
+      //
+      // Narrowed to LIVE_ASSET_TYPES while carousel + text video get
+      // perfected — same "hide from pickers, don't touch the data" idea as
+      // Methods' Status=Live filter above, just done in code instead of a
+      // Notion property, since Asset Type is a flat select (no per-option
+      // page to attach a Status to). Existing Assets of any other type are
+      // completely untouched — this only narrows what shows up as a NEW
+      // pick. Widen this array as other asset types come back online.
       if (body.action === "getAssetTypes") {
+        const LIVE_ASSET_TYPES = ["carousel", "text video"];
         const resp = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, { headers: dsHdr });
         const db = await resp.json();
         if (!resp.ok) return json({ error: db.message || "Schema fetch failed" }, resp.status);
-        const types = (db.properties?.["Asset Type"]?.select?.options || []).map(o => o.name).filter(Boolean);
+        const types = (db.properties?.["Asset Type"]?.select?.options || []).map(o => o.name).filter(Boolean).filter(t => LIVE_ASSET_TYPES.includes(t));
         return json({ types });
       }
 
