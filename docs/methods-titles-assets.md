@@ -91,7 +91,8 @@ workflow — this is just the map):
 | `/carousel/i` | `make-carousel` | Trend research → original copy → real multi-page Canva carousel → logged to SM Posts |
 | `text pic` | `make-text-pic` | One hook-driven line → real single Canva image |
 | `Short Form Video` / "reel" | `make-reel-script` → `make-reel-video` | Filmable reel script → rendered MP4 (ElevenLabs voiceover + word-by-word captions + Ken Burns, via Remotion) |
-| `Avatar Video` | `make-avatar-script` | Presenter-to-camera script for an AI-avatar reel (render step not built yet) |
+| `Avatar Video` | `make-avatar-script` → `make-avatar-reel` | Presenter-to-camera script for an AI-avatar reel → rendered MP4 (HeyGen + ElevenLabs + Hyperframes overlay pass), hosted + Assets DB upserted |
+| `Explainer Video` | `make-explainer-video` | Researched topic → narrated no-avatar explainer (invented visuals via Hyperframes `/faceless-explainer`) → rendered MP4, hosted + Assets DB upserted. Broader sibling of `Diagram Explainer`/`make-diagram-explainer`, which stops at a Notion note with no hosted file or Assets DB record. Not yet wired into the dashboard's `GA_SKILL_METHODS` hint-box (Avatar Video is) — run directly in chat against an existing title. |
 | `Video Copy — Growth` | `make-video-copy` | Outlier-modeled original long-form YouTube script |
 | (any) design specs | `create-design-specs` | Real Canva-backed Design Spec records (not just colors/fonts text) |
 
