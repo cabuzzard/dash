@@ -759,6 +759,44 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- GENERATE GROWTH STRATEGY MODAL (the 🚀 button on a product row) -->
+<div class="modal-overlay" id="growthStrategyModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div class="modal-title">Generate Growth Strategy</div>
+      <button class="modal-close" onclick="closeGrowthStrategyModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="gsProductLabel"></div>
+      <label class="lm-label" style="margin-top:10px;">Platform Focus <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to let the strategy recommend the best platform(s) itself</span></label>
+      <input class="modal-ta" id="gsPlatformInput" type="text" placeholder="e.g. TikTok, LinkedIn..." style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
+      <div class="modal-status" id="gsStatus" style="white-space:pre-wrap;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeGrowthStrategyModal()">Cancel</button>
+      <button class="modal-btn save" id="gsGenBtn" onclick="submitGrowthStrategy()">Generate</button>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW GROWTH STRATEGY MODAL (the "plans" dropdown on a product row) -->
+<div class="modal-overlay" id="viewStrategyModal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div class="modal-title" id="vsTitle">Growth Strategy</div>
+      <button class="modal-close" onclick="closeViewStrategyModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <div id="vsMeta" style="font-size:11px;color:#888;margin-bottom:10px;"></div>
+      <div id="vsBody" style="font-size:12px;line-height:1.6;white-space:pre-wrap;color:#ccc;"></div>
+    </div>
+    <div class="modal-foot">
+      <a id="vsNotionLink" href="#" target="_blank" rel="noopener" class="modal-btn cancel" style="text-decoration:none;">↗ Notion</a>
+      <button class="modal-btn cancel" onclick="closeViewStrategyModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- ASSEMBLE MODAL (the 🧷 button on a carousel/text-video asset row) -->
 <div class="modal-overlay" id="assembleModal">
   <div class="modal" style="max-width:640px;">
@@ -2424,10 +2462,11 @@ function openMethodGenModal(methodId, methodName) {
   const blendRadio = document.querySelector('input[name="mgmContext"][value="blend"]');
   if (blendRadio) blendRadio.checked = true;
   const el = document.getElementById('mgm-products');
-  const noneOpt = `<label class="mgp-option"><input type="radio" name="mgp" value="${CAMPAIGN_ID}" onchange="MGM_PRODUCT_ID=CAMPAIGN_ID;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false;mgmRefreshKeywordPicker()"> <em style="color:#a78bfa">&#9670; Campaign</em></label>`;
-  el.innerHTML = noneOpt + PRODUCT_ITEMS.map(p => `<label class="mgp-option"><input type="radio" name="mgp" value="${p.id}" onchange="MGM_PRODUCT_ID=this.value;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false;mgmRefreshKeywordPicker()"> ${p.name}</label>`).join('');
+  const noneOpt = `<label class="mgp-option"><input type="radio" name="mgp" value="${CAMPAIGN_ID}" onchange="MGM_PRODUCT_ID=CAMPAIGN_ID;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false;mgmRefreshKeywordPicker();mgmRefreshStrategyPicker()"> <em style="color:#a78bfa">&#9670; Campaign</em></label>`;
+  el.innerHTML = noneOpt + PRODUCT_ITEMS.map(p => `<label class="mgp-option"><input type="radio" name="mgp" value="${p.id}" onchange="MGM_PRODUCT_ID=this.value;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false;mgmRefreshKeywordPicker();mgmRefreshStrategyPicker()"> ${p.name}</label>`).join('');
   document.getElementById('method-gen-modal').classList.add('open');
   mgmRefreshKeywordPicker();
+  mgmRefreshStrategyPicker();
 }
 // Seed-keyword picker for SEO Post — hidden for every other method. Research
 // Keywords fields are sometimes clustered prose, not a flat list, so this
@@ -2464,6 +2503,33 @@ async function mgmRefreshKeywordPicker() {
   } catch(e) {
     if (myToken !== MGM_KEYWORD_TOKEN) return;
     sel.innerHTML = '<option value="">(could not load — will fall back to method name)</option>';
+  }
+}
+
+// Growth Strategy picker for the Generate Titles modal — only meaningful
+// when a real product is selected (Growth Strategy is per-product); hidden
+// for the "Campaign" option since there's no product to look strategies up
+// against.
+let MGM_STRATEGY_TOKEN = 0;
+async function mgmRefreshStrategyPicker() {
+  const wrap = document.getElementById('mgm-strategy-wrap');
+  const sel = document.getElementById('mgm-strategy');
+  if (!wrap || !sel) return;
+  document.getElementById('mgm-strategy-guidance').value = '';
+  if (!MGM_PRODUCT_ID || MGM_PRODUCT_ID === CAMPAIGN_ID) { wrap.style.display = 'none'; sel.innerHTML = '<option value="">No strategy</option>'; return; }
+  wrap.style.display = 'block';
+  sel.innerHTML = '<option value="">Loading…</option>';
+  const myToken = ++MGM_STRATEGY_TOKEN;
+  try {
+    const data = await w('listGrowthStrategies', { productId: MGM_PRODUCT_ID });
+    if (myToken !== MGM_STRATEGY_TOKEN) return;
+    const strategies = data.strategies || [];
+    sel.innerHTML = '<option value="">No strategy</option>' + strategies.map(s =>
+      `<option value="${s.id}">${esc(s.name)} (${s.status}${s.platformOverride ? ' — ' + esc(s.platformOverride) : ''})</option>`
+    ).join('');
+  } catch(e) {
+    if (myToken !== MGM_STRATEGY_TOKEN) return;
+    sel.innerHTML = '<option value="">No strategy (could not load)</option>';
   }
 }
 
@@ -2515,8 +2581,10 @@ async function runMethodGenerate() {
     const contextMode = (document.querySelector('input[name="mgmContext"]:checked') || {}).value || 'blend';
     const mgmIsBespoke = /carousel/i.test(MGM_METHOD_NAME) || (/upwork/i.test(MGM_METHOD_NAME) && /title|market|trend/i.test(MGM_METHOD_NAME));
     const seedKeyword = mgmIsBespoke ? undefined : (document.getElementById('mgm-keyword')?.value || undefined);
+    const growthStrategyId = document.getElementById('mgm-strategy')?.value || undefined;
+    const strategyGuidance = document.getElementById('mgm-strategy-guidance')?.value.trim() || undefined;
     status.textContent = contextMode === 'isolate' ? 'Reading method framework and product strategy (isolated — no campaign research)…' : 'Reading method framework and product strategy…';
-    const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID, contextMode, seedKeyword });
+    const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID, contextMode, seedKeyword, growthStrategyId, strategyGuidance });
     if (data.error) throw new Error(data.error);
     const titles = data.titles || [];
     let saved = 0;
@@ -2735,7 +2803,9 @@ function makeProductRow(p) {
   // record already exists (Current=green, Stale=yellow, Draft/none=grey).
   const stratColor = p.strategyStatus === 'Current' ? '#68d391' : (p.strategyStatus === 'Stale' ? '#f0b429' : '#555');
   const stratLink = `<button class="td-add-btn-inline" onclick="openStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Product Strategy" style="${psStyle};background:none;cursor:pointer;color:${stratColor};">strategy</button>`;
-  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}<button class="td-add-btn-inline" onclick="openProductMethodsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Review methods for this product">⚙</button>${stratLink}${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+  const growthPlanBtn = `<button class="td-add-btn-inline" onclick="openGrowthStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Generate Growth Strategy — recommends title groupings, methods, and platforms for this product" style="${psStyle};background:none;cursor:pointer;">🚀</button>`;
+  const growthPlanDropdown = `<select onmousedown="populateStrategyDropdown(this,'${p.id}')" onchange="onStrategyDropdownChange(this)" title="View Growth Strategies for this product" style="font-size:9px;background:#141414;color:#888;border:1px solid #5f5f5f;border-radius:3px;padding:1px 2px;max-width:56px;flex-shrink:0;"><option value="">plans</option></select>`;
+  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}<button class="td-add-btn-inline" onclick="openProductMethodsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Review methods for this product">⚙</button>${stratLink}${growthPlanBtn}${growthPlanDropdown}${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
 }
 
@@ -5038,6 +5108,81 @@ async function promoteAssetDesign(idx) {
   }
 }
 
+// Growth Strategy — the 🚀 button + "plans" dropdown on a product row.
+// Generating never creates titles or touches a Method; it's a reviewable
+// recommendation (title groupings + methods + platforms) the operator acts
+// on by hand via the existing per-Method Generate Titles flow (which can
+// also pick one of these as grounding — see mgmRefreshStrategyPicker).
+let GS_PRODUCT_ID = null;
+function openGrowthStrategyModal(productId, productName) {
+  GS_PRODUCT_ID = productId;
+  document.getElementById('gsProductLabel').textContent = `Product: ${productName}`;
+  document.getElementById('gsPlatformInput').value = '';
+  document.getElementById('gsStatus').textContent = '';
+  document.getElementById('growthStrategyModal').classList.add('open');
+}
+function closeGrowthStrategyModal() {
+  document.getElementById('growthStrategyModal').classList.remove('open');
+}
+async function submitGrowthStrategy() {
+  const platformOverride = document.getElementById('gsPlatformInput').value.trim();
+  const statusEl = document.getElementById('gsStatus');
+  const btn = document.getElementById('gsGenBtn');
+  btn.disabled = true; statusEl.textContent = 'Generating…';
+  try {
+    const r = await w('generateGrowthStrategy', { campaignId: CAMPAIGN_ID, productId: GS_PRODUCT_ID, platformOverride: platformOverride || undefined });
+    statusEl.textContent = `Created — ${r.groupingCount} grouping${r.groupingCount === 1 ? '' : 's'} ✓`;
+    delete GS_STRATEGY_CACHE[GS_PRODUCT_ID]; // force the dropdown to refetch next open
+    setTimeout(closeGrowthStrategyModal, 1000);
+  } catch(e) {
+    statusEl.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// One fetch per product per page session — the dropdown repopulates from
+// cache on repeated opens, cache is dropped after a fresh generate.
+let GS_STRATEGY_CACHE = {};
+async function populateStrategyDropdown(selectEl, productId) {
+  if (GS_STRATEGY_CACHE[productId]) return;
+  try {
+    const r = await w('listGrowthStrategies', { productId });
+    GS_STRATEGY_CACHE[productId] = r.strategies || [];
+    const strategies = GS_STRATEGY_CACHE[productId];
+    selectEl.innerHTML = '<option value="">plans</option>' + (strategies.length
+      ? strategies.map(s => `<option value="${s.id}">${esc(s.name)} (${s.status})</option>`).join('')
+      : '<option value="" disabled>No strategies yet</option>');
+  } catch(e) {
+    selectEl.innerHTML = '<option value="">plans (error)</option>';
+  }
+}
+async function onStrategyDropdownChange(selectEl) {
+  const id = selectEl.value;
+  if (!id) return;
+  await openViewStrategyModal(id);
+  selectEl.selectedIndex = 0;
+}
+async function openViewStrategyModal(strategyId) {
+  document.getElementById('viewStrategyModal').classList.add('open');
+  document.getElementById('vsTitle').textContent = 'Loading…';
+  document.getElementById('vsMeta').textContent = '';
+  document.getElementById('vsBody').textContent = '';
+  try {
+    const r = await w('getGrowthStrategy', { strategyId });
+    document.getElementById('vsTitle').textContent = r.name;
+    document.getElementById('vsMeta').textContent = `${r.status} · ${r.platformOverride ? 'Platform focus: ' + r.platformOverride : 'Recommended platforms: ' + (r.recommendedPlatforms.join(', ') || 'Not specified')}`;
+    document.getElementById('vsBody').textContent = r.body || r.summary || 'No content.';
+    document.getElementById('vsNotionLink').href = `https://www.notion.so/${strategyId}`;
+  } catch(e) {
+    document.getElementById('vsTitle').textContent = 'Error';
+    document.getElementById('vsBody').textContent = e.message;
+  }
+}
+function closeViewStrategyModal() {
+  document.getElementById('viewStrategyModal').classList.remove('open');
+}
+
 // Final step: reads the Visual Production Brief + Production Assembly
 // Package already uploaded on this asset's row (no upload/paste here,
 // just an optional override/addition typed into the modal). No media
@@ -5507,6 +5652,13 @@ async function runRegenKeywords() {
     <div id="mgm-keyword-wrap" style="display:none;margin-top:10px;">
       <div class="method-gen-subtitle">Seed keyword <span style="color:#777;font-weight:normal;">— optional grounding (required-in-effect for SEO Post); research is sometimes clustered, pick one angle</span></div>
       <select id="mgm-keyword" class="modal-ta" style="margin-top:4px;width:100%;"></select>
+    </div>
+    <div id="mgm-strategy-wrap" style="display:none;margin-top:10px;">
+      <div class="method-gen-subtitle">Growth Strategy <span style="color:#777;font-weight:normal;">— optional; ground these titles in an approved recommendation for this product</span></div>
+      <select id="mgm-strategy" class="modal-ta" style="margin-top:4px;width:100%;">
+        <option value="">No strategy</option>
+      </select>
+      <textarea id="mgm-strategy-guidance" class="modal-ta" rows="2" placeholder="Optional guidance on how to apply the strategy above to this run (overrides/refines it)..." style="margin-top:6px;font-size:11px;line-height:1.5;resize:vertical;"></textarea>
     </div>
     <div class="method-gen-actions">
       <button class="method-gen-cancel" onclick="closeMethodGenModal()">Cancel</button>

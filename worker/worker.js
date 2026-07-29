@@ -29,6 +29,7 @@ const CAROUSEL_DESIGN_SYSTEMS_DB = "7195e832480d48909017a9cc3193212c";
 const CAROUSEL_SPECS_DB        = "ff84f1d161504a778e9ed29dfd4e02a6";
 const SLIDE_SPECS_DB           = "69f9b4be4b9143568d4baacc920fb657";
 const CAROUSEL_QA_RUNS_DB      = "bdefa812e111424194bba11953b32854";
+const GROWTH_STRATEGY_DB       = "437b8c2615234b6bbe4a694b31f3000f";
 const LEADS_DB           = "e4518a459f004eb0b9646e48d8718705";
 const SM_ACCOUNTS_DB     = "aa6a16f2a77245bfb5efd9a8eb314b07";
 const EMAILS_DB          = "6252e9917027488fb628436aabb89947";
@@ -5479,7 +5480,7 @@ Return ONLY a JSON array, no other text, no markdown fences:
       }
 
       if (body.action === "generateMethodTitles") {
-        const { campaignId, methodId, productId, parentTitle, parentTitleId } = body;
+        const { campaignId, methodId, productId, parentTitle, parentTitleId, growthStrategyId, strategyGuidance } = body;
         if (!campaignId || !methodId) return json({ error: "campaignId and methodId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         // "blend" (default) = campaign research + product context together, as
@@ -5518,6 +5519,13 @@ Return ONLY a JSON array, no other text, no markdown fences:
         ];
         const [researchRaw, campRaw, methodPage, productPage, strategyQ] = await Promise.all(fetches);
         const methodBody = await extractBlocksTextRecursive(hdr, dash(methodId));
+        // Operator picked an approved Growth Strategy (or "No strategy") in
+        // the Generate Titles modal — when set, its full body (summary +
+        // groupings, including which method/platform each was written for)
+        // becomes strong grounding, not just loose research.
+        const growthStrategyBody = (growthStrategyId && growthStrategyId !== '__none__')
+          ? await extractBlocksTextRecursive(hdr, dash(growthStrategyId)).catch(() => '')
+          : '';
 
         // Extract research
         const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
@@ -5561,7 +5569,7 @@ Unique Angle: ${ptxt("Unique Angle")}`;
           if (stratRecord) {
             const sp = stratRecord.properties || {};
             const srt = key => (sp[key]?.rich_text || []).map(t => t.plain_text).join("");
-            const stratLines = ["Customer", "Pain Points", "Solution", "Benefits", "Emotions", "Niche", "Unique Opportunity", "Offer Structure"]
+            const stratLines = ["Customer", "Pain Points", "Solution", "Benefits", "Emotions", "Niche", "Unique Opportunity", "Offer Structure", "Transformation", "Proof Points", "Objections"]
               .map(f => srt(f) && `${f}: ${srt(f)}`).filter(Boolean);
             if (stratLines.length) productSection += `\n\nPRODUCT STRATEGY (the worked-out positioning doc — weighs more than the fields above where they overlap):\n${stratLines.join("\n")}`;
           }
@@ -5595,7 +5603,7 @@ METHOD FRAMEWORK:
 ${methodBody || "(No framework defined — infer phases and groupings from method name and best practices)"}
 
 ${productSection}
-${parentSeed.text ? `\nSEED IDEA (this run was started from an existing title — use it as inspiration/starting point for the angle, still organized across the framework's phases and groupings, not a rewrite of the seed itself):\n${parentSeed.text}\n` : ''}${body.seedKeyword ? `\nSEED KEYWORD (operator-picked — every title should target this specific keyword/angle, not the campaign's keyword list broadly):\n${body.seedKeyword}\n` : ''}
+${growthStrategyBody ? `\nAPPROVED GROWTH STRATEGY (operator-selected — this is the primary direction; favor titles from whichever grouping in here was written for the "${methodName}" method, and stay consistent with its stated rationale/platform. Still cover every phase/grouping the method framework itself defines below.):\n${growthStrategyBody}\n` : ''}${(strategyGuidance || '').trim() ? `\nOPERATOR GUIDANCE ON APPLYING THE STRATEGY (overrides/refines how the above should be used for this run specifically):\n${strategyGuidance.trim()}\n` : ''}${parentSeed.text ? `\nSEED IDEA (this run was started from an existing title — use it as inspiration/starting point for the angle, still organized across the framework's phases and groupings, not a rewrite of the seed itself):\n${parentSeed.text}\n` : ''}${body.seedKeyword ? `\nSEED KEYWORD (operator-picked — every title should target this specific keyword/angle, not the campaign's keyword list broadly):\n${body.seedKeyword}\n` : ''}
 INSTRUCTIONS:
 - Read the method framework carefully. Each Phase heading in the framework is a Phase. Each Grouping heading is a Grouping.
 - Generate titles for EVERY phase and grouping defined in the framework.
@@ -5665,6 +5673,209 @@ No other text. No markdown fences.`;
 
         // Return titles to client — client will save in batches via saveMethodTitles
         return json({ titles, hasTrendResearch, trendSource: hasTrendResearch ? trendSource : null, contextMode });
+      }
+
+      // ── generateGrowthStrategy ──
+      // The "🚀 plan" button on a Product row. Distinct from both the
+      // per-product positioning Strategy (STRATEGY_DB, "who are we talking
+      // to and why") and Content Strategy (which is actually the Titles
+      // DB) — this recommends WHICH titles/groupings/methods/platforms to
+      // pursue, grounded in the positioning Strategy plus Research plus
+      // the product itself. Does NOT create titles or touch any Method —
+      // it's a reviewable recommendation the operator acts on by hand via
+      // the existing per-Method "Generate Titles" flow. Never overwrites a
+      // prior run — one product can have several of these over time,
+      // browsable via the row's dropdown.
+      if (body.action === "generateGrowthStrategy") {
+        const { campaignId, productId, platformOverride } = body;
+        if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const [productPage, campPage, researchRaw, strategyQ] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })),
+          fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { and: [
+              { property: "Product", relation: { contains: dash(productId) } },
+              { property: "Method", relation: { is_empty: true } },
+            ] } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })),
+        ]);
+        if (!productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
+        const pp = productPage.properties;
+        const ptxt = key => (pp[key]?.rich_text || []).map(t => t.plain_text).join("");
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product";
+        const campaignName = campPage.properties?.Name?.title?.map(t => t.plain_text).join("") || "Campaign";
+
+        const stratRecord = (strategyQ.results || [])[0];
+        const strategyBlock = stratRecord
+          ? STRATEGY_FIELDS.map(f => { const v = (stratRecord.properties?.[f]?.rich_text || []).map(t => t.plain_text).join(""); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n')
+          : STRATEGY_FIELDS.map(f => { const v = ptxt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
+
+        const rt = key => { for (const r of (researchRaw.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const researchBlock = ['Keywords', 'Statement', 'Unique Opportunity', 'Key Message', 'Pain Points']
+          .map(f => { const v = rt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
+
+        // Ground method recommendations in methods that actually exist for
+        // this product — otherwise the recommendation names a method the
+        // operator can't actually click "Generate Titles" on.
+        const methodIds = (pp.Methods?.relation || []).map(r => r.id);
+        const methodPages = methodIds.length
+          ? await Promise.all(methodIds.map(id => fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdr }).then(r => r.json()).catch(() => null)))
+          : [];
+        const methodNames = methodPages.filter(Boolean).map(m => (m.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean);
+
+        const platformInstruction = (platformOverride || '').trim()
+          ? `PLATFORM FOCUS (required): every grouping must target "${platformOverride.trim()}" specifically — do not recommend any other platform.`
+          : `No platform override was given — recommend the platform(s) that genuinely fit best per grouping based on the content and audience; they can differ across groupings.`;
+
+        const prompt = `You are a growth strategist. Given the research and positioning below for this product, produce a content growth strategy: a small number (3-6) of thematic title groupings (series/clusters an operator would actually produce together), each with specific title angles, the best content Method, and the best platform. This is a recommendation for a human to review and act on — be concrete and specific, not generic.
+
+${platformInstruction}
+
+PRODUCT: ${productName}
+Description: ${ptxt('Description')}
+Avatar: ${ptxt('Avatar')}
+
+POSITIONING STRATEGY:
+${strategyBlock || 'Not filled in yet — infer conservatively from the product description and campaign research below.'}
+
+CAMPAIGN: ${campaignName}
+CAMPAIGN RESEARCH:
+${researchBlock || 'Not provided.'}
+
+AVAILABLE METHODS FOR THIS PRODUCT (recommend from this list by exact name — never invent a method name that isn't here):
+${methodNames.length ? methodNames.join(', ') : 'None configured for this product yet — name the method concept you\'d want built, the operator will need to create it first.'}
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{
+  "summary": "2-4 sentences: the overall growth angle and why it fits this positioning",
+  "recommendedPlatforms": ["...", "..."],
+  "groupings": [
+    { "name": "...", "rationale": "...", "titles": ["...", "...", "..."], "recommendedMethod": "...", "recommendedPlatform": "..." }
+  ]
+}`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let plan;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+          if (start === -1 || end === -1) throw new Error("No JSON object found");
+          plan = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        } catch (e) {
+          return json({ error: "Failed to parse growth strategy JSON: " + e.message }, 500);
+        }
+        const groupings = Array.isArray(plan.groupings) ? plan.groupings : [];
+        const recommendedPlatforms = Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : [];
+
+        const dateLabel = new Date(campPage.last_edited_time || Date.now()).toISOString().slice(0, 10);
+        const strategyName = `${productName} Growth Strategy — ${dateLabel}`;
+        const esc3 = s => String(s || '');
+        const rtBlock = text => [{ type: "text", text: { content: esc3(text) } }];
+        const children = [
+          { object: "block", type: "heading_2", heading_2: { rich_text: rtBlock("Summary") } },
+          { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(plan.summary || 'Not provided.') } },
+          ...(platformOverride ? [{ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Platform focus (operator-specified): ${platformOverride}`) } }]
+            : [{ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Recommended platforms: ${recommendedPlatforms.join(', ') || 'Not specified'}`) } }]),
+          { object: "block", type: "divider", divider: {} },
+        ];
+        groupings.forEach(g => {
+          children.push({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(g.name || 'Untitled Grouping') } });
+          children.push({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(g.rationale || '') } });
+          (Array.isArray(g.titles) ? g.titles : []).forEach(t => {
+            children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(t) } });
+          });
+          children.push({ object: "block", type: "paragraph", paragraph: { rich_text: [
+            { type: "text", text: { content: "Method: " }, annotations: { bold: true } }, { type: "text", text: { content: `${esc3(g.recommendedMethod) || 'Not specified'}  ·  ` } },
+            { type: "text", text: { content: "Platform: " }, annotations: { bold: true } }, { type: "text", text: { content: esc3(g.recommendedPlatform) || 'Not specified' } },
+          ] } });
+          children.push({ object: "block", type: "divider", divider: {} });
+        });
+
+        const createResp = await fetch(`https://api.notion.com/v1/pages`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: GROWTH_STRATEGY_DB },
+            properties: {
+              "Strategy Name": { title: [{ text: { content: strategyName } }] },
+              "Product": { relation: [{ id: dash(productId) }] },
+              "Campaign": { relation: [{ id: dash(campaignId) }] },
+              "Platform Override": { rich_text: rtBlock(platformOverride || '') },
+              "Recommended Platforms": { multi_select: recommendedPlatforms.map(p => ({ name: p })) },
+              "Status": { select: { name: "Draft" } },
+              "Summary": { rich_text: rtBlock(plan.summary || '') },
+              "Grouping Count": { number: groupings.length },
+            },
+            children: children.slice(0, 100), // Notion caps children-on-create at 100 blocks
+          }),
+        }).then(r => r.json());
+        if (!createResp.id) return json({ error: createResp.message || "Failed to create Growth Strategy page" }, 500);
+
+        return json({ success: true, id: createResp.id.replace(/-/g, ""), url: createResp.url, groupingCount: groupings.length });
+      }
+
+      // ── listGrowthStrategies ──
+      // Feeds both the Product row's "plans" dropdown and the Generate
+      // Titles modal's "Choose Strategy" dropdown — same list, same shape.
+      if (body.action === "listGrowthStrategies") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const q = await fetch(`https://api.notion.com/v1/databases/${GROWTH_STRATEGY_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filter: { property: "Product", relation: { contains: dash(productId) } },
+            sorts: [{ timestamp: "created_time", direction: "descending" }],
+          }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const strategies = (q.results || []).map(p => ({
+          id: p.id.replace(/-/g, ""),
+          name: (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled",
+          status: p.properties?.Status?.select?.name || "Draft",
+          platformOverride: (p.properties?.["Platform Override"]?.rich_text || []).map(t => t.plain_text).join(""),
+          groupingCount: p.properties?.["Grouping Count"]?.number ?? null,
+          created: p.created_time,
+        }));
+        return json({ success: true, strategies });
+      }
+
+      // ── getGrowthStrategy ──
+      // Powers the read-only "View Strategy" modal — full page body
+      // (summary + groupings) plus its properties.
+      if (body.action === "getGrowthStrategy") {
+        const { strategyId } = body;
+        if (!strategyId) return json({ error: "strategyId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const page = await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, { headers: hdr }).then(r => r.json());
+        if (!page.properties) return json({ error: page.message || "Growth Strategy not found" }, 404);
+        const bodyText = await extractBlocksTextRecursive(hdr, dash(strategyId)).catch(() => '');
+        return json({
+          success: true,
+          id: strategyId,
+          url: page.url,
+          name: (page.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled",
+          status: page.properties?.Status?.select?.name || "Draft",
+          platformOverride: (page.properties?.["Platform Override"]?.rich_text || []).map(t => t.plain_text).join(""),
+          recommendedPlatforms: (page.properties?.["Recommended Platforms"]?.multi_select || []).map(o => o.name),
+          summary: (page.properties?.Summary?.rich_text || []).map(t => t.plain_text).join(""),
+          body: bodyText,
+        });
       }
 
       // ── saveMethodTitles ──

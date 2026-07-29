@@ -141,6 +141,16 @@ Promotion is **explicit only**: `promoteAssetDesignToGlobal` (worker action) cop
 
 **Not yet done:** wiring any of this into `assembleAsset` (which just requires both uploaded documents present, no per-field gating); syncing ChatGPT's revisions back into the structured databases (the operator applies them to the Notion rows by hand); the Layer 2 "Content Intent" object and extending the Campaign Design System to drive site/product creation, both proposed but out of scope for now.
 
+### Growth Strategy
+
+`🚀 Growth Strategy` (`437b8c2615234b6bbe4a694b31f3000f`) — one record per generation run, related to a Product and Campaign. **Distinct from two other same-sounding things**: the existing positioning Strategy DB (`STRATEGY_DB`, 11 fields — Customer/Niche/Pain Points/Emotions/Solution/Benefits/Unique Opportunity/Transformation/Offer Structure/Proof Points/Objections, "who are we talking to and why") and Content Strategy (`CONTENT_STRATEGY_DB`, which is actually the Titles DB, confusingly). Growth Strategy answers "given that positioning, what should we actually make" — it recommends thematic title groupings, each with specific title angles, a Method (grounded in the product's actual linked Methods, never invented), and a platform.
+
+Generated via `generateGrowthStrategy` (🚀 button on a product row) — takes an optional `platformOverride` (every grouping targets that platform) or, left blank, lets Claude recommend per-grouping. Reads the positioning Strategy + Product fields + campaign Research comprehensively. Writes properties (Strategy Name/Product/Campaign/Platform Override/Recommended Platforms/Status/Summary/Grouping Count) plus a structured page body (heading + rationale + title bullets + method/platform per grouping). **Never creates titles or touches a Method** — purely a reviewable recommendation; a product can have several over time (Status Draft/Approved/Archived), browsable via the row's "plans" dropdown (`listGrowthStrategies`/`getGrowthStrategy`, opens a read-only view modal).
+
+The existing per-Method "Generate Titles" modal (`generateMethodTitles`) can optionally ground a run in one of these — a "Growth Strategy" dropdown (only shown when a real product is selected, not the Campaign option) plus a free-text "guidance" field that overrides/refines how it's applied. When set, the selected strategy's full body becomes primary grounding in the title-generation prompt (favor titles from whichever grouping was written for the method being run), on top of — not instead of — the method's own framework.
+
+`generateMethodTitles`'s Strategy-fed context also got a small fix alongside this: `Transformation`/`Proof Points`/`Objections` are fetched from the positioning Strategy record but were never actually read into the prompt (only the plainer Product-page versions were) — now included.
+
 ### Editing Authority model (Visual Brief)
 
 Every Visual Brief prints a "# Editing Authority" section near the top defining four tiers ChatGPT must respect, and the Design Specification (Draft) section tags every field against them:
