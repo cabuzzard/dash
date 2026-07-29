@@ -5401,6 +5401,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
                 type: p["Asset Type"]?.select?.name || "",
                 status: p["Asset Status"]?.select?.name || "",
                 designLink: p["Design Link"]?.url || "",
+                assemblyReviewPage: p["Assembly Review Page"]?.url || "",
                 canvaLink: p["Canva Link"]?.url || "",
                 gradeScore: p["Grade Score"]?.number ?? null,
                 gradeStatus: p["Status"]?.select?.name || "",
@@ -12544,8 +12545,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
       }
 
       // ── gatherAssetProductionContext ──
-      // Shared context-gathering pass used by generateVisualBriefPrompt,
-      // generateVisualManifestPrompt, and assembleAsset: reads the
+      // Shared context-gathering pass used by generateVisualBriefPrompt and
+      // assembleAsset: reads the
       // completed Asset Package (final slide/scene text, Asset Spec,
       // Production Spec — all already written to Notion by
       // generateCarouselPreview/generateTextVideoScript), campaign/research
@@ -12694,8 +12695,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const relevantResearchContext = researchParts.join('\n');
         const painPoints = rt(researchRaw, 'Pain Points');
         // Visual-communication-relevant research only — no SEO/keywords/
-        // publishing metadata, for generateVisualBriefPrompt's Research
-        // Summary section specifically (Manifest keeps the fuller version above).
+        // publishing metadata — for generateVisualBriefPrompt's Research
+        // Summary section specifically.
         const researchSummaryFields = ['Statement', 'Unique Opportunity', 'Key Message', 'Pain Points'];
         const researchSummaryText = researchSummaryFields.map(f => { const v = rt(researchRaw, f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
 
@@ -12825,37 +12826,6 @@ Return ONLY this JSON object, no other text, no markdown fences:
         for (let i = 0; i < s.length; i += maxLen) chunks.push(s.slice(i, i + maxLen));
         return chunks.slice(0, 100).map(c => ({ text: { content: c } }));
       };
-
-      // Parses the "Machine-Readable Status" YAML block the Manifest
-      // template (generateVisualManifestPrompt) asks ChatGPT to maintain
-      // and the operator pastes back into the Asset's "Visual Production
-      // Brief" field — slide_01/scene_01-style keys, each with treatment/
-      // status/asset sub-fields. Deliberately simple line-scanning, not a
-      // real YAML parser (Workers has no YAML dependency and this format
-      // is flat enough not to need one): a `word_NN:` line with nothing
-      // after the colon starts a new entry; indented `key: value` lines
-      // attach to whichever entry is currently open. Returns {} if no
-      // entries are found (e.g. an older free-text brief with no status
-      // block) — assembleAsset treats that as "can't verify readiness"
-      // rather than silently passing.
-      function parseProductionStatusYaml(text) {
-        const entries = {};
-        let current = null;
-        for (const raw of String(text || '').split('\n')) {
-          const line = raw.trim();
-          const topMatch = /^(slide|scene)[_ -]?(\d+)\s*:\s*$/i.exec(line);
-          if (topMatch) {
-            current = `${topMatch[1].toLowerCase()}_${String(topMatch[2]).padStart(2, '0')}`;
-            entries[current] = {};
-            continue;
-          }
-          const kvMatch = /^([a-zA-Z_]+)\s*:\s*(.+)$/.exec(line);
-          if (kvMatch && current) {
-            entries[current][kvMatch[1].toLowerCase()] = kvMatch[2].trim().replace(/^["']|["']$/g, '');
-          }
-        }
-        return entries;
-      }
 
       // Adds any of `neededProps` that don't already exist on the Assets DB
       // — Notion's PATCH /v1/databases/{id} accepts new property
@@ -13582,14 +13552,15 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
         return { specPageId, designSystemId: carouselDesignSystemId, ds, slides, platformName };
       }
 
-      // ── generateVisualBriefPrompt / generateVisualManifestPrompt ──
-      // Populate a fixed ChatGPT template from gatherAssetProductionContext.
-      // Brief = the one-shot Visual Director handoff; Manifest = the
-      // persistent Visual Production Brief document meant to be maintained
-      // across a whole approval cycle and returned for assembly once done.
-      // Neither calls an LLM or writes to Notion — the frontend copies the
-      // result straight to the clipboard.
-      if (body.action === "generateVisualBriefPrompt" || body.action === "generateVisualManifestPrompt") {
+      // ── generateVisualBriefPrompt ──
+      // Populates a fixed ChatGPT template from gatherAssetProductionContext
+      // — the Visual Director handoff, including the structured Design
+      // Specification (Draft) for text video/carousel. Doesn't call an LLM
+      // itself for the template (buildTextVideoSpecDraft/
+      // buildCarouselSpecDraft do) or write the Brief to Notion — the
+      // frontend copies the result straight to the clipboard; it's saved
+      // back to Notion once the operator uploads ChatGPT's edited version.
+      if (body.action === "generateVisualBriefPrompt") {
         const ctx = await gatherAssetProductionContext(body);
         if (!ctx.ok) return json({ error: ctx.error, validation: ctx.validation }, ctx.status);
         const {
@@ -13601,316 +13572,6 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           resolvedSpec, resolvedGlobalInstructions, sourceGlobalRefs, existingVisualAssets, existingAssetsList, existingAssetEntries, sameTypeExistingAssets,
           validation, np, sectionText, findSection, slideFields, slideOrSceneSections, extractField,
         } = ctx;
-
-        if (body.action === "generateVisualManifestPrompt") {
-          const assetMetadataBlock = [
-            `Asset ID: ${assetId}`, `Asset Name: ${assetName}`, `Asset Type: ${assetType}`,
-            `Platform: ${np(platform)}`, `Aspect Ratio: ${aspectRatio}`, `Resolution: ${np(targetResolution)}`,
-            `Target Duration: ${targetDuration}`, `Target Audience: ${np(targetAudience)}`, `Funnel Stage: ${np(funnelStage)}`,
-            `Primary Goal: ${np(primaryGoal)}`, `CTA Goal: ${np(ctaGoal)}`, `Desired Viewer Action: ${np(desiredViewerAction)}`,
-          ].join('\n');
-          const contentSummaryRaw = sectionText('Content Summary');
-          const manifestPrompt = `VISUAL PRODUCTION BRIEF
-
-You are the Visual Director and Art Department for this content production system.
-
-The writing phase is complete.
-
-The Asset Package and Production Specification are complete.
-
-Your responsibility is to create and maintain the Visual Production Brief.
-
-This document will become the permanent visual production record used during assembly.
-
-Treat the supplied Asset Package and Production Specification as the source of truth.
-
-Do not rewrite the written content.
-
-Do not modify the Production Specification.
-
-Your responsibilities are:
-
-1. Review the complete production package.
-
-2. Create an overall Visual Strategy.
-
-3. Determine the best visual treatment for every slide or scene.
-
-4. Create a complete Visual Production Brief.
-
-5. Generate or retrieve visual assets as required.
-
-6. Revise assets until approved.
-
-7. Continuously update this Visual Production Brief with approved assets.
-
-8. When every asset is approved, mark the Visual Production Brief as Ready For Assembly.
-
-======================================================================
-CONTENT PACKAGE
-===============
-
-# Asset Metadata
-
-${assetMetadataBlock}
-
----
-
-# Research
-
-${np(relevantResearchContext)}
-
----
-
-# Content Summary
-
-${np(contentSummaryRaw)}
-
----
-
-# Final Written Asset
-
-${np(finalWrittenAsset)}
-
----
-
-# Asset Specification
-
-${np(completeAssetSpec)}
-
----
-
-# Production Specification
-
-${np(completeProductionSpec)}
-
----
-
-# Campaign Information
-
-${np(campaignInformation)}
-
----
-
-# Series Information
-
-Not provided — this system doesn't track a separate Series layer.
-
----
-
-# Assigned Globals
-
-RESOLVED INSTRUCTIONS:
-${resolvedGlobalInstructions}
-
-SOURCE:
-${sourceGlobalRefs.join('\n')}
-
----
-
-# Existing Visual Assets
-
-${np(existingVisualAssets)}
-
----
-
-# Brand Assets
-
-Not provided — this system doesn't track a separate Brand Assets library; see Assigned Globals for brand palette/typography direction and Existing Visual Assets for reusable approved assets.
-
-======================================================================
-CREATE THE VISUAL PRODUCTION BRIEF
-==================================
-
-Return the following sections.
-
-# 1. Visual Strategy
-
-Summarize:
-
-* Overall visual concept
-* Visual narrative
-* Visual pacing
-* Recurring motifs
-* Brand consistency
-* Series consistency
-* Asset reuse opportunities
-* Production risks
-
----
-
-# 2. Visual Production Brief
-
-Create one section for every slide or scene.
-
-Each section must contain:
-
-### Slide / Scene Number
-
-### Slide / Scene Role
-
-### Content Objective
-
-### Visual Purpose
-
-### Visual Treatment
-
-Choose exactly one:
-
-* Generated Illustration
-* Existing Brand Asset
-* Icon
-* Diagram
-* Screenshot
-* Stock Footage
-* Background Texture
-* Text Only
-
-### Production Action
-
-Choose exactly one:
-
-* Generate
-* Retrieve
-* Reuse
-* Edit Existing
-* Capture Screenshot
-* License Stock
-* No Asset Required
-
-### Visual Description
-
-### Primary Subject
-
-### Supporting Subjects
-
-### Information Being Communicated
-
-### Composition
-
-### Camera Angle (if applicable)
-
-### Crop
-
-### Foreground
-
-### Midground
-
-### Background
-
-### Emotion
-
-### Mood
-
-### Information Density
-
-### Visual Complexity
-
-### Text Safe Areas
-
-### Caption Safe Areas
-
-### Platform Safe Areas
-
-### Aspect Ratio
-
-### Output Format
-
-### Applied Globals
-
-### Existing Asset Reference
-
-### Image Generation Prompt
-
-(Only if Production Action = Generate)
-
-### Asset Filename
-
-(Leave blank until generated)
-
-### Asset Status
-
-One of:
-
-* Planned
-* Generating
-* Revision Required
-* Approved
-* Ready For Assembly
-
-### Approval Criteria
-
----
-
-# 3. Asset Inventory
-
-Maintain a table containing:
-
-* Slide / Scene
-* Visual Treatment
-* Production Action
-* Filename
-* Status
-
----
-
-# 4. Assembly Readiness
-
-Return:
-
-Visual Production Brief Status
-
-One of:
-
-* Draft
-* In Progress
-* Waiting For Images
-* Waiting For Approval
-* Ready For Assembly
-
-List:
-
-* Missing Assets
-* Assets Awaiting Approval
-* Assets Ready For Assembly
-
----
-
-# 5. Machine-Readable Status
-
-In addition to the Asset Inventory table above, include this exact block — a fenced yaml code block, one entry per slide or scene, keyed slide_01/slide_02/... or scene_01/scene_02/... matching the numbering used everywhere else in this document. This is the block Claude parses to decide whether assembly can proceed, so keep it in sync with the Asset Inventory table and Assembly Readiness section above — do not let them drift.
-
-\`\`\`yaml
-slide_01:
-  treatment: illustration
-  status: approved
-  asset: slide01.png
-slide_02:
-  treatment: diagram
-  status: planned
-  asset: pending
-\`\`\`
-
-\`treatment\` is freeform (illustration, diagram, icon, screenshot, existing_asset, text_only, photo, stock_footage, etc — whatever you decided). \`status\` must be exactly one of: planned, generating, revision_required, approved, ready_for_assembly (lowercase, underscores, no spaces). Never mark an entry approved or ready_for_assembly until the user has explicitly approved that specific asset. Include one entry for every slide or scene in the Final Written Asset above — never omit one.
-
-======================================================================
-WORKING RULES
-=============
-
-Maintain this document throughout the visual production process.
-
-Update it — including the Machine-Readable Status block — whenever an asset is generated, revised, or approved.
-
-Do not create a second document.
-
-The Visual Production Brief is the single source of truth for visual production.
-
-Once every entry in the Machine-Readable Status block reads approved or ready_for_assembly, paste this complete document back into the Asset's "Visual Production Brief" field in Notion — that status block is what gates assembly.
-
-Begin by reviewing the Production Specification and creating the Visual Strategy.`;
-
-          return json({ success: true, assetId, titleId, campaignId, assetType, prompt: manifestPrompt, validation, kind: 'manifest' });
-        }
 
         // Draft the structured design specification databases and fold the
         // result into the Brief so ChatGPT reviews/refines concrete field
@@ -14013,11 +13674,7 @@ Begin by reviewing the Production Specification and creating the Visual Strategy
         })();
 
         // "Visual Production Source Document" — the complete
-        // Content-Department-to-Visual-Department handoff. Unlike the
-        // Manifest (which asks ChatGPT to design and maintain the visual
-        // production doc), this one makes NO visual decisions at all and
-        // asks for none — it's pure context assembly, straight from the
-        // Asset Package already on Notion. Per-slide/scene Role/Key
+        // Content-Department-to-Visual-Department handoff. Per-slide/scene Role/Key
         // Takeaway (carousel) and Role/Duration (text video) are pulled
         // back out of the labeled "Slide Production Notes"/"Shot / B-Roll
         // Notes" bullets — reliable now that those bullets are written as
@@ -14048,7 +13705,7 @@ Begin by reviewing the Production Specification and creating the Visual Strategy
         // Asset Specification for THIS document only, minus the publishing/
         // SEO fields (LinkedIn caption, X post, keywords, search intent,
         // description) — they don't inform visual design and would just
-        // dilute the prompt. The Manifest's own Asset Spec keeps them.
+        // dilute the prompt.
         const briefAssetSpecHeadings = assetType === 'carousel'
           ? ['Content Summary', 'Hook Package', 'Content Flow', 'Educational Assets', 'Production Checklist']
           : ['Asset Metadata', 'Content Summary', 'Hook Package', 'Video Structure', 'Educational Assets', 'Production Checklist'];
@@ -14321,32 +13978,6 @@ Use this document to create and maintain the Visual Production Brief. The Visual
           return json({ error: `Upload the ${missingDocs.join(' and ')} via this asset's upload link${missingDocs.length > 1 ? 's' : ''} before assembling.`, validation: { missing_docs: missingDocs } }, 400);
         }
 
-        // ── Gate on the Visual Production Brief's Machine-Readable
-        // Status block: every slide/scene must read approved or
-        // ready_for_assembly before this proceeds — that's what makes it
-        // "the production-ready document Claude can assemble from" rather
-        // than just a non-empty upload.
-        const READY_STATUSES = ['approved', 'ready_for_assembly'];
-        const statusEntries = parseProductionStatusYaml(visualBrief);
-        const statusPrefix = assetType === 'carousel' ? 'slide' : 'scene';
-        const expectedCount = slideOrSceneSections.length;
-        if (Object.keys(statusEntries).length === 0) {
-          return json({ error: `The Visual Production Brief has no Machine-Readable Status block (${statusPrefix}_01: entries with treatment/status/asset). Run the Manifest through ChatGPT again with the current template — that block is what gates assembly now.`, validation: { status_block_present: false } }, 400);
-        }
-        if (expectedCount > 0) {
-          const notReady = [];
-          for (let i = 1; i <= expectedCount; i++) {
-            const key = `${statusPrefix}_${String(i).padStart(2, '0')}`;
-            const entry = statusEntries[key];
-            if (!entry) { notReady.push(`${key}: missing from the status block`); continue; }
-            const status = (entry.status || '').toLowerCase();
-            if (!READY_STATUSES.includes(status)) notReady.push(`${key}: ${status || 'no status'}`);
-          }
-          if (notReady.length) {
-            return json({ error: `Not every ${statusPrefix} is approved yet — ${notReady.join('; ')}. Get the remaining assets approved in ChatGPT, re-upload the updated Visual Production Brief, and try again.`, validation: { statusEntries } }, 400);
-          }
-        }
-
         if (!designLink) {
           // No hosted media yet — hand both documents (plus any override
           // guidelines typed into the modal) to Claude Code as a single
@@ -14354,7 +13985,7 @@ Use this document to create and maintain the Visual Production Brief. The Visual
           const overrideBlock = (overrideGuidelines || '').trim()
             ? `\n\n=== OPERATOR OVERRIDE / ADDITIONAL GUIDELINES ===\n${overrideGuidelines.trim()}\n`
             : '';
-          const handoffPrompt = `Make the asset for the Content Strategy title "${titleName}" (https://www.notion.so/${titleId}) using the Asset record (https://www.notion.so/${assetId}, Asset Type: ${assetType}). Both approved production documents are attached in full below — the Visual Production Brief (creative direction, per-${statusPrefix} approval) and the Production Assembly Package (the technical build spec to follow). Check for uploaded reference images at web/{deployPath}/assembled/{assetSlug}/${statusPrefix}-NN.* (Notion connector or the dashboard's Upload Images modal) before sourcing your own where one already exists. When done, render/host the final media, update this Asset record's Design Link (and Final Media File) per the relevant skill's steps, then re-run Assemble on the dashboard to package it for publish.${overrideBlock}
+          const handoffPrompt = `Make the asset for the Content Strategy title "${titleName}" (https://www.notion.so/${titleId}) using the Asset record (https://www.notion.so/${assetId}, Asset Type: ${assetType}). Both approved production documents are attached in full below — the Visual Production Brief (creative direction) and the Production Assembly Package (the technical build spec to follow). When done, render/host the final media, update this Asset record's Design Link (and Final Media File) per the relevant skill's steps, then re-run Assemble on the dashboard to package it for publish.${overrideBlock}
 
 === VISUAL PRODUCTION BRIEF ===
 ${visualBrief}
@@ -14399,31 +14030,12 @@ ${assemblyPackage}`;
           ? `<div class="slides">${Array.from({ length: slideCount || 0 }, (_, i) => `<img src="${esc2(designLink)}slide-${String(i + 1).padStart(2, '0')}.png" alt="Slide ${i + 1}" loading="lazy">`).join('')}</div>`
           : `<video controls preload="metadata" src="${esc2(designLink)}"></video>`;
 
-        // Text Video: uploaded scene reference images (uploadApprovedVisual)
-        // live in this SAME folder, extension unknown up front, so each
-        // slot tries a few common extensions client-side and just hides
-        // itself if none of them exist yet (nothing uploaded for that scene).
-        const sceneVisualsHtml = assetType === 'text video' && slideCount > 0
-          ? `<section><h2>Visual References</h2><div class="slides" id="sceneVisuals">${Array.from({ length: slideCount }, (_, i) => {
-              const n = String(i + 1).padStart(2, '0');
-              return `<div class="scene-visual-wrap" data-n="${n}"><div style="font-size:10px;color:#888;margin-bottom:4px;">Scene ${i + 1}</div><img class="scene-visual-img" style="display:none;width:100%;border-radius:4px;border:1px solid #2a2a2a;"></div>`;
-            }).join('')}</div><p style="font-size:11px;color:#666;margin:12px 0 0;">Reference material only — this Worker can't splice them into the MP4; use them the next time make-reel-video renders this asset.</p></section>`
-          : '';
-
         const metaRows = [
           ['Asset Type', assetType], ['Platform Title', platformTitle], ['Channel', channel || 'Not set'],
           ['Post Caption', postCaption], ['Description', finalDescription], ['Hashtags', hashtags],
           ['Alt Text', finalAltText], ['Link / CTA', linkOrCta || 'Not set'],
           ['Publishing Date', publishingDate || 'Not set'], ['Source References', sourceReferences],
         ];
-
-        // From the pasted Visual Production Brief's Machine-Readable
-        // Status block — every entry is already verified approved/
-        // ready_for_assembly above, this is just the record of what was.
-        const productionStatusRows = Object.keys(statusEntries).sort().map(key => {
-          const e = statusEntries[key] || {};
-          return [key, e.treatment || 'Not set', e.status || 'Not set', e.asset || 'Not set'];
-        });
 
         const CHECKLIST_ITEMS = [
           'Spelling', 'Cropped text', 'Safe margins', 'Slide order',
@@ -14476,12 +14088,6 @@ ${assemblyPackage}`;
     <h2>Final Media</h2>
     ${mediaHtml}
   </section>
-  ${sceneVisualsHtml}
-  <section>
-    <h2>Production Status</h2>
-    <table><tr><td>Slide/Scene</td><td>Treatment</td><td>Status</td><td>Asset Filename</td></tr>${productionStatusRows.map(([k, treatment, status, asset]) => `<tr><td>${esc2(k)}</td><td>${esc2(treatment)}</td><td>${esc2(status)}</td><td>${esc2(asset)}</td></tr>`).join('')}</table>
-    <p style="font-size:11px;color:#666;margin:12px 0 0;">From the approved Visual Production Brief's status block. Asset filenames are as reported by the Visual Director. ${assetType === 'carousel' ? 'Carousel uploads (Upload Images on the dashboard) replace the rendered slide directly, so they already show under Final Media above.' : 'Uploaded reference images show under Visual References above, if any.'}</p>
-  </section>
   <section>
     <h2>Publishing Metadata</h2>
     <table>${metaRows.map(([k, v]) => `<tr><td>${esc2(k)}</td><td>${esc2(v).replace(/\n/g, '<br>')}</td></tr>`).join('')}</table>
@@ -14513,17 +14119,6 @@ ${assemblyPackage}`;
     };
     label.appendChild(cb); label.appendChild(span);
     wrap.appendChild(label);
-  });
-  document.querySelectorAll('.scene-visual-wrap').forEach(function(sceneWrap) {
-    var n = sceneWrap.dataset.n, img = sceneWrap.querySelector('.scene-visual-img');
-    var exts = ['png', 'jpg', 'jpeg', 'webp'], i = 0;
-    function tryNext() {
-      if (i >= exts.length) { sceneWrap.style.display = 'none'; return; }
-      img.onerror = function() { i++; tryNext(); };
-      img.onload = function() { img.style.display = 'block'; };
-      img.src = 'scene-' + n + '.' + exts[i];
-    }
-    tryNext();
   });
 </script>
 </body></html>`;
@@ -14566,98 +14161,6 @@ ${assemblyPackage}`;
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to write assembled fields to Asset", reviewUrl }, patchResp.status); }
 
         return json({ success: true, assetId, reviewUrl, fieldsWritten: Object.keys(props) });
-      }
-
-      // ── getUploadSlots ──
-      // Feeds the "Upload Approved Visuals" modal: one slot per slide
-      // (carousel) or scene (text video), pulled from the Asset Package's
-      // own Slide-N/Scene-N blocks — so the modal is correctly sized even
-      // before the operator has pasted a Visual Production Brief back.
-      // When one IS present, its Machine-Readable Status block's
-      // treatment/status per slot are surfaced as hints (not required).
-      if (body.action === "getUploadSlots") {
-        const ctx = await gatherAssetProductionContext(body);
-        if (!ctx.ok) return json({ error: ctx.error, validation: ctx.validation }, ctx.status);
-        const { assetPage, assetType, slideOrSceneSections } = ctx;
-        const visualBrief = (assetPage.properties["Visual Production Brief"]?.rich_text || []).map(t => t.plain_text).join("");
-        const statusEntries = parseProductionStatusYaml(visualBrief);
-        const prefix = assetType === 'carousel' ? 'slide' : 'scene';
-        // Carousel is always exactly 7 slides by generation contract; text
-        // video's scene count varies (3-5) and depends on the Asset
-        // Package already having Scene-N blocks (older assets predate
-        // them) — fall back to 5 so the modal still has usable rows.
-        const count = slideOrSceneSections.length || (assetType === 'carousel' ? 7 : 5);
-        const slots = Array.from({ length: count }, (_, i) => {
-          const n = i + 1;
-          const key = `${prefix}_${String(n).padStart(2, '0')}`;
-          const entry = statusEntries[key] || {};
-          return { key, number: n, treatment: entry.treatment || '', status: entry.status || '', asset: entry.asset || '' };
-        });
-        return json({ success: true, assetType, prefix, slots });
-      }
-
-      // ── uploadApprovedVisual ──
-      // Hosts one Visual-Director-approved image for one slide/scene.
-      // Carousel: commits to the EXACT slide-NN.png path
-      // generateCarouselPreview/publishCarouselSlides already renders and
-      // the gallery page already links to — overwriting it there means
-      // Design Link and the assembly review page pick up the real
-      // artwork automatically, no other write needed. Text Video: no
-      // equivalent canonical per-scene path exists (Design Link is a
-      // single MP4 a local Remotion render produces), so these land in a
-      // new {assembled}/scene-NN.* folder as reference material for
-      // whoever runs make-reel-video next, not as something this Worker
-      // can splice into the MP4 itself.
-      if (body.action === "uploadApprovedVisual") {
-        const { assetId, titleId, campaignId, slideNumber, imageBase64, imageFilename } = body;
-        if (!assetId || !titleId || !campaignId || !slideNumber || !imageBase64 || !imageFilename) {
-          return json({ error: "assetId, titleId, campaignId, slideNumber, imageBase64, and imageFilename required" }, 400);
-        }
-        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const GT = (env.GITHUB_TOKEN || '').trim();
-        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
-
-        const [assetPage, titlePage] = await Promise.all([
-          fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json()),
-          fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json()),
-        ]);
-        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
-        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
-        const assetType = assetPage.properties["Asset Type"]?.select?.name || "";
-        const assetName = assetPage.properties["Asset Title"]?.title?.map(t => t.plain_text).join("") || "Untitled";
-        const titleName = titlePage.properties.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
-        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
-        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
-        const n = String(slideNumber).padStart(2, '0');
-        const extMatch = imageFilename.match(/\.([a-zA-Z0-9]+)$/);
-        const ext = (extMatch ? extMatch[1] : 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-
-        let path;
-        if (assetType === 'carousel') {
-          const titleSlug = slugify(titleName) || 'carousel';
-          // Always .png, matching the render pipeline's own output format
-          // exactly — the gallery page's <img> tags reference this path
-          // verbatim and can't be changed per-upload.
-          path = `web/${deployPath}/carousels/${titleSlug}/slide-${n}.png`;
-        } else {
-          const assetSlug = slugify(assetName) || 'asset';
-          path = `web/${deployPath}/assembled/${assetSlug}/scene-${n}.${ext}`;
-        }
-
-        const REPO = "cabuzzard/dash", BRANCH = "main";
-        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
-        const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
-        let sha = null;
-        if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
-        const putBody = { message: `Approved visual: ${assetName} — #${n}`, content: imageBase64, branch: BRANCH };
-        if (sha) putBody.sha = sha;
-        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-          method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
-        });
-        if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); return json({ error: `GitHub commit failed (HTTP ${putResp.status}): ${r.message || 'unknown'}` }, 502); }
-
-        return json({ success: true, url: `https://cabuzzard.github.io/dash/${path}`, path });
       }
 
       // ── generateExplainerScript ──
