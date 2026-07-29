@@ -14282,7 +14282,7 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           ? [
               `Per slide (every slide, none skipped): the exact Layout Template used (from the shared library referenced in Design Specification (Draft) above, or a new one named and described if none fit), exact resolved colors (hex, from the Color Palette above) and fonts, exact copy placement — Headline/Supporting Text/CTA copied verbatim from Final Written Asset above, never reworded — image/icon/diagram production instruction (state which of Generate / Reuse / Retrieve / Edit Existing / Composite, and from where), alt text, and confirmation it meets the safe-area and minimum-contrast/font-size figures in Known Constraints above.`,
               `Global: the Platform & Export Preset actually used (dimensions, format, slide count), page numbering treatment, logo placement if any, and the campaign Carousel Design System values actually applied (not just referenced).`,
-              `If any slide's Visual Design Card called for a Layout or Diagram Template not in the shared library, state explicitly that it's asset-specific and would need a separate promotion step (per the CONSTRAINED tier in Editing Authority above) — never silently treat an invented template as already shared.`,
+              `If any slide calls for a Layout or Diagram Template not in the shared library, state explicitly that it's asset-specific and would need a separate promotion step (per the CONSTRAINED tier in Editing Authority above) — never silently treat an invented template as already shared.`,
             ]
           : [
               `Repeat both identity/Production Path lines from Production Method above, then write the rest of this package to match that declared path — everything below assumes the reader has NOT seen this asset before.`,
@@ -14295,7 +14295,7 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
 
         const productionMethodBlock = assetType === 'carousel'
           ? `Asset Type: Carousel — a static multi-slide carousel (${slideOrSceneSections.length || 'multiple'} slides).\n\nProduction Method: Rendered directly as PNG images by this system (Cloudflare Browser Rendering) — a single, deterministic, Worker-native pipeline. There is no video/motion production decision to make here and no build-path choice for you to state; your Visual Design Card should focus entirely on the per-slide visual treatment already scoped in Production Specification below.`
-          : `Asset Type: Text Video — a faceless, vertical short-form video (Reel/TikTok/Shorts format, ${aspectRatio}, no on-camera presenter).\n\nTwo distinct production paths exist for Text Video assets in this system, and they require completely different builds. Your Visual Design Card MUST state explicitly, as its first two lines, (1) this asset's identity and (2) which production path it is written for:\n\nline 1: "${identityLine}"\nline 2: "Production Path: Custom Remotion Build" or "Production Path: Simple background + voiceover"\n\n- **SIMPLE (default)** — one sourced or generated background image, ElevenLabs voiceover, Ken Burns pan/zoom motion, word-by-word burned-in captions. Fast, minimal build (make-reel-video). Use this unless the content genuinely calls for more.\n- **CUSTOM REMOTION BUILD** — a fully bespoke animated composition: multiple native React/SVG scene components (no stock photography, no AI-generated imagery), a defined motion system, exact typography/color tokens, diagrams/illustrations built natively in code. A much larger build — only choose this when the content's complexity or the campaign's visual ambition genuinely warrants it.\n\nIf choosing the custom path, the Complete Assembly Package must also specify: a stable composition ID, the exact frame timeline per scene, a per-scene visual specification (layout / primary visual / motion / camera), the motion system (easing, permitted and forbidden motion, standard durations), the visual asset policy (native SVG/CSS only vs. raster assets allowed), and safe areas — in enough detail for an engineer to implement without further clarification. Include the mandatory render sequence below verbatim in the Complete Assembly Package.\n\n${mandatoryRenderSequence}\n\nRepeat both lines 1 and 2 at the top of EVERY message you return in this conversation — the Visual Design Card, every revision of it, and the Complete Assembly Package — even after many rounds of back-and-forth; never let this asset's identity or chosen production path go unstated in a later message.`;
+          : `Asset Type: Text Video — a faceless, vertical short-form video (Reel/TikTok/Shorts format, ${aspectRatio}, no on-camera presenter).\n\nTwo distinct production paths exist for Text Video assets in this system, and they require completely different builds. Your Visual Design Card MUST state explicitly, as its first two lines, (1) this asset's identity and (2) which production path it is written for:\n\nline 1: "${identityLine}"\nline 2: "Production Path: Custom Remotion Build" or "Production Path: Simple background + voiceover"\n\n- **SIMPLE (default)** — one sourced or generated background image, ElevenLabs voiceover, Ken Burns pan/zoom motion, word-by-word burned-in captions. Fast, minimal build (make-reel-video). Use this unless the content genuinely calls for more.\n- **CUSTOM REMOTION BUILD** — a fully bespoke animated composition: multiple native React/SVG scene components (no stock photography, no AI-generated imagery), a defined motion system, exact typography/color tokens, diagrams/illustrations built natively in code. A much larger build — only choose this when the content's complexity or the campaign's visual ambition genuinely warrants it.\n\nIf choosing the custom path, the Complete Assembly Package must also specify: a stable composition ID, the exact frame timeline per scene, a per-scene visual specification (layout / primary visual / motion / camera), the motion system (easing, permitted and forbidden motion, standard durations), the visual asset policy (native SVG/CSS only vs. raster assets allowed), and safe areas — in enough detail for an engineer to implement without further clarification. Include the mandatory render sequence below verbatim in the Complete Assembly Package.\n\n${mandatoryRenderSequence}\n\nRepeat both lines 1 and 2 at the top of EVERY message you return in this conversation — the Visual Design Card, every revision of it, and both Stage 2 final documents (Visual Brief and Complete Assembly Package) — even after many rounds of back-and-forth; never let this asset's identity or chosen production path go unstated in a later message.`;
 
         // Printed near the very top of the document, before any content,
         // so the four-tier authority model governs how every later
@@ -14466,9 +14466,9 @@ The Production Specification is complete.
 
 You are now the Visual Director. Everything you need is already in this document — no outside context, no prior conversation, nothing assumed.
 
-This conversation produces exactly TWO deliverables, in this order. Do not skip either one, do not merge them into one response, and do not stop after the first one without being told to proceed.
+This conversation has exactly TWO stages, in this order. Do not skip either one, do not merge them into one response, and do not move to Stage 2 without being told to proceed.
 
-## Deliverable 1 — Visual Design Card
+## Stage 1 — Visual Design Card (in this conversation only — not a file, not uploaded)
 
 A compact, scannable proposal for the operator to review and critique BEFORE any deeper production planning. For every slide/scene (none skipped), include:
 
@@ -14482,25 +14482,35 @@ A compact, scannable proposal for the operator to review and critique BEFORE any
 
 Plus one top-level summary: the overall visual direction, and how every MUTABLE field you resolved (per Editing Authority above) serves the intended impression in Brand Intent. Work within every CONSTRAINED ceiling rather than exceeding it; leave every IMMUTABLE field untouched.
 
-Stop after the Visual Design Card and wait for feedback. Revise it as many times as the operator asks — do not produce Deliverable 2 until they explicitly approve the direction.
+Stop after the Visual Design Card and wait for feedback. Revise it in this conversation as many times as the operator asks, critiquing and re-resolving fields each round — do not produce Stage 2 until the operator explicitly approves the direction. The Design Card itself is never uploaded anywhere; it exists only to get the direction right before you write the two final documents below.
 
-## Deliverable 2 — Complete Assembly Package
+## Stage 2 — Final Deliverables (once the Design Card is approved)
 
-Once the Visual Design Card is approved, produce ONE exhaustive document that guides assembly — everything needed to actually build this asset, grounded in the Design Specification (Draft), Editing Authority, and Known Constraints already given above, with zero ambiguity for whoever executes it next:
+Return TWO separate markdown documents, each clearly headed, ready to be saved as two separate files and uploaded to this asset's record:
+
+### A. Visual Brief (final)
+
+The resolved creative direction, reflecting every decision made while iterating the Visual Design Card above — this is the final answer, not a proposal anymore. Same structure as the Design Card (every slide/scene: role, visual concept, resolved layout, resolved palette/typography, style, composition notes) plus the top-level summary, but written as settled fact: what was kept, what was changed, and why, per the critique that already happened above.
+
+### B. Complete Assembly Package
+
+One exhaustive document that guides assembly — everything needed to actually build this asset, grounded in the Design Specification (Draft), Editing Authority, and Known Constraints already given above, with zero ambiguity for whoever executes it next:
 
 ${assemblyPackageChecklistText}
 
 Nothing in the Complete Assembly Package may say "TBD," "to be determined," or similar — every field needs a concrete resolved value, or an explicit note that it's DERIVED AT PRODUCTION per Editing Authority above (never presented as final). Mark it "Ready For Assembly" only once every slide/scene has a stated value for every item above.
 
-Begin and end every message in this conversation — the Visual Design Card, every revision of it, and the Complete Assembly Package — with this line, unchanged:
+**Together, the Visual Brief and Complete Assembly Package must cover every variable needed to properly assemble this asset — if something required for assembly isn't captured in either document, that is a gap; add it rather than leaving it implicit or assuming it's obvious.**
+
+Begin and end every message in this conversation — the Visual Design Card, every revision of it, and both final documents — with this line, unchanged:
 
 ${identityLine}
 
-This is what lets the completed package get pasted back into the correct Notion record; never let it drift or drop out of a later message. Do not rewrite the written content.
+This is what lets the completed documents get uploaded to the correct Notion record; never let it drift or drop out of a later message. Do not rewrite the written content.
 
-Use this document to produce the Visual Design Card, then the Complete Assembly Package. Together they become the authoritative visual and production record for this asset.
+Use this document to run Stage 1 (Visual Design Card, iterated in chat) and then Stage 2 (Visual Brief + Complete Assembly Package, returned together as two files). The two Stage 2 documents become the authoritative visual and production record for this asset.
 
-Per Scope above: do not restructure, critique, or propose process/system changes anywhere in this conversation. Output only the Visual Design Card and, once approved, the Complete Assembly Package — nothing else.`;
+Per Scope above: do not restructure, critique, or propose process/system changes anywhere in this conversation. Output only the Visual Design Card (Stage 1) and, once approved, the Visual Brief and Complete Assembly Package (Stage 2) — nothing else.`;
 
         return json({ success: true, assetId, titleId, campaignId, assetType, prompt, validation, kind: 'brief' });
       }
