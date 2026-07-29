@@ -13597,78 +13597,78 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           if (assetType === 'text video') {
             if (!specDraft) return noDraftReason;
             const { spec, scenes, specPageId } = specDraft;
-            const assetLevel = [
-              `Composition ID: ${spec.compositionId}`,
-              `Dimensions: ${spec.width}x${spec.height} @ ${spec.fps}fps, ${spec.aspectRatio}`,
-              `Duration: ${spec.durationSeconds}s (${spec.totalFrames} frames)`,
-              `Renderer: Remotion ${spec.rendererVersion}`,
-              `Creative Objective: ${spec.creativeObjective}`,
-              `Tone: ${spec.tone} | Viewer Awareness: ${spec.viewerAwareness || 'Not specified'} | Emotional Arc: ${spec.emotionalArc}`,
-              `Brand Personality: ${spec.brandPersonality}`,
-              `Design Language: ${spec.designLanguage} | Visual Style: ${spec.visualStyle} | Visual Theme: ${spec.visualTheme}`,
-              `Color Palette: ${JSON.stringify(spec.colorPalette)}`,
-              `Typography: ${JSON.stringify(spec.typographySystem)}`,
-              `Icon / Illustration / Diagram Style: ${spec.iconStyle} / ${spec.illustrationStyle} / ${spec.diagramStyle}`,
-              `Texture / Background / Border / Shadow / Divider: ${spec.textureStyle} / ${spec.backgroundStyle} / ${spec.borderStyle || 'none'} / ${spec.shadowStyle || 'none'} / ${spec.dividerStyle || 'none'}`,
-              `Motion Language: ${spec.motionLanguage} | Transitions: ${spec.transitionStyle} | Camera: ${spec.cameraStyle}`,
-              `Easing / Reveal / Exit: ${spec.defaultEasing} / ${spec.defaultRevealStyle} / ${spec.defaultExitStyle}`,
-              `Motion Density: ${spec.motionDensity} (max camera movement ${spec.maxCameraMovement}%, max simultaneous motion ${spec.maxSimultaneousMotion})`,
-              `Voice: ${spec.voiceProvider} / ${spec.voiceId} — ${spec.voiceStyle}, rate ${spec.speakingRate}x`,
+            const constrainedLevel = [
+              `Dimensions: ${spec.width}x${spec.height} @ ${spec.fps}fps, ${spec.aspectRatio} — fixed platform requirement, see Known Constraints`,
+              `[DERIVED AT PRODUCTION, pre-audio estimate] Duration: ${spec.durationSeconds}s (${spec.totalFrames} frames) — will be replaced by real narration-derived timing at render; do not choreograph to this exact number`,
+              `Motion Density ceiling: ${spec.motionDensity} (max camera movement ${spec.maxCameraMovement}%, max simultaneous motion ${spec.maxSimultaneousMotion})`,
               `Captions: ${spec.captionStyle}, ${spec.captionPosition}, max ${spec.maxCaptionLines} lines / ${spec.maxWordsPerCaption} words, ${spec.captionAnimation}`,
               `Safe Areas: top ${spec.safeAreaTop}px, bottom ${spec.safeAreaBottom}px, left ${spec.safeAreaLeft}px, right ${spec.safeAreaRight}px`,
+              `Voice (do not change provider/ID): ${spec.voiceProvider} / ${spec.voiceId}, baseline rate ${spec.speakingRate}x — the render step must never select a voice itself`,
               `Required Components: ${spec.requiredComponents.join(', ') || 'Not specified'}`,
+              `Renderer: Remotion ${spec.rendererVersion} | Composition ID: ${spec.compositionId}`,
               `Output: ${spec.outputFilename} -> ${spec.outputDirectory}`,
             ].join('\n');
+            const mutableLevel = [
+              `Tone / Emotional Arc: ${spec.tone} / ${spec.emotionalArc} — default interpretation of the required emotional objective in Brand Intent below; refine if a better one serves it`,
+              `Design Language / Visual Style / Visual Theme: ${spec.designLanguage} / ${spec.visualStyle} / ${spec.visualTheme} [default, override permitted]`,
+              `Color Palette: ${JSON.stringify(spec.colorPalette)} [default reference, override permitted — the intended impression in Brand Intent is what's fixed, not this hex]`,
+              `Typography: ${JSON.stringify(spec.typographySystem)} [default reference, override permitted]`,
+              `Icon / Illustration / Diagram Style: ${spec.iconStyle} / ${spec.illustrationStyle} / ${spec.diagramStyle} [default, override permitted]`,
+              `Texture / Background / Border / Shadow / Divider: ${spec.textureStyle} / ${spec.backgroundStyle} / ${spec.borderStyle || 'none'} / ${spec.shadowStyle || 'none'} / ${spec.dividerStyle || 'none'} [default, override permitted]`,
+              `Motion Language / Transitions / Camera / Easing / Reveal / Exit: ${spec.motionLanguage} / ${spec.transitionStyle} / ${spec.cameraStyle} / ${spec.defaultEasing} / ${spec.defaultRevealStyle} / ${spec.defaultExitStyle} [default choreography language, override permitted within the Motion Density ceiling above]`,
+              `Voice delivery style: ${spec.voiceStyle} [open — emphasis, pacing, delivery character; provider/ID above are not]`,
+            ].join('\n');
             const sceneLevel = scenes.map(sc => [
-              `Scene ${sc.number} — "${sc.name}" (${sc.weight} weight, frames ${sc.startFrame}-${sc.endFrame}, ${sc.durationSec}s)`,
+              `Scene ${sc.number} — "${sc.name}" (${sc.weight} weight)`,
+              `  [IMMUTABLE] Narration: ${sc.narration}`,
+              `  [IMMUTABLE] On-Screen Text: ${sc.onScreenText}`,
               `  Purpose: ${sc.purpose}`,
-              `  Narration: ${sc.narration}`,
-              `  On-Screen Text: ${sc.onScreenText}`,
-              `  Visual Treatment: ${sc.visualTreatment}`,
-              `  Layout: ${sc.layoutDescription}`,
-              `  Camera: ${sc.cameraMovement} (magnitude ${sc.cameraMagnitude}%)`,
-              `  Transition Out: ${sc.transitionType} (${sc.transitionDurationSec}s)`,
-              `  Information / Complexity: ${sc.informationDensity} / ${sc.complexityBudget}`,
+              `  [ESTIMATED, pre-audio] Duration: ${sc.durationSec}s (frames ${sc.startFrame}-${sc.endFrame}) — real timing comes from actual narration audio at render; describe choreography as reveal -> hold -> exit, not exact frames`,
+              `  [MUTABLE] Visual Treatment: ${sc.visualTreatment}`,
+              `  [MUTABLE] Layout: ${sc.layoutDescription}`,
+              `  [MUTABLE] Camera: ${sc.cameraMovement} (magnitude ${sc.cameraMagnitude}%)`,
+              `  [MUTABLE] Transition Out: ${sc.transitionType}`,
+              `  [CONSTRAINED ceiling] Information / Complexity: ${sc.informationDensity} / ${sc.complexityBudget}`,
               `  Reading Priority: ${sc.readingPriority}`,
-              `  SVG Components: ${sc.svgComponents.join(', ') || 'None specified'}`,
-              `  Entrance / Exit Animation: ${sc.entranceAnimation} / ${sc.exitAnimation}`,
-              sc.cta ? `  CTA: ${sc.cta}` : '',
+              `  [MUTABLE, within ceiling] SVG Components: ${sc.svgComponents.join(', ') || 'None specified'}`,
+              `  [MUTABLE] Entrance / Exit Animation: ${sc.entranceAnimation} / ${sc.exitAnimation}`,
+              sc.cta ? `  [IMMUTABLE] CTA: ${sc.cta}` : '',
             ].filter(Boolean).join('\n')).join('\n\n');
-            return `This is a first-pass draft, generated automatically and already written into the 🎬 Text Video Specs / 🎞️ Text Video Scenes Notion databases (https://www.notion.so/${specPageId}) for you to review. Propose changes to ANY field below as part of your Visual Production Brief response — there's no automatic sync back into these databases yet, so the operator applies your revisions to the Notion rows by hand afterward.\n\n## Asset-Level Spec\n\n${assetLevel}\n\n## Per-Scene Spec\n\n${sceneLevel}`;
+            return `This is a first-pass draft, generated automatically and already written into the 🎬 Text Video Specs / 🎞️ Text Video Scenes Notion databases (https://www.notion.so/${specPageId}) for you to review. Every field below is tagged per the Editing Authority tiers above — untagged lines within a group inherit that group's tier. Propose changes to any MUTABLE field, and to CONSTRAINED fields only by simplifying below the stated ceiling, never above it. There's no automatic sync back into these databases yet — the operator applies your revisions to the Notion rows by hand afterward.\n\n## Asset-Level: Constrained\n\n${constrainedLevel}\n\n## Asset-Level: Mutable (default reference shown — override and explain, or keep)\n\n${mutableLevel}\n\n## Per-Scene Spec\n\n${sceneLevel}`;
           }
           if (assetType === 'carousel') {
             if (!specDraft) return noDraftReason;
             const { ds: cds, slides, platformName, specPageId } = specDraft;
-            const assetLevel = [
-              `Platform: ${platformName} (4:5)`,
+            const constrainedLevel = [
+              `Platform: ${platformName} (4:5) — fixed platform requirement`,
               `Slide Count: ${slides.length}`,
-              `Creative Objective: ${cds.creativeObjective}`,
-              `Tone: ${(cds.tone || []).join(', ') || 'Not specified'} | Viewer Awareness: ${cds.viewerAwareness || 'Not specified'} | Emotional Arc: ${cds.emotionalArc}`,
-              `Brand Impression: ${(cds.brandImpression || []).join(', ') || 'Not specified'}`,
-              `Visual Narrative: ${cds.visualNarrative}`,
-              `Recurring Motifs: ${cds.recurringMotifs}`,
-              `Content Density / White Space Target: ${cds.contentDensityTarget} / ${cds.whiteSpaceTarget}`,
-              `Design Intent: ${cds.designIntent}`,
-              `Overall Aesthetic: ${cds.overallAesthetic}`,
-              `Icon / Illustration / Diagram Style: ${cds.iconStyle} / ${cds.illustrationStyle} / ${cds.diagramStyle}`,
-              `Design system bundle: linked to the "${campaignName} Carousel Design System" record (Color Palette / Typography System / Visual Style Profile / Grid & Spacing System / Platform Preset — all shared with other carousels in this campaign)`,
+              `Content Density / White Space ceiling: ${cds.contentDensityTarget} / ${cds.whiteSpaceTarget}`,
+              `Design system bundle: linked to the "${campaignName} Carousel Design System" record (Color Palette / Typography System / Visual Style Profile / Grid & Spacing System / Platform Preset — all shared with other carousels in this campaign; changing any of these is a campaign-level decision, not a per-asset one)`,
+            ].join('\n');
+            const mutableLevel = [
+              `Tone / Emotional Arc: ${(cds.tone || []).join(', ') || 'Not specified'} / ${cds.emotionalArc} — default interpretation of the required emotional objective in Brand Intent below; refine if a better one serves it`,
+              `Brand Impression: ${(cds.brandImpression || []).join(', ') || 'Not specified'} [default, override permitted]`,
+              `Visual Narrative / Recurring Motifs: ${cds.visualNarrative} / ${cds.recurringMotifs} [default, override permitted]`,
+              `Design Intent / Overall Aesthetic: ${cds.designIntent} / ${cds.overallAesthetic} [default, override permitted]`,
+              `Icon / Illustration / Diagram Style: ${cds.iconStyle} / ${cds.illustrationStyle} / ${cds.diagramStyle} [default reference — the intended impression in Brand Intent is what's fixed, not this specific style]`,
             ].join('\n');
             const slideLevel = slides.map(sl => [
               `Slide ${sl.number} — Role: ${sl.role}`,
-              `  Headline: ${sl.headline}`,
-              `  Supporting Text: ${sl.body}`,
+              `  [IMMUTABLE] Headline: ${sl.headline}`,
+              `  [IMMUTABLE] Supporting Text: ${sl.body}`,
               `  Content Objective: ${sl.contentObjective}`,
               `  Key Takeaway: ${sl.keyTakeaway}`,
-              `  Layout: ${sl.layoutCategory || 'Not specified'}`,
-              `  Visual Treatment: ${sl.visualTreatment} (${sl.productionAction})`,
-              `  Visual Purpose: ${sl.visualPurpose}`,
-              `  Visual Description: ${sl.visualDescription}`,
-              sl.diagramType ? `  Diagram Type: ${sl.diagramType}` : '',
-              `  Reading Priority: ${sl.readingPriority} | Information/Complexity: ${sl.informationDensity} / ${sl.visualComplexity}`,
-              `  Production Weight / Complexity Budget: ${sl.productionWeight} / ${sl.complexityBudget}`,
-              sl.ctaText ? `  CTA Text: ${sl.ctaText}` : '',
+              `  [MUTABLE] Layout: ${sl.layoutCategory || 'Not specified'} — choose from the shared Layout Template library where one fits, propose asset-specific only if none does`,
+              `  [MUTABLE] Visual Treatment: ${sl.visualTreatment} (${sl.productionAction})`,
+              `  [MUTABLE] Visual Purpose: ${sl.visualPurpose}`,
+              `  [MUTABLE] Visual Description: ${sl.visualDescription}`,
+              sl.diagramType ? `  [MUTABLE, within ceiling] Diagram Type: ${sl.diagramType}` : '',
+              `  Reading Priority: ${sl.readingPriority}`,
+              `  [CONSTRAINED ceiling] Information/Complexity: ${sl.informationDensity} / ${sl.visualComplexity}`,
+              `  [CONSTRAINED ceiling] Production Weight / Complexity Budget: ${sl.productionWeight} / ${sl.complexityBudget}`,
+              sl.ctaText ? `  [IMMUTABLE] CTA Text: ${sl.ctaText}` : '',
             ].filter(Boolean).join('\n')).join('\n\n');
-            return `This is a first-pass draft, generated automatically and already written into the 🎠 Carousel Specifications / 🃏 Slide Specifications Notion databases (https://www.notion.so/${specPageId}) for you to review. Layout/Diagram Templates referenced by name below are a shared, growing library across campaigns — reuse an existing one where it fits rather than always inventing a new category. Propose changes to ANY field below as part of your Visual Production Brief response — there's no automatic sync back into these databases yet, so the operator applies your revisions to the Notion rows by hand afterward.\n\n## Design System (shared across this campaign's carousels)\n\n${assetLevel}\n\n## Per-Slide Spec\n\n${slideLevel}`;
+            return `This is a first-pass draft, generated automatically and already written into the 🎠 Carousel Specifications / 🃏 Slide Specifications Notion databases (https://www.notion.so/${specPageId}) for you to review. Every field below is tagged per the Editing Authority tiers above — untagged lines within a group inherit that group's tier. Layout/Diagram Templates referenced by name are a shared, growing library across campaigns — reuse an existing one where it fits rather than always inventing a new category. There's no automatic sync back into these databases yet — the operator applies your revisions to the Notion rows by hand afterward.\n\n## Design System: Constrained\n\n${constrainedLevel}\n\n## Design System: Mutable (default reference shown — override and explain, or keep)\n\n${mutableLevel}\n\n## Per-Slide Spec\n\n${slideLevel}`;
           }
           return null;
         })();
@@ -13779,14 +13779,60 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
         // native Remotion composition) — ChatGPT must declare which one
         // it's writing the brief for, since a brief written for one path
         // is close to useless for the other.
+        // The mandatory render sequence below exists because the first
+        // custom-built video from this system shipped with scenes whose
+        // animation didn't finish before the scene cut — planned duration
+        // and real narration duration were never reconciled, and nothing
+        // required simplifying the visual when they didn't match. This is
+        // now a required part of whatever Production Assembly Package
+        // ChatGPT writes for the custom path, so whoever executes the
+        // build (a separate Claude Code session, usually) inherits the
+        // discipline instead of improvising it.
+        const mandatoryRenderSequence = `MANDATORY RENDER SEQUENCE — include this in the Production Assembly Package, not just as a note to yourself:
+
+1. Confirm the final script is locked (no further narration/on-screen-text edits).
+2. Confirm an approved voice profile exists (provider + voice ID from Design Specification above) — never select a voice during assembly.
+3. Generate ONE continuous narration track for the full script (not one file per scene) unless specific scenes genuinely require a meaningfully different delivery style or must be independently replaceable — a single take reads more naturally than stitched separate takes. Insert silent, unspoken scene markers (e.g. "[SCENE_01]") in the script sent to the voice service so the alignment output can be mapped back to scenes.
+4. Obtain word-level or phrase-level alignment data from that render.
+5. Map alignment timestamps to scene boundaries using the scene markers.
+6. Calculate each scene's RESOLVED duration as: spoken segment duration + entry padding (~0.15s) + minimum read/hold duration + transition allowance. Do not use the raw spoken-word span alone — it under-counts real screen time needed.
+7. Pick ONE global rule for transition frame ownership and apply it everywhere: transition frames belong to the OUTGOING scene (the scene that's ending), never split or duplicated across both. This keeps total frame counts deterministic.
+8. Write RESOLVED seconds/frames back to each Scene Specification record, but do not delete the original ESTIMATED values — keep both, plus a timing_status field (estimated -> audio_resolved), so a mismatch stays diagnosable later.
+9. Validate every scene against its resolved duration, minimum read time, and the complexity/object/label/animation-event ceilings from Design Specification above.
+10. When a scene's planned visual doesn't fit its resolved duration, simplify in this order — never simply speed up the animation: (a) remove decorative/non-essential animation, (b) reduce simultaneous motion, (c) reduce labels or supporting objects, (d) combine equivalent diagram nodes, (e) replace the diagram with a simpler visual treatment, (f) reallocate time from a lower-weight scene to this one, (g) only extend total video duration if the platform target still permits it. Never cut required read time below the stated minimum just to preserve the original diagram — for a Critical-weight scene, prefer reallocating time; for a Low-weight scene, prefer simplifying.
+11. Freeze the resolved scene specifications once every scene passes validation.
+12. Assemble the Remotion composition from the frozen specifications only — not from the pre-audio estimates.
+13. Render only after visual, audio, timing, and safe-area QA all pass.`;
+
         const productionMethodBlock = assetType === 'carousel'
           ? `Asset Type: Carousel — a static multi-slide carousel (${slideOrSceneSections.length || 'multiple'} slides).\n\nProduction Method: Rendered directly as PNG images by this system (Cloudflare Browser Rendering) — a single, deterministic, Worker-native pipeline. There is no video/motion production decision to make here and no build-path choice for you to state; your Visual Production Brief should focus entirely on the per-slide visual treatment already scoped in Production Specification below.`
-          : `Asset Type: Text Video — a faceless, vertical short-form video (Reel/TikTok/Shorts format, ${aspectRatio}, no on-camera presenter).\n\nTwo distinct production paths exist for Text Video assets in this system, and they require completely different builds. Your Visual Production Brief MUST state explicitly, as its first two lines, (1) this asset's identity and (2) which production path it is written for:\n\nline 1: "${identityLine}"\nline 2: "Production Path: Custom Remotion Build" or "Production Path: Simple background + voiceover"\n\n- **SIMPLE (default)** — one sourced or generated background image, ElevenLabs voiceover, Ken Burns pan/zoom motion, word-by-word burned-in captions. Fast, minimal build (make-reel-video). Use this unless the content genuinely calls for more.\n- **CUSTOM REMOTION BUILD** — a fully bespoke animated composition: multiple native React/SVG scene components (no stock photography, no AI-generated imagery), a defined motion system, exact typography/color tokens, diagrams/illustrations built natively in code. A much larger build — only choose this when the content's complexity or the campaign's visual ambition genuinely warrants it.\n\nIf choosing the custom path, also specify: a stable composition ID, the exact frame timeline per scene, a per-scene visual specification (layout / primary visual / motion / camera), the motion system (easing, permitted and forbidden motion, standard durations), the visual asset policy (native SVG/CSS only vs. raster assets allowed), and safe areas — in enough detail for an engineer to implement without further clarification.\n\nRepeat both lines 1 and 2 at the top of EVERY revision of the brief you return in this conversation, even after many rounds of back-and-forth — never let this asset's identity or chosen production path go unstated in a later message.`;
+          : `Asset Type: Text Video — a faceless, vertical short-form video (Reel/TikTok/Shorts format, ${aspectRatio}, no on-camera presenter).\n\nTwo distinct production paths exist for Text Video assets in this system, and they require completely different builds. Your Visual Production Brief MUST state explicitly, as its first two lines, (1) this asset's identity and (2) which production path it is written for:\n\nline 1: "${identityLine}"\nline 2: "Production Path: Custom Remotion Build" or "Production Path: Simple background + voiceover"\n\n- **SIMPLE (default)** — one sourced or generated background image, ElevenLabs voiceover, Ken Burns pan/zoom motion, word-by-word burned-in captions. Fast, minimal build (make-reel-video). Use this unless the content genuinely calls for more.\n- **CUSTOM REMOTION BUILD** — a fully bespoke animated composition: multiple native React/SVG scene components (no stock photography, no AI-generated imagery), a defined motion system, exact typography/color tokens, diagrams/illustrations built natively in code. A much larger build — only choose this when the content's complexity or the campaign's visual ambition genuinely warrants it.\n\nIf choosing the custom path, also specify: a stable composition ID, the exact frame timeline per scene, a per-scene visual specification (layout / primary visual / motion / camera), the motion system (easing, permitted and forbidden motion, standard durations), the visual asset policy (native SVG/CSS only vs. raster assets allowed), and safe areas — in enough detail for an engineer to implement without further clarification. Include the mandatory render sequence below verbatim in the Production Assembly Package.\n\n${mandatoryRenderSequence}\n\nRepeat both lines 1 and 2 at the top of EVERY revision of the brief you return in this conversation, even after many rounds of back-and-forth — never let this asset's identity or chosen production path go unstated in a later message.`;
+
+        // Printed near the very top of the document, before any content,
+        // so the four-tier authority model governs how every later
+        // section is read — not bolted on as an afterthought.
+        const editingAuthorityBlock = `Every field in this document falls into exactly one of four authority tiers. Do not treat any of them as interchangeable.
+
+**IMMUTABLE** — Asset Metadata, Audience, Content Foundation, Final Written Asset, and Known Constraints below. This is the strategic and content layer: narration/on-screen text/CTA copy verbatim, platform, aspect ratio, resolution, target duration, scene/slide order, required facts. You may flag a problem (e.g. text that won't fit) but never silently rewrite it — changing these means changing what the asset says and why it exists, which is not your decision to make here.
+
+**CONSTRAINED** — the ceilings in Design Specification (Draft) below (object/label/animation-event counts, motion density, minimum read duration, safe areas, the Layout/Diagram Template library, voice provider/ID). These are maximums, not targets — simplify below a ceiling freely, never exceed one silently. If nothing in a template library fits, you may propose a new one, but it stays asset-specific until separately promoted into the reusable library.
+
+**MUTABLE** — the fields in Design Specification (Draft) marked "[default, override permitted]": color palette, typography, illustration/icon/diagram style, composition, animation choreography. Each carries a default value and explicit permission to change it. The intended impression behind these (see Brand Intent) is fixed; the specific solution used to produce that impression is yours to determine, compare, and resolve. If your resolved value differs from the default, say so explicitly and explain why it serves the intended impression better — don't silently substitute one value for another without saying so.
+
+**DERIVED AT PRODUCTION** — anything marked "[DERIVED AT PRODUCTION]" or "[ESTIMATED, pre-audio]": exact timing, frame numbers, resolved scene duration. These don't exist yet — narration hasn't been rendered. Do not choreograph animation to the exact second against them; describe choreography in relative terms (reveal → hold → exit) and let the render step resolve exact timing against real audio, simplifying the visual — never the timing alone — if it doesn't fit.
+
+Return every changed MUTABLE value as a resolved value in your response, not as "use your judgment." State for each one whether you kept the default, modified it, or replaced it, and why.`;
 
         const prompt = `# Visual Production Source Document
 
 ${np(assetName)} — ${assetType}
 ${identityLine}
+
+---
+
+# Editing Authority
+
+${editingAuthorityBlock}
 
 ---
 
@@ -13929,7 +13975,7 @@ Your responsibilities are to:
 
 • return a completed Visual Production Brief marked Ready For Assembly
 ${(assetType === 'text video' || assetType === 'carousel') ? `
-• review and give input on every field in the Design Specification (Draft) above — it's a first-pass, not a final answer; change anything (timing/layout, visual treatment, motion or design system fields, per-${assetType === 'carousel' ? 'slide' : 'scene'} fields) that should be different
+• review every MUTABLE field in the Design Specification (Draft) above — it's a first-pass, not a final answer; keep, modify, or replace each one and say which. Work within every CONSTRAINED ceiling rather than exceeding it. Leave every IMMUTABLE field untouched.
 ` : ''}
 Do not rewrite the written content.
 
