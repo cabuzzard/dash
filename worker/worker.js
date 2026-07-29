@@ -13306,9 +13306,29 @@ Begin by reviewing the Production Specification and creating the Visual Strategy
           ? [libraryDisclaimer, ...existingAssetEntries.map(formatLibraryEntry)].join('\n\n')
           : 'Not provided — no other approved assets with a hosted Design Link were found on this campaign.';
 
+        // Repeated at the top, in Production Method, and in the closing
+        // instructions — not just once in Asset Metadata — so this stays
+        // identifiable across a long ChatGPT conversation even if the
+        // operator only pastes back a fragment or a later revision.
+        const identityLine = `Asset ID: ${assetId} · Notion: https://www.notion.so/${assetId}`;
+
+        // Production Method — every asset type states explicitly what kind
+        // of asset this is and how it actually gets produced, so ChatGPT's
+        // Visual Production Brief is scoped to what will really get built
+        // instead of guessing. Text Video specifically has TWO real
+        // production paths in this system with very different builds
+        // (a simple single-background Ken Burns reel vs. a fully custom
+        // native Remotion composition) — ChatGPT must declare which one
+        // it's writing the brief for, since a brief written for one path
+        // is close to useless for the other.
+        const productionMethodBlock = assetType === 'carousel'
+          ? `Asset Type: Carousel — a static multi-slide carousel (${slideOrSceneSections.length || 'multiple'} slides).\n\nProduction Method: Rendered directly as PNG images by this system (Cloudflare Browser Rendering) — a single, deterministic, Worker-native pipeline. There is no video/motion production decision to make here and no build-path choice for you to state; your Visual Production Brief should focus entirely on the per-slide visual treatment already scoped in Production Specification below.`
+          : `Asset Type: Text Video — a faceless, vertical short-form video (Reel/TikTok/Shorts format, ${aspectRatio}, no on-camera presenter).\n\nTwo distinct production paths exist for Text Video assets in this system, and they require completely different builds. Your Visual Production Brief MUST state explicitly, as its first two lines, (1) this asset's identity and (2) which production path it is written for:\n\nline 1: "${identityLine}"\nline 2: "Production Path: Custom Remotion Build" or "Production Path: Simple background + voiceover"\n\n- **SIMPLE (default)** — one sourced or generated background image, ElevenLabs voiceover, Ken Burns pan/zoom motion, word-by-word burned-in captions. Fast, minimal build (make-reel-video). Use this unless the content genuinely calls for more.\n- **CUSTOM REMOTION BUILD** — a fully bespoke animated composition: multiple native React/SVG scene components (no stock photography, no AI-generated imagery), a defined motion system, exact typography/color tokens, diagrams/illustrations built natively in code. A much larger build — only choose this when the content's complexity or the campaign's visual ambition genuinely warrants it.\n\nIf choosing the custom path, also specify: a stable composition ID, the exact frame timeline per scene, a per-scene visual specification (layout / primary visual / motion / camera), the motion system (easing, permitted and forbidden motion, standard durations), the visual asset policy (native SVG/CSS only vs. raster assets allowed), and safe areas — in enough detail for an engineer to implement without further clarification.\n\nRepeat both lines 1 and 2 at the top of EVERY revision of the brief you return in this conversation, even after many rounds of back-and-forth — never let this asset's identity or chosen production path go unstated in a later message.`;
+
         const prompt = `# Visual Production Source Document
 
 ${np(assetName)} — ${assetType}
+${identityLine}
 
 ---
 
@@ -13325,6 +13345,12 @@ ${np(assetName)} — ${assetType}
 - Target Duration: ${targetDuration}
 - Version: Not provided — asset versioning isn't tracked in this system.
 - Status: ${np(assetStatus)}
+
+---
+
+# Production Method
+
+${productionMethodBlock}
 
 ---
 
@@ -13440,6 +13466,12 @@ Your responsibilities are to:
 • return a completed Visual Production Brief marked Ready For Assembly
 
 Do not rewrite the written content.
+
+Begin and end every version of the Visual Production Brief — the very first one and every revision after it, no matter how many rounds this conversation runs — with this line, unchanged:
+
+${identityLine}
+
+This is what lets the completed brief get pasted back into the correct Notion record; never let it drift or drop out of a later message.
 
 Use this document to create and maintain the Visual Production Brief. The Visual Production Brief becomes the authoritative visual record for this asset throughout production.`;
 
