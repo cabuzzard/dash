@@ -11218,16 +11218,22 @@ Return ONLY this JSON object, no other text, no markdown fences:
               const vp = s.visualPlanning || {};
               const vpFlags = ['needsCustomVisual', 'needsDataViz', 'needsIconOrGraphic', 'needsPhotoOrIllustration']
                 .filter(k => vp[k]).map(k => k.replace(/^needs/, ''));
+              // Labeled "Key: value" segments (not positional dash-joined)
+              // so downstream readers (generateVisualBriefPrompt) can pull
+              // Role/Objective/Key Takeaway back out reliably per slide.
               const parts = [
-                s.role, s.objective, s.keyTakeaway,
-                p.layoutType ? `layout: ${p.layoutType}` : '',
-                p.informationDensity ? `density: ${p.informationDensity}` : '',
-                p.visualComplexity ? `complexity: ${p.visualComplexity}` : '',
-                p.reusableVisualCandidate ? 'reusable visual candidate' : '',
-                p.existingAssetCandidate ? 'existing asset candidate' : '',
-                vpFlags.length ? `needs: ${vpFlags.join(', ')}` : 'needs: none',
+                s.role ? `Role: ${s.role}` : '',
+                s.objective ? `Objective: ${s.objective}` : '',
+                s.keyTakeaway ? `Key Takeaway: ${s.keyTakeaway}` : '',
+                p.layoutType ? `Layout: ${p.layoutType}` : '',
+                p.textHierarchy ? `Content Hierarchy: ${p.textHierarchy}` : '',
+                p.informationDensity ? `Density: ${p.informationDensity}` : '',
+                p.visualComplexity ? `Complexity: ${p.visualComplexity}` : '',
+                `Reusable Candidate: ${p.reusableVisualCandidate ? 'yes' : 'no'}`,
+                `Existing Asset Candidate: ${p.existingAssetCandidate ? 'yes' : 'no'}`,
+                `Needs: ${vpFlags.length ? vpFlags.join(', ') : 'none'}`,
               ].filter(Boolean);
-              children.push(bullet(`Slide ${idx + 1}: ${parts.join(' — ')}`));
+              children.push(bullet(`Slide ${idx + 1}: ${parts.join(' | ')}`));
             });
           }
           if (parsed.contentFlow) { children.push(heading('Content Flow')); children.push(para(parsed.contentFlow)); }
@@ -12313,10 +12319,11 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         parsedList = parsedList.filter(p => p && p.voiceoverScript).slice(0, BATCH_SIZE);
         if (!parsedList.length) return json({ error: "Script generation returned no usable scripts — try again" }, 500);
 
-        const rtBlock = text => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text) }, annotations: { bold: !!opts.bold, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
         const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
-        const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+        const para = (text, opts = {}) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text, opts) } });
         const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
+        const divider = () => ({ object: "block", type: "divider", divider: {} });
 
         const assetIds = [];
         for (let i = 0; i < parsedList.length; i++) {
@@ -12391,18 +12398,33 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
 
           const children = [
             heading("Voiceover Script (to-camera)"), para(parsed.voiceoverScript),
-            heading("On-Screen Text"),
-            ...(scenes.filter(s => s.onScreenText).map((s, idx) => bullet(`Scene ${idx + 1}: ${s.onScreenText}`))),
+            // Scene N (N/total) -> bold Narration paragraph -> plain
+            // On-Screen Text paragraph -> divider, mirroring the carousel
+            // Slide-N block shape exactly, so downstream readers
+            // (generateVisualBriefPrompt) can pull each scene's headline/
+            // body apart the same way parseSlides() does for carousel.
+            ...scenes.flatMap((s, idx) => [
+              heading(`Scene ${idx + 1} (${idx + 1}/${scenes.length})`),
+              ...(s.narrationScript ? [para(s.narrationScript, { bold: true })] : []),
+              ...(s.onScreenText ? [para(s.onScreenText)] : []),
+              divider(),
+            ]),
             heading("Shot / B-Roll Notes"),
             ...(scenes.map((s, idx) => {
+              // Labeled "Key: value" segments (not positional dash-joined)
+              // so downstream readers can pull Role/Objective/Key Takeaway
+              // back out reliably per scene.
               const parts = [
-                s.sceneRole, s.sceneObjective, s.keyTakeaway,
-                s.speakerIntent ? `delivery: ${s.speakerIntent}` : '',
-                s.estimatedDurationSec ? `~${s.estimatedDurationSec}s` : '',
-                s.production, s.flow,
-                Array.isArray(s.visualFlags) && s.visualFlags.length ? `needs: ${s.visualFlags.join(', ')}` : 'needs: none',
+                s.sceneRole ? `Role: ${s.sceneRole}` : '',
+                s.sceneObjective ? `Objective: ${s.sceneObjective}` : '',
+                s.keyTakeaway ? `Key Takeaway: ${s.keyTakeaway}` : '',
+                s.speakerIntent ? `Delivery: ${s.speakerIntent}` : '',
+                s.estimatedDurationSec ? `Duration: ~${s.estimatedDurationSec}s` : '',
+                s.production ? `Production: ${s.production}` : '',
+                s.flow ? `Flow: ${s.flow}` : '',
+                `Needs: ${Array.isArray(s.visualFlags) && s.visualFlags.length ? s.visualFlags.join(', ') : 'none'}`,
               ].filter(Boolean);
-              return bullet(`Scene ${idx + 1}: ${parts.join(' — ')}`);
+              return bullet(`Scene ${idx + 1}: ${parts.join(' | ')}`);
             })),
             heading("Caption"), para(parsed.caption || ''),
             heading("Hashtags"), para(hashtagsLine),
@@ -12523,6 +12545,7 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         const titleName = titlePage.properties.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
         const campaignName = campPage.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
         const platformProp = assetPage.properties["Platform Name"]?.select?.name || "";
+        const assetStatus = assetPage.properties["Asset Status"]?.select?.name || assetPage.properties["Status"]?.select?.name || "";
         const designLink = assetPage.properties["Design Link"]?.url || "";
         const imagesFile = (assetPage.properties["Images"]?.files || [])[0];
         const imagesUrl = imagesFile ? (imagesFile.external?.url || imagesFile.file?.url || '') : '';
@@ -12558,12 +12581,19 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
           } else if (current && (b.type === "paragraph" || b.type === "bulleted_list_item")) {
             const rt = b[b.type]?.rich_text || [];
             const text = rt.map(t => t.plain_text).join("");
-            if (text) current.lines.push(text);
+            const bold = !!rt[0]?.annotations?.bold;
+            if (text) current.lines.push({ text, bold });
           }
         }
         const findSection = name => sections.find(s => s.heading.toLowerCase() === name.toLowerCase());
-        const sectionText = name => { const s = findSection(name); return s ? s.lines.join('\n') : ''; };
-        const slideOrSceneSections = sections.filter(s => /^Slide \d+/i.test(s.heading));
+        const sectionText = name => { const s = findSection(name); return s ? s.lines.map(l => l.text).join('\n') : ''; };
+        // headline/body out of a Slide-N or Scene-N section — same
+        // bold-paragraph-first convention parseSlides() uses for carousel.
+        const slideFields = s => ({
+          headline: (s.lines.find(l => l.bold) || s.lines[0] || {}).text || '',
+          body: (s.lines.find(l => !l.bold) || {}).text || '',
+        });
+        const slideOrSceneSections = sections.filter(s => /^(Slide|Scene) \d+/i.test(s.heading));
 
         // ── Final Written Asset — the approved copy, preserved exactly ──
         const finalAssetParts = [];
@@ -12572,10 +12602,11 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
           if (vo) finalAssetParts.push(`VOICEOVER SCRIPT (full, continuous):\n${vo}`);
         }
         if (slideOrSceneSections.length) {
-          finalAssetParts.push(assetType === 'carousel' ? 'SLIDES:' : 'SCENES (on-screen text below; narration is the continuous script above):');
-          slideOrSceneSections.forEach(s => finalAssetParts.push(`${s.heading}\n${s.lines.join('\n')}`));
-        }
-        if (assetType === 'text video') {
+          finalAssetParts.push(assetType === 'carousel' ? 'SLIDES:' : 'SCENES:');
+          slideOrSceneSections.forEach(s => finalAssetParts.push(`${s.heading}\n${s.lines.map(l => l.text).join('\n')}`));
+        } else if (assetType === 'text video') {
+          // Older text-video assets predate per-scene "Scene N" blocks —
+          // fall back to the flat On-Screen Text section so nothing's lost.
           const ost = sectionText('On-Screen Text');
           if (ost) finalAssetParts.push(`ON-SCREEN TEXT (per scene):\n${ost}`);
         }
@@ -12629,6 +12660,12 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         const researchFields = ['Keywords', 'Statement', 'Unique Opportunity', 'Key Message', 'Pain Points'];
         const researchParts = researchFields.map(f => { const v = rt(researchRaw, f); return v ? `${f}: ${v}` : ''; }).filter(Boolean);
         const relevantResearchContext = researchParts.join('\n');
+        const painPoints = rt(researchRaw, 'Pain Points');
+        // Visual-communication-relevant research only — no SEO/keywords/
+        // publishing metadata, for generateVisualBriefPrompt's Research
+        // Summary section specifically (Manifest keeps the fuller version above).
+        const researchSummaryFields = ['Statement', 'Unique Opportunity', 'Key Message', 'Pain Points'];
+        const researchSummaryText = researchSummaryFields.map(f => { const v = rt(researchRaw, f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
 
         // ── Strategy/audience block (campaign + product) — reuses the
         // same helper generateTextVideoScript/generateCarouselPreview use.
@@ -12703,12 +12740,12 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         const np = v => v || 'Not provided';
         return {
           ok: true, dash, hdr, assetPage, titlePage, campPage,
-          assetId, titleId, campaignId, assetType, assetName, titleName, campaignName,
-          designLink, imagesUrl, sections, sectionText, findSection, slideOrSceneSections, extractField,
+          assetId, titleId, campaignId, assetType, assetName, titleName, campaignName, assetStatus,
+          designLink, imagesUrl, sections, sectionText, findSection, slideFields, slideOrSceneSections, extractField,
           finalWrittenAsset, completeAssetSpec, completeProductionSpec, contentFoundation,
           targetAudience, funnelStage, primaryGoal, ctaGoal, desiredViewerAction, platform,
           aspectRatio, targetResolution, targetDuration, description, altText,
-          relevantResearchContext, campaignInformation, campaignLiveUrl,
+          relevantResearchContext, researchSummaryText, painPoints, campaignInformation, campaignLiveUrl,
           resolvedSpec, resolvedGlobalInstructions, sourceGlobalRefs, specRelId,
           existingAssetsList, existingVisualAssets, validation, np,
         };
@@ -13065,365 +13102,157 @@ Begin by reviewing the Production Specification and creating the Visual Strategy
           return json({ success: true, assetId, titleId, campaignId, assetType, prompt: manifestPrompt, validation, kind: 'manifest' });
         }
 
-        const prompt = `You are the Visual Director and Image Production Department for this content asset.
-
-I am providing the completed research context, final written asset, Asset Spec, Production Spec, assigned design globals, and relevant existing visual assets.
-
-Your job is to transform this production package into a complete Visual Brief Package and then help produce the required visual assets.
-
-The supplied written content and Production Spec are the source of truth.
-
-Do not rewrite the content.
-
-Do not change the title, slide text, narration, on-screen text, CTA, slide order, scene order, or intended message unless you explicitly identify a production conflict and ask for or recommend a correction.
-
-==================================================
-PRIMARY RESPONSIBILITIES
-==================================================
-
-For every slide or scene:
-
-1. Review the content purpose and Production Spec.
-
-2. Select exactly one primary visual treatment:
-
-- Generated Illustration
-- Existing Brand Asset
-- Icon
-- Diagram
-- Screenshot
-- Stock Footage
-- Background Texture
-- Text-Only Layout
-
-3. Select the asset action:
-
-- Retrieve
-- Reuse
-- Generate
-- Edit
-- Capture
-- License
-- No External Asset Required
-
-4. Create a complete visual brief.
-
-5. For any asset marked Retrieve or Reuse:
-   - identify the exact supplied existing asset;
-   - explain why it fits;
-   - identify any crop, edit, placement, or adaptation required.
-
-6. For any asset marked Generate:
-   - create a production-ready image-generation brief;
-   - apply all assigned globals;
-   - preserve brand and character consistency;
-   - leave the required text-safe areas;
-   - do not place slide text inside the generated image unless the Production Spec explicitly requires rendered text inside the visual.
-
-7. For diagrams:
-   - define the information architecture;
-   - define nodes, labels, sequence, connections, hierarchy, and visual emphasis;
-   - ensure the diagram communicates the intended idea accurately.
-
-8. For screenshots:
-   - identify exactly what screen, interface, state, crop, and annotations are needed;
-   - do not fabricate a real software interface when an authentic screenshot is required.
-
-9. For stock footage:
-   - define the shot concept;
-   - subject;
-   - action;
-   - framing;
-   - camera movement;
-   - duration;
-   - search keywords;
-   - continuity requirements.
-
-10. For text-only layouts:
-   - define hierarchy;
-   - placement;
-   - scale;
-   - emphasis;
-   - background treatment;
-   - whitespace;
-   - motion potential when applicable.
-
-11. Avoid unnecessary visual generation.
-   Prefer reuse, text-only treatment, diagrams, or existing approved assets when they communicate more clearly.
-
-12. Maintain continuity across the complete carousel or video.
-   The slides or scenes must feel like one unified visual system rather than unrelated images.
-
-==================================================
-REQUIRED VISUAL BRIEF FIELDS
-==================================================
-
-For every slide or scene return:
-
-- Visual ID
-- Asset ID
-- Slide or Scene Number
-- Slide or Scene Role
-- Content Objective
-- Visual Purpose
-- Primary Visual Treatment
-- Asset Action
-- Primary Subject
-- Supporting Subjects
-- Visual Description
-- Information to Communicate
-- Required Visual Details
-- Composition
-- Focal Point
-- Visual Hierarchy
-- Camera Angle or Viewpoint, when applicable
-- Framing or Crop
-- Foreground
-- Midground
-- Background
-- Emotion
-- Mood
-- Information Density
-- Visual Complexity
-- Text-Safe Areas
-- Caption-Safe Areas
-- Platform UI-Safe Areas
-- Aspect Ratio
-- Resolution
-- Output Format
-- Transparency Requirement
-- Layer Requirement
-- Animation or Motion Potential
-- Continuity Notes
-- Brand Global References
-- Campaign Global References
-- Series Global References
-- Asset-Type Global References
-- Character or Illustration Global References
-- Existing Asset Reference
-- Existing Asset Modification Instructions
-- Generation Requirements
-- Elements to Avoid
-- Accessibility Considerations
-- Approval Criteria
-- Final Recommended Action
-
-Only include fields that are relevant, but never omit:
-- Visual ID
-- slide or scene number
-- content objective
-- visual purpose
-- primary visual treatment
-- asset action
-- visual description
-- composition
-- text-safe areas
-- aspect ratio
-- global references
-- approval criteria
-- final recommended action
-
-==================================================
-VISUAL PACKAGE OUTPUT
-==================================================
-
-Return the results in this order:
-
-1. Visual Strategy Summary
-
-Include:
-
-- overall visual concept
-- visual narrative across the complete asset
-- repeated motifs
-- visual pacing
-- consistency rules
-- asset-reuse strategy
-- generation strategy
-- major production risks
-- global conflicts or missing information
-
-2. Visual Asset Decision Matrix
-
-For every slide or scene include:
-
-- number
-- treatment
-- action
-- asset reference or new asset ID
-- reason
-- production status
-
-3. Complete Visual Briefs
-
-Provide one complete visual brief for every slide or scene.
-
-4. Retrieval List
-
-List all existing assets that should be retrieved or reused.
-
-5. Generation List
-
-List all new assets that need to be generated.
-
-6. Edit List
-
-List all existing assets requiring editing, cropping, extension, recoloring, background removal, compositing, or other transformation.
-
-7. Capture or Licensing List
-
-List all required screenshots or stock footage.
-
-8. Text-Only Layout List
-
-List all slides or scenes requiring no external visual.
-
-9. Production Asset Manifest
-
-Map every slide or scene to its final visual asset.
-
-Use this structure:
-
-Asset ID:
-Slide or Scene:
-Treatment:
-Action:
-Source Asset:
-Planned Filename:
-Aspect Ratio:
-Output Format:
-Status:
-Placement Notes:
-
-10. Approval Checklist
-
-For each planned asset include objective approval checks such as:
-
-- matches the required concept
-- follows the assigned globals
-- preserves character consistency
-- maintains text-safe areas
-- contains no unwanted text
-- supports the slide or scene objective
-- matches the correct aspect ratio
-- has sufficient resolution
-- can be assembled using the Production Spec
-
-==================================================
-IMAGE-GENERATION BEHAVIOR
-==================================================
-
-After returning the Visual Brief Package:
-
-- begin with the highest-priority generated visual;
-- generate or edit visuals one at a time unless the user explicitly asks for a batch;
-- retain approved composition and character details during revisions;
-- do not silently alter unrelated elements during an edit;
-- treat user approval as asset-specific;
-- do not mark an asset approved unless the user approves it;
-- maintain the Production Asset Manifest as assets are approved.
-
-==================================================
-ASSET INFORMATION
-==================================================
-
-ASSET ID:
-${assetId}
-
-ASSET NAME:
-${assetName}
-
-ASSET TYPE:
-${assetType}
-
-PLATFORM:
-${np(platform)}
-
-ASPECT RATIO:
-${aspectRatio}
-
-TARGET RESOLUTION:
-${np(targetResolution)}
-
-TARGET DURATION:
-${targetDuration}
-
-CAMPAIGN:
-${np(campaignInformation)}
-
-SERIES:
-Not provided — this system doesn't track a separate Series layer.
-
-TARGET AUDIENCE:
-${np(targetAudience)}
-
-FUNNEL STAGE:
-${np(funnelStage)}
-
-PRIMARY GOAL:
-${np(primaryGoal)}
-
-DESIRED VIEWER ACTION:
-${np(desiredViewerAction)}
-
-CTA GOAL:
-${np(ctaGoal)}
-
-==================================================
-RESEARCH CONTEXT
-==================================================
-
-${np(relevantResearchContext)}
-
-==================================================
-CONTENT FOUNDATION
-==================================================
-
-${np(contentFoundation)}
-
-==================================================
-FINAL WRITTEN ASSET
-==================================================
-
-${np(finalWrittenAsset)}
-
-==================================================
-ASSET SPECIFICATION
-==================================================
+        // "Visual Production Brief Source Document" — the complete
+        // Content-Department-to-Visual-Department handoff. Unlike the
+        // Manifest (which asks ChatGPT to design and maintain the visual
+        // production doc), this one makes NO visual decisions at all and
+        // asks for none — it's pure context assembly, straight from the
+        // Asset Package already on Notion. Per-slide/scene Role/Key
+        // Takeaway (carousel) and Role/Duration (text video) are pulled
+        // back out of the labeled "Slide Production Notes"/"Shot / B-Roll
+        // Notes" bullets — reliable now that those bullets are written as
+        // "Key: value" segments rather than positional dash-joined text.
+        const productionNotesHeading = assetType === 'carousel' ? 'Slide Production Notes' : 'Shot / B-Roll Notes';
+        const productionNotesLines = (findSection(productionNotesHeading)?.lines || []).map(l => l.text);
+        const finalAssetBlocks = slideOrSceneSections.map((s, idx) => {
+          const { headline, body } = slideFields(s);
+          const noteLine = productionNotesLines[idx] || '';
+          const role = extractField(noteLine, 'Role');
+          const keyTakeaway = extractField(noteLine, 'Key Takeaway');
+          if (assetType === 'carousel') {
+            return `Slide ${idx + 1}\n- Slide Role: ${np(role)}\n- Headline: ${np(headline)}\n- Supporting Text: ${np(body)}\n- Key Takeaway: ${np(keyTakeaway)}`;
+          }
+          const duration = extractField(noteLine, 'Duration');
+          return `Scene ${idx + 1}\n- Scene Role: ${np(role)}\n- Narration: ${np(headline)}\n- On Screen Text: ${np(body)}\n- Caption Text: Not provided (word captions render from the continuous narration at render time, not tracked per scene)\n- Estimated Duration: ${np(duration)}`;
+        });
+        const finalWrittenAssetBlock = finalAssetBlocks.length ? finalAssetBlocks.join('\n\n') : np(finalWrittenAsset);
+
+        const contentSummaryText = sectionText('Content Summary');
+        const hookPackageText = sectionText('Hook Package');
+        const hookVal = extractField(hookPackageText, 'First 3s hook') || extractField(hookPackageText, 'Primary') || '';
+        const oneSentenceSummaryVal = extractField(contentSummaryText, 'Summary');
+        const coreThesisVal = extractField(contentSummaryText, 'Core thesis');
+        const primaryPromiseVal = extractField(contentSummaryText, 'Promise');
+        const primaryEmotionVal = extractField(contentSummaryText, 'Primary emotion');
+
+        const prompt = `# Asset Metadata
+
+- Asset ID: ${assetId}
+- Asset Name: ${assetName}
+- Asset Type: ${assetType}
+- Campaign: ${np(campaignName)}
+- Series: Not provided — this system doesn't track a separate Series layer.
+- Platform: ${np(platform)}
+- Aspect Ratio: ${aspectRatio}
+- Target Resolution: ${np(targetResolution)}
+- Target Duration: ${targetDuration}
+- Version: Not provided — asset versioning isn't tracked in this system.
+- Status: ${np(assetStatus)}
+
+---
+
+# Audience
+
+- Target Audience: ${np(targetAudience)}
+- Audience Problem: ${np(painPoints)}
+- Audience Awareness Level: Not provided — awareness level isn't tracked in this system.
+- Funnel Stage: ${np(funnelStage)}
+- Primary Goal: ${np(primaryGoal)}
+- Desired Viewer Action: ${np(desiredViewerAction)}
+- CTA Goal: ${np(ctaGoal)}
+
+---
+
+# Research Summary
+
+${np(researchSummaryText)}
+
+---
+
+# Content Foundation
+
+- Working Title: ${np(titleName)}
+- Final Title: ${np(titleName)}
+- One Sentence Summary: ${np(oneSentenceSummaryVal)}
+- Core Thesis: ${np(coreThesisVal)}
+- Primary Promise: ${np(primaryPromiseVal)}
+- Primary Emotion: ${np(primaryEmotionVal)}
+- Desired Viewer Outcome: ${np(desiredViewerAction)}
+- Hook: ${np(hookVal)}
+- CTA: Not provided — no asset-level CTA is tracked separately from each slide/scene's own CTA below.
+
+---
+
+# Final Written Asset
+
+${finalWrittenAssetBlock}
+
+---
+
+# Asset Specification
 
 ${np(completeAssetSpec)}
 
-==================================================
-PRODUCTION SPECIFICATION
-==================================================
+---
+
+# Production Specification
 
 ${np(completeProductionSpec)}
 
-==================================================
-RESOLVED GLOBAL INSTRUCTIONS
-==================================================
+---
 
-${np(resolvedGlobalInstructions)}
+# Design Globals
 
-==================================================
-SOURCE GLOBAL REFERENCES
-==================================================
+This system has a single global tier — the campaign/product Design Spec — not the separate Brand/Campaign/Series/Typography/Layout/Illustration/Animation/Character globals a larger pipeline might have. Resolved instructions:
 
-${sourceGlobalRefs.join('\n')}
+${resolvedGlobalInstructions}
 
-==================================================
-RELEVANT EXISTING VISUAL ASSETS
-==================================================
+Source: ${sourceGlobalRefs.join('\n')}
 
-${np(existingVisualAssets)}
+---
 
-==================================================
-KNOWN CONSTRAINTS OR CONFLICTS
-==================================================
+# Existing Assets
 
-None identified — this system has a single-tier Design Spec (no separate brand/series/character-global layers), so there are no cross-global conflicts to flag.
+${existingAssetsList.length ? existingAssetsList.join('\n') : 'Not provided — no other approved assets with a hosted Design Link were found on this campaign.'}
 
-Now create the complete Visual Brief Package.`;
+---
+
+# Known Constraints
+
+- Required aspect ratio: ${aspectRatio}
+- Required dimensions: ${np(targetResolution)}
+- Accessibility requirements: Not provided — not tracked in this system.
+- Platform constraints: ${platform ? `Built for ${platform}` : 'Not provided'}
+- Brand restrictions: ${np(resolvedSpec.notes)}
+- Known conflicts: None identified — single-tier Design Spec system, no cross-global conflicts possible.
+
+---
+
+# Visual Director Instructions
+
+The writing phase is complete.
+
+The Production Specification is complete.
+
+You are now the Visual Director.
+
+Your responsibilities are to:
+
+• determine the correct visual treatment for every slide or scene
+
+• create the Visual Production Brief
+
+• generate or retrieve visual assets
+
+• revise assets until approved
+
+• continuously update the Visual Production Brief
+
+• return a completed Visual Production Brief marked Ready For Assembly
+
+Do not rewrite the written content.
+
+Treat this document as the source of truth.`;
 
         return json({ success: true, assetId, titleId, campaignId, assetType, prompt, validation, kind: 'brief' });
       }
