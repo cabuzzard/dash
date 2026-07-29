@@ -797,6 +797,37 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- VISUAL BRIEF SETUP MODAL (the 🎨 Visual Brief button on a carousel/text-video asset row) -->
+<div class="modal-overlay" id="visualBriefModal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div class="modal-title">Visual Brief — Setup</div>
+      <button class="modal-close" onclick="closeVisualBriefModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <div class="modal-hint" id="vbAssetLabel"></div>
+
+      <div id="vb-strategy-wrap" style="display:none;margin-top:12px;">
+        <label class="lm-label">Growth Strategy Context <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; the strategic/growth purpose ChatGPT should design toward, not a new instruction</span></label>
+        <select id="vb-strategy" class="modal-ta" style="margin-top:4px;width:100%;">
+          <option value="">No strategy</option>
+        </select>
+      </div>
+
+      <div id="vbLockWrap" style="margin-top:14px;"></div>
+
+      <label class="lm-label" style="margin-top:14px;">Guidelines for ChatGPT <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; treated as IMMUTABLE, binding for this asset only</span></label>
+      <textarea class="modal-ta" id="vbGuidelines" rows="5" placeholder="Anything ChatGPT must follow for this specific asset..." style="font-size:11px;font-family:monospace;line-height:1.5;resize:vertical;margin-top:4px;"></textarea>
+
+      <div class="modal-status" id="vbStatus" style="white-space:pre-wrap;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeVisualBriefModal()">Cancel</button>
+      <button class="modal-btn save" id="vbSubmitBtn" onclick="submitVisualBrief()">Generate & Copy</button>
+    </div>
+  </div>
+</div>
+
 <!-- ASSEMBLE MODAL (the 🧷 button on a carousel/text-video asset row) -->
 <div class="modal-overlay" id="assembleModal">
   <div class="modal" style="max-width:640px;">
@@ -1511,7 +1542,7 @@ async function loadTitles() {
         ar.innerHTML = `<span style="font-size:9px;color:#666;flex-shrink:0;">↳</span>`
           + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.title)}</span>`
           + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
-          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${t.id}" onclick="generateVisualBrief(this)" title="Assemble the Visual Production Source Document (Editing Authority tiers/Asset Metadata/Production Method/Audience/Research/Content Foundation/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Text Video assets are told to declare Simple vs. Custom Remotion Build (custom builds get a mandatory voice-first render sequence) and to keep the Asset ID attached through every revision. Also drafts every field of the structured Design Specification via Claude, tagged Immutable/Constrained/Mutable/Derived-at-production so ChatGPT knows exactly what it can and can't change — Text Video into 🎬 Text Video Specs / 🎞️ Text Video Scenes, Carousel into 🎠 Carousel Specifications / 🃏 Slide Specifications (plus the shared Color Palette/Typography/Visual Style/Grid/Layout/Diagram/Platform Preset databases, reused across the whole campaign)." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
+          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${t.id}" data-type="${esc(a.type)}" data-productid="${t.productId || ''}" onclick="openVisualBriefModal(this)" title="Set up and assemble the Visual Production Source Document (Editing Authority tiers/Asset Metadata/Production Method/Audience/Research/Content Foundation/Growth Strategy Context/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Opens a setup modal first: pick a Growth Strategy for context, lock specific normally-MUTABLE design fields to IMMUTABLE for this asset, and write operator guidelines. Text Video assets are told to declare Simple vs. Custom Remotion Build (custom builds get a mandatory voice-first render sequence) and to keep the Asset ID attached through every revision. Also drafts every field of the structured Design Specification via Claude, tagged Immutable/Constrained/Mutable/Derived-at-production so ChatGPT knows exactly what it can and can't change — Text Video into 🎬 Text Video Specs / 🎞️ Text Video Scenes, Carousel into 🎠 Carousel Specifications / 🃏 Slide Specifications (plus the shared Color Palette/Typography/Visual Style/Grid/Layout/Diagram/Platform Preset databases, reused across the whole campaign)." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-brief" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'visualBrief')" title="Upload the completed Visual Production Brief (.md/.txt) from ChatGPT — saved straight to this asset's Visual Production Brief property, no modal needed" style="font-size:10px;padding:1px 7px;border:1px solid #38b2ac;background:transparent;color:#38b2ac;border-radius:9px;cursor:pointer;flex-shrink:0;">📄 Brief</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'assemblyPackage')" title="Upload the Production Assembly Package (.md/.txt) — the technical build spec — saved straight to this asset's Production Assembly Package property, no modal needed" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧱 Package</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with both documents attached. Media already hosted: packages it + publishing metadata into a hosted review page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
@@ -4951,31 +4982,109 @@ async function copyAssetScript(assetId, btn) {
   }
 }
 
+// Visual Brief — Setup modal (the 🎨 Visual Brief button on a carousel/
+// text-video asset row). Opens BEFORE generating so the operator can pick
+// a Growth Strategy for context, lock specific normally-MUTABLE design
+// fields to IMMUTABLE for this one asset, and write free-form guidelines
+// — all folded server-side into generateVisualBriefPrompt's document,
+// then copied to the clipboard exactly like the old direct-generate flow.
+// Field keys below must match what generateVisualBriefPrompt in worker.js
+// checks for lockSuffix() — carousel and text video have different
+// MUTABLE field sets, matching their respective Design Specification
+// (Draft) sections.
+const VB_LOCK_FIELDS = {
+  carousel: [
+    ['tone', 'Tone / Emotional Arc'],
+    ['brandImpression', 'Brand Impression'],
+    ['visualNarrative', 'Visual Narrative / Recurring Motifs'],
+    ['designIntent', 'Design Intent / Overall Aesthetic'],
+    ['iconStyle', 'Icon / Illustration / Diagram Style'],
+  ],
+  'text video': [
+    ['tone', 'Tone / Emotional Arc'],
+    ['designLanguage', 'Design Language / Visual Style / Theme'],
+    ['colorPalette', 'Color Palette'],
+    ['typography', 'Typography'],
+    ['iconStyle', 'Icon / Illustration / Diagram Style'],
+    ['texture', 'Texture / Background / Border / Shadow / Divider'],
+    ['motion', 'Motion Language / Transitions / Camera / Easing'],
+    ['voiceStyle', 'Voice Delivery Style'],
+  ],
+};
+let VB_ASSET_ID = null, VB_TITLE_ID = null, VB_ASSET_TYPE = null, VB_STRATEGY_TOKEN = 0;
+function openVisualBriefModal(btn) {
+  VB_ASSET_ID = btn.dataset.assetid;
+  VB_TITLE_ID = btn.dataset.titleid;
+  VB_ASSET_TYPE = btn.dataset.type || '';
+  const productId = btn.dataset.productid || '';
+  document.getElementById('vbAssetLabel').textContent = `Asset type: ${VB_ASSET_TYPE}`;
+  document.getElementById('vbGuidelines').value = '';
+  document.getElementById('vbStatus').textContent = '';
+
+  const lockWrap = document.getElementById('vbLockWrap');
+  const fields = VB_LOCK_FIELDS[VB_ASSET_TYPE] || [];
+  lockWrap.innerHTML = fields.length
+    ? '<label class="lm-label">Lock as Immutable <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— for this asset only, hold ChatGPT to the default value shown in the draft spec instead of leaving it open to change</span></label>'
+      + '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;">'
+      + fields.map(([key, label]) => `<label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" class="vb-lock-cb" value="${key}"> ${esc(label)}</label>`).join('')
+      + '</div>'
+    : '';
+
+  const stratWrap = document.getElementById('vb-strategy-wrap');
+  const stratSel = document.getElementById('vb-strategy');
+  if (productId && productId !== '__none__') {
+    stratWrap.style.display = 'block';
+    stratSel.innerHTML = '<option value="">No strategy</option>';
+    const myToken = ++VB_STRATEGY_TOKEN;
+    w('listGrowthStrategies', { productId }).then(data => {
+      if (myToken !== VB_STRATEGY_TOKEN) return;
+      const strategies = data.strategies || [];
+      stratSel.innerHTML = '<option value="">No strategy</option>' + strategies.map(s =>
+        `<option value="${s.id}">${esc(s.name)} (${s.status}${s.platformOverride ? ' — ' + esc(s.platformOverride) : ''})</option>`
+      ).join('');
+    }).catch(() => { if (myToken === VB_STRATEGY_TOKEN) stratSel.innerHTML = '<option value="">No strategy (could not load)</option>'; });
+  } else {
+    stratWrap.style.display = 'none';
+    stratSel.innerHTML = '<option value="">No strategy</option>';
+  }
+
+  document.getElementById('visualBriefModal').classList.add('open');
+}
+function closeVisualBriefModal() {
+  document.getElementById('visualBriefModal').classList.remove('open');
+}
 // Assembles a ChatGPT "Visual Brief Handoff" prompt server-side (final
 // slide/scene text + Asset Spec + Production Spec + research/campaign
-// context + resolved Design Spec, all pulled from what
+// context + resolved Design Spec + this modal's Growth Strategy/locked-
+// fields/guidelines choices, all pulled from what
 // generateCarouselPreview/generateTextVideoScript already wrote to
 // Notion) and copies it straight to the clipboard — no chat handoff, no
 // file, just the words ready to paste into ChatGPT for visual direction.
-async function generateVisualBrief(btn) {
-  const assetId = btn.dataset.assetid, titleId = btn.dataset.titleid;
-  const orig = btn.textContent;
-  btn.textContent = '…'; btn.disabled = true;
+async function submitVisualBrief() {
+  const statusEl = document.getElementById('vbStatus');
+  const btn = document.getElementById('vbSubmitBtn');
+  const lockedFields = Array.from(document.querySelectorAll('.vb-lock-cb:checked')).map(cb => cb.value);
+  const growthStrategyId = document.getElementById('vb-strategy')?.value || undefined;
+  const operatorGuidelines = document.getElementById('vbGuidelines').value.trim() || undefined;
+  btn.disabled = true;
+  statusEl.textContent = 'Generating…';
   try {
-    const r = await w('generateVisualBriefPrompt', { assetId, titleId, campaignId: CAMPAIGN_ID });
+    const r = await w('generateVisualBriefPrompt', {
+      assetId: VB_ASSET_ID, titleId: VB_TITLE_ID, campaignId: CAMPAIGN_ID,
+      lockedFields, growthStrategyId, operatorGuidelines,
+    });
     try {
       await navigator.clipboard.writeText(r.prompt);
-      btn.textContent = 'Copied ✓';
-      setTimeout(() => { btn.textContent = orig; }, 1600);
+      statusEl.textContent = 'Copied to clipboard ✓';
+      setTimeout(closeVisualBriefModal, 1200);
     } catch(e) {
-      btn.textContent = orig;
-      window.prompt('Clipboard write failed — copy manually (Ctrl+A, Ctrl+C):', r.prompt);
+      statusEl.textContent = 'Clipboard write failed — copy manually below.';
+      window.prompt('Copy manually (Ctrl+A, Ctrl+C):', r.prompt);
     }
   } catch(e) {
-    alert('Failed to generate Visual Brief: ' + e.message);
+    statusEl.textContent = 'Error: ' + e.message;
   } finally {
     btn.disabled = false;
-    if (btn.textContent === '…') btn.textContent = orig;
   }
 }
 
@@ -5182,6 +5291,9 @@ async function openViewStrategyModal(strategyId) {
 function closeViewStrategyModal() {
   document.getElementById('viewStrategyModal').classList.remove('open');
 }
+// (openVisualBriefModal / closeVisualBriefModal / submitVisualBrief defined
+// further down, near the old generateVisualBrief location, to keep the
+// Visual Brief Setup modal's JS together with its HTML block below.)
 
 // Final step: reads the Visual Production Brief + Production Assembly
 // Package already uploaded on this asset's row (no upload/paste here,

@@ -13013,7 +13013,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const np = v => v || 'Not provided';
         return {
           ok: true, dash, hdr, assetPage, titlePage, campPage,
-          assetId, titleId, campaignId, assetType, assetName, titleName, campaignName, assetStatus,
+          assetId, titleId, campaignId, productId, assetType, assetName, titleName, campaignName, assetStatus,
           designLink, imagesUrl, sections, sectionText, findSection, slideFields, slideOrSceneSections, extractField,
           finalWrittenAsset, completeAssetSpec, completeProductionSpec, contentFoundation,
           targetAudience, funnelStage, primaryGoal, ctaGoal, desiredViewerAction, platform,
@@ -13970,7 +13970,7 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
         const ctx = await gatherAssetProductionContext(body);
         if (!ctx.ok) return json({ error: ctx.error, validation: ctx.validation }, ctx.status);
         const {
-          assetId, titleId, campaignId, assetType, assetName, titleName, campaignName, assetStatus,
+          dash, hdr, assetId, titleId, campaignId, productId, assetType, assetName, titleName, campaignName, assetStatus,
           finalWrittenAsset, completeAssetSpec, completeProductionSpec, contentFoundation,
           targetAudience, funnelStage, primaryGoal, ctaGoal, desiredViewerAction, platform,
           aspectRatio, targetResolution, targetDuration,
@@ -13978,6 +13978,23 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           resolvedSpec, resolvedGlobalInstructions, sourceGlobalRefs, existingVisualAssets, existingAssetsList, existingAssetEntries, sameTypeExistingAssets,
           validation, np, sectionText, findSection, slideFields, slideOrSceneSections, extractField,
         } = ctx;
+
+        // Operator-supplied setup from the new "Visual Brief — Setup" modal
+        // (opened from the row's 🎨 button instead of generating straight
+        // away): growthStrategyId pulls in the product's Growth Strategy as
+        // context (why this asset exists, not a new instruction);
+        // lockedFields elevates specific normally-MUTABLE design fields to
+        // IMMUTABLE for this one asset; operatorGuidelines is free-form
+        // instruction text, always IMMUTABLE. All three are optional —
+        // omitting them reproduces the exact document generated before this
+        // modal existed.
+        const { operatorGuidelines, lockedFields, growthStrategyId } = body;
+        const lockedSet = new Set(Array.isArray(lockedFields) ? lockedFields.filter(Boolean) : []);
+        const lockSuffix = key => lockedSet.has(key) ? ' [LOCKED BY OPERATOR — use this exact value, do not modify]' : '';
+        const growthStrategyBody = (growthStrategyId && growthStrategyId !== '__none__')
+          ? await extractBlocksTextRecursive(hdr, dash(growthStrategyId)).catch(() => '')
+          : '';
+        const operatorGuidelinesText = (operatorGuidelines || '').trim();
 
         // Draft the structured design specification databases and fold the
         // result into the Brief so ChatGPT reviews/refines concrete field
@@ -14015,14 +14032,14 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
               `Output: ${spec.outputFilename} -> ${spec.outputDirectory}`,
             ].join('\n');
             const mutableLevel = [
-              `Tone / Emotional Arc: ${spec.tone} / ${spec.emotionalArc} — default interpretation of the required emotional objective in Brand Intent below; refine if a better one serves it`,
-              `Design Language / Visual Style / Visual Theme: ${spec.designLanguage} / ${spec.visualStyle} / ${spec.visualTheme} [default, override permitted]`,
-              `Color Palette: ${JSON.stringify(spec.colorPalette)} [default reference, override permitted — the intended impression in Brand Intent is what's fixed, not this hex]`,
-              `Typography: ${JSON.stringify(spec.typographySystem)} [default reference, override permitted]`,
-              `Icon / Illustration / Diagram Style: ${spec.iconStyle} / ${spec.illustrationStyle} / ${spec.diagramStyle} [default, override permitted]`,
-              `Texture / Background / Border / Shadow / Divider: ${spec.textureStyle} / ${spec.backgroundStyle} / ${spec.borderStyle || 'none'} / ${spec.shadowStyle || 'none'} / ${spec.dividerStyle || 'none'} [default, override permitted]`,
-              `Motion Language / Transitions / Camera / Easing / Reveal / Exit: ${spec.motionLanguage} / ${spec.transitionStyle} / ${spec.cameraStyle} / ${spec.defaultEasing} / ${spec.defaultRevealStyle} / ${spec.defaultExitStyle} [default choreography language, override permitted within the Motion Density ceiling above]`,
-              `Voice delivery style: ${spec.voiceStyle} [open — emphasis, pacing, delivery character; provider/ID above are not]`,
+              `Tone / Emotional Arc: ${spec.tone} / ${spec.emotionalArc} — default interpretation of the required emotional objective in Brand Intent below; refine if a better one serves it${lockSuffix('tone')}`,
+              `Design Language / Visual Style / Visual Theme: ${spec.designLanguage} / ${spec.visualStyle} / ${spec.visualTheme} [default, override permitted]${lockSuffix('designLanguage')}`,
+              `Color Palette: ${JSON.stringify(spec.colorPalette)} [default reference, override permitted — the intended impression in Brand Intent is what's fixed, not this hex]${lockSuffix('colorPalette')}`,
+              `Typography: ${JSON.stringify(spec.typographySystem)} [default reference, override permitted]${lockSuffix('typography')}`,
+              `Icon / Illustration / Diagram Style: ${spec.iconStyle} / ${spec.illustrationStyle} / ${spec.diagramStyle} [default, override permitted]${lockSuffix('iconStyle')}`,
+              `Texture / Background / Border / Shadow / Divider: ${spec.textureStyle} / ${spec.backgroundStyle} / ${spec.borderStyle || 'none'} / ${spec.shadowStyle || 'none'} / ${spec.dividerStyle || 'none'} [default, override permitted]${lockSuffix('texture')}`,
+              `Motion Language / Transitions / Camera / Easing / Reveal / Exit: ${spec.motionLanguage} / ${spec.transitionStyle} / ${spec.cameraStyle} / ${spec.defaultEasing} / ${spec.defaultRevealStyle} / ${spec.defaultExitStyle} [default choreography language, override permitted within the Motion Density ceiling above]${lockSuffix('motion')}`,
+              `Voice delivery style: ${spec.voiceStyle} [open — emphasis, pacing, delivery character; provider/ID above are not]${lockSuffix('voiceStyle')}`,
             ].join('\n');
             const sceneLevel = scenes.map(sc => [
               `Scene ${sc.number} — "${sc.name}" (${sc.weight} weight)`,
@@ -14052,11 +14069,11 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
               `Design system bundle: linked to the "${campaignName} Carousel Design System" record (Color Palette / Typography System / Visual Style Profile / Grid & Spacing System / Platform Preset — all shared with other carousels in this campaign; changing any of these is a campaign-level decision, not a per-asset one)`,
             ].join('\n');
             const mutableLevel = [
-              `Tone / Emotional Arc: ${(cds.tone || []).join(', ') || 'Not specified'} / ${cds.emotionalArc} — default interpretation of the required emotional objective in Brand Intent below; refine if a better one serves it`,
-              `Brand Impression: ${(cds.brandImpression || []).join(', ') || 'Not specified'} [default, override permitted]`,
-              `Visual Narrative / Recurring Motifs: ${cds.visualNarrative} / ${cds.recurringMotifs} [default, override permitted]`,
-              `Design Intent / Overall Aesthetic: ${cds.designIntent} / ${cds.overallAesthetic} [default, override permitted]`,
-              `Icon / Illustration / Diagram Style: ${cds.iconStyle} / ${cds.illustrationStyle} / ${cds.diagramStyle} [default reference — the intended impression in Brand Intent is what's fixed, not this specific style]`,
+              `Tone / Emotional Arc: ${(cds.tone || []).join(', ') || 'Not specified'} / ${cds.emotionalArc} — default interpretation of the required emotional objective in Brand Intent below; refine if a better one serves it${lockSuffix('tone')}`,
+              `Brand Impression: ${(cds.brandImpression || []).join(', ') || 'Not specified'} [default, override permitted]${lockSuffix('brandImpression')}`,
+              `Visual Narrative / Recurring Motifs: ${cds.visualNarrative} / ${cds.recurringMotifs} [default, override permitted]${lockSuffix('visualNarrative')}`,
+              `Design Intent / Overall Aesthetic: ${cds.designIntent} / ${cds.overallAesthetic} [default, override permitted]${lockSuffix('designIntent')}`,
+              `Icon / Illustration / Diagram Style: ${cds.iconStyle} / ${cds.illustrationStyle} / ${cds.diagramStyle} [default reference — the intended impression in Brand Intent is what's fixed, not this specific style]${lockSuffix('iconStyle')}`,
             ].join('\n');
             const slideLevel = slides.map(sl => [
               `Slide ${sl.number} — Role: ${sl.role}`,
@@ -14227,7 +14244,11 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
 
 **DERIVED AT PRODUCTION** — anything marked "[DERIVED AT PRODUCTION]" or "[ESTIMATED, pre-audio]": exact timing, frame numbers, resolved scene duration. These don't exist yet — narration hasn't been rendered. Do not choreograph animation to the exact second against them; describe choreography in relative terms (reveal → hold → exit) and let the render step resolve exact timing against real audio, simplifying the visual — never the timing alone — if it doesn't fit.
 
-Return every changed MUTABLE value as a resolved value in your response, not as "use your judgment." State for each one whether you kept the default, modified it, or replaced it, and why.`;
+Return every changed MUTABLE value as a resolved value in your response, not as "use your judgment." State for each one whether you kept the default, modified it, or replaced it, and why.${lockedSet.size ? `
+
+**OPERATOR-LOCKED FIELDS** — for this specific asset, the operator has elevated the fields marked "[LOCKED BY OPERATOR]" in Design Specification (Draft) below from MUTABLE to IMMUTABLE. Use the stated value exactly for those fields; do not propose an alternative, even though the rest of their tier remains open.` : ''}${operatorGuidelinesText ? `
+
+**OPERATOR GUIDELINES** — see the Operator Guidelines section below, immediately after this one. Treat it as IMMUTABLE: binding instructions for this specific asset, the same authority as Known Constraints.` : ''}`;
 
         const prompt = `# Visual Production Source Document
 
@@ -14241,7 +14262,15 @@ ${identityLine}
 ${editingAuthorityBlock}
 
 ---
+${operatorGuidelinesText ? `
+# Operator Guidelines
 
+The operator has provided the following explicit guidelines for this specific asset. Treat these as IMMUTABLE — binding instructions equal in authority to Known Constraints — and apply them even where they narrow or override a MUTABLE field's stated default below.
+
+${operatorGuidelinesText}
+
+---
+` : ''}
 # Asset Metadata
 
 - Asset ID: ${assetId}
@@ -14295,7 +14324,15 @@ ${np(researchSummaryText)}
 - CTA: Not provided — no asset-level CTA is tracked separately from each slide/scene's own CTA below.
 
 ---
+${growthStrategyBody ? `
+# Growth Strategy Context
 
+An approved Growth Strategy exists for this asset's product — this is the growth purpose this asset was commissioned to serve (which title grouping, method, and platform it's part of, and why). Use it to interpret Brand Intent and the MUTABLE design fields below; it does not add new IMMUTABLE content beyond what's already stated in Final Written Asset.
+
+${growthStrategyBody}
+
+---
+` : ''}
 # Final Written Asset
 
 ${finalWrittenAssetBlock}
