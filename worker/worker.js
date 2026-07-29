@@ -13112,10 +13112,27 @@ Include exactly ${scenesInput.length} scene objects, numbered 1 to ${scenesInput
         const existingSpecPage = (specQuery.results || [])[0] || null;
 
         const rt1 = v => ({ rich_text: [{ text: { content: String(v || '') } }] });
+
+        // Same shared, non-destructive Color Palette/Typography/Visual
+        // Style/Grid & Spacing resolver Carousel uses — relate to them for
+        // discoverability/reuse, but the inline Color Palette/Typography/
+        // Icon Style/etc. fields below stay the authoritative per-asset
+        // resolved design regardless of what the shared records say.
+        const { colorPaletteId, typographySystemId, visualStyleId, gridSystemId } = await resolveCampaignDesignDefaults(
+          campaignName, resolvedSpec, 'Text Video',
+          { width: 1080, height: 1920, safeTop: 100, safeBottom: 300, safeLeft: 60, safeRight: 60 },
+          hdr,
+        );
+
         const specProps = {
           "Asset Name": { title: [{ text: { content: spec.assetName } }] },
           "Asset ID": rt1(spec.assetId),
           "Linked Asset": { relation: [{ id: assetIdDashed }] },
+          "Color Palette Ref": { relation: [{ id: colorPaletteId }] },
+          "Typography System Ref": { relation: [{ id: typographySystemId }] },
+          "Visual Style Ref": { relation: [{ id: visualStyleId }] },
+          "Grid Spacing Ref": { relation: [{ id: gridSystemId }] },
+          "Design Promoted": { checkbox: false },
           "Version": rt1(spec.version), "Campaign": rt1(spec.campaign),
           "Asset Type": { select: { name: spec.assetType } },
           "Output Platforms": { multi_select: spec.outputPlatforms.map(p => ({ name: p })) },
@@ -13214,6 +13231,185 @@ Include exactly ${scenesInput.length} scene objects, numbered 1 to ${scenesInput
         }
 
         return { specPageId, spec, scenes };
+      }
+
+      // ── resolveCampaignDesignDefaults ──
+      // Create-once-never-auto-patch resolver for the three genuinely
+      // format-agnostic shared design-token databases (Color Palette,
+      // Typography, Visual Style) plus one format-specific Grid & Spacing
+      // System, all keyed by campaign name. The FIRST call for a campaign
+      // seeds the defaults from the campaign's resolved Design Spec;
+      // every later call — from any asset, any asset type — just returns
+      // the existing IDs unchanged. Nothing here ever silently overwrites
+      // a campaign's shared design system; the only way these records
+      // change is the explicit promoteAssetDesignToGlobal action. Shared
+      // by every asset-type draft builder so a future asset type gets the
+      // same non-destructive shared-systems behavior for free, rather
+      // than each one reinventing its own copy of this logic.
+      async function resolveCampaignDesignDefaults(campaignName, resolvedSpec, formatLabel, gridDefaults, hdr) {
+        const rt1 = v => ({ rich_text: [{ text: { content: String(v || '') } }] });
+        const findOrCreate = async (dbId, titlePropName, name, props) => {
+          const q = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: titlePropName, title: { equals: name } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const existing = (q.results || [])[0];
+          if (existing) return existing.id;
+          const created = await fetch(`https://api.notion.com/v1/pages`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parent: { database_id: dbId },
+              properties: { [titlePropName]: { title: [{ text: { content: name } }] }, "Version": rt1("1.0"), "Status": { select: { name: "Active" } }, ...props },
+            }),
+          }).then(r => r.json());
+          return created.id;
+        };
+        const [colorPaletteId, typographySystemId, visualStyleId, gridSystemId] = await Promise.all([
+          findOrCreate(COLOR_PALETTES_DB, "Palette Name", `${campaignName} Color Palette`, {
+            "Primary Background": rt1(resolvedSpec.bg), "Primary Ink": rt1(resolvedSpec.ink), "Accent Primary": rt1(resolvedSpec.accent),
+            "Usage Notes": rt1(resolvedSpec.notes),
+          }),
+          findOrCreate(TYPOGRAPHY_SYSTEMS_DB, "Typography System Name", `${campaignName} Typography System`, {
+            "Headline Font": rt1(resolvedSpec.headlineFont), "Body Font": rt1(resolvedSpec.bodyFont),
+          }),
+          findOrCreate(VISUAL_STYLE_PROFILES_DB, "Visual Style Name", `${campaignName} Visual Style`, {
+            "Style Description": rt1(resolvedSpec.notes),
+          }),
+          findOrCreate(GRID_SPACING_SYSTEMS_DB, "Grid System Name", `${campaignName} Grid & Spacing (${formatLabel})`, {
+            "Reference Width": { number: gridDefaults.width }, "Reference Height": { number: gridDefaults.height },
+            "Safe Area Top": { number: gridDefaults.safeTop }, "Safe Area Bottom": { number: gridDefaults.safeBottom },
+            "Safe Area Left": { number: gridDefaults.safeLeft }, "Safe Area Right": { number: gridDefaults.safeRight },
+          }),
+        ]);
+        return { colorPaletteId, typographySystemId, visualStyleId, gridSystemId };
+      }
+
+      // ── promoteAssetDesignToGlobal ──
+      // The only thing allowed to update a shared design-token record
+      // after its first creation. Operator-triggered, never automatic.
+      // Copies one asset's resolved design values into the corresponding
+      // shared campaign record (Color Palette / Typography System /
+      // Visual Style Profile), bumping its Version and recording which
+      // asset it came from — everything else about the promotion-gate
+      // model (asset-level overrides staying attached to the asset unless
+      // explicitly promoted) depends on this being the only write path.
+      if (body.action === "promoteAssetDesignToGlobal") {
+        const { assetSpecId, assetSpecDbId, targetDbId, targetRecordId, fields, sourceAssetLabel } = body;
+        if (!assetSpecId || !targetDbId || !targetRecordId || !fields) {
+          return json({ error: "assetSpecId, targetDbId, targetRecordId, and fields required" }, 400);
+        }
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rt1 = v => ({ rich_text: [{ text: { content: String(v || '') } }] });
+
+        // Bump the target's Version (major.minor -> major.(minor+1)) so
+        // the promotion is visible in the record's own history, not just
+        // a silent value swap.
+        const targetPage = await fetch(`https://api.notion.com/v1/pages/${dash(targetRecordId)}`, { headers: hdr }).then(r => r.json());
+        if (!targetPage.properties) return json({ error: targetPage.message || "Target design record not found" }, 404);
+        const currentVersion = (targetPage.properties.Version?.rich_text || []).map(t => t.plain_text).join("") || "1.0";
+        const [maj, min] = currentVersion.split('.').map(n => parseInt(n, 10) || 0);
+        const nextVersion = `${maj}.${min + 1}`;
+
+        const properties = { ...fields, "Version": rt1(nextVersion), "Promoted From Asset": rt1(`${sourceAssetLabel || assetSpecId} — ${new Date().toISOString().slice(0, 10)}`) };
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(targetRecordId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to promote to campaign design system" }, patchResp.status); }
+
+        // Mark the source asset spec as promoted, if it carries that field.
+        if (assetSpecDbId) {
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetSpecId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Design Promoted": { checkbox: true } } }),
+          }).catch(() => {});
+        }
+
+        return json({ success: true, targetRecordId, newVersion: nextVersion });
+      }
+
+      // ── getCampaignDesignSystem ──
+      // Powers the "🎨 Campaign Design System" visibility panel: the
+      // campaign's current shared defaults (Color Palette/Typography/
+      // Visual Style, plus both format-specific Grid & Spacing records)
+      // alongside every carousel/text-video asset's own resolved design
+      // and whether it's been promoted. Read-only — promotion itself goes
+      // through promoteAssetDesignToGlobal.
+      if (body.action === "getCampaignDesignSystem") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rtGet = (page, key) => (page?.properties?.[key]?.rich_text || []).map(t => t.plain_text).join("");
+
+        const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+        if (!campPage.properties) return json({ error: campPage.message || "Campaign not found" }, 404);
+        const campaignName = campPage.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
+
+        const findByTitle = async (dbId, titleProp, name) => {
+          const q = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: titleProp, title: { equals: name } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          return (q.results || [])[0] || null;
+        };
+
+        const [colorPalette, typography, visualStyle, gridCarousel, gridTextVideo] = await Promise.all([
+          findByTitle(COLOR_PALETTES_DB, "Palette Name", `${campaignName} Color Palette`),
+          findByTitle(TYPOGRAPHY_SYSTEMS_DB, "Typography System Name", `${campaignName} Typography System`),
+          findByTitle(VISUAL_STYLE_PROFILES_DB, "Visual Style Name", `${campaignName} Visual Style`),
+          findByTitle(GRID_SPACING_SYSTEMS_DB, "Grid System Name", `${campaignName} Grid & Spacing (Carousel)`),
+          findByTitle(GRID_SPACING_SYSTEMS_DB, "Grid System Name", `${campaignName} Grid & Spacing (Text Video)`),
+        ]);
+
+        const shared = {
+          colorPalette: colorPalette ? {
+            id: colorPalette.id.replace(/-/g, ""), version: rtGet(colorPalette, "Version"),
+            background: rtGet(colorPalette, "Primary Background"), ink: rtGet(colorPalette, "Primary Ink"), accent: rtGet(colorPalette, "Accent Primary"),
+            promotedFrom: rtGet(colorPalette, "Promoted From Asset"),
+          } : null,
+          typography: typography ? {
+            id: typography.id.replace(/-/g, ""), version: rtGet(typography, "Version"),
+            headlineFont: rtGet(typography, "Headline Font"), bodyFont: rtGet(typography, "Body Font"),
+            promotedFrom: rtGet(typography, "Promoted From Asset"),
+          } : null,
+          visualStyle: visualStyle ? {
+            id: visualStyle.id.replace(/-/g, ""), version: rtGet(visualStyle, "Version"),
+            iconStyle: rtGet(visualStyle, "Icon Style"), illustrationStyle: rtGet(visualStyle, "Illustration Style"), diagramStyle: rtGet(visualStyle, "Diagram Style"),
+            promotedFrom: rtGet(visualStyle, "Promoted From Asset"),
+          } : null,
+          gridCarousel: gridCarousel ? { id: gridCarousel.id.replace(/-/g, ""), version: rtGet(gridCarousel, "Version") } : null,
+          gridTextVideo: gridTextVideo ? { id: gridTextVideo.id.replace(/-/g, ""), version: rtGet(gridTextVideo, "Version") } : null,
+        };
+
+        const [carouselSpecsQ, textVideoSpecsQ] = await Promise.all([
+          fetch(`https://api.notion.com/v1/databases/${CAROUSEL_SPECS_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })),
+          fetch(`https://api.notion.com/v1/databases/${TEXT_VIDEO_SPECS_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", rich_text: { equals: campaignName } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })),
+        ]);
+
+        const assets = [
+          ...(carouselSpecsQ.results || []).map(p => ({
+            specId: p.id.replace(/-/g, ""), assetType: "carousel",
+            name: p.properties?.["Specification Name"]?.title?.map(t => t.plain_text).join("") || "Untitled",
+            resolvedColorPalette: rtGet(p, "Resolved Color Palette"), resolvedTypography: rtGet(p, "Resolved Typography"), resolvedVisualStyle: rtGet(p, "Resolved Visual Style"),
+            promoted: p.properties?.["Design Promoted"]?.checkbox || false,
+          })),
+          ...(textVideoSpecsQ.results || []).map(p => ({
+            specId: p.id.replace(/-/g, ""), assetType: "text video",
+            name: p.properties?.["Asset Name"]?.title?.map(t => t.plain_text).join("") || "Untitled",
+            resolvedColorPalette: rtGet(p, "Color Palette"), resolvedTypography: rtGet(p, "Typography System"),
+            resolvedVisualStyle: JSON.stringify({ iconStyle: rtGet(p, "Icon Style"), illustrationStyle: rtGet(p, "Illustration Style"), diagramStyle: rtGet(p, "Diagram Style") }),
+            promoted: p.properties?.["Design Promoted"]?.checkbox || false,
+          })),
+        ];
+
+        return json({ success: true, campaignName, shared, assets });
       }
 
       // ── buildCarouselSpecDraft ──
@@ -13341,32 +13537,23 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
         const platformKey = Object.keys(PLATFORM_MAP).find(k => (platform || '').toLowerCase().includes(k));
         const platformName = platformKey ? PLATFORM_MAP[platformKey] : 'Instagram';
 
-        // Five campaign-scoped shared systems, created in parallel — they're
-        // independent of each other.
-        const [colorPaletteId, typographySystemId, visualStyleId, gridSystemId, platformPresetId] = await Promise.all([
-          findOrCreate(COLOR_PALETTES_DB, "Palette Name", `${campaignName} Color Palette`, {
-            "Primary Background": rt1(resolvedSpec.bg), "Primary Ink": rt1(resolvedSpec.ink), "Accent Primary": rt1(resolvedSpec.accent),
-            "Usage Notes": rt1(resolvedSpec.notes), "Status": { select: { name: "Active" } },
-          }),
-          findOrCreate(TYPOGRAPHY_SYSTEMS_DB, "Typography System Name", `${campaignName} Typography System`, {
-            "Headline Font": rt1(resolvedSpec.headlineFont), "Body Font": rt1(resolvedSpec.bodyFont), "Status": { select: { name: "Active" } },
-          }),
-          findOrCreate(VISUAL_STYLE_PROFILES_DB, "Visual Style Name", `${campaignName} Visual Style`, {
-            "Style Description": rt1(resolvedSpec.notes), "Icon Style": rt1(ds.iconStyle), "Illustration Style": rt1(ds.illustrationStyle),
-            "Diagram Style": rt1(ds.diagramStyle), "Status": { select: { name: "Active" } },
-          }),
-          findOrCreate(GRID_SPACING_SYSTEMS_DB, "Grid System Name", `${campaignName} Grid & Spacing (Carousel)`, {
-            "Reference Width": { number: 1080 }, "Reference Height": { number: 1350 },
-            "Safe Area Top": { number: 100 }, "Safe Area Bottom": { number: 100 }, "Safe Area Left": { number: 80 }, "Safe Area Right": { number: 80 },
-            "Status": { select: { name: "Active" } },
-          }),
-          findOrCreate(PLATFORM_EXPORT_PRESETS_DB, "Preset Name", `${platformName} Carousel 4:5 PNG`, {
-            "Platform": { select: { name: platformName } }, "Supported Asset Types": { multi_select: [{ name: "Carousel" }] },
-            "Width": { number: 1080 }, "Height": { number: 1350 }, "Aspect Ratio": rt1("4:5"),
-            "Export Format": { select: { name: "PNG" } }, "Maximum Slide Count": { number: 10 }, "Minimum Slide Count": { number: 3 },
-            "Status": { select: { name: "Active" } },
-          }),
-        ]);
+        // Color Palette/Typography/Visual Style are format-agnostic and
+        // shared with every other asset type in this campaign — resolved
+        // via the same helper Text Video uses, never auto-patched after
+        // first creation. Grid & Spacing is carousel's own format (4:5,
+        // different safe areas than a 9:16 video) — same resolver, its
+        // own campaign-scoped record.
+        const { colorPaletteId, typographySystemId, visualStyleId, gridSystemId } = await resolveCampaignDesignDefaults(
+          campaignName, resolvedSpec, 'Carousel',
+          { width: 1080, height: 1350, safeTop: 100, safeBottom: 100, safeLeft: 80, safeRight: 80 },
+          hdr,
+        );
+        const platformPresetId = await findOrCreate(PLATFORM_EXPORT_PRESETS_DB, "Preset Name", `${platformName} Carousel 4:5 PNG`, {
+          "Platform": { select: { name: platformName } }, "Supported Asset Types": { multi_select: [{ name: "Carousel" }] },
+          "Width": { number: 1080 }, "Height": { number: 1350 }, "Aspect Ratio": rt1("4:5"),
+          "Export Format": { select: { name: "PNG" } }, "Maximum Slide Count": { number: 10 }, "Minimum Slide Count": { number: 3 },
+          "Status": { select: { name: "Active" } },
+        });
 
         // Layout/Diagram Templates: sequential (not parallel) to avoid two
         // slides proposing the same new category racing each other into
@@ -13413,10 +13600,16 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           });
         }
 
-        // ── Carousel Design System bundle (one per campaign, kept current) ──
+        // ── Carousel Design System bundle (one per campaign, created ONCE) ──
+        // Non-destructive by design: findOrCreate only writes these props
+        // on first creation. If the campaign already has one, this asset
+        // does NOT touch it — its own resolved design lives inline on the
+        // Carousel Specification below instead, and only an explicit
+        // "Promote to Campaign Design System" action (promoteAssetDesignToGlobal)
+        // ever updates the shared bundle after that first seed.
         const coverLayoutId = slides[0]?.layoutTemplateId || null;
         const ctaLayoutId = slides[slides.length - 1]?.layoutTemplateId || null;
-        const designSystemProps = {
+        const carouselDesignSystemId = await findOrCreate(CAROUSEL_DESIGN_SYSTEMS_DB, "Design System Name", `${campaignName} Carousel Design System`, {
           "Status": { select: { name: "Active" } },
           "Campaign": { relation: [{ id: dash(campaignId) }] },
           "Color Palette": { relation: [{ id: colorPaletteId }] },
@@ -13431,13 +13624,6 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           "Default Visual Complexity": { select: { name: 'Medium' } },
           "Photography Allowed": { checkbox: false }, "Faces Allowed": { checkbox: false },
           "Illustration Allowed": { checkbox: true }, "Diagrams Allowed": { checkbox: true }, "Icons Allowed": { checkbox: true },
-        };
-        const carouselDesignSystemId = await findOrCreate(CAROUSEL_DESIGN_SYSTEMS_DB, "Design System Name", `${campaignName} Carousel Design System`, designSystemProps);
-        // findOrCreate only sets props on CREATE — patch every time so an
-        // existing per-campaign bundle stays current with the latest
-        // resolved Design Spec instead of going stale after the first run.
-        await fetch(`https://api.notion.com/v1/pages/${carouselDesignSystemId}`, {
-          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: designSystemProps }),
         });
 
         // ── Carousel Specification (one per asset) ──
@@ -13480,6 +13666,15 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           "External Downloads Allowed": { checkbox: false },
           "Assembly Renderer": { select: { name: "Cloudflare Browser Rendering" } },
           "Assembly Status": { select: { name: "Not Started" } },
+          // This asset's actual resolved design — self-contained, stays
+          // attached to the asset regardless of what the shared Carousel
+          // Design System says now or later. This is the record of what
+          // was really used; promoting it to the shared bundle is a
+          // separate, explicit operator action.
+          "Resolved Color Palette": rt1(JSON.stringify({ background: resolvedSpec.bg, ink: resolvedSpec.ink, accent: resolvedSpec.accent })),
+          "Resolved Typography": rt1(JSON.stringify({ headlineFont: resolvedSpec.headlineFont, bodyFont: resolvedSpec.bodyFont })),
+          "Resolved Visual Style": rt1(JSON.stringify({ iconStyle: ds.iconStyle, illustrationStyle: ds.illustrationStyle, diagramStyle: ds.diagramStyle })),
+          "Design Promoted": { checkbox: false },
         };
         const layoutTemplateIds = [...new Set(slides.map(s => s.layoutTemplateId).filter(Boolean))];
         const diagramTemplateIds = [...new Set(slides.map(s => s.diagramTemplateId).filter(Boolean))];

@@ -229,7 +229,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="field"><div class="field-label">Microsite</div><div class="field-value" id="r-microsite"></div></div>
       <div class="field"><div class="field-label">Live Site</div><div class="field-value" id="r-livesite"></div></div>
       <div class="field">
-        <div class="field-label">Design <button class="td-add-btn-inline" onclick="generateCampaignDesignSpecs()" id="ds-gen-btn" title="Generate 3 design specs from research">&#x25B6;</button> <button class="td-add-btn-inline" onclick="openDesignSpecModal()" title="Manage / create design specs">🎨</button></div>
+        <div class="field-label">Design <button class="td-add-btn-inline" onclick="generateCampaignDesignSpecs()" id="ds-gen-btn" title="Generate 3 design specs from research">&#x25B6;</button> <button class="td-add-btn-inline" onclick="openDesignSpecModal()" title="Manage / create design specs">🎨</button> <button class="td-add-btn-inline" onclick="openCampaignDesignSystemModal()" title="Campaign Design System — shared Color Palette/Typography/Visual Style defaults, plus every asset's own resolved design and whether it's been promoted">🧬</button></div>
         <div class="field-value"><div class="ds-icon-row" id="r-design-specs"><span class="empty" style="font-size:11px">—</span></div></div>
       </div>
     </div>
@@ -740,7 +740,25 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- UPLOAD APPROVED VISUALS MODAL (the 🖼️ button on a carousel/text-video asset row) -->
+<!-- CAMPAIGN DESIGN SYSTEM MODAL (the 🧬 button next to the campaign's Design field) -->
+<div class="modal-overlay" id="cdsModal">
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-head">
+      <div class="modal-title">Campaign Design System</div>
+      <button class="modal-close" onclick="closeCampaignDesignSystemModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <div class="modal-hint">Shared defaults are created once and never auto-updated by generation — an asset's own resolved design stays attached to that asset until you explicitly promote it here.</div>
+      <div id="cdsSharedWrap" style="margin-top:14px;"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div class="modal-hint" style="margin-top:18px;">Per-asset resolved design</div>
+      <div id="cdsAssetsWrap" style="margin-top:8px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeCampaignDesignSystemModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- ASSEMBLE MODAL (the 🧷 button on a carousel/text-video asset row) -->
 <div class="modal-overlay" id="assembleModal">
   <div class="modal" style="max-width:640px;">
@@ -4920,6 +4938,104 @@ function triggerAssetDocUpload(btn, docType) {
     }
   });
   input.click();
+}
+
+// Campaign Design System visibility panel — shows the shared, non-
+// destructive Color Palette/Typography/Visual Style defaults plus every
+// carousel/text-video asset's own resolved design, with a Promote button
+// per unpromoted asset. Promoting fires three separate
+// promoteAssetDesignToGlobal calls (one per category) rather than a
+// single combined action, so the same worker primitive stays reusable
+// for any future asset type without a special-cased "promote everything"
+// endpoint.
+let CDS_DATA = null;
+async function openCampaignDesignSystemModal() {
+  document.getElementById('cdsModal').classList.add('open');
+  const sharedWrap = document.getElementById('cdsSharedWrap');
+  const assetsWrap = document.getElementById('cdsAssetsWrap');
+  sharedWrap.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  assetsWrap.innerHTML = '';
+  try {
+    const r = await w('getCampaignDesignSystem', { campaignId: CAMPAIGN_ID });
+    CDS_DATA = r;
+    renderCampaignDesignSystem(r);
+  } catch (e) {
+    sharedWrap.innerHTML = `<div style="color:#f66;font-size:12px;">${esc(e.message)}</div>`;
+  }
+}
+function closeCampaignDesignSystemModal() {
+  document.getElementById('cdsModal').classList.remove('open');
+}
+function renderCampaignDesignSystem(r) {
+  const s = r.shared || {};
+  const swatch = hex => `<span style="display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid #444;background:${esc(hex||'#000')};vertical-align:middle;margin-right:4px;"></span>`;
+  document.getElementById('cdsSharedWrap').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+      <div style="border:1px solid #333;border-radius:6px;padding:10px;">
+        <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;">Color Palette${s.colorPalette ? ` — v${esc(s.colorPalette.version)}` : ''}</div>
+        ${s.colorPalette
+          ? `<div style="margin-top:6px;font-size:11px;">${swatch(s.colorPalette.background)}bg ${esc(s.colorPalette.background)}<br>${swatch(s.colorPalette.ink)}ink ${esc(s.colorPalette.ink)}<br>${swatch(s.colorPalette.accent)}accent ${esc(s.colorPalette.accent)}</div>${s.colorPalette.promotedFrom ? `<div style="font-size:10px;color:#666;margin-top:4px;">Last promoted: ${esc(s.colorPalette.promotedFrom)}</div>` : ''}`
+          : '<div style="font-size:11px;color:#666;margin-top:6px;">Not created yet — generates on first Visual Brief.</div>'}
+      </div>
+      <div style="border:1px solid #333;border-radius:6px;padding:10px;">
+        <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;">Typography${s.typography ? ` — v${esc(s.typography.version)}` : ''}</div>
+        ${s.typography
+          ? `<div style="margin-top:6px;font-size:11px;">Headline: ${esc(s.typography.headlineFont)}<br>Body: ${esc(s.typography.bodyFont)}</div>${s.typography.promotedFrom ? `<div style="font-size:10px;color:#666;margin-top:4px;">Last promoted: ${esc(s.typography.promotedFrom)}</div>` : ''}`
+          : '<div style="font-size:11px;color:#666;margin-top:6px;">Not created yet.</div>'}
+      </div>
+      <div style="border:1px solid #333;border-radius:6px;padding:10px;">
+        <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;">Visual Style${s.visualStyle ? ` — v${esc(s.visualStyle.version)}` : ''}</div>
+        ${s.visualStyle
+          ? `<div style="margin-top:6px;font-size:11px;">Icon: ${esc(s.visualStyle.iconStyle)}<br>Illustration: ${esc(s.visualStyle.illustrationStyle)}<br>Diagram: ${esc(s.visualStyle.diagramStyle)}</div>${s.visualStyle.promotedFrom ? `<div style="font-size:10px;color:#666;margin-top:4px;">Last promoted: ${esc(s.visualStyle.promotedFrom)}</div>` : ''}`
+          : '<div style="font-size:11px;color:#666;margin-top:6px;">Not created yet.</div>'}
+      </div>
+    </div>`;
+
+  const assets = r.assets || [];
+  document.getElementById('cdsAssetsWrap').innerHTML = assets.length
+    ? assets.map((a, idx) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;">
+        <span style="width:60px;flex-shrink:0;color:#888;font-size:10px;text-transform:uppercase;">${esc(a.assetType)}</span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc;">${esc(a.name)}</span>
+        ${a.promoted ? `<span style="font-size:10px;color:#68d391;flex-shrink:0;">✓ Promoted</span>` : `<button class="modal-btn save" style="font-size:10px;padding:3px 9px;flex-shrink:0;" id="cdsPromoteBtn${idx}" onclick="promoteAssetDesign(${idx})">Promote to Campaign Default</button>`}
+      </div>`).join('')
+    : '<div style="font-size:12px;color:#666;padding:8px;">No carousel/text-video assets with a resolved design yet in this campaign.</div>';
+}
+async function promoteAssetDesign(idx) {
+  const a = (CDS_DATA?.assets || [])[idx];
+  const s = CDS_DATA?.shared || {};
+  if (!a) return;
+  const btn = document.getElementById(`cdsPromoteBtn${idx}`);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const calls = [];
+    if (s.colorPalette?.id && a.resolvedColorPalette) {
+      let v = {}; try { v = JSON.parse(a.resolvedColorPalette); } catch(e) {}
+      calls.push(w('promoteAssetDesignToGlobal', {
+        assetSpecId: a.specId, assetSpecDbId: a.assetType, targetDbId: 'colorPalette', targetRecordId: s.colorPalette.id, sourceAssetLabel: a.name,
+        fields: { "Primary Background": { rich_text: [{ text: { content: String(v.background || '') } }] }, "Primary Ink": { rich_text: [{ text: { content: String(v.ink || '') } }] }, "Accent Primary": { rich_text: [{ text: { content: String(v.accent || '') } }] } },
+      }));
+    }
+    if (s.typography?.id && a.resolvedTypography) {
+      let v = {}; try { v = JSON.parse(a.resolvedTypography); } catch(e) {}
+      calls.push(w('promoteAssetDesignToGlobal', {
+        assetSpecId: a.specId, assetSpecDbId: a.assetType, targetDbId: 'typography', targetRecordId: s.typography.id, sourceAssetLabel: a.name,
+        fields: { "Headline Font": { rich_text: [{ text: { content: String(v.headlineFont || '') } }] }, "Body Font": { rich_text: [{ text: { content: String(v.bodyFont || '') } }] } },
+      }));
+    }
+    if (s.visualStyle?.id && a.resolvedVisualStyle) {
+      let v = {}; try { v = JSON.parse(a.resolvedVisualStyle); } catch(e) {}
+      calls.push(w('promoteAssetDesignToGlobal', {
+        assetSpecId: a.specId, assetSpecDbId: a.assetType, targetDbId: 'visualStyle', targetRecordId: s.visualStyle.id, sourceAssetLabel: a.name,
+        fields: { "Icon Style": { rich_text: [{ text: { content: String(v.iconStyle || '') } }] }, "Illustration Style": { rich_text: [{ text: { content: String(v.illustrationStyle || '') } }] }, "Diagram Style": { rich_text: [{ text: { content: String(v.diagramStyle || '') } }] } },
+      }));
+    }
+    await Promise.all(calls);
+    await openCampaignDesignSystemModal();
+  } catch (e) {
+    alert('Promote failed: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Promote to Campaign Default'; }
+  }
 }
 
 // Final step: reads the Visual Production Brief + Production Assembly
