@@ -11119,7 +11119,7 @@ For EACH slide, also provide:
 - "visualPlanning": yes/no decisions ONLY, about WHY a slide might need visual support, never WHAT kind — a separate Visual Director stage decides illustration vs. diagram vs. icon vs. photo vs. screenshot vs. existing asset vs. text-only, and does not want that choice pre-made for it. Do NOT generate image prompts, do NOT describe illustration styles, and do NOT name a visual medium (no "needs an icon", "needs a diagram", "needs a photo", etc.) anywhere in this response. Fields: "needsCustomVisual" (true/false — this slide needs some kind of made-for-it visual, unspecified which kind), "needsSupportingGraphic" (true/false — needs a visual that reinforces/illustrates the point, not just decoration), "needsEmphasis" (true/false — needs a visual that makes one specific thing stand out), "needsComparison" (true/false — the content is contrasting two or more things and could benefit from a visual comparison), "needsProcessExplanation" (true/false — the content walks through steps/a sequence that a visual could clarify)
 
 Also provide, once for the whole carousel:
-- "contentSummary": { "coreMessage": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "..." }
+- "contentSummary": { "coreMessage": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "...", "brandIntent": "3-5 tone words this carousel should leave the viewer with (e.g. trustworthy, technical, minimalist, bold, playful, premium, educational) plus one line on any campaign positioning that should influence visual decisions — not what the visuals should look like, just what impression they should land" }
 - "hookPackage": { "primary": "...", "alt1": "...", "alt2": "..." } — three distinct hook angles for this carousel's opening, for the operator to choose between
 - "contentFlow": one paragraph on how the 7 slides connect into a coherent whole
 - "educationalAssets": one paragraph recapping the key teaching points a viewer walks away with
@@ -11130,7 +11130,7 @@ Also provide, once for the whole carousel:
 - 3-5 hashtags (no # prefix needed) — required, never leave empty
 
 Return ONLY this JSON object, no other text, no markdown fences:
-{ "slides": [ { "headline": "...", "body": "...", "role": "...", "objective": "...", "keyTakeaway": "...", "speakerNotes": "...", "cta": "...", "production": { "layoutType": "...", "textHierarchy": "...", "informationDensity": "...", "visualComplexity": "...", "reusableVisualCandidate": true, "existingAssetCandidate": false }, "visualPlanning": { "needsCustomVisual": true, "needsSupportingGraphic": false, "needsEmphasis": false, "needsComparison": false, "needsProcessExplanation": true } }, ... exactly 7 total ... ], "contentSummary": { "coreMessage": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "..." }, "hookPackage": { "primary": "...", "alt1": "...", "alt2": "..." }, "contentFlow": "...", "educationalAssets": "...", "productionChecklist": ["...", "..."], "seoPublishing": { "linkedinCaption": "...", "xPost": "...", "description": "...", "keywords": "...", "altText": "...", "searchIntent": "..." }, "caption": "...", "hashtags": ["...", "..."] }`;
+{ "slides": [ { "headline": "...", "body": "...", "role": "...", "objective": "...", "keyTakeaway": "...", "speakerNotes": "...", "cta": "...", "production": { "layoutType": "...", "textHierarchy": "...", "informationDensity": "...", "visualComplexity": "...", "reusableVisualCandidate": true, "existingAssetCandidate": false }, "visualPlanning": { "needsCustomVisual": true, "needsSupportingGraphic": false, "needsEmphasis": false, "needsComparison": false, "needsProcessExplanation": true } }, ... exactly 7 total ... ], "contentSummary": { "coreMessage": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "...", "brandIntent": "..." }, "hookPackage": { "primary": "...", "alt1": "...", "alt2": "..." }, "contentFlow": "...", "educationalAssets": "...", "productionChecklist": ["...", "..."], "seoPublishing": { "linkedinCaption": "...", "xPost": "...", "description": "...", "keywords": "...", "altText": "...", "searchIntent": "..." }, "caption": "...", "hashtags": ["...", "..."] }`;
 
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
@@ -11194,13 +11194,14 @@ Return ONLY this JSON object, no other text, no markdown fences:
           // each) to stay well under Notion's 100-children-per-request
           // limit even with the richer schema.
           const cs = parsed.contentSummary || {};
-          if (cs.coreMessage || cs.targetAudience || cs.funnelStage || cs.primaryGoal) {
+          if (cs.coreMessage || cs.targetAudience || cs.funnelStage || cs.primaryGoal || cs.brandIntent) {
             children.push(heading('Content Summary'));
             const csParts = [
               cs.coreMessage ? `Core message: ${cs.coreMessage}` : '',
               cs.targetAudience ? `Audience: ${cs.targetAudience}` : '',
               cs.funnelStage ? `Funnel stage: ${cs.funnelStage}` : '',
               cs.primaryGoal ? `Primary goal: ${cs.primaryGoal}` : '',
+              cs.brandIntent ? `Brand intent: ${cs.brandIntent}` : '',
             ].filter(Boolean);
             if (csParts.length) children.push(para(csParts.join(' | ')));
           }
@@ -12270,7 +12271,7 @@ For EACH scene, also provide:
 
 Also provide, once for the whole package:
 - "assetMetadata": { "series": "...", "platformSuggestion": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "...", "ctaGoal": "...", "voiceStyle": "...", "captionStyle": "..." }
-- "contentSummary": { "workingTitle": "...", "finalTitle": "...", "oneSentenceSummary": "...", "coreThesis": "...", "primaryPromise": "...", "primaryEmotion": "...", "desiredViewerOutcome": "..." }
+- "contentSummary": { "workingTitle": "...", "finalTitle": "...", "oneSentenceSummary": "...", "coreThesis": "...", "primaryPromise": "...", "primaryEmotion": "...", "desiredViewerOutcome": "...", "brandIntent": "3-5 tone words this script should leave the viewer with (e.g. trustworthy, technical, minimalist, bold, playful, premium, educational) plus one line on any campaign positioning that should influence visual decisions — not what the visuals should look like, just what impression they should land" }
 - "hookPackage": { "hookArcUsed": "which toolkit hook shape, and why it fits", "firstThreeSecondHook": "...", "openingLine": "...", "curiosityGap": "...", "openingOnScreenText": "...", "viewerRetentionStrategy": "..." }
 - "videoStructure": { "estimatedWordCount": 0, "estimatedSceneCount": 0, "storyStructure": "...", "narrativeArc": "...", "teachingStructure": "...", "ctaPlacement": "..." } — keep estimatedSceneCount consistent with the actual number of scenes you write
 - "educationalAssets": { "keyLessons": ["..."], "keyInsights": ["..."], "frameworks": ["..."], "analogies": ["..."], "examples": ["..."], "quotes": ["..."], "statistics": ["..."] } — empty arrays where nothing genuinely applies, never invent filler
@@ -12389,6 +12390,7 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
             cs.oneSentenceSummary ? `Summary: ${cs.oneSentenceSummary}` : '', cs.coreThesis ? `Core thesis: ${cs.coreThesis}` : '',
             cs.primaryPromise ? `Promise: ${cs.primaryPromise}` : '', cs.primaryEmotion ? `Primary emotion: ${cs.primaryEmotion}` : '',
             cs.desiredViewerOutcome ? `Desired outcome: ${cs.desiredViewerOutcome}` : '',
+            cs.brandIntent ? `Brand intent: ${cs.brandIntent}` : '',
           ].filter(Boolean).join(' | ');
           const vsLine = [
             vs.storyStructure ? `Story structure: ${vs.storyStructure}` : '', vs.narrativeArc ? `Narrative arc: ${vs.narrativeArc}` : '',
@@ -12776,7 +12778,7 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
           aspectRatio, targetResolution, targetDuration, description, altText,
           relevantResearchContext, researchSummaryText, painPoints, campaignInformation, campaignLiveUrl,
           resolvedSpec, resolvedGlobalInstructions, sourceGlobalRefs, specRelId,
-          existingAssetsList, existingVisualAssets, sameTypeExistingAssets, validation, np,
+          existingAssetsList, existingVisualAssets, existingAssetEntries, sameTypeExistingAssets, validation, np,
         };
       }
 
@@ -12868,7 +12870,7 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
           targetAudience, funnelStage, primaryGoal, ctaGoal, desiredViewerAction, platform,
           aspectRatio, targetResolution, targetDuration,
           relevantResearchContext, researchSummaryText, painPoints, campaignInformation,
-          resolvedSpec, resolvedGlobalInstructions, sourceGlobalRefs, existingVisualAssets, existingAssetsList, sameTypeExistingAssets,
+          resolvedSpec, resolvedGlobalInstructions, sourceGlobalRefs, existingVisualAssets, existingAssetsList, existingAssetEntries, sameTypeExistingAssets,
           validation, np, sectionText, findSection, slideFields, slideOrSceneSections, extractField,
         } = ctx;
 
@@ -13240,6 +13242,43 @@ Begin by reviewing the Production Specification and creating the Visual Strategy
             ].join('\n\n')
           : `None — this is the first ${assetType} asset in this campaign. Establish a visual system now using the Design Globals below; later ${assetType} assets in this campaign should follow it for continuity.`;
 
+        // Brand Intent — the tone/positioning signal that isn't obvious
+        // from the copy itself. brandIntentVal only exists on assets
+        // generated after this field was added to the schema; older
+        // assets fall back to the research positioning fields + the
+        // resolved Design Spec's own aesthetic notes (which always has a
+        // value, defaults included), so this section is never fully empty.
+        const brandIntentVal = extractField(contentSummaryText, 'Brand intent');
+        const uniqueOpportunityVal = extractField(researchSummaryText, 'Unique Opportunity');
+        const keyMessageVal = extractField(researchSummaryText, 'Key Message');
+        const brandIntentBlock = [
+          brandIntentVal ? `Intended impression: ${brandIntentVal}` : '',
+          uniqueOpportunityVal ? `Positioning (Unique Opportunity): ${uniqueOpportunityVal}` : '',
+          keyMessageVal ? `Positioning (Key Message): ${keyMessageVal}` : '',
+          `Design system aesthetic (apply for consistency): ${np(resolvedSpec.notes)}`,
+        ].filter(Boolean).join('\n');
+
+        // Visual Library References — same underlying campaign-assets
+        // query as Visual Continuity, reformatted per-entry with the
+        // requested field set. Character/icon/diagram/layout reuse flags
+        // aren't tracked anywhere in this system yet, so they're reported
+        // honestly as "Not tracked" rather than guessed.
+        const libraryDisclaimer = `This system doesn't yet track reusable-character/icon/diagram/layout flags per asset — only what's listed below per entry. Treat those four as unknown unless Notes says otherwise.`;
+        const formatLibraryEntry = e => [
+          `- Image ID: ${e.id}`,
+          `  Name: ${e.name}`,
+          `  Thumbnail: ${e.thumbnail || 'Not provided'}`,
+          `  Tags: ${[e.type, e.platformTag].filter(Boolean).join(', ') || 'Not provided'}`,
+          `  Reusable Character: Not tracked`,
+          `  Reusable Icon: Not tracked`,
+          `  Reusable Diagram: Not tracked`,
+          `  Reusable Layout: Not tracked`,
+          `  Notes: ${e.designNotes || 'None provided'}`,
+        ].join('\n');
+        const visualLibraryBlock = existingAssetEntries.length
+          ? [libraryDisclaimer, ...existingAssetEntries.map(formatLibraryEntry)].join('\n\n')
+          : 'Not provided — no other approved assets with a hosted Design Link were found on this campaign.';
+
         const prompt = `# Visual Production Source Document
 
 ${np(assetName)} — ${assetType}
@@ -13322,15 +13361,21 @@ Source: ${sourceGlobalRefs.join('\n')}
 
 ---
 
-# Existing Assets
+# Visual Library References
 
-${existingAssetsList.length ? existingAssetsList.join('\n\n') : 'Not provided — no other approved assets with a hosted Design Link were found on this campaign.'}
+${visualLibraryBlock}
 
 ---
 
 # Visual Continuity
 
 ${visualContinuityBlock}
+
+---
+
+# Brand Intent
+
+${brandIntentBlock}
 
 ---
 
@@ -13369,7 +13414,7 @@ Your responsibilities are to:
 
 Do not rewrite the written content.
 
-Treat this document as the source of truth.`;
+Use this document to create and maintain the Visual Production Brief. The Visual Production Brief becomes the authoritative visual record for this asset throughout production.`;
 
         return json({ success: true, assetId, titleId, campaignId, assetType, prompt, validation, kind: 'brief' });
       }
