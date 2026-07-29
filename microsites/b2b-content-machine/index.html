@@ -1432,7 +1432,8 @@ async function loadTitles() {
           + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.title)}</span>`
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${t.id}" onclick="generateVisualBrief(this)" title="Assemble a ChatGPT Visual Brief Handoff prompt from this asset's final text + Asset Spec + Production Spec, then copy it to your clipboard to paste into ChatGPT" style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-manifest" data-assetid="${a.id}" data-titleid="${t.id}" onclick="generateVisualManifest(this)" title="Assemble the persistent Visual Production Brief/Manifest prompt from this asset's final text + Asset Spec + Production Spec, then copy it to your clipboard to paste into ChatGPT" style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">📦 Manifest</button>` : '')
-          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" onclick="assembleAsset(this)" title="After pasting ChatGPT's completed Visual Production Brief into this Asset's \'Visual Production Brief\' field in Notion: package the final media + publishing metadata, write it to the Asset, and open a hosted review page" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '');
+          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" onclick="assembleAsset(this)" title="After pasting ChatGPT's completed Visual Production Brief into this Asset's \'Visual Production Brief\' field in Notion: package the final media + publishing metadata, write it to the Asset, and open a hosted review page" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
+          + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
         wrap.appendChild(ar);
       });
       // assets still carrying the placeholder Canva search link → offer the
@@ -4765,7 +4766,6 @@ document.getElementById('genAssetsModal').addEventListener('click', function(e) 
 });
 
 async function deleteAssetRow(assetId, btn) {
-  if (!confirm('Delete this asset?\nThis archives it in Notion.')) return;
   btn.disabled = true;
   try {
     await w('deleteAsset', { assetId });
