@@ -2102,10 +2102,12 @@ function dsRenderList() {
       <span class="ds-spec-name">${s.name}</span>
       <button data-act="attach">${s.id === attachedId ? 'Attached ✓' : 'Attach'}</button>
       <button data-act="edit">Edit</button>
+      <button data-act="copy" title="Duplicate this spec into a new one, to branch off a variant">Copy</button>
       <button data-act="delete">✕</button>
     `;
     card.querySelector('[data-act="attach"]').onclick = () => dsAttach(s.id === attachedId ? null : s.id);
     card.querySelector('[data-act="edit"]').onclick = () => dsShowCreateForm(s.id);
+    card.querySelector('[data-act="copy"]').onclick = () => dsCopy(s.id);
     card.querySelector('[data-act="delete"]').onclick = () => dsDelete(s.id);
     list.appendChild(card);
   });
@@ -2167,6 +2169,20 @@ async function dsAttach(specId) {
     dsRenderList();
     status.textContent = specId ? 'Attached ✓' : 'Unlinked';
     status.style.color = '#68d391';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
+  }
+}
+async function dsCopy(specId) {
+  const status = document.getElementById('ds-status');
+  status.textContent = 'Duplicating…'; status.style.color = '#888';
+  try {
+    const r = await w('duplicateDesignSpec', { id: specId });
+    if (r.error) throw new Error(r.error);
+    DS_ALL_SPECS.push(r.spec);
+    dsRenderList();
+    status.textContent = 'Duplicated ✓ — edit the copy below'; status.style.color = '#68d391';
+    dsShowCreateForm(r.id);
   } catch(e) {
     status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181';
   }

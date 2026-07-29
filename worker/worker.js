@@ -6359,6 +6359,39 @@ Return ONLY this JSON, no other text, no markdown fences:
         return json({ success: true, id: result.id.replace(/-/g,"") });
       }
 
+      // Duplicates an existing Design Spec into a new record — same
+      // bg/ink/accent/fonts/notes/canvaLink, name suffixed " (copy)", same
+      // Campaigns/Products relations as the source so it shows up
+      // immediately in the same picker(s). Lets an operator branch off an
+      // existing spec to try a variant without losing the original.
+      if (body.action === "duplicateDesignSpec") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const page = await fetch(`https://api.notion.com/v1/pages/${dsDash(id)}`, { headers: dsHdr }).then(r => r.json());
+        if (!page.properties) return json({ error: page.message || "Design Spec not found" }, 404);
+        const s = dsFromPage(page);
+        const rt = v => v ? [{ type: "text", text: { content: String(v).slice(0, 2000) } }] : [];
+        const copyName = `${s.name} (copy)`.slice(0, 100);
+        const props = {
+          Name: { title: [{ type: "text", text: { content: copyName } }] },
+          Background: { rich_text: rt(s.bg) }, Ink: { rich_text: rt(s.ink) }, Accent: { rich_text: rt(s.accent) },
+          "Headline Font": { rich_text: rt(s.headlineFont) }, "Body Font": { rich_text: rt(s.bodyFont) },
+          "Aesthetic Description": { rich_text: rt(s.notes) },
+        };
+        if (s.canvaLink) props["Canva Link"] = { url: s.canvaLink };
+        const srcCampaigns = page.properties?.["Campaigns"]?.relation || [];
+        const srcProducts = page.properties?.["Products"]?.relation || [];
+        if (srcCampaigns.length) props["Campaigns"] = { relation: srcCampaigns.map(r => ({ id: r.id })) };
+        if (srcProducts.length) props["Products"] = { relation: srcProducts.map(r => ({ id: r.id })) };
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: DESIGN_SPECS_DB }, properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Duplicate failed" }, resp.status);
+        return json({ success: true, id: result.id.replace(/-/g,""), spec: { ...s, id: result.id.replace(/-/g,""), name: copyName } });
+      }
+
       // AI-generate up to 3 design specs grounded in the campaign's research,
       // each linked to the campaign. Canva Link is a template-SEARCH URL built
       // from the aesthetic (a real, useful starting point — an actual Canva
@@ -13979,7 +14012,7 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           targetAudience, funnelStage, primaryGoal, ctaGoal, desiredViewerAction, platform,
           aspectRatio, targetResolution, targetDuration,
           relevantResearchContext, researchSummaryText, painPoints, campaignInformation,
-          resolvedSpec, resolvedGlobalInstructions, sourceGlobalRefs, existingVisualAssets, existingAssetsList, existingAssetEntries, sameTypeExistingAssets,
+          resolvedSpec, resolvedGlobalInstructions, existingVisualAssets, existingAssetsList, existingAssetEntries, sameTypeExistingAssets,
           validation, np, sectionText, findSection, slideFields, slideOrSceneSections, extractField,
         } = ctx;
 
@@ -14017,9 +14050,15 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           try { specDraft = await buildCarouselSpecDraft(ctx, env); }
           catch (e) { specDraftError = e.message; }
         }
+        // Base palette/typography to fall back on when no structured draft
+        // exists yet — this is the only place resolvedSpec's raw values
+        // surface without a drafted spec around them, so the operator's
+        // Global Design Spec pick (or the campaign default) is never
+        // silently lost just because a draft failed or hasn't run yet.
+        const basePaletteFallback = JSON.stringify({ background: resolvedSpec.bg, ink: resolvedSpec.ink, accent: resolvedSpec.accent, headlineFont: resolvedSpec.headlineFont, bodyFont: resolvedSpec.bodyFont });
         const noDraftReason = specDraftError
-          ? `Draft generation failed (${specDraftError}) — proceeding without a pre-filled structured spec. Propose these values yourself.`
-          : `Not available — ${slideOrSceneSections.length ? 'no ANTHROPIC_API_KEY configured on the Worker' : `this asset has no ${assetType === 'carousel' ? 'Slide' : 'Scene'} N blocks to ground a draft in; regenerate it via the current Generate Assets flow first`}.`;
+          ? `Draft generation failed (${specDraftError}) — proceeding without a pre-filled structured spec. Propose these values yourself. Base palette/typography to start from: ${basePaletteFallback}.`
+          : `Not available — ${slideOrSceneSections.length ? 'no ANTHROPIC_API_KEY configured on the Worker' : `this asset has no ${assetType === 'carousel' ? 'Slide' : 'Scene'} N blocks to ground a draft in; regenerate it via the current Generate Assets flow first`}. Base palette/typography to start from: ${basePaletteFallback}.`;
         const designSpecDraftBlock = (() => {
           if (assetType === 'text video') {
             if (!specDraft) return noDraftReason;
@@ -14070,7 +14109,9 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
               `Platform: ${platformName} (4:5) — fixed platform requirement`,
               `Slide Count: ${slides.length}`,
               `Content Density / White Space ceiling: ${cds.contentDensityTarget} / ${cds.whiteSpaceTarget}`,
-              `Design system bundle: linked to the "${campaignName} Carousel Design System" record (Color Palette / Typography System / Visual Style Profile / Grid & Spacing System / Platform Preset — all shared with other carousels in this campaign; changing any of these is a campaign-level decision, not a per-asset one)`,
+              `Color Palette: ${JSON.stringify({ background: resolvedSpec.bg, ink: resolvedSpec.ink, accent: resolvedSpec.accent })} — campaign-shared (the "${campaignName} Carousel Design System" record); changing it is a campaign-level decision, not a per-asset one`,
+              `Typography: ${JSON.stringify({ headlineFont: resolvedSpec.headlineFont, bodyFont: resolvedSpec.bodyFont })} — campaign-shared, same record`,
+              `Visual Style Profile / Grid & Spacing System / Platform Preset are also part of that shared bundle, resolved the same way.`,
             ].join('\n');
             const mutableLevel = [
               `Tone / Emotional Arc: ${(cds.tone || []).join(', ') || 'Not specified'} / ${cds.emotionalArc} — default interpretation of the required emotional objective in Brand Intent below; refine if a better one serves it${lockSuffix('tone')}`,
@@ -14152,7 +14193,7 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
               ...sameTypeExistingAssets,
               `\nShared design system across all of this campaign's assets (palette/typography/aesthetic — apply for continuity):\n${resolvedGlobalInstructions}`,
             ].join('\n\n')
-          : `None — this is the first ${assetType} asset in this campaign. Establish a visual system now using the Design Globals below; later ${assetType} assets in this campaign should follow it for continuity.`;
+          : `None — this is the first ${assetType} asset in this campaign. Establish a visual system now using the Design Specification (Draft) below; later ${assetType} assets in this campaign should follow it for continuity.`;
 
         // Brand Intent — the tone/positioning signal that isn't obvious
         // from the copy itself. brandIntentVal only exists on assets
@@ -14361,16 +14402,6 @@ ${designSpecDraftBlock}
 
 ---
 ` : ''}
-# Design Globals
-
-This system has a single global tier — the campaign/product Design Spec — not the separate Brand/Campaign/Series/Typography/Layout/Illustration/Animation/Character globals a larger pipeline might have. Resolved instructions:
-
-${resolvedGlobalInstructions}
-
-Source: ${sourceGlobalRefs.join('\n')}
-
----
-
 # Visual Library References
 
 ${visualLibraryBlock}
