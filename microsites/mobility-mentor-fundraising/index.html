@@ -1408,7 +1408,7 @@ async function loadTitles() {
       .filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage))
       .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
     const pub = titles.filter(t => ['Publish','Published','Done'].includes(t.stage));
-    function makeTitleRow(t) {
+    function makeTitleRow(t, section) {
       // Cached so the Generate Assets modal can show "existing assets for
       // this title" without a second round-trip — refreshed every loadTitles().
       GA_TITLE_ASSETS_CACHE[t.id] = t.assets || [];
@@ -1419,7 +1419,7 @@ async function loadTitles() {
       // render each linked asset as an indented row, with its grade badge
       const wrap = document.createElement('div');
       wrap.appendChild(div);
-      t.assets.forEach(a => {
+      const renderAssetRow = a => {
         if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
         const ar = document.createElement('div');
         ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
@@ -1434,8 +1434,31 @@ async function loadTitles() {
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-manifest" data-assetid="${a.id}" data-titleid="${t.id}" onclick="generateVisualManifest(this)" title="Assemble the persistent Visual Production Brief/Manifest prompt from this asset's final text + Asset Spec + Production Spec, then copy it to your clipboard to paste into ChatGPT" style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">📦 Manifest</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" onclick="assembleAsset(this)" title="After pasting ChatGPT's completed Visual Production Brief into this Asset's \'Visual Production Brief\' field in Notion: package the final media + publishing metadata, write it to the Asset, and open a hosted review page" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
-        wrap.appendChild(ar);
-      });
+        return ar;
+      };
+      if (section === 'pub') {
+        // Publish section: cluster a title's sub-assets by Asset Type/
+        // method (e.g. a title with 5 text-video scripts + 1 carousel
+        // reads as two labeled groups instead of one flat list) — Dev
+        // section keeps the flat list since titles there usually only
+        // have a handful of draft assets, not a mixed batch.
+        const groupOrder = [], byType = {};
+        t.assets.forEach(a => {
+          const key = a.type || 'Other';
+          if (!byType[key]) { byType[key] = []; groupOrder.push(key); }
+          byType[key].push(a);
+        });
+        groupOrder.forEach(key => {
+          const items = byType[key];
+          const hdr = document.createElement('div');
+          hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 10px 3px 20px;font-size:10px;color:#777;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.008);';
+          hdr.innerHTML = `<span>${esc(key)}</span><span style="color:#555;">${items.length}</span>`;
+          wrap.appendChild(hdr);
+          items.forEach(a => wrap.appendChild(renderAssetRow(a)));
+        });
+      } else {
+        t.assets.forEach(a => wrap.appendChild(renderAssetRow(a)));
+      }
       // assets still carrying the placeholder Canva search link → offer the
       // Claude handoff that generates the real designs and saves links back
       const pendingDesigns = t.assets.filter(a => /canva\.com\/templates\/\?query/i.test(a.designLink || ''));
@@ -1459,8 +1482,11 @@ async function loadTitles() {
         if (!byGroup[gk]) { byGroup[gk] = []; groupOrder.push(gk); }
         byGroup[gk].push(t);
       });
-      if (groupOrder.length === 1 && groupOrder[0] === 'Ungrouped') {
-        titles.forEach(t => container.appendChild(makeTitleRow(t))); return;
+      if (groupOrder.length === 1) {
+        // A single group is never useful to label, even when it's a real
+        // (non-"Ungrouped") value — it can't distinguish anything, so
+        // showing it as a header just repeats info already shown above.
+        titles.forEach(t => container.appendChild(makeTitleRow(t, section))); return;
       }
       groupOrder.forEach(gk => {
         const gTitles = byGroup[gk];
@@ -1473,7 +1499,7 @@ async function loadTitles() {
         const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:#555;'; gCount.textContent = gTitles.length;
         gHdr.appendChild(gArrow); gHdr.appendChild(gLabel); gHdr.appendChild(gCount);
         const gBody = document.createElement('div'); gBody.style.display = isOpen ? 'block' : 'none';
-        gTitles.forEach(t => gBody.appendChild(makeTitleRow(t)));
+        gTitles.forEach(t => gBody.appendChild(makeTitleRow(t, section)));
         gHdr.onclick = () => { const o = gBody.style.display !== 'none'; gBody.style.display = o ? 'none' : 'block'; gArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
         container.appendChild(gHdr); container.appendChild(gBody);
       });
@@ -1516,7 +1542,7 @@ async function loadTitles() {
       methOrder.forEach(mk => {
         const mTitles = byMeth[mk];
         const methName = mk.split('||')[1];
-        if (methOrder.length === 1 && mk.startsWith('__none__')) { renderGroupingLevel(mTitles, container, section); return; }
+        if (methOrder.length === 1) { renderGroupingLevel(mTitles, container, section); return; }
         const stateKey = section + '|meth|' + mk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const mHdr = document.createElement('div');
@@ -1546,7 +1572,7 @@ async function loadTitles() {
       prodOrder.forEach(pk => {
         const pTitles = byProd[pk];
         const prodName = pk.split('||')[1];
-        if (prodOrder.length === 1 && pk.startsWith('__none__')) { renderMethodLevel(pTitles, el, section); return; }
+        if (prodOrder.length === 1) { renderMethodLevel(pTitles, el, section); return; }
         const stateKey = section + '|prod|' + pk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const pHdr = document.createElement('div');
