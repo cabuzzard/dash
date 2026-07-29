@@ -12,6 +12,8 @@ const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
 const PLATFORMS_DB       = "8248b700ebb7428aa28d8b5246509898";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
+const TEXT_VIDEO_SPECS_DB  = "3ce83fc9ef8b4dc185219598761abb7f";
+const TEXT_VIDEO_SCENES_DB = "afa52f6d81b7416d97696517bed8d9c2";
 const LEADS_DB           = "e4518a459f004eb0b9646e48d8718705";
 const SM_ACCOUNTS_DB     = "aa6a16f2a77245bfb5efd9a8eb314b07";
 const EMAILS_DB          = "6252e9917027488fb628436aabb89947";
@@ -12916,6 +12918,319 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true, field, length: trimmed.length });
       }
 
+      // ── buildTextVideoSpecDraft ──
+      // Called from generateVisualBriefPrompt for text-video assets only.
+      // Drafts a first pass of the structured Video Assembly Specification
+      // (🎬 Text Video Specs / 🎞️ Text Video Scenes) grounded in the
+      // asset's actual written scenes — Narration/On-Screen Text are
+      // copied verbatim from what generateTextVideoScript already wrote,
+      // never regenerated here. Only the production/visual PLANNING layer
+      // around that existing content is decided: half by one Claude call
+      // (creative/design judgment — tone, motion, per-scene treatment),
+      // half by deterministic JS (pipeline conventions this session
+      // already established: 1080x1920@30fps, ElevenLabs voice "George",
+      // Remotion 4.0.500, bottom-300px safe area) so technical fields stay
+      // consistent asset-to-asset instead of drifting per LLM call. Every
+      // existing Spec/Scenes row for this asset is archived and replaced
+      // fresh on each call — this is a regenerated draft, not hand-edited
+      // state to preserve (nothing is wired to gate on it yet).
+      async function buildTextVideoSpecDraft(ctx, env) {
+        const {
+          hdr, dash, assetId, assetName, campaignId, campaignName, titleName, resolvedSpec,
+          resolvedGlobalInstructions, slideOrSceneSections, slideFields, contentFoundation,
+          researchSummaryText, targetAudience, platform, np,
+        } = ctx;
+        if (!slideOrSceneSections.length) return null;
+        if (!env.ANTHROPIC_API_KEY) return null;
+
+        const scenesInput = slideOrSceneSections.map((s, idx) => {
+          const { headline: narration, body: onScreenText } = slideFields(s);
+          return { number: idx + 1, narration, onScreenText };
+        });
+
+        const draftPrompt = `You are the technical/creative producer drafting a first-pass Video Assembly Specification for a short-form vertical text video. This is a DRAFT for a human Visual Director to review and refine — make real decisions, don't hedge or leave fields vague.
+
+The narration and on-screen text below are FINAL and already written — do not alter, rewrite, or summarize them. Your job is only to plan the PRODUCTION around them: timing, visual treatment, motion, and the overall design language.
+
+ASSET: "${assetName}" for title "${titleName}" (campaign: "${campaignName}")
+
+RESEARCH-GROUNDED CONTEXT:
+${np(researchSummaryText)}
+
+CONTENT FOUNDATION:
+${np(contentFoundation)}
+
+EXISTING DESIGN SYSTEM (apply for consistency, don't contradict):
+${resolvedGlobalInstructions}
+
+TARGET AUDIENCE: ${np(targetAudience)}
+PLATFORM: ${np(platform)}
+
+SCENES (verbatim, do not alter):
+${scenesInput.map(s => `Scene ${s.number}:\n  Narration: ${s.narration}\n  On-Screen Text: ${s.onScreenText}`).join('\n\n')}
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{
+  "creative": {
+    "creativeObjective": "...", "targetAudience": "...", "viewerAwareness": "Cold, Warm, or Hot",
+    "tone": "...", "emotionalArc": "...", "brandPersonality": "...", "designLanguage": "...",
+    "visualStyle": "...", "visualTheme": "...",
+    "iconStyle": "...", "illustrationStyle": "...", "diagramStyle": "...", "textureStyle": "...",
+    "backgroundStyle": "...", "borderStyle": "...", "shadowStyle": "...", "dividerStyle": "...",
+    "motionLanguage": "...", "transitionStyle": "...", "cameraStyle": "...",
+    "defaultEasing": "...", "defaultRevealStyle": "...", "defaultExitStyle": "...",
+    "maxCameraMovement": 0, "maxSimultaneousMotion": 0, "motionDensity": "Low, Medium, or High",
+    "voiceStyle": "...", "speakingRate": 1.0,
+    "requiredComponents": ["...", "..."]
+  },
+  "scenes": [
+    {
+      "sceneNumber": 1, "sceneName": "...", "scenePurpose": "...", "sceneWeight": "Critical, High, Medium, or Low",
+      "sceneDurationSec": 0, "revealDurationSec": 0, "readDurationSec": 0, "transitionDurationSec": 0,
+      "transitionType": "Cut, Fade, Dissolve, or Wipe", "informationDensity": "Low, Medium, or High", "complexityBudget": "Low, Medium, or High",
+      "animationBudget": 0, "objectBudget": 0, "labelBudget": 0, "layerBudget": 0,
+      "cameraMovement": "...", "cameraMagnitude": 0, "readingPriority": "Headline, Diagram, or CTA",
+      "cta": "", "keywords": ["..."],
+      "visualTreatment": "...", "layoutDescription": "...", "diagramType": "", "diagramNodes": null, "illustrationDescription": "",
+      "svgComponents": ["..."], "imageAssets": [], "videoAssets": [], "iconAssets": [], "brandAssets": [],
+      "externalDownloadsRequired": false,
+      "animationSequence": ["..."], "entranceAnimation": "...", "exitAnimation": "...",
+      "revealOrder": ["..."], "holdStates": ["..."], "timingOffsets": ["..."]
+    }
+  ]
+}
+Include exactly ${scenesInput.length} scene objects, numbered 1 to ${scenesInput.length} in order. Only the last scene should have a non-empty "cta". Native SVG/CSS visuals only — imageAssets/videoAssets/brandAssets should be empty arrays unless the existing design system genuinely calls for a reusable asset.`;
+
+        const callClaude = async content => {
+          const resp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content }] }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error?.message || "Claude API error");
+          return data.content?.[0]?.text || "";
+        };
+        const parseSpecJson = raw => {
+          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+          if (start === -1 || end === -1) throw new Error("No JSON object found");
+          return JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        };
+
+        let draft;
+        try {
+          draft = parseSpecJson(await callClaude(draftPrompt));
+        } catch (firstErr) {
+          draft = parseSpecJson(await callClaude(`${draftPrompt}\n\nYour previous response failed to parse as JSON (${firstErr.message}). Return ONLY the corrected JSON object this time, no other text, no markdown fences.`));
+        }
+        const creative = draft.creative || {};
+        const llmScenes = draft.scenes || [];
+
+        // ── Deterministic technical fields — pipeline conventions, not left to the LLM ──
+        const FPS = 30;
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const assetSlug = slugify(assetName) || 'asset';
+        const compositionId = assetSlug;
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+        const PLATFORM_OPTIONS = ['Instagram', 'TikTok', 'Shorts', 'LinkedIn'];
+        const platformMatch = PLATFORM_OPTIONS.find(p => (platform || '').toLowerCase().includes(p.toLowerCase()));
+        const outputPlatforms = platformMatch ? [platformMatch] : (platform ? ['Other'] : []);
+
+        // Scene timing computed cumulatively from the LLM's per-scene
+        // durations — frame math is deterministic, not left to the model.
+        let cursor = 0;
+        const scenes = scenesInput.map((s, idx) => {
+          const l = llmScenes[idx] || {};
+          const durationSec = Math.max(0.5, Number(l.sceneDurationSec) || 5);
+          const startFrame = cursor;
+          const endFrame = cursor + Math.round(durationSec * FPS);
+          cursor = endFrame;
+          return {
+            number: s.number, name: l.sceneName || `Scene ${s.number}`,
+            narration: s.narration, onScreenText: s.onScreenText,
+            purpose: l.scenePurpose || '', weight: l.sceneWeight || 'Medium',
+            startFrame, endFrame, durationSec,
+            revealDurationSec: Number(l.revealDurationSec) || 0,
+            readDurationSec: Number(l.readDurationSec) || 0,
+            transitionDurationSec: Number(l.transitionDurationSec) || 0,
+            transitionType: l.transitionType || 'Fade',
+            informationDensity: l.informationDensity || 'Medium',
+            complexityBudget: l.complexityBudget || 'Medium',
+            animationBudget: Number(l.animationBudget) || 0,
+            objectBudget: Number(l.objectBudget) || 0,
+            labelBudget: Number(l.labelBudget) || 0,
+            layerBudget: Number(l.layerBudget) || 0,
+            cameraMovement: l.cameraMovement || 'Static',
+            cameraMagnitude: Number(l.cameraMagnitude) || 0,
+            readingPriority: l.readingPriority || 'Headline',
+            cta: l.cta || '', keywords: Array.isArray(l.keywords) ? l.keywords : [],
+            visualTreatment: l.visualTreatment || '', layoutDescription: l.layoutDescription || '',
+            diagramType: l.diagramType || '', diagramNodes: l.diagramNodes || null,
+            illustrationDescription: l.illustrationDescription || '',
+            svgComponents: Array.isArray(l.svgComponents) ? l.svgComponents : [],
+            imageAssets: Array.isArray(l.imageAssets) ? l.imageAssets : [],
+            videoAssets: Array.isArray(l.videoAssets) ? l.videoAssets : [],
+            iconAssets: Array.isArray(l.iconAssets) ? l.iconAssets : [],
+            brandAssets: Array.isArray(l.brandAssets) ? l.brandAssets : [],
+            externalDownloadsRequired: !!l.externalDownloadsRequired,
+            animationSequence: Array.isArray(l.animationSequence) ? l.animationSequence : [],
+            entranceAnimation: l.entranceAnimation || '', exitAnimation: l.exitAnimation || '',
+            revealOrder: Array.isArray(l.revealOrder) ? l.revealOrder : [],
+            holdStates: Array.isArray(l.holdStates) ? l.holdStates : [],
+            timingOffsets: Array.isArray(l.timingOffsets) ? l.timingOffsets : [],
+          };
+        });
+        const totalFrames = cursor;
+        const durationSeconds = +(totalFrames / FPS).toFixed(2);
+
+        const spec = {
+          assetId, assetName, version: '1.0 (draft)', campaign: campaignName,
+          assetType: 'Text Video', outputPlatforms,
+          width: 1080, height: 1920, aspectRatio: '9:16', fps: FPS,
+          durationSeconds, totalFrames, compositionId, rendererVersion: '4.0.500',
+          creativeObjective: creative.creativeObjective || '', targetAudience: creative.targetAudience || targetAudience || '',
+          viewerAwareness: creative.viewerAwareness || '', tone: creative.tone || 'Not specified',
+          emotionalArc: creative.emotionalArc || '', brandPersonality: creative.brandPersonality || '',
+          designLanguage: creative.designLanguage || '', visualStyle: creative.visualStyle || '', visualTheme: creative.visualTheme || '',
+          colorPalette: { background: resolvedSpec.bg, ink: resolvedSpec.ink, accent: resolvedSpec.accent },
+          typographySystem: { headlineFont: resolvedSpec.headlineFont, bodyFont: resolvedSpec.bodyFont },
+          iconStyle: creative.iconStyle || '', illustrationStyle: creative.illustrationStyle || '', diagramStyle: creative.diagramStyle || '',
+          textureStyle: creative.textureStyle || 'None', backgroundStyle: creative.backgroundStyle || 'Solid',
+          borderStyle: creative.borderStyle || '', shadowStyle: creative.shadowStyle || '', dividerStyle: creative.dividerStyle || '',
+          motionLanguage: creative.motionLanguage || '', transitionStyle: creative.transitionStyle || '', cameraStyle: creative.cameraStyle || 'Static',
+          defaultEasing: creative.defaultEasing || 'Cubic', defaultRevealStyle: creative.defaultRevealStyle || 'Fade', defaultExitStyle: creative.defaultExitStyle || 'Fade',
+          maxCameraMovement: Number(creative.maxCameraMovement) || 0, maxSimultaneousMotion: Number(creative.maxSimultaneousMotion) || 1,
+          motionDensity: creative.motionDensity || 'Medium',
+          voiceProvider: 'ElevenLabs', voiceId: 'JBFqnCBsd6RMkjVDRZzb', voiceStyle: creative.voiceStyle || '',
+          speakingRate: Number(creative.speakingRate) || 1.0,
+          captionStyle: 'Word-by-word highlight', captionPosition: 'Lower Third', maxCaptionLines: 2, maxWordsPerCaption: 4,
+          highlightStyle: 'Accent color word highlight', captionAnimation: 'Fade', captionExport: true,
+          safeAreaTop: 100, safeAreaBottom: 300, safeAreaLeft: 60, safeAreaRight: 60,
+          alignmentSystem: 'Center', spacingScale: { unit: 8 },
+          requiredComponents: Array.isArray(creative.requiredComponents) ? creative.requiredComponents : [],
+          requiredHooks: ['useCurrentFrame', 'useVideoConfig', 'interpolate', 'spring'],
+          requiredFonts: [resolvedSpec.headlineFont, resolvedSpec.bodyFont].filter(Boolean),
+          requiredAssets: ['ElevenLabs narration audio'],
+          renderCommand: `npx remotion render src/index.ts ${compositionId} out/${assetSlug}.mp4 --concurrency=2`,
+          outputFilename: `${assetSlug}.mp4`, thumbnailFrame: 0,
+          outputDirectory: `web/${deployPath}/mp4/`,
+        };
+
+        // ── Upsert into Notion — archive + recreate scene rows on every
+        // draft regeneration rather than diffing scene-by-scene, since the
+        // scene count itself can change between regenerations.
+        const assetIdDashed = dash(assetId);
+        const specQuery = await fetch(`https://api.notion.com/v1/databases/${TEXT_VIDEO_SPECS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { property: "Linked Asset", relation: { contains: assetIdDashed } } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const existingSpecPage = (specQuery.results || [])[0] || null;
+
+        const rt1 = v => ({ rich_text: [{ text: { content: String(v || '') } }] });
+        const specProps = {
+          "Asset Name": { title: [{ text: { content: spec.assetName } }] },
+          "Asset ID": rt1(spec.assetId),
+          "Linked Asset": { relation: [{ id: assetIdDashed }] },
+          "Version": rt1(spec.version), "Campaign": rt1(spec.campaign),
+          "Asset Type": { select: { name: spec.assetType } },
+          "Output Platforms": { multi_select: spec.outputPlatforms.map(p => ({ name: p })) },
+          "Width": { number: spec.width }, "Height": { number: spec.height },
+          "Aspect Ratio": rt1(spec.aspectRatio),
+          "FPS": { number: spec.fps }, "Duration Seconds": { number: spec.durationSeconds }, "Total Frames": { number: spec.totalFrames },
+          "Composition ID": rt1(spec.compositionId), "Renderer Version": rt1(spec.rendererVersion),
+          "Creative Objective": rt1(spec.creativeObjective), "Target Audience": rt1(spec.targetAudience),
+          ...(spec.viewerAwareness ? { "Viewer Awareness": { select: { name: spec.viewerAwareness } } } : {}),
+          "Tone": { select: { name: spec.tone } },
+          "Emotional Arc": rt1(spec.emotionalArc), "Brand Personality": rt1(spec.brandPersonality),
+          "Design Language": rt1(spec.designLanguage), "Visual Style": rt1(spec.visualStyle), "Visual Theme": rt1(spec.visualTheme),
+          "Color Palette": rt1(JSON.stringify(spec.colorPalette)), "Typography System": rt1(JSON.stringify(spec.typographySystem)),
+          "Icon Style": rt1(spec.iconStyle), "Illustration Style": rt1(spec.illustrationStyle), "Diagram Style": rt1(spec.diagramStyle),
+          "Texture Style": rt1(spec.textureStyle), "Background Style": rt1(spec.backgroundStyle),
+          "Border Style": rt1(spec.borderStyle), "Shadow Style": rt1(spec.shadowStyle), "Divider Style": rt1(spec.dividerStyle),
+          "Motion Language": rt1(spec.motionLanguage), "Transition Style": rt1(spec.transitionStyle), "Camera Style": rt1(spec.cameraStyle),
+          "Default Easing": rt1(spec.defaultEasing), "Default Reveal Style": rt1(spec.defaultRevealStyle), "Default Exit Style": rt1(spec.defaultExitStyle),
+          "Max Camera Movement": { number: spec.maxCameraMovement }, "Max Simultaneous Motion": { number: spec.maxSimultaneousMotion },
+          "Motion Density": { select: { name: spec.motionDensity } },
+          "Voice Provider": rt1(spec.voiceProvider), "Voice ID": rt1(spec.voiceId), "Voice Style": rt1(spec.voiceStyle),
+          "Speaking Rate": { number: spec.speakingRate },
+          "Caption Style": rt1(spec.captionStyle), "Caption Position": rt1(spec.captionPosition),
+          "Max Caption Lines": { number: spec.maxCaptionLines }, "Max Words Per Caption": { number: spec.maxWordsPerCaption },
+          "Highlight Style": rt1(spec.highlightStyle), "Caption Animation": rt1(spec.captionAnimation), "Caption Export": { checkbox: spec.captionExport },
+          "Safe Area Top": { number: spec.safeAreaTop }, "Safe Area Bottom": { number: spec.safeAreaBottom },
+          "Safe Area Left": { number: spec.safeAreaLeft }, "Safe Area Right": { number: spec.safeAreaRight },
+          "Alignment System": rt1(spec.alignmentSystem), "Spacing Scale": rt1(JSON.stringify(spec.spacingScale)),
+          "Required Components": rt1(JSON.stringify(spec.requiredComponents)), "Required Hooks": rt1(JSON.stringify(spec.requiredHooks)),
+          "Required Fonts": rt1(JSON.stringify(spec.requiredFonts)), "Required Assets": rt1(JSON.stringify(spec.requiredAssets)),
+          "Render Command": rt1(spec.renderCommand), "Output Filename": rt1(spec.outputFilename),
+          "Thumbnail Frame": { number: spec.thumbnailFrame }, "Output Directory": rt1(spec.outputDirectory),
+        };
+
+        let specPageId;
+        if (existingSpecPage) {
+          specPageId = existingSpecPage.id;
+          await fetch(`https://api.notion.com/v1/pages/${specPageId}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: specProps }),
+          });
+        } else {
+          const createResp = await fetch(`https://api.notion.com/v1/pages`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: TEXT_VIDEO_SPECS_DB }, properties: specProps }),
+          }).then(r => r.json());
+          specPageId = createResp.id;
+        }
+
+        if (specPageId) {
+          const sceneQuery = await fetch(`https://api.notion.com/v1/databases/${TEXT_VIDEO_SCENES_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Parent Spec", relation: { contains: specPageId } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          await Promise.all((sceneQuery.results || []).map(p =>
+            fetch(`https://api.notion.com/v1/pages/${p.id}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
+            })
+          ));
+
+          await Promise.all(scenes.map(sc => fetch(`https://api.notion.com/v1/pages`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parent: { database_id: TEXT_VIDEO_SCENES_DB },
+              properties: {
+                "Scene Name": { title: [{ text: { content: sc.name } }] },
+                "Scene Number": { number: sc.number },
+                "Parent Spec": { relation: [{ id: specPageId }] },
+                "Scene Purpose": rt1(sc.purpose), "Scene Weight": { select: { name: sc.weight } },
+                "Start Frame": { number: sc.startFrame }, "End Frame": { number: sc.endFrame },
+                "Scene Duration": { number: sc.durationSec }, "Reveal Duration": { number: sc.revealDurationSec },
+                "Read Duration": { number: sc.readDurationSec }, "Transition Duration": { number: sc.transitionDurationSec },
+                "Transition Type": { select: { name: sc.transitionType } },
+                "Information Density": { select: { name: sc.informationDensity } },
+                "Complexity Budget": { select: { name: sc.complexityBudget } },
+                "Animation Budget": { number: sc.animationBudget }, "Object Budget": { number: sc.objectBudget },
+                "Label Budget": { number: sc.labelBudget }, "Layer Budget": { number: sc.layerBudget },
+                "Camera Movement": rt1(sc.cameraMovement), "Camera Magnitude": { number: sc.cameraMagnitude },
+                "Reading Priority": { select: { name: sc.readingPriority } },
+                "Narration": { rich_text: chunkedRichText(sc.narration) },
+                "Headline": { rich_text: chunkedRichText(sc.onScreenText) },
+                "Caption Text": rt1('Not tracked per scene — word captions render from the continuous narration audio alignment at render time.'),
+                "CTA": rt1(sc.cta), "Keywords": rt1(JSON.stringify(sc.keywords)),
+                "Visual Treatment": rt1(sc.visualTreatment), "Layout Description": rt1(sc.layoutDescription),
+                "Diagram Type": rt1(sc.diagramType), "Diagram Nodes": rt1(sc.diagramNodes ? JSON.stringify(sc.diagramNodes) : ''),
+                "Illustration Description": rt1(sc.illustrationDescription), "SVG Components": rt1(JSON.stringify(sc.svgComponents)),
+                "Image Assets": rt1(JSON.stringify(sc.imageAssets)), "Video Assets": rt1(JSON.stringify(sc.videoAssets)),
+                "Icon Assets": rt1(JSON.stringify(sc.iconAssets)), "Brand Assets": rt1(JSON.stringify(sc.brandAssets)),
+                "External Downloads Required": { checkbox: sc.externalDownloadsRequired },
+                "Animation Sequence": rt1(JSON.stringify(sc.animationSequence)),
+                "Entrance Animation": rt1(sc.entranceAnimation), "Exit Animation": rt1(sc.exitAnimation),
+                "Reveal Order": rt1(JSON.stringify(sc.revealOrder)), "Hold States": rt1(JSON.stringify(sc.holdStates)),
+                "Timing Offsets": rt1(JSON.stringify(sc.timingOffsets)), "Scene Approved": { checkbox: false },
+              },
+            })
+          )));
+        }
+
+        return { specPageId, spec, scenes };
+      }
+
       // ── generateVisualBriefPrompt / generateVisualManifestPrompt ──
       // Populate a fixed ChatGPT template from gatherAssetProductionContext.
       // Brief = the one-shot Visual Director handoff; Manifest = the
@@ -13246,6 +13561,66 @@ Begin by reviewing the Production Specification and creating the Visual Strategy
           return json({ success: true, assetId, titleId, campaignId, assetType, prompt: manifestPrompt, validation, kind: 'manifest' });
         }
 
+        // Text Video only: draft the structured Video Assembly
+        // Specification (🎬 Text Video Specs / 🎞️ Text Video Scenes) and
+        // fold it into the Brief so ChatGPT reviews/refines concrete field
+        // values instead of starting from a blank spec. Best-effort — a
+        // failure here (no API key, bad JSON, etc.) degrades to a note in
+        // the Brief, never blocks the rest of the document. Carousel has no
+        // structured Specs DB yet, so this is skipped entirely for it.
+        let specDraft = null, specDraftError = null;
+        if (assetType === 'text video') {
+          try { specDraft = await buildTextVideoSpecDraft(ctx, env); }
+          catch (e) { specDraftError = e.message; }
+        }
+        const designSpecDraftBlock = (() => {
+          if (assetType !== 'text video') return null;
+          if (!specDraft) {
+            return specDraftError
+              ? `Draft generation failed (${specDraftError}) — proceeding without a pre-filled structured spec. Propose these values yourself.`
+              : `Not available — ${slideOrSceneSections.length ? 'no ANTHROPIC_API_KEY configured on the Worker' : 'this asset has no Scene N blocks to ground a draft in; regenerate it via the current Generate Assets flow first'}.`;
+          }
+          const { spec, scenes, specPageId } = specDraft;
+          const assetLevel = [
+            `Composition ID: ${spec.compositionId}`,
+            `Dimensions: ${spec.width}x${spec.height} @ ${spec.fps}fps, ${spec.aspectRatio}`,
+            `Duration: ${spec.durationSeconds}s (${spec.totalFrames} frames)`,
+            `Renderer: Remotion ${spec.rendererVersion}`,
+            `Creative Objective: ${spec.creativeObjective}`,
+            `Tone: ${spec.tone} | Viewer Awareness: ${spec.viewerAwareness || 'Not specified'} | Emotional Arc: ${spec.emotionalArc}`,
+            `Brand Personality: ${spec.brandPersonality}`,
+            `Design Language: ${spec.designLanguage} | Visual Style: ${spec.visualStyle} | Visual Theme: ${spec.visualTheme}`,
+            `Color Palette: ${JSON.stringify(spec.colorPalette)}`,
+            `Typography: ${JSON.stringify(spec.typographySystem)}`,
+            `Icon / Illustration / Diagram Style: ${spec.iconStyle} / ${spec.illustrationStyle} / ${spec.diagramStyle}`,
+            `Texture / Background / Border / Shadow / Divider: ${spec.textureStyle} / ${spec.backgroundStyle} / ${spec.borderStyle || 'none'} / ${spec.shadowStyle || 'none'} / ${spec.dividerStyle || 'none'}`,
+            `Motion Language: ${spec.motionLanguage} | Transitions: ${spec.transitionStyle} | Camera: ${spec.cameraStyle}`,
+            `Easing / Reveal / Exit: ${spec.defaultEasing} / ${spec.defaultRevealStyle} / ${spec.defaultExitStyle}`,
+            `Motion Density: ${spec.motionDensity} (max camera movement ${spec.maxCameraMovement}%, max simultaneous motion ${spec.maxSimultaneousMotion})`,
+            `Voice: ${spec.voiceProvider} / ${spec.voiceId} — ${spec.voiceStyle}, rate ${spec.speakingRate}x`,
+            `Captions: ${spec.captionStyle}, ${spec.captionPosition}, max ${spec.maxCaptionLines} lines / ${spec.maxWordsPerCaption} words, ${spec.captionAnimation}`,
+            `Safe Areas: top ${spec.safeAreaTop}px, bottom ${spec.safeAreaBottom}px, left ${spec.safeAreaLeft}px, right ${spec.safeAreaRight}px`,
+            `Required Components: ${spec.requiredComponents.join(', ') || 'Not specified'}`,
+            `Output: ${spec.outputFilename} -> ${spec.outputDirectory}`,
+          ].join('\n');
+          const sceneLevel = scenes.map(sc => [
+            `Scene ${sc.number} — "${sc.name}" (${sc.weight} weight, frames ${sc.startFrame}-${sc.endFrame}, ${sc.durationSec}s)`,
+            `  Purpose: ${sc.purpose}`,
+            `  Narration: ${sc.narration}`,
+            `  On-Screen Text: ${sc.onScreenText}`,
+            `  Visual Treatment: ${sc.visualTreatment}`,
+            `  Layout: ${sc.layoutDescription}`,
+            `  Camera: ${sc.cameraMovement} (magnitude ${sc.cameraMagnitude}%)`,
+            `  Transition Out: ${sc.transitionType} (${sc.transitionDurationSec}s)`,
+            `  Information / Complexity: ${sc.informationDensity} / ${sc.complexityBudget}`,
+            `  Reading Priority: ${sc.readingPriority}`,
+            `  SVG Components: ${sc.svgComponents.join(', ') || 'None specified'}`,
+            `  Entrance / Exit Animation: ${sc.entranceAnimation} / ${sc.exitAnimation}`,
+            sc.cta ? `  CTA: ${sc.cta}` : '',
+          ].filter(Boolean).join('\n')).join('\n\n');
+          return `This is a first-pass draft, generated automatically and already written into the 🎬 Text Video Specs / 🎞️ Text Video Scenes Notion databases (https://www.notion.so/${specPageId}) for you to review. Propose changes to ANY field below as part of your Visual Production Brief response — there's no automatic sync back into these databases yet, so the operator applies your revisions to the Notion rows by hand afterward.\n\n## Asset-Level Spec\n\n${assetLevel}\n\n## Per-Scene Spec\n\n${sceneLevel}`;
+        })();
+
         // "Visual Production Source Document" — the complete
         // Content-Department-to-Visual-Department handoff. Unlike the
         // Manifest (which asks ChatGPT to design and maintain the visual
@@ -13438,7 +13813,13 @@ ${np(briefAssetSpec)}
 ${np(completeProductionSpec)}
 
 ---
+${assetType === 'text video' ? `
+# Design Specification (Draft)
 
+${designSpecDraftBlock}
+
+---
+` : ''}
 # Design Globals
 
 This system has a single global tier — the campaign/product Design Spec — not the separate Brand/Campaign/Series/Typography/Layout/Illustration/Animation/Character globals a larger pipeline might have. Resolved instructions:
@@ -13499,7 +13880,9 @@ Your responsibilities are to:
 • continuously update the Visual Production Brief
 
 • return a completed Visual Production Brief marked Ready For Assembly
-
+${assetType === 'text video' ? `
+• review and give input on every field in the Design Specification (Draft) above — it's a first-pass, not a final answer; change anything (timing, visual treatment, motion, design system, per-scene fields) that should be different
+` : ''}
 Do not rewrite the written content.
 
 Begin and end every version of the Visual Production Brief — the very first one and every revision after it, no matter how many rounds this conversation runs — with this line, unchanged:
