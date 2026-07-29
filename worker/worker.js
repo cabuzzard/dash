@@ -12803,12 +12803,13 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         const ctx = await gatherAssetProductionContext(body);
         if (!ctx.ok) return json({ error: ctx.error, validation: ctx.validation }, ctx.status);
         const {
-          assetId, titleId, campaignId, assetType, assetName, titleName, campaignName,
+          assetId, titleId, campaignId, assetType, assetName, titleName, campaignName, assetStatus,
           finalWrittenAsset, completeAssetSpec, completeProductionSpec, contentFoundation,
           targetAudience, funnelStage, primaryGoal, ctaGoal, desiredViewerAction, platform,
           aspectRatio, targetResolution, targetDuration,
-          relevantResearchContext, campaignInformation,
-          resolvedGlobalInstructions, sourceGlobalRefs, existingVisualAssets, validation, np, sectionText,
+          relevantResearchContext, researchSummaryText, painPoints, campaignInformation,
+          resolvedSpec, resolvedGlobalInstructions, sourceGlobalRefs, existingVisualAssets, existingAssetsList,
+          validation, np, sectionText, findSection, slideFields, slideOrSceneSections, extractField,
         } = ctx;
 
         if (body.action === "generateVisualManifestPrompt") {
