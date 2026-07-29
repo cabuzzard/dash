@@ -12920,8 +12920,12 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // ── Resolved globals — this system's only "global" tier today is
         // the campaign/product Design Spec (no separate brand/asset-type/
         // series/character-global records exist), so inheritance collapses
-        // to: DESIGN_SPEC_DEFAULTS -> campaign spec.
-        const specRelId = campPage.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+        // to: DESIGN_SPEC_DEFAULTS -> campaign spec, unless the operator
+        // explicitly picked a different spec for this one Visual Brief via
+        // the modal's "Global Design Spec" dropdown (same override pattern
+        // as generateCarouselPreview/generateTextVideoScript's designSpecId).
+        const explicitSpecId = body.designSpecId ? dash(body.designSpecId) : null;
+        const specRelId = explicitSpecId || campPage.properties?.["Design Spec"]?.relation?.[0]?.id || null;
         let resolvedSpec = { ...DESIGN_SPEC_DEFAULTS };
         let sourceGlobalRefs = ['DESIGN_SPEC_DEFAULTS (system fallback — no campaign Design Spec attached)'];
         if (specRelId) {
@@ -12929,7 +12933,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (specPage?.properties) {
             const s = dsFromPage(specPage);
             resolvedSpec = { ...resolvedSpec, ...Object.fromEntries(Object.entries(s).filter(([k, v]) => k !== "id" && k !== "name" && v)) };
-            sourceGlobalRefs = [`Design Spec: "${s.name}" (id ${s.id}) — attached to campaign "${campaignName}"`];
+            sourceGlobalRefs = [`Design Spec: "${s.name}" (id ${s.id}) — ${explicitSpecId ? 'operator-selected for this Visual Brief' : `attached to campaign "${campaignName}"`}`];
           }
         }
         const resolvedGlobalInstructions = [

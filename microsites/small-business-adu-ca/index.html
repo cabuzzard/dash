@@ -807,6 +807,13 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
       <div class="modal-hint" id="vbAssetLabel"></div>
 
+      <div style="margin-top:12px;">
+        <label class="lm-label">Global Design Spec <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— which reusable branding record populates Design Globals below</span></label>
+        <select id="vb-design-spec" class="modal-ta" style="margin-top:4px;width:100%;">
+          <option value="">Campaign default</option>
+        </select>
+      </div>
+
       <div id="vb-strategy-wrap" style="display:none;margin-top:12px;">
         <label class="lm-label">Growth Strategy Context <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; the strategic/growth purpose ChatGPT should design toward, not a new instruction</span></label>
         <select id="vb-strategy" class="modal-ta" style="margin-top:4px;width:100%;">
@@ -5020,6 +5027,7 @@ function openVisualBriefModal(btn) {
   document.getElementById('vbAssetLabel').textContent = `Asset type: ${VB_ASSET_TYPE}`;
   document.getElementById('vbGuidelines').value = '';
   document.getElementById('vbStatus').textContent = '';
+  vbLoadSpecs();
 
   const lockWrap = document.getElementById('vbLockWrap');
   const fields = VB_LOCK_FIELDS[VB_ASSET_TYPE] || [];
@@ -5053,6 +5061,26 @@ function openVisualBriefModal(btn) {
 function closeVisualBriefModal() {
   document.getElementById('visualBriefModal').classList.remove('open');
 }
+// Same picker pattern as gaLoadSpecs() in the Generate Assets modal —
+// "Campaign default" (empty value, always first/selected) leaves
+// generateVisualBriefPrompt on its existing campaign-attached-spec
+// behavior; picking a specific spec overrides Design Globals for this one
+// Visual Brief only (worker.js's explicitSpecId branch), without touching
+// what's actually attached to the campaign.
+async function vbLoadSpecs() {
+  const sel = document.getElementById('vb-design-spec');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Campaign default</option>';
+  try {
+    const d = await w('getCampaignDesignSpecs', { campaignId: CAMPAIGN_ID });
+    (d.specs || []).forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.id;
+      o.textContent = s.name + (d.attachedId === s.id ? ' (campaign default)' : '');
+      sel.appendChild(o);
+    });
+  } catch(e) { /* picker stays on Campaign default */ }
+}
 // Assembles a ChatGPT "Visual Brief Handoff" prompt server-side (final
 // slide/scene text + Asset Spec + Production Spec + research/campaign
 // context + resolved Design Spec + this modal's Growth Strategy/locked-
@@ -5066,12 +5094,13 @@ async function submitVisualBrief() {
   const lockedFields = Array.from(document.querySelectorAll('.vb-lock-cb:checked')).map(cb => cb.value);
   const growthStrategyId = document.getElementById('vb-strategy')?.value || undefined;
   const operatorGuidelines = document.getElementById('vbGuidelines').value.trim() || undefined;
+  const designSpecId = document.getElementById('vb-design-spec')?.value || undefined;
   btn.disabled = true;
   statusEl.textContent = 'Generating…';
   try {
     const r = await w('generateVisualBriefPrompt', {
       assetId: VB_ASSET_ID, titleId: VB_TITLE_ID, campaignId: CAMPAIGN_ID,
-      lockedFields, growthStrategyId, operatorGuidelines,
+      lockedFields, growthStrategyId, operatorGuidelines, designSpecId,
     });
     try {
       await navigator.clipboard.writeText(r.prompt);

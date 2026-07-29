@@ -167,7 +167,9 @@ This exists because the first custom-built Text Video shipped with animations th
 - **`lockedFields`** — an array of field keys (`VB_LOCK_FIELDS` in hard-grind's JS: `tone`/`brandImpression`/`visualNarrative`/`designIntent`/`iconStyle` for carousel; `tone`/`designLanguage`/`colorPalette`/`typography`/`iconStyle`/`texture`/`motion`/`voiceStyle` for text video). Each checked field gets a `[LOCKED BY OPERATOR — use this exact value, do not modify]` suffix appended to its line in the Mutable section of Design Specification (Draft), and the Editing Authority block gains a paragraph telling ChatGPT those specific fields are elevated from Mutable to Immutable for this one asset only.
 - **`operatorGuidelines`** — free text, spliced in as a new **`# Operator Guidelines`** section right after Editing Authority (before Asset Metadata), explicitly tagged Immutable — same authority as Known Constraints.
 
-All three are optional and additive — an empty modal submission reproduces the exact document generated before this modal existed.
+A fourth, **`designSpecId`**, lets the operator override which Design Spec record (the reusable bg/ink/accent/fonts branding record, `DESIGN_SPECS_DB`) populates the `# Design Globals` section for this one Visual Brief — a "Global Design Spec" dropdown (`vb-design-spec`, populated via `getCampaignDesignSpecs`, same picker pattern as the Generate Assets modal's `gaSpecInput`) defaulting to "Campaign default" (empty value, always first/selected — leaves `gatherAssetProductionContext`'s existing campaign-attached-spec resolution untouched). Picking a specific spec resolves it directly instead, without changing what's actually attached to the campaign.
+
+All four are optional and additive — an empty modal submission reproduces the exact document generated before this modal existed.
 
 ## Admin Microsite System
 
