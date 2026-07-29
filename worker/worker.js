@@ -13181,7 +13181,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return { number: idx + 1, narration, onScreenText };
         });
 
-        const draftPrompt = `You are the technical/creative producer drafting a first-pass Video Assembly Specification for a short-form vertical text video. This is a DRAFT for a human Visual Director to review and refine — make real decisions, don't hedge or leave fields vague.
+        const draftPrompt = `You are the Visual Director drafting the Video Assembly Specification for a short-form vertical text video. This is not a brainstorm and not a partial draft — it is the production specification a Creative Director will review and edit, and assembly must be possible from it without any further creative decisions.
+
+RESOLVE EVERY FIELD. Never write "Not specified," "Unknown," "TBD," "Choose later," or leave a field vague/generic — infer the best concrete answer from the context below (research, target audience, platform, existing design system). If two inputs genuinely conflict, resolve using this priority order (highest wins): Existing Design System > Research > Target Audience/Platform — and note the conflict in "knownRisks" rather than leaving the field blank.
 
 The narration and on-screen text below are FINAL and already written — do not alter, rewrite, or summarize them. Your job is only to plan the PRODUCTION around them: timing, visual treatment, motion, and the overall design language.
 
@@ -13216,6 +13218,39 @@ Return ONLY this JSON object, no other text, no markdown fences:
     "voiceStyle": "...", "speakingRate": 1.0,
     "requiredComponents": ["...", "..."]
   },
+  "resolution": {
+    "colorTokens": {
+      "surface": "hex", "secondaryText": "hex", "highlight": "hex", "divider": "hex", "border": "hex", "stroke": "hex",
+      "overlayRules": "...", "contrastRatio": "e.g. 7.2:1", "colorUsagePercent": "e.g. 70% background / 20% ink / 10% accent",
+      "negativeSpacePercent": "e.g. 40%", "noise": "...", "paperGrain": "...", "gradientRules": "...", "shadowRules": "...", "blurRules": "...", "lightingStyle": "..."
+    },
+    "typographyDetail": {
+      "headlineWeight": "...", "headlineSize": "e.g. 64px", "headlineLeading": "e.g. 1.1", "headlineTracking": "e.g. -0.02em",
+      "bodyWeight": "...", "bodySize": "e.g. 32px", "bodyLeading": "e.g. 1.4", "captionFont": "...", "labelFont": "...",
+      "alignmentRules": "...", "characterLimits": "...", "wrappingRules": "...", "widowOrphanRules": "...", "hierarchyRules": "..."
+    },
+    "gridDetail": {
+      "columns": 0, "rows": 0, "gutters": "e.g. 24px", "baselineGrid": "e.g. 8px", "paddingScale": "e.g. 8/16/24/32/48",
+      "spacingScale": "e.g. 8/16/24/32/48", "alignmentRules": "...", "snapRules": "..."
+    },
+    "iconographyDetail": {
+      "library": "...", "strokeWidth": "e.g. 2px", "cornerRadius": "e.g. 4px", "perspective": "...", "filledOrOutline": "Filled or Outline",
+      "maxDetail": "...", "minDetail": "...", "simplificationRules": "...", "consistencyRules": "...", "forbiddenStyles": "..."
+    },
+    "diagramLanguageDetail": {
+      "nodeStyle": "...", "connectorStyle": "...", "arrowStyle": "...", "spacing": "...", "hierarchyRules": "...", "alignmentRules": "...", "labelRules": "..."
+    },
+    "illustrationLanguageDetail": {
+      "photographyPolicy": "e.g. none allowed", "characterPolicy": "...", "perspective": "...", "lighting": "...", "shadows": "...",
+      "gradients": "...", "noise": "...", "depth": "...", "abstractionLevel": "...", "forbiddenStyles": "..."
+    },
+    "componentDefaults": { "padding": "e.g. 24px", "cornerRadius": "e.g. 8px", "stroke": "e.g. 1.5px solid Ink", "fill": "..." },
+    "globalProductionRules": {
+      "accessibility": "...", "contrastQA": "...", "typographyQA": "...", "spacingQA": "...", "gridQA": "...",
+      "diagramQA": "...", "visualQA": "...", "exportQA": "...", "platformQA": "..."
+    },
+    "knownRisks": ["...only true unresolved conflicts, else empty array..."]
+  },
   "scenes": [
     {
       "sceneNumber": 1, "sceneName": "...", "scenePurpose": "...", "sceneWeight": "Critical, High, Medium, or Low",
@@ -13238,7 +13273,7 @@ Include exactly ${scenesInput.length} scene objects, numbered 1 to ${scenesInput
           const resp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content }] }),
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 14000, messages: [{ role: "user", content }] }),
           });
           const data = await resp.json();
           if (!resp.ok) throw new Error(data.error?.message || "Claude API error");
@@ -13257,6 +13292,7 @@ Include exactly ${scenesInput.length} scene objects, numbered 1 to ${scenesInput
           draft = parseSpecJson(await callClaude(`${draftPrompt}\n\nYour previous response failed to parse as JSON (${firstErr.message}). Return ONLY the corrected JSON object this time, no other text, no markdown fences.`));
         }
         const creative = draft.creative || {};
+        const resolution = draft.resolution || {};
         const llmScenes = draft.scenes || [];
 
         // ── Deterministic technical fields — pipeline conventions, not left to the LLM ──
@@ -13322,7 +13358,7 @@ Include exactly ${scenesInput.length} scene objects, numbered 1 to ${scenesInput
           width: 1080, height: 1920, aspectRatio: '9:16', fps: FPS,
           durationSeconds, totalFrames, compositionId, rendererVersion: '4.0.500',
           creativeObjective: creative.creativeObjective || '', targetAudience: creative.targetAudience || targetAudience || '',
-          viewerAwareness: creative.viewerAwareness || '', tone: creative.tone || 'Not specified',
+          viewerAwareness: creative.viewerAwareness || '', tone: creative.tone || '',
           emotionalArc: creative.emotionalArc || '', brandPersonality: creative.brandPersonality || '',
           designLanguage: creative.designLanguage || '', visualStyle: creative.visualStyle || '', visualTheme: creative.visualTheme || '',
           colorPalette: { background: resolvedSpec.bg, ink: resolvedSpec.ink, accent: resolvedSpec.accent },
@@ -13347,6 +13383,7 @@ Include exactly ${scenesInput.length} scene objects, numbered 1 to ${scenesInput
           renderCommand: `npx remotion render src/index.ts ${compositionId} out/${assetSlug}.mp4 --concurrency=2`,
           outputFilename: `${assetSlug}.mp4`, thumbnailFrame: 0,
           outputDirectory: `web/${deployPath}/mp4/`,
+          resolution,
         };
 
         // ── Upsert into Notion — archive + recreate scene rows on every
@@ -13691,7 +13728,9 @@ Include exactly ${scenesInput.length} scene objects, numbered 1 to ${scenesInput
           return { number: idx + 1, headline, body };
         });
 
-        const draftPrompt = `You are the technical/creative producer drafting a first-pass carousel design specification for a ${slidesInput.length}-slide Instagram/LinkedIn carousel. This is a DRAFT for a human Visual Director to review and refine — make real decisions, don't hedge or leave fields vague.
+        const draftPrompt = `You are the Visual Director drafting the carousel design specification for a ${slidesInput.length}-slide Instagram/LinkedIn carousel. This is not a brainstorm and not a partial draft — it is the production specification a Creative Director will review and edit, and assembly must be possible from it without any further creative decisions.
+
+RESOLVE EVERY FIELD. Never write "Not specified," "Unknown," "TBD," "Choose later," or leave a field vague/generic — infer the best concrete answer from the context below (research, target audience, platform, existing design system). If two inputs genuinely conflict, resolve using this priority order (highest wins): Existing Design System > Research > Target Audience/Platform — and note the conflict in "knownRisks" rather than leaving the field blank.
 
 The headline and supporting text below for each slide are FINAL and already written — do not alter, rewrite, or summarize them. Your job is only to plan the DESIGN/PRODUCTION around them.
 
@@ -13719,7 +13758,38 @@ Return ONLY this JSON object, no other text, no markdown fences:
     "intendedViewerOutcome": "...", "tone": ["..."], "emotionalArc": "...", "brandImpression": ["..."],
     "visualNarrative": "...", "recurringMotifs": "...", "contentDensityTarget": "Low, Medium, or High", "whiteSpaceTarget": "Low, Medium, or High",
     "designIntent": "...", "overallAesthetic": "...",
-    "iconStyle": "...", "illustrationStyle": "...", "diagramStyle": "..."
+    "iconStyle": "...", "illustrationStyle": "...", "diagramStyle": "...",
+    "colorTokens": {
+      "surface": "hex", "secondaryText": "hex", "highlight": "hex", "divider": "hex", "border": "hex", "stroke": "hex",
+      "overlayRules": "...", "contrastRatio": "e.g. 7.2:1", "colorUsagePercent": "e.g. 70% background / 20% ink / 10% accent",
+      "negativeSpacePercent": "e.g. 40%", "noise": "...", "paperGrain": "...", "gradientRules": "...", "shadowRules": "...", "blurRules": "...", "lightingStyle": "..."
+    },
+    "typographyDetail": {
+      "headlineWeight": "...", "headlineSize": "e.g. 64px", "headlineLeading": "e.g. 1.1", "headlineTracking": "e.g. -0.02em",
+      "bodyWeight": "...", "bodySize": "e.g. 32px", "bodyLeading": "e.g. 1.4", "captionFont": "...", "labelFont": "...",
+      "alignmentRules": "...", "characterLimits": "...", "wrappingRules": "...", "widowOrphanRules": "...", "hierarchyRules": "..."
+    },
+    "gridDetail": {
+      "columns": 0, "rows": 0, "gutters": "e.g. 24px", "baselineGrid": "e.g. 8px", "paddingScale": "e.g. 8/16/24/32/48",
+      "spacingScale": "e.g. 8/16/24/32/48", "alignmentRules": "...", "snapRules": "..."
+    },
+    "iconographyDetail": {
+      "library": "...", "strokeWidth": "e.g. 2px", "cornerRadius": "e.g. 4px", "perspective": "...", "filledOrOutline": "Filled or Outline",
+      "maxDetail": "...", "minDetail": "...", "simplificationRules": "...", "consistencyRules": "...", "forbiddenStyles": "..."
+    },
+    "diagramLanguageDetail": {
+      "nodeStyle": "...", "connectorStyle": "...", "arrowStyle": "...", "spacing": "...", "hierarchyRules": "...", "alignmentRules": "...", "labelRules": "..."
+    },
+    "illustrationLanguageDetail": {
+      "photographyPolicy": "e.g. none allowed", "characterPolicy": "...", "perspective": "...", "lighting": "...", "shadows": "...",
+      "gradients": "...", "noise": "...", "depth": "...", "abstractionLevel": "...", "forbiddenStyles": "..."
+    },
+    "componentDefaults": { "padding": "e.g. 24px", "cornerRadius": "e.g. 8px", "stroke": "e.g. 1.5px solid Ink", "fill": "..." },
+    "globalProductionRules": {
+      "accessibility": "...", "contrastQA": "...", "typographyQA": "...", "spacingQA": "...", "gridQA": "...",
+      "diagramQA": "...", "visualQA": "...", "exportQA": "...", "platformQA": "..."
+    },
+    "knownRisks": ["...only true unresolved conflicts, else empty array..."]
   },
   "slides": [
     {
@@ -13741,7 +13811,7 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           const resp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content }] }),
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 14000, messages: [{ role: "user", content }] }),
           });
           const data = await resp.json();
           if (!resp.ok) throw new Error(data.error?.message || "Claude API error");
@@ -14323,6 +14393,21 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
         const rv = (label, value) => `- ${label}: ${(value === 0 ? '0' : value) || NT}`;
         const emotionalArc = (draftCreative || draftDS)?.emotionalArc;
         const brandPersonality = draftCreative?.brandPersonality || (draftDS?.brandImpression || []).join(', ') || '';
+        // buildTextVideoSpecDraft/buildCarouselSpecDraft's Claude call now
+        // resolves this whole extended taxonomy (never "not specified") —
+        // text video nests it under spec.resolution.<category>, carousel's
+        // ds IS draft.designSystem so the categories sit directly on it.
+        // This normalizes both shapes to the same lookup.
+        const resolutionOf = category => (draftCreative?.resolution?.[category]) || (draftDS?.[category]) || {};
+        const colorTokens = resolutionOf('colorTokens');
+        const typographyDetail = resolutionOf('typographyDetail');
+        const gridDetail = resolutionOf('gridDetail');
+        const iconographyDetail = resolutionOf('iconographyDetail');
+        const diagramLanguageDetail = resolutionOf('diagramLanguageDetail');
+        const illustrationLanguageDetail = resolutionOf('illustrationLanguageDetail');
+        const componentDefaults = resolutionOf('componentDefaults');
+        const globalProductionRules = resolutionOf('globalProductionRules');
+        const knownRisks = (draftCreative?.resolution?.knownRisks) || (draftDS?.knownRisks) || [];
 
         const rvIdentity = [
           rv('Asset ID', assetId), rv('Notion URL', `https://www.notion.so/${assetId}`),
@@ -14340,57 +14425,59 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
 
         const rvDesignSystem = [
           rv('Theme Name', null), rv('Overall Style', draftCreative?.visualStyle || draftDS?.overallAesthetic),
-          rv('Background', resolvedSpec.bg), rv('Surface Colors', null), rv('Primary Text', resolvedSpec.ink),
-          rv('Secondary Text', null), rv('Accent', resolvedSpec.accent), rv('Highlight', null),
-          rv('Stroke Color', null), rv('Border Color', draftCreative?.borderStyle), rv('Overlay Rules', null),
-          rv('Contrast Ratio', assetType === 'carousel' ? '4.5 (Minimum Contrast Ratio, Carousel Specification)' : null),
-          rv('Color Usage %', null), rv('Texture', draftCreative?.textureStyle), rv('Noise', null), rv('Paper Grain', null),
-          rv('Shadow Policy', draftCreative?.shadowStyle), rv('Gradient Policy', null), rv('Blur Policy', null), rv('Opacity Rules', null),
+          rv('Background', resolvedSpec.bg), rv('Surface Colors', colorTokens.surface), rv('Primary Text', resolvedSpec.ink),
+          rv('Secondary Text', colorTokens.secondaryText), rv('Accent', resolvedSpec.accent), rv('Highlight', colorTokens.highlight),
+          rv('Stroke Color', colorTokens.stroke), rv('Border Color', draftCreative?.borderStyle || colorTokens.border), rv('Overlay Rules', colorTokens.overlayRules),
+          rv('Contrast Ratio', colorTokens.contrastRatio || (assetType === 'carousel' ? '4.5 minimum (Minimum Contrast Ratio, Carousel Specification)' : null)),
+          rv('Color Usage %', colorTokens.colorUsagePercent), rv('Texture', draftCreative?.textureStyle), rv('Noise', colorTokens.noise), rv('Paper Grain', colorTokens.paperGrain),
+          rv('Shadow Policy', draftCreative?.shadowStyle || colorTokens.shadowRules), rv('Gradient Policy', colorTokens.gradientRules), rv('Blur Policy', colorTokens.blurRules), rv('Opacity Rules', colorTokens.overlayRules),
         ].join('\n');
 
         const rvTypography = [
-          rv('Headline Font', resolvedSpec.headlineFont), rv('Headline Weight', null), rv('Headline Size', null),
-          rv('Headline Line Height', null), rv('Headline Letterspacing', null), rv('Body Font', resolvedSpec.bodyFont),
-          rv('Body Size', assetType === 'carousel' ? 'minimum 24px (Minimum Font Size, Carousel Specification)' : null),
-          rv('Body Weight', null), rv('Body Leading', null), rv('Caption Font', null), rv('Label Font', null),
+          rv('Headline Font', resolvedSpec.headlineFont), rv('Headline Weight', typographyDetail.headlineWeight), rv('Headline Size', typographyDetail.headlineSize),
+          rv('Headline Line Height', typographyDetail.headlineLeading), rv('Headline Letterspacing', typographyDetail.headlineTracking), rv('Body Font', resolvedSpec.bodyFont),
+          rv('Body Size', typographyDetail.bodySize || (assetType === 'carousel' ? 'minimum 24px (Minimum Font Size, Carousel Specification)' : null)),
+          rv('Body Weight', typographyDetail.bodyWeight), rv('Body Leading', typographyDetail.bodyLeading), rv('Caption Font', typographyDetail.captionFont), rv('Label Font', typographyDetail.labelFont),
           rv('Slide Number Font', null),
-          rv('Alignment Rules', assetType === 'carousel' ? 'Center (Default Text Alignment, Carousel Specification)' : null),
-          rv('Max Characters', assetType === 'carousel' ? 'max 4 headline lines / 6 body lines (Carousel Specification)' : null),
-          rv('Widow Rules', null), rv('Orphan Rules', null), rv('Wrapping Rules', null),
+          rv('Alignment Rules', typographyDetail.alignmentRules || (assetType === 'carousel' ? 'Center (Default Text Alignment, Carousel Specification)' : null)),
+          rv('Max Characters', typographyDetail.characterLimits || (assetType === 'carousel' ? 'max 4 headline lines / 6 body lines (Carousel Specification)' : null)),
+          rv('Widow Rules', typographyDetail.widowOrphanRules), rv('Orphan Rules', typographyDetail.widowOrphanRules), rv('Wrapping Rules', typographyDetail.wrappingRules),
         ].join('\n');
 
         const rvGrid = [
           rv('Canvas', targetResolution), rv('Margins', null),
           rv('Safe Area', assetType === 'text video' ? '100px top, 300px bottom, 60px left/right' : '100px top/bottom, 80px left/right'),
-          rv('Columns', null), rv('Gutters', null), rv('Baseline Grid', null),
-          rv('Padding Rules', null), rv('Alignment Rules', null), rv('Snap Rules', null), rv('Component Spacing', null),
+          rv('Columns', gridDetail.columns), rv('Gutters', gridDetail.gutters), rv('Baseline Grid', gridDetail.baselineGrid),
+          rv('Padding Rules', gridDetail.paddingScale), rv('Alignment Rules', gridDetail.alignmentRules), rv('Snap Rules', gridDetail.snapRules), rv('Component Spacing', gridDetail.spacingScale),
           rv('Vertical Rhythm', null), rv('Whitespace Target %', draftDS?.whiteSpaceTarget),
         ].join('\n');
 
-        const rvComponentLibrary = `None of the following are tracked by this system yet — for each one, propose and resolve Size, Placement, Padding, Corner Radius, Stroke, Fill, Spacing, and Variants: Headline, Body, Divider, Footer, Slide Number, Icon, Diagram, Pull Quote, Metric Box, Checklist, Timeline, Arrow, Label, CTA, Badge, Framework, Comparison, Process, Decision Tree.`;
+        const rvComponentLibrary = (componentDefaults.padding || componentDefaults.cornerRadius)
+          ? `Shared component defaults resolved by this system — Padding: ${componentDefaults.padding || NT}, Corner Radius: ${componentDefaults.cornerRadius || NT}, Stroke: ${componentDefaults.stroke || NT}, Fill: ${componentDefaults.fill || NT}. Apply these to every component below unless one genuinely needs to differ — Headline, Body, Divider, Footer, Slide Number, Icon, Diagram, Pull Quote, Metric Box, Checklist, Timeline, Arrow, Label, CTA, Badge, Framework, Comparison, Process, Decision Tree. Resolve Size/Placement/Variants per component individually; state explicitly which ones deviate from the shared defaults and why.`
+          : `None of the following are tracked by this system yet — for each one, propose and resolve Size, Placement, Padding, Corner Radius, Stroke, Fill, Spacing, and Variants: Headline, Body, Divider, Footer, Slide Number, Icon, Diagram, Pull Quote, Metric Box, Checklist, Timeline, Arrow, Label, CTA, Badge, Framework, Comparison, Process, Decision Tree.`;
 
         const rvIconography = [
-          rv('Library', 'shared Diagram/Layout Template library referenced in Design Specification (Draft) above — reuse where it fits'),
-          rv('Stroke Width', null), rv('Corner Radius', null), rv('Perspective', null),
-          rv('Filled vs Outline', null), rv('Simplification Rules', null), rv('Maximum Detail', null),
+          rv('Library', iconographyDetail.library || 'shared Diagram/Layout Template library referenced in Design Specification (Draft) above — reuse where it fits'),
+          rv('Stroke Width', iconographyDetail.strokeWidth), rv('Corner Radius', iconographyDetail.cornerRadius), rv('Perspective', iconographyDetail.perspective),
+          rv('Filled vs Outline', iconographyDetail.filledOrOutline), rv('Simplification Rules', iconographyDetail.simplificationRules), rv('Maximum Detail', iconographyDetail.maxDetail),
           rv('Allowed Categories', draftCreative?.iconStyle || draftDS?.iconStyle),
-          rv('Forbidden Categories', null), rv('Consistency Rules', null),
+          rv('Forbidden Categories', iconographyDetail.forbiddenStyles), rv('Consistency Rules', iconographyDetail.consistencyRules),
         ].join('\n');
 
         const rvDiagramLanguage = [
           rv('Allowed Diagram Types', 'from the shared Diagram Template library referenced in Design Specification (Draft) above (Hierarchy, Hub, Flow, Comparison, Timeline, Process, Relationship, Decision Tree, Cycle, Framework, Checklists, Matrices, Trees, Network — reuse an existing one where it fits, propose a new one only if none does)'),
-          rv('Arrow Style', null), rv('Node Style', null), rv('Connector Style', null), rv('Stroke', null),
+          rv('Arrow Style', diagramLanguageDetail.arrowStyle), rv('Node Style', diagramLanguageDetail.nodeStyle), rv('Connector Style', diagramLanguageDetail.connectorStyle), rv('Stroke', null),
           rv('Animation', assetType === 'text video' ? draftCreative?.motionLanguage : null),
-          rv('Hierarchy Rules', null), rv('Alignment Rules', null),
+          rv('Hierarchy Rules', diagramLanguageDetail.hierarchyRules), rv('Alignment Rules', diagramLanguageDetail.alignmentRules),
         ].join('\n');
 
         const rvIllustrationLanguage = [
-          rv('Photography', assetType === 'carousel' ? 'not allowed by default (Photography Allowed = false, Carousel Design System)' : null),
-          rv('Characters', null),
+          rv('Photography', illustrationLanguageDetail.photographyPolicy || (assetType === 'carousel' ? 'not allowed by default (Photography Allowed = false, Carousel Design System)' : null)),
+          rv('Characters', illustrationLanguageDetail.characterPolicy),
           rv('People / Faces', assetType === 'carousel' ? 'not allowed by default (Faces Allowed = false, Carousel Design System)' : null),
           rv('Objects', null), rv('3D', null), rv('Rendering', draftCreative?.illustrationStyle || draftDS?.illustrationStyle),
-          rv('Perspective', null), rv('Lighting', null), rv('Texture', null), rv('Abstraction', null), rv('Realism', null),
-          rv('Visual Density', draftDS?.contentDensityTarget), rv('Maximum Complexity', null), rv('Forbidden Styles', null),
+          rv('Perspective', illustrationLanguageDetail.perspective), rv('Lighting', illustrationLanguageDetail.lighting), rv('Texture', null), rv('Abstraction', illustrationLanguageDetail.abstractionLevel), rv('Realism', null),
+          rv('Visual Density', draftDS?.contentDensityTarget), rv('Maximum Complexity', null), rv('Forbidden Styles', illustrationLanguageDetail.forbiddenStyles),
         ].join('\n');
 
         const rvLayoutSystem = slideOrSceneSections.length
@@ -14419,9 +14506,20 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
 
         const rvAssetManifest = `Not tracked by this system yet — for every slide/scene, list exactly what gets built layer by layer: Background, Headline, Body, Divider, Icon, Diagram, Footer, Slide Number, plus the Export filename for that slide/scene.`;
 
-        const rvQaChecklist = `Not tracked by this system yet — self-check and report on: Typography, Margins, Contrast, Accessibility, Color %, Grid, Consistency, Diagram Accuracy, No Overflow, Export Resolution, Safe Area, Platform Crop, Visual Hierarchy, Whitespace, Spelling, Brand Compliance.`;
+        const rvQaChecklist = Object.keys(globalProductionRules).length
+          ? [
+              rv('Accessibility', globalProductionRules.accessibility), rv('Contrast QA', globalProductionRules.contrastQA),
+              rv('Typography QA', globalProductionRules.typographyQA), rv('Spacing QA', globalProductionRules.spacingQA),
+              rv('Grid QA', globalProductionRules.gridQA), rv('Diagram QA', globalProductionRules.diagramQA),
+              rv('Visual QA', globalProductionRules.visualQA), rv('Export QA', globalProductionRules.exportQA), rv('Platform QA', globalProductionRules.platformQA),
+            ].join('\n')
+          : `Not tracked by this system yet — self-check and report on: Typography, Margins, Contrast, Accessibility, Color %, Grid, Consistency, Diagram Accuracy, No Overflow, Export Resolution, Safe Area, Platform Crop, Visual Hierarchy, Whitespace, Spelling, Brand Compliance.`;
 
         const rvProductionManifest = `Not tracked by this system yet — resolve the full chain for this asset: Asset → Slides/Scenes → Layers → Components → Styles → Assets → Exports, with every layer resolved to a concrete value, nothing left as a category name alone.`;
+
+        const rvKnownRisks = knownRisks.length
+          ? knownRisks.map(r => `- ${r}`).join('\n')
+          : 'None flagged — no conflicting inputs identified during drafting.';
 
         const rvDeliverables = [
           rv('Files', assetType === 'carousel' ? 'PNG per slide (Export Format, Carousel Specification)' : 'MP4 (Output Filename/Directory, Text Video Specification)'),
@@ -14430,7 +14528,7 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           rv('Checksums', null), rv('Revision', null),
         ].join('\n');
 
-        const requiredVariableSetBlock = `We are handing you our current version of every variable below — some already resolved by this system (shown inline), most not yet tracked (marked "${NT}"). After the Visual Design Card (Stage 1) is iterated and approved, the Stage 2 documents (Visual Brief final + Complete Assembly Package) must return EVERY one of these, updated to its final resolved value. None may be silently dropped, even the ones marked not-yet-specified above — those are exactly the ones you must originate.
+        const requiredVariableSetBlock = `We are handing you our OWN resolved version of every variable below, inferred from Research/Strategy/Campaign/Product/Design Specification — not a blank template. Anything still marked "${NT}" is a genuine gap this system has no data for; treat those, and only those, as yours to originate. Everything else is already a real decision, not a suggestion — you are editing and improving an already-complete document, not designing from scratch. Preserve every field. Do not blank one out, summarize it away, or replace a resolved value with "TBD"/"Not specified"/"Choose later" — if you change a value, replace it with a different resolved value and say why. After Stage 1 is approved, the Stage 2 documents (Visual Brief final + Complete Assembly Package) must return EVERY one of these variables, still fully resolved. None may be silently dropped.
 
 ## 0. Asset Identity
 ${rvIdentity}
@@ -14478,7 +14576,10 @@ ${rvQaChecklist}
 ${rvProductionManifest}
 
 ## 15. Deliverables
-${rvDeliverables}`;
+${rvDeliverables}
+
+## 16. Known Risks
+${rvKnownRisks}`;
 
         // Printed near the very top of the document, before any content,
         // so the four-tier authority model governs how every later
@@ -14659,19 +14760,19 @@ This conversation has exactly TWO stages, in this order. Do not skip either one,
 
 ## Stage 1 — Visual Design Card (in this conversation only — not a file, not uploaded)
 
-A compact, scannable proposal for the operator to review and critique BEFORE any deeper production planning. For every slide/scene (none skipped), include:
+Every value in Required Variable Set above is already a resolved decision, drawn from this asset's actual research/strategy/campaign/design data — not a blank template for you to fill from scratch. Your job here is to present it compactly for review, then act as Creative Director: edit specific values the operator wants improved, preserve everything else exactly as given. For every slide/scene (none skipped), include:
 
 - Slide/Scene number and role
 - Visual concept in one sentence — what the viewer sees and why it serves Brand Intent (and Growth Strategy Context, if present) above
-- Resolved layout — a name from the shared Layout/Diagram Template library referenced in Design Specification (Draft) above where one fits, or "new: <name>" if none does
-- Resolved color palette and typography — state whether you kept the default from Design Specification (Draft) above or changed it, and why
+- Layout — the value already resolved above, kept as-is unless you have a specific reason to improve it (say what and why if you do)
+- Color palette and typography — same: state whether you kept the resolved default or changed it, and why
 - Illustration/icon/diagram style and what's actually depicted
 - Key composition notes: hierarchy, emphasis, negative space
 - Any tradeoff or concern worth the operator's attention
 
-Plus one top-level summary: the overall visual direction, and how every MUTABLE field you resolved (per Editing Authority above) serves the intended impression in Brand Intent. Work within every CONSTRAINED ceiling rather than exceeding it; leave every IMMUTABLE field untouched.
+Plus one top-level summary: the overall visual direction, and how every value you kept or changed (per Editing Authority above) serves the intended impression in Brand Intent. Work within every CONSTRAINED ceiling rather than exceeding it; leave every IMMUTABLE field untouched. Never replace a resolved value with "TBD," "Not specified," or a list of options to choose from — you are always stating one chosen value, whether kept or changed.
 
-Stop after the Visual Design Card and wait for feedback. Revise it in this conversation as many times as the operator asks, critiquing and re-resolving fields each round — do not produce Stage 2 until the operator explicitly approves the direction. The Design Card itself is never uploaded anywhere; it exists only to get the direction right before you write the two final documents below.
+Stop after the Visual Design Card and wait for feedback. Revise it in this conversation as many times as the operator asks — editing the specific values they flag, never regenerating the whole thing from a blank page — do not produce Stage 2 until the operator explicitly approves the direction. The Design Card itself is never uploaded anywhere; it exists only to confirm the direction before you write the two final documents below.
 
 ## Stage 2 — Final Deliverables (once the Design Card is approved)
 
