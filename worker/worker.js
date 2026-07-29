@@ -14033,6 +14033,15 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           : '';
         const operatorGuidelinesText = (operatorGuidelines || '').trim();
 
+        // Product name for the Required Variable Set's Asset Identity
+        // category below — productId itself is already resolved by
+        // gatherAssetProductionContext, this just labels it.
+        let productName = 'No product — campaign-level asset';
+        if (productId) {
+          const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          productName = prodPage?.properties?.Name?.title?.map(t => t.plain_text).join('') || productName;
+        }
+
         // Draft the structured design specification databases and fold the
         // result into the Brief so ChatGPT reviews/refines concrete field
         // values instead of starting from a blank spec. Text Video ->
@@ -14297,6 +14306,180 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
           ? `Asset Type: Carousel — a static multi-slide carousel (${slideOrSceneSections.length || 'multiple'} slides).\n\nProduction Method: Rendered directly as PNG images by this system (Cloudflare Browser Rendering) — a single, deterministic, Worker-native pipeline. There is no video/motion production decision to make here and no build-path choice for you to state; your Visual Design Card should focus entirely on the per-slide visual treatment already scoped in Production Specification below.`
           : `Asset Type: Text Video — a faceless, vertical short-form video (Reel/TikTok/Shorts format, ${aspectRatio}, no on-camera presenter).\n\nTwo distinct production paths exist for Text Video assets in this system, and they require completely different builds. Your Visual Design Card MUST state explicitly, as its first two lines, (1) this asset's identity and (2) which production path it is written for:\n\nline 1: "${identityLine}"\nline 2: "Production Path: Custom Remotion Build" or "Production Path: Simple background + voiceover"\n\n- **SIMPLE (default)** — one sourced or generated background image, ElevenLabs voiceover, Ken Burns pan/zoom motion, word-by-word burned-in captions. Fast, minimal build (make-reel-video). Use this unless the content genuinely calls for more.\n- **CUSTOM REMOTION BUILD** — a fully bespoke animated composition: multiple native React/SVG scene components (no stock photography, no AI-generated imagery), a defined motion system, exact typography/color tokens, diagrams/illustrations built natively in code. A much larger build — only choose this when the content's complexity or the campaign's visual ambition genuinely warrants it.\n\nIf choosing the custom path, the Complete Assembly Package must also specify: a stable composition ID, the exact frame timeline per scene, a per-scene visual specification (layout / primary visual / motion / camera), the motion system (easing, permitted and forbidden motion, standard durations), the visual asset policy (native SVG/CSS only vs. raster assets allowed), and safe areas — in enough detail for an engineer to implement without further clarification. Include the mandatory render sequence below verbatim in the Complete Assembly Package.\n\n${mandatoryRenderSequence}\n\nRepeat both lines 1 and 2 at the top of EVERY message you return in this conversation — the Visual Design Card, every revision of it, and both Stage 2 final documents (Visual Brief and Complete Assembly Package) — even after many rounds of back-and-forth; never let this asset's identity or chosen production path go unstated in a later message.`;
 
+        // ── Required Variable Set — the complete taxonomy of variables the
+        // Stage 2 documents (Visual Brief final + Complete Assembly
+        // Package) must return resolved, per operator request: state this
+        // up front in the SAME initial handoff, not buried at the end.
+        // Where this system already has a value, show it as "our version"
+        // for ChatGPT to iterate from; where nothing is tracked yet, say
+        // so explicitly rather than inventing false precision — that's
+        // exactly the field ChatGPT must originate and resolve during
+        // Stage 1/2. Category numbering matches the operator's own list.
+        const draftCreative = assetType === 'text video' ? (specDraft?.spec || null) : null;
+        const draftDS = assetType === 'carousel' ? (specDraft?.ds || null) : null;
+        const draftSlides = assetType === 'carousel' ? (specDraft?.slides || []) : [];
+        const draftScenes = assetType === 'text video' ? (specDraft?.scenes || []) : [];
+        const NT = 'Not yet specified by this system — propose and resolve one';
+        const rv = (label, value) => `- ${label}: ${(value === 0 ? '0' : value) || NT}`;
+        const emotionalArc = (draftCreative || draftDS)?.emotionalArc;
+        const brandPersonality = draftCreative?.brandPersonality || (draftDS?.brandImpression || []).join(', ') || '';
+
+        const rvIdentity = [
+          rv('Asset ID', assetId), rv('Notion URL', `https://www.notion.so/${assetId}`),
+          rv('Campaign', campaignName), rv('Product', productName), rv('Series', null),
+          rv('Asset Type', assetType), rv('Platform', platform), rv('Dimensions', targetResolution),
+          rv('Version', null), rv('Status', assetStatus),
+        ].join('\n');
+
+        const rvVisualIntent = [
+          rv('Visual Thesis', null), rv('Primary Emotion', emotionalArc), rv('Secondary Emotion', null),
+          rv('Desired Perception', brandPersonality), rv('Brand Position', brandIntentVal || uniqueOpportunityVal),
+          rv('Viewer Takeaway', desiredViewerAction || primaryPromiseVal), rv('Psychological Goal', primaryGoal),
+          rv('Visual Narrative', draftDS?.visualNarrative), rv('Reading Order', null), rv('Visual Rhythm', null),
+        ].join('\n');
+
+        const rvDesignSystem = [
+          rv('Theme Name', null), rv('Overall Style', draftCreative?.visualStyle || draftDS?.overallAesthetic),
+          rv('Background', resolvedSpec.bg), rv('Surface Colors', null), rv('Primary Text', resolvedSpec.ink),
+          rv('Secondary Text', null), rv('Accent', resolvedSpec.accent), rv('Highlight', null),
+          rv('Stroke Color', null), rv('Border Color', draftCreative?.borderStyle), rv('Overlay Rules', null),
+          rv('Contrast Ratio', assetType === 'carousel' ? '4.5 (Minimum Contrast Ratio, Carousel Specification)' : null),
+          rv('Color Usage %', null), rv('Texture', draftCreative?.textureStyle), rv('Noise', null), rv('Paper Grain', null),
+          rv('Shadow Policy', draftCreative?.shadowStyle), rv('Gradient Policy', null), rv('Blur Policy', null), rv('Opacity Rules', null),
+        ].join('\n');
+
+        const rvTypography = [
+          rv('Headline Font', resolvedSpec.headlineFont), rv('Headline Weight', null), rv('Headline Size', null),
+          rv('Headline Line Height', null), rv('Headline Letterspacing', null), rv('Body Font', resolvedSpec.bodyFont),
+          rv('Body Size', assetType === 'carousel' ? 'minimum 24px (Minimum Font Size, Carousel Specification)' : null),
+          rv('Body Weight', null), rv('Body Leading', null), rv('Caption Font', null), rv('Label Font', null),
+          rv('Slide Number Font', null),
+          rv('Alignment Rules', assetType === 'carousel' ? 'Center (Default Text Alignment, Carousel Specification)' : null),
+          rv('Max Characters', assetType === 'carousel' ? 'max 4 headline lines / 6 body lines (Carousel Specification)' : null),
+          rv('Widow Rules', null), rv('Orphan Rules', null), rv('Wrapping Rules', null),
+        ].join('\n');
+
+        const rvGrid = [
+          rv('Canvas', targetResolution), rv('Margins', null),
+          rv('Safe Area', assetType === 'text video' ? '100px top, 300px bottom, 60px left/right' : '100px top/bottom, 80px left/right'),
+          rv('Columns', null), rv('Gutters', null), rv('Baseline Grid', null),
+          rv('Padding Rules', null), rv('Alignment Rules', null), rv('Snap Rules', null), rv('Component Spacing', null),
+          rv('Vertical Rhythm', null), rv('Whitespace Target %', draftDS?.whiteSpaceTarget),
+        ].join('\n');
+
+        const rvComponentLibrary = `None of the following are tracked by this system yet — for each one, propose and resolve Size, Placement, Padding, Corner Radius, Stroke, Fill, Spacing, and Variants: Headline, Body, Divider, Footer, Slide Number, Icon, Diagram, Pull Quote, Metric Box, Checklist, Timeline, Arrow, Label, CTA, Badge, Framework, Comparison, Process, Decision Tree.`;
+
+        const rvIconography = [
+          rv('Library', 'shared Diagram/Layout Template library referenced in Design Specification (Draft) above — reuse where it fits'),
+          rv('Stroke Width', null), rv('Corner Radius', null), rv('Perspective', null),
+          rv('Filled vs Outline', null), rv('Simplification Rules', null), rv('Maximum Detail', null),
+          rv('Allowed Categories', draftCreative?.iconStyle || draftDS?.iconStyle),
+          rv('Forbidden Categories', null), rv('Consistency Rules', null),
+        ].join('\n');
+
+        const rvDiagramLanguage = [
+          rv('Allowed Diagram Types', 'from the shared Diagram Template library referenced in Design Specification (Draft) above (Hierarchy, Hub, Flow, Comparison, Timeline, Process, Relationship, Decision Tree, Cycle, Framework, Checklists, Matrices, Trees, Network — reuse an existing one where it fits, propose a new one only if none does)'),
+          rv('Arrow Style', null), rv('Node Style', null), rv('Connector Style', null), rv('Stroke', null),
+          rv('Animation', assetType === 'text video' ? draftCreative?.motionLanguage : null),
+          rv('Hierarchy Rules', null), rv('Alignment Rules', null),
+        ].join('\n');
+
+        const rvIllustrationLanguage = [
+          rv('Photography', assetType === 'carousel' ? 'not allowed by default (Photography Allowed = false, Carousel Design System)' : null),
+          rv('Characters', null),
+          rv('People / Faces', assetType === 'carousel' ? 'not allowed by default (Faces Allowed = false, Carousel Design System)' : null),
+          rv('Objects', null), rv('3D', null), rv('Rendering', draftCreative?.illustrationStyle || draftDS?.illustrationStyle),
+          rv('Perspective', null), rv('Lighting', null), rv('Texture', null), rv('Abstraction', null), rv('Realism', null),
+          rv('Visual Density', draftDS?.contentDensityTarget), rv('Maximum Complexity', null), rv('Forbidden Styles', null),
+        ].join('\n');
+
+        const rvLayoutSystem = slideOrSceneSections.length
+          ? (assetType === 'carousel'
+              ? draftSlides.map((sl, i) => [
+                  `Slide ${sl.number || i + 1}:`,
+                  rv('  Template', sl.layoutCategory), rv('  Hero', sl.role),
+                  rv('  Component Positions', null), rv('  Component Sizes', null),
+                  rv('  Diagram Slot', sl.diagramType), rv('  Icon Slot', null),
+                  rv('  Footer', sl.footerText), rv('  Margins', null), rv('  Hierarchy', sl.readingPriority),
+                ].join('\n')).join('\n\n')
+              : draftScenes.map((sc, i) => [
+                  `Scene ${sc.number || i + 1}:`,
+                  rv('  Template', sc.layoutDescription), rv('  Hero', sc.purpose),
+                  rv('  Component Positions', null), rv('  Component Sizes', null),
+                  rv('  Diagram Slot', sc.diagramType), rv('  Icon Slot', null),
+                  rv('  Footer', null), rv('  Margins', null), rv('  Hierarchy', sc.readingPriority),
+                ].join('\n')).join('\n\n'))
+          : NT;
+
+        const rvVisualContinuity = 'See the Visual Continuity section above — recurring icons/layouts/diagrams/motifs, visual evolution, and series rules for this campaign\'s prior assets of the same type.';
+
+        const rvSlideSpecifications = slideOrSceneSections.length
+          ? 'See the per-slide/scene block in Design Specification (Draft) above for Purpose, Visual Goal, Hierarchy, Primary Graphic, Diagram, Information Density, and Complexity/Production Weight — restate all of those in Stage 2, plus (not yet tracked by this system): Reading Path, Secondary Graphic, Supporting Elements, Whitespace, Color Usage, Motion, Transitions, Reuse Candidate, Estimated Production Time.'
+          : NT;
+
+        const rvAssetManifest = `Not tracked by this system yet — for every slide/scene, list exactly what gets built layer by layer: Background, Headline, Body, Divider, Icon, Diagram, Footer, Slide Number, plus the Export filename for that slide/scene.`;
+
+        const rvQaChecklist = `Not tracked by this system yet — self-check and report on: Typography, Margins, Contrast, Accessibility, Color %, Grid, Consistency, Diagram Accuracy, No Overflow, Export Resolution, Safe Area, Platform Crop, Visual Hierarchy, Whitespace, Spelling, Brand Compliance.`;
+
+        const rvProductionManifest = `Not tracked by this system yet — resolve the full chain for this asset: Asset → Slides/Scenes → Layers → Components → Styles → Assets → Exports, with every layer resolved to a concrete value, nothing left as a category name alone.`;
+
+        const rvDeliverables = [
+          rv('Files', assetType === 'carousel' ? 'PNG per slide (Export Format, Carousel Specification)' : 'MP4 (Output Filename/Directory, Text Video Specification)'),
+          rv('SVG diagrams', null), rv('Icons', null), rv('Fonts', null), rv('Preview', null),
+          rv('Manifest', null), rv('Assembly Package', 'this document\'s own Stage 2 output'),
+          rv('Checksums', null), rv('Revision', null),
+        ].join('\n');
+
+        const requiredVariableSetBlock = `We are handing you our current version of every variable below — some already resolved by this system (shown inline), most not yet tracked (marked "${NT}"). After the Visual Design Card (Stage 1) is iterated and approved, the Stage 2 documents (Visual Brief final + Complete Assembly Package) must return EVERY one of these, updated to its final resolved value. None may be silently dropped, even the ones marked not-yet-specified above — those are exactly the ones you must originate.
+
+## 0. Asset Identity
+${rvIdentity}
+
+## 1. Visual Intent
+${rvVisualIntent}
+
+## 2. Design System Resolution
+${rvDesignSystem}
+
+## 3. Typography
+${rvTypography}
+
+## 4. Grid System
+${rvGrid}
+
+## 5. Component Library
+${rvComponentLibrary}
+
+## 6. Iconography
+${rvIconography}
+
+## 7. Diagram Language
+${rvDiagramLanguage}
+
+## 8. Illustration Language
+${rvIllustrationLanguage}
+
+## 9. Layout System (per slide/scene)
+${rvLayoutSystem}
+
+## 10. Visual Continuity
+${rvVisualContinuity}
+
+## 11. Slide/Scene Specifications
+${rvSlideSpecifications}
+
+## 12. Asset Manifest
+${rvAssetManifest}
+
+## 13. QA Checklist
+${rvQaChecklist}
+
+## 14. Production Manifest
+${rvProductionManifest}
+
+## 15. Deliverables
+${rvDeliverables}`;
+
         // Printed near the very top of the document, before any content,
         // so the four-tier authority model governs how every later
         // section is read — not bolted on as an afterthought.
@@ -14325,7 +14508,13 @@ ${identityLine}
 
 # Scope
 
-This document is a finished internal handoff, given to you for EXECUTION — not for review. Do not propose changes to this document's structure, this system's architecture, or the workflow that produced it. Do not suggest new databases, fields, tiers, or process redesigns, even if you can see how the process could be improved — that feedback goes to a human, not into this brief. Every response you give in this conversation should be the Visual Production Brief itself (or a revision of it), nothing else. If something below is genuinely unworkable, say so in one sentence and ask what to do, then stop — do not substitute a system redesign for the deliverable.
+This document is a finished internal handoff, given to you for EXECUTION — not for review. Do not propose changes to this document's structure, this system's architecture, or the workflow that produced it. Do not suggest new databases, fields, tiers, or process redesigns, even if you can see how the process could be improved — that feedback goes to a human, not into this brief. Every response you give in this conversation should be one of the stages defined in Visual Director Instructions at the end of this document — nothing else. If something below is genuinely unworkable, say so in one sentence and ask what to do, then stop — do not substitute a system redesign for the deliverable.
+
+---
+
+# Required Variable Set
+
+${requiredVariableSetBlock}
 
 ---
 
@@ -14500,7 +14689,7 @@ ${assemblyPackageChecklistText}
 
 Nothing in the Complete Assembly Package may say "TBD," "to be determined," or similar — every field needs a concrete resolved value, or an explicit note that it's DERIVED AT PRODUCTION per Editing Authority above (never presented as final). Mark it "Ready For Assembly" only once every slide/scene has a stated value for every item above.
 
-**Together, the Visual Brief and Complete Assembly Package must cover every variable needed to properly assemble this asset — if something required for assembly isn't captured in either document, that is a gap; add it rather than leaving it implicit or assuming it's obvious.**
+**Together, the Visual Brief and Complete Assembly Package must return every single variable listed in Required Variable Set above, updated to its final resolved value — split creative fields (Visual Intent, Design System Resolution, Typography, Iconography, Diagram/Illustration Language, Layout System, Slide/Scene Specifications) into the Visual Brief, and production fields (Component Library, Asset Manifest, QA Checklist, Production Manifest, Deliverables) into the Complete Assembly Package. Nothing from that list may be silently dropped — a variable marked "not yet specified" there is one you must originate and resolve, not skip.**
 
 Begin and end every message in this conversation — the Visual Design Card, every revision of it, and both final documents — with this line, unchanged:
 
