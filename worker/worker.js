@@ -12229,28 +12229,42 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const overrideBlock = overrideBlockLines.length ? `\n${overrideBlockLines.join('\n')}\n` : '';
 
         const BATCH_SIZE = 5;
+        // One prompt per script, run as BATCH_SIZE concurrent Claude calls
+        // instead of one big "write all 5" call. The single-call version
+        // (5 full Remotion Video Asset Packages requested at once, up to
+        // 12000 output tokens) was slow enough to trip Cloudflare's ~100s
+        // edge timeout (HTTP 524) on the Worker itself — splitting into
+        // parallel single-script calls keeps each one's output small
+        // (~2500-3500 tokens) and bounds total wall-clock to the SLOWEST
+        // single call rather than the sum of all 5. Diversity across the
+        // batch, which the old single-call prompt asked Claude to
+        // self-manage ("use 5 different hook arcs"), is now guaranteed
+        // deterministically by assigning each concurrent call its own
+        // required hook arc up front.
+        const HOOK_ARCS = ['Contrarian claim', 'Cold-open confession', 'Stat/number hook', 'Direct callout', 'Question hook', 'Before/after compression'];
+        const assignedArcs = HOOK_ARCS.slice(0, BATCH_SIZE);
         // Unified "Generate Remotion Video Asset Package" prompt — produces
-        // not just script copy but the full downstream production package
-        // per script: asset metadata, content summary, hook package, a
-        // scene-by-scene breakdown (each with production spec + visual-
-        // planning flags), scene flow, educational assets, publishing
-        // assets, voice production notes, Remotion rendering notes, and a
-        // production checklist. Per the spec: visual planning is yes/no
-        // flags ONLY — no image prompts, no illustration-style
-        // descriptions, no animation code; a separate Visual Director
-        // stage owns all visual direction and artwork, and Assembly
-        // constructs the Remotion project from this package. The render
-        // pipeline itself (make-reel-video: one background image + Ken
-        // Burns + word captions) is unchanged — these are richer planning
-        // fields for it to draw on, not new render inputs.
-        const scriptPrompt = `You are producing ${BATCH_SIZE} DISTINCT Remotion Video Asset Packages for the same title — full production packages for faceless Reels (ElevenLabs voiceover over Ken Burns motion/B-roll, on-screen text, word captions, NO avatar or presenter on camera). This is for the "Text Video" method: pure discovery-format content, engineered to be found by strangers. Your job is not to produce a finished video — generate every structured asset a downstream Assembly stage needs. Each of the ${BATCH_SIZE} packages must use a DIFFERENT hook arc from the toolkit below and take a genuinely different angle on the topic — not five rewordings of the same script.
+        // not just script copy but the full downstream production package:
+        // asset metadata, content summary, hook package, a scene-by-scene
+        // breakdown (each with production spec + visual-planning flags),
+        // scene flow, educational assets, publishing assets, voice
+        // production notes, Remotion rendering notes, and a production
+        // checklist. Per the spec: visual planning is yes/no flags ONLY —
+        // no image prompts, no illustration-style descriptions, no
+        // animation code; a separate Visual Director stage owns all
+        // visual direction and artwork, and Assembly constructs the
+        // Remotion project from this package. The render pipeline itself
+        // (make-reel-video: one background image + Ken Burns + word
+        // captions) is unchanged — these are richer planning fields for
+        // it to draw on, not new render inputs.
+        const buildSinglePrompt = arc => `You are producing ONE Remotion Video Asset Package — a full production package for a faceless Reel (ElevenLabs voiceover over Ken Burns motion/B-roll, on-screen text, word captions, NO avatar or presenter on camera). This is for the "Text Video" method: pure discovery-format content, engineered to be found by strangers. Your job is not to produce a finished video — generate every structured asset a downstream Assembly stage needs.
 
 TITLE: ${titleName}
 ${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}
 ${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}${overrideBlock}
-HOOK ARC TOOLKIT (use ${BATCH_SIZE} different ones, one per package): Contrarian claim, Cold-open confession, Stat/number hook, Direct callout, Question hook, Before/after compression.
+REQUIRED HOOK ARC FOR THIS SCRIPT: ${arc} — build the whole opening around this specific hook shape. (This title is getting ${BATCH_SIZE} distinct scripts total, each with its own required hook arc and angle — yours is just this one.)
 
-SCRIPT RULES (apply to EACH of the ${BATCH_SIZE} packages):
+SCRIPT RULES:
 - Arc: Hook (0-3s, survives with zero context) -> Reframe (3-8s, why this matters to the viewer) -> Payoff (8s-end, the real value, no throat-clearing) -> Close (last 2-3s).
 - Break the arc into 3-5 scenes (Scene Role examples: Hook, Problem, Context, Teach, Demonstration, Example, Framework, Story, Summary, CTA — pick whichever roles genuinely fit this script, not a fixed template; there is no on-camera presenter in this format, so no scene is ever "talking head").
 - On-screen text on every scene, mirroring the spoken hook near-verbatim where it matters most (most viewers watch muted).
@@ -12272,7 +12286,7 @@ For EACH scene, also provide:
 Also provide, once for the whole package:
 - "assetMetadata": { "series": "...", "platformSuggestion": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "...", "ctaGoal": "...", "voiceStyle": "...", "captionStyle": "..." }
 - "contentSummary": { "workingTitle": "...", "finalTitle": "...", "oneSentenceSummary": "...", "coreThesis": "...", "primaryPromise": "...", "primaryEmotion": "...", "desiredViewerOutcome": "...", "brandIntent": "3-5 tone words this script should leave the viewer with (e.g. trustworthy, technical, minimalist, bold, playful, premium, educational) plus one line on any campaign positioning that should influence visual decisions — not what the visuals should look like, just what impression they should land" }
-- "hookPackage": { "hookArcUsed": "which toolkit hook shape, and why it fits", "firstThreeSecondHook": "...", "openingLine": "...", "curiosityGap": "...", "openingOnScreenText": "...", "viewerRetentionStrategy": "..." }
+- "hookPackage": { "hookArcUsed": "${arc} — briefly why it fits this angle", "firstThreeSecondHook": "...", "openingLine": "...", "curiosityGap": "...", "openingOnScreenText": "...", "viewerRetentionStrategy": "..." }
 - "videoStructure": { "estimatedWordCount": 0, "estimatedSceneCount": 0, "storyStructure": "...", "narrativeArc": "...", "teachingStructure": "...", "ctaPlacement": "..." } — keep estimatedSceneCount consistent with the actual number of scenes you write
 - "educationalAssets": { "keyLessons": ["..."], "keyInsights": ["..."], "frameworks": ["..."], "analogies": ["..."], "examples": ["..."], "quotes": ["..."], "statistics": ["..."] } — empty arrays where nothing genuinely applies, never invent filler
 - "voiceProductionNotes": { "overallPace": "...", "averageWPM": 0, "pauseLocations": ["..."], "emphasisWords": ["..."], "emotionalArc": "...", "pronunciationNotes": "..." }
@@ -12282,41 +12296,40 @@ Also provide, once for the whole package:
 
 Do NOT generate artwork, image prompts, illustration-style descriptions, or animation implementation code anywhere in this response. The next stage (Visual Director) owns all visual direction and artwork; the Assembly stage constructs the Remotion project from this package.
 
-Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no markdown fences:
-[{ "voiceoverScript": "the full spoken lines, continuous prose, NO labels/timestamps/cues — exactly what TTS will speak", "scenes": [ { "sceneRole": "...", "sceneObjective": "...", "narrationScript": "...", "onScreenText": "...", "captionText": "...", "keyTakeaway": "...", "speakerIntent": "...", "estimatedDurationSec": 4, "flow": "...", "production": "...", "visualFlags": ["..."] }, ... 3-5 scenes total ... ], "assetMetadata": {}, "contentSummary": {}, "hookPackage": {}, "videoStructure": {}, "educationalAssets": {}, "voiceProductionNotes": {}, "remotionRenderingNotes": {}, "productionChecklist": {}, "publishingAssets": {}, "caption": "150-200 word Instagram caption, campaign keywords worked in naturally for SEO", "hashtags": ["...", "..."] }, ...]`;
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "voiceoverScript": "the full spoken lines, continuous prose, NO labels/timestamps/cues — exactly what TTS will speak", "scenes": [ { "sceneRole": "...", "sceneObjective": "...", "narrationScript": "...", "onScreenText": "...", "captionText": "...", "keyTakeaway": "...", "speakerIntent": "...", "estimatedDurationSec": 4, "flow": "...", "production": "...", "visualFlags": ["..."] }, ... 3-5 scenes total ... ], "assetMetadata": {}, "contentSummary": {}, "hookPackage": {}, "videoStructure": {}, "educationalAssets": {}, "voiceProductionNotes": {}, "remotionRenderingNotes": {}, "productionChecklist": {}, "publishingAssets": {}, "caption": "150-200 word Instagram caption, campaign keywords worked in naturally for SEO", "hashtags": ["...", "..."] }`;
 
-        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 12000, messages: [{ role: "user", content: scriptPrompt }] }),
-        });
-        const aiData = await aiResp.json();
-        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
-        // One deterministic repair attempt before failing, same philosophy
-        // as the carousel actions' retry.
-        const parseScriptBatchJson = raw => {
-          const start = raw.indexOf('['), end = raw.lastIndexOf(']');
-          if (start === -1 || end === -1) throw new Error("No JSON array found");
+        const parseSingleScriptJson = raw => {
+          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+          if (start === -1 || end === -1) throw new Error("No JSON object found");
           return JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
         };
-        let parsedList;
-        try {
-          parsedList = parseScriptBatchJson(aiData.content?.[0]?.text || "");
-        } catch (firstErr) {
+        const generateOneScript = async arc => {
+          const singlePrompt = buildSinglePrompt(arc);
+          const callClaude = content => fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content }] }),
+          }).then(r => r.json());
           try {
-            const repairResp = await fetch("https://api.anthropic.com/v1/messages", {
-              method: "POST",
-              headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-              body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 12000, messages: [{ role: "user", content: `${scriptPrompt}\n\nYour previous response failed to parse as JSON (${firstErr.message}). Return ONLY the corrected JSON array this time, no other text, no markdown fences.` }] }),
-            });
-            const repairData = await repairResp.json();
-            if (!repairResp.ok) throw new Error(repairData.error?.message || "Claude API error on repair attempt");
-            parsedList = parseScriptBatchJson(repairData.content?.[0]?.text || "");
-          } catch (secondErr) {
-            return json({ error: "Failed to parse script batch JSON after a repair attempt: " + secondErr.message }, 500);
+            const aiData = await callClaude(singlePrompt);
+            if (aiData.error) throw new Error(aiData.error.message || "Claude API error");
+            try {
+              return parseSingleScriptJson(aiData.content?.[0]?.text || "");
+            } catch (firstErr) {
+              // One deterministic repair attempt per script before giving
+              // up on just this one — same philosophy as the carousel
+              // actions' retry, now scoped per-script instead of per-batch
+              // so one bad generation doesn't sink the other 4.
+              const repairData = await callClaude(`${singlePrompt}\n\nYour previous response failed to parse as JSON (${firstErr.message}). Return ONLY the corrected JSON object this time, no other text, no markdown fences.`);
+              if (repairData.error) throw new Error(repairData.error.message || "Claude API error on repair attempt");
+              return parseSingleScriptJson(repairData.content?.[0]?.text || "");
+            }
+          } catch (e) {
+            return null;
           }
-        }
-        if (!Array.isArray(parsedList) || !parsedList.length) return json({ error: "Script generation returned no scripts — try again" }, 500);
+        };
+        let parsedList = (await Promise.all(assignedArcs.map(generateOneScript))).filter(Boolean);
         parsedList = parsedList.filter(p => p && p.voiceoverScript).slice(0, BATCH_SIZE);
         if (!parsedList.length) return json({ error: "Script generation returned no usable scripts — try again" }, 500);
 
