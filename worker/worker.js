@@ -13467,6 +13467,17 @@ Treat this document as the source of truth.`;
           ? `<div class="slides">${Array.from({ length: slideCount || 0 }, (_, i) => `<img src="${esc2(designLink)}slide-${String(i + 1).padStart(2, '0')}.png" alt="Slide ${i + 1}" loading="lazy">`).join('')}</div>`
           : `<video controls preload="metadata" src="${esc2(designLink)}"></video>`;
 
+        // Text Video: uploaded scene reference images (uploadApprovedVisual)
+        // live in this SAME folder, extension unknown up front, so each
+        // slot tries a few common extensions client-side and just hides
+        // itself if none of them exist yet (nothing uploaded for that scene).
+        const sceneVisualsHtml = assetType === 'text video' && slideCount > 0
+          ? `<section><h2>Visual References</h2><div class="slides" id="sceneVisuals">${Array.from({ length: slideCount }, (_, i) => {
+              const n = String(i + 1).padStart(2, '0');
+              return `<div class="scene-visual-wrap" data-n="${n}"><div style="font-size:10px;color:#888;margin-bottom:4px;">Scene ${i + 1}</div><img class="scene-visual-img" style="display:none;width:100%;border-radius:4px;border:1px solid #2a2a2a;"></div>`;
+            }).join('')}</div><p style="font-size:11px;color:#666;margin:12px 0 0;">Reference material only — this Worker can't splice them into the MP4; use them the next time make-reel-video renders this asset.</p></section>`
+          : '';
+
         const metaRows = [
           ['Asset Type', assetType], ['Platform Title', platformTitle], ['Channel', channel || 'Not set'],
           ['Post Caption', postCaption], ['Description', finalDescription], ['Hashtags', hashtags],
@@ -13533,10 +13544,11 @@ Treat this document as the source of truth.`;
     <h2>Final Media</h2>
     ${mediaHtml}
   </section>
+  ${sceneVisualsHtml}
   <section>
     <h2>Production Status</h2>
     <table><tr><td>Slide/Scene</td><td>Treatment</td><td>Status</td><td>Asset Filename</td></tr>${productionStatusRows.map(([k, treatment, status, asset]) => `<tr><td>${esc2(k)}</td><td>${esc2(treatment)}</td><td>${esc2(status)}</td><td>${esc2(asset)}</td></tr>`).join('')}</table>
-    <p style="font-size:11px;color:#666;margin:12px 0 0;">From the approved Visual Production Brief's status block. Asset filenames are as reported by the Visual Director — this system has no image-upload pipeline yet, so match them to the actual files manually if they aren't already reflected in Final Media above.</p>
+    <p style="font-size:11px;color:#666;margin:12px 0 0;">From the approved Visual Production Brief's status block. Asset filenames are as reported by the Visual Director. ${assetType === 'carousel' ? 'Carousel uploads (Upload Images on the dashboard) replace the rendered slide directly, so they already show under Final Media above.' : 'Uploaded reference images show under Visual References above, if any.'}</p>
   </section>
   <section>
     <h2>Publishing Metadata</h2>
@@ -13569,6 +13581,17 @@ Treat this document as the source of truth.`;
     };
     label.appendChild(cb); label.appendChild(span);
     wrap.appendChild(label);
+  });
+  document.querySelectorAll('.scene-visual-wrap').forEach(function(sceneWrap) {
+    var n = sceneWrap.dataset.n, img = sceneWrap.querySelector('.scene-visual-img');
+    var exts = ['png', 'jpg', 'jpeg', 'webp'], i = 0;
+    function tryNext() {
+      if (i >= exts.length) { sceneWrap.style.display = 'none'; return; }
+      img.onerror = function() { i++; tryNext(); };
+      img.onload = function() { img.style.display = 'block'; };
+      img.src = 'scene-' + n + '.' + exts[i];
+    }
+    tryNext();
   });
 </script>
 </body></html>`;
@@ -13611,6 +13634,98 @@ Treat this document as the source of truth.`;
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to write assembled fields to Asset", reviewUrl }, patchResp.status); }
 
         return json({ success: true, assetId, reviewUrl, fieldsWritten: Object.keys(props) });
+      }
+
+      // ── getUploadSlots ──
+      // Feeds the "Upload Approved Visuals" modal: one slot per slide
+      // (carousel) or scene (text video), pulled from the Asset Package's
+      // own Slide-N/Scene-N blocks — so the modal is correctly sized even
+      // before the operator has pasted a Visual Production Brief back.
+      // When one IS present, its Machine-Readable Status block's
+      // treatment/status per slot are surfaced as hints (not required).
+      if (body.action === "getUploadSlots") {
+        const ctx = await gatherAssetProductionContext(body);
+        if (!ctx.ok) return json({ error: ctx.error, validation: ctx.validation }, ctx.status);
+        const { assetPage, assetType, slideOrSceneSections } = ctx;
+        const visualBrief = (assetPage.properties["Visual Production Brief"]?.rich_text || []).map(t => t.plain_text).join("");
+        const statusEntries = parseProductionStatusYaml(visualBrief);
+        const prefix = assetType === 'carousel' ? 'slide' : 'scene';
+        // Carousel is always exactly 7 slides by generation contract; text
+        // video's scene count varies (3-5) and depends on the Asset
+        // Package already having Scene-N blocks (older assets predate
+        // them) — fall back to 5 so the modal still has usable rows.
+        const count = slideOrSceneSections.length || (assetType === 'carousel' ? 7 : 5);
+        const slots = Array.from({ length: count }, (_, i) => {
+          const n = i + 1;
+          const key = `${prefix}_${String(n).padStart(2, '0')}`;
+          const entry = statusEntries[key] || {};
+          return { key, number: n, treatment: entry.treatment || '', status: entry.status || '', asset: entry.asset || '' };
+        });
+        return json({ success: true, assetType, prefix, slots });
+      }
+
+      // ── uploadApprovedVisual ──
+      // Hosts one Visual-Director-approved image for one slide/scene.
+      // Carousel: commits to the EXACT slide-NN.png path
+      // generateCarouselPreview/publishCarouselSlides already renders and
+      // the gallery page already links to — overwriting it there means
+      // Design Link and the assembly review page pick up the real
+      // artwork automatically, no other write needed. Text Video: no
+      // equivalent canonical per-scene path exists (Design Link is a
+      // single MP4 a local Remotion render produces), so these land in a
+      // new {assembled}/scene-NN.* folder as reference material for
+      // whoever runs make-reel-video next, not as something this Worker
+      // can splice into the MP4 itself.
+      if (body.action === "uploadApprovedVisual") {
+        const { assetId, titleId, campaignId, slideNumber, imageBase64, imageFilename } = body;
+        if (!assetId || !titleId || !campaignId || !slideNumber || !imageBase64 || !imageFilename) {
+          return json({ error: "assetId, titleId, campaignId, slideNumber, imageBase64, and imageFilename required" }, 400);
+        }
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
+
+        const [assetPage, titlePage] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json()),
+        ]);
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const assetType = assetPage.properties["Asset Type"]?.select?.name || "";
+        const assetName = assetPage.properties["Asset Title"]?.title?.map(t => t.plain_text).join("") || "Untitled";
+        const titleName = titlePage.properties.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+        const n = String(slideNumber).padStart(2, '0');
+        const extMatch = imageFilename.match(/\.([a-zA-Z0-9]+)$/);
+        const ext = (extMatch ? extMatch[1] : 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+
+        let path;
+        if (assetType === 'carousel') {
+          const titleSlug = slugify(titleName) || 'carousel';
+          // Always .png, matching the render pipeline's own output format
+          // exactly — the gallery page's <img> tags reference this path
+          // verbatim and can't be changed per-upload.
+          path = `web/${deployPath}/carousels/${titleSlug}/slide-${n}.png`;
+        } else {
+          const assetSlug = slugify(assetName) || 'asset';
+          path = `web/${deployPath}/assembled/${assetSlug}/scene-${n}.${ext}`;
+        }
+
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+        let sha = null;
+        if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
+        const putBody = { message: `Approved visual: ${assetName} — #${n}`, content: imageBase64, branch: BRANCH };
+        if (sha) putBody.sha = sha;
+        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+        });
+        if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); return json({ error: `GitHub commit failed (HTTP ${putResp.status}): ${r.message || 'unknown'}` }, 502); }
+
+        return json({ success: true, url: `https://cabuzzard.github.io/dash/${path}`, path });
       }
 
       // ── generateExplainerScript ──

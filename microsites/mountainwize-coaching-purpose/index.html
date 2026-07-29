@@ -740,6 +740,25 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- UPLOAD APPROVED VISUALS MODAL (the 🖼️ button on a carousel/text-video asset row) -->
+<div class="modal-overlay" id="uploadVisualsModal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <div class="modal-title">Upload Approved Visuals</div>
+      <button class="modal-close" onclick="closeUploadVisualsModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">One image per slide/scene, exported once approved in ChatGPT. Carousel uploads replace the rendered slide PNG directly — export as PNG so the file matches what the gallery already expects. Text Video uploads are saved as reference material for the render step, not applied automatically. Leave any row blank to skip it — reopen this to upload the rest later.</div>
+      <div id="uploadVisualsRows" style="margin-top:14px;display:grid;gap:10px;"></div>
+      <div class="modal-status" id="uploadVisualsStatus" style="white-space:pre-wrap;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeUploadVisualsModal()">Close</button>
+      <button class="modal-btn save" id="uploadVisualsBtn" onclick="submitUploadVisuals()">Upload</button>
+    </div>
+  </div>
+</div>
+
 <!-- SM POSTS PROMPT MODAL -->
 <div class="modal-overlay" id="smPromptModal">
   <div class="modal" style="max-width:480px;">
@@ -1432,6 +1451,7 @@ async function loadTitles() {
           + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.title)}</span>`
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${t.id}" onclick="generateVisualBrief(this)" title="Assemble the Visual Production Source Document (Asset Metadata/Audience/Research/Content Foundation/Final Written Asset/Asset Spec/Production Spec/Design Globals/Existing Assets/Visual Continuity/Known Constraints — no visual decisions made) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT" style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-manifest" data-assetid="${a.id}" data-titleid="${t.id}" onclick="generateVisualManifest(this)" title="Assemble the persistent Visual Production Brief/Manifest prompt from this asset's final text + Asset Spec + Production Spec, then copy it to your clipboard to paste into ChatGPT" style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">📦 Manifest</button>` : '')
+          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-visuals" data-assetid="${a.id}" data-titleid="${t.id}" onclick="openUploadVisualsModal(this)" title="Upload the approved images ChatGPT (the Visual Director) produced for each slide/scene — carousel uploads replace the rendered slide PNG, text video uploads are saved as reference material" style="font-size:10px;padding:1px 7px;border:1px solid #4488ff;background:transparent;color:#4488ff;border-radius:9px;cursor:pointer;flex-shrink:0;">🖼️ Upload Images</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" onclick="assembleAsset(this)" title="After pasting ChatGPT's completed Visual Production Brief (with every slide/scene in its Machine-Readable Status block marked approved or ready_for_assembly) into this Asset's \'Visual Production Brief\' field in Notion: package the final media + publishing metadata, write it to the Asset, and open a hosted review page. Blocked with a clear error if any slide/scene isn't approved yet." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
         return ar;
@@ -4915,6 +4935,63 @@ async function assembleAsset(btn) {
     btn.disabled = false;
     if (btn.textContent === '…') btn.textContent = orig;
   }
+}
+
+// Upload Approved Visuals modal — the actual image-hosting step for the
+// pictures ChatGPT (Visual Director) produced and the user approved.
+// Carousel uploads overwrite the exact slide-NN.png path
+// generateCarouselPreview/publishCarouselSlides already renders and the
+// gallery page already links to, so Design Link/the review page pick them
+// up with zero other changes. Text Video uploads land in a new
+// {assembled}/scene-NN.* path as reference material only — this Worker
+// can't touch the MP4 itself (that's the local Remotion render step).
+let UV_ASSET_ID = null, UV_TITLE_ID = null;
+async function openUploadVisualsModal(btn) {
+  UV_ASSET_ID = btn.dataset.assetid;
+  UV_TITLE_ID = btn.dataset.titleid;
+  document.getElementById('uploadVisualsModal').classList.add('open');
+  document.getElementById('uploadVisualsStatus').textContent = '';
+  const rowsEl = document.getElementById('uploadVisualsRows');
+  rowsEl.innerHTML = '<div style="color:#888;font-size:12px;">Loading…</div>';
+  try {
+    const r = await w('getUploadSlots', { assetId: UV_ASSET_ID, titleId: UV_TITLE_ID, campaignId: CAMPAIGN_ID });
+    const label = r.prefix === 'slide' ? 'Slide' : 'Scene';
+    rowsEl.innerHTML = r.slots.map(s => `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="width:170px;font-size:11px;color:#aaa;flex-shrink:0;line-height:1.4;">${label} ${s.number}${s.treatment ? `<br><span style="color:#666;">${esc(s.treatment)}${s.status ? ' — ' + esc(s.status) : ''}</span>` : ''}</span>
+        <input type="file" accept="image/*" data-slot="${s.number}" class="modal-ta" style="height:auto;padding:6px 8px;font-size:11px;flex:1;" />
+        <span class="uv-row-status" data-slot-status="${s.number}" style="font-size:10px;color:#666;width:70px;flex-shrink:0;text-align:right;"></span>
+      </div>`).join('');
+  } catch(e) {
+    rowsEl.innerHTML = `<div style="color:#f66;font-size:12px;">${esc(e.message)}</div>`;
+  }
+}
+function closeUploadVisualsModal() {
+  document.getElementById('uploadVisualsModal').classList.remove('open');
+}
+async function submitUploadVisuals() {
+  const inputs = Array.from(document.querySelectorAll('#uploadVisualsRows input[type=file]')).filter(inp => inp.files && inp.files[0]);
+  const statusEl = document.getElementById('uploadVisualsStatus');
+  if (!inputs.length) { statusEl.textContent = 'Choose at least one image.'; return; }
+  const btn = document.getElementById('uploadVisualsBtn');
+  btn.disabled = true;
+  let done = 0, errors = [];
+  for (const inp of inputs) {
+    const slotNum = inp.dataset.slot;
+    const rowStatus = document.querySelector(`.uv-row-status[data-slot-status="${slotNum}"]`);
+    if (rowStatus) rowStatus.textContent = 'Uploading…';
+    try {
+      const { base64, filename } = await readImageAsBase64(inp.files[0]);
+      await w('uploadApprovedVisual', { assetId: UV_ASSET_ID, titleId: UV_TITLE_ID, campaignId: CAMPAIGN_ID, slideNumber: slotNum, imageBase64: base64, imageFilename: filename });
+      if (rowStatus) rowStatus.textContent = 'Done ✓';
+      done++;
+    } catch(e) {
+      if (rowStatus) rowStatus.textContent = 'Error';
+      errors.push(`#${slotNum}: ${e.message}`);
+    }
+    statusEl.textContent = `Uploaded ${done}/${inputs.length}` + (errors.length ? `\n${errors.join('\n')}` : '');
+  }
+  btn.disabled = false;
 }
 
 // Same reasoning as syncFromCanva: rendering any of these three needs local
