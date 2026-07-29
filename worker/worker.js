@@ -11116,7 +11116,7 @@ For EACH slide, also provide:
 - "speakerNotes": a one-line internal note on intent/delivery (not shown to viewers)
 - "cta": this slide's specific call to action, if any — empty string if none
 - "production": a compact object — "layoutType" (e.g. "text-only", "text+stat", "split-contrast"), "textHierarchy" (what reads first/second), "informationDensity" ("light"/"medium"/"heavy"), "visualComplexity" ("simple"/"moderate"/"rich"), "reusableVisualCandidate" (true/false — could this slide's visual treatment be reused across future carousels), "existingAssetCandidate" (true/false — could an existing brand asset/photo cover this slide instead of a new one)
-- "visualPlanning": yes/no decisions ONLY — do NOT generate image prompts and do NOT describe illustration styles here, a separate Visual Director stage owns all visual decisions and only needs to know what kind of visual support (if any) this slide will need: "needsCustomVisual" (true/false), "needsDataViz" (true/false), "needsIconOrGraphic" (true/false), "needsPhotoOrIllustration" (true/false)
+- "visualPlanning": yes/no decisions ONLY, about WHY a slide might need visual support, never WHAT kind — a separate Visual Director stage decides illustration vs. diagram vs. icon vs. photo vs. screenshot vs. existing asset vs. text-only, and does not want that choice pre-made for it. Do NOT generate image prompts, do NOT describe illustration styles, and do NOT name a visual medium (no "needs an icon", "needs a diagram", "needs a photo", etc.) anywhere in this response. Fields: "needsCustomVisual" (true/false — this slide needs some kind of made-for-it visual, unspecified which kind), "needsSupportingGraphic" (true/false — needs a visual that reinforces/illustrates the point, not just decoration), "needsEmphasis" (true/false — needs a visual that makes one specific thing stand out), "needsComparison" (true/false — the content is contrasting two or more things and could benefit from a visual comparison), "needsProcessExplanation" (true/false — the content walks through steps/a sequence that a visual could clarify)
 
 Also provide, once for the whole carousel:
 - "contentSummary": { "coreMessage": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "..." }
@@ -11130,7 +11130,7 @@ Also provide, once for the whole carousel:
 - 3-5 hashtags (no # prefix needed) — required, never leave empty
 
 Return ONLY this JSON object, no other text, no markdown fences:
-{ "slides": [ { "headline": "...", "body": "...", "role": "...", "objective": "...", "keyTakeaway": "...", "speakerNotes": "...", "cta": "...", "production": { "layoutType": "...", "textHierarchy": "...", "informationDensity": "...", "visualComplexity": "...", "reusableVisualCandidate": true, "existingAssetCandidate": false }, "visualPlanning": { "needsCustomVisual": true, "needsDataViz": false, "needsIconOrGraphic": false, "needsPhotoOrIllustration": true } }, ... exactly 7 total ... ], "contentSummary": { "coreMessage": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "..." }, "hookPackage": { "primary": "...", "alt1": "...", "alt2": "..." }, "contentFlow": "...", "educationalAssets": "...", "productionChecklist": ["...", "..."], "seoPublishing": { "linkedinCaption": "...", "xPost": "...", "description": "...", "keywords": "...", "altText": "...", "searchIntent": "..." }, "caption": "...", "hashtags": ["...", "..."] }`;
+{ "slides": [ { "headline": "...", "body": "...", "role": "...", "objective": "...", "keyTakeaway": "...", "speakerNotes": "...", "cta": "...", "production": { "layoutType": "...", "textHierarchy": "...", "informationDensity": "...", "visualComplexity": "...", "reusableVisualCandidate": true, "existingAssetCandidate": false }, "visualPlanning": { "needsCustomVisual": true, "needsSupportingGraphic": false, "needsEmphasis": false, "needsComparison": false, "needsProcessExplanation": true } }, ... exactly 7 total ... ], "contentSummary": { "coreMessage": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "..." }, "hookPackage": { "primary": "...", "alt1": "...", "alt2": "..." }, "contentFlow": "...", "educationalAssets": "...", "productionChecklist": ["...", "..."], "seoPublishing": { "linkedinCaption": "...", "xPost": "...", "description": "...", "keywords": "...", "altText": "...", "searchIntent": "..." }, "caption": "...", "hashtags": ["...", "..."] }`;
 
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
@@ -11216,7 +11216,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             writtenSlides.forEach((s, idx) => {
               const p = s.production || {};
               const vp = s.visualPlanning || {};
-              const vpFlags = ['needsCustomVisual', 'needsDataViz', 'needsIconOrGraphic', 'needsPhotoOrIllustration']
+              const vpFlags = ['needsCustomVisual', 'needsSupportingGraphic', 'needsEmphasis', 'needsComparison', 'needsProcessExplanation']
                 .filter(k => vp[k]).map(k => k.replace(/^needs/, ''));
               // Labeled "Key: value" segments (not positional dash-joined)
               // so downstream readers (generateVisualBriefPrompt) can pull
@@ -12265,8 +12265,8 @@ For EACH scene, also provide:
 - "speakerIntent": the emotional delivery (e.g. "calm", "excited", "serious", "curious", "inspirational", "confident")
 - "estimatedDurationSec": a number
 - "flow": one compact line covering the transition into the next scene, narrative continuity, retention reason, and viewer expectation
-- "production": one compact line covering scene type (illustration/motion graphic/diagram/workflow/b-roll/screen recording/screenshot/text-only/mixed), layout type, information density (low/medium/high), composition, camera motion suggestion, transition suggestion, and audio notes
-- "visualFlags": an array containing ONLY the flags that apply, from this fixed vocabulary — "needsIllustration", "needsMotionGraphics", "textOnly", "reuseExistingAsset", "needsBRoll", "needsWorkflowDiagram", "needsScreenshot", "needsIconAnimation", "existingAssetCandidate", "reusableVisualCandidate". These are yes/no decisions ONLY — do NOT generate image prompts and do NOT describe illustration styles anywhere in this response; a separate Visual Director stage owns all visual direction, image briefs, and artwork generation.
+- "production": one compact line covering layout structure (e.g. text-forward, split-screen, full-bleed, list/sequence, comparison-format — structural/layout language only, never naming a visual medium like illustration/diagram/photo/screenshot), information density (low/medium/high), composition, camera motion suggestion, transition suggestion, and audio notes
+- "visualFlags": an array containing ONLY the flags that apply, from this fixed vocabulary — "needsCustomVisual" (this scene needs some kind of made-for-it visual, unspecified which kind), "needsSupportingGraphic" (needs a visual that reinforces/illustrates the point, not just decoration), "needsEmphasis" (needs a visual that makes one specific thing stand out), "needsComparison" (the content contrasts two or more things and could benefit from a visual comparison), "needsProcessExplanation" (the content walks through steps/a sequence a visual could clarify), "existingAssetCandidate", "reusableVisualCandidate". These are yes/no decisions ONLY, about WHY a scene might need visual support, never WHAT kind — a separate Visual Director stage decides illustration vs. diagram vs. icon vs. photo vs. screenshot vs. existing asset vs. text-only, and does not want that choice pre-made for it. Do NOT generate image prompts, do NOT describe illustration styles, and do NOT name a visual medium anywhere in this response; that stage owns all visual direction, image briefs, and artwork generation.
 
 Also provide, once for the whole package:
 - "assetMetadata": { "series": "...", "platformSuggestion": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "...", "ctaGoal": "...", "voiceStyle": "...", "captionStyle": "..." }
@@ -12697,7 +12697,11 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
 
         // ── Relevant existing visual assets — other approved assets on
         // this campaign that already have a hosted Design Link, as reuse
-        // candidates. No separate asset-library DB exists in this system.
+        // candidates. No separate asset-library DB exists in this system,
+        // so "reusable tags" is approximated from Asset Type/Platform and
+        // "usage notes" from the Design Notes property (the same field
+        // Avatar/Text/Explainer Video's render modal already uses for
+        // operator guidance).
         const campAssetsQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ filter: { and: [
@@ -12705,17 +12709,42 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
             { property: "Design Link", url: { is_not_empty: true } },
           ] }, page_size: 15, sorts: [{ timestamp: "last_edited_time", direction: "descending" }] }),
         }).then(r => r.json()).catch(() => ({ results: [] }));
-        const existingAssetsList = (campAssetsQuery.results || [])
+        const existingAssetEntries = (campAssetsQuery.results || [])
           .filter(a => a.id.replace(/-/g, "") !== assetId)
           .map(a => {
             const p = a.properties || {};
+            const aid = a.id.replace(/-/g, "");
             const name = p["Asset Title"]?.title?.map(t => t.plain_text).join("") || "Untitled";
             const type = p["Asset Type"]?.select?.name || "?";
             const link = p["Design Link"]?.url || "";
             const status = p["Asset Status"]?.select?.name || "";
-            return `- ${name} (${type}, ${status || 'status unknown'}): ${link}`;
+            const platformTag = p["Platform Name"]?.select?.name || "";
+            const designNotes = p["Design Notes"]?.rich_text?.map(t => t.plain_text).join("") || "";
+            // Same slide-01 convention publishCarouselSlides/assembleAsset
+            // use — the only "thumbnail" this system can derive without a
+            // frame-extraction step for video.
+            const thumbnail = type === 'carousel' && link ? link.replace(/\/?$/, '/') + 'slide-01.png' : link;
+            const sameType = type === assetType;
+            const whyRelevant = sameType
+              ? `Same asset type (${type}) in this campaign — may share a visual treatment, template, or recurring style.`
+              : `Other approved asset in this campaign — check for brand/visual consistency.`;
+            return { id: aid, name, type, link, status, platformTag, designNotes, thumbnail, sameType, whyRelevant };
           });
-        const existingVisualAssets = existingAssetsList.join('\n');
+        const formatExistingAsset = e => [
+          `- Asset ID: ${e.id}`,
+          `  Name: ${e.name}`,
+          `  Type: ${e.type}`,
+          `  Thumbnail/Preview: ${e.thumbnail || 'Not provided'}`,
+          `  Why Relevant: ${e.whyRelevant}`,
+          `  Reusable Tags: ${[e.type, e.platformTag].filter(Boolean).join(', ') || 'Not provided'}`,
+          `  Usage Notes: ${e.designNotes || 'None provided'}`,
+          `  Status: ${e.status || 'status unknown'}`,
+        ].join('\n');
+        const existingAssetsList = existingAssetEntries.map(formatExistingAsset);
+        const existingVisualAssets = existingAssetsList.join('\n\n');
+        // Same-type subset — the closest thing this system has to "prior
+        // assets in the same series" for a Visual Continuity check.
+        const sameTypeExistingAssets = existingAssetEntries.filter(e => e.sameType).map(formatExistingAsset);
 
         // ── Validation (per the spec's section 8) ──
         const validation = {
@@ -12747,7 +12776,7 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
           aspectRatio, targetResolution, targetDuration, description, altText,
           relevantResearchContext, researchSummaryText, painPoints, campaignInformation, campaignLiveUrl,
           resolvedSpec, resolvedGlobalInstructions, sourceGlobalRefs, specRelId,
-          existingAssetsList, existingVisualAssets, validation, np,
+          existingAssetsList, existingVisualAssets, sameTypeExistingAssets, validation, np,
         };
       }
 
@@ -12808,7 +12837,7 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
           targetAudience, funnelStage, primaryGoal, ctaGoal, desiredViewerAction, platform,
           aspectRatio, targetResolution, targetDuration,
           relevantResearchContext, researchSummaryText, painPoints, campaignInformation,
-          resolvedSpec, resolvedGlobalInstructions, sourceGlobalRefs, existingVisualAssets, existingAssetsList,
+          resolvedSpec, resolvedGlobalInstructions, sourceGlobalRefs, existingVisualAssets, existingAssetsList, sameTypeExistingAssets,
           validation, np, sectionText, findSection, slideFields, slideOrSceneSections, extractField,
         } = ctx;
 
@@ -13103,7 +13132,7 @@ Begin by reviewing the Production Specification and creating the Visual Strategy
           return json({ success: true, assetId, titleId, campaignId, assetType, prompt: manifestPrompt, validation, kind: 'manifest' });
         }
 
-        // "Visual Production Brief Source Document" — the complete
+        // "Visual Production Source Document" — the complete
         // Content-Department-to-Visual-Department handoff. Unlike the
         // Manifest (which asks ChatGPT to design and maintain the visual
         // production doc), this one makes NO visual decisions at all and
@@ -13136,7 +13165,38 @@ Begin by reviewing the Production Specification and creating the Visual Strategy
         const primaryPromiseVal = extractField(contentSummaryText, 'Promise');
         const primaryEmotionVal = extractField(contentSummaryText, 'Primary emotion');
 
-        const prompt = `# Asset Metadata
+        // Asset Specification for THIS document only, minus the publishing/
+        // SEO fields (LinkedIn caption, X post, keywords, search intent,
+        // description) — they don't inform visual design and would just
+        // dilute the prompt. The Manifest's own Asset Spec keeps them.
+        const briefAssetSpecHeadings = assetType === 'carousel'
+          ? ['Content Summary', 'Hook Package', 'Content Flow', 'Educational Assets', 'Production Checklist']
+          : ['Asset Metadata', 'Content Summary', 'Hook Package', 'Video Structure', 'Educational Assets', 'Production Checklist'];
+        const briefAssetSpec = briefAssetSpecHeadings.map(h => { const t = sectionText(h); return t ? `${h.toUpperCase()}:\n${t}` : ''; }).filter(Boolean).join('\n\n');
+
+        // Visual Continuity — the closest thing this system has to "prior
+        // assets in the same series": other approved assets of the SAME
+        // Asset Type on this campaign, plus the resolved Design Spec
+        // (palette/typography/aesthetic notes), since there's no explicit
+        // Series/character/motif tracking to draw recurring-style
+        // descriptions from directly. Leaves the actual pattern-reading
+        // (recurring motifs/character/illustration style/iconography) to
+        // the Visual Director, who can open the linked thumbnails.
+        const visualContinuityBlock = sameTypeExistingAssets.length
+          ? [
+              `${sameTypeExistingAssets.length} other approved ${assetType} asset(s) already exist in this campaign — review them for recurring motifs, layouts, character usage, illustration style, and iconography before starting from scratch:`,
+              ...sameTypeExistingAssets,
+              `\nShared design system across all of this campaign's assets (palette/typography/aesthetic — apply for continuity):\n${resolvedGlobalInstructions}`,
+            ].join('\n\n')
+          : `None — this is the first ${assetType} asset in this campaign. Establish a visual system now using the Design Globals below; later ${assetType} assets in this campaign should follow it for continuity.`;
+
+        const prompt = `# Visual Production Source Document
+
+${np(assetName)} — ${assetType}
+
+---
+
+# Asset Metadata
 
 - Asset ID: ${assetId}
 - Asset Name: ${assetName}
@@ -13192,7 +13252,7 @@ ${finalWrittenAssetBlock}
 
 # Asset Specification
 
-${np(completeAssetSpec)}
+${np(briefAssetSpec)}
 
 ---
 
@@ -13214,7 +13274,13 @@ Source: ${sourceGlobalRefs.join('\n')}
 
 # Existing Assets
 
-${existingAssetsList.length ? existingAssetsList.join('\n') : 'Not provided — no other approved assets with a hosted Design Link were found on this campaign.'}
+${existingAssetsList.length ? existingAssetsList.join('\n\n') : 'Not provided — no other approved assets with a hosted Design Link were found on this campaign.'}
+
+---
+
+# Visual Continuity
+
+${visualContinuityBlock}
 
 ---
 
