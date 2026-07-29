@@ -14302,6 +14302,12 @@ ${identityLine}
 
 ---
 
+# Scope
+
+This document is a finished internal handoff, given to you for EXECUTION — not for review. Do not propose changes to this document's structure, this system's architecture, or the workflow that produced it. Do not suggest new databases, fields, tiers, or process redesigns, even if you can see how the process could be improved — that feedback goes to a human, not into this brief. Every response you give in this conversation should be the Visual Production Brief itself (or a revision of it), nothing else. If something below is genuinely unworkable, say so in one sentence and ask what to do, then stop — do not substitute a system redesign for the deliverable.
+
+---
+
 # Editing Authority
 
 ${editingAuthorityBlock}
@@ -14427,7 +14433,7 @@ ${brandIntentBlock}
 - Accessibility requirements: Not provided — not tracked in this system.
 - Platform constraints: ${platform ? `Built for ${platform}` : 'Not provided'}
 - Brand restrictions: ${np(resolvedSpec.notes)}
-- Known conflicts: None identified — single-tier Design Spec system, no cross-global conflicts possible.
+- Known conflicts: None identified.
 
 ---
 
@@ -14463,7 +14469,9 @@ ${identityLine}
 
 This is what lets the completed brief get pasted back into the correct Notion record; never let it drift or drop out of a later message.
 
-Use this document to create and maintain the Visual Production Brief. The Visual Production Brief becomes the authoritative visual record for this asset throughout production.`;
+Use this document to create and maintain the Visual Production Brief. The Visual Production Brief becomes the authoritative visual record for this asset throughout production.
+
+Per Scope above: do not restructure, critique, or propose process/system changes anywhere in this conversation. Output the Visual Production Brief and nothing else.`;
 
         return json({ success: true, assetId, titleId, campaignId, assetType, prompt, validation, kind: 'brief' });
       }

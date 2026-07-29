@@ -153,6 +153,8 @@ The existing per-Method "Generate Titles" modal (`generateMethodTitles`) can opt
 
 ### Editing Authority model (Visual Brief)
 
+Every Visual Brief opens with a **`# Scope`** section, before Editing Authority, added after ChatGPT repeatedly responded to these documents with process critiques and architecture-redesign proposals instead of the requested Visual Production Brief (the document's own rich framing — tiers, authority, systems — reads as an invitation to that). It's a blunt directive: this is a finished internal handoff for execution, not review; do not propose changes to the document, the system, or the workflow that produced it; every response in the conversation should be the brief itself. The closing `# Visual Director Instructions` repeats it in one line as a second anchor late in a long back-and-forth. This is a prompt-engineering mitigation, not a guarantee — ChatGPT can still ignore it.
+
 Every Visual Brief prints a "# Editing Authority" section near the top defining four tiers ChatGPT must respect, and the Design Specification (Draft) section tags every field against them:
 
 - **Immutable** — strategic/content layer (narration, on-screen text, CTA, platform, aspect ratio, scene order, required facts). ChatGPT may flag a problem, never silently rewrite.
