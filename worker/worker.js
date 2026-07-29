@@ -12795,6 +12795,20 @@ Return ONLY this JSON object, no other text, no markdown fences:
         };
       }
 
+      // A single rich_text object caps out at 2000 characters — a plain
+      // `.slice(0, 1990)` silently truncates anything longer, which is
+      // exactly wrong for a property like "Visual Production Brief" that's
+      // routinely several thousand characters. Notion accepts an ARRAY of
+      // up to 100 rich_text objects per property (each capped the same
+      // way), so this splits into chunks instead of cutting content off.
+      const chunkedRichText = (text, maxLen = 1990) => {
+        const s = String(text || '');
+        if (!s) return [];
+        const chunks = [];
+        for (let i = 0; i < s.length; i += maxLen) chunks.push(s.slice(i, i + maxLen));
+        return chunks.slice(0, 100).map(c => ({ text: { content: c } }));
+      };
+
       // Parses the "Machine-Readable Status" YAML block the Manifest
       // template (generateVisualManifestPrompt) asks ChatGPT to maintain
       // and the operator pastes back into the Asset's "Visual Production
@@ -13474,7 +13488,7 @@ Use this document to create and maintain the Visual Production Brief. The Visual
           visualBrief = visualProductionBriefText.trim();
           const saveResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
             method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Visual Production Brief": { rich_text: [{ text: { content: visualBrief.slice(0, 1990) } }] } } }),
+            body: JSON.stringify({ properties: { "Visual Production Brief": { rich_text: chunkedRichText(visualBrief) } } }),
           });
           savedFreshBrief = saveResp.ok;
         }
@@ -13703,15 +13717,15 @@ Use this document to create and maintain the Visual Production Brief. The Visual
         const props = {
           "Publishing": { select: { name: "Ready to Publish" } },
           "Final Media File": { url: designLink },
-          "Post Caption": { rich_text: [{ text: { content: postCaption.slice(0, 1990) } }] },
-          "Platform Title": { rich_text: [{ text: { content: platformTitle.slice(0, 1990) } }] },
-          "Description": { rich_text: [{ text: { content: finalDescription.slice(0, 1990) } }] },
-          "Hashtags": { rich_text: [{ text: { content: hashtags.slice(0, 1990) } }] },
-          "Alt Text": { rich_text: [{ text: { content: finalAltText.slice(0, 1990) } }] },
+          "Post Caption": { rich_text: chunkedRichText(postCaption) },
+          "Platform Title": { rich_text: chunkedRichText(platformTitle) },
+          "Description": { rich_text: chunkedRichText(finalDescription) },
+          "Hashtags": { rich_text: chunkedRichText(hashtags) },
+          "Alt Text": { rich_text: chunkedRichText(finalAltText) },
           "Thumbnail": { url: thumbnail || null },
-          "Channel": { rich_text: [{ text: { content: channel.slice(0, 1990) } }] },
+          "Channel": { rich_text: chunkedRichText(channel) },
           "Link or CTA": { url: linkOrCta || null },
-          "Source References": { rich_text: [{ text: { content: sourceReferences.slice(0, 1990) } }] },
+          "Source References": { rich_text: chunkedRichText(sourceReferences) },
           "Assembly Review Page": { url: reviewUrl },
         };
         if (publishingDate) props["Publishing Date"] = { date: { start: publishingDate } };
