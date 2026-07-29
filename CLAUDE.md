@@ -78,7 +78,7 @@ CORS is locked to `https://cabuzzard.github.io` only.
 
 ## Notion Databases
 
-All 12 databases live directly under 🏠 Home (`3431f7d3a4bb80378e64ce26578d007f`):
+All core databases live directly under 🏠 Home (`3431f7d3a4bb80378e64ce26578d007f`):
 
 | Database | ID |
 |---|---|
@@ -93,16 +93,47 @@ All 12 databases live directly under 🏠 Home (`3431f7d3a4bb80378e64ce26578d007
 | Research | `557e6b7b8c434a578d45ecb0a8329f63` |
 | Leads | `e4518a459f004eb0b9646e48d8718705` |
 | Emails | `6252e9917027488fb628436aabb89947` |
-| 🎬 Text Video Specs | `3ce83fc9ef8b4dc185219598761abb7f` |
-| 🎞️ Text Video Scenes | `afa52f6d81b7416d97696517bed8d9c2` |
 
 The **Leads DB** `Campaign` field is plain text — any campaign form submits to the same DB with a different `campaign` value. The `Fraud Type` field (a Notion select) accepts the values in `validFraudTypes` in `worker.js` — **keep that allowlist in sync with Notion's select options**.
 
 ### Design Specification databases
 
-**🎬 Text Video Specs** (one row per asset) + **🎞️ Text Video Scenes** (one row per scene, related back via `Parent Spec`/`Scenes`) implement the "Video Assembly Specification v1.0" schema — the structured, per-field counterpart to the free-text Visual Production Brief/Production Assembly Package uploads. `Text Video Specs` also carries a `Linked Asset` relation back to the Assets DB (not part of the original spec, added for traceability).
+Structured, per-field counterparts to the free-text Visual Production Brief/Production Assembly Package uploads. All live under 🏠 Home alongside the core databases above.
 
-`generateVisualBriefPrompt` (🎨 Visual Brief button) auto-populates both databases for text-video assets via `buildTextVideoSpecDraft`: deterministic fields (dimensions, FPS, voice, safe areas, Remotion version) come from fixed pipeline conventions; creative/scene fields (tone, motion, per-scene visual treatment, timing) come from one Claude call grounded in the asset's *existing* Narration/On-Screen Text (copied verbatim, never regenerated) plus research/title/method context. The draft is written into Notion (archiving and replacing prior rows on every regeneration) and folded into the clipboard prompt as a "# Design Specification (Draft)" section, so ChatGPT reviews/refines concrete field values instead of starting blank. Still **not wired into `assembleAsset` or any gating** — ChatGPT's revisions aren't synced back into these databases automatically; the operator applies them by hand. Carousel has no Specs DB yet, so this only runs for text video. A matching Carousel Specs pair is planned once that field list is provided.
+**Shared (asset-type-agnostic)** — reusable across any asset type, not just carousel:
+
+| Database | ID | Scope |
+|---|---|---|
+| 🎨 Color Palettes | `b71036ecf4ed49d79ec55d9b97bc2510` | Reusable, one per campaign |
+| 🔤 Typography Systems | `e4f778fdca944e268c43a7078613220d` | Reusable, one per campaign |
+| 🖌️ Visual Style Profiles | `30864a7b721d4aaea7fa06262f9bdd94` | Reusable, one per campaign |
+| 📐 Grid & Spacing Systems | `2a3764e75be24e6aaf008e1d167dc4e1` | Reusable, one per campaign |
+| 🔷 Diagram Templates | `96db754fdb444e269124e5fad4ea7c57` | Reusable, one per diagram type (global library) |
+| 🧩 Layout Templates | `b455ceb4395e4a8b942ab5031367a8ff` | Reusable, one per layout category (global library); has a `Supported Asset Types` field for cross-type reuse |
+| 📤 Platform & Export Presets | `78e89f02e8d4401a838635fc4d505f36` | Reusable, one per platform+format |
+| 🖼️ Visual Asset Library | `7c2e1cd157e9480493bc442c80583d95` | Reusable production assets; not yet auto-populated (no images exist at draft time) |
+
+**Text Video specific:**
+
+| Database | ID |
+|---|---|
+| 🎬 Text Video Specs | `3ce83fc9ef8b4dc185219598761abb7f` |
+| 🎞️ Text Video Scenes | `afa52f6d81b7416d97696517bed8d9c2` |
+
+**Carousel specific:**
+
+| Database | ID |
+|---|---|
+| 🎠 Carousel Design Systems | `7195e832480d48909017a9cc3193212c` |
+| 🎠 Carousel Specifications | `ff84f1d161504a778e9ed29dfd4e02a6` |
+| 🃏 Slide Specifications | `69f9b4be4b9143568d4baacc920fb657` |
+| ✅ Carousel QA Runs | `bdefa812e111424194bba11953b32854` |
+
+`generateVisualBriefPrompt` (🎨 Visual Brief button) auto-populates these for both text-video and carousel assets — `buildTextVideoSpecDraft`/`buildCarouselSpecDraft` in `worker.js`. Pattern for both: deterministic technical fields (dimensions, safe areas, renderer/export conventions) come from fixed pipeline conventions; creative/per-slide-or-scene fields come from one Claude call grounded in the asset's *existing* written copy (headline/body or narration/on-screen text, copied verbatim, never regenerated) plus research/title/method context. The draft is folded into the clipboard prompt as a "# Design Specification (Draft)" section, so ChatGPT reviews/refines concrete field values instead of starting blank.
+
+Carousel additionally resolves the shared systems (Color Palette/Typography/Visual Style/Grid & Spacing/Platform Preset) as **search-or-create, keyed by campaign name** — every carousel in a campaign reuses the same bundle (`{campaign} Color Palette`, etc.) instead of creating duplicates each generation, and the bundle is re-patched on every draft so it stays current with the campaign's resolved Design Spec. Layout Templates and Diagram Templates are search-or-create **keyed by category/type name and shared globally** (not per campaign) — "Cover Hero Left" means the same thing everywhere, and this is how the template library grows over time. `Carousel Specifications` carries a `Content Asset` relation back to the Assets DB (dual — Assets DB shows a `Carousel Specification` back-reference); `Slide Specifications` relates back to its parent via `Carousel Specification`/`Slide Specifications`. Several fields from the original pasted spec that were typed as Notion rollups were simplified to plain fields set directly by the draft builder (a real Notion rollup adds fragile DDL syntax for no functional gain here); a few relations to non-existent concepts in this system (Brand, Series, Character) were dropped in favor of the existing Campaign relation or free text, matching how the rest of this system already collapses those tiers.
+
+**Not yet done, either type:** wiring into `assembleAsset` or any gating (still runs on the free-text Machine-Readable Status block); syncing ChatGPT's revisions back into these databases (the operator applies them to the Notion rows by hand).
 
 ## Admin Microsite System
 

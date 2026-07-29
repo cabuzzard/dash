@@ -14,6 +14,21 @@ const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
 const TEXT_VIDEO_SPECS_DB  = "3ce83fc9ef8b4dc185219598761abb7f";
 const TEXT_VIDEO_SCENES_DB = "afa52f6d81b7416d97696517bed8d9c2";
+// Shared design-system databases (asset-type-agnostic — carousel today, other
+// asset types can relate to these same records later).
+const COLOR_PALETTES_DB       = "b71036ecf4ed49d79ec55d9b97bc2510";
+const TYPOGRAPHY_SYSTEMS_DB   = "e4f778fdca944e268c43a7078613220d";
+const VISUAL_STYLE_PROFILES_DB = "30864a7b721d4aaea7fa06262f9bdd94";
+const GRID_SPACING_SYSTEMS_DB  = "2a3764e75be24e6aaf008e1d167dc4e1";
+const DIAGRAM_TEMPLATES_DB     = "96db754fdb444e269124e5fad4ea7c57";
+const LAYOUT_TEMPLATES_DB      = "b455ceb4395e4a8b942ab5031367a8ff";
+const PLATFORM_EXPORT_PRESETS_DB = "78e89f02e8d4401a838635fc4d505f36";
+const VISUAL_ASSET_LIBRARY_DB  = "7c2e1cd157e9480493bc442c80583d95";
+// Carousel-specific databases.
+const CAROUSEL_DESIGN_SYSTEMS_DB = "7195e832480d48909017a9cc3193212c";
+const CAROUSEL_SPECS_DB        = "ff84f1d161504a778e9ed29dfd4e02a6";
+const SLIDE_SPECS_DB           = "69f9b4be4b9143568d4baacc920fb657";
+const CAROUSEL_QA_RUNS_DB      = "bdefa812e111424194bba11953b32854";
 const LEADS_DB           = "e4518a459f004eb0b9646e48d8718705";
 const SM_ACCOUNTS_DB     = "aa6a16f2a77245bfb5efd9a8eb314b07";
 const EMAILS_DB          = "6252e9917027488fb628436aabb89947";
@@ -13231,6 +13246,342 @@ Include exactly ${scenesInput.length} scene objects, numbered 1 to ${scenesInput
         return { specPageId, spec, scenes };
       }
 
+      // ── buildCarouselSpecDraft ──
+      // Called from generateVisualBriefPrompt for carousel assets. Mirrors
+      // buildTextVideoSpecDraft's split: deterministic technical fields
+      // (grid, safe areas, export preset) come from fixed pipeline
+      // conventions or reused shared-system records; creative/per-slide
+      // fields come from one Claude call grounded in the asset's actual
+      // written slide copy (headline/body copied verbatim, never
+      // regenerated). The shared design-system databases (Color Palette,
+      // Typography System, Visual Style Profile, Grid & Spacing System,
+      // Platform & Export Preset) are search-or-create keyed by campaign
+      // name — every carousel in a campaign reuses the same bundle instead
+      // of creating duplicates each generation. Layout/Diagram Templates
+      // are search-or-create keyed by category/type name and shared
+      // GLOBALLY (not per-campaign) — "Cover Hero Left" means the same
+      // thing everywhere, and reuse is the point. Visual Asset Library
+      // isn't populated here — no images exist yet at draft time; that's
+      // the Upload Images flow's job once the Visual Director approves art.
+      async function buildCarouselSpecDraft(ctx, env) {
+        const {
+          hdr, dash, assetId, assetName, campaignId, campaignName, titleName, resolvedSpec,
+          resolvedGlobalInstructions, slideOrSceneSections, slideFields, contentFoundation,
+          researchSummaryText, targetAudience, platform, np,
+        } = ctx;
+        if (!slideOrSceneSections.length) return null;
+        if (!env.ANTHROPIC_API_KEY) return null;
+
+        const slidesInput = slideOrSceneSections.map((s, idx) => {
+          const { headline, body } = slideFields(s);
+          return { number: idx + 1, headline, body };
+        });
+
+        const draftPrompt = `You are the technical/creative producer drafting a first-pass carousel design specification for a ${slidesInput.length}-slide Instagram/LinkedIn carousel. This is a DRAFT for a human Visual Director to review and refine — make real decisions, don't hedge or leave fields vague.
+
+The headline and supporting text below for each slide are FINAL and already written — do not alter, rewrite, or summarize them. Your job is only to plan the DESIGN/PRODUCTION around them.
+
+ASSET: "${assetName}" for title "${titleName}" (campaign: "${campaignName}")
+
+RESEARCH-GROUNDED CONTEXT:
+${np(researchSummaryText)}
+
+CONTENT FOUNDATION:
+${np(contentFoundation)}
+
+EXISTING DESIGN SYSTEM (apply for consistency, don't contradict):
+${resolvedGlobalInstructions}
+
+TARGET AUDIENCE: ${np(targetAudience)}
+PLATFORM: ${np(platform)}
+
+SLIDES (verbatim, do not alter):
+${slidesInput.map(s => `Slide ${s.number}:\n  Headline: ${s.headline}\n  Supporting Text: ${s.body}`).join('\n\n')}
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{
+  "designSystem": {
+    "creativeObjective": "...", "targetAudience": "...", "funnelStage": "Cold, Warm, or Hot", "viewerAwareness": "Cold, Warm, or Hot",
+    "intendedViewerOutcome": "...", "tone": ["..."], "emotionalArc": "...", "brandImpression": ["..."],
+    "visualNarrative": "...", "recurringMotifs": "...", "contentDensityTarget": "Low, Medium, or High", "whiteSpaceTarget": "Low, Medium, or High",
+    "designIntent": "...", "overallAesthetic": "...",
+    "iconStyle": "...", "illustrationStyle": "...", "diagramStyle": "..."
+  },
+  "slides": [
+    {
+      "slideNumber": 1, "slideRole": "Cover, Hook, Problem, Agitate, Insight, Teach, Framework, Process, Comparison, Proof, Example, Quote, Summary, Transition, or CTA",
+      "contentObjective": "...", "keyTakeaway": "...", "eyebrowText": "", "labelText": "", "footerText": "", "ctaText": "", "altText": "...",
+      "readingPriority": "Headline, Visual, CTA, or Label", "informationDensity": "Low, Medium, or High", "visualComplexity": "Low, Medium, or High",
+      "layoutCategory": "e.g. Cover Hero Left, Split Contrast Vertical, Text Only Quote, Diagram Centered, Comparison Two Column, CTA Centered",
+      "visualTreatment": "Text Only, Generated Illustration, Existing Brand Asset, Icon, Diagram, Screenshot, Photography, Background Texture, or Composite",
+      "productionAction": "No Asset Required, Generate, Reuse, Retrieve, Edit Existing, Capture, License, or Composite",
+      "visualPurpose": "...", "visualDescription": "...", "primarySubject": "...",
+      "diagramType": "",
+      "productionWeight": "Low, Medium, or High", "complexityBudget": "Low, Medium, or High"
+    }
+  ]
+}
+Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput.length} in order. Slide 1 should be slideRole "Cover" and the last slide should be slideRole "CTA" unless the content genuinely doesn't call for it. diagramType only needs a value when visualTreatment is "Diagram". Native SVG/vector visuals preferred — avoid recommending raster photography/AI illustration unless the content genuinely calls for it.`;
+
+        const callClaude = async content => {
+          const resp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content }] }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error?.message || "Claude API error");
+          return data.content?.[0]?.text || "";
+        };
+        const parseSpecJson = raw => {
+          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+          if (start === -1 || end === -1) throw new Error("No JSON object found");
+          return JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        };
+        let draft;
+        try {
+          draft = parseSpecJson(await callClaude(draftPrompt));
+        } catch (firstErr) {
+          draft = parseSpecJson(await callClaude(`${draftPrompt}\n\nYour previous response failed to parse as JSON (${firstErr.message}). Return ONLY the corrected JSON object this time, no other text, no markdown fences.`));
+        }
+        const ds = draft.designSystem || {};
+        const llmSlides = draft.slides || [];
+
+        const rt1 = v => ({ rich_text: [{ text: { content: String(v || '') } }] });
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const assetSlug = slugify(assetName) || 'asset';
+
+        // Search-or-create: find a page in `dbId` whose title equals `name`;
+        // create one with `props` if none exists.
+        const findOrCreate = async (dbId, titlePropName, name, props) => {
+          const q = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: titlePropName, title: { equals: name } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const existing = (q.results || [])[0];
+          if (existing) return existing.id;
+          const created = await fetch(`https://api.notion.com/v1/pages`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: dbId }, properties: { [titlePropName]: { title: [{ text: { content: name } }] }, ...props } }),
+          }).then(r => r.json());
+          return created.id;
+        };
+
+        const PLATFORM_MAP = { instagram: 'Instagram', linkedin: 'LinkedIn', tiktok: 'TikTok' };
+        const platformKey = Object.keys(PLATFORM_MAP).find(k => (platform || '').toLowerCase().includes(k));
+        const platformName = platformKey ? PLATFORM_MAP[platformKey] : 'Instagram';
+
+        // Five campaign-scoped shared systems, created in parallel — they're
+        // independent of each other.
+        const [colorPaletteId, typographySystemId, visualStyleId, gridSystemId, platformPresetId] = await Promise.all([
+          findOrCreate(COLOR_PALETTES_DB, "Palette Name", `${campaignName} Color Palette`, {
+            "Primary Background": rt1(resolvedSpec.bg), "Primary Ink": rt1(resolvedSpec.ink), "Accent Primary": rt1(resolvedSpec.accent),
+            "Usage Notes": rt1(resolvedSpec.notes), "Status": { select: { name: "Active" } },
+          }),
+          findOrCreate(TYPOGRAPHY_SYSTEMS_DB, "Typography System Name", `${campaignName} Typography System`, {
+            "Headline Font": rt1(resolvedSpec.headlineFont), "Body Font": rt1(resolvedSpec.bodyFont), "Status": { select: { name: "Active" } },
+          }),
+          findOrCreate(VISUAL_STYLE_PROFILES_DB, "Visual Style Name", `${campaignName} Visual Style`, {
+            "Style Description": rt1(resolvedSpec.notes), "Icon Style": rt1(ds.iconStyle), "Illustration Style": rt1(ds.illustrationStyle),
+            "Diagram Style": rt1(ds.diagramStyle), "Status": { select: { name: "Active" } },
+          }),
+          findOrCreate(GRID_SPACING_SYSTEMS_DB, "Grid System Name", `${campaignName} Grid & Spacing (Carousel)`, {
+            "Reference Width": { number: 1080 }, "Reference Height": { number: 1350 },
+            "Safe Area Top": { number: 100 }, "Safe Area Bottom": { number: 100 }, "Safe Area Left": { number: 80 }, "Safe Area Right": { number: 80 },
+            "Status": { select: { name: "Active" } },
+          }),
+          findOrCreate(PLATFORM_EXPORT_PRESETS_DB, "Preset Name", `${platformName} Carousel 4:5 PNG`, {
+            "Platform": { select: { name: platformName } }, "Supported Asset Types": { multi_select: [{ name: "Carousel" }] },
+            "Width": { number: 1080 }, "Height": { number: 1350 }, "Aspect Ratio": rt1("4:5"),
+            "Export Format": { select: { name: "PNG" } }, "Maximum Slide Count": { number: 10 }, "Minimum Slide Count": { number: 3 },
+            "Status": { select: { name: "Active" } },
+          }),
+        ]);
+
+        // Layout/Diagram Templates: sequential (not parallel) to avoid two
+        // slides proposing the same new category racing each other into
+        // duplicate Notion pages; an in-run cache still avoids re-querying
+        // for a category already resolved earlier in this same call.
+        const layoutTemplateCache = {}, diagramTemplateCache = {};
+        const findOrCreateLayoutTemplate = async category => {
+          if (!category) return null;
+          if (layoutTemplateCache[category]) return layoutTemplateCache[category];
+          const id = await findOrCreate(LAYOUT_TEMPLATES_DB, "Layout Name", category, {
+            "Layout Category": rt1(category), "Supported Asset Types": { multi_select: [{ name: "Carousel" }] }, "Status": { select: { name: "Active" } },
+          });
+          layoutTemplateCache[category] = id;
+          return id;
+        };
+        const findOrCreateDiagramTemplate = async type => {
+          if (!type) return null;
+          if (diagramTemplateCache[type]) return diagramTemplateCache[type];
+          const id = await findOrCreate(DIAGRAM_TEMPLATES_DB, "Diagram Name", type, {
+            "Diagram Type": { select: { name: type } }, "Status": { select: { name: "Active" } },
+          });
+          diagramTemplateCache[type] = id;
+          return id;
+        };
+
+        const slides = [];
+        for (let idx = 0; idx < slidesInput.length; idx++) {
+          const s = slidesInput[idx];
+          const l = llmSlides[idx] || {};
+          const layoutTemplateId = await findOrCreateLayoutTemplate(l.layoutCategory);
+          const diagramTemplateId = l.visualTreatment === 'Diagram' ? await findOrCreateDiagramTemplate(l.diagramType) : null;
+          slides.push({
+            number: s.number, headline: s.headline, body: s.body,
+            role: l.slideRole || (s.number === 1 ? 'Cover' : (s.number === slidesInput.length ? 'CTA' : 'Teach')),
+            contentObjective: l.contentObjective || '', keyTakeaway: l.keyTakeaway || '',
+            eyebrowText: l.eyebrowText || '', labelText: l.labelText || '', footerText: l.footerText || '', ctaText: l.ctaText || '',
+            altText: l.altText || '', readingPriority: l.readingPriority || 'Headline',
+            informationDensity: l.informationDensity || 'Medium', visualComplexity: l.visualComplexity || 'Medium',
+            layoutCategory: l.layoutCategory || '', layoutTemplateId,
+            visualTreatment: l.visualTreatment || 'Text Only', productionAction: l.productionAction || 'No Asset Required',
+            visualPurpose: l.visualPurpose || '', visualDescription: l.visualDescription || '', primarySubject: l.primarySubject || '',
+            diagramType: l.diagramType || '', diagramTemplateId,
+            productionWeight: l.productionWeight || 'Medium', complexityBudget: l.complexityBudget || 'Medium',
+          });
+        }
+
+        // ── Carousel Design System bundle (one per campaign, kept current) ──
+        const coverLayoutId = slides[0]?.layoutTemplateId || null;
+        const ctaLayoutId = slides[slides.length - 1]?.layoutTemplateId || null;
+        const designSystemProps = {
+          "Status": { select: { name: "Active" } },
+          "Campaign": { relation: [{ id: dash(campaignId) }] },
+          "Color Palette": { relation: [{ id: colorPaletteId }] },
+          "Typography System": { relation: [{ id: typographySystemId }] },
+          "Visual Style Profile": { relation: [{ id: visualStyleId }] },
+          "Grid & Spacing System": { relation: [{ id: gridSystemId }] },
+          "Default Platform Preset": { relation: [{ id: platformPresetId }] },
+          "Design Intent": rt1(ds.designIntent), "Overall Aesthetic": rt1(ds.overallAesthetic),
+          "Brand Impression": { multi_select: (Array.isArray(ds.brandImpression) ? ds.brandImpression : []).map(v => ({ name: v })) },
+          "Default White-Space Target": { select: { name: ds.whiteSpaceTarget || 'Medium' } },
+          "Default Information Density": { select: { name: ds.contentDensityTarget || 'Medium' } },
+          "Default Visual Complexity": { select: { name: 'Medium' } },
+          "Photography Allowed": { checkbox: false }, "Faces Allowed": { checkbox: false },
+          "Illustration Allowed": { checkbox: true }, "Diagrams Allowed": { checkbox: true }, "Icons Allowed": { checkbox: true },
+        };
+        const carouselDesignSystemId = await findOrCreate(CAROUSEL_DESIGN_SYSTEMS_DB, "Design System Name", `${campaignName} Carousel Design System`, designSystemProps);
+        // findOrCreate only sets props on CREATE — patch every time so an
+        // existing per-campaign bundle stays current with the latest
+        // resolved Design Spec instead of going stale after the first run.
+        await fetch(`https://api.notion.com/v1/pages/${carouselDesignSystemId}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: designSystemProps }),
+        });
+
+        // ── Carousel Specification (one per asset) ──
+        const assetIdDashed = dash(assetId);
+        const specQuery = await fetch(`https://api.notion.com/v1/databases/${CAROUSEL_SPECS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { property: "Content Asset", relation: { contains: assetIdDashed } } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const existingSpecPage = (specQuery.results || [])[0] || null;
+
+        const PLATFORM_ASPECT = { Instagram: '4:5', LinkedIn: '4:5', TikTok: '9:16' };
+        const specProps = {
+          "Specification Name": { title: [{ text: { content: assetName } }] },
+          "Version": rt1('1.0 (draft)'), "Schema Version": rt1('1.0'),
+          "Content Asset": { relation: [{ id: assetIdDashed }] },
+          "Campaign": { relation: [{ id: dash(campaignId) }] },
+          "Specification Status": { select: { name: "Draft" } },
+          "Platform": { select: { name: platformName } },
+          "Width": { number: 1080 }, "Height": { number: 1350 }, "Aspect Ratio": rt1(PLATFORM_ASPECT[platformName] || '4:5'),
+          "Slide Count": { number: slides.length }, "Export Format": { select: { name: "PNG" } },
+          "Creative Objective": rt1(ds.creativeObjective), "Target Audience": rt1(ds.targetAudience || targetAudience || ''),
+          ...(ds.funnelStage ? { "Funnel Stage": { select: { name: ds.funnelStage } } } : {}),
+          ...(ds.viewerAwareness ? { "Viewer Awareness": { select: { name: ds.viewerAwareness } } } : {}),
+          "Intended Viewer Outcome": rt1(ds.intendedViewerOutcome),
+          "Tone": { multi_select: (Array.isArray(ds.tone) ? ds.tone : []).map(v => ({ name: v })) },
+          "Emotional Arc": rt1(ds.emotionalArc),
+          "Brand Impression": { multi_select: (Array.isArray(ds.brandImpression) ? ds.brandImpression : []).map(v => ({ name: v })) },
+          "Visual Narrative": rt1(ds.visualNarrative), "Recurring Motifs": rt1(ds.recurringMotifs),
+          "Content Density Target": { select: { name: ds.contentDensityTarget || 'Medium' } },
+          "White-Space Target": { select: { name: ds.whiteSpaceTarget || 'Medium' } },
+          "Carousel Design System": { relation: [{ id: carouselDesignSystemId }] },
+          "Platform & Export Preset": { relation: [{ id: platformPresetId }] },
+          ...(coverLayoutId ? { "Cover Layout Template": { relation: [{ id: coverLayoutId }] } } : {}),
+          ...(ctaLayoutId ? { "CTA Layout Template": { relation: [{ id: ctaLayoutId }] } } : {}),
+          "Default Text Alignment": { select: { name: "Center" } },
+          "Page Number Enabled": { checkbox: true }, "Logo Enabled": { checkbox: false },
+          "Minimum Font Size": { number: 24 }, "Maximum Headline Lines": { number: 4 }, "Maximum Body Lines": { number: 6 },
+          "Minimum Contrast Ratio": { number: 4.5 },
+          "Standalone Slide Rule": { checkbox: true }, "Reusable Asset Preference": { select: { name: "Prefer Reuse" } },
+          "External Downloads Allowed": { checkbox: false },
+          "Assembly Renderer": { select: { name: "Cloudflare Browser Rendering" } },
+          "Assembly Status": { select: { name: "Not Started" } },
+        };
+        const layoutTemplateIds = [...new Set(slides.map(s => s.layoutTemplateId).filter(Boolean))];
+        const diagramTemplateIds = [...new Set(slides.map(s => s.diagramTemplateId).filter(Boolean))];
+        if (layoutTemplateIds.length) specProps["Layout Templates"] = { relation: layoutTemplateIds.map(id => ({ id })) };
+        if (diagramTemplateIds.length) specProps["Diagram Templates"] = { relation: diagramTemplateIds.map(id => ({ id })) };
+
+        let specPageId;
+        if (existingSpecPage) {
+          specPageId = existingSpecPage.id;
+          await fetch(`https://api.notion.com/v1/pages/${specPageId}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: specProps }),
+          });
+        } else {
+          const created = await fetch(`https://api.notion.com/v1/pages`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: CAROUSEL_SPECS_DB }, properties: specProps }),
+          }).then(r => r.json());
+          specPageId = created.id;
+        }
+
+        // ── Slide Specifications: archive old, create fresh ──
+        if (specPageId) {
+          const slideQuery = await fetch(`https://api.notion.com/v1/databases/${SLIDE_SPECS_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Carousel Specification", relation: { contains: specPageId } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          await Promise.all((slideQuery.results || []).map(p =>
+            fetch(`https://api.notion.com/v1/pages/${p.id}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
+            })
+          ));
+
+          await Promise.all(slides.map(sl => fetch(`https://api.notion.com/v1/pages`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parent: { database_id: SLIDE_SPECS_DB },
+              properties: {
+                "Slide Name": { title: [{ text: { content: `Slide ${sl.number}: ${np(sl.headline).slice(0, 60)}` } }] },
+                "Slide Specification ID": rt1(`${assetSlug}-slide-${String(sl.number).padStart(2, '0')}`),
+                "Carousel Specification": { relation: [{ id: specPageId }] },
+                "Slide Number": { number: sl.number },
+                "Slide Role": { select: { name: sl.role } },
+                "Slide Status": { select: { name: "Draft" } },
+                "Headline": rt1(sl.headline), "Supporting Text": rt1(sl.body),
+                "Content Objective": rt1(sl.contentObjective), "Key Takeaway": rt1(sl.keyTakeaway),
+                "Eyebrow Text": rt1(sl.eyebrowText), "Label Text": rt1(sl.labelText), "Footer Text": rt1(sl.footerText), "CTA Text": rt1(sl.ctaText),
+                "Alt Text": rt1(sl.altText),
+                "Reading Priority": { select: { name: sl.readingPriority } },
+                "Information Density": { select: { name: sl.informationDensity } },
+                "Visual Complexity": { select: { name: sl.visualComplexity } },
+                ...(sl.layoutTemplateId ? { "Layout Template": { relation: [{ id: sl.layoutTemplateId }] } } : {}),
+                "Visual Treatment": { select: { name: sl.visualTreatment } },
+                "Production Action": { select: { name: sl.productionAction } },
+                "Visual Purpose": rt1(sl.visualPurpose), "Visual Description": rt1(sl.visualDescription), "Primary Subject": rt1(sl.primarySubject),
+                ...(sl.diagramTemplateId ? { "Diagram Template": { relation: [{ id: sl.diagramTemplateId }] } } : {}),
+                "Diagram Type": rt1(sl.diagramType),
+                "Text Only": { checkbox: sl.visualTreatment === 'Text Only' },
+                "Illustration Required": { checkbox: sl.visualTreatment === 'Generated Illustration' },
+                "Diagram Required": { checkbox: sl.visualTreatment === 'Diagram' },
+                "Icon Required": { checkbox: sl.visualTreatment === 'Icon' },
+                "Screenshot Required": { checkbox: sl.visualTreatment === 'Screenshot' },
+                "Production Weight": { select: { name: sl.productionWeight } },
+                "Complexity Budget": { select: { name: sl.complexityBudget } },
+                "Ready for Assembly": { checkbox: false },
+              },
+            })
+          )));
+        }
+
+        return { specPageId, designSystemId: carouselDesignSystemId, ds, slides, platformName };
+      }
+
       // ── generateVisualBriefPrompt / generateVisualManifestPrompt ──
       // Populate a fixed ChatGPT template from gatherAssetProductionContext.
       // Brief = the one-shot Visual Director handoff; Manifest = the
@@ -13561,64 +13912,104 @@ Begin by reviewing the Production Specification and creating the Visual Strategy
           return json({ success: true, assetId, titleId, campaignId, assetType, prompt: manifestPrompt, validation, kind: 'manifest' });
         }
 
-        // Text Video only: draft the structured Video Assembly
-        // Specification (🎬 Text Video Specs / 🎞️ Text Video Scenes) and
-        // fold it into the Brief so ChatGPT reviews/refines concrete field
-        // values instead of starting from a blank spec. Best-effort — a
-        // failure here (no API key, bad JSON, etc.) degrades to a note in
-        // the Brief, never blocks the rest of the document. Carousel has no
-        // structured Specs DB yet, so this is skipped entirely for it.
+        // Draft the structured design specification databases and fold the
+        // result into the Brief so ChatGPT reviews/refines concrete field
+        // values instead of starting from a blank spec. Text Video ->
+        // buildTextVideoSpecDraft (🎬 Text Video Specs / 🎞️ Text Video
+        // Scenes); Carousel -> buildCarouselSpecDraft (🎠 Carousel
+        // Specifications / 🃏 Slide Specifications + the shared design-
+        // system databases). Best-effort — a failure here (no API key, bad
+        // JSON, etc.) degrades to a note in the Brief, never blocks the
+        // rest of the document.
         let specDraft = null, specDraftError = null;
         if (assetType === 'text video') {
           try { specDraft = await buildTextVideoSpecDraft(ctx, env); }
           catch (e) { specDraftError = e.message; }
+        } else if (assetType === 'carousel') {
+          try { specDraft = await buildCarouselSpecDraft(ctx, env); }
+          catch (e) { specDraftError = e.message; }
         }
+        const noDraftReason = specDraftError
+          ? `Draft generation failed (${specDraftError}) — proceeding without a pre-filled structured spec. Propose these values yourself.`
+          : `Not available — ${slideOrSceneSections.length ? 'no ANTHROPIC_API_KEY configured on the Worker' : `this asset has no ${assetType === 'carousel' ? 'Slide' : 'Scene'} N blocks to ground a draft in; regenerate it via the current Generate Assets flow first`}.`;
         const designSpecDraftBlock = (() => {
-          if (assetType !== 'text video') return null;
-          if (!specDraft) {
-            return specDraftError
-              ? `Draft generation failed (${specDraftError}) — proceeding without a pre-filled structured spec. Propose these values yourself.`
-              : `Not available — ${slideOrSceneSections.length ? 'no ANTHROPIC_API_KEY configured on the Worker' : 'this asset has no Scene N blocks to ground a draft in; regenerate it via the current Generate Assets flow first'}.`;
+          if (assetType === 'text video') {
+            if (!specDraft) return noDraftReason;
+            const { spec, scenes, specPageId } = specDraft;
+            const assetLevel = [
+              `Composition ID: ${spec.compositionId}`,
+              `Dimensions: ${spec.width}x${spec.height} @ ${spec.fps}fps, ${spec.aspectRatio}`,
+              `Duration: ${spec.durationSeconds}s (${spec.totalFrames} frames)`,
+              `Renderer: Remotion ${spec.rendererVersion}`,
+              `Creative Objective: ${spec.creativeObjective}`,
+              `Tone: ${spec.tone} | Viewer Awareness: ${spec.viewerAwareness || 'Not specified'} | Emotional Arc: ${spec.emotionalArc}`,
+              `Brand Personality: ${spec.brandPersonality}`,
+              `Design Language: ${spec.designLanguage} | Visual Style: ${spec.visualStyle} | Visual Theme: ${spec.visualTheme}`,
+              `Color Palette: ${JSON.stringify(spec.colorPalette)}`,
+              `Typography: ${JSON.stringify(spec.typographySystem)}`,
+              `Icon / Illustration / Diagram Style: ${spec.iconStyle} / ${spec.illustrationStyle} / ${spec.diagramStyle}`,
+              `Texture / Background / Border / Shadow / Divider: ${spec.textureStyle} / ${spec.backgroundStyle} / ${spec.borderStyle || 'none'} / ${spec.shadowStyle || 'none'} / ${spec.dividerStyle || 'none'}`,
+              `Motion Language: ${spec.motionLanguage} | Transitions: ${spec.transitionStyle} | Camera: ${spec.cameraStyle}`,
+              `Easing / Reveal / Exit: ${spec.defaultEasing} / ${spec.defaultRevealStyle} / ${spec.defaultExitStyle}`,
+              `Motion Density: ${spec.motionDensity} (max camera movement ${spec.maxCameraMovement}%, max simultaneous motion ${spec.maxSimultaneousMotion})`,
+              `Voice: ${spec.voiceProvider} / ${spec.voiceId} — ${spec.voiceStyle}, rate ${spec.speakingRate}x`,
+              `Captions: ${spec.captionStyle}, ${spec.captionPosition}, max ${spec.maxCaptionLines} lines / ${spec.maxWordsPerCaption} words, ${spec.captionAnimation}`,
+              `Safe Areas: top ${spec.safeAreaTop}px, bottom ${spec.safeAreaBottom}px, left ${spec.safeAreaLeft}px, right ${spec.safeAreaRight}px`,
+              `Required Components: ${spec.requiredComponents.join(', ') || 'Not specified'}`,
+              `Output: ${spec.outputFilename} -> ${spec.outputDirectory}`,
+            ].join('\n');
+            const sceneLevel = scenes.map(sc => [
+              `Scene ${sc.number} — "${sc.name}" (${sc.weight} weight, frames ${sc.startFrame}-${sc.endFrame}, ${sc.durationSec}s)`,
+              `  Purpose: ${sc.purpose}`,
+              `  Narration: ${sc.narration}`,
+              `  On-Screen Text: ${sc.onScreenText}`,
+              `  Visual Treatment: ${sc.visualTreatment}`,
+              `  Layout: ${sc.layoutDescription}`,
+              `  Camera: ${sc.cameraMovement} (magnitude ${sc.cameraMagnitude}%)`,
+              `  Transition Out: ${sc.transitionType} (${sc.transitionDurationSec}s)`,
+              `  Information / Complexity: ${sc.informationDensity} / ${sc.complexityBudget}`,
+              `  Reading Priority: ${sc.readingPriority}`,
+              `  SVG Components: ${sc.svgComponents.join(', ') || 'None specified'}`,
+              `  Entrance / Exit Animation: ${sc.entranceAnimation} / ${sc.exitAnimation}`,
+              sc.cta ? `  CTA: ${sc.cta}` : '',
+            ].filter(Boolean).join('\n')).join('\n\n');
+            return `This is a first-pass draft, generated automatically and already written into the 🎬 Text Video Specs / 🎞️ Text Video Scenes Notion databases (https://www.notion.so/${specPageId}) for you to review. Propose changes to ANY field below as part of your Visual Production Brief response — there's no automatic sync back into these databases yet, so the operator applies your revisions to the Notion rows by hand afterward.\n\n## Asset-Level Spec\n\n${assetLevel}\n\n## Per-Scene Spec\n\n${sceneLevel}`;
           }
-          const { spec, scenes, specPageId } = specDraft;
-          const assetLevel = [
-            `Composition ID: ${spec.compositionId}`,
-            `Dimensions: ${spec.width}x${spec.height} @ ${spec.fps}fps, ${spec.aspectRatio}`,
-            `Duration: ${spec.durationSeconds}s (${spec.totalFrames} frames)`,
-            `Renderer: Remotion ${spec.rendererVersion}`,
-            `Creative Objective: ${spec.creativeObjective}`,
-            `Tone: ${spec.tone} | Viewer Awareness: ${spec.viewerAwareness || 'Not specified'} | Emotional Arc: ${spec.emotionalArc}`,
-            `Brand Personality: ${spec.brandPersonality}`,
-            `Design Language: ${spec.designLanguage} | Visual Style: ${spec.visualStyle} | Visual Theme: ${spec.visualTheme}`,
-            `Color Palette: ${JSON.stringify(spec.colorPalette)}`,
-            `Typography: ${JSON.stringify(spec.typographySystem)}`,
-            `Icon / Illustration / Diagram Style: ${spec.iconStyle} / ${spec.illustrationStyle} / ${spec.diagramStyle}`,
-            `Texture / Background / Border / Shadow / Divider: ${spec.textureStyle} / ${spec.backgroundStyle} / ${spec.borderStyle || 'none'} / ${spec.shadowStyle || 'none'} / ${spec.dividerStyle || 'none'}`,
-            `Motion Language: ${spec.motionLanguage} | Transitions: ${spec.transitionStyle} | Camera: ${spec.cameraStyle}`,
-            `Easing / Reveal / Exit: ${spec.defaultEasing} / ${spec.defaultRevealStyle} / ${spec.defaultExitStyle}`,
-            `Motion Density: ${spec.motionDensity} (max camera movement ${spec.maxCameraMovement}%, max simultaneous motion ${spec.maxSimultaneousMotion})`,
-            `Voice: ${spec.voiceProvider} / ${spec.voiceId} — ${spec.voiceStyle}, rate ${spec.speakingRate}x`,
-            `Captions: ${spec.captionStyle}, ${spec.captionPosition}, max ${spec.maxCaptionLines} lines / ${spec.maxWordsPerCaption} words, ${spec.captionAnimation}`,
-            `Safe Areas: top ${spec.safeAreaTop}px, bottom ${spec.safeAreaBottom}px, left ${spec.safeAreaLeft}px, right ${spec.safeAreaRight}px`,
-            `Required Components: ${spec.requiredComponents.join(', ') || 'Not specified'}`,
-            `Output: ${spec.outputFilename} -> ${spec.outputDirectory}`,
-          ].join('\n');
-          const sceneLevel = scenes.map(sc => [
-            `Scene ${sc.number} — "${sc.name}" (${sc.weight} weight, frames ${sc.startFrame}-${sc.endFrame}, ${sc.durationSec}s)`,
-            `  Purpose: ${sc.purpose}`,
-            `  Narration: ${sc.narration}`,
-            `  On-Screen Text: ${sc.onScreenText}`,
-            `  Visual Treatment: ${sc.visualTreatment}`,
-            `  Layout: ${sc.layoutDescription}`,
-            `  Camera: ${sc.cameraMovement} (magnitude ${sc.cameraMagnitude}%)`,
-            `  Transition Out: ${sc.transitionType} (${sc.transitionDurationSec}s)`,
-            `  Information / Complexity: ${sc.informationDensity} / ${sc.complexityBudget}`,
-            `  Reading Priority: ${sc.readingPriority}`,
-            `  SVG Components: ${sc.svgComponents.join(', ') || 'None specified'}`,
-            `  Entrance / Exit Animation: ${sc.entranceAnimation} / ${sc.exitAnimation}`,
-            sc.cta ? `  CTA: ${sc.cta}` : '',
-          ].filter(Boolean).join('\n')).join('\n\n');
-          return `This is a first-pass draft, generated automatically and already written into the 🎬 Text Video Specs / 🎞️ Text Video Scenes Notion databases (https://www.notion.so/${specPageId}) for you to review. Propose changes to ANY field below as part of your Visual Production Brief response — there's no automatic sync back into these databases yet, so the operator applies your revisions to the Notion rows by hand afterward.\n\n## Asset-Level Spec\n\n${assetLevel}\n\n## Per-Scene Spec\n\n${sceneLevel}`;
+          if (assetType === 'carousel') {
+            if (!specDraft) return noDraftReason;
+            const { ds: cds, slides, platformName, specPageId } = specDraft;
+            const assetLevel = [
+              `Platform: ${platformName} (4:5)`,
+              `Slide Count: ${slides.length}`,
+              `Creative Objective: ${cds.creativeObjective}`,
+              `Tone: ${(cds.tone || []).join(', ') || 'Not specified'} | Viewer Awareness: ${cds.viewerAwareness || 'Not specified'} | Emotional Arc: ${cds.emotionalArc}`,
+              `Brand Impression: ${(cds.brandImpression || []).join(', ') || 'Not specified'}`,
+              `Visual Narrative: ${cds.visualNarrative}`,
+              `Recurring Motifs: ${cds.recurringMotifs}`,
+              `Content Density / White Space Target: ${cds.contentDensityTarget} / ${cds.whiteSpaceTarget}`,
+              `Design Intent: ${cds.designIntent}`,
+              `Overall Aesthetic: ${cds.overallAesthetic}`,
+              `Icon / Illustration / Diagram Style: ${cds.iconStyle} / ${cds.illustrationStyle} / ${cds.diagramStyle}`,
+              `Design system bundle: linked to the "${campaignName} Carousel Design System" record (Color Palette / Typography System / Visual Style Profile / Grid & Spacing System / Platform Preset — all shared with other carousels in this campaign)`,
+            ].join('\n');
+            const slideLevel = slides.map(sl => [
+              `Slide ${sl.number} — Role: ${sl.role}`,
+              `  Headline: ${sl.headline}`,
+              `  Supporting Text: ${sl.body}`,
+              `  Content Objective: ${sl.contentObjective}`,
+              `  Key Takeaway: ${sl.keyTakeaway}`,
+              `  Layout: ${sl.layoutCategory || 'Not specified'}`,
+              `  Visual Treatment: ${sl.visualTreatment} (${sl.productionAction})`,
+              `  Visual Purpose: ${sl.visualPurpose}`,
+              `  Visual Description: ${sl.visualDescription}`,
+              sl.diagramType ? `  Diagram Type: ${sl.diagramType}` : '',
+              `  Reading Priority: ${sl.readingPriority} | Information/Complexity: ${sl.informationDensity} / ${sl.visualComplexity}`,
+              `  Production Weight / Complexity Budget: ${sl.productionWeight} / ${sl.complexityBudget}`,
+              sl.ctaText ? `  CTA Text: ${sl.ctaText}` : '',
+            ].filter(Boolean).join('\n')).join('\n\n');
+            return `This is a first-pass draft, generated automatically and already written into the 🎠 Carousel Specifications / 🃏 Slide Specifications Notion databases (https://www.notion.so/${specPageId}) for you to review. Layout/Diagram Templates referenced by name below are a shared, growing library across campaigns — reuse an existing one where it fits rather than always inventing a new category. Propose changes to ANY field below as part of your Visual Production Brief response — there's no automatic sync back into these databases yet, so the operator applies your revisions to the Notion rows by hand afterward.\n\n## Design System (shared across this campaign's carousels)\n\n${assetLevel}\n\n## Per-Slide Spec\n\n${slideLevel}`;
+          }
+          return null;
         })();
 
         // "Visual Production Source Document" — the complete
@@ -13813,7 +14204,7 @@ ${np(briefAssetSpec)}
 ${np(completeProductionSpec)}
 
 ---
-${assetType === 'text video' ? `
+${(assetType === 'text video' || assetType === 'carousel') ? `
 # Design Specification (Draft)
 
 ${designSpecDraftBlock}
@@ -13880,8 +14271,8 @@ Your responsibilities are to:
 • continuously update the Visual Production Brief
 
 • return a completed Visual Production Brief marked Ready For Assembly
-${assetType === 'text video' ? `
-• review and give input on every field in the Design Specification (Draft) above — it's a first-pass, not a final answer; change anything (timing, visual treatment, motion, design system, per-scene fields) that should be different
+${(assetType === 'text video' || assetType === 'carousel') ? `
+• review and give input on every field in the Design Specification (Draft) above — it's a first-pass, not a final answer; change anything (timing/layout, visual treatment, motion or design system fields, per-${assetType === 'carousel' ? 'slide' : 'scene'} fields) that should be different
 ` : ''}
 Do not rewrite the written content.
 
