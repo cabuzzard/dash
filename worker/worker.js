@@ -12865,21 +12865,56 @@ Return ONLY this JSON object, no other text, no markdown fences:
         }
       }
       const ASSEMBLE_PROPS = {
-        "Publishing":              { type: "select", options: ["Not Started", "Ready to Publish", "Scheduled", "Published"] },
-        "Final Media File":        { type: "url" },
-        "Post Caption":            { type: "rich_text" },
-        "Platform Title":          { type: "rich_text" },
-        "Description":             { type: "rich_text" },
-        "Hashtags":                { type: "rich_text" },
-        "Alt Text":                { type: "rich_text" },
-        "Thumbnail":               { type: "url" },
-        "Publishing Date":         { type: "date" },
-        "Channel":                 { type: "rich_text" },
-        "Link or CTA":             { type: "url" },
-        "Source References":      { type: "rich_text" },
-        "Visual Production Brief": { type: "rich_text" },
-        "Assembly Review Page":    { type: "url" },
+        "Publishing":                   { type: "select", options: ["Not Started", "Ready to Publish", "Scheduled", "Published"] },
+        "Final Media File":             { type: "url" },
+        "Post Caption":                 { type: "rich_text" },
+        "Platform Title":               { type: "rich_text" },
+        "Description":                  { type: "rich_text" },
+        "Hashtags":                     { type: "rich_text" },
+        "Alt Text":                     { type: "rich_text" },
+        "Thumbnail":                    { type: "url" },
+        "Publishing Date":              { type: "date" },
+        "Channel":                      { type: "rich_text" },
+        "Link or CTA":                  { type: "url" },
+        "Source References":           { type: "rich_text" },
+        "Visual Production Brief":      { type: "rich_text" },
+        "Production Assembly Package":  { type: "rich_text" },
+        "Assembly Review Page":         { type: "url" },
       };
+
+      // Maps the row-level upload buttons' docType to the Notion property
+      // each one saves into. Both are long ChatGPT-produced .md handoffs —
+      // Visual Production Brief (creative direction, per-slide/scene
+      // approval) and Production Assembly Package (the technical build
+      // spec) — uploaded ahead of time so assembleAsset never needs its
+      // own upload/paste step, just reads what's already on the Asset.
+      const ASSET_DOC_FIELDS = {
+        visualBrief: "Visual Production Brief",
+        assemblyPackage: "Production Assembly Package",
+      };
+
+      // ── uploadAssetDocument ──
+      // Backs the two per-asset row upload links (Visual Production Brief /
+      // Production Assembly Package). Saves the uploaded file's raw text
+      // straight to the corresponding Notion property, keyed by the
+      // assetId the button itself carries — same "never trust what the
+      // pasted text claims" principle as the old Assemble-modal upload.
+      if (body.action === "uploadAssetDocument") {
+        const { assetId, docType, text } = body;
+        const field = ASSET_DOC_FIELDS[docType];
+        if (!assetId || !field) return json({ error: "assetId and a valid docType (visualBrief or assemblyPackage) required" }, 400);
+        const trimmed = String(text || "").trim();
+        if (!trimmed) return json({ error: "That file is empty." }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await ensureAssetsDbProperties(hdr, ASSEMBLE_PROPS);
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { [field]: { rich_text: chunkedRichText(trimmed) } } }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save document to Notion" }, patchResp.status); }
+        return json({ success: true, field, length: trimmed.length });
+      }
 
       // ── generateVisualBriefPrompt / generateVisualManifestPrompt ──
       // Populate a fixed ChatGPT template from gatherAssetProductionContext.
@@ -13479,19 +13514,20 @@ Use this document to create and maintain the Visual Production Brief. The Visual
       }
 
       // ── assembleAsset ──
-      // The final step after the operator has run the Visual Brief/
-      // Manifest through ChatGPT, produced the approved visuals, and
-      // pasted the completed Visual Production Brief back into this
-      // Asset's "Visual Production Brief" field in Notion. Assembles a
-      // hosted review page (final media + a QA checklist + all the
-      // publishing metadata pulled from the Asset Package) and writes the
-      // publishing fields onto the Asset record — creating any of those
-      // Notion properties that don't exist yet. Doesn't render or
-      // generate any new media itself — it packages what's already been
-      // produced (carousel PNGs from generateCarouselPreview, or an MP4
-      // hosted by the make-reel-video skill) for final review/handoff.
+      // Every asset needs TWO ChatGPT-produced documents uploaded ahead of
+      // time via the asset row's own upload links (uploadAssetDocument) —
+      // the Visual Production Brief (creative direction, per-slide/scene
+      // approval) and the Production Assembly Package (the technical build
+      // spec). assembleAsset never takes an upload/paste itself; it only
+      // reads what's already saved on the Asset, plus an optional
+      // override/addition typed straight into the modal. If no media is
+      // hosted yet (no Design Link), it hands both documents to Claude
+      // Code as a clipboard-ready build prompt. Once media exists, it
+      // packages a hosted review page + writes the publishing fields onto
+      // the Asset record — creating any of those Notion properties that
+      // don't exist yet. It never renders or generates media itself.
       if (body.action === "assembleAsset") {
-        const { publishingDate, visualProductionBriefText } = body;
+        const { publishingDate, overrideGuidelines } = body;
         const ctx = await gatherAssetProductionContext(body);
         if (!ctx.ok) return json({ error: ctx.error, validation: ctx.validation }, ctx.status);
         const {
@@ -13500,57 +13536,28 @@ Use this document to create and maintain the Visual Production Brief. The Visual
           platform, description, altText, relevantResearchContext, campaignLiveUrl, np,
         } = ctx;
 
-        // Ensure the publishing/status properties exist before any writes
-        // below — needed here (not just further down) since a freshly
-        // pasted brief gets saved immediately, before the rest of this
-        // action runs.
         await ensureAssetsDbProperties(hdr, ASSEMBLE_PROPS);
 
-        // A freshly pasted Visual Production Brief (from the Assemble
-        // modal) is saved to THIS Asset record immediately, keyed by the
-        // assetId/titleId this button click carries — never by anything
-        // the pasted text itself claims — so it can't end up attached to
-        // the wrong asset even if the operator lost track of which
-        // Notion record this was mid-ChatGPT-round-trip. Falls back to
-        // whatever's already on the property (the older "paste directly
-        // into Notion" flow) when the modal is left blank.
-        let visualBrief = (assetPage.properties["Visual Production Brief"]?.rich_text || []).map(t => t.plain_text).join("");
-        let savedFreshBrief = false;
-        if (visualProductionBriefText && visualProductionBriefText.trim()) {
-          visualBrief = visualProductionBriefText.trim();
-          const saveResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Visual Production Brief": { rich_text: chunkedRichText(visualBrief) } } }),
-          });
-          savedFreshBrief = saveResp.ok;
-        }
-        if (!visualBrief.trim()) {
-          return json({ error: 'Paste the completed Visual Production Brief (ChatGPT\'s output) into the Assemble modal before assembling.', validation: { visual_brief_present: false } }, 400);
-        }
-        if (!designLink) {
-          // Carousel always has a Design Link by generation time — this
-          // should never happen for it. Text Video's MP4 still needs a
-          // local Remotion render (make-reel-video), which this Worker
-          // can't run — but the pasted brief is already saved above, so
-          // hand back a ready-to-copy chat prompt instead of a dead end.
-          if (assetType === 'text video') {
-            const handoffPrompt = `Run make-reel-video for the Content Strategy title "${titleName}" (https://www.notion.so/${titleId}) — the script and the just-approved Visual Production Brief live on this Asset record (https://www.notion.so/${assetId}, Asset Type: text video). Read the Asset's "Visual Production Brief" property for the approved per-scene treatments, and check for any uploaded reference images (web/{deployPath}/assembled/{assetSlug}/scene-NN.* — use the Notion connector or the dashboard's Upload Images modal to confirm the exact path) before sourcing your own background where one already exists. Render it, host the MP4, and update that same Asset record per the skill's Step 4 — then re-run Assemble on the dashboard to package it for publish.`;
-            return json({ needsRemotionHandoff: true, handoffPrompt, assetId, titleId, savedToNotion: savedFreshBrief });
-          }
-          return json({ error: "No rendered media yet on this Asset's Design Link — carousel renders automatically at generation time." }, 400);
+        const visualBrief = (assetPage.properties["Visual Production Brief"]?.rich_text || []).map(t => t.plain_text).join("");
+        const assemblyPackage = (assetPage.properties["Production Assembly Package"]?.rich_text || []).map(t => t.plain_text).join("");
+        const missingDocs = [];
+        if (!visualBrief.trim()) missingDocs.push("Visual Production Brief");
+        if (!assemblyPackage.trim()) missingDocs.push("Production Assembly Package");
+        if (missingDocs.length) {
+          return json({ error: `Upload the ${missingDocs.join(' and ')} via this asset's upload link${missingDocs.length > 1 ? 's' : ''} before assembling.`, validation: { missing_docs: missingDocs } }, 400);
         }
 
-        // ── Gate on the pasted-back Visual Production Brief's Machine-
-        // Readable Status block: every slide/scene must read approved or
-        // ready_for_assembly before this proceeds — that's what makes the
-        // Visual Production Brief "the production-ready document Claude
-        // can assemble from" rather than just a non-empty placeholder.
+        // ── Gate on the Visual Production Brief's Machine-Readable
+        // Status block: every slide/scene must read approved or
+        // ready_for_assembly before this proceeds — that's what makes it
+        // "the production-ready document Claude can assemble from" rather
+        // than just a non-empty upload.
         const READY_STATUSES = ['approved', 'ready_for_assembly'];
         const statusEntries = parseProductionStatusYaml(visualBrief);
         const statusPrefix = assetType === 'carousel' ? 'slide' : 'scene';
         const expectedCount = slideOrSceneSections.length;
         if (Object.keys(statusEntries).length === 0) {
-          return json({ error: `The pasted Visual Production Brief has no Machine-Readable Status block (${statusPrefix}_01: entries with treatment/status/asset). Run the Manifest through ChatGPT again with the current template — that block is what gates assembly now.`, validation: { status_block_present: false } }, 400);
+          return json({ error: `The Visual Production Brief has no Machine-Readable Status block (${statusPrefix}_01: entries with treatment/status/asset). Run the Manifest through ChatGPT again with the current template — that block is what gates assembly now.`, validation: { status_block_present: false } }, 400);
         }
         if (expectedCount > 0) {
           const notReady = [];
@@ -13562,8 +13569,25 @@ Use this document to create and maintain the Visual Production Brief. The Visual
             if (!READY_STATUSES.includes(status)) notReady.push(`${key}: ${status || 'no status'}`);
           }
           if (notReady.length) {
-            return json({ error: `Not every ${statusPrefix} is approved yet — ${notReady.join('; ')}. Get the remaining assets approved in ChatGPT, paste the updated Visual Production Brief back into Notion, and try again.`, validation: { statusEntries } }, 400);
+            return json({ error: `Not every ${statusPrefix} is approved yet — ${notReady.join('; ')}. Get the remaining assets approved in ChatGPT, re-upload the updated Visual Production Brief, and try again.`, validation: { statusEntries } }, 400);
           }
+        }
+
+        if (!designLink) {
+          // No hosted media yet — hand both documents (plus any override
+          // guidelines typed into the modal) to Claude Code as a single
+          // clipboard-ready build prompt, rather than a dead end.
+          const overrideBlock = (overrideGuidelines || '').trim()
+            ? `\n\n=== OPERATOR OVERRIDE / ADDITIONAL GUIDELINES ===\n${overrideGuidelines.trim()}\n`
+            : '';
+          const handoffPrompt = `Make the asset for the Content Strategy title "${titleName}" (https://www.notion.so/${titleId}) using the Asset record (https://www.notion.so/${assetId}, Asset Type: ${assetType}). Both approved production documents are attached in full below — the Visual Production Brief (creative direction, per-${statusPrefix} approval) and the Production Assembly Package (the technical build spec to follow). Check for uploaded reference images at web/{deployPath}/assembled/{assetSlug}/${statusPrefix}-NN.* (Notion connector or the dashboard's Upload Images modal) before sourcing your own where one already exists. When done, render/host the final media, update this Asset record's Design Link (and Final Media File) per the relevant skill's steps, then re-run Assemble on the dashboard to package it for publish.${overrideBlock}
+
+=== VISUAL PRODUCTION BRIEF ===
+${visualBrief}
+
+=== PRODUCTION ASSEMBLY PACKAGE ===
+${assemblyPackage}`;
+          return json({ needsHandoff: true, handoffPrompt, assetId, titleId });
         }
 
         const GT = (env.GITHUB_TOKEN || '').trim();

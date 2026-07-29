@@ -767,17 +767,16 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeAssembleModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="modal-hint">Paste the completed Visual Production Brief from ChatGPT (every slide/scene approved, Machine-Readable Status block included) — or upload it if ChatGPT gave you a downloadable file. Either way it's saved to this exact Asset record before anything else happens, so it stays attached to the right asset/title even if the Notion identifiers get lost in the back-and-forth with ChatGPT. Leave both blank to reuse whatever's already saved on this Asset.</div>
-      <label class="lm-label" style="margin-top:12px;">Upload Brief File <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— .md/.txt, fills in the text box below (still editable)</span></label>
-      <input class="modal-ta" id="assembleBriefFile" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" style="height:auto;padding:8px 10px;margin-top:4px;" />
-      <textarea class="modal-ta" id="assembleBriefText" rows="10" placeholder="Paste the full Visual Production Brief here, or upload a file above..." style="font-size:11px;font-family:monospace;line-height:1.5;resize:vertical;margin-top:10px;"></textarea>
+      <div class="modal-hint">Reads the Visual Production Brief and Production Assembly Package already uploaded on this asset's row (📄 Brief / 🧱 Package) — no upload here. Add anything below to override or extend what's in those documents; leave it blank to use them as-is.</div>
+      <label class="lm-label" style="margin-top:12px;">Override / Additional Guidelines <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
+      <textarea class="modal-ta" id="assembleOverrideText" rows="6" placeholder="Anything that overrides or adds to the uploaded documents..." style="font-size:11px;font-family:monospace;line-height:1.5;resize:vertical;margin-top:4px;"></textarea>
       <label class="lm-label" style="margin-top:12px;">Publishing Date <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
       <input class="modal-ta" id="assemblePublishDate" type="text" placeholder="YYYY-MM-DD" style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
       <div class="modal-status" id="assembleStatus" style="white-space:pre-wrap;"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeAssembleModal()">Cancel</button>
-      <button class="modal-btn save" id="assembleSubmitBtn" onclick="submitAssembleModal()">Save & Assemble</button>
+      <button class="modal-btn save" id="assembleSubmitBtn" onclick="submitAssembleModal()">Assemble</button>
     </div>
   </div>
 </div>
@@ -1475,7 +1474,9 @@ async function loadTitles() {
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${t.id}" onclick="generateVisualBrief(this)" title="Assemble the Visual Production Source Document (Asset Metadata/Production Method/Audience/Research/Content Foundation/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints — no visual decisions made) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Text Video assets are told to declare Simple vs. Custom Remotion Build and to keep the Asset ID attached through every revision." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-manifest" data-assetid="${a.id}" data-titleid="${t.id}" onclick="generateVisualManifest(this)" title="Assemble the persistent Visual Production Brief/Manifest prompt from this asset's final text + Asset Spec + Production Spec, then copy it to your clipboard to paste into ChatGPT" style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">📦 Manifest</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-visuals" data-assetid="${a.id}" data-titleid="${t.id}" onclick="openUploadVisualsModal(this)" title="Upload the approved images ChatGPT (the Visual Director) produced for each slide/scene — carousel uploads replace the rendered slide PNG, text video uploads are saved as reference material" style="font-size:10px;padding:1px 7px;border:1px solid #4488ff;background:transparent;color:#4488ff;border-radius:9px;cursor:pointer;flex-shrink:0;">🖼️ Upload Images</button>` : '')
-          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" onclick="openAssembleModal(this)" title="Paste the completed Visual Production Brief (every slide/scene approved in its Machine-Readable Status block) — saved to this Asset immediately, then packages the final media + publishing metadata and opens a hosted review page. Text Video with no MP4 yet gets a copyable make-reel-video handoff prompt instead." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
+          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-brief" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'visualBrief')" title="Upload the completed Visual Production Brief (.md/.txt) from ChatGPT — saved straight to this asset's Visual Production Brief property, no modal needed" style="font-size:10px;padding:1px 7px;border:1px solid #38b2ac;background:transparent;color:#38b2ac;border-radius:9px;cursor:pointer;flex-shrink:0;">📄 Brief</button>` : '')
+          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'assemblyPackage')" title="Upload the Production Assembly Package (.md/.txt) — the technical build spec — saved straight to this asset's Production Assembly Package property, no modal needed" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧱 Package</button>` : '')
+          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package (every slide/scene must already read approved in the Brief's Machine-Readable Status block) — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with both documents attached. Media already hosted: packages it + publishing metadata into a hosted review page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
         return ar;
       };
@@ -4934,22 +4935,48 @@ async function generateVisualManifest(btn) {
   }
 }
 
-// Final step: paste the completed Visual Production Brief from ChatGPT
-// (every slide/scene approved in its Machine-Readable Status block) into
-// this modal. It's saved to the exact Asset record this button belongs to
-// BEFORE anything else happens — keyed by the button's own data-assetid/
-// data-titleid, never by anything the pasted text claims — so it can't
-// end up attached to the wrong asset even if the Notion identifiers got
-// lost somewhere in the ChatGPT round-trip. Then packages the final media
-// + publishing metadata and opens a hosted review page — or, for a Text
-// Video asset with no MP4 hosted yet, copies a make-reel-video handoff
-// prompt (with the same Notion links baked in) instead of a dead end.
+// Row-level document upload (📄 Brief / 🧱 Package buttons) — no modal,
+// just a file picker created on the fly. Reads the .md/.txt straight into
+// text and saves it to the exact Asset this button belongs to (its own
+// data-assetid, never anything the file claims) via uploadAssetDocument.
+// Both documents are prerequisites Assemble only ever reads, never uploads.
+function triggerAssetDocUpload(btn, docType) {
+  const assetId = btn.dataset.assetid;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.md,.markdown,.txt,text/markdown,text/plain';
+  input.addEventListener('change', async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+      const text = await file.text();
+      await w('uploadAssetDocument', { assetId, docType, text });
+      btn.textContent = '✓ Saved';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    } catch (e) {
+      alert('Upload failed: ' + e.message);
+      btn.textContent = orig;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  input.click();
+}
+
+// Final step: reads the Visual Production Brief + Production Assembly
+// Package already uploaded on this asset's row (no upload/paste here,
+// just an optional override/addition typed into the modal). No media
+// hosted yet: copies a Claude Code build prompt with both documents
+// attached in full. Media already hosted: packages it + publishing
+// metadata into a hosted review page.
 let ASM_ASSET_ID = null, ASM_TITLE_ID = null;
 function openAssembleModal(btn) {
   ASM_ASSET_ID = btn.dataset.assetid;
   ASM_TITLE_ID = btn.dataset.titleid;
-  document.getElementById('assembleBriefText').value = '';
-  document.getElementById('assembleBriefFile').value = '';
+  document.getElementById('assembleOverrideText').value = '';
   document.getElementById('assemblePublishDate').value = '';
   document.getElementById('assembleStatus').textContent = '';
   document.getElementById('assembleModal').classList.add('open');
@@ -4957,23 +4984,8 @@ function openAssembleModal(btn) {
 function closeAssembleModal() {
   document.getElementById('assembleModal').classList.remove('open');
 }
-// Uploading a .md/.txt brief just fills the textarea (still editable
-// before submit) — reuses the exact same save/assemble path as pasting,
-// no separate upload endpoint needed since Notion just wants plain text.
-document.getElementById('assembleBriefFile')?.addEventListener('change', (e) => {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-  const statusEl = document.getElementById('assembleStatus');
-  const reader = new FileReader();
-  reader.onload = () => {
-    document.getElementById('assembleBriefText').value = String(reader.result || '');
-    statusEl.textContent = `Loaded ${file.name} (${file.size.toLocaleString()} bytes) into the text box — review before Save & Assemble.`;
-  };
-  reader.onerror = () => { statusEl.textContent = 'Failed to read that file.'; };
-  reader.readAsText(file);
-});
 async function submitAssembleModal() {
-  const visualProductionBriefText = document.getElementById('assembleBriefText').value.trim();
+  const overrideGuidelines = document.getElementById('assembleOverrideText').value.trim();
   const publishingDate = document.getElementById('assemblePublishDate').value.trim();
   const statusEl = document.getElementById('assembleStatus');
   const btn = document.getElementById('assembleSubmitBtn');
@@ -4983,15 +4995,14 @@ async function submitAssembleModal() {
     const r = await w('assembleAsset', {
       assetId: ASM_ASSET_ID, titleId: ASM_TITLE_ID, campaignId: CAMPAIGN_ID,
       publishingDate: publishingDate || undefined,
-      visualProductionBriefText: visualProductionBriefText || undefined,
+      overrideGuidelines: overrideGuidelines || undefined,
     });
-    if (r.needsRemotionHandoff) {
+    if (r.needsHandoff) {
       let copied = false;
       try { await navigator.clipboard.writeText(r.handoffPrompt); copied = true; } catch(e) {}
-      statusEl.textContent = (r.savedToNotion ? 'Saved to Notion. ' : '') +
-        (copied
-          ? 'No rendered MP4 yet — a make-reel-video prompt was copied to your clipboard. Paste it into a Claude Code chat, then come back and Assemble again once it\'s hosted.'
-          : 'No rendered MP4 yet — clipboard write failed, copy this manually:\n\n' + r.handoffPrompt);
+      statusEl.textContent = copied
+        ? 'No hosted media yet — a Claude Code build prompt (both documents attached) was copied to your clipboard. Paste it into a Claude Code chat, then come back and Assemble again once it\'s hosted.'
+        : 'No hosted media yet — clipboard write failed, copy this manually:\n\n' + r.handoffPrompt;
       btn.disabled = false;
       return;
     }
