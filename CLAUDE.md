@@ -78,7 +78,7 @@ CORS is locked to `https://cabuzzard.github.io` only.
 
 ## Notion Databases
 
-All 10 databases live directly under 🏠 Home:
+All 12 databases live directly under 🏠 Home (`3431f7d3a4bb80378e64ce26578d007f`):
 
 | Database | ID |
 |---|---|
@@ -93,8 +93,14 @@ All 10 databases live directly under 🏠 Home:
 | Research | `557e6b7b8c434a578d45ecb0a8329f63` |
 | Leads | `e4518a459f004eb0b9646e48d8718705` |
 | Emails | `6252e9917027488fb628436aabb89947` |
+| 🎬 Text Video Specs | `3ce83fc9ef8b4dc185219598761abb7f` |
+| 🎞️ Text Video Scenes | `afa52f6d81b7416d97696517bed8d9c2` |
 
 The **Leads DB** `Campaign` field is plain text — any campaign form submits to the same DB with a different `campaign` value. The `Fraud Type` field (a Notion select) accepts the values in `validFraudTypes` in `worker.js` — **keep that allowlist in sync with Notion's select options**.
+
+### Design Specification databases
+
+**🎬 Text Video Specs** (one row per asset) + **🎞️ Text Video Scenes** (one row per scene, related back via `Parent Spec`/`Scenes`) implement the "Video Assembly Specification v1.0" schema — the structured, per-field counterpart to the free-text Visual Production Brief/Production Assembly Package uploads. `Text Video Specs` also carries a `Linked Asset` relation back to the Assets DB (not part of the original spec, added for traceability). **Standalone for now** — not read or written by any Worker action yet (`assembleAsset` still gates on the Machine-Readable Status block in the free-text docs); wiring them together is a separate follow-on. A matching Carousel Specs pair is planned once that field list is provided.
 
 ## Admin Microsite System
 
