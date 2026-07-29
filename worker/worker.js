@@ -12780,6 +12780,37 @@ Return ONLY this JSON array of exactly ${BATCH_SIZE} objects, no other text, no 
         };
       }
 
+      // Parses the "Machine-Readable Status" YAML block the Manifest
+      // template (generateVisualManifestPrompt) asks ChatGPT to maintain
+      // and the operator pastes back into the Asset's "Visual Production
+      // Brief" field — slide_01/scene_01-style keys, each with treatment/
+      // status/asset sub-fields. Deliberately simple line-scanning, not a
+      // real YAML parser (Workers has no YAML dependency and this format
+      // is flat enough not to need one): a `word_NN:` line with nothing
+      // after the colon starts a new entry; indented `key: value` lines
+      // attach to whichever entry is currently open. Returns {} if no
+      // entries are found (e.g. an older free-text brief with no status
+      // block) — assembleAsset treats that as "can't verify readiness"
+      // rather than silently passing.
+      function parseProductionStatusYaml(text) {
+        const entries = {};
+        let current = null;
+        for (const raw of String(text || '').split('\n')) {
+          const line = raw.trim();
+          const topMatch = /^(slide|scene)[_ -]?(\d+)\s*:\s*$/i.exec(line);
+          if (topMatch) {
+            current = `${topMatch[1].toLowerCase()}_${String(topMatch[2]).padStart(2, '0')}`;
+            entries[current] = {};
+            continue;
+          }
+          const kvMatch = /^([a-zA-Z_]+)\s*:\s*(.+)$/.exec(line);
+          if (kvMatch && current) {
+            entries[current][kvMatch[1].toLowerCase()] = kvMatch[2].trim().replace(/^["']|["']$/g, '');
+          }
+        }
+        return entries;
+      }
+
       // Adds any of `neededProps` that don't already exist on the Assets DB
       // — Notion's PATCH /v1/databases/{id} accepts new property
       // definitions alongside existing ones, so this only ever adds,
@@ -13113,19 +13144,38 @@ List:
 * Assets Awaiting Approval
 * Assets Ready For Assembly
 
+---
+
+# 5. Machine-Readable Status
+
+In addition to the Asset Inventory table above, include this exact block — a fenced yaml code block, one entry per slide or scene, keyed slide_01/slide_02/... or scene_01/scene_02/... matching the numbering used everywhere else in this document. This is the block Claude parses to decide whether assembly can proceed, so keep it in sync with the Asset Inventory table and Assembly Readiness section above — do not let them drift.
+
+\`\`\`yaml
+slide_01:
+  treatment: illustration
+  status: approved
+  asset: slide01.png
+slide_02:
+  treatment: diagram
+  status: planned
+  asset: pending
+\`\`\`
+
+\`treatment\` is freeform (illustration, diagram, icon, screenshot, existing_asset, text_only, photo, stock_footage, etc — whatever you decided). \`status\` must be exactly one of: planned, generating, revision_required, approved, ready_for_assembly (lowercase, underscores, no spaces). Never mark an entry approved or ready_for_assembly until the user has explicitly approved that specific asset. Include one entry for every slide or scene in the Final Written Asset above — never omit one.
+
 ======================================================================
 WORKING RULES
 =============
 
 Maintain this document throughout the visual production process.
 
-Update it whenever an asset is generated, revised, or approved.
+Update it — including the Machine-Readable Status block — whenever an asset is generated, revised, or approved.
 
 Do not create a second document.
 
 The Visual Production Brief is the single source of truth for visual production.
 
-Once every asset has been approved, the completed Visual Production Brief will be returned to Claude for assembly.
+Once every entry in the Machine-Readable Status block reads approved or ready_for_assembly, paste this complete document back into the Asset's "Visual Production Brief" field in Notion — that status block is what gates assembly.
 
 Begin by reviewing the Production Specification and creating the Visual Strategy.`;
 
@@ -13354,6 +13404,32 @@ Treat this document as the source of truth.`;
           return json({ error: "No rendered media yet on this Asset's Design Link — carousel renders automatically at generation time; text video needs the make-reel-video MP4 hosting step first." }, 400);
         }
 
+        // ── Gate on the pasted-back Visual Production Brief's Machine-
+        // Readable Status block: every slide/scene must read approved or
+        // ready_for_assembly before this proceeds — that's what makes the
+        // Visual Production Brief "the production-ready document Claude
+        // can assemble from" rather than just a non-empty placeholder.
+        const READY_STATUSES = ['approved', 'ready_for_assembly'];
+        const statusEntries = parseProductionStatusYaml(visualBrief);
+        const statusPrefix = assetType === 'carousel' ? 'slide' : 'scene';
+        const expectedCount = slideOrSceneSections.length;
+        if (Object.keys(statusEntries).length === 0) {
+          return json({ error: `The pasted Visual Production Brief has no Machine-Readable Status block (${statusPrefix}_01: entries with treatment/status/asset). Run the Manifest through ChatGPT again with the current template — that block is what gates assembly now.`, validation: { status_block_present: false } }, 400);
+        }
+        if (expectedCount > 0) {
+          const notReady = [];
+          for (let i = 1; i <= expectedCount; i++) {
+            const key = `${statusPrefix}_${String(i).padStart(2, '0')}`;
+            const entry = statusEntries[key];
+            if (!entry) { notReady.push(`${key}: missing from the status block`); continue; }
+            const status = (entry.status || '').toLowerCase();
+            if (!READY_STATUSES.includes(status)) notReady.push(`${key}: ${status || 'no status'}`);
+          }
+          if (notReady.length) {
+            return json({ error: `Not every ${statusPrefix} is approved yet — ${notReady.join('; ')}. Get the remaining assets approved in ChatGPT, paste the updated Visual Production Brief back into Notion, and try again.`, validation: { statusEntries } }, 400);
+          }
+        }
+
         const GT = (env.GITHUB_TOKEN || '').trim();
         if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
 
@@ -13397,6 +13473,14 @@ Treat this document as the source of truth.`;
           ['Alt Text', finalAltText], ['Link / CTA', linkOrCta || 'Not set'],
           ['Publishing Date', publishingDate || 'Not set'], ['Source References', sourceReferences],
         ];
+
+        // From the pasted Visual Production Brief's Machine-Readable
+        // Status block — every entry is already verified approved/
+        // ready_for_assembly above, this is just the record of what was.
+        const productionStatusRows = Object.keys(statusEntries).sort().map(key => {
+          const e = statusEntries[key] || {};
+          return [key, e.treatment || 'Not set', e.status || 'Not set', e.asset || 'Not set'];
+        });
 
         const CHECKLIST_ITEMS = [
           'Spelling', 'Cropped text', 'Safe margins', 'Slide order',
@@ -13448,6 +13532,11 @@ Treat this document as the source of truth.`;
   <section>
     <h2>Final Media</h2>
     ${mediaHtml}
+  </section>
+  <section>
+    <h2>Production Status</h2>
+    <table><tr><td>Slide/Scene</td><td>Treatment</td><td>Status</td><td>Asset Filename</td></tr>${productionStatusRows.map(([k, treatment, status, asset]) => `<tr><td>${esc2(k)}</td><td>${esc2(treatment)}</td><td>${esc2(status)}</td><td>${esc2(asset)}</td></tr>`).join('')}</table>
+    <p style="font-size:11px;color:#666;margin:12px 0 0;">From the approved Visual Production Brief's status block. Asset filenames are as reported by the Visual Director — this system has no image-upload pipeline yet, so match them to the actual files manually if they aren't already reflected in Final Media above.</p>
   </section>
   <section>
     <h2>Publishing Metadata</h2>
