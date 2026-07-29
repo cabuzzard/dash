@@ -13445,7 +13445,7 @@ Use this document to create and maintain the Visual Production Brief. The Visual
       // produced (carousel PNGs from generateCarouselPreview, or an MP4
       // hosted by the make-reel-video skill) for final review/handoff.
       if (body.action === "assembleAsset") {
-        const { publishingDate } = body;
+        const { publishingDate, visualProductionBriefText } = body;
         const ctx = await gatherAssetProductionContext(body);
         if (!ctx.ok) return json({ error: ctx.error, validation: ctx.validation }, ctx.status);
         const {
@@ -13454,12 +13454,44 @@ Use this document to create and maintain the Visual Production Brief. The Visual
           platform, description, altText, relevantResearchContext, campaignLiveUrl, np,
         } = ctx;
 
-        const visualBrief = (assetPage.properties["Visual Production Brief"]?.rich_text || []).map(t => t.plain_text).join("");
+        // Ensure the publishing/status properties exist before any writes
+        // below — needed here (not just further down) since a freshly
+        // pasted brief gets saved immediately, before the rest of this
+        // action runs.
+        await ensureAssetsDbProperties(hdr, ASSEMBLE_PROPS);
+
+        // A freshly pasted Visual Production Brief (from the Assemble
+        // modal) is saved to THIS Asset record immediately, keyed by the
+        // assetId/titleId this button click carries — never by anything
+        // the pasted text itself claims — so it can't end up attached to
+        // the wrong asset even if the operator lost track of which
+        // Notion record this was mid-ChatGPT-round-trip. Falls back to
+        // whatever's already on the property (the older "paste directly
+        // into Notion" flow) when the modal is left blank.
+        let visualBrief = (assetPage.properties["Visual Production Brief"]?.rich_text || []).map(t => t.plain_text).join("");
+        let savedFreshBrief = false;
+        if (visualProductionBriefText && visualProductionBriefText.trim()) {
+          visualBrief = visualProductionBriefText.trim();
+          const saveResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Visual Production Brief": { rich_text: [{ text: { content: visualBrief.slice(0, 1990) } }] } } }),
+          });
+          savedFreshBrief = saveResp.ok;
+        }
         if (!visualBrief.trim()) {
-          return json({ error: 'Paste the completed Visual Production Brief (ChatGPT\'s output) into this Asset\'s "Visual Production Brief" field in Notion before assembling.', validation: { visual_brief_present: false } }, 400);
+          return json({ error: 'Paste the completed Visual Production Brief (ChatGPT\'s output) into the Assemble modal before assembling.', validation: { visual_brief_present: false } }, 400);
         }
         if (!designLink) {
-          return json({ error: "No rendered media yet on this Asset's Design Link — carousel renders automatically at generation time; text video needs the make-reel-video MP4 hosting step first." }, 400);
+          // Carousel always has a Design Link by generation time — this
+          // should never happen for it. Text Video's MP4 still needs a
+          // local Remotion render (make-reel-video), which this Worker
+          // can't run — but the pasted brief is already saved above, so
+          // hand back a ready-to-copy chat prompt instead of a dead end.
+          if (assetType === 'text video') {
+            const handoffPrompt = `Run make-reel-video for the Content Strategy title "${titleName}" (https://www.notion.so/${titleId}) — the script and the just-approved Visual Production Brief live on this Asset record (https://www.notion.so/${assetId}, Asset Type: text video). Read the Asset's "Visual Production Brief" property for the approved per-scene treatments, and check for any uploaded reference images (web/{deployPath}/assembled/{assetSlug}/scene-NN.* — use the Notion connector or the dashboard's Upload Images modal to confirm the exact path) before sourcing your own background where one already exists. Render it, host the MP4, and update that same Asset record per the skill's Step 4 — then re-run Assemble on the dashboard to package it for publish.`;
+            return json({ needsRemotionHandoff: true, handoffPrompt, assetId, titleId, savedToNotion: savedFreshBrief });
+          }
+          return json({ error: "No rendered media yet on this Asset's Design Link — carousel renders automatically at generation time." }, 400);
         }
 
         // ── Gate on the pasted-back Visual Production Brief's Machine-
@@ -13490,8 +13522,6 @@ Use this document to create and maintain the Visual Production Brief. The Visual
 
         const GT = (env.GITHUB_TOKEN || '').trim();
         if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
-
-        await ensureAssetsDbProperties(hdr, ASSEMBLE_PROPS);
 
         const postCaption = sectionText('Caption');
         const hashtags = sectionText('Hashtags');
