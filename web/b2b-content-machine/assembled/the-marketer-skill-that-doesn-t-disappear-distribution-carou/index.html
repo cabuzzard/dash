@@ -40,6 +40,11 @@
   .copyBtn { padding:6px 12px; background:#333; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; font-family:inherit; }
   .copyBtn:hover { background:#444; }
   .copyStatus { font-size:11px; color:#68d391; margin-left:8px; }
+  .loginLinks { display:flex; flex-wrap:wrap; gap:8px; }
+  .loginLinks a { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; background:#1a1a1a; border:1px solid #333; border-radius:16px; color:#e6e6e6; text-decoration:none; font-size:12px; }
+  .loginLinks a:hover { background:#242424; border-color:#444; }
+  .loginLinks .status { font-size:10px; color:#888; text-transform:uppercase; letter-spacing:.04em; }
+  .loginLinks .status.active { color:#68d391; }
 </style>
 </head><body>
 <header>
@@ -54,9 +59,18 @@
 </header>
 <main>
   <section>
-    <h2>Final Media</h2>
+    <div class="metaHead">
+      <h2 style="margin:0;">Final Media</h2>
+      <span><button class="copyBtn" id="downloadAllBtn">Download all 7 slides</button><span class="copyStatus" id="downloadAllStatus"></span></span>
+    </div>
     <div class="slides"><img src="https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-01.png" alt="Slide 1" loading="lazy"><img src="https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-02.png" alt="Slide 2" loading="lazy"><img src="https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-03.png" alt="Slide 3" loading="lazy"><img src="https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-04.png" alt="Slide 4" loading="lazy"><img src="https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-05.png" alt="Slide 5" loading="lazy"><img src="https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-06.png" alt="Slide 6" loading="lazy"><img src="https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-07.png" alt="Slide 7" loading="lazy"></div>
   </section>
+  
+  <section>
+    <h2>Campaign Logins</h2>
+    <div class="loginLinks"><a href="buffer.com" target="_blank" rel="noopener">webguy buffer<span class="status active">Active</span></a><a href="instagram" target="_blank" rel="noopener">webguy insta<span class="status active">Active</span></a><a href="webguyleadgeneration.com" target="_blank" rel="noopener">webguy live site<span class="status active">Active</span></a></div>
+  </section>
+  
   <section>
     <div class="metaHead">
       <h2 style="margin:0;">Publishing Metadata</h2>
@@ -121,6 +135,35 @@
         setTimeout(function () { copyCaptionStatus.textContent = ''; }, 2000);
       }, function () {
         copyCaptionStatus.textContent = 'Copy failed — select text manually.';
+      });
+    };
+  }
+  var SLIDE_URLS = ["https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-01.png","https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-02.png","https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-03.png","https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-04.png","https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-05.png","https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-06.png","https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution-webguy/slide-07.png"];
+  var downloadAllBtn = document.getElementById('downloadAllBtn');
+  var downloadAllStatus = document.getElementById('downloadAllStatus');
+  if (downloadAllBtn) {
+    downloadAllBtn.onclick = function () {
+      // Same-origin (both the review page and the hosted slide PNGs live
+      // under cabuzzard.github.io), so the download attribute forces a
+      // real file save instead of a navigation. Browsers block more than
+      // one or two downloads fired in the exact same tick as a silent-
+      // multi-download prevention, hence the stagger -- most will still
+      // show a one-time "allow multiple downloads?" prompt on the first
+      // run for this site; there's no way to skip that from the page side.
+      downloadAllStatus.textContent = 'Starting ' + SLIDE_URLS.length + ' downloads…';
+      SLIDE_URLS.forEach(function (url, i) {
+        setTimeout(function () {
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = url.split('/').pop();
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          if (i === SLIDE_URLS.length - 1) {
+            downloadAllStatus.textContent = 'Done — check your downloads folder.';
+            setTimeout(function () { downloadAllStatus.textContent = ''; }, 3000);
+          }
+        }, i * 350);
       });
     };
   }
