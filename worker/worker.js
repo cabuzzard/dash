@@ -11994,6 +11994,16 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
       // as before. What's always real and rendered regardless: background,
       // headline, body (verbatim), a role label, an accent divider, a
       // role-based footer label, and the slide number.
+      // Full-bleed AI-generated backgrounds are also supported: style.
+      // backgroundPrompt is a plain-text image description, turned into a
+      // real background image via OpenAI's image API (not this Worker's
+      // own CSS) and composited BEHIND the exact copy above — richer art
+      // than CSS/SVG can produce, without risking an image model garbling
+      // the actual words, since the words are never baked into the
+      // generated image. Requires OPENAI_API_KEY; content-addressed and
+      // cached by a hash of the prompt, so re-Assembling with an unchanged
+      // prompt reuses the existing image instead of paying to regenerate
+      // it. See the "AI-generated backgrounds" block below for the detail.
       // Per-slide LAYOUT variety (the manifest's "layout" field, e.g.
       // "split-contrast" vs "diagram-centered") is still not implemented —
       // every slide renders through one solid template driven by the
@@ -12005,7 +12015,7 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
       // keeps its rendered PNGs in sync — throws on failure rather than
       // returning a Response, since callers need to catch and wrap it
       // differently (a bare error vs. one nested inside a bigger action).
-      async function renderCarouselFromManifestCore({ assetId, hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT }) {
+      async function renderCarouselFromManifestCore({ assetId, hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, OPENAI_API_KEY }) {
         const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
         if (!assetPage.properties) throw new Error(assetPage.message || "Asset not found");
         const assetType = assetPage.properties["Asset Type"]?.select?.name || "";
@@ -12069,7 +12079,8 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           const rawFooter = (m.style?.footerLabel || '').trim();
           const footerLabel = (rawFooter && !/label$/i.test(rawFooter)) ? rawFooter : (m.role || titleName);
           const graphicSvg = (m.style?.graphicSvg || '').trim();
-          return { number: idx + 1, role: m.role || '', headline, body: bodyText, footerLabel, graphicSvg };
+          const backgroundPrompt = (m.style?.backgroundPrompt || '').trim();
+          return { number: idx + 1, role: m.role || '', headline, body: bodyText, footerLabel, graphicSvg, backgroundPrompt };
         });
         const total = slides.length;
 
@@ -12080,19 +12091,111 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         const REPO = "cabuzzard/dash", BRANCH = "main";
         const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
 
+        const toB64Bin = buf => { const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+        const shaMap = {};
+        try {
+          const listResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${basePath}?ref=${BRANCH}`, { headers: gh });
+          if (listResp.ok) { const entries = await listResp.json(); if (Array.isArray(entries)) for (const e of entries) shaMap[e.name] = e.sha; }
+        } catch (e) {}
+        const putFile = async (path, b64, message) => {
+          const name = path.slice(path.lastIndexOf('/') + 1);
+          const putBody = { message, content: b64, branch: BRANCH };
+          if (shaMap[name]) putBody.sha = shaMap[name];
+          const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody) });
+          if (!putResp.ok) { const r = await putResp.json(); throw new Error(`GitHub commit failed for ${path} (HTTP ${putResp.status}): ${r.message || 'unknown'}`); }
+        };
+
+        // ── AI-generated backgrounds (optional, per slide) ──
+        // The manifest's style.backgroundPrompt is a plain-text image
+        // description (never an image itself — this Worker can't see a
+        // chat-hosted picture), turned into a real background image via
+        // OpenAI's image API, then composited BEHIND the exact, verbatim
+        // headline/body copy below — real AI-generated art without ever
+        // risking the model garbling the actual words, which is the
+        // classic failure mode of asking an image model to render a
+        // whole finished slide (text baked in) in one shot.
+        // Cached and content-addressed: the hosted filename embeds a hash
+        // of the prompt, so an unchanged prompt reuses the existing image
+        // on every re-Assemble (no repeat charge to the operator's OpenAI
+        // account) and a changed prompt (via a "Request a Change" edit to
+        // backgroundPrompt) naturally generates a fresh one and orphans
+        // the old file, which gets cleaned up below.
+        const sha1Hex = async str => {
+          const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(str));
+          return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 10);
+        };
+        const generateBackgroundImage = async prompt => {
+          const fullPrompt = `${prompt} — absolutely no text, letters, words, numbers, captions, or writing of any kind anywhere in the image; pure background/illustration art only, portrait orientation.`;
+          const resp = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'gpt-image-1', prompt: fullPrompt, size: '1024x1536', quality: 'medium', n: 1 }),
+          });
+          if (!resp.ok) { const t = await resp.text(); throw new Error(`OpenAI image generation failed (HTTP ${resp.status}): ${t.slice(0, 300)}`); }
+          const data = await resp.json();
+          const b64 = data.data?.[0]?.b64_json;
+          if (!b64) throw new Error('OpenAI returned no image data');
+          return b64;
+        };
+        const bgHashPrefix = i => `bg-${String(i + 1).padStart(2, '0')}-`;
+        for (let i = 0; i < slides.length; i++) {
+          const prompt = slides[i].backgroundPrompt;
+          if (!prompt) continue;
+          const hash = await sha1Hex(prompt);
+          const bgName = `${bgHashPrefix(i)}${hash}.png`;
+          let b64 = null;
+          if (shaMap[bgName]) {
+            const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${basePath}/${bgName}?ref=${BRANCH}`, { headers: gh });
+            if (getResp.ok) { const j = await getResp.json(); b64 = (j.content || '').replace(/\s+/g, ''); }
+          }
+          if (!b64) {
+            if (!OPENAI_API_KEY) throw new Error(`Slide ${i + 1} has a backgroundPrompt but OPENAI_API_KEY is not configured`);
+            b64 = await generateBackgroundImage(prompt);
+            await putFile(`${basePath}/${bgName}`, b64, `Generate background: ${titleName} — slide ${i + 1}`);
+          }
+          slides[i].backgroundImageB64 = b64;
+        }
+        // Orphaned backgrounds from a since-changed prompt — same name
+        // prefix, different (old) hash suffix.
+        const currentBgNames = new Set();
+        for (let i = 0; i < slides.length; i++) {
+          if (!slides[i].backgroundPrompt) continue;
+          currentBgNames.add(`${bgHashPrefix(i)}${await sha1Hex(slides[i].backgroundPrompt)}.png`);
+        }
+        const orphanBgNames = Object.keys(shaMap).filter(name =>
+          /^bg-\d+-[0-9a-f]{10}\.png$/.test(name) && !currentBgNames.has(name)
+        );
+        await Promise.all(orphanBgNames.map(name =>
+          fetch(`https://api.github.com/repos/${REPO}/contents/${basePath}/${name}`, {
+            method: "DELETE", headers: { ...gh, "Content-Type": "application/json" },
+            body: JSON.stringify({ message: `Remove stale background: ${titleName} — ${name}`, sha: shaMap[name], branch: BRANCH }),
+          }).catch(() => {})
+        ));
+
+        // A dark or light scrim (matched to whether ink is a light or
+        // dark color) keeps text legible over generated art without
+        // guessing wrong for a given campaign's palette.
+        const hexLuminance = hex => {
+          const h = String(hex || '').replace('#', '');
+          if (h.length < 6) return 128;
+          return 0.299 * parseInt(h.slice(0, 2), 16) + 0.587 * parseInt(h.slice(2, 4), 16) + 0.114 * parseInt(h.slice(4, 6), 16);
+        };
+        const scrimRgb = hexLuminance(ink) > 150 ? '0,0,0' : '255,255,255';
+
         const css = `
   * { margin:0; padding:0; box-sizing:border-box; }
   body { width:1080px; height:1350px; background:${bg}; font-family:'${bodyFont}',serif; position:relative; overflow:hidden; padding:96px; display:flex; flex-direction:column; justify-content:center; }
-  .rule { position:absolute; left:96px; top:96px; width:64px; height:4px; background:${accent}; }
-  .icon { position:absolute; left:96px; top:128px; }
-  .graphic { position:absolute; left:96px; top:118px; width:64px; height:64px; }
+  .scrim { position:absolute; inset:0; background:linear-gradient(180deg, rgba(${scrimRgb},0.05) 0%, rgba(${scrimRgb},0.2) 45%, rgba(${scrimRgb},0.65) 100%); }
+  .rule { position:absolute; left:96px; top:96px; width:64px; height:4px; background:${accent}; z-index:2; }
+  .icon { position:absolute; left:96px; top:128px; z-index:2; }
+  .graphic { position:absolute; left:96px; top:118px; width:64px; height:64px; z-index:2; }
   .graphic svg { width:100% !important; height:100% !important; }
-  .role { font-family:'${bodyFont}',serif; font-size:20px; letter-spacing:0.18em; text-transform:uppercase; color:${accent}; margin-bottom:28px; font-weight:600; }
-  h1 { font-family:'${headlineFont}',serif; font-size:60px; line-height:1.16; color:${ink}; font-weight:700; margin-bottom:28px; max-width:820px; }
-  p { font-family:'${bodyFont}',serif; font-size:31px; line-height:1.5; color:${ink}; opacity:0.85; max-width:820px; }
-  .divider { position:absolute; left:96px; right:96px; bottom:150px; height:1px; background:${ink}; opacity:0.15; }
-  .footer { position:absolute; left:96px; bottom:88px; font-family:'${bodyFont}',serif; font-size:15px; letter-spacing:0.14em; text-transform:uppercase; color:${ink}; opacity:0.5; }
-  .num { position:absolute; right:96px; bottom:88px; font-family:'${bodyFont}',serif; font-size:15px; color:${accent}; letter-spacing:0.08em; }
+  .role { position:relative; z-index:2; font-family:'${bodyFont}',serif; font-size:20px; letter-spacing:0.18em; text-transform:uppercase; color:${accent}; margin-bottom:28px; font-weight:600; }
+  h1 { position:relative; z-index:2; font-family:'${headlineFont}',serif; font-size:60px; line-height:1.16; color:${ink}; font-weight:700; margin-bottom:28px; max-width:820px; }
+  p { position:relative; z-index:2; font-family:'${bodyFont}',serif; font-size:31px; line-height:1.5; color:${ink}; opacity:0.85; max-width:820px; }
+  .divider { position:absolute; left:96px; right:96px; bottom:150px; height:1px; background:${ink}; opacity:0.15; z-index:2; }
+  .footer { position:absolute; left:96px; bottom:88px; font-family:'${bodyFont}',serif; font-size:15px; letter-spacing:0.14em; text-transform:uppercase; color:${ink}; opacity:0.5; z-index:2; }
+  .num { position:absolute; right:96px; bottom:88px; font-family:'${bodyFont}',serif; font-size:15px; color:${accent}; letter-spacing:0.08em; z-index:2; }
 `;
         // graphicSvg is trusted content (it only ever comes from an
         // operator-approved Assembly Manifest), but a light strip of
@@ -12103,7 +12206,8 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           .replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, '');
         const slideHtml = slide => `<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(headlineFont)}:wght@600;700&family=${encodeURIComponent(bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
-<style>${css}</style></head><body>
+<style>${css}</style></head><body${slide.backgroundImageB64 ? ` style="background-image:url(data:image/png;base64,${slide.backgroundImageB64});background-size:cover;background-position:center;"` : ''}>
+  ${slide.backgroundImageB64 ? '<div class="scrim"></div>' : ''}
   <div class="rule"></div>
   ${slide.graphicSvg
     ? `<div class="graphic">${sanitizeSvg(slide.graphicSvg)}</div>`
@@ -12142,19 +12246,6 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           throw new Error(`Slide ${pngBuffers.length + 1}: ${e.message}`);
         }
 
-        const toB64Bin = buf => { const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
-        const shaMap = {};
-        try {
-          const listResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${basePath}?ref=${BRANCH}`, { headers: gh });
-          if (listResp.ok) { const entries = await listResp.json(); if (Array.isArray(entries)) for (const e of entries) shaMap[e.name] = e.sha; }
-        } catch (e) {}
-        const putFile = async (path, b64, message) => {
-          const name = path.slice(path.lastIndexOf('/') + 1);
-          const putBody = { message, content: b64, branch: BRANCH };
-          if (shaMap[name]) putBody.sha = shaMap[name];
-          const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody) });
-          if (!putResp.ok) { const r = await putResp.json(); throw new Error(`GitHub commit failed for ${path} (HTTP ${putResp.status}): ${r.message || 'unknown'}`); }
-        };
         for (let i = 0; i < pngBuffers.length; i++) {
           await putFile(`${basePath}/slide-${String(i + 1).padStart(2, '0')}.png`, toB64Bin(pngBuffers[i]), `Render from Assembly Manifest: ${titleName} — slide ${i + 1}`);
         }
@@ -12201,7 +12292,12 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error("CF_ACCOUNT_ID / CF_API_TOKEN not configured — needed to render from the Assembly Manifest before assembling");
           const GT = (env.GITHUB_TOKEN || '').trim();
           if (!GT) throw new Error("GITHUB_TOKEN not set");
-          return renderCarouselFromManifestCore({ assetId, hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT });
+          // Optional — only required if a slide actually carries a
+          // backgroundPrompt; renderCarouselFromManifestCore checks that
+          // lazily per-slide so carousels with no AI backgrounds never
+          // need this configured at all.
+          const OPENAI_API_KEY = (env.OPENAI_API_KEY || '').trim();
+          return renderCarouselFromManifestCore({ assetId, hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT, OPENAI_API_KEY });
         },
       };
 
@@ -15212,7 +15308,7 @@ The deterministic, machine-readable counterpart to the two files above — a sin
         ? '"headline": "verbatim from Final Written Asset above, never reworded", "body": "verbatim from Final Written Asset above, never reworded"'
         : '"narration": "verbatim from Final Written Asset above, never reworded", "onScreenText": "verbatim from Final Written Asset above, never reworded"'} },
       "style": { ${assetType === 'carousel'
-        ? '"headlineTreatment": "e.g. Playfair Display Bold, not the copy itself", "bodyTreatment": "e.g. EB Garamond Regular, not the copy itself", "dividerStyle": "...", "iconStyle": "...", "diagramStyle": "...", "graphicSvg": "a complete self-contained inline SVG element (opening svg tag through closing svg tag) rendering this slide\'s real icon, diagram, or illustration graphic per the approved Visual Design Card above -- actual markup, not a description of one; give it its own viewBox for sizing, use only the resolved palette hex values from designTokens above, no external image or font references, no script tags; use an empty string if this slide is intentionally graphic-free / pure typography", "footerLabel": "actual short label text to print, e.g. the slide role in caps — never a generic description such as section label", "slideNumberFormat": "e.g. 01/07"'
+        ? '"headlineTreatment": "e.g. Playfair Display Bold, not the copy itself", "bodyTreatment": "e.g. EB Garamond Regular, not the copy itself", "dividerStyle": "...", "iconStyle": "...", "diagramStyle": "...", "graphicSvg": "a complete self-contained inline SVG element (opening svg tag through closing svg tag) rendering this slide\'s real icon, diagram, or illustration graphic per the approved Visual Design Card above -- actual markup, not a description of one; give it its own viewBox for sizing, use only the resolved palette hex values from designTokens above, no external image or font references, no script tags; use an empty string if this slide is intentionally graphic-free / pure typography", "backgroundPrompt": "an image-generation prompt (plain descriptive text, NOT markup) for this slide\'s full-bleed background art or illustration, matching the mood/subject/palette of the approved Visual Design Card above -- describe style, subject, composition, and color explicitly since the generator has no other context; never ask for any text, letters, numbers, or words to appear in the image, since the actual headline/body copy is rendered separately on top of it; use an empty string if this slide should just use the flat background color instead", "footerLabel": "actual short label text to print, e.g. the slide role in caps — never a generic description such as section label", "slideNumberFormat": "e.g. 01/07"'
         : '"diagramStyle": "...", "iconStyle": "...", "captionStyle": "...", "graphicSvg": "a complete self-contained inline SVG element rendering this scene\'s real icon/diagram/illustration graphic per the approved Visual Design Card above -- actual markup, not a description; empty string if none"'} },
       "export": { "filename": "...", "format": "${assetType === 'carousel' ? 'PNG' : 'MP4'}", "width": 0, "height": 0 }
     }
@@ -15220,7 +15316,7 @@ The deterministic, machine-readable counterpart to the two files above — a sin
 }
 \`\`\`
 
-Include one entry in the "${assetType === 'carousel' ? 'slides' : 'scenes'}" array per ${assetType === 'carousel' ? 'slide' : 'scene'} in this document (none skipped, same order as Final Written Asset above). "copy" fields must be the exact, literal words already approved — never a description of them. "style" fields describe HOW to render each layer, and must be a resolved production value (a real font name, a real short label to print, a real format string), never a category name alone and never a description of the copy. "graphicSvg" is the one field that is itself the deliverable, not a description of one: the actual SVG object for that slide/scene's icon, diagram, or illustration, ready to render as-is — this is how ChatGPT hands over the graphical elements from the Visual Design Card, since this pipeline renders from this JSON directly and cannot pull graphics out of a chat image.
+Include one entry in the "${assetType === 'carousel' ? 'slides' : 'scenes'}" array per ${assetType === 'carousel' ? 'slide' : 'scene'} in this document (none skipped, same order as Final Written Asset above). "copy" fields must be the exact, literal words already approved — never a description of them. "style" fields describe HOW to render each layer, and must be a resolved production value (a real font name, a real short label to print, a real format string), never a category name alone and never a description of the copy. "graphicSvg" is the one field that is itself the deliverable, not a description of one: the actual SVG object for that slide/scene's icon, diagram, or illustration, ready to render as-is — this is how ChatGPT hands over the graphical elements from the Visual Design Card, since this pipeline renders from this JSON directly and cannot pull graphics out of a chat image.${assetType === 'carousel' ? ' "backgroundPrompt" works the same way but for full-bleed background art: this pipeline generates that image itself from your prompt (via an image-generation model) rather than rendering it from markup, so write it as a real, specific image prompt, not a style label.' : ''}
 
 **Together, all three files must return every single variable listed in Required Variable Set above, updated to its final resolved value — split creative fields (Visual Intent, Design System Resolution, Typography, Iconography, Diagram/Illustration Language, Layout System, Slide/Scene Specifications) into VISUAL_PRODUCTION_BRIEF.md, remaining production fields (Component Library, QA Checklist, Production Manifest, Deliverables) into ASSEMBLY_INSTRUCTIONS.md, and the per-slide/scene Asset Manifest layer breakdown into ASSEMBLY_MANIFEST.json. Nothing from that list may be silently dropped — a variable marked "not yet specified" there is one you must originate and resolve, not skip.**
 
