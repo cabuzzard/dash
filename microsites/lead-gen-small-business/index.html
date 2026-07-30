@@ -849,6 +849,13 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <label class="lm-label" style="margin-top:12px;">Publishing Date <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
       <input class="modal-ta" id="assemblePublishDate" type="text" placeholder="YYYY-MM-DD" style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
       <div class="modal-status" id="assembleStatus" style="white-space:pre-wrap;"></div>
+      <div id="assembleSlideUploadWrap" style="display:none;margin-top:18px;padding-top:16px;border-top:1px solid #262626;">
+        <label class="lm-label">Or upload finished slide PNGs from ChatGPT <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— skips this Worker's own CSS render entirely, since ChatGPT can design richer graphics than CSS/SVG ever will</span></label>
+        <div class="modal-hint" style="margin-top:4px;">Select all slide images at once. Order is auto-detected from the number in each filename (e.g. slide-1.png, slide-2.png…) — upload order doesn't matter.</div>
+        <input type="file" id="assembleSlideFiles" accept="image/png,image/jpeg" multiple style="margin-top:8px;font-size:11px;color:#ccc;" />
+        <div id="assembleSlideOrderPreview" style="margin-top:8px;font-size:11px;color:#888;line-height:1.6;"></div>
+        <button class="modal-btn save" id="assembleSlideUploadBtn" onclick="submitSlideUpload()" style="margin-top:10px;" disabled>Upload Slides &amp; Assemble</button>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeAssembleModal()">Cancel</button>
@@ -1553,7 +1560,7 @@ async function loadTitles() {
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-brief" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'visualBrief')" title="Upload the completed Visual Production Brief (.md/.txt) from ChatGPT — saved straight to this asset's Visual Production Brief property, no modal needed" style="font-size:10px;padding:1px 7px;border:1px solid #38b2ac;background:transparent;color:#38b2ac;border-radius:9px;cursor:pointer;flex-shrink:0;">📄 Brief</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'assemblyPackage')" title="Upload ASSEMBLY_INSTRUCTIONS.md (.md/.txt) — the technical build spec — saved straight to this asset's Production Assembly Package property, no modal needed" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧱 Package</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-manifest" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'manifest')" title="Upload ASSEMBLY_MANIFEST.json — the machine-readable, layer-by-layer build spec ChatGPT returns alongside the Brief and Package — saved straight to this asset's Assembly Manifest property, no modal needed. Must be valid JSON." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">🧾 Manifest</button>` : '')
-          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for any asset type with a registered renderer (carousel today), RE-RENDERS from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
+          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" data-type="${esc(a.type)}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for any asset type with a registered renderer (carousel today), RE-RENDERS from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
         return ar;
       };
@@ -5348,17 +5355,73 @@ function closeViewStrategyModal() {
 // hosted yet: copies a Claude Code build prompt with both documents
 // attached in full. Media already hosted: packages it + publishing
 // metadata into a hosted review page.
-let ASM_ASSET_ID = null, ASM_TITLE_ID = null;
+let ASM_ASSET_ID = null, ASM_TITLE_ID = null, ASM_ASSET_TYPE = null, ASM_SORTED_FILES = [];
 function openAssembleModal(btn) {
   ASM_ASSET_ID = btn.dataset.assetid;
   ASM_TITLE_ID = btn.dataset.titleid;
+  ASM_ASSET_TYPE = btn.dataset.type || '';
+  ASM_SORTED_FILES = [];
   document.getElementById('assembleOverrideText').value = '';
   document.getElementById('assemblePublishDate').value = '';
   document.getElementById('assembleStatus').textContent = '';
+  document.getElementById('assembleSlideFiles').value = '';
+  document.getElementById('assembleSlideOrderPreview').textContent = '';
+  document.getElementById('assembleSlideUploadBtn').disabled = true;
+  document.getElementById('assembleSlideUploadWrap').style.display = ASM_ASSET_TYPE === 'carousel' ? 'block' : 'none';
   document.getElementById('assembleModal').classList.add('open');
 }
 function closeAssembleModal() {
   document.getElementById('assembleModal').classList.remove('open');
+}
+// Slide order is inferred from the first number found in each filename
+// (not upload order) — filenames with no number sort last, keeping their
+// relative selection order (Array.sort is stable).
+function slideFirstNum(name) {
+  const m = String(name || '').match(/\d+/);
+  return m ? parseInt(m[0], 10) : Infinity;
+}
+document.getElementById('assembleSlideFiles')?.addEventListener('change', (e) => {
+  const files = Array.from(e.target.files || []);
+  ASM_SORTED_FILES = files
+    .map((f, i) => ({ file: f, orig: i }))
+    .sort((a, b) => (slideFirstNum(a.file.name) - slideFirstNum(b.file.name)) || (a.orig - b.orig))
+    .map(x => x.file);
+  const preview = document.getElementById('assembleSlideOrderPreview');
+  preview.textContent = ASM_SORTED_FILES.length
+    ? ASM_SORTED_FILES.map((f, i) => `${String(i + 1).padStart(2, '0')}. ${f.name}`).join('\n')
+    : '';
+  document.getElementById('assembleSlideUploadBtn').disabled = !ASM_SORTED_FILES.length;
+});
+async function submitSlideUpload() {
+  const statusEl = document.getElementById('assembleStatus');
+  const btn = document.getElementById('assembleSlideUploadBtn');
+  if (!ASM_SORTED_FILES.length) return;
+  btn.disabled = true;
+  statusEl.textContent = `Uploading ${ASM_SORTED_FILES.length} slide${ASM_SORTED_FILES.length > 1 ? 's' : ''}…`;
+  try {
+    const images = [];
+    for (const f of ASM_SORTED_FILES) {
+      const { base64, filename } = await readImageAsBase64(f);
+      images.push({ filename, base64 });
+    }
+    await w('uploadCarouselSlides', { assetId: ASM_ASSET_ID, images });
+    statusEl.textContent = 'Slides uploaded — assembling…';
+    const publishingDate = document.getElementById('assemblePublishDate').value.trim();
+    const overrideGuidelines = document.getElementById('assembleOverrideText').value.trim();
+    const r = await w('assembleAsset', {
+      assetId: ASM_ASSET_ID, titleId: ASM_TITLE_ID, campaignId: CAMPAIGN_ID,
+      publishingDate: publishingDate || undefined,
+      overrideGuidelines: overrideGuidelines || undefined,
+      skipRender: true,
+    });
+    statusEl.textContent = 'Assembled ✓ — opening review page…';
+    window.open(r.reviewUrl, '_blank');
+    setTimeout(closeAssembleModal, 1200);
+  } catch (e) {
+    statusEl.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
 }
 async function submitAssembleModal() {
   const overrideGuidelines = document.getElementById('assembleOverrideText').value.trim();

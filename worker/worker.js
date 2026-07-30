@@ -15259,7 +15259,7 @@ Per Scope above: do not restructure, critique, or propose process/system changes
       // preview," per operator request, without duplicating this ~200
       // lines of review-page HTML/publishing-field logic.
       async function runAssembleAsset(body, env) {
-        const { publishingDate, overrideGuidelines } = body;
+        const { publishingDate, overrideGuidelines, skipRender } = body;
         const ctx = await gatherAssetProductionContext(body);
         if (!ctx.ok) return json({ error: ctx.error, validation: ctx.validation }, ctx.status);
         const {
@@ -15323,8 +15323,13 @@ ${assemblyManifest}`;
         // effectiveDesignLink only changes if this succeeds; on failure
         // the error surfaces immediately rather than silently proceeding
         // to package stale media.
+        // skipRender: true when the operator just uploaded finished slide
+        // images directly (uploadCarouselSlides, below) — that action
+        // already wrote a fresh Design Link, so re-rendering here would
+        // immediately overwrite what they just uploaded with the Worker's
+        // own CSS/SVG render instead.
         let effectiveDesignLink = designLink;
-        const renderer = MANIFEST_RENDERERS[assetType];
+        const renderer = skipRender ? null : MANIFEST_RENDERERS[assetType];
         if (renderer) {
           const escRender = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
           try {
@@ -15684,6 +15689,112 @@ ${assemblyManifest}`;
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to write assembled fields to Asset", reviewUrl }, patchResp.status); }
 
         return json({ success: true, assetId, reviewUrl, fieldsWritten: Object.keys(props) });
+      }
+
+      // ── uploadCarouselSlides ──
+      // The ChatGPT-side counterpart to renderCarouselFromManifestCore:
+      // video rendering has to happen in a real Node/Remotion/ffmpeg
+      // environment (Claude Code, via the make-reel-video skill), but
+      // carousel slide IMAGES can be fully designed and rendered by
+      // ChatGPT itself — this Worker's own CSS/SVG renderer is a fallback
+      // for when the operator hasn't done that, not the only path. This
+      // action hosts operator-supplied PNGs directly instead of rendering
+      // anything: sorts by the first number found in each filename (so
+      // "slide-2.png" still lands before "slide-10.png" regardless of
+      // upload order), renumbers them contiguously as slide-01.png ..
+      // slide-NN.png (the exact convention the manifest renderer already
+      // uses, so the Assembly Review page's gallery and everything
+      // downstream needs no changes), deletes any leftover slide files
+      // from a larger previous render, and writes Design Link/Final Media
+      // File/Thumbnail exactly like the renderer does. The Assemble
+      // modal's upload path calls this, then calls assembleAsset with
+      // skipRender:true so the CSS renderer doesn't immediately clobber
+      // what was just uploaded.
+      if (body.action === "uploadCarouselSlides") {
+        const { assetId, images } = body;
+        if (!assetId || !Array.isArray(images) || !images.length) return json({ error: "assetId and a non-empty images array required" }, 400);
+        if (images.length > 20) return json({ error: "Too many images (max 20 slides)" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const assetType = assetPage.properties["Asset Type"]?.select?.name || "";
+        if (assetType !== "carousel") return json({ error: `uploadCarouselSlides only supports carousel assets (this one is "${assetType || 'unknown'}")` }, 400);
+        const titleId = assetPage.properties["Content Strategy"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        if (!titleId || !campaignId) return json({ error: "Asset is missing its Content Strategy or Campaign relation" }, 400);
+
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const titleName = titlePage.properties.Title?.title?.map(t => t.plain_text).join("") || "Carousel";
+
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+
+        // Sort by the first number found in the filename, ascending —
+        // filenames with no number keep their original relative order and
+        // sort after every numbered one (Array.prototype.sort is stable).
+        const firstNum = name => { const m = String(name || '').match(/\d+/); return m ? parseInt(m[0], 10) : Infinity; };
+        const sorted = images.map((img, i) => ({ ...img, _orig: i })).sort((a, b) => {
+          const na = firstNum(a.filename), nb = firstNum(b.filename);
+          if (na !== nb) return na - nb;
+          return a._orig - b._orig;
+        });
+
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const titleSlug = slugify(titleName) || 'carousel';
+        const basePath = `web/${deployPath}/carousels/${titleSlug}`;
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+
+        const shaMap = {};
+        try {
+          const listResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${basePath}?ref=${BRANCH}`, { headers: gh });
+          if (listResp.ok) { const entries = await listResp.json(); if (Array.isArray(entries)) for (const e of entries) shaMap[e.name] = e.sha; }
+        } catch (e) {}
+
+        const putFile = async (path, b64, message) => {
+          const name = path.slice(path.lastIndexOf('/') + 1);
+          const putBody = { message, content: b64, branch: BRANCH };
+          if (shaMap[name]) putBody.sha = shaMap[name];
+          const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody) });
+          if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); throw new Error(`GitHub commit failed for ${path} (HTTP ${putResp.status}): ${r.message || 'unknown'}`); }
+        };
+
+        try {
+          for (let i = 0; i < sorted.length; i++) {
+            const b64 = String(sorted[i].base64 || '').split(',').pop(); // tolerate a stray data: prefix
+            if (!b64) throw new Error(`Slide ${i + 1} (${sorted[i].filename || 'unnamed'}) has no image data`);
+            await putFile(`${basePath}/slide-${String(i + 1).padStart(2, '0')}.png`, b64, `Uploaded slide: ${titleName} — slide ${i + 1}`);
+          }
+        } catch (e) {
+          return json({ error: e.message }, 502);
+        }
+
+        // Clean up any stale slide files left over from a previous, larger
+        // render (e.g. an 8-slide manifest render followed by a 7-slide
+        // ChatGPT upload would otherwise leave slide-08.png orphaned).
+        const staleNames = Object.keys(shaMap).filter(n => /^slide-\d+\.png$/.test(n) && parseInt(n.match(/\d+/)[0], 10) > sorted.length);
+        await Promise.all(staleNames.map(name =>
+          fetch(`https://api.github.com/repos/${REPO}/contents/${basePath}/${name}`, {
+            method: "DELETE", headers: { ...gh, "Content-Type": "application/json" },
+            body: JSON.stringify({ message: `Remove stale slide: ${titleName} — ${name}`, sha: shaMap[name], branch: BRANCH }),
+          }).catch(() => {})
+        ));
+
+        const designLink = `https://cabuzzard.github.io/dash/${basePath}/`;
+        await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: {
+            "Design Link": { url: designLink },
+            "Final Media File": { url: designLink },
+            "Thumbnail": { url: `${designLink}slide-01.png` },
+          } }),
+        }).catch(() => {});
+
+        return json({ success: true, assetId, designLink, slideCount: sorted.length, order: sorted.map(s => s.filename) });
       }
 
       if (body.action === "assembleAsset") return await runAssembleAsset(body, env);
