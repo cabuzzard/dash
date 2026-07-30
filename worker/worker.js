@@ -13567,38 +13567,62 @@ Return ONLY this JSON object, no other text, no markdown fences:
       };
 
       // Parses the single-file "render package" ChatGPT now produces
-      // instead of three separate files — a YAML envelope with exactly
-      // three top-level keys: visualBrief and assemblyInstructions as
-      // literal block scalars (prose, `key: |` + indented text), and
-      // assemblyManifest whose value is embedded JSON (JSON is valid
-      // YAML, so this sidesteps needing a real YAML parser — this Worker
-      // is no_bundle, no external libraries, and full YAML has far more
-      // edge cases than this controlled, self-authored schema needs).
-      // generateVisualBriefPrompt's Stage 2 instructs ChatGPT to produce
-      // exactly this shape; this parser only needs to handle that shape,
-      // not arbitrary YAML.
+      // instead of three separate files. Deliberately tolerant rather than
+      // strict YAML: real-world output from different GPT setups has
+      // varied — real "key: |" YAML block scalars, bare unindented section
+      // labels with no colon at all, fenced ```json blocks instead of
+      // inline JSON — and this Worker is no_bundle (no room for a real
+      // YAML library) anyway, so matching one exact syntax was always
+      // going to be fragile. This instead: (1) finds section boundaries by
+      // recognizing any of the known section names on their own line, with
+      // or without a colon/leading #/trailing "|", then (2) for the
+      // manifest specifically, locates the first "{" after that heading
+      // and walks forward with proper brace-depth + quoted-string-aware
+      // matching (so braces inside SVG markup or any other string value
+      // can never break it) rather than naive indexOf('{')/lastIndexOf('}')
+      // — that would silently grab the wrong span if anything follows the
+      // manifest in the file, which is common when a fence or a further
+      // section comes after it. "renderInstructions" is accepted as a
+      // synonym for assemblyInstructions, since some GPT setups use that
+      // name for the same kind of build-guidance content.
       function parseRenderPackageYaml(raw) {
         const text = String(raw || '');
-        const extractBlock = key => {
-          // (?![\s\S]) is a true end-of-string assertion regardless of the
-          // /m flag — a bare $ would match end-of-EVERY-LINE under /m,
-          // which stopped the lazy capture after just the first line.
-          const re = new RegExp(`^${key}:[ \\t]*[|>]?-?[ \\t]*\\r?\\n([\\s\\S]*?)(?=\\r?\\n[A-Za-z_][A-Za-z0-9_]*:[ \\t]*[|>]?-?[ \\t]*\\r?\\n|(?![\\s\\S]))`, 'm');
-          const m = text.match(re);
-          if (!m) return '';
-          const lines = m[1].replace(/\s+$/, '').split(/\r?\n/);
-          const indents = lines.filter(l => l.trim()).map(l => (l.match(/^[ \t]*/) || [''])[0].length);
-          const minIndent = indents.length ? Math.min(...indents) : 0;
-          return lines.map(l => l.slice(minIndent)).join('\n').trim();
+        const findJsonObject = fromIndex => {
+          const start = text.indexOf('{', fromIndex);
+          if (start === -1) return '';
+          let depth = 0, inStr = false, esc = false;
+          for (let i = start; i < text.length; i++) {
+            const ch = text[i];
+            if (inStr) {
+              if (esc) esc = false;
+              else if (ch === '\\') esc = true;
+              else if (ch === '"') inStr = false;
+              continue;
+            }
+            if (ch === '"') { inStr = true; continue; }
+            if (ch === '{') depth++;
+            else if (ch === '}') { depth--; if (depth === 0) return text.slice(start, i + 1); }
+          }
+          return '';
         };
-        const visualBrief = extractBlock('visualBrief');
-        const assemblyInstructions = extractBlock('assemblyInstructions');
-        let assemblyManifest = '';
-        const manIdx = text.indexOf('assemblyManifest:');
-        if (manIdx !== -1) {
-          const s = text.indexOf('{', manIdx), e = text.lastIndexOf('}');
-          if (s !== -1 && e !== -1 && e > s) assemblyManifest = text.slice(s, e + 1);
-        }
+        const HEADER_NAMES = ['visualBrief', 'assemblyInstructions', 'renderInstructions', 'assemblyManifest'];
+        const headerRe = new RegExp(`^#{0,3}[ \\t]*(${HEADER_NAMES.join('|')})[ \\t]*:?[ \\t]*[|>]?-?[ \\t]*\\r?$`, 'gm');
+        const marks = [];
+        let hm;
+        while ((hm = headerRe.exec(text))) marks.push({ name: hm[1], start: hm.index, end: headerRe.lastIndex });
+        const sectionText = name => {
+          const idx = marks.findIndex(x => x.name === name);
+          if (idx === -1) return '';
+          const from = marks[idx].end;
+          const to = idx + 1 < marks.length ? marks[idx + 1].start : text.length;
+          return text.slice(from, to).trim()
+            .replace(/^```[a-zA-Z]*\r?\n/, '').replace(/\r?\n?```[ \t]*$/, '').trim();
+        };
+        const visualBrief = sectionText('visualBrief');
+        const assemblyInstructions = sectionText('assemblyInstructions') || sectionText('renderInstructions');
+        const manMark = marks.find(x => x.name === 'assemblyManifest');
+        let assemblyManifest = manMark ? findJsonObject(manMark.end) : '';
+        if (!assemblyManifest) assemblyManifest = findJsonObject(0); // last resort: first JSON object anywhere in the file
         return { visualBrief, assemblyInstructions, assemblyManifest };
       }
 
