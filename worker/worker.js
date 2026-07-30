@@ -15595,6 +15595,9 @@ ${assemblyManifest}`;
           })).filter(l => l.url);
         } catch (e) {}
 
+        const slideUrls = assetType === 'carousel'
+          ? Array.from({ length: slideCount || 0 }, (_, i) => `${effectiveDesignLink}slide-${String(i + 1).padStart(2, '0')}.png`)
+          : [];
         const mediaHtml = assetType === 'carousel'
           ? `<div class="slides">${Array.from({ length: slideCount || 0 }, (_, i) => `<img src="${esc2(effectiveDesignLink)}slide-${String(i + 1).padStart(2, '0')}.png" alt="Slide ${i + 1}" loading="lazy">`).join('')}</div>`
           : `<video controls preload="metadata" src="${esc2(effectiveDesignLink)}"></video>`;
@@ -15673,7 +15676,10 @@ ${assemblyManifest}`;
 </header>
 <main>
   <section>
-    <h2>Final Media</h2>
+    <div class="metaHead">
+      <h2 style="margin:0;">Final Media</h2>
+      ${slideUrls.length ? `<span><button class="copyBtn" id="downloadAllBtn">Download all ${slideUrls.length} slides</button><span class="copyStatus" id="downloadAllStatus"></span></span>` : ''}
+    </div>
     ${mediaHtml}
   </section>
   ${campaignLogins.length ? `
@@ -15746,6 +15752,35 @@ ${assemblyManifest}`;
         setTimeout(function () { copyCaptionStatus.textContent = ''; }, 2000);
       }, function () {
         copyCaptionStatus.textContent = 'Copy failed — select text manually.';
+      });
+    };
+  }
+  var SLIDE_URLS = ${JSON.stringify(slideUrls)};
+  var downloadAllBtn = document.getElementById('downloadAllBtn');
+  var downloadAllStatus = document.getElementById('downloadAllStatus');
+  if (downloadAllBtn) {
+    downloadAllBtn.onclick = function () {
+      // Same-origin (both the review page and the hosted slide PNGs live
+      // under cabuzzard.github.io), so the download attribute forces a
+      // real file save instead of a navigation. Browsers block more than
+      // one or two downloads fired in the exact same tick as a silent-
+      // multi-download prevention, hence the stagger -- most will still
+      // show a one-time "allow multiple downloads?" prompt on the first
+      // run for this site; there's no way to skip that from the page side.
+      downloadAllStatus.textContent = 'Starting ' + SLIDE_URLS.length + ' downloads…';
+      SLIDE_URLS.forEach(function (url, i) {
+        setTimeout(function () {
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = url.split('/').pop();
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          if (i === SLIDE_URLS.length - 1) {
+            downloadAllStatus.textContent = 'Done — check your downloads folder.';
+            setTimeout(function () { downloadAllStatus.textContent = ''; }, 3000);
+          }
+        }, i * 350);
       });
     };
   }
