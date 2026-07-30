@@ -7,6 +7,15 @@ on:
       - 'worker/**'
   workflow_dispatch: {}
 
+# Without this, rapid back-to-back pushes to worker/** can trigger overlapping
+# runs, and GitHub Actions does not guarantee they finish in trigger order —
+# an older run finishing last would silently redeploy stale code over a
+# newer, already-live fix. This cancels any in-progress run for this
+# workflow as soon as a newer one starts, so only the latest push ever wins.
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

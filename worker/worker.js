@@ -13128,7 +13128,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // deliverable per generateVisualBriefPrompt's Visual Director
       // Instructions. All three are uploaded ahead of time so
       // assembleAsset never needs its own upload/paste step, just reads
-      // what's already on the Asset.
+      // what's already on the Asset. (manifest added to this map and to
+      // the error message below in the same change — if a deployed Worker
+      // is ever seen rejecting docType "manifest" as invalid, the deploy
+      // itself is stale, not this code; see deploy-worker.yml's
+      // concurrency guard, added for exactly that failure mode.)
       const ASSET_DOC_FIELDS = {
         visualBrief: "Visual Production Brief",
         assemblyPackage: "Production Assembly Package",
