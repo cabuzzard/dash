@@ -11961,6 +11961,210 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         return { previewUrl, assetId };
       }
 
+      // ── renderCarouselFromManifest ──
+      // The missing link between the ChatGPT design-approval pipeline
+      // (Visual Brief -> Design Card -> VISUAL_PRODUCTION_BRIEF.md /
+      // ASSEMBLY_INSTRUCTIONS.md / ASSEMBLY_MANIFEST.json) and the actual
+      // rendered PNGs. Until this action existed, nothing ever read those
+      // three uploaded documents — publishCarouselSlides/refineCarouselPreview
+      // only ever render from the campaign's Design Spec, so days of
+      // approved ChatGPT design iteration never showed up in the final
+      // images. This reads the Asset's own Assembly Manifest (designTokens
+      // + per-slide role/style), re-renders every slide from it via the
+      // same Browser Rendering pipeline, and overwrites the existing PNGs
+      // in place — Design Link/Final Media File/Thumbnail keep pointing at
+      // the same URLs, so nothing else downstream (the Assembly Review
+      // page, Assets DB) needs to change.
+      //
+      // Real slide copy is always read from the Title's own "Slide N"
+      // blocks (the same ground truth generateVisualBriefPrompt itself was
+      // built from) — never trusted from the manifest's "copy" fields
+      // alone, so a manifest uploaded before that schema field existed
+      // still renders the actually-approved words correctly.
+      //
+      // Deliberately does NOT attempt literal per-slide diagrams — the
+      // manifest carries a style description ("minimal linear diagram"),
+      // not structured node/label data, so faking one would be decoration,
+      // not the approved design. What IS real and rendered: background,
+      // headline, body (verbatim), a role label, an accent divider, a
+      // decorative accent icon mark, a role-based footer label, and the
+      // slide number — every one a resolved value, not a placeholder.
+      // Per-slide LAYOUT variety (the manifest's "layout" field, e.g.
+      // "split-contrast" vs "diagram-centered") is also not implemented
+      // yet — every slide renders through one solid template driven by
+      // the resolved design tokens. Both are natural next steps once the
+      // manifest carries the richer structured data they'd need.
+      if (body.action === "renderCarouselFromManifest") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
+        const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
+        if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return json({ error: "CF_ACCOUNT_ID / CF_API_TOKEN not configured" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const assetType = assetPage.properties["Asset Type"]?.select?.name || "";
+        if (assetType !== "carousel") return json({ error: `renderCarouselFromManifest only supports carousel assets right now (this one is "${assetType || 'unknown'}")` }, 400);
+        const titleId = assetPage.properties["Content Strategy"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        if (!titleId || !campaignId) return json({ error: "Asset is missing its Content Strategy or Campaign relation" }, 400);
+
+        const manifestRaw = (assetPage.properties["Assembly Manifest"]?.rich_text || []).map(t => t.plain_text).join("");
+        if (!manifestRaw.trim()) return json({ error: "No Assembly Manifest uploaded on this asset yet — upload it via 🧾 Manifest first." }, 400);
+        let manifest;
+        try {
+          const s = manifestRaw.indexOf('{'), e = manifestRaw.lastIndexOf('}');
+          if (s === -1 || e === -1) throw new Error("No JSON object found");
+          manifest = JSON.parse(manifestRaw.slice(s, e + 1));
+        } catch (e) {
+          return json({ error: `Assembly Manifest is not valid JSON: ${e.message}` }, 400);
+        }
+        const tokens = manifest.designTokens || {};
+        const bg = tokens.background || DESIGN_SPEC_DEFAULTS.bg;
+        const ink = tokens.ink || DESIGN_SPEC_DEFAULTS.ink;
+        const accent = tokens.accent || DESIGN_SPEC_DEFAULTS.accent;
+        const headlineFont = tokens.headlineFont || DESIGN_SPEC_DEFAULTS.headlineFont;
+        const bodyFont = tokens.bodyFont || DESIGN_SPEC_DEFAULTS.bodyFont;
+        const manifestSlides = Array.isArray(manifest.slides) ? manifest.slides : [];
+
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const titleName = titlePage.properties.Title?.title?.map(t => t.plain_text).join("") || "Carousel";
+        const fetchAllBlocks = async pageId => {
+          let blocks = [], cursor;
+          do {
+            const url = `https://api.notion.com/v1/blocks/${pageId}/children?page_size=100${cursor ? `&start_cursor=${cursor}` : ''}`;
+            const resp = await fetch(url, { headers: hdr }).then(r => r.json());
+            blocks = blocks.concat(resp.results || []);
+            cursor = resp.has_more ? resp.next_cursor : undefined;
+          } while (cursor);
+          return blocks;
+        };
+        const blocks = await fetchAllBlocks(dash(titleId));
+        const sections = [];
+        let current = null;
+        for (const b of blocks) {
+          if (b.type === "heading_3") {
+            current = { heading: (b.heading_3?.rich_text || []).map(t => t.plain_text).join(""), lines: [] };
+            sections.push(current);
+          } else if (current && (b.type === "paragraph" || b.type === "bulleted_list_item")) {
+            const rt = b[b.type]?.rich_text || [];
+            const text = rt.map(t => t.plain_text).join("");
+            const bold = !!rt[0]?.annotations?.bold;
+            if (text) current.lines.push({ text, bold });
+          }
+        }
+        const slideSections = sections.filter(s => /^Slide \d+/i.test(s.heading));
+        if (!slideSections.length) return json({ error: "This title has no Slide N blocks to render from — regenerate it via Generate Assets first." }, 400);
+
+        const slides = slideSections.map((s, idx) => {
+          const headline = (s.lines.find(l => l.bold) || s.lines[0] || {}).text || '';
+          const bodyText = (s.lines.find(l => !l.bold) || {}).text || '';
+          const m = manifestSlides[idx] || {};
+          const rawFooter = (m.style?.footerLabel || '').trim();
+          const footerLabel = (rawFooter && !/label$/i.test(rawFooter)) ? rawFooter : (m.role || titleName);
+          return { number: idx + 1, role: m.role || '', headline, body: bodyText, footerLabel };
+        });
+        const total = slides.length;
+
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const titleSlug = slugify(titleName) || 'carousel';
+        const basePath = `web/${deployPath}/carousels/${titleSlug}`;
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+
+        const css = `
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { width:1080px; height:1350px; background:${bg}; font-family:'${bodyFont}',serif; position:relative; overflow:hidden; padding:96px; display:flex; flex-direction:column; justify-content:center; }
+  .rule { position:absolute; left:96px; top:96px; width:64px; height:4px; background:${accent}; }
+  .icon { position:absolute; left:96px; top:128px; }
+  .role { font-family:'${bodyFont}',serif; font-size:20px; letter-spacing:0.18em; text-transform:uppercase; color:${accent}; margin-bottom:28px; font-weight:600; }
+  h1 { font-family:'${headlineFont}',serif; font-size:60px; line-height:1.16; color:${ink}; font-weight:700; margin-bottom:28px; max-width:820px; }
+  p { font-family:'${bodyFont}',serif; font-size:31px; line-height:1.5; color:${ink}; opacity:0.85; max-width:820px; }
+  .divider { position:absolute; left:96px; right:96px; bottom:150px; height:1px; background:${ink}; opacity:0.15; }
+  .footer { position:absolute; left:96px; bottom:88px; font-family:'${bodyFont}',serif; font-size:15px; letter-spacing:0.14em; text-transform:uppercase; color:${ink}; opacity:0.5; }
+  .num { position:absolute; right:96px; bottom:88px; font-family:'${bodyFont}',serif; font-size:15px; color:${accent}; letter-spacing:0.08em; }
+`;
+        const slideHtml = slide => `<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(headlineFont)}:wght@600;700&family=${encodeURIComponent(bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
+<style>${css}</style></head><body>
+  <div class="rule"></div>
+  <svg class="icon" width="36" height="36" viewBox="0 0 36 36" fill="none" stroke="${accent}" stroke-width="2"><circle cx="18" cy="18" r="14"/><path d="M11 18h14M18 11v14"/></svg>
+  ${slide.role ? `<div class="role">${esc(slide.role)}</div>` : ''}
+  <h1>${esc(slide.headline)}</h1>
+  <p>${esc(slide.body)}</p>
+  <div class="divider"></div>
+  <div class="footer">${esc(slide.footerLabel)}</div>
+  <div class="num">${String(slide.number).padStart(2, '0')}/${String(total).padStart(2, '0')}</div>
+</body></html>`;
+
+        const sleep = ms => new Promise(res => setTimeout(res, ms));
+        const renderSlide = async html => {
+          for (let attempt = 0; attempt < 4; attempt++) {
+            const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ html, viewport: { width: 1080, height: 1350, deviceScaleFactor: 1 }, gotoOptions: { waitUntil: "domcontentloaded", timeout: 15000 }, screenshotOptions: { type: "png" } }),
+            });
+            if (resp.status === 429) { const retryAfter = parseInt(resp.headers.get("Retry-After") || "11", 10); await sleep((retryAfter + 1) * 1000); continue; }
+            if (resp.status === 422 && attempt < 3) { await sleep(3000); continue; }
+            if (!resp.ok) { const t = await resp.text(); throw new Error(`Browser Rendering failed (HTTP ${resp.status}): ${t.slice(0, 300)}`); }
+            return await resp.arrayBuffer();
+          }
+          throw new Error("Browser Rendering stayed rate-limited/timed out after retries — try again shortly.");
+        };
+
+        const pngBuffers = [];
+        try {
+          for (let i = 0; i < slides.length; i++) {
+            if (i > 0) await sleep(11000);
+            pngBuffers.push(await renderSlide(slideHtml(slides[i])));
+          }
+        } catch (e) {
+          return json({ error: `Slide ${pngBuffers.length + 1}: ${e.message}` }, 502);
+        }
+
+        const toB64Bin = buf => { const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+        const shaMap = {};
+        try {
+          const listResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${basePath}?ref=${BRANCH}`, { headers: gh });
+          if (listResp.ok) { const entries = await listResp.json(); if (Array.isArray(entries)) for (const e of entries) shaMap[e.name] = e.sha; }
+        } catch (e) {}
+        const putFile = async (path, b64, message) => {
+          const name = path.slice(path.lastIndexOf('/') + 1);
+          const putBody = { message, content: b64, branch: BRANCH };
+          if (shaMap[name]) putBody.sha = shaMap[name];
+          const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody) });
+          if (!putResp.ok) { const r = await putResp.json(); throw new Error(`GitHub commit failed for ${path} (HTTP ${putResp.status}): ${r.message || 'unknown'}`); }
+        };
+        try {
+          for (let i = 0; i < pngBuffers.length; i++) {
+            await putFile(`${basePath}/slide-${String(i + 1).padStart(2, '0')}.png`, toB64Bin(pngBuffers[i]), `Render from Assembly Manifest: ${titleName} — slide ${i + 1}`);
+          }
+        } catch (e) {
+          return json({ error: e.message }, 502);
+        }
+
+        const designLink = `https://cabuzzard.github.io/dash/${basePath}/`;
+        await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: {
+            "Design Link": { url: designLink },
+            "Final Media File": { url: designLink },
+            "Thumbnail": { url: `${designLink}slide-01.png` },
+          } }),
+        }).catch(() => {});
+
+        return json({ success: true, designLink, slideCount: slides.length });
+      }
+
       // ── refineCarouselPreview ──
       // Edits an EXISTING carousel in place from a free-text instruction,
       // instead of the all-or-nothing "wipe and regenerate" of
@@ -14873,16 +15077,19 @@ The deterministic, machine-readable counterpart to the two files above — a sin
       "number": 1,
       "role": "...",
       "layout": "...",
-      "layers": { ${assetType === 'carousel'
-        ? '"background": "...", "headline": "...", "body": "...", "divider": "...", "icon": "...", "diagram": "...", "footer": "...", "slideNumber": "..."'
-        : '"background": "...", "narration": "...", "onScreenText": "...", "diagram": "...", "icon": "...", "caption": "..."'} },
+      "copy": { ${assetType === 'carousel'
+        ? '"headline": "verbatim from Final Written Asset above, never reworded", "body": "verbatim from Final Written Asset above, never reworded"'
+        : '"narration": "verbatim from Final Written Asset above, never reworded", "onScreenText": "verbatim from Final Written Asset above, never reworded"'} },
+      "style": { ${assetType === 'carousel'
+        ? '"headlineTreatment": "e.g. Playfair Display Bold, not the copy itself", "bodyTreatment": "e.g. EB Garamond Regular, not the copy itself", "dividerStyle": "...", "iconStyle": "...", "diagramStyle": "...", "footerLabel": "actual short label text to print, e.g. the slide role in caps — never a generic description such as section label", "slideNumberFormat": "e.g. 01/07"'
+        : '"diagramStyle": "...", "iconStyle": "...", "captionStyle": "..."'} },
       "export": { "filename": "...", "format": "${assetType === 'carousel' ? 'PNG' : 'MP4'}", "width": 0, "height": 0 }
     }
   ]
 }
 \`\`\`
 
-Include one entry in the "${assetType === 'carousel' ? 'slides' : 'scenes'}" array per ${assetType === 'carousel' ? 'slide' : 'scene'} in this document (none skipped, same order as Final Written Asset above). Every "layers" value must be a resolved production value (a color/text/asset reference), never a category name alone.
+Include one entry in the "${assetType === 'carousel' ? 'slides' : 'scenes'}" array per ${assetType === 'carousel' ? 'slide' : 'scene'} in this document (none skipped, same order as Final Written Asset above). "copy" fields must be the exact, literal words already approved — never a description of them. "style" fields describe HOW to render each layer, and must be a resolved production value (a real font name, a real short label to print, a real format string), never a category name alone and never a description of the copy.
 
 **Together, all three files must return every single variable listed in Required Variable Set above, updated to its final resolved value — split creative fields (Visual Intent, Design System Resolution, Typography, Iconography, Diagram/Illustration Language, Layout System, Slide/Scene Specifications) into VISUAL_PRODUCTION_BRIEF.md, remaining production fields (Component Library, QA Checklist, Production Manifest, Deliverables) into ASSEMBLY_INSTRUCTIONS.md, and the per-slide/scene Asset Manifest layer breakdown into ASSEMBLY_MANIFEST.json. Nothing from that list may be silently dropped — a variable marked "not yet specified" there is one you must originate and resolve, not skip.**
 
