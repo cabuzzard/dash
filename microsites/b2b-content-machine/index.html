@@ -843,7 +843,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeAssembleModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="modal-hint">Reads the Visual Production Brief, Production Assembly Package, and Assembly Manifest already uploaded on this asset's row (📄 Brief / 🧱 Package / 🧾 Manifest) — no upload here. Add anything below to override or extend what's in those documents; leave it blank to use them as-is.</div>
+      <div class="modal-hint">Reads the Visual Production Brief, Production Assembly Package, and Assembly Manifest already uploaded on this asset's row (📦 Render Package) — no upload here. Add anything below to override or extend what's in those documents; leave it blank to use them as-is.</div>
       <label class="lm-label" style="margin-top:12px;">Override / Additional Guidelines <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
       <textarea class="modal-ta" id="assembleOverrideText" rows="6" placeholder="Anything that overrides or adds to the uploaded documents..." style="font-size:11px;font-family:monospace;line-height:1.5;resize:vertical;margin-top:4px;"></textarea>
       <label class="lm-label" style="margin-top:12px;">Publishing Date <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
@@ -1557,9 +1557,7 @@ async function loadTitles() {
           + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.title)}</span>`
           + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${t.id}" data-type="${esc(a.type)}" data-productid="${t.productId || ''}" onclick="openVisualBriefModal(this)" title="Set up and assemble the Visual Production Source Document (Editing Authority tiers/Asset Metadata/Production Method/Audience/Research/Content Foundation/Growth Strategy Context/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Opens a setup modal first: pick a Growth Strategy for context, lock specific normally-MUTABLE design fields to IMMUTABLE for this asset, and write operator guidelines. Text Video assets are told to declare Simple vs. Custom Remotion Build (custom builds get a mandatory voice-first render sequence) and to keep the Asset ID attached through every revision. Also drafts every field of the structured Design Specification via Claude, tagged Immutable/Constrained/Mutable/Derived-at-production so ChatGPT knows exactly what it can and can't change — Text Video into 🎬 Text Video Specs / 🎞️ Text Video Scenes, Carousel into 🎠 Carousel Specifications / 🃏 Slide Specifications (plus the shared Color Palette/Typography/Visual Style/Grid/Layout/Diagram/Platform Preset databases, reused across the whole campaign)." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
-          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-brief" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'visualBrief')" title="Upload the completed Visual Production Brief (.md/.txt) from ChatGPT — saved straight to this asset's Visual Production Brief property, no modal needed" style="font-size:10px;padding:1px 7px;border:1px solid #38b2ac;background:transparent;color:#38b2ac;border-radius:9px;cursor:pointer;flex-shrink:0;">📄 Brief</button>` : '')
-          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'assemblyPackage')" title="Upload ASSEMBLY_INSTRUCTIONS.md (.md/.txt) — the technical build spec — saved straight to this asset's Production Assembly Package property, no modal needed" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧱 Package</button>` : '')
-          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-manifest" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'manifest')" title="Upload ASSEMBLY_MANIFEST.json — the machine-readable, layer-by-layer build spec ChatGPT returns alongside the Brief and Package — saved straight to this asset's Assembly Manifest property, no modal needed. Must be valid JSON." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">🧾 Manifest</button>` : '')
+          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'renderPackage')" title="Upload RENDER_PACKAGE.yaml — the single file ChatGPT now returns (visualBrief + assemblyInstructions + assemblyManifest sections) — split automatically and saved to this asset's Visual Production Brief / Production Assembly Package / Assembly Manifest properties, no modal needed." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">📦 Render Package</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" data-type="${esc(a.type)}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for any asset type with a registered renderer (carousel today), RE-RENDERS from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
         return ar;
@@ -5141,17 +5139,18 @@ async function submitVisualBrief() {
   }
 }
 
-// Row-level document upload (📄 Brief / 🧱 Package / 🧾 Manifest buttons)
+// Row-level document upload (📦 Render Package button)
 // — no modal, just a file picker created on the fly. Reads the
-// .md/.txt/.json straight into text and saves it to the exact Asset this
-// button belongs to (its own data-assetid, never anything the file
-// claims) via uploadAssetDocument. All three documents are prerequisites
-// Assemble only ever reads, never uploads.
+// .yaml/.yml/.md/.txt/.json straight into text and saves it to the exact
+// Asset this button belongs to (its own data-assetid, never anything the
+// file claims) via uploadAssetDocument — 'renderPackage' docType splits
+// the single RENDER_PACKAGE.yaml into the three properties server-side.
+// Assemble only ever reads these properties, never uploads.
 function triggerAssetDocUpload(btn, docType) {
   const assetId = btn.dataset.assetid;
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.md,.markdown,.txt,.json,text/markdown,text/plain,application/json';
+  input.accept = '.yaml,.yml,.md,.markdown,.txt,.json,text/yaml,text/markdown,text/plain,application/json';
   input.addEventListener('change', async () => {
     const file = input.files && input.files[0];
     if (!file) return;

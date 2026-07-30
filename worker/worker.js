@@ -11963,9 +11963,9 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
 
       // ── renderCarouselFromManifest ──
       // The missing link between the ChatGPT design-approval pipeline
-      // (Visual Brief -> Design Card -> VISUAL_PRODUCTION_BRIEF.md /
-      // ASSEMBLY_INSTRUCTIONS.md / ASSEMBLY_MANIFEST.json) and the actual
-      // rendered PNGs. Until this action existed, nothing ever read those
+      // (Visual Brief -> Design Card -> RENDER_PACKAGE.yaml, split into
+      // its visualBrief/assemblyInstructions/assemblyManifest sections)
+      // and the actual rendered PNGs. Until this action existed, nothing ever read those
       // three uploaded documents — publishCarouselSlides/refineCarouselPreview
       // only ever render from the campaign's Design Spec, so days of
       // approved ChatGPT design iteration never showed up in the final
@@ -13566,39 +13566,94 @@ Return ONLY this JSON object, no other text, no markdown fences:
         manifest: "Assembly Manifest",
       };
 
+      // Parses the single-file "render package" ChatGPT now produces
+      // instead of three separate files — a YAML envelope with exactly
+      // three top-level keys: visualBrief and assemblyInstructions as
+      // literal block scalars (prose, `key: |` + indented text), and
+      // assemblyManifest whose value is embedded JSON (JSON is valid
+      // YAML, so this sidesteps needing a real YAML parser — this Worker
+      // is no_bundle, no external libraries, and full YAML has far more
+      // edge cases than this controlled, self-authored schema needs).
+      // generateVisualBriefPrompt's Stage 2 instructs ChatGPT to produce
+      // exactly this shape; this parser only needs to handle that shape,
+      // not arbitrary YAML.
+      function parseRenderPackageYaml(raw) {
+        const text = String(raw || '');
+        const extractBlock = key => {
+          // (?![\s\S]) is a true end-of-string assertion regardless of the
+          // /m flag — a bare $ would match end-of-EVERY-LINE under /m,
+          // which stopped the lazy capture after just the first line.
+          const re = new RegExp(`^${key}:[ \\t]*[|>]?-?[ \\t]*\\r?\\n([\\s\\S]*?)(?=\\r?\\n[A-Za-z_][A-Za-z0-9_]*:[ \\t]*[|>]?-?[ \\t]*\\r?\\n|(?![\\s\\S]))`, 'm');
+          const m = text.match(re);
+          if (!m) return '';
+          const lines = m[1].replace(/\s+$/, '').split(/\r?\n/);
+          const indents = lines.filter(l => l.trim()).map(l => (l.match(/^[ \t]*/) || [''])[0].length);
+          const minIndent = indents.length ? Math.min(...indents) : 0;
+          return lines.map(l => l.slice(minIndent)).join('\n').trim();
+        };
+        const visualBrief = extractBlock('visualBrief');
+        const assemblyInstructions = extractBlock('assemblyInstructions');
+        let assemblyManifest = '';
+        const manIdx = text.indexOf('assemblyManifest:');
+        if (manIdx !== -1) {
+          const s = text.indexOf('{', manIdx), e = text.lastIndexOf('}');
+          if (s !== -1 && e !== -1 && e > s) assemblyManifest = text.slice(s, e + 1);
+        }
+        return { visualBrief, assemblyInstructions, assemblyManifest };
+      }
+
       // ── uploadAssetDocument ──
-      // Backs the three per-asset row upload links (Visual Production
-      // Brief / Production Assembly Package / Assembly Manifest). Saves
-      // the uploaded file's raw text straight to the corresponding Notion
-      // property, keyed by the assetId the button itself carries — same
-      // "never trust what the pasted text claims" principle as the old
-      // Assemble-modal upload. The manifest docType additionally requires
-      // the text to parse as JSON, since assembly is meant to consume it
-      // as structured data, not prose.
+      // Backs the asset row's upload link(s). "renderPackage" is the
+      // current path — one uploaded YAML file, split into the same three
+      // Notion properties the rest of this Worker already reads
+      // (Visual Production Brief / Production Assembly Package / Assembly
+      // Manifest), so nothing downstream (runAssembleAsset,
+      // renderCarouselFromManifestCore, refineAssetManifest, the Text
+      // Video Claude Code handoff) needed to change at all. The three
+      // legacy docTypes (visualBrief/assemblyPackage/manifest) still work
+      // too, for anyone with an older three-file package or a manually
+      // pasted single section. The manifest content always requires valid
+      // JSON, since assembly consumes it as structured data, not prose.
       if (body.action === "uploadAssetDocument") {
         const { assetId, docType, text } = body;
-        const field = ASSET_DOC_FIELDS[docType];
-        if (!assetId || !field) return json({ error: "assetId and a valid docType (visualBrief, assemblyPackage, or manifest) required" }, 400);
         const trimmed = String(text || "").trim();
+        if (!assetId || !docType) return json({ error: "assetId and a valid docType (renderPackage, visualBrief, assemblyPackage, or manifest) required" }, 400);
         if (!trimmed) return json({ error: "That file is empty." }, 400);
-        if (docType === "manifest") {
-          const jsonStart = trimmed.indexOf('{'), jsonEnd = trimmed.lastIndexOf('}');
-          try {
-            if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON object found");
-            JSON.parse(trimmed.slice(jsonStart, jsonEnd + 1));
-          } catch (e) {
-            return json({ error: `Assembly Manifest must be valid JSON: ${e.message}` }, 400);
-          }
-        }
+
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         await ensureAssetsDbProperties(hdr, ASSEMBLE_PROPS);
+
+        let props;
+        if (docType === "renderPackage") {
+          const parsed = parseRenderPackageYaml(trimmed);
+          if (!parsed.assemblyManifest) return json({ error: "Couldn't find a valid assemblyManifest section (with embedded JSON) in this file." }, 400);
+          try { JSON.parse(parsed.assemblyManifest); } catch (e) { return json({ error: `assemblyManifest section is not valid JSON: ${e.message}` }, 400); }
+          props = {};
+          props[ASSET_DOC_FIELDS.manifest] = { rich_text: chunkedRichText(parsed.assemblyManifest) };
+          if (parsed.visualBrief) props[ASSET_DOC_FIELDS.visualBrief] = { rich_text: chunkedRichText(parsed.visualBrief) };
+          if (parsed.assemblyInstructions) props[ASSET_DOC_FIELDS.assemblyPackage] = { rich_text: chunkedRichText(parsed.assemblyInstructions) };
+        } else {
+          const field = ASSET_DOC_FIELDS[docType];
+          if (!field) return json({ error: "assetId and a valid docType (renderPackage, visualBrief, assemblyPackage, or manifest) required" }, 400);
+          if (docType === "manifest") {
+            const jsonStart = trimmed.indexOf('{'), jsonEnd = trimmed.lastIndexOf('}');
+            try {
+              if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON object found");
+              JSON.parse(trimmed.slice(jsonStart, jsonEnd + 1));
+            } catch (e) {
+              return json({ error: `Assembly Manifest must be valid JSON: ${e.message}` }, 400);
+            }
+          }
+          props = { [field]: { rich_text: chunkedRichText(trimmed) } };
+        }
+
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { [field]: { rich_text: chunkedRichText(trimmed) } } }),
+          body: JSON.stringify({ properties: props }),
         });
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save document to Notion" }, patchResp.status); }
-        return json({ success: true, field, length: trimmed.length });
+        return json({ success: true, fieldsWritten: Object.keys(props), length: trimmed.length });
       }
 
       // ── buildTextVideoSpecDraft ──
@@ -14785,7 +14840,7 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
         // ChatGPT writes for the custom path, so whoever executes the
         // build (a separate Claude Code session, usually) inherits the
         // discipline instead of improvising it.
-        const mandatoryRenderSequence = `MANDATORY RENDER SEQUENCE — include this in ASSEMBLY_INSTRUCTIONS.md, not just as a note to yourself:
+        const mandatoryRenderSequence = `MANDATORY RENDER SEQUENCE — include this in the assemblyInstructions section of RENDER_PACKAGE.yaml, not just as a note to yourself:
 
 1. Confirm the final script is locked (no further narration/on-screen-text edits).
 2. Confirm an approved voice profile exists (provider + voice ID from Design Specification above) — never select a voice during assembly.
@@ -14824,7 +14879,7 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
 
         const productionMethodBlock = assetType === 'carousel'
           ? `Asset Type: Carousel — a static multi-slide carousel (${slideOrSceneSections.length || 'multiple'} slides).\n\nProduction Method: Rendered directly as PNG images by this system (Cloudflare Browser Rendering) — a single, deterministic, Worker-native pipeline. There is no video/motion production decision to make here and no build-path choice for you to state; your Visual Design Card should focus entirely on the per-slide visual treatment already scoped in Production Specification below.`
-          : `Asset Type: Text Video — a faceless, vertical short-form video (Reel/TikTok/Shorts format, ${aspectRatio}, no on-camera presenter).\n\nTwo distinct production paths exist for Text Video assets in this system, and they require completely different builds. Your Visual Design Card MUST state explicitly, as its first two lines, (1) this asset's identity and (2) which production path it is written for:\n\nline 1: "${identityLine}"\nline 2: "Production Path: Custom Remotion Build" or "Production Path: Simple background + voiceover"\n\n- **SIMPLE (default)** — one sourced or generated background image, ElevenLabs voiceover, Ken Burns pan/zoom motion, word-by-word burned-in captions. Fast, minimal build (make-reel-video). Use this unless the content genuinely calls for more.\n- **CUSTOM REMOTION BUILD** — a fully bespoke animated composition: multiple native React/SVG scene components (no stock photography, no AI-generated imagery), a defined motion system, exact typography/color tokens, diagrams/illustrations built natively in code. A much larger build — only choose this when the content's complexity or the campaign's visual ambition genuinely warrants it.\n\nIf choosing the custom path, ASSEMBLY_INSTRUCTIONS.md must also specify: a stable composition ID, the exact frame timeline per scene, a per-scene visual specification (layout / primary visual / motion / camera), the motion system (easing, permitted and forbidden motion, standard durations), the visual asset policy (native SVG/CSS only vs. raster assets allowed), and safe areas — in enough detail for an engineer to implement without further clarification. Include the mandatory render sequence below verbatim in ASSEMBLY_INSTRUCTIONS.md.\n\n${mandatoryRenderSequence}\n\nRepeat both lines 1 and 2 at the top of EVERY message you return in this conversation — the Visual Design Card, every revision of it, and all three Stage 2 files (VISUAL_PRODUCTION_BRIEF.md, ASSEMBLY_INSTRUCTIONS.md, ASSEMBLY_MANIFEST.json) — even after many rounds of back-and-forth; never let this asset's identity or chosen production path go unstated in a later message.`;
+          : `Asset Type: Text Video — a faceless, vertical short-form video (Reel/TikTok/Shorts format, ${aspectRatio}, no on-camera presenter).\n\nTwo distinct production paths exist for Text Video assets in this system, and they require completely different builds. Your Visual Design Card MUST state explicitly, as its first two lines, (1) this asset's identity and (2) which production path it is written for:\n\nline 1: "${identityLine}"\nline 2: "Production Path: Custom Remotion Build" or "Production Path: Simple background + voiceover"\n\n- **SIMPLE (default)** — one sourced or generated background image, ElevenLabs voiceover, Ken Burns pan/zoom motion, word-by-word burned-in captions. Fast, minimal build (make-reel-video). Use this unless the content genuinely calls for more.\n- **CUSTOM REMOTION BUILD** — a fully bespoke animated composition: multiple native React/SVG scene components (no stock photography, no AI-generated imagery), a defined motion system, exact typography/color tokens, diagrams/illustrations built natively in code. A much larger build — only choose this when the content's complexity or the campaign's visual ambition genuinely warrants it.\n\nIf choosing the custom path, the assemblyInstructions section must also specify: a stable composition ID, the exact frame timeline per scene, a per-scene visual specification (layout / primary visual / motion / camera), the motion system (easing, permitted and forbidden motion, standard durations), the visual asset policy (native SVG/CSS only vs. raster assets allowed), and safe areas — in enough detail for an engineer to implement without further clarification. Include the mandatory render sequence below verbatim in that section.\n\n${mandatoryRenderSequence}\n\nRepeat both lines 1 and 2 at the top of EVERY message you return in this conversation — the Visual Design Card, every revision of it, and the final RENDER_PACKAGE.yaml — even after many rounds of back-and-forth; never let this asset's identity or chosen production path go unstated in a later message.`;
 
         // ── Required Variable Set — the complete taxonomy of variables the
         // Stage 2 documents (Visual Brief final + Complete Assembly
@@ -14974,12 +15029,12 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
         const rvDeliverables = [
           rv('Files', assetType === 'carousel' ? 'PNG per slide (Export Format, Carousel Specification)' : 'MP4 (Output Filename/Directory, Text Video Specification)'),
           rv('SVG diagrams', null), rv('Icons', null), rv('Fonts', null), rv('Preview', null),
-          rv('Manifest', 'ASSEMBLY_MANIFEST.json (this document\'s own Stage 2 output)'),
-          rv('Assembly Instructions', 'ASSEMBLY_INSTRUCTIONS.md (this document\'s own Stage 2 output)'),
+          rv('Manifest', 'the assemblyManifest section of RENDER_PACKAGE.yaml (this document\'s own Stage 2 output)'),
+          rv('Assembly Instructions', 'the assemblyInstructions section of RENDER_PACKAGE.yaml (this document\'s own Stage 2 output)'),
           rv('Checksums', null), rv('Revision', null),
         ].join('\n');
 
-        const requiredVariableSetBlock = `We are handing you our OWN resolved version of every variable below, inferred from Research/Strategy/Campaign/Product/Design Specification — not a blank template. Anything still marked "${NT}" is a genuine gap this system has no data for; treat those, and only those, as yours to originate. Everything else is already a real decision, not a suggestion — you are editing and improving an already-complete document, not designing from scratch. Preserve every field. Do not blank one out, summarize it away, or replace a resolved value with "TBD"/"Not specified"/"Choose later" — if you change a value, replace it with a different resolved value and say why. After Stage 1 is approved, the Stage 2 files (VISUAL_PRODUCTION_BRIEF.md, ASSEMBLY_INSTRUCTIONS.md, ASSEMBLY_MANIFEST.json) must return EVERY one of these variables, still fully resolved. None may be silently dropped.
+        const requiredVariableSetBlock = `We are handing you our OWN resolved version of every variable below, inferred from Research/Strategy/Campaign/Product/Design Specification — not a blank template. Anything still marked "${NT}" is a genuine gap this system has no data for; treat those, and only those, as yours to originate. Everything else is already a real decision, not a suggestion — you are editing and improving an already-complete document, not designing from scratch. Preserve every field. Do not blank one out, summarize it away, or replace a resolved value with "TBD"/"Not specified"/"Choose later" — if you change a value, replace it with a different resolved value and say why. After Stage 1 is approved, RENDER_PACKAGE.yaml's three sections (visualBrief, assemblyInstructions, assemblyManifest) must return EVERY one of these variables, still fully resolved. None may be silently dropped.
 
 ## 0. Asset Identity
 ${rvIdentity}
@@ -15062,7 +15117,9 @@ ${identityLine}
 
 This document is a finished internal handoff, given to you for EXECUTION — not for review. Do not propose changes to this document's structure, this system's architecture, or the workflow that produced it. Do not suggest new databases, fields, tiers, or process redesigns, even if you can see how the process could be improved — that feedback goes to a human, not into this brief. Every response you give in this conversation should be one of the stages defined in Visual Director Instructions at the end of this document — nothing else. If something below is genuinely unworkable, say so in one sentence and ask what to do, then stop — do not substitute a system redesign for the deliverable.
 
-This conversation ends with a COMPREHENSIVE TOTAL PACKAGE — three complete, real downloadable files (VISUAL_PRODUCTION_BRIEF.md, ASSEMBLY_INSTRUCTIONS.md, ASSEMBLY_MANIFEST.json; see Visual Director Instructions below for the full requirement). That is the deliverable, not a chat reply describing it.
+**ASSET TYPE FOR THIS DOCUMENT: ${assetType.toUpperCase()}.** Every instruction below is already written for this specific asset type — do not ask which type this is, and do not produce content shaped for a different type.
+
+This conversation ends with ONE complete, real downloadable file — **RENDER_PACKAGE.yaml** (see Visual Director Instructions below for the full requirement). That single file contains everything needed to actually render this ${assetType} — the resolved creative direction, the technical build spec, and the machine-readable manifest — in one document, not three. That is the deliverable, not a chat reply describing it.
 
 ---
 
@@ -15215,7 +15272,7 @@ This conversation has exactly TWO stages, in this order. Do not skip either one,
 
 Every value in Required Variable Set above is already a resolved decision, drawn from this asset's actual research/strategy/campaign/design data — not a blank template for you to fill from scratch. Your job here is NOT to write a description of each slide/scene. Render the Visual Design Card as ONE SINGLE VISUAL ARTIFACT — a mood board / one-page style frame the operator can approve at a glance, the visual equivalent of an architectural elevation before construction. The operator should be able to approve the entire visual direction without reading hundreds of lines of text.
 
-Render it as one compact page of ASCII/box-drawing art in your response (this is a text conversation, so this is the format), containing all of the following in a single cohesive layout — using the values already resolved in Required Variable Set above, not invented placeholders:
+**Generate a real PNG or JPEG image of this mood board** using your image-generation capability — an actual picture the operator looks at, not only text. This image is a visual approval artifact only (it is never uploaded to this system, and its exact pixels are never the source of truth for the final render — the ASSEMBLY_MANIFEST section of Stage 2 is), so approximate or imperfect text rendering inside the generated image itself is acceptable; what matters is that the palette, typography feel, iconography, layout, and mockup composition are all genuinely visible and evaluable as a picture, not just described. Alongside the image, also render the same content as one compact page of ASCII/box-drawing art in your response, so the direction is confirmable even if the image doesn't render in the operator's client:
 
 - Theme name (one line)
 - Color Palette — swatches for Background/Ink/Accent/Highlight (and any others resolved above), each labeled with its actual hex value
@@ -15268,31 +15325,48 @@ Below the card, add one short paragraph: the overall visual direction, and how e
 
 Stop after the Visual Design Card and wait for feedback. Revise it in this conversation as many times as the operator asks — editing the specific values they flag, never regenerating the whole thing from a blank page — do not produce Stage 2 until the operator explicitly approves the direction. The Design Card itself is never uploaded anywhere; it exists only to confirm the direction before you write the two final documents below.
 
-## Stage 2 — Final Deliverables (once the Design Card is approved)
+## Stage 2 — Final Deliverable (once the Design Card is approved)
 
-**This is a COMPREHENSIVE TOTAL PACKAGE, delivered as actual downloadable files — not a chat response.** Do not paste the three documents inline as plain chat text and consider yourself done. Create three real, individually downloadable files (use your file/canvas creation capability) with these exact filenames — never rename, merge, omit, or substitute a chat-text summary for one:
+**This is a COMPREHENSIVE TOTAL PACKAGE, delivered as ONE actual downloadable file — not a chat response, and not three separate files.** Create one real downloadable file (use your file/canvas creation capability) named exactly:
 
-- **VISUAL_PRODUCTION_BRIEF.md**
-- **ASSEMBLY_INSTRUCTIONS.md**
-- **ASSEMBLY_MANIFEST.json**
+- **RENDER_PACKAGE.yaml**
 
-If your interface genuinely cannot produce downloadable file attachments, the fallback is to present each one in its own clearly fenced code block, headed with its filename as a heading (e.g. \`### VISUAL_PRODUCTION_BRIEF.md\`) so the operator can copy each block and save it under that exact filename — but always prefer real downloadable files when that capability is available. Either way, all three must be complete and self-contained — never an outline, a "here's a summary, ask me for the full version" response, or a partial package requiring a follow-up prompt to finish.
+It is a YAML document with exactly three top-level keys, in exactly this order, each unindented (starting at column 0) — \`visualBrief\` and \`assemblyInstructions\` as YAML literal block scalars (the \`|\` block style, so line breaks and Markdown formatting inside are preserved exactly), and \`assemblyManifest\` as an embedded JSON object (JSON is valid inside YAML — write it as real JSON, not YAML-native nested mapping syntax, so it parses byte-for-byte the same as a standalone .json file would):
 
-### VISUAL_PRODUCTION_BRIEF.md
+\`\`\`yaml
+assetId: "${assetId}"
+assetType: "${assetType}"
+visualBrief: |
+  # VISUAL_PRODUCTION_BRIEF
+  ...full Markdown content, indented under this key...
+assemblyInstructions: |
+  # ASSEMBLY_INSTRUCTIONS
+  ...full Markdown content, indented under this key...
+assemblyManifest:
+  {
+    "assetId": "${assetId}",
+    "assetType": "${assetType}",
+    ...full JSON object, see exact shape below...
+  }
+\`\`\`
 
-The resolved creative direction, reflecting every decision made while iterating the Visual Design Card above — this is the final answer, not a proposal anymore, and this is a WRITTEN document, not the card's ASCII mockup. For every slide/scene (none skipped): role, visual concept, resolved layout, resolved palette/typography, style, composition notes — written as settled fact: what was kept, what was changed, and why, per the critique that already happened on the card above. Plus the same top-level summary of overall visual direction.
+If your interface genuinely cannot produce downloadable file attachments, the fallback is to present the whole YAML document in one clearly fenced code block, headed \`### RENDER_PACKAGE.yaml\`, so the operator can copy it and save it under that exact filename — but always prefer a real downloadable file when that capability is available. Either way it must be complete and self-contained — never an outline, a "here's a summary, ask me for the full version" response, or a partial package requiring a follow-up prompt to finish.
 
-### ASSEMBLY_INSTRUCTIONS.md
+### The \`visualBrief\` section
+
+The resolved creative direction, reflecting every decision made while iterating the Visual Design Card above — this is the final answer, not a proposal anymore, and this is a WRITTEN document, not the card's mockup image/ASCII art. For every slide/scene (none skipped): role, visual concept, resolved layout, resolved palette/typography, style, composition notes — written as settled fact: what was kept, what was changed, and why, per the critique that already happened on the card above. Plus the same top-level summary of overall visual direction.
+
+### The \`assemblyInstructions\` section
 
 One exhaustive document that guides assembly — everything needed to actually build this asset, grounded in the Design Specification (Draft), Editing Authority, and Known Constraints already given above, with zero ambiguity for whoever executes it next:
 
 ${assemblyPackageChecklistText}
 
-Nothing in ASSEMBLY_INSTRUCTIONS.md may say "TBD," "to be determined," or similar — every field needs a concrete resolved value, or an explicit note that it's DERIVED AT PRODUCTION per Editing Authority above (never presented as final). Mark it "Ready For Assembly" only once every slide/scene has a stated value for every item above.
+Nothing in this section may say "TBD," "to be determined," or similar — every field needs a concrete resolved value, or an explicit note that it's DERIVED AT PRODUCTION per Editing Authority above (never presented as final). Mark it "Ready For Assembly" only once every slide/scene has a stated value for every item above.
 
-### ASSEMBLY_MANIFEST.json
+### The \`assemblyManifest\` section
 
-The deterministic, machine-readable counterpart to the two files above — a single JSON object meant to drive automated assembly directly, not be read as prose. Output it in a fenced \`\`\`json code block. Every value in it must already appear, resolved, in VISUAL_PRODUCTION_BRIEF.md or ASSEMBLY_INSTRUCTIONS.md above — this is a structured restatement, not a place to introduce anything new. Required shape:
+The deterministic, machine-readable counterpart to the two sections above — a single JSON object meant to drive automated assembly directly, not be read as prose. Every value in it must already appear, resolved, in \`visualBrief\` or \`assemblyInstructions\` above — this is a structured restatement, not a place to introduce anything new. Required shape:
 
 \`\`\`json
 {
@@ -15318,27 +15392,29 @@ The deterministic, machine-readable counterpart to the two files above — a sin
 
 Include one entry in the "${assetType === 'carousel' ? 'slides' : 'scenes'}" array per ${assetType === 'carousel' ? 'slide' : 'scene'} in this document (none skipped, same order as Final Written Asset above). "copy" fields must be the exact, literal words already approved — never a description of them. "style" fields describe HOW to render each layer, and must be a resolved production value (a real font name, a real short label to print, a real format string), never a category name alone and never a description of the copy. "graphicSvg" is the one field that is itself the deliverable, not a description of one: the actual SVG object for that slide/scene's icon, diagram, or illustration, ready to render as-is — this is how ChatGPT hands over the graphical elements from the Visual Design Card, since this pipeline renders from this JSON directly and cannot pull graphics out of a chat image.${assetType === 'carousel' ? ' "backgroundPrompt" works the same way but for full-bleed background art: this pipeline generates that image itself from your prompt (via an image-generation model) rather than rendering it from markup, so write it as a real, specific image prompt, not a style label.' : ''}
 
-**Together, all three files must return every single variable listed in Required Variable Set above, updated to its final resolved value — split creative fields (Visual Intent, Design System Resolution, Typography, Iconography, Diagram/Illustration Language, Layout System, Slide/Scene Specifications) into VISUAL_PRODUCTION_BRIEF.md, remaining production fields (Component Library, QA Checklist, Production Manifest, Deliverables) into ASSEMBLY_INSTRUCTIONS.md, and the per-slide/scene Asset Manifest layer breakdown into ASSEMBLY_MANIFEST.json. Nothing from that list may be silently dropped — a variable marked "not yet specified" there is one you must originate and resolve, not skip.**
+**Together, the three sections of RENDER_PACKAGE.yaml must return every single variable listed in Required Variable Set above, updated to its final resolved value — split creative fields (Visual Intent, Design System Resolution, Typography, Iconography, Diagram/Illustration Language, Layout System, Slide/Scene Specifications) into \`visualBrief\`, remaining production fields (Component Library, QA Checklist, Production Manifest, Deliverables) into \`assemblyInstructions\`, and the per-slide/scene layer breakdown into \`assemblyManifest\`. Nothing from that list may be silently dropped — a variable marked "not yet specified" there is one you must originate and resolve, not skip.**
 
-Begin and end every message in this conversation — the Visual Design Card, every revision of it, and all three final files — with this line, unchanged:
+Begin and end every message in this conversation — the Visual Design Card, every revision of it, and the final RENDER_PACKAGE.yaml — with this line, unchanged:
 
 ${identityLine}
 
-This is what lets the completed files get uploaded to the correct Notion record; never let it drift or drop out of a later message. Do not rewrite the written content.
+This is what lets the completed file get uploaded to the correct Notion record; never let it drift or drop out of a later message. Do not rewrite the written content.
 
-Use this document to run Stage 1 (Visual Design Card, iterated in chat) and then Stage 2 (VISUAL_PRODUCTION_BRIEF.md + ASSEMBLY_INSTRUCTIONS.md + ASSEMBLY_MANIFEST.json, returned together as three files). The three Stage 2 files become the authoritative visual and production record for this asset.
+Use this document to run Stage 1 (Visual Design Card — image + ASCII, iterated in chat) and then Stage 2 (RENDER_PACKAGE.yaml — visualBrief + assemblyInstructions + assemblyManifest, returned together as one file). RENDER_PACKAGE.yaml becomes the authoritative visual and production record for this asset.
 
-Per Scope above: do not restructure, critique, or propose process/system changes anywhere in this conversation. Output only the Visual Design Card (Stage 1) and, once approved, VISUAL_PRODUCTION_BRIEF.md + ASSEMBLY_INSTRUCTIONS.md + ASSEMBLY_MANIFEST.json as real downloadable files (Stage 2) — nothing else, and never a chat-text summary in place of the actual files.`;
+Per Scope above: do not restructure, critique, or propose process/system changes anywhere in this conversation. Output only the Visual Design Card (Stage 1) and, once approved, RENDER_PACKAGE.yaml as one real downloadable file (Stage 2) — nothing else, and never a chat-text summary in place of the actual file.`;
 
         return json({ success: true, assetId, titleId, campaignId, assetType, prompt, validation, kind: 'brief' });
       }
 
       // ── assembleAsset ──
-      // Every asset needs THREE ChatGPT-produced documents uploaded ahead
-      // of time via the asset row's own upload links (uploadAssetDocument)
-      // — VISUAL_PRODUCTION_BRIEF.md (creative direction, per-slide/scene
-      // approval), ASSEMBLY_INSTRUCTIONS.md (the technical build spec),
-      // and ASSEMBLY_MANIFEST.json (the deterministic, machine-readable
+      // Every asset needs a ChatGPT-produced RENDER_PACKAGE.yaml uploaded
+      // ahead of time via the asset row's own upload link
+      // (uploadAssetDocument, docType "renderPackage") — split on arrival
+      // into the same three Notion properties this Worker has always
+      // used: Visual Production Brief (creative direction, per-slide/
+      // scene approval), Production Assembly Package (the technical build
+      // spec), and Assembly Manifest (the deterministic, machine-readable
       // layer breakdown). assembleAsset never takes an upload/paste
       // itself; it only reads what's already saved on the Asset, plus an
       // optional override/addition typed straight into the modal. If no
