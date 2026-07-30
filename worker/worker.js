@@ -11982,18 +11982,23 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
       // alone, so a manifest uploaded before that schema field existed
       // still renders the actually-approved words correctly.
       //
-      // Deliberately does NOT attempt literal per-slide diagrams — the
-      // manifest carries a style description ("minimal linear diagram"),
-      // not structured node/label data, so faking one would be decoration,
-      // not the approved design. What IS real and rendered: background,
+      // Real per-slide graphics (icon/diagram/illustration) ARE rendered
+      // when the manifest supplies one: style.graphicSvg is real inline
+      // SVG markup — the actual object, not a text description of one —
+      // that generateVisualBriefPrompt's Stage 2 instructs the design
+      // conversation (e.g. ChatGPT) to author per slide, since this
+      // pipeline can only render from what's IN the JSON, never from a
+      // chat-hosted image it can't see. When a slide has no graphicSvg
+      // (intentionally graphic-free, or an older manifest predating this
+      // field), it falls back to the same generic decorative accent mark
+      // as before. What's always real and rendered regardless: background,
       // headline, body (verbatim), a role label, an accent divider, a
-      // decorative accent icon mark, a role-based footer label, and the
-      // slide number — every one a resolved value, not a placeholder.
+      // role-based footer label, and the slide number.
       // Per-slide LAYOUT variety (the manifest's "layout" field, e.g.
-      // "split-contrast" vs "diagram-centered") is also not implemented
-      // yet — every slide renders through one solid template driven by
-      // the resolved design tokens. Both are natural next steps once the
-      // manifest carries the richer structured data they'd need.
+      // "split-contrast" vs "diagram-centered") is still not implemented —
+      // every slide renders through one solid template driven by the
+      // resolved design tokens plus its own graphic. A natural next step
+      // once the manifest carries the richer structured data it'd need.
       // Core renderer, callable from the standalone action below AND
       // automatically from assembleAsset/refineCarouselManifest so every
       // path that produces or updates a carousel's Assembly Manifest also
@@ -12063,7 +12068,8 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           const m = manifestSlides[idx] || {};
           const rawFooter = (m.style?.footerLabel || '').trim();
           const footerLabel = (rawFooter && !/label$/i.test(rawFooter)) ? rawFooter : (m.role || titleName);
-          return { number: idx + 1, role: m.role || '', headline, body: bodyText, footerLabel };
+          const graphicSvg = (m.style?.graphicSvg || '').trim();
+          return { number: idx + 1, role: m.role || '', headline, body: bodyText, footerLabel, graphicSvg };
         });
         const total = slides.length;
 
@@ -12079,6 +12085,8 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
   body { width:1080px; height:1350px; background:${bg}; font-family:'${bodyFont}',serif; position:relative; overflow:hidden; padding:96px; display:flex; flex-direction:column; justify-content:center; }
   .rule { position:absolute; left:96px; top:96px; width:64px; height:4px; background:${accent}; }
   .icon { position:absolute; left:96px; top:128px; }
+  .graphic { position:absolute; left:96px; top:118px; width:64px; height:64px; }
+  .graphic svg { width:100% !important; height:100% !important; }
   .role { font-family:'${bodyFont}',serif; font-size:20px; letter-spacing:0.18em; text-transform:uppercase; color:${accent}; margin-bottom:28px; font-weight:600; }
   h1 { font-family:'${headlineFont}',serif; font-size:60px; line-height:1.16; color:${ink}; font-weight:700; margin-bottom:28px; max-width:820px; }
   p { font-family:'${bodyFont}',serif; font-size:31px; line-height:1.5; color:${ink}; opacity:0.85; max-width:820px; }
@@ -12086,11 +12094,20 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
   .footer { position:absolute; left:96px; bottom:88px; font-family:'${bodyFont}',serif; font-size:15px; letter-spacing:0.14em; text-transform:uppercase; color:${ink}; opacity:0.5; }
   .num { position:absolute; right:96px; bottom:88px; font-family:'${bodyFont}',serif; font-size:15px; color:${accent}; letter-spacing:0.08em; }
 `;
+        // graphicSvg is trusted content (it only ever comes from an
+        // operator-approved Assembly Manifest), but a light strip of
+        // <script>/event-handler attributes costs nothing and is cheap
+        // defense-in-depth for markup this Worker didn't author itself.
+        const sanitizeSvg = s => String(s || '')
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, '');
         const slideHtml = slide => `<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(headlineFont)}:wght@600;700&family=${encodeURIComponent(bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
 <style>${css}</style></head><body>
   <div class="rule"></div>
-  <svg class="icon" width="36" height="36" viewBox="0 0 36 36" fill="none" stroke="${accent}" stroke-width="2"><circle cx="18" cy="18" r="14"/><path d="M11 18h14M18 11v14"/></svg>
+  ${slide.graphicSvg
+    ? `<div class="graphic">${sanitizeSvg(slide.graphicSvg)}</div>`
+    : `<svg class="icon" width="36" height="36" viewBox="0 0 36 36" fill="none" stroke="${accent}" stroke-width="2"><circle cx="18" cy="18" r="14"/><path d="M11 18h14M18 11v14"/></svg>`}
   ${slide.role ? `<div class="role">${esc(slide.role)}</div>` : ''}
   <h1>${esc(slide.headline)}</h1>
   <p>${esc(slide.body)}</p>
@@ -15195,15 +15212,15 @@ The deterministic, machine-readable counterpart to the two files above — a sin
         ? '"headline": "verbatim from Final Written Asset above, never reworded", "body": "verbatim from Final Written Asset above, never reworded"'
         : '"narration": "verbatim from Final Written Asset above, never reworded", "onScreenText": "verbatim from Final Written Asset above, never reworded"'} },
       "style": { ${assetType === 'carousel'
-        ? '"headlineTreatment": "e.g. Playfair Display Bold, not the copy itself", "bodyTreatment": "e.g. EB Garamond Regular, not the copy itself", "dividerStyle": "...", "iconStyle": "...", "diagramStyle": "...", "footerLabel": "actual short label text to print, e.g. the slide role in caps — never a generic description such as section label", "slideNumberFormat": "e.g. 01/07"'
-        : '"diagramStyle": "...", "iconStyle": "...", "captionStyle": "..."'} },
+        ? '"headlineTreatment": "e.g. Playfair Display Bold, not the copy itself", "bodyTreatment": "e.g. EB Garamond Regular, not the copy itself", "dividerStyle": "...", "iconStyle": "...", "diagramStyle": "...", "graphicSvg": "a complete self-contained inline SVG element (opening svg tag through closing svg tag) rendering this slide\'s real icon, diagram, or illustration graphic per the approved Visual Design Card above -- actual markup, not a description of one; give it its own viewBox for sizing, use only the resolved palette hex values from designTokens above, no external image or font references, no script tags; use an empty string if this slide is intentionally graphic-free / pure typography", "footerLabel": "actual short label text to print, e.g. the slide role in caps — never a generic description such as section label", "slideNumberFormat": "e.g. 01/07"'
+        : '"diagramStyle": "...", "iconStyle": "...", "captionStyle": "...", "graphicSvg": "a complete self-contained inline SVG element rendering this scene\'s real icon/diagram/illustration graphic per the approved Visual Design Card above -- actual markup, not a description; empty string if none"'} },
       "export": { "filename": "...", "format": "${assetType === 'carousel' ? 'PNG' : 'MP4'}", "width": 0, "height": 0 }
     }
   ]
 }
 \`\`\`
 
-Include one entry in the "${assetType === 'carousel' ? 'slides' : 'scenes'}" array per ${assetType === 'carousel' ? 'slide' : 'scene'} in this document (none skipped, same order as Final Written Asset above). "copy" fields must be the exact, literal words already approved — never a description of them. "style" fields describe HOW to render each layer, and must be a resolved production value (a real font name, a real short label to print, a real format string), never a category name alone and never a description of the copy.
+Include one entry in the "${assetType === 'carousel' ? 'slides' : 'scenes'}" array per ${assetType === 'carousel' ? 'slide' : 'scene'} in this document (none skipped, same order as Final Written Asset above). "copy" fields must be the exact, literal words already approved — never a description of them. "style" fields describe HOW to render each layer, and must be a resolved production value (a real font name, a real short label to print, a real format string), never a category name alone and never a description of the copy. "graphicSvg" is the one field that is itself the deliverable, not a description of one: the actual SVG object for that slide/scene's icon, diagram, or illustration, ready to render as-is — this is how ChatGPT hands over the graphical elements from the Visual Design Card, since this pipeline renders from this JSON directly and cannot pull graphics out of a chat image.
 
 **Together, all three files must return every single variable listed in Required Variable Set above, updated to its final resolved value — split creative fields (Visual Intent, Design System Resolution, Typography, Iconography, Diagram/Illustration Language, Layout System, Slide/Scene Specifications) into VISUAL_PRODUCTION_BRIEF.md, remaining production fields (Component Library, QA Checklist, Production Manifest, Deliverables) into ASSEMBLY_INSTRUCTIONS.md, and the per-slide/scene Asset Manifest layer breakdown into ASSEMBLY_MANIFEST.json. Nothing from that list may be silently dropped — a variable marked "not yet specified" there is one you must originate and resolve, not skip.**
 
