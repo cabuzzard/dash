@@ -14631,6 +14631,8 @@ ${identityLine}
 
 This document is a finished internal handoff, given to you for EXECUTION — not for review. Do not propose changes to this document's structure, this system's architecture, or the workflow that produced it. Do not suggest new databases, fields, tiers, or process redesigns, even if you can see how the process could be improved — that feedback goes to a human, not into this brief. Every response you give in this conversation should be one of the stages defined in Visual Director Instructions at the end of this document — nothing else. If something below is genuinely unworkable, say so in one sentence and ask what to do, then stop — do not substitute a system redesign for the deliverable.
 
+This conversation ends with a COMPREHENSIVE TOTAL PACKAGE — three complete, real downloadable files (VISUAL_PRODUCTION_BRIEF.md, ASSEMBLY_INSTRUCTIONS.md, ASSEMBLY_MANIFEST.json; see Visual Director Instructions below for the full requirement). That is the deliverable, not a chat reply describing it.
+
 ---
 
 # Required Variable Set
@@ -14837,13 +14839,13 @@ Stop after the Visual Design Card and wait for feedback. Revise it in this conve
 
 ## Stage 2 — Final Deliverables (once the Design Card is approved)
 
-Return exactly THREE files, every time, with these exact filenames — never rename, merge, or omit one:
+**This is a COMPREHENSIVE TOTAL PACKAGE, delivered as actual downloadable files — not a chat response.** Do not paste the three documents inline as plain chat text and consider yourself done. Create three real, individually downloadable files (use your file/canvas creation capability) with these exact filenames — never rename, merge, omit, or substitute a chat-text summary for one:
 
 - **VISUAL_PRODUCTION_BRIEF.md**
 - **ASSEMBLY_INSTRUCTIONS.md**
 - **ASSEMBLY_MANIFEST.json**
 
-Head each one with its filename as a heading (e.g. \`### VISUAL_PRODUCTION_BRIEF.md\`) so they're unambiguous to split apart and save as three separate files.
+If your interface genuinely cannot produce downloadable file attachments, the fallback is to present each one in its own clearly fenced code block, headed with its filename as a heading (e.g. \`### VISUAL_PRODUCTION_BRIEF.md\`) so the operator can copy each block and save it under that exact filename — but always prefer real downloadable files when that capability is available. Either way, all three must be complete and self-contained — never an outline, a "here's a summary, ask me for the full version" response, or a partial package requiring a follow-up prompt to finish.
 
 ### VISUAL_PRODUCTION_BRIEF.md
 
@@ -14892,7 +14894,7 @@ This is what lets the completed files get uploaded to the correct Notion record;
 
 Use this document to run Stage 1 (Visual Design Card, iterated in chat) and then Stage 2 (VISUAL_PRODUCTION_BRIEF.md + ASSEMBLY_INSTRUCTIONS.md + ASSEMBLY_MANIFEST.json, returned together as three files). The three Stage 2 files become the authoritative visual and production record for this asset.
 
-Per Scope above: do not restructure, critique, or propose process/system changes anywhere in this conversation. Output only the Visual Design Card (Stage 1) and, once approved, VISUAL_PRODUCTION_BRIEF.md + ASSEMBLY_INSTRUCTIONS.md + ASSEMBLY_MANIFEST.json (Stage 2) — nothing else.`;
+Per Scope above: do not restructure, critique, or propose process/system changes anywhere in this conversation. Output only the Visual Design Card (Stage 1) and, once approved, VISUAL_PRODUCTION_BRIEF.md + ASSEMBLY_INSTRUCTIONS.md + ASSEMBLY_MANIFEST.json as real downloadable files (Stage 2) — nothing else, and never a chat-text summary in place of the actual files.`;
 
         return json({ success: true, assetId, titleId, campaignId, assetType, prompt, validation, kind: 'brief' });
       }
