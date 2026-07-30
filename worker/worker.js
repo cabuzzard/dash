@@ -15355,26 +15355,30 @@ Stop after the Visual Design Card and wait for feedback. Revise it in this conve
 
 - **RENDER_PACKAGE.yaml**
 
-It is a YAML document with exactly three top-level keys, in exactly this order, each unindented (starting at column 0) — \`visualBrief\` and \`assemblyInstructions\` as YAML literal block scalars (the \`|\` block style, so line breaks and Markdown formatting inside are preserved exactly), and \`assemblyManifest\` as an embedded JSON object (JSON is valid inside YAML — write it as real JSON, not YAML-native nested mapping syntax, so it parses byte-for-byte the same as a standalone .json file would):
+**The file format below is parsed by a small, exact program on the other end — not read by a human and not reinterpreted by another AI. Follow it exactly: do not rename any of the three section labels, do not add, remove, wrap, or reorganize them, and do not invent a different shape for the manifest JSON than the one specified further down (no extra nesting like an "asset" or "render" wrapper object, no swapping "designTokens.background" for a nested "designTokens.colors.background", no replacing per-slide "style.graphicSvg" with a separate "graphics" array plus a "graphicId" lookup, no per-slide pixel-coordinate "layout" objects). Inventing a richer or differently-organized schema is exactly what breaks the parser on the other end, even though it may look like a reasonable improvement — the required shape is given verbatim further down in this document, and it is a hard requirement, not a suggestion to elaborate on.**
 
-\`\`\`yaml
-assetId: "${assetId}"
-assetType: "${assetType}"
-visualBrief: |
-  # VISUAL_PRODUCTION_BRIEF
-  ...full Markdown content, indented under this key...
-assemblyInstructions: |
-  # ASSEMBLY_INSTRUCTIONS
-  ...full Markdown content, indented under this key...
-assemblyManifest:
-  {
-    "assetId": "${assetId}",
-    "assetType": "${assetType}",
-    ...full JSON object, see exact shape below...
-  }
+The file has exactly three sections, in exactly this order. Each section starts with its exact label, spelled exactly as shown, alone on its own line (nothing else on that line — no colon required, but a colon is fine too) — this is how the section boundaries are detected:
+
+\`\`\`
+visualBrief
+...full Markdown content for the resolved creative direction goes here...
+
+assemblyInstructions
+...full Markdown content for the technical build spec goes here...
+
+assemblyManifest
+\`\`\`json
+{
+  "assetId": "${assetId}",
+  "assetType": "${assetType}",
+  ...full JSON object, see the exact required shape below...
+}
+\`\`\`
 \`\`\`
 
-If your interface genuinely cannot produce downloadable file attachments, the fallback is to present the whole YAML document in one clearly fenced code block, headed \`### RENDER_PACKAGE.yaml\`, so the operator can copy it and save it under that exact filename — but always prefer a real downloadable file when that capability is available. Either way it must be complete and self-contained — never an outline, a "here's a summary, ask me for the full version" response, or a partial package requiring a follow-up prompt to finish.
+The \`assemblyManifest\` section's content must be syntactically valid JSON — wrapping it in a fenced \`\`\`json code block (as shown above) is preferred for readability and is fully supported, but the JSON itself must still exactly match the field names and structure given in the required shape below; formatting it nicely does not excuse changing its structure.
+
+If your interface genuinely cannot produce downloadable file attachments, the fallback is to present the whole document (all three sections, in the same format shown above) in one clearly fenced code block, headed \`### RENDER_PACKAGE.yaml\`, so the operator can copy it and save it under that exact filename — but always prefer a real downloadable file when that capability is available. Either way it must be complete and self-contained — never an outline, a "here's a summary, ask me for the full version" response, or a partial package requiring a follow-up prompt to finish.
 
 ### The \`visualBrief\` section
 
