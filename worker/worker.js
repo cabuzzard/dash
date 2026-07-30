@@ -15576,6 +15576,25 @@ ${assemblyManifest}`;
         const reviewPath = `web/${deployPath}/assembled/${assetSlug}`;
         const esc2 = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+        // Every campaign has associated logins (🔑 Logins DB) — the actual
+        // platform accounts whoever's publishing this asset needs to sign
+        // into. Surfaced here so the review page is a one-stop place to
+        // both check the asset AND get to the account that publishes it,
+        // instead of a separate trip to Notion. Best-effort: a failed
+        // lookup just omits the section rather than failing the Assemble.
+        let campaignLogins = [];
+        try {
+          const loginRows = await notionQuery(LOGINS_DB, {
+            filter: { property: "Campaign", relation: { contains: dash(campaignId) } },
+            sorts: [{ property: "Name", direction: "ascending" }],
+          });
+          campaignLogins = loginRows.map(l => ({
+            name: l.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+            url: l.properties["Account URL"]?.url || "",
+            status: l.properties.Status?.select?.name || "",
+          })).filter(l => l.url);
+        } catch (e) {}
+
         const mediaHtml = assetType === 'carousel'
           ? `<div class="slides">${Array.from({ length: slideCount || 0 }, (_, i) => `<img src="${esc2(effectiveDesignLink)}slide-${String(i + 1).padStart(2, '0')}.png" alt="Slide ${i + 1}" loading="lazy">`).join('')}</div>`
           : `<video controls preload="metadata" src="${esc2(effectiveDesignLink)}"></video>`;
@@ -15635,6 +15654,11 @@ ${assemblyManifest}`;
   .copyBtn { padding:6px 12px; background:#333; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; font-family:inherit; }
   .copyBtn:hover { background:#444; }
   .copyStatus { font-size:11px; color:#68d391; margin-left:8px; }
+  .loginLinks { display:flex; flex-wrap:wrap; gap:8px; }
+  .loginLinks a { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; background:#1a1a1a; border:1px solid #333; border-radius:16px; color:#e6e6e6; text-decoration:none; font-size:12px; }
+  .loginLinks a:hover { background:#242424; border-color:#444; }
+  .loginLinks .status { font-size:10px; color:#888; text-transform:uppercase; letter-spacing:.04em; }
+  .loginLinks .status.active { color:#68d391; }
 </style>
 </head><body>
 <header>
@@ -15652,6 +15676,12 @@ ${assemblyManifest}`;
     <h2>Final Media</h2>
     ${mediaHtml}
   </section>
+  ${campaignLogins.length ? `
+  <section>
+    <h2>Campaign Logins</h2>
+    <div class="loginLinks">${campaignLogins.map(l => `<a href="${esc2(l.url)}" target="_blank" rel="noopener">${esc2(l.name)}${l.status ? `<span class="status${l.status === 'Active' ? ' active' : ''}">${esc2(l.status)}</span>` : ''}</a>`).join('')}</div>
+  </section>
+  ` : ''}
   <section>
     <div class="metaHead">
       <h2 style="margin:0;">Publishing Metadata</h2>
