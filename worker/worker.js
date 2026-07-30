@@ -14780,17 +14780,58 @@ This conversation has exactly TWO stages, in this order. Do not skip either one,
 
 ## Stage 1 — Visual Design Card (in this conversation only — not a file, not uploaded)
 
-Every value in Required Variable Set above is already a resolved decision, drawn from this asset's actual research/strategy/campaign/design data — not a blank template for you to fill from scratch. Your job here is to present it compactly for review, then act as Creative Director: edit specific values the operator wants improved, preserve everything else exactly as given. For every slide/scene (none skipped), include:
+Every value in Required Variable Set above is already a resolved decision, drawn from this asset's actual research/strategy/campaign/design data — not a blank template for you to fill from scratch. Your job here is NOT to write a description of each slide/scene. Render the Visual Design Card as ONE SINGLE VISUAL ARTIFACT — a mood board / one-page style frame the operator can approve at a glance, the visual equivalent of an architectural elevation before construction. The operator should be able to approve the entire visual direction without reading hundreds of lines of text.
 
-- Slide/Scene number and role
-- Visual concept in one sentence — what the viewer sees and why it serves Brand Intent (and Growth Strategy Context, if present) above
-- Layout — the value already resolved above, kept as-is unless you have a specific reason to improve it (say what and why if you do)
-- Color palette and typography — same: state whether you kept the resolved default or changed it, and why
-- Illustration/icon/diagram style and what's actually depicted
-- Key composition notes: hierarchy, emphasis, negative space
-- Any tradeoff or concern worth the operator's attention
+Render it as one compact page of ASCII/box-drawing art in your response (this is a text conversation, so this is the format), containing all of the following in a single cohesive layout — using the values already resolved in Required Variable Set above, not invented placeholders:
 
-Plus one top-level summary: the overall visual direction, and how every value you kept or changed (per Editing Authority above) serves the intended impression in Brand Intent. Work within every CONSTRAINED ceiling rather than exceeding it; leave every IMMUTABLE field untouched. Never replace a resolved value with "TBD," "Not specified," or a list of options to choose from — you are always stating one chosen value, whether kept or changed.
+- Theme name (one line)
+- Color Palette — swatches for Background/Ink/Accent/Highlight (and any others resolved above), each labeled with its actual hex value
+- Typography — Headline font sample shown in caps, Body font sample shown lowercase, Caption font if resolved
+- Icon Style — a small representative icon-language sample
+- Diagram Style — a small representative diagram-language sample
+- Illustration style sample, if illustration is part of this asset's resolved design language
+- Component Library examples — at least a boxed Headline block plus one more (Divider, CTA, or ${assetType === 'carousel' ? 'Slide Number' : 'Caption'}), shown as they'll actually look, with real resolved copy inside — not lorem ipsum
+- Grid & Spacing — a compact visualization of the margin/safe-area/grid system resolved above
+- ${assetType === 'carousel' ? 'Slide' : 'Scene'} Wireframes — one compact row with a mini wireframe or bracketed placeholder for EVERY ${assetType === 'carousel' ? 'slide' : 'scene'} in this asset, none skipped (e.g. \`[1][2][3]...[N]\`)
+- Hero Mockup — one fully "rendered" representative ${assetType === 'carousel' ? 'slide' : 'scene'} (typically the first, or whichever best represents the overall visual system), using its actual resolved copy from Final Written Asset above — never placeholder text
+- A short note pointing to recurring visual motifs
+
+Example shape only — adapt every actual value (theme name, palette, fonts, mockup copy) to what's genuinely resolved above; do not reuse this example's placeholder content:
+
+\`\`\`
+ -------------------------------------------------------
+|                 VISUAL DESIGN CARD                    |
+|-------------------------------------------------------|
+|  Theme: <resolved theme name>                          |
+|                                                         |
+|  Color Palette                                          |
+|  ■ Background  ■ Ink  ■ Accent  ■ Highlight              |
+|                                                         |
+|  Typography                                              |
+|  RESOLVED HEADLINE FONT                                  |
+|  resolved body font                                      |
+|                                                         |
+|  Icon Style        Diagram Style                         |
+|   o--o              o-->o-->o                            |
+|                                                         |
+|  Component Library                                       |
+|  +Headline----------------------------+                  |
+|  | <actual resolved headline copy>    |                  |
+|  +-------------------------------------+                 |
+|                                                         |
+|  ${assetType === 'carousel' ? 'Slide' : 'Scene'} Wireframes                                        |
+|  [1][2][3]...[N]                                          |
+|                                                         |
+|  Hero Mockup (${assetType === 'carousel' ? 'Slide' : 'Scene'} 1)                                    |
+|  +----------------------------+                           |
+|  | <actual resolved copy>     |                           |
+|  |                            |                           |
+|  |  <resolved visual/diagram note>  |                      |
+|  +----------------------------+                           |
+ -------------------------------------------------------
+\`\`\`
+
+Below the card, add one short paragraph: the overall visual direction, and how every value you kept or changed (per Editing Authority above) serves the intended impression in Brand Intent. Work within every CONSTRAINED ceiling rather than exceeding it; leave every IMMUTABLE field untouched. Never replace a resolved value with "TBD," "Not specified," or a list of options to choose from — the card always shows one chosen value, whether kept or changed.
 
 Stop after the Visual Design Card and wait for feedback. Revise it in this conversation as many times as the operator asks — editing the specific values they flag, never regenerating the whole thing from a blank page — do not produce Stage 2 until the operator explicitly approves the direction. The Design Card itself is never uploaded anywhere; it exists only to confirm the direction before you write the two final documents below.
 
@@ -14806,7 +14847,7 @@ Head each one with its filename as a heading (e.g. \`### VISUAL_PRODUCTION_BRIEF
 
 ### VISUAL_PRODUCTION_BRIEF.md
 
-The resolved creative direction, reflecting every decision made while iterating the Visual Design Card above — this is the final answer, not a proposal anymore. Same structure as the Design Card (every slide/scene: role, visual concept, resolved layout, resolved palette/typography, style, composition notes) plus the top-level summary, but written as settled fact: what was kept, what was changed, and why, per the critique that already happened above.
+The resolved creative direction, reflecting every decision made while iterating the Visual Design Card above — this is the final answer, not a proposal anymore, and this is a WRITTEN document, not the card's ASCII mockup. For every slide/scene (none skipped): role, visual concept, resolved layout, resolved palette/typography, style, composition notes — written as settled fact: what was kept, what was changed, and why, per the critique that already happened on the card above. Plus the same top-level summary of overall visual direction.
 
 ### ASSEMBLY_INSTRUCTIONS.md
 
