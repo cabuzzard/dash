@@ -15579,8 +15579,12 @@ ${assemblyManifest}`;
         // Every campaign has associated logins (🔑 Logins DB) — the actual
         // platform accounts whoever's publishing this asset needs to sign
         // into. Surfaced here so the review page is a one-stop place to
-        // both check the asset AND get to the account that publishes it,
-        // instead of a separate trip to Notion. Best-effort: a failed
+        // both check the asset AND get to the login record, instead of a
+        // separate trip to Notion. Links to each login's own Notion page
+        // (not its "Account URL" property, which existing records store
+        // inconsistently — bare words like "instagram" rather than a real
+        // URL) since the Notion page is the one thing guaranteed to exist
+        // and resolve correctly for every record. Best-effort: a failed
         // lookup just omits the section rather than failing the Assemble.
         let campaignLogins = [];
         try {
@@ -15588,22 +15592,11 @@ ${assemblyManifest}`;
             filter: { property: "Campaign", relation: { contains: dash(campaignId) } },
             sorts: [{ property: "Name", direction: "ascending" }],
           });
-          // Account URL is stored as a bare domain/word in some existing
-          // records ("instagram", "buffer.com") rather than a full
-          // https://... URL, which would otherwise render as a broken
-          // relative link on this page (resolving against the review
-          // page's own address instead of navigating away) — prepend a
-          // scheme when one isn't already present.
-          const normalizeUrl = raw => {
-            const v = String(raw || '').trim();
-            if (!v) return '';
-            return /^https?:\/\//i.test(v) ? v : `https://${v}`;
-          };
           campaignLogins = loginRows.map(l => ({
             name: l.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
-            url: normalizeUrl(l.properties["Account URL"]?.url),
+            url: `https://www.notion.so/${l.id.replace(/-/g, '')}`,
             status: l.properties.Status?.select?.name || "",
-          })).filter(l => l.url);
+          }));
         } catch (e) {}
 
         const slideUrls = assetType === 'carousel'
