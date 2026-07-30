@@ -15588,9 +15588,20 @@ ${assemblyManifest}`;
             filter: { property: "Campaign", relation: { contains: dash(campaignId) } },
             sorts: [{ property: "Name", direction: "ascending" }],
           });
+          // Account URL is stored as a bare domain/word in some existing
+          // records ("instagram", "buffer.com") rather than a full
+          // https://... URL, which would otherwise render as a broken
+          // relative link on this page (resolving against the review
+          // page's own address instead of navigating away) — prepend a
+          // scheme when one isn't already present.
+          const normalizeUrl = raw => {
+            const v = String(raw || '').trim();
+            if (!v) return '';
+            return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+          };
           campaignLogins = loginRows.map(l => ({
             name: l.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
-            url: l.properties["Account URL"]?.url || "",
+            url: normalizeUrl(l.properties["Account URL"]?.url),
             status: l.properties.Status?.select?.name || "",
           })).filter(l => l.url);
         } catch (e) {}
