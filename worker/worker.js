@@ -13151,7 +13151,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       if (body.action === "uploadAssetDocument") {
         const { assetId, docType, text } = body;
         const field = ASSET_DOC_FIELDS[docType];
-        if (!assetId || !field) return json({ error: "assetId and a valid docType (visualBrief, assemblyPackage, or manifest) required" }, 400);
+        if (!assetId || !field) return json({ error: "assetId and a valid docType (visualBrief, assemblyPackage, or manifest) required [build-check-2]" }, 400);
         const trimmed = String(text || "").trim();
         if (!trimmed) return json({ error: "That file is empty." }, 400);
         if (docType === "manifest") {
