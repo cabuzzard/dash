@@ -48,7 +48,7 @@
     <div class="sub">carousel</div>
   </div>
   <div>
-    <a href="https://www.notion.so/3ac1f7d3a4bb818da90dfceac48e9b2b" target="_blank" rel="noopener">↗ Notion</a>
+    <a href="https://www.notion.so/3ad1f7d3a4bb81e888aac1654e760c03" target="_blank" rel="noopener">↗ Notion</a>
     <a href="https://cabuzzard.github.io/dash/web/b2b-content-machine/carousels/the-marketer-skill-that-doesn-t-disappear-distribution/" target="_blank" rel="noopener">↗ Final media</a>
   </div>
 </header>
@@ -71,12 +71,7 @@
   <section>
     <h2>Edit This Asset</h2>
     <div class="refine">
-      <div class="row" id="refinePinRow">
-        <input type="password" id="refinePin" maxlength="4" inputmode="numeric" placeholder="PIN">
-        <button id="refineUnlockBtn">Unlock</button>
-      </div>
-      <div class="err" id="refineErr"></div>
-      <div id="refineEditRow" style="display:none;">
+      <div id="refineEditRow">
         
         <div class="hint">Design Parameters — edit exact values directly and save straight to the Assembly Manifest, re-rendered immediately. No Claude round-trip, so use this when you already know the value you want (a hex code, a font name).</div>
         <div id="paramsFields"></div>
@@ -96,7 +91,7 @@
 <footer>Assembly review page — auto-generated, not indexed. Checklist state saves locally in this browser.</footer>
 <script>
   var ITEMS = ["Spelling","Cropped text","Safe margins","Slide order","Voiceover synchronization","Caption timing","Image quality","Aspect ratio","CTA accuracy","Branding","Duration","Platform requirements"];
-  var KEY = 'assemble-checklist-3ac1f7d3a4bb818da90dfceac48e9b2b';
+  var KEY = 'assemble-checklist-3ad1f7d3a4bb81e888aac1654e760c03';
   var state = {};
   try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch(e) {}
   var wrap = document.getElementById('checklist');
@@ -130,14 +125,18 @@
     };
   }
   var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-  var ASSET_ID = "3ac1f7d3a4bb818da90dfceac48e9b2b";
+  var ASSET_ID = "3ad1f7d3a4bb81e888aac1654e760c03";
+  // No PIN gate on this page — refineAssetManifest/updateAssetManifestFields
+  // never actually checked this token server-side (it was UI-only
+  // friction), so it stays null forever now; nothing reachable here
+  // changed as a result.
   var refineToken = null;
   
   // Design Parameters — built from the Assembly Manifest already parsed
   // server-side when this page was generated, so the fields always start
   // pre-filled with the actual current values, not blanks.
-  var DESIGN_TOKENS = {"background":"#000000","ink":"#FFFFFF","accent":"#A8FF00","headlineFont":"Playfair Display","bodyFont":"EB Garamond"};
-  var MANIFEST_ITEMS = [{"number":1,"role":"hook","footerLabel":""},{"number":2,"role":"insight","footerLabel":""},{"number":3,"role":"insight","footerLabel":""},{"number":4,"role":"contrast","footerLabel":""},{"number":5,"role":"framework","footerLabel":""},{"number":6,"role":"truth","footerLabel":""},{"number":7,"role":"cta","footerLabel":""}];
+  var DESIGN_TOKENS = {"colors":{"background":"#050505","surface":"#0D0D0D","accent":"#9EFF3A","text":"#FFFFFF","muted":"#A0A0A0","border":"#FFFFFF"},"typography":{"headline":{"family":"Sora","weight":800,"size":82,"lineHeight":0.95},"body":{"family":"Inter","weight":400,"size":34,"lineHeight":1.25},"label":{"family":"Inter","weight":600,"size":22},"slideNumber":{"family":"Inter","weight":600,"size":24}},"safeArea":{"top":90,"bottom":90,"left":80,"right":80},"grid":{"columns":12,"gutter":24,"baseline":8},"components":{"dividerHeight":4,"iconStroke":4,"cornerRadius":18,"pageBadgeWidth":92,"pageBadgeHeight":52},"effects":{"gradients":false,"shadows":false,"texture":false}};
+  var MANIFEST_ITEMS = [{"number":1,"role":"hook","footerLabel":""},{"number":2,"role":"insight","footerLabel":""},{"number":3,"role":"concept","footerLabel":""},{"number":4,"role":"contrast","footerLabel":""},{"number":5,"role":"framework","footerLabel":""},{"number":6,"role":"truth","footerLabel":""},{"number":7,"role":"cta","footerLabel":""}];
   var TOKEN_LABELS = [['background','Background'],['ink','Ink'],['accent','Accent'],['headlineFont','Headline Font'],['bodyFont','Body Font']];
   var paramsFields = document.getElementById('paramsFields');
   TOKEN_LABELS.forEach(function (pair) {
@@ -215,20 +214,6 @@
       .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
   });
   
-  document.getElementById('refineUnlockBtn').addEventListener('click', function () {
-    var pin = document.getElementById('refinePin').value.trim();
-    var errEl = document.getElementById('refineErr');
-    errEl.textContent = '';
-    fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auth', pin: pin }) })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (!d.token) { errEl.textContent = d.error || 'Wrong PIN'; return; }
-        refineToken = d.token;
-        document.getElementById('refinePinRow').style.display = 'none';
-        document.getElementById('refineEditRow').style.display = 'block';
-      })
-      .catch(function () { errEl.textContent = 'Connection error'; });
-  });
   document.getElementById('refineBtn').addEventListener('click', function () {
     var instruction = document.getElementById('refineInput').value.trim();
     var statusEl = document.getElementById('refineStatus');
