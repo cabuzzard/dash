@@ -13128,11 +13128,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // deliverable per generateVisualBriefPrompt's Visual Director
       // Instructions. All three are uploaded ahead of time so
       // assembleAsset never needs its own upload/paste step, just reads
-      // what's already on the Asset. (manifest added to this map and to
-      // the error message below in the same change — if a deployed Worker
-      // is ever seen rejecting docType "manifest" as invalid, the deploy
-      // itself is stale, not this code; see deploy-worker.yml's
-      // concurrency guard, added for exactly that failure mode.)
+      // what's already on the Asset.
       const ASSET_DOC_FIELDS = {
         visualBrief: "Visual Production Brief",
         assemblyPackage: "Production Assembly Package",
@@ -13151,7 +13147,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       if (body.action === "uploadAssetDocument") {
         const { assetId, docType, text } = body;
         const field = ASSET_DOC_FIELDS[docType];
-        if (!assetId || !field) return json({ error: "assetId and a valid docType (visualBrief, assemblyPackage, or manifest) required [build-check-2]" }, 400);
+        if (!assetId || !field) return json({ error: "assetId and a valid docType (visualBrief, assemblyPackage, or manifest) required" }, 400);
         const trimmed = String(text || "").trim();
         if (!trimmed) return json({ error: "That file is empty." }, 400);
         if (docType === "manifest") {
@@ -13535,7 +13531,7 @@ Include exactly ${scenesInput.length} scene objects, numbered 1 to ${scenesInput
                 "Timing Offsets": rt1(JSON.stringify(sc.timingOffsets)), "Scene Approved": { checkbox: false },
               },
             })
-          )));
+          })));
         }
 
         return { specPageId, spec, scenes };
@@ -14082,7 +14078,7 @@ Include exactly ${slidesInput.length} slide objects, numbered 1 to ${slidesInput
                 "Ready for Assembly": { checkbox: false },
               },
             })
-          )));
+          })));
         }
 
         return { specPageId, designSystemId: carouselDesignSystemId, ds, slides, platformName };
