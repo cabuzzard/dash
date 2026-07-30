@@ -12155,24 +12155,38 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         return { designLink, slideCount: slides.length };
       }
 
-      if (body.action === "renderCarouselFromManifest") {
-        const { assetId } = body;
-        if (!assetId) return json({ error: "assetId required" }, 400);
-        const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
-        const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
-        if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return json({ error: "CF_ACCOUNT_ID / CF_API_TOKEN not configured" }, 400);
-        const GT = (env.GITHUB_TOKEN || '').trim();
-        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
-        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-        try {
-          const result = await renderCarouselFromManifestCore({ assetId, hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT });
-          return json({ success: true, ...result });
-        } catch (e) {
-          return json({ error: e.message }, 502);
-        }
-      }
+      // ── MANIFEST_RENDERERS ──
+      // Registry of per-asset-type "render straight from the approved
+      // Assembly Manifest" functions. runAssembleAsset (below) looks up
+      // assetType here and, if present, always calls it before packaging
+      // the review page — that's the whole "Assemble should just render
+      // and assemble" fix, made to work for any type instead of being
+      // hardcoded to carousel. To give a new asset type this same
+      // behavior, add one entry here; nothing else needs to change.
+      //
+      // Each function receives { assetId, hdr, dash, esc, env } and
+      // returns at least { designLink }, or throws.
+      //
+      // Asset types with NO entry here (Text Video today) have no
+      // worker-side renderer — not a missing feature, a hard constraint:
+      // nothing running inside a Cloudflare Worker can execute ffmpeg,
+      // Remotion, or call ElevenLabs the way a real video render needs
+      // to. Those types keep working exactly as before: Assemble hands
+      // off a Claude Code build prompt when no media exists yet, and
+      // packages whatever media already exists once it does — see
+      // refineAssetManifest below for how change requests still work
+      // for these types (a regenerated handoff prompt, not an instant
+      // in-page re-render).
+      const MANIFEST_RENDERERS = {
+        carousel: async ({ assetId, hdr, dash, esc, env }) => {
+          const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
+          const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
+          if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error("CF_ACCOUNT_ID / CF_API_TOKEN not configured — needed to render from the Assembly Manifest before assembling");
+          const GT = (env.GITHUB_TOKEN || '').trim();
+          if (!GT) throw new Error("GITHUB_TOKEN not set");
+          return renderCarouselFromManifestCore({ assetId, hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT });
+        },
+      };
 
       // ── refineCarouselPreview ──
       // Edits an EXISTING carousel in place from a free-text instruction,
@@ -15182,23 +15196,23 @@ ${assemblyManifest}`;
         const GT = (env.GITHUB_TOKEN || '').trim();
         if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
 
-        // Carousel: always re-render from the (now-required) Assembly
-        // Manifest before packaging the review page, so Assemble can never
-        // again package stale images that don't match what was approved —
-        // this is the "assemble should just render and assemble" fix.
-        // designLink is reassigned below only if this succeeds; it stays
-        // the previous value (same URL either way, images overwritten in
-        // place) if rendering throws, and the error surfaces immediately
-        // rather than silently proceeding to package the old pictures.
+        // Re-render from the (now-required) Assembly Manifest before
+        // packaging the review page, for any asset type that has a
+        // registered renderer — see MANIFEST_RENDERERS above. This is
+        // the "Assemble should just render and assemble" fix, and it's
+        // type-pluggable rather than hardcoded to carousel: types with no
+        // registered renderer (Text Video) simply skip this step and
+        // package whatever media already exists, same as before.
+        // effectiveDesignLink only changes if this succeeds; on failure
+        // the error surfaces immediately rather than silently proceeding
+        // to package stale media.
         let effectiveDesignLink = designLink;
-        if (assetType === 'carousel') {
-          const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
-          const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
-          if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return json({ error: "CF_ACCOUNT_ID / CF_API_TOKEN not configured — needed to render from the Assembly Manifest before assembling" }, 400);
+        const renderer = MANIFEST_RENDERERS[assetType];
+        if (renderer) {
           const escRender = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
           try {
-            const rendered = await renderCarouselFromManifestCore({ assetId, hdr, dash, esc: escRender, CF_ACCOUNT_ID, CF_API_TOKEN, GT });
-            effectiveDesignLink = rendered.designLink;
+            const rendered = await renderer({ assetId, hdr, dash, esc: escRender, env });
+            effectiveDesignLink = rendered.designLink || effectiveDesignLink;
           } catch (e) {
             return json({ error: `Render from Assembly Manifest failed, assembly stopped before packaging stale images: ${e.message}` }, 502);
           }
@@ -15312,11 +15326,10 @@ ${assemblyManifest}`;
     <h2>QA Checklist</h2>
     <div class="checklist" id="checklist"></div>
   </section>
-  ${assetType === 'carousel' ? `
   <section>
     <h2>Request a Change</h2>
     <div class="refine">
-      <div class="hint">Describe a design change — Claude edits the approved Assembly Manifest, re-renders every slide, and re-assembles this page in place. No need to go back to ChatGPT for a small tweak.</div>
+      <div class="hint">${MANIFEST_RENDERERS[assetType] ? 'Describe a design change — Claude edits the approved Assembly Manifest, re-renders every slide, and re-assembles this page in place. No need to go back to ChatGPT for a small tweak.' : `Describe a change — Claude edits the approved Assembly Manifest. "${esc2(assetType)}" has no in-browser renderer, so this hands you back a fresh Claude Code build prompt with the update already applied, instead of re-rendering here.`}</div>
       <div class="row" id="refinePinRow">
         <input type="password" id="refinePin" maxlength="4" inputmode="numeric" placeholder="PIN">
         <button id="refineUnlockBtn">Unlock</button>
@@ -15329,7 +15342,6 @@ ${assemblyManifest}`;
       </div>
     </div>
   </section>
-  ` : ''}
 </main>
 <footer>Assembly review page — auto-generated, not indexed. Checklist state saves locally in this browser.</footer>
 <script>
@@ -15354,7 +15366,6 @@ ${assemblyManifest}`;
     label.appendChild(cb); label.appendChild(span);
     wrap.appendChild(label);
   });
-  ${assetType === 'carousel' ? `
   var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
   var ASSET_ID = ${JSON.stringify(assetId)};
   var refineToken = null;
@@ -15377,21 +15388,33 @@ ${assemblyManifest}`;
     var statusEl = document.getElementById('refineStatus');
     var btn = document.getElementById('refineBtn');
     if (!instruction) { statusEl.textContent = 'Describe what to change first.'; return; }
-    statusEl.textContent = 'Applying change… re-renders every slide, can take a minute or two.';
+    statusEl.textContent = 'Applying change…';
     btn.disabled = true;
     fetch(WORKER_URL, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'refineCarouselManifest', token: refineToken, assetId: ASSET_ID, instruction: instruction }),
+      body: JSON.stringify({ action: 'refineAssetManifest', token: refineToken, assetId: ASSET_ID, instruction: instruction }),
     })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
+        if (res.d.needsHandoff) {
+          btn.disabled = false;
+          navigator.clipboard.writeText(res.d.handoffPrompt).then(function () {
+            statusEl.textContent = (res.d.message || 'Manifest updated.') + ' Build prompt copied to clipboard — paste it into a Claude Code session.';
+          }, function () {
+            statusEl.textContent = (res.d.message || 'Manifest updated.') + ' Clipboard write failed — copy manually:';
+            var pre = document.createElement('textarea');
+            pre.value = res.d.handoffPrompt;
+            pre.rows = 6; pre.style.width = '100%'; pre.style.marginTop = '8px';
+            statusEl.parentNode.appendChild(pre);
+          });
+          return;
+        }
         statusEl.textContent = 'Done — reloading…';
         setTimeout(function () { location.href = location.pathname + '?refined=' + Date.now(); }, 900);
       })
       .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
   });
-  ` : ''}
 </script>
 </body></html>`;
 
@@ -15437,19 +15460,26 @@ ${assemblyManifest}`;
 
       if (body.action === "assembleAsset") return await runAssembleAsset(body, env);
 
-      // ── refineCarouselManifest ──
+      // ── refineAssetManifest ──
       // The change-request box embedded on the Assembly Review page
-      // itself (carousel only) — "send a change request to Claude, it
-      // re-renders, then re-assembles the preview," per operator request.
-      // Reads the Asset's current Assembly Manifest, asks Claude to return
-      // a COMPLETE updated manifest applying only the requested change
-      // (everything else preserved verbatim — this is an edit, not a
-      // regeneration), saves it back to the same Assembly Manifest
-      // property uploadAssetDocument writes to, then runs the exact same
-      // render-then-package path as a normal Assemble
-      // (runAssembleAsset), so the review page the operator is looking at
-      // updates in place with the new images and metadata.
-      if (body.action === "refineCarouselManifest") {
+      // itself — "send a change request to Claude, it updates the
+      // manifest, then re-assembles the preview," per operator request,
+      // for any asset type. Reads the Asset's current Assembly Manifest,
+      // asks Claude to return a COMPLETE updated manifest applying only
+      // the requested change (everything else preserved verbatim — this
+      // is an edit, not a regeneration), saves it back to the same
+      // Assembly Manifest property uploadAssetDocument writes to. What
+      // happens next depends on whether this asset type has a registered
+      // renderer (MANIFEST_RENDERERS above):
+      // - Has one (carousel today): runs the exact same render-then-
+      //   package path as a normal Assemble, so the review page the
+      //   operator is looking at updates in place with new images.
+      // - Doesn't (Text Video — no worker-side video renderer exists,
+      //   see MANIFEST_RENDERERS' own comment): can't auto re-render, so
+      //   this instead hands back a fresh Claude Code build prompt
+      //   carrying the UPDATED manifest, for the operator to paste into a
+      //   session that actually has Remotion/ffmpeg/ElevenLabs.
+      if (body.action === "refineAssetManifest") {
         const { assetId, instruction } = body;
         if (!assetId || !instruction || !instruction.trim()) return json({ error: "assetId and instruction required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
@@ -15459,18 +15489,18 @@ ${assemblyManifest}`;
         const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
         if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
         const assetType = assetPage.properties["Asset Type"]?.select?.name || "";
-        if (assetType !== "carousel") return json({ error: `refineCarouselManifest only supports carousel assets right now (this one is "${assetType || 'unknown'}")` }, 400);
+        const assetName = assetPage.properties["Asset Title"]?.title?.map(t => t.plain_text).join("") || "Untitled";
         const titleId = assetPage.properties["Content Strategy"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         if (!titleId || !campaignId) return json({ error: "Asset is missing its Content Strategy or Campaign relation" }, 400);
         const currentManifest = (assetPage.properties["Assembly Manifest"]?.rich_text || []).map(t => t.plain_text).join("");
         if (!currentManifest.trim()) return json({ error: "No Assembly Manifest on this asset yet — nothing to refine." }, 400);
 
-        const refinePrompt = `You are editing an already-approved carousel Assembly Manifest — a JSON design/production spec. The operator has requested this specific change:
+        const refinePrompt = `You are editing an already-approved Assembly Manifest — a JSON design/production spec for a "${assetType}" asset. The operator has requested this specific change:
 
 "${instruction.trim()}"
 
-Apply ONLY this change. Preserve every other field exactly as it already is — this is a targeted edit, not a regeneration. Do not alter "copy" fields (slide headline/body text) unless the instruction explicitly asks for a copy change. Return the COMPLETE updated manifest, same schema as the current one, with every slide/scene still present.
+Apply ONLY this change. Preserve every other field exactly as it already is — this is a targeted edit, not a regeneration. Do not alter "copy" fields (verbatim slide/scene text) unless the instruction explicitly asks for a copy change. Return the COMPLETE updated manifest, same schema as the current one, with every slide/scene still present.
 
 CURRENT ASSEMBLY MANIFEST:
 ${currentManifest}
@@ -15501,10 +15531,30 @@ Return ONLY the updated JSON object, no other text, no markdown fences.`;
         });
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save updated manifest" }, patchResp.status); }
 
-        // Re-render + re-package the review page in one shot, reusing the
-        // exact same path a normal Assemble click takes.
-        const result = await runAssembleAsset({ assetId, titleId, campaignId }, env);
-        return result;
+        if (MANIFEST_RENDERERS[assetType]) {
+          // Re-render + re-package the review page in one shot, reusing
+          // the exact same path a normal Assemble click takes.
+          const result = await runAssembleAsset({ assetId, titleId, campaignId }, env);
+          return result;
+        }
+
+        // No worker-side renderer for this type — hand back a fresh
+        // Claude Code build prompt carrying the just-updated manifest,
+        // same shape as runAssembleAsset's own handoff, so the operator
+        // has something actionable even though nothing here can render it.
+        const visualBrief = (assetPage.properties["Visual Production Brief"]?.rich_text || []).map(t => t.plain_text).join("");
+        const assemblyPackage = (assetPage.properties["Production Assembly Package"]?.rich_text || []).map(t => t.plain_text).join("");
+        const handoffPrompt = `Update the asset for the Content Strategy title (https://www.notion.so/${titleId}) using the Asset record (https://www.notion.so/${assetId}, Asset Type: ${assetType}, "${assetName}"). The operator requested this change on the Assembly Review page: "${instruction.trim()}". The Assembly Manifest below already reflects that change (approved and saved) — re-render/re-host the media to match it, update this Asset record's Design Link (and Final Media File) per the relevant skill's steps, then re-run Assemble on the dashboard to re-package it for publish.
+
+=== VISUAL PRODUCTION BRIEF ===
+${visualBrief}
+
+=== PRODUCTION ASSEMBLY PACKAGE ===
+${assemblyPackage}
+
+=== UPDATED ASSEMBLY MANIFEST (JSON) ===
+${updatedManifest}`;
+        return json({ success: true, needsHandoff: true, handoffPrompt, assetId, titleId, message: `Manifest updated — "${assetType}" has no in-browser renderer, so this needs a Claude Code session with Remotion/ffmpeg/ElevenLabs. A build prompt with the update is ready to copy.` });
       }
 
       // ── generateExplainerScript ──

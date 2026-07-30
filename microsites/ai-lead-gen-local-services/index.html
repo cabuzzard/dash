@@ -1553,8 +1553,7 @@ async function loadTitles() {
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-brief" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'visualBrief')" title="Upload the completed Visual Production Brief (.md/.txt) from ChatGPT — saved straight to this asset's Visual Production Brief property, no modal needed" style="font-size:10px;padding:1px 7px;border:1px solid #38b2ac;background:transparent;color:#38b2ac;border-radius:9px;cursor:pointer;flex-shrink:0;">📄 Brief</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'assemblyPackage')" title="Upload ASSEMBLY_INSTRUCTIONS.md (.md/.txt) — the technical build spec — saved straight to this asset's Production Assembly Package property, no modal needed" style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧱 Package</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-manifest" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'manifest')" title="Upload ASSEMBLY_MANIFEST.json — the machine-readable, layer-by-layer build spec ChatGPT returns alongside the Brief and Package — saved straight to this asset's Assembly Manifest property, no modal needed. Must be valid JSON." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">🧾 Manifest</button>` : '')
-          + (a.type === 'carousel' ? `<button class="td-render-manifest" data-assetid="${a.id}" onclick="renderFromManifest(this)" title="Re-render this carousel's PNGs FROM the uploaded Assembly Manifest ONLY — no publishing metadata, no QA checklist, no review page. Useful for a quick visual check before Assembling. 🧷 Assemble now runs this automatically every time, so you don't need this button for the normal flow — background/ink/accent/fonts, headline+body (read from this title's own Slide N blocks), role label, accent divider, icon mark, footer, slide number. Diagram content and per-slide layout variety aren't rendered yet." style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">🎯 Render</button>` : '')
-          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for carousels, RE-RENDERS every slide from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
+          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for any asset type with a registered renderer (carousel today), RE-RENDERS from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
         return ar;
       };
@@ -5165,40 +5164,6 @@ function triggerAssetDocUpload(btn, docType) {
     }
   });
   input.click();
-}
-
-// 🎯 Render button (carousel only) — re-renders this asset's PNGs FROM
-// the already-uploaded Assembly Manifest via renderCarouselFromManifest,
-// instead of the campaign Design Spec generateCarouselPreview/
-// refineCarouselPreview use. This is the fix for the Visual Brief
-// approval pipeline never actually reaching the rendered images: upload
-// all three Stage 2 documents first (📄/🧱/🧾), then click this to make
-// the PNGs match what was approved. Takes roughly 10s per slide
-// (Browser Rendering's rate limit), so a 7-slide carousel is ~70-90s —
-// button stays disabled with a live status the whole time.
-async function renderFromManifest(btn) {
-  const assetId = btn.dataset.assetid;
-  const orig = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = 'Rendering 1…';
-  const slideEstimate = 10; // rough per-slide progress ticker, not tied to the real render
-  let tick = 0;
-  const ticker = setInterval(() => {
-    tick++;
-    if (tick <= slideEstimate) btn.textContent = `Rendering ${tick}…`;
-  }, 11000);
-  try {
-    const r = await w('renderCarouselFromManifest', { assetId });
-    clearInterval(ticker);
-    btn.textContent = `✓ ${r.slideCount} slides`;
-    setTimeout(() => { btn.textContent = orig; }, 2500);
-  } catch (e) {
-    clearInterval(ticker);
-    alert('Render from manifest failed: ' + e.message);
-    btn.textContent = orig;
-  } finally {
-    btn.disabled = false;
-  }
 }
 
 // Campaign Design System visibility panel — shows the shared, non-
