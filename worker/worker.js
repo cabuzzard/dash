@@ -155,6 +155,32 @@ async function notionQuery(dbId, body) {
   return results;
 }
 
+// Resolves a campaign's own Buffer account credentials from its 🔑 Logins
+// record (Name containing "buffer", Campaign relation matching) — the
+// operator manages one separate Buffer account per campaign (many
+// different logins, many different emails), so there's no single global
+// Buffer credential this Worker could hold; it always has to be looked up
+// per campaign. Buffer Access Token / Buffer Profile ID are plain Notion
+// text properties on that record, filled in by the operator directly in
+// Notion (never passed through this Worker's own action bodies).
+async function resolveCampaignBufferLogin(campaignId, dashId) {
+  const rows = await notionQuery(LOGINS_DB, {
+    filter: { and: [
+      { property: "Campaign", relation: { contains: dashId(campaignId) } },
+      { property: "Name", title: { contains: "buffer" } },
+    ] },
+  });
+  const row = rows[0];
+  if (!row) return null;
+  const rt = key => (row.properties[key]?.rich_text || []).map(t => t.plain_text).join("").trim();
+  return {
+    id: row.id.replace(/-/g, ""),
+    name: row.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+    token: rt("Buffer Access Token"),
+    channelId: rt("Buffer Profile ID"),
+  };
+}
+
 // Whenever a Method gets attached to a Product (AI-matched or manually), also
 // attach it to every Campaign that Product is linked to, so it shows up in
 // the campaign microsite's Methods field too — not just on the product.
@@ -15695,7 +15721,10 @@ ${assemblyManifest}`;
   <section>
     <div class="metaHead">
       <h2 style="margin:0;">Publishing Metadata</h2>
-      <span><button class="copyBtn" id="copyCaptionBtn">Copy caption + hashtags</button><span class="copyStatus" id="copyCaptionStatus"></span></span>
+      <span>
+        <button class="copyBtn" id="copyCaptionBtn">Copy caption + hashtags</button><span class="copyStatus" id="copyCaptionStatus"></span>
+        ${assetType === 'carousel' ? `<button class="copyBtn" id="sendBufferBtn" style="margin-left:8px;">Send to Buffer (Draft)</button><span class="copyStatus" id="sendBufferStatus"></span>` : ''}
+      </span>
     </div>
     <table>${metaRows.map(([k, v]) => `<tr><td>${esc2(k)}</td><td>${esc2(v).replace(/\n/g, '<br>')}</td></tr>`).join('')}</table>
   </section>
@@ -15757,6 +15786,25 @@ ${assemblyManifest}`;
       }, function () {
         copyCaptionStatus.textContent = 'Copy failed — select text manually.';
       });
+    };
+  }
+  var sendBufferBtn = document.getElementById('sendBufferBtn');
+  var sendBufferStatus = document.getElementById('sendBufferStatus');
+  if (sendBufferBtn) {
+    sendBufferBtn.onclick = function () {
+      sendBufferBtn.disabled = true;
+      sendBufferStatus.textContent = 'Sending to Buffer as a draft…';
+      fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sendCarouselToBuffer', assetId: ASSET_ID }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          sendBufferBtn.disabled = false;
+          if (!res.ok || res.d.error) { sendBufferStatus.textContent = 'Error: ' + (res.d.error || 'unknown'); return; }
+          sendBufferStatus.textContent = 'Sent — ' + res.d.slideCount + ' slides saved as a draft in Buffer.';
+        })
+        .catch(function (e) { sendBufferBtn.disabled = false; sendBufferStatus.textContent = 'Error: ' + e.message; });
     };
   }
   var SLIDE_URLS = ${JSON.stringify(slideUrls)};
@@ -16057,6 +16105,124 @@ ${assemblyManifest}`;
         }).catch(() => {});
 
         return json({ success: true, assetId, designLink, slideCount: sorted.length, order: sorted.map(s => s.filename) });
+      }
+
+      // ── bufferListChannels ──
+      // One-time lookup so the operator (or whoever's setting up a new
+      // campaign's Buffer login) can find the right Buffer Profile ID to
+      // paste into that campaign's Logins record, without hand-writing
+      // GraphQL themselves. Buffer's API is GraphQL at https://api.buffer.com
+      // (their old REST API is being retired) — organizations first, then
+      // channels per organization, since channels are scoped to an org.
+      if (body.action === "bufferListChannels") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const login = await resolveCampaignBufferLogin(campaignId, dashId);
+        if (!login) return json({ error: 'No Buffer login found for this campaign — add a record to the 🔑 Logins DB with "buffer" in its Name and this campaign in its Campaign relation.' }, 400);
+        if (!login.token) return json({ error: `That login's ("${login.name}") Buffer Access Token is empty — get one at https://publish.buffer.com/settings/api and paste it into that Notion record first.` }, 400);
+
+        const gql = async query => {
+          const resp = await fetch("https://api.buffer.com", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${login.token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ query }),
+          });
+          const data = await resp.json();
+          if (data.errors) throw new Error(data.errors.map(e => e.message).join("; "));
+          return data.data;
+        };
+
+        try {
+          const orgData = await gql(`query { account { organizations { id name ownerEmail } } }`);
+          const orgs = orgData?.account?.organizations || [];
+          if (!orgs.length) return json({ error: "That Buffer token has no organizations on it" }, 502);
+          const channels = [];
+          for (const org of orgs) {
+            const chData = await gql(`query { channels(input: { organizationId: ${JSON.stringify(org.id)} }) { id name displayName service avatar isQueuePaused } }`);
+            for (const c of (chData?.channels || [])) channels.push({ ...c, organizationId: org.id, organizationName: org.name });
+          }
+          return json({ channels });
+        } catch (e) {
+          return json({ error: `Buffer API error: ${e.message}` }, 502);
+        }
+      }
+
+      // ── sendCarouselToBuffer ──
+      // Sends an approved carousel's slide images + caption/hashtags to
+      // Buffer as a DRAFT (mode: addToQueue, saveToDraft: true) — it lands
+      // in the campaign's Buffer queue for the operator to review and
+      // schedule themselves; this never auto-publishes anything on its
+      // own. Buffer credentials are resolved per-campaign from that
+      // campaign's own 🔑 Logins record (the operator runs many separate
+      // Buffer accounts, one per campaign, so there's no single global
+      // credential to hold here). Carousel only for now — video assets
+      // would need a different "assets" shape (video, not image) this
+      // hasn't been built/tested against yet.
+      if (body.action === "sendCarouselToBuffer") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const assetType = assetPage.properties["Asset Type"]?.select?.name || "";
+        if (assetType !== "carousel") return json({ error: `sendCarouselToBuffer only supports carousel assets right now (this one is "${assetType || 'unknown'}")` }, 400);
+        const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        if (!campaignId) return json({ error: "Asset is missing its Campaign relation" }, 400);
+        const designLink = assetPage.properties["Design Link"]?.url || "";
+        if (!designLink) return json({ error: "No Design Link on this asset yet — assemble it first" }, 400);
+        const postCaption = (assetPage.properties["Post Caption"]?.rich_text || []).map(t => t.plain_text).join("");
+        const hashtags = (assetPage.properties["Hashtags"]?.rich_text || []).map(t => t.plain_text).join("");
+        const text = [postCaption, hashtags].filter(Boolean).join("\n\n");
+        if (!text) return json({ error: "This asset has no Post Caption or Hashtags to send" }, 400);
+
+        const login = await resolveCampaignBufferLogin(campaignId, dashId);
+        if (!login) return json({ error: 'No Buffer login found for this campaign — add a record to the 🔑 Logins DB with "buffer" in its Name and this campaign in its Campaign relation.' }, 400);
+        if (!login.token) return json({ error: `That login's ("${login.name}") Buffer Access Token is empty — get one at https://publish.buffer.com/settings/api and paste it into that Notion record first.` }, 400);
+        if (!login.channelId) return json({ error: `That login's ("${login.name}") Buffer Profile ID is empty — run bufferListChannels to find it, then paste it into that Notion record.` }, 400);
+
+        // Re-derive the slide file list from the hosted folder listing
+        // rather than trusting a slide count passed in — this is the
+        // actual list of files that exist right now, matching whatever
+        // the most recent render/upload left there.
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const basePath = designLink.replace(/^https:\/\/cabuzzard\.github\.io\/dash\//, '').replace(/\/$/, '');
+        const listResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${basePath}?ref=${BRANCH}`, { headers: gh });
+        const entries = listResp.ok ? await listResp.json() : [];
+        const slideFiles = (Array.isArray(entries) ? entries : []).map(e => e.name).filter(n => /^slide-\d+\.png$/.test(n)).sort();
+        if (!slideFiles.length) return json({ error: "No slide-NN.png files found at the Design Link folder" }, 400);
+
+        const assetsGql = slideFiles
+          .map(name => `{ image: { url: ${JSON.stringify(`${designLink.replace(/\/?$/, '/')}${name}`)} } }`)
+          .join(', ');
+        const mutation = `mutation {
+  createPost(input: {
+    text: ${JSON.stringify(text)}
+    channelId: ${JSON.stringify(login.channelId)}
+    schedulingType: automatic
+    mode: addToQueue
+    saveToDraft: true
+    assets: [${assetsGql}]
+  }) {
+    ... on PostActionSuccess { post { id text } }
+    ... on MutationError { message }
+  }
+}`;
+        const resp = await fetch("https://api.buffer.com", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${login.token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ query: mutation }),
+        });
+        const data = await resp.json();
+        if (data.errors) return json({ error: `Buffer API error: ${data.errors.map(e => e.message).join("; ")}` }, 502);
+        const result = data.data?.createPost;
+        if (result?.message) return json({ error: `Buffer rejected the post: ${result.message}` }, 502);
+        return json({ success: true, bufferPostId: result?.post?.id, slideCount: slideFiles.length, draft: true });
       }
 
       if (body.action === "assembleAsset") return await runAssembleAsset(body, env);
