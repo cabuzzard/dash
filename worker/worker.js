@@ -15401,6 +15401,10 @@ ${assemblyManifest}`;
   .refine .err { color:#e66; font-size:12px; margin-top:6px; min-height:14px; }
   .refine .status { color:#888; font-size:12px; margin-top:8px; min-height:14px; }
   .refine .hint { color:#666; font-size:12px; margin-bottom:10px; }
+  .metaHead { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; gap:12px; flex-wrap:wrap; }
+  .copyBtn { padding:6px 12px; background:#333; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; font-family:inherit; }
+  .copyBtn:hover { background:#444; }
+  .copyStatus { font-size:11px; color:#68d391; margin-left:8px; }
 </style>
 </head><body>
 <header>
@@ -15419,7 +15423,10 @@ ${assemblyManifest}`;
     ${mediaHtml}
   </section>
   <section>
-    <h2>Publishing Metadata</h2>
+    <div class="metaHead">
+      <h2 style="margin:0;">Publishing Metadata</h2>
+      <span><button class="copyBtn" id="copyCaptionBtn">Copy caption + hashtags</button><span class="copyStatus" id="copyCaptionStatus"></span></span>
+    </div>
     <table>${metaRows.map(([k, v]) => `<tr><td>${esc2(k)}</td><td>${esc2(v).replace(/\n/g, '<br>')}</td></tr>`).join('')}</table>
   </section>
   <section>
@@ -15474,6 +15481,19 @@ ${assemblyManifest}`;
     label.appendChild(cb); label.appendChild(span);
     wrap.appendChild(label);
   });
+  var COPY_CAPTION_TEXT = ${JSON.stringify([postCaption, hashtags].filter(Boolean).join('\n\n'))};
+  var copyCaptionBtn = document.getElementById('copyCaptionBtn');
+  var copyCaptionStatus = document.getElementById('copyCaptionStatus');
+  if (copyCaptionBtn) {
+    copyCaptionBtn.onclick = function () {
+      navigator.clipboard.writeText(COPY_CAPTION_TEXT).then(function () {
+        copyCaptionStatus.textContent = 'Copied!';
+        setTimeout(function () { copyCaptionStatus.textContent = ''; }, 2000);
+      }, function () {
+        copyCaptionStatus.textContent = 'Copy failed — select text manually.';
+      });
+    };
+  }
   var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
   var ASSET_ID = ${JSON.stringify(assetId)};
   var refineToken = null;
