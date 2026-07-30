@@ -190,6 +190,17 @@ For as long as this whole Visual Brief/Design Card/Stage 2 system existed, appro
 
 Text Video is not covered by this fix yet — `renderCarouselFromManifest` explicitly rejects non-carousel assets. The equivalent gap exists there too (nothing reads a text-video asset's Assembly Manifest into the actual Remotion/ElevenLabs render either), just not addressed in this pass.
 
+### Assemble now renders too, and the review page can take change requests
+
+Per operator follow-up ("can't Assemble just render and assemble, then let me keep iterating on the preview page"): `assembleAsset` was refactored into a callable `runAssembleAsset(body, env)` function. For carousel assets it now **always** calls `renderCarouselFromManifestCore` first — re-rendering every slide from the current Assembly Manifest — before packaging the review page, so Assemble can no longer package stale images that don't match what's approved (the exact failure mode that caused the original two-day-stuck-carousel bug). The standalone 🎯 Render button still exists for a quick visuals-only check (no publishing metadata, no review page), but isn't needed for the normal flow anymore.
+
+**The Assembly Review page itself now has a "Request a Change" box** (carousel only) — same PIN-unlock pattern as the older carousel preview gallery's refine box. Submitting a change request calls the new **`refineCarouselManifest`** action, which:
+1. Sends the current Assembly Manifest + the operator's instruction to Claude, asking for a COMPLETE updated manifest with only the requested change applied (everything else preserved verbatim — an edit, not a regeneration; copy fields are explicitly protected unless the instruction asks for a copy change).
+2. Saves the updated manifest back to the same `Assembly Manifest` property `uploadAssetDocument` writes to.
+3. Calls `runAssembleAsset` again (same assetId/titleId/campaignId) — re-rendering and re-packaging the review page in one shot, so the page reloads showing the new images and metadata.
+
+This closes the loop the operator asked for: upload the three Stage 2 documents once, then iterate entirely from the review page — no need to go back to ChatGPT for small design tweaks.
+
 **Verification note for future edits to this file:** `node --check` is not sufficient to catch every real syntax error in `worker.js` — a missing-brace bug in two Notion-upsert calls (`buildTextVideoSpecDraft`/`buildCarouselSpecDraft`) silently broke every real Cloudflare deploy for a long stretch because a second, unrelated stray-bracket bug elsewhere in this large file happened to numerically cancel it out, so the whole file still parsed as valid JS even though esbuild (wrangler's actual bundler) correctly rejected it every time. After any edit near large template literals in this file, verify with the real build tool, not just `node --check`: `cd worker && npx wrangler@4 deploy --dry-run` (needs no Cloudflare credentials for a dry run) — a clean "Total Upload: … KiB" with no `[ERROR]` is the only trustworthy signal.
 
 **Scope note:** the operator's own ChatGPT conversation also proposed a much larger architecture (a permanent, versioned "Global Design System" doc + per-campaign override files + a JSON "Assembly Manifest," replacing the single-document handoff entirely). That was explicitly not built — the operator's own final instruction was for the existing single-paste, three-stage flow (Design Card → Visual Brief + Assembly Package) to simply resolve every field instead of leaving gaps, not to restructure into multiple persistent files.

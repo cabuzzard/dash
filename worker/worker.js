@@ -11994,36 +11994,30 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
       // yet — every slide renders through one solid template driven by
       // the resolved design tokens. Both are natural next steps once the
       // manifest carries the richer structured data they'd need.
-      if (body.action === "renderCarouselFromManifest") {
-        const { assetId } = body;
-        if (!assetId) return json({ error: "assetId required" }, 400);
-        const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
-        const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
-        if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return json({ error: "CF_ACCOUNT_ID / CF_API_TOKEN not configured" }, 400);
-        const GT = (env.GITHUB_TOKEN || '').trim();
-        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
-
-        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-
+      // Core renderer, callable from the standalone action below AND
+      // automatically from assembleAsset/refineCarouselManifest so every
+      // path that produces or updates a carousel's Assembly Manifest also
+      // keeps its rendered PNGs in sync — throws on failure rather than
+      // returning a Response, since callers need to catch and wrap it
+      // differently (a bare error vs. one nested inside a bigger action).
+      async function renderCarouselFromManifestCore({ assetId, hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT }) {
         const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
-        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        if (!assetPage.properties) throw new Error(assetPage.message || "Asset not found");
         const assetType = assetPage.properties["Asset Type"]?.select?.name || "";
-        if (assetType !== "carousel") return json({ error: `renderCarouselFromManifest only supports carousel assets right now (this one is "${assetType || 'unknown'}")` }, 400);
+        if (assetType !== "carousel") throw new Error(`renderCarouselFromManifest only supports carousel assets right now (this one is "${assetType || 'unknown'}")`);
         const titleId = assetPage.properties["Content Strategy"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
-        if (!titleId || !campaignId) return json({ error: "Asset is missing its Content Strategy or Campaign relation" }, 400);
+        if (!titleId || !campaignId) throw new Error("Asset is missing its Content Strategy or Campaign relation");
 
         const manifestRaw = (assetPage.properties["Assembly Manifest"]?.rich_text || []).map(t => t.plain_text).join("");
-        if (!manifestRaw.trim()) return json({ error: "No Assembly Manifest uploaded on this asset yet — upload it via 🧾 Manifest first." }, 400);
+        if (!manifestRaw.trim()) throw new Error("No Assembly Manifest uploaded on this asset yet — upload it via 🧾 Manifest first.");
         let manifest;
         try {
           const s = manifestRaw.indexOf('{'), e = manifestRaw.lastIndexOf('}');
           if (s === -1 || e === -1) throw new Error("No JSON object found");
           manifest = JSON.parse(manifestRaw.slice(s, e + 1));
         } catch (e) {
-          return json({ error: `Assembly Manifest is not valid JSON: ${e.message}` }, 400);
+          throw new Error(`Assembly Manifest is not valid JSON: ${e.message}`);
         }
         const tokens = manifest.designTokens || {};
         const bg = tokens.background || DESIGN_SPEC_DEFAULTS.bg;
@@ -12034,7 +12028,7 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         const manifestSlides = Array.isArray(manifest.slides) ? manifest.slides : [];
 
         const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
-        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        if (!titlePage.properties) throw new Error(titlePage.message || "Title not found");
         const titleName = titlePage.properties.Title?.title?.map(t => t.plain_text).join("") || "Carousel";
         const fetchAllBlocks = async pageId => {
           let blocks = [], cursor;
@@ -12061,7 +12055,7 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           }
         }
         const slideSections = sections.filter(s => /^Slide \d+/i.test(s.heading));
-        if (!slideSections.length) return json({ error: "This title has no Slide N blocks to render from — regenerate it via Generate Assets first." }, 400);
+        if (!slideSections.length) throw new Error("This title has no Slide N blocks to render from — regenerate it via Generate Assets first.");
 
         const slides = slideSections.map((s, idx) => {
           const headline = (s.lines.find(l => l.bold) || s.lines[0] || {}).text || '';
@@ -12128,7 +12122,7 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
             pngBuffers.push(await renderSlide(slideHtml(slides[i])));
           }
         } catch (e) {
-          return json({ error: `Slide ${pngBuffers.length + 1}: ${e.message}` }, 502);
+          throw new Error(`Slide ${pngBuffers.length + 1}: ${e.message}`);
         }
 
         const toB64Bin = buf => { const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
@@ -12144,12 +12138,8 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody) });
           if (!putResp.ok) { const r = await putResp.json(); throw new Error(`GitHub commit failed for ${path} (HTTP ${putResp.status}): ${r.message || 'unknown'}`); }
         };
-        try {
-          for (let i = 0; i < pngBuffers.length; i++) {
-            await putFile(`${basePath}/slide-${String(i + 1).padStart(2, '0')}.png`, toB64Bin(pngBuffers[i]), `Render from Assembly Manifest: ${titleName} — slide ${i + 1}`);
-          }
-        } catch (e) {
-          return json({ error: e.message }, 502);
+        for (let i = 0; i < pngBuffers.length; i++) {
+          await putFile(`${basePath}/slide-${String(i + 1).padStart(2, '0')}.png`, toB64Bin(pngBuffers[i]), `Render from Assembly Manifest: ${titleName} — slide ${i + 1}`);
         }
 
         const designLink = `https://cabuzzard.github.io/dash/${basePath}/`;
@@ -12162,7 +12152,26 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           } }),
         }).catch(() => {});
 
-        return json({ success: true, designLink, slideCount: slides.length });
+        return { designLink, slideCount: slides.length };
+      }
+
+      if (body.action === "renderCarouselFromManifest") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
+        const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
+        if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return json({ error: "CF_ACCOUNT_ID / CF_API_TOKEN not configured" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        try {
+          const result = await renderCarouselFromManifestCore({ assetId, hdr, dash, esc, CF_ACCOUNT_ID, CF_API_TOKEN, GT });
+          return json({ success: true, ...result });
+        } catch (e) {
+          return json({ error: e.message }, 502);
+        }
       }
 
       // ── refineCarouselPreview ──
@@ -15121,7 +15130,13 @@ Per Scope above: do not restructure, critique, or propose process/system changes
       // publishing fields onto the Asset record — creating any of those
       // Notion properties that don't exist yet. It never renders or
       // generates media itself.
-      if (body.action === "assembleAsset") {
+      // Factored into a callable function (not just an inline action
+      // branch) so refineCarouselManifest can invoke the exact same
+      // render-then-package logic after applying a Claude-driven edit to
+      // the Assembly Manifest — "re-render and then re-assemble on the
+      // preview," per operator request, without duplicating this ~200
+      // lines of review-page HTML/publishing-field logic.
+      async function runAssembleAsset(body, env) {
         const { publishingDate, overrideGuidelines } = body;
         const ctx = await gatherAssetProductionContext(body);
         if (!ctx.ok) return json({ error: ctx.error, validation: ctx.validation }, ctx.status);
@@ -15167,6 +15182,28 @@ ${assemblyManifest}`;
         const GT = (env.GITHUB_TOKEN || '').trim();
         if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
 
+        // Carousel: always re-render from the (now-required) Assembly
+        // Manifest before packaging the review page, so Assemble can never
+        // again package stale images that don't match what was approved —
+        // this is the "assemble should just render and assemble" fix.
+        // designLink is reassigned below only if this succeeds; it stays
+        // the previous value (same URL either way, images overwritten in
+        // place) if rendering throws, and the error surfaces immediately
+        // rather than silently proceeding to package the old pictures.
+        let effectiveDesignLink = designLink;
+        if (assetType === 'carousel') {
+          const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
+          const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
+          if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return json({ error: "CF_ACCOUNT_ID / CF_API_TOKEN not configured — needed to render from the Assembly Manifest before assembling" }, 400);
+          const escRender = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+          try {
+            const rendered = await renderCarouselFromManifestCore({ assetId, hdr, dash, esc: escRender, CF_ACCOUNT_ID, CF_API_TOKEN, GT });
+            effectiveDesignLink = rendered.designLink;
+          } catch (e) {
+            return json({ error: `Render from Assembly Manifest failed, assembly stopped before packaging stale images: ${e.message}` }, 502);
+          }
+        }
+
         const postCaption = sectionText('Caption');
         const hashtags = sectionText('Hashtags');
         const finalDescription = description || postCaption;
@@ -15182,8 +15219,8 @@ ${assemblyManifest}`;
         // extraction capability in this Worker, so fall back to whatever
         // reference Image the operator attached, if any.
         let thumbnail = '';
-        if (assetType === 'carousel' && designLink) {
-          thumbnail = designLink.replace(/\/?$/, '/') + 'slide-01.png';
+        if (assetType === 'carousel' && effectiveDesignLink) {
+          thumbnail = effectiveDesignLink.replace(/\/?$/, '/') + 'slide-01.png';
         } else if (imagesUrl) {
           thumbnail = imagesUrl;
         }
@@ -15196,8 +15233,8 @@ ${assemblyManifest}`;
         const esc2 = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
         const mediaHtml = assetType === 'carousel'
-          ? `<div class="slides">${Array.from({ length: slideCount || 0 }, (_, i) => `<img src="${esc2(designLink)}slide-${String(i + 1).padStart(2, '0')}.png" alt="Slide ${i + 1}" loading="lazy">`).join('')}</div>`
-          : `<video controls preload="metadata" src="${esc2(designLink)}"></video>`;
+          ? `<div class="slides">${Array.from({ length: slideCount || 0 }, (_, i) => `<img src="${esc2(effectiveDesignLink)}slide-${String(i + 1).padStart(2, '0')}.png" alt="Slide ${i + 1}" loading="lazy">`).join('')}</div>`
+          : `<video controls preload="metadata" src="${esc2(effectiveDesignLink)}"></video>`;
 
         const metaRows = [
           ['Asset Type', assetType], ['Platform Title', platformTitle], ['Channel', channel || 'Not set'],
@@ -15240,6 +15277,16 @@ ${assemblyManifest}`;
   .checklist input { width:16px; height:16px; accent-color:#68d391; }
   .checklist .done { color:#68d391; text-decoration:line-through; opacity:.7; }
   footer { text-align:center; color:#555; font-size:11px; padding:20px; }
+  .refine input, .refine textarea, .refine button { font-family:inherit; font-size:13px; }
+  .refine input[type=password] { width:90px; padding:9px 10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; letter-spacing:0.2em; }
+  .refine textarea { width:100%; padding:10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; resize:vertical; box-sizing:border-box; }
+  .refine button { padding:9px 16px; background:#333; color:#fff; border:none; border-radius:4px; cursor:pointer; }
+  .refine button:hover { background:#444; }
+  .refine button:disabled { opacity:0.5; cursor:default; }
+  .refine .row { display:flex; gap:8px; align-items:center; }
+  .refine .err { color:#e66; font-size:12px; margin-top:6px; min-height:14px; }
+  .refine .status { color:#888; font-size:12px; margin-top:8px; min-height:14px; }
+  .refine .hint { color:#666; font-size:12px; margin-bottom:10px; }
 </style>
 </head><body>
 <header>
@@ -15249,7 +15296,7 @@ ${assemblyManifest}`;
   </div>
   <div>
     <a href="https://www.notion.so/${assetId}" target="_blank" rel="noopener">↗ Notion</a>
-    <a href="${esc2(designLink)}" target="_blank" rel="noopener">↗ Final media</a>
+    <a href="${esc2(effectiveDesignLink)}" target="_blank" rel="noopener">↗ Final media</a>
   </div>
 </header>
 <main>
@@ -15265,6 +15312,24 @@ ${assemblyManifest}`;
     <h2>QA Checklist</h2>
     <div class="checklist" id="checklist"></div>
   </section>
+  ${assetType === 'carousel' ? `
+  <section>
+    <h2>Request a Change</h2>
+    <div class="refine">
+      <div class="hint">Describe a design change — Claude edits the approved Assembly Manifest, re-renders every slide, and re-assembles this page in place. No need to go back to ChatGPT for a small tweak.</div>
+      <div class="row" id="refinePinRow">
+        <input type="password" id="refinePin" maxlength="4" inputmode="numeric" placeholder="PIN">
+        <button id="refineUnlockBtn">Unlock</button>
+      </div>
+      <div class="err" id="refineErr"></div>
+      <div id="refineEditRow" style="display:none;">
+        <textarea id="refineInput" rows="2" placeholder="e.g. 'swap the accent to a deep blue' or 'make the footer say the campaign name instead of the slide role'"></textarea>
+        <div style="margin-top:8px;"><button id="refineBtn">Send change request</button></div>
+        <div class="status" id="refineStatus"></div>
+      </div>
+    </div>
+  </section>
+  ` : ''}
 </main>
 <footer>Assembly review page — auto-generated, not indexed. Checklist state saves locally in this browser.</footer>
 <script>
@@ -15289,6 +15354,44 @@ ${assemblyManifest}`;
     label.appendChild(cb); label.appendChild(span);
     wrap.appendChild(label);
   });
+  ${assetType === 'carousel' ? `
+  var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+  var ASSET_ID = ${JSON.stringify(assetId)};
+  var refineToken = null;
+  document.getElementById('refineUnlockBtn').addEventListener('click', function () {
+    var pin = document.getElementById('refinePin').value.trim();
+    var errEl = document.getElementById('refineErr');
+    errEl.textContent = '';
+    fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auth', pin: pin }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.token) { errEl.textContent = d.error || 'Wrong PIN'; return; }
+        refineToken = d.token;
+        document.getElementById('refinePinRow').style.display = 'none';
+        document.getElementById('refineEditRow').style.display = 'block';
+      })
+      .catch(function () { errEl.textContent = 'Connection error'; });
+  });
+  document.getElementById('refineBtn').addEventListener('click', function () {
+    var instruction = document.getElementById('refineInput').value.trim();
+    var statusEl = document.getElementById('refineStatus');
+    var btn = document.getElementById('refineBtn');
+    if (!instruction) { statusEl.textContent = 'Describe what to change first.'; return; }
+    statusEl.textContent = 'Applying change… re-renders every slide, can take a minute or two.';
+    btn.disabled = true;
+    fetch(WORKER_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'refineCarouselManifest', token: refineToken, assetId: ASSET_ID, instruction: instruction }),
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
+        statusEl.textContent = 'Done — reloading…';
+        setTimeout(function () { location.href = location.pathname + '?refined=' + Date.now(); }, 900);
+      })
+      .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
+  });
+  ` : ''}
 </script>
 </body></html>`;
 
@@ -15310,7 +15413,7 @@ ${assemblyManifest}`;
         // ── Write the publishing fields onto the Asset ──
         const props = {
           "Publishing": { select: { name: "Ready to Publish" } },
-          "Final Media File": { url: designLink },
+          "Final Media File": { url: effectiveDesignLink },
           "Post Caption": { rich_text: chunkedRichText(postCaption) },
           "Platform Title": { rich_text: chunkedRichText(platformTitle) },
           "Description": { rich_text: chunkedRichText(finalDescription) },
@@ -15330,6 +15433,78 @@ ${assemblyManifest}`;
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to write assembled fields to Asset", reviewUrl }, patchResp.status); }
 
         return json({ success: true, assetId, reviewUrl, fieldsWritten: Object.keys(props) });
+      }
+
+      if (body.action === "assembleAsset") return await runAssembleAsset(body, env);
+
+      // ── refineCarouselManifest ──
+      // The change-request box embedded on the Assembly Review page
+      // itself (carousel only) — "send a change request to Claude, it
+      // re-renders, then re-assembles the preview," per operator request.
+      // Reads the Asset's current Assembly Manifest, asks Claude to return
+      // a COMPLETE updated manifest applying only the requested change
+      // (everything else preserved verbatim — this is an edit, not a
+      // regeneration), saves it back to the same Assembly Manifest
+      // property uploadAssetDocument writes to, then runs the exact same
+      // render-then-package path as a normal Assemble
+      // (runAssembleAsset), so the review page the operator is looking at
+      // updates in place with the new images and metadata.
+      if (body.action === "refineCarouselManifest") {
+        const { assetId, instruction } = body;
+        if (!assetId || !instruction || !instruction.trim()) return json({ error: "assetId and instruction required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const assetType = assetPage.properties["Asset Type"]?.select?.name || "";
+        if (assetType !== "carousel") return json({ error: `refineCarouselManifest only supports carousel assets right now (this one is "${assetType || 'unknown'}")` }, 400);
+        const titleId = assetPage.properties["Content Strategy"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        if (!titleId || !campaignId) return json({ error: "Asset is missing its Content Strategy or Campaign relation" }, 400);
+        const currentManifest = (assetPage.properties["Assembly Manifest"]?.rich_text || []).map(t => t.plain_text).join("");
+        if (!currentManifest.trim()) return json({ error: "No Assembly Manifest on this asset yet — nothing to refine." }, 400);
+
+        const refinePrompt = `You are editing an already-approved carousel Assembly Manifest — a JSON design/production spec. The operator has requested this specific change:
+
+"${instruction.trim()}"
+
+Apply ONLY this change. Preserve every other field exactly as it already is — this is a targeted edit, not a regeneration. Do not alter "copy" fields (slide headline/body text) unless the instruction explicitly asks for a copy change. Return the COMPLETE updated manifest, same schema as the current one, with every slide/scene still present.
+
+CURRENT ASSEMBLY MANIFEST:
+${currentManifest}
+
+Return ONLY the updated JSON object, no other text, no markdown fences.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: refinePrompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        const raw = aiData.content?.[0]?.text || "";
+        let updatedManifest;
+        try {
+          const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+          if (s === -1 || e === -1) throw new Error("No JSON object found");
+          updatedManifest = raw.slice(s, e + 1);
+          JSON.parse(updatedManifest); // validate before saving
+        } catch (e) {
+          return json({ error: `Claude's updated manifest was not valid JSON: ${e.message}` }, 500);
+        }
+
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Assembly Manifest": { rich_text: chunkedRichText(updatedManifest) } } }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save updated manifest" }, patchResp.status); }
+
+        // Re-render + re-package the review page in one shot, reusing the
+        // exact same path a normal Assemble click takes.
+        const result = await runAssembleAsset({ assetId, titleId, campaignId }, env);
+        return result;
       }
 
       // ── generateExplainerScript ──
