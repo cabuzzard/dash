@@ -107,8 +107,19 @@ Mirrors exactly how `make-reel-video`'s Step 4 and the dashboard's own carousel 
   - **Platform Name:** `Instagram` (or whatever the title/method specifies)
 - Set the Content Strategy title's own `Status` to `Publish`.
 
-### Step 5 — Report back
-- The hosted Design Link (and remind: the dashboard's 🧷 Assemble button will package this into a full Assembly Review page — QA checklist, publishing metadata, "Request a Change" — once run, same as any other carousel's media).
+### Step 5 — Close the loop: call assembleAsset yourself
+Don't stop at hosting the Design Link — package the Assembly Review page too, so the operator never has to go back to the dashboard and click anything. No auth token needed (assembleAsset only checks that a Design Link exists):
+
+```bash
+curl -s -X POST https://jolly-darkness-5dcc.trailnotes2026.workers.dev \
+  -H "Content-Type: application/json" \
+  -d '{"action":"assembleAsset","assetId":"<assetId>","titleId":"<titleId>","campaignId":"<campaignId>"}'
+```
+
+On success this returns `{"success":true,"reviewUrl":"..."}` — that URL is the finished, ready-to-QA preview (checklist, publishing metadata, Request a Change). If it errors instead, report the error text verbatim rather than guessing why.
+
+### Step 6 — Report back
+- The `reviewUrl` from Step 5.
 - Caption + hashtags ready to paste.
 - Remind: **to revise, edit the slide text (or the Assembly Manifest's design tokens/graphicSvg) on this title/asset, then run this skill again** — it rebuilds every slide from current Notion content rather than starting over.
 - Remind: posting to Instagram is manual — no auto-posting exists in this repo.
