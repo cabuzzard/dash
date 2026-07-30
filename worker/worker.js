@@ -12188,6 +12188,97 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         },
       };
 
+      // Shared by refineAssetManifest and updateAssetManifestFields for
+      // the no-registered-renderer case (Text Video today) — both need to
+      // hand back an actionable Claude Code build prompt carrying the
+      // just-updated manifest, since nothing in this Worker can render
+      // video. One place for that prompt shape instead of two.
+      function buildManifestUpdateHandoff({ assetId, titleId, assetType, assetName, visualBrief, assemblyPackage, updatedManifestText, changeNote }) {
+        return `Update the asset for the Content Strategy title (https://www.notion.so/${titleId}) using the Asset record (https://www.notion.so/${assetId}, Asset Type: ${assetType}, "${assetName}"). ${changeNote} The Assembly Manifest below already reflects that change (approved and saved) — re-render/re-host the media to match it, update this Asset record's Design Link (and Final Media File) per the relevant skill's steps, then re-run Assemble on the dashboard to re-package it for publish.
+
+=== VISUAL PRODUCTION BRIEF ===
+${visualBrief}
+
+=== PRODUCTION ASSEMBLY PACKAGE ===
+${assemblyPackage}
+
+=== UPDATED ASSEMBLY MANIFEST (JSON) ===
+${updatedManifestText}`;
+      }
+
+      // ── updateAssetManifestFields ──
+      // The "Design Parameters" form on the Assembly Review page — direct
+      // field edits (designTokens + per-slide role/footer label), saved
+      // straight to the Assembly Manifest and re-rendered, with NO Claude
+      // round-trip. Faster and more predictable than describing a change
+      // in English via refineAssetManifest when the operator already
+      // knows the exact value they want (a hex code, a font name).
+      // Merges into the EXISTING manifest — only the fields actually sent
+      // are touched, everything else (copy, layout, export settings)
+      // stays exactly as it was.
+      if (body.action === "updateAssetManifestFields") {
+        const { assetId, designTokens, slides } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const assetType = assetPage.properties["Asset Type"]?.select?.name || "";
+        const assetName = assetPage.properties["Asset Title"]?.title?.map(t => t.plain_text).join("") || "Untitled";
+        const titleId = assetPage.properties["Content Strategy"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        if (!titleId || !campaignId) return json({ error: "Asset is missing its Content Strategy or Campaign relation" }, 400);
+        const currentManifestRaw = (assetPage.properties["Assembly Manifest"]?.rich_text || []).map(t => t.plain_text).join("");
+        if (!currentManifestRaw.trim()) return json({ error: "No Assembly Manifest on this asset yet." }, 400);
+        let manifest;
+        try {
+          const s = currentManifestRaw.indexOf('{'), e = currentManifestRaw.lastIndexOf('}');
+          if (s === -1 || e === -1) throw new Error("No JSON object found");
+          manifest = JSON.parse(currentManifestRaw.slice(s, e + 1));
+        } catch (e) {
+          return json({ error: `Current Assembly Manifest is not valid JSON: ${e.message}` }, 400);
+        }
+
+        if (designTokens && typeof designTokens === 'object') {
+          manifest.designTokens = { ...(manifest.designTokens || {}), ...designTokens };
+        }
+        if (Array.isArray(slides) && slides.length) {
+          const key = Array.isArray(manifest.slides) ? 'slides' : (Array.isArray(manifest.scenes) ? 'scenes' : null);
+          if (key) {
+            slides.forEach(upd => {
+              const idx = manifest[key].findIndex(s => s.number === upd.number);
+              if (idx === -1) return;
+              if (upd.role != null) manifest[key][idx].role = upd.role;
+              if (upd.footerLabel != null) {
+                manifest[key][idx].style = manifest[key][idx].style || {};
+                manifest[key][idx].style.footerLabel = upd.footerLabel;
+              }
+            });
+          }
+        }
+
+        const updatedManifestText = JSON.stringify(manifest, null, 2);
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Assembly Manifest": { rich_text: chunkedRichText(updatedManifestText) } } }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save updated manifest" }, patchResp.status); }
+
+        if (MANIFEST_RENDERERS[assetType]) {
+          const result = await runAssembleAsset({ assetId, titleId, campaignId }, env);
+          return result;
+        }
+
+        const visualBrief = (assetPage.properties["Visual Production Brief"]?.rich_text || []).map(t => t.plain_text).join("");
+        const assemblyPackage = (assetPage.properties["Production Assembly Package"]?.rich_text || []).map(t => t.plain_text).join("");
+        const handoffPrompt = buildManifestUpdateHandoff({
+          assetId, titleId, assetType, assetName, visualBrief, assemblyPackage, updatedManifestText,
+          changeNote: "The operator edited Design Parameters directly on the Assembly Review page.",
+        });
+        return json({ success: true, needsHandoff: true, handoffPrompt, assetId, titleId, message: `Manifest updated — "${assetType}" has no in-browser renderer, so this needs a Claude Code session with Remotion/ffmpeg/ElevenLabs. A build prompt with the update is ready to copy.` });
+      }
+
       // ── refineCarouselPreview ──
       // Edits an EXISTING carousel in place from a free-text instruction,
       // instead of the all-or-nothing "wipe and regenerate" of
@@ -15165,6 +15256,15 @@ Per Scope above: do not restructure, critique, or propose process/system changes
         const visualBrief = (assetPage.properties["Visual Production Brief"]?.rich_text || []).map(t => t.plain_text).join("");
         const assemblyPackage = (assetPage.properties["Production Assembly Package"]?.rich_text || []).map(t => t.plain_text).join("");
         const assemblyManifest = (assetPage.properties["Assembly Manifest"]?.rich_text || []).map(t => t.plain_text).join("");
+        // Parsed once here so the review page below can render live edit
+        // fields for designTokens/per-slide role+footerLabel — best-effort,
+        // stays null on malformed JSON so the page just omits that section
+        // rather than failing the whole Assemble.
+        let manifestParsed = null;
+        try {
+          const ms = assemblyManifest.indexOf('{'), me = assemblyManifest.lastIndexOf('}');
+          if (ms !== -1 && me !== -1) manifestParsed = JSON.parse(assemblyManifest.slice(ms, me + 1));
+        } catch (e) {}
         const missingDocs = [];
         if (!visualBrief.trim()) missingDocs.push("Visual Production Brief");
         if (!assemblyPackage.trim()) missingDocs.push("Production Assembly Package");
@@ -15327,18 +15427,26 @@ ${assemblyManifest}`;
     <div class="checklist" id="checklist"></div>
   </section>
   <section>
-    <h2>Request a Change</h2>
+    <h2>Edit This Asset</h2>
     <div class="refine">
-      <div class="hint">${MANIFEST_RENDERERS[assetType] ? 'Describe a design change — Claude edits the approved Assembly Manifest, re-renders every slide, and re-assembles this page in place. No need to go back to ChatGPT for a small tweak.' : `Describe a change — Claude edits the approved Assembly Manifest. "${esc2(assetType)}" has no in-browser renderer, so this hands you back a fresh Claude Code build prompt with the update already applied, instead of re-rendering here.`}</div>
       <div class="row" id="refinePinRow">
         <input type="password" id="refinePin" maxlength="4" inputmode="numeric" placeholder="PIN">
         <button id="refineUnlockBtn">Unlock</button>
       </div>
       <div class="err" id="refineErr"></div>
       <div id="refineEditRow" style="display:none;">
+        ${manifestParsed && manifestParsed.designTokens ? `
+        <div class="hint">Design Parameters — edit exact values directly and save straight to the Assembly Manifest, re-rendered immediately. No Claude round-trip, so use this when you already know the value you want (a hex code, a font name).</div>
+        <div id="paramsFields"></div>
+        <div style="margin-top:8px;"><button id="paramsSaveBtn">Save & Re-render</button></div>
+        <div class="status" id="paramsStatus"></div>
+        <div style="margin-top:24px;padding-top:20px;border-top:1px solid #262626;">
+        ` : ''}
+        <div class="hint">${MANIFEST_RENDERERS[assetType] ? 'Request a Change — describe a design change in words, Claude edits the approved Assembly Manifest, re-renders every slide, and re-assembles this page in place.' : `Request a Change — describe a change in words, Claude edits the approved Assembly Manifest. "${esc2(assetType)}" has no in-browser renderer, so this hands you back a fresh Claude Code build prompt with the update already applied, instead of re-rendering here.`}</div>
         <textarea id="refineInput" rows="2" placeholder="e.g. 'swap the accent to a deep blue' or 'make the footer say the campaign name instead of the slide role'"></textarea>
         <div style="margin-top:8px;"><button id="refineBtn">Send change request</button></div>
         <div class="status" id="refineStatus"></div>
+        ${manifestParsed && manifestParsed.designTokens ? `</div>` : ''}
       </div>
     </div>
   </section>
@@ -15369,6 +15477,89 @@ ${assemblyManifest}`;
   var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
   var ASSET_ID = ${JSON.stringify(assetId)};
   var refineToken = null;
+  ${manifestParsed && manifestParsed.designTokens ? `
+  // Design Parameters — built from the Assembly Manifest already parsed
+  // server-side when this page was generated, so the fields always start
+  // pre-filled with the actual current values, not blanks.
+  var DESIGN_TOKENS = ${JSON.stringify(manifestParsed.designTokens || {})};
+  var MANIFEST_ITEMS = ${JSON.stringify((manifestParsed.slides || manifestParsed.scenes || []).map(s => ({ number: s.number, role: s.role || '', footerLabel: (s.style && s.style.footerLabel) || '' })))};
+  var TOKEN_LABELS = [['background','Background'],['ink','Ink'],['accent','Accent'],['headlineFont','Headline Font'],['bodyFont','Body Font']];
+  var paramsFields = document.getElementById('paramsFields');
+  TOKEN_LABELS.forEach(function (pair) {
+    var key = pair[0], label = pair[1];
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
+    var lab = document.createElement('label');
+    lab.textContent = label;
+    lab.style.cssText = 'width:110px;font-size:12px;color:#999;flex-shrink:0;';
+    var inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = DESIGN_TOKENS[key] || '';
+    inp.dataset.tokenKey = key;
+    inp.style.cssText = 'flex:1;padding:7px 9px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:4px;font-size:12px;';
+    row.appendChild(lab); row.appendChild(inp);
+    paramsFields.appendChild(row);
+  });
+  if (MANIFEST_ITEMS.length) {
+    var slideHeader = document.createElement('div');
+    slideHeader.style.cssText = 'font-size:11px;color:#666;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.06em;';
+    slideHeader.textContent = 'Per-Item: # / Role / Footer Label';
+    paramsFields.appendChild(slideHeader);
+    MANIFEST_ITEMS.forEach(function (item) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
+      var num = document.createElement('span');
+      num.textContent = '#' + item.number;
+      num.style.cssText = 'width:24px;font-size:11px;color:#666;flex-shrink:0;';
+      var roleInp = document.createElement('input');
+      roleInp.type = 'text'; roleInp.value = item.role; roleInp.placeholder = 'role';
+      roleInp.dataset.slideNumber = item.number; roleInp.dataset.slideField = 'role';
+      roleInp.style.cssText = 'flex:1;padding:6px 8px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:4px;font-size:11px;';
+      var footerInp = document.createElement('input');
+      footerInp.type = 'text'; footerInp.value = item.footerLabel; footerInp.placeholder = 'footer label';
+      footerInp.dataset.slideNumber = item.number; footerInp.dataset.slideField = 'footerLabel';
+      footerInp.style.cssText = 'flex:1;padding:6px 8px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:4px;font-size:11px;';
+      row.appendChild(num); row.appendChild(roleInp); row.appendChild(footerInp);
+      paramsFields.appendChild(row);
+    });
+  }
+  document.getElementById('paramsSaveBtn').addEventListener('click', function () {
+    var statusEl = document.getElementById('paramsStatus');
+    var btn = document.getElementById('paramsSaveBtn');
+    var designTokens = {};
+    paramsFields.querySelectorAll('input[data-token-key]').forEach(function (inp) { designTokens[inp.dataset.tokenKey] = inp.value; });
+    var bySlide = {};
+    paramsFields.querySelectorAll('input[data-slide-number]').forEach(function (inp) {
+      var n = parseInt(inp.dataset.slideNumber, 10);
+      bySlide[n] = bySlide[n] || { number: n };
+      bySlide[n][inp.dataset.slideField] = inp.value;
+    });
+    var slides = Object.keys(bySlide).map(function (k) { return bySlide[k]; });
+    statusEl.textContent = 'Saving…';
+    btn.disabled = true;
+    fetch(WORKER_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'updateAssetManifestFields', token: refineToken, assetId: ASSET_ID, designTokens: designTokens, slides: slides }),
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
+        if (res.d.needsHandoff) {
+          btn.disabled = false;
+          navigator.clipboard.writeText(res.d.handoffPrompt).then(function () {
+            statusEl.textContent = (res.d.message || 'Manifest updated.') + ' Build prompt copied to clipboard.';
+          }, function () {
+            statusEl.textContent = (res.d.message || 'Manifest updated.') + ' Clipboard write failed — copy from console.';
+            console.log(res.d.handoffPrompt);
+          });
+          return;
+        }
+        statusEl.textContent = 'Saved — reloading…';
+        setTimeout(function () { location.href = location.pathname + '?params=' + Date.now(); }, 900);
+      })
+      .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
+  });
+  ` : ''}
   document.getElementById('refineUnlockBtn').addEventListener('click', function () {
     var pin = document.getElementById('refinePin').value.trim();
     var errEl = document.getElementById('refineErr');
@@ -15544,16 +15735,10 @@ Return ONLY the updated JSON object, no other text, no markdown fences.`;
         // has something actionable even though nothing here can render it.
         const visualBrief = (assetPage.properties["Visual Production Brief"]?.rich_text || []).map(t => t.plain_text).join("");
         const assemblyPackage = (assetPage.properties["Production Assembly Package"]?.rich_text || []).map(t => t.plain_text).join("");
-        const handoffPrompt = `Update the asset for the Content Strategy title (https://www.notion.so/${titleId}) using the Asset record (https://www.notion.so/${assetId}, Asset Type: ${assetType}, "${assetName}"). The operator requested this change on the Assembly Review page: "${instruction.trim()}". The Assembly Manifest below already reflects that change (approved and saved) — re-render/re-host the media to match it, update this Asset record's Design Link (and Final Media File) per the relevant skill's steps, then re-run Assemble on the dashboard to re-package it for publish.
-
-=== VISUAL PRODUCTION BRIEF ===
-${visualBrief}
-
-=== PRODUCTION ASSEMBLY PACKAGE ===
-${assemblyPackage}
-
-=== UPDATED ASSEMBLY MANIFEST (JSON) ===
-${updatedManifest}`;
+        const handoffPrompt = buildManifestUpdateHandoff({
+          assetId, titleId, assetType, assetName, visualBrief, assemblyPackage, updatedManifestText: updatedManifest,
+          changeNote: `The operator requested this change on the Assembly Review page: "${instruction.trim()}".`,
+        });
         return json({ success: true, needsHandoff: true, handoffPrompt, assetId, titleId, message: `Manifest updated — "${assetType}" has no in-browser renderer, so this needs a Claude Code session with Remotion/ffmpeg/ElevenLabs. A build prompt with the update is ready to copy.` });
       }
 
