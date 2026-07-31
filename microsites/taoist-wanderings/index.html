@@ -876,27 +876,6 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 </div>
 
 <!-- WORK HISTORY MODAL (resume / upwork proposal asset rows) -->
-<div class="modal-overlay" id="workHistoryModal">
-  <div class="modal" style="max-width:640px;">
-    <div class="modal-head">
-      <div class="modal-title">Work History — <span id="wh-product-name"></span></div>
-      <button class="modal-close" onclick="closeWorkHistoryModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="modal-hint">Stored once on this asset's Product — every resume/Upwork proposal under this product reuses the same Work History, so it only needs to be entered/updated here, not per application.</div>
-      <label class="lm-label" style="margin-top:12px;">Keywords <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— read-only, from the Product record, used for ATS/relevance matching</span></label>
-      <div id="wh-keywords" style="font-size:12px;color:#888;padding:8px 10px;background:#1a1a1a;border:1px solid #333;border-radius:4px;margin-bottom:12px;min-height:16px;"></div>
-      <label class="lm-label">Work History <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— real job titles, employers, dates, achievements, skills; only real facts get used, nothing here is invented</span></label>
-      <textarea class="modal-ta" id="wh-text" rows="12" style="padding:8px 10px;resize:vertical;font-size:12px;line-height:1.5;" placeholder="e.g. Senior Engineer, Acme Corp, 2021–2024 — led migration of..."></textarea>
-      <div class="modal-status" id="wh-status"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="modal-btn cancel" onclick="closeWorkHistoryModal()">Cancel</button>
-      <button class="modal-btn save" id="wh-save" onclick="saveWorkHistoryModal()">Save</button>
-    </div>
-  </div>
-</div>
-
 <!-- SM POSTS PROMPT MODAL -->
 <div class="modal-overlay" id="smPromptModal">
   <div class="modal" style="max-width:480px;">
@@ -1038,8 +1017,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       </div>
 
       <div id="gaJobAssetWrap" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #3a3350;background:rgba(159,122,234,.06);border-radius:4px;">
-        <div style="font-size:11px;color:#b794f4;margin-bottom:6px;">Generate searches real postings (job boards for Resume, Upwork for Upwork Proposal) using the Product's Keywords below, writes a tailored asset for the top 5 matches, each with the posting link attached. Pick/create the Product above first, then check Work History is set here.</div>
-        <button type="button" class="modal-btn save" style="padding:4px 10px;font-size:11px;" onclick="openWorkHistoryModalForProduct()">📋 Work History</button>
+        <div style="font-size:11px;color:#b794f4;">Generate searches real postings (job boards for Resume, Upwork for Upwork Proposal) using the Product's Keywords below, writes a tailored asset for the top 5 matches, each with the posting link attached. Pick/create the Product above first — real career history is global, not per-product: manage it in the main dashboard's <strong>TD tab → 💼 Career</strong> section before generating.</div>
       </div>
 
       <div class="ga-hide-for-carousel">
@@ -1597,8 +1575,7 @@ async function loadTitles() {
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${t.id}" data-type="${esc(a.type)}" data-productid="${t.productId || ''}" onclick="openVisualBriefModal(this)" title="Set up and assemble the Visual Production Source Document (Editing Authority tiers/Asset Metadata/Production Method/Audience/Research/Content Foundation/Growth Strategy Context/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Opens a setup modal first: pick a Growth Strategy for context, lock specific normally-MUTABLE design fields to IMMUTABLE for this asset, and write operator guidelines. Text Video assets are told to declare Simple vs. Custom Remotion Build (custom builds get a mandatory voice-first render sequence) and to keep the Asset ID attached through every revision. Also drafts every field of the structured Design Specification via Claude, tagged Immutable/Constrained/Mutable/Derived-at-production so ChatGPT knows exactly what it can and can't change — Text Video into 🎬 Text Video Specs / 🎞️ Text Video Scenes, Carousel into 🎠 Carousel Specifications / 🃏 Slide Specifications (plus the shared Color Palette/Typography/Visual Style/Grid/Layout/Diagram/Platform Preset databases, reused across the whole campaign)." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'renderPackage')" title="Upload RENDER_PACKAGE.yaml — the single file ChatGPT now returns (visualBrief + assemblyInstructions + assemblyManifest sections) — split automatically and saved to this asset's Visual Production Brief / Production Assembly Package / Assembly Manifest properties, no modal needed." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">📦 Render Package</button>` : '')
           + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" data-type="${esc(a.type)}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for any asset type with a registered renderer (carousel today), RE-RENDERS from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
-          + ((a.type === 'resume' || a.type === 'upwork proposal') ? `<button class="td-workhistory" data-assetid="${a.id}" onclick="openWorkHistoryModal(this)" title="Edit this asset's Product's Work History — stored once on the Product, reused by every resume/Upwork proposal under it, not retyped per application." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Work History</button>` : '')
-          + ((a.type === 'resume' || a.type === 'upwork proposal') ? `<button class="td-generate-job" data-assetid="${a.id}" data-titleid="${t.id}" data-type="${esc(a.type)}" onclick="generateJobAssetFromRow(this)" title="Write the ${esc(a.type)} text from this title's job/gig posting + the Product's Keywords and Work History." style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">✨ Generate</button>` : '')
+          + ((a.type === 'resume' || a.type === 'upwork proposal') ? `<button class="td-generate-job" data-assetid="${a.id}" data-titleid="${t.id}" data-type="${esc(a.type)}" onclick="generateJobAssetFromRow(this)" title="Pull a fresh batch of 5 matching postings and write a tailored ${esc(a.type)} for each (real career history is global — edit it in the main dashboard's TD tab, Career section)." style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">✨ Generate</button>` : '')
           + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
         return ar;
       };
@@ -5564,77 +5541,10 @@ async function submitAssembleModal() {
   }
 }
 
-// ── WORK HISTORY (resume / upwork proposal) ─────────────────────────────
-// Editor for the Product-level Work History field — opened from an asset
-// row, but the value it edits lives on that asset's Product, not the
-// asset itself, so it's shared across every resume/Upwork proposal under
-// that product instead of retyped per application.
-let WH_PRODUCT_ID = null;
-async function openWorkHistoryModalCore(params) {
-  document.getElementById('wh-product-name').textContent = 'Loading…';
-  document.getElementById('wh-keywords').textContent = '';
-  document.getElementById('wh-text').value = '';
-  document.getElementById('wh-status').textContent = '';
-  document.getElementById('wh-save').disabled = true;
-  document.getElementById('workHistoryModal').classList.add('open');
-  try {
-    const data = await w('getAssetProductWorkHistory', params);
-    if (data.error) throw new Error(data.error);
-    WH_PRODUCT_ID = data.productId;
-    document.getElementById('wh-product-name').textContent = data.productName || 'Untitled Product';
-    document.getElementById('wh-keywords').textContent = data.keywords || '(none set on this Product)';
-    document.getElementById('wh-text').value = data.workHistory || '';
-    document.getElementById('wh-save').disabled = false;
-  } catch (e) {
-    document.getElementById('wh-product-name').textContent = 'Error';
-    document.getElementById('wh-status').textContent = 'Error: ' + e.message;
-  }
-}
-async function openWorkHistoryModal(btn) {
-  return openWorkHistoryModalCore({ assetId: btn.dataset.assetid });
-}
-// Entry point from the Generate Assets modal, before any resume/Upwork
-// asset exists yet — resolves via the Product picked/typed in that modal
-// instead of an asset row (see gaResolve for the create-if-new pattern).
-async function openWorkHistoryModalForProduct() {
-  const status = document.getElementById('gaStatus');
-  try {
-    const product = await gaResolve('product', status);
-    if (!product.id) { alert('Pick or type a Product above first — Work History is stored on the Product.'); return; }
-    status.textContent = '';
-    return openWorkHistoryModalCore({ productId: product.id });
-  } catch (e) {
-    alert('Error: ' + e.message);
-  }
-}
-function closeWorkHistoryModal() {
-  document.getElementById('workHistoryModal').classList.remove('open');
-  WH_PRODUCT_ID = null;
-}
-document.getElementById('workHistoryModal').addEventListener('click', function(e) {
-  if (e.target === this) closeWorkHistoryModal();
-});
-async function saveWorkHistoryModal() {
-  if (!WH_PRODUCT_ID) return;
-  const btn = document.getElementById('wh-save');
-  const statusEl = document.getElementById('wh-status');
-  btn.disabled = true;
-  statusEl.textContent = 'Saving…';
-  try {
-    const data = await w('saveProductWorkHistory', { productId: WH_PRODUCT_ID, workHistory: document.getElementById('wh-text').value.trim() });
-    if (data.error) throw new Error(data.error);
-    statusEl.style.color = '#68d391';
-    statusEl.textContent = 'Saved ✓ — hit Generate now to write the real assets.';
-  } catch (e) {
-    statusEl.style.color = '#f87171';
-    statusEl.textContent = 'Error: ' + e.message;
-  } finally {
-    btn.disabled = false;
-  }
-}
-
 // ── GENERATE (resume / upwork proposal) — regenerates another batch of 5
 // from an existing asset row of this type (additive, same as Text Video).
+// Real career history is global now (💼 Career section, main dashboard TD
+// tab) — nothing here edits it, this button only triggers the search+write.
 async function generateJobAssetFromRow(btn) {
   const titleId = btn.dataset.titleid;
   const assetType = btn.dataset.type;
@@ -5645,7 +5555,7 @@ async function generateJobAssetFromRow(btn) {
     const r = await w('generateJobAsset', { titleId, campaignId: CAMPAIGN_ID, assetType });
     if (r.error) throw new Error(r.error);
     if (r.needsWorkHistory) {
-      alert('This product has no Work History yet — click 📋 Work History on this row, add it, then Generate again.');
+      alert(r.note || 'No Work Experience entries yet — add them in the main dashboard\'s TD tab (💼 Career section), then Generate again.');
     } else if (!r.created) {
       alert(r.note || 'No new postings matched right now — try again later or broaden the Product\'s Keywords.');
       btn.textContent = orig;
@@ -5902,7 +5812,7 @@ async function submitGenAssets() {
         setTimeout(closeGenAssetsModal, 3000);
       } else if (isJobAsset) {
         status.textContent = r.needsWorkHistory
-          ? `This Product has no Work History yet — use the 📋 Work History button above to add it, then Generate again. Nothing created yet.`
+          ? (r.note || `No Work Experience entries yet — add them in the main dashboard's TD tab (💼 Career section), then Generate again. Nothing created yet.`)
           : !r.created
           ? (r.note || `No live postings matched right now — try broadening the Product's Keywords or Research Instructions.`)
           : `✓ Found ${r.created} matching posting${r.created === 1 ? '' : 's'} and wrote a tailored ${skillMatch.assetType}${r.created === 1 ? '' : ' for each'} — ${r.created} new asset${r.created === 1 ? '' : 's'} under this title.${r.failures ? ` (${r.failures.length} failed — see console.)` : ''}`;

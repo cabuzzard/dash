@@ -677,6 +677,30 @@
         <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
       </div>
     </div>
+
+    <!-- CAREER — campaign-agnostic: a real career history and a list of job
+         board feeds are each one thing, not one per campaign/product, so
+         they live here instead of anywhere per-campaign. Feeds this data
+         into resume/Upwork-proposal generation on every campaign microsite. -->
+    <div id="careerSection" style="margin-top:24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="toggleCareerSection()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">💼 Career</span>
+        <span id="careerToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="careerBody" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 6px;">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Work Experience</span>
+          <button onclick="openAddWorkExpModal()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
+        </div>
+        <div id="workExpList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 6px;">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Job Boards</span>
+          <button onclick="openAddJobBoardModal()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
+        </div>
+        <div id="jobBoardsListEl"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+      </div>
+    </div>
   </div>
 
   <div class="tab-panel" id="tabPlatforms">
@@ -1574,6 +1598,90 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeTdModal()">Cancel</button>
       <button class="btn btn-primary" id="tdSaveBtn" onclick="saveTdLinks()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Work Experience Modal (💼 Career, TD tab) -->
+<div class="modal-bg" id="workExpModal" onclick="if(event.target===this)closeWorkExpModal()">
+  <div class="modal">
+    <div class="modal-title" id="workExpModalTitle">Add Work Experience</div>
+    <div class="modal-field">
+      <label class="modal-label">Role</label>
+      <input class="modal-input" id="weRole" type="text" placeholder="e.g. Senior AI Systems Consultant" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Employer</label>
+      <input class="modal-input" id="weEmployer" type="text" placeholder="e.g. Acme Corp" autocomplete="off" />
+    </div>
+    <div style="display:flex;gap:10px;">
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">Start</label>
+        <input class="modal-input" id="weStart" type="text" placeholder="e.g. 2021" autocomplete="off" />
+      </div>
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">End</label>
+        <input class="modal-input" id="weEnd" type="text" placeholder="e.g. 2024" autocomplete="off" />
+      </div>
+      <div class="modal-field" style="flex-shrink:0;padding-top:20px;">
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);cursor:pointer;white-space:nowrap;">
+          <input type="checkbox" id="weCurrent" onchange="document.getElementById('weEnd').disabled=this.checked;" /> Current
+        </label>
+      </div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Description <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— achievements/responsibilities; only real facts, never invented when used to write resumes/proposals</span></label>
+      <textarea class="modal-input" id="weDescription" rows="6" style="resize:vertical;line-height:1.5;" placeholder="e.g. Led migration of..."></textarea>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Skills <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— comma-separated, optional</span></label>
+      <input class="modal-input" id="weSkills" type="text" placeholder="e.g. Python, Notion API, team leadership" autocomplete="off" />
+    </div>
+    <div id="workExpModalStatus" style="font-size:12px;color:var(--text3);min-height:16px;margin-bottom:6px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeWorkExpModal()">Cancel</button>
+      <button class="btn btn-primary" id="workExpSaveBtn" onclick="saveWorkExpModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Job Board Modal (💼 Career, TD tab) -->
+<div class="modal-bg" id="jobBoardModal" onclick="if(event.target===this)closeJobBoardModal()">
+  <div class="modal">
+    <div class="modal-title" id="jobBoardModalTitle">Add Job Board</div>
+    <div class="modal-field">
+      <label class="modal-label">Name</label>
+      <input class="modal-input" id="jbName" type="text" placeholder="e.g. RemoteOK" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Feed URL</label>
+      <input class="modal-input" id="jbFeedUrl" type="url" placeholder="https://..." autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Parser <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— which code path reads this feed</span></label>
+      <select class="modal-input" id="jbParser">
+        <option value="remoteok">remoteok — RemoteOK JSON API</option>
+        <option value="remotive">remotive — Remotive JSON API</option>
+        <option value="wwr_rss">wwr_rss — We Work Remotely RSS (with skills/category)</option>
+        <option value="generic_rss" selected>generic_rss — standard RSS (title/link/description)</option>
+        <option value="linkedin_apify">linkedin_apify — LinkedIn via Apify actor, no Feed URL needed</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Status</label>
+      <select class="modal-input" id="jbStatus">
+        <option value="Active" selected>Active — included in resume/proposal searches</option>
+        <option value="Paused">Paused — kept on file, not searched</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Notes <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— optional</span></label>
+      <textarea class="modal-input" id="jbNotes" rows="3" style="resize:vertical;line-height:1.5;"></textarea>
+    </div>
+    <div id="jobBoardModalStatus" style="font-size:12px;color:var(--text3);min-height:16px;margin-bottom:6px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeJobBoardModal()">Cancel</button>
+      <button class="btn btn-primary" id="jobBoardSaveBtn" onclick="saveJobBoardModal()">Save</button>
     </div>
   </div>
 </div>
@@ -8308,6 +8416,194 @@ async function loadPodcastItems() {
     });
   } catch(e) {
     el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message}</div>`;
+  }
+}
+
+// ── CAREER (💼, global — Work Experience + Job Boards) ──────────────────
+// Both are campaign-agnostic: a real career history and a list of job
+// board feeds are each one thing, not one per campaign/product, so they
+// live here and feed resume/Upwork-proposal generation on every campaign
+// microsite instead of being re-entered per product.
+let careerCollapsed = true;
+let careerLoaded = false;
+function toggleCareerSection() {
+  careerCollapsed = !careerCollapsed;
+  document.getElementById('careerBody').style.display = careerCollapsed ? 'none' : '';
+  document.getElementById('careerToggleIcon').textContent = careerCollapsed ? '▸' : '▾';
+  if (!careerCollapsed && !careerLoaded) { careerLoaded = true; loadWorkExperience(); loadJobBoardsList(); }
+}
+
+async function loadWorkExperience() {
+  const el = document.getElementById('workExpList');
+  el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div>';
+  try {
+    const data = await call('getWorkExperience', {});
+    const items = data.items || [];
+    if (!items.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No work experience entries yet.</div>'; return; }
+    el.innerHTML = '';
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:8px 0;border-bottom:1px solid var(--border);';
+      const dateRange = [item.start, item.current ? 'Present' : item.end].filter(Boolean).join(' – ');
+      row.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:13px;color:var(--text);flex:1;line-height:1.4;">${esc(item.role)}${item.employer ? ' <span style="color:var(--text3);">@ ' + esc(item.employer) + '</span>' : ''}</span>
+          ${dateRange ? `<span style="font-size:11px;color:var(--text3);white-space:nowrap;">${esc(dateRange)}</span>` : ''}
+          <button onclick='openEditWorkExpModal(${JSON.stringify(item).replace(/'/g,"&apos;")})' style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;">✎</button>
+          <button onclick="deleteWorkExpRow('${item.id}',this)" style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;opacity:.5;" onmouseover="this.style.opacity=1;this.style.color='#f87171'" onmouseout="this.style.opacity=.5;this.style.color='var(--text3)'" title="Delete">✕</button>
+        </div>
+        ${item.description ? `<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:3px;white-space:pre-wrap;">${esc(item.description)}</div>` : ''}
+        ${item.skills ? `<div style="font-size:11px;color:#68d391;margin-top:2px;">${esc(item.skills)}</div>` : ''}
+      `;
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message}</div>`;
+  }
+}
+
+let WE_EDIT_ID = null;
+function openAddWorkExpModal() {
+  WE_EDIT_ID = null;
+  document.getElementById('workExpModalTitle').textContent = 'Add Work Experience';
+  ['weRole','weEmployer','weStart','weEnd','weSkills','weDescription'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('weCurrent').checked = false;
+  document.getElementById('weEnd').disabled = false;
+  document.getElementById('workExpModalStatus').textContent = '';
+  document.getElementById('workExpModal').classList.add('open');
+}
+function openEditWorkExpModal(item) {
+  WE_EDIT_ID = item.id;
+  document.getElementById('workExpModalTitle').textContent = 'Edit Work Experience';
+  document.getElementById('weRole').value = item.role || '';
+  document.getElementById('weEmployer').value = item.employer || '';
+  document.getElementById('weStart').value = item.start || '';
+  document.getElementById('weEnd').value = item.end || '';
+  document.getElementById('weCurrent').checked = !!item.current;
+  document.getElementById('weEnd').disabled = !!item.current;
+  document.getElementById('weDescription').value = item.description || '';
+  document.getElementById('weSkills').value = item.skills || '';
+  document.getElementById('workExpModalStatus').textContent = '';
+  document.getElementById('workExpModal').classList.add('open');
+}
+function closeWorkExpModal() { document.getElementById('workExpModal').classList.remove('open'); }
+async function saveWorkExpModal() {
+  const role = document.getElementById('weRole').value.trim();
+  if (!role) { document.getElementById('workExpModalStatus').textContent = 'Role is required.'; return; }
+  const btn = document.getElementById('workExpSaveBtn');
+  const status = document.getElementById('workExpModalStatus');
+  btn.disabled = true; status.style.color = 'var(--text3)'; status.textContent = 'Saving...';
+  try {
+    const payload = {
+      role, employer: document.getElementById('weEmployer').value.trim(),
+      start: document.getElementById('weStart').value.trim(), end: document.getElementById('weEnd').value.trim(),
+      current: document.getElementById('weCurrent').checked,
+      description: document.getElementById('weDescription').value.trim(), skills: document.getElementById('weSkills').value.trim(),
+    };
+    const data = WE_EDIT_ID
+      ? await call('updateWorkExperience', { id: WE_EDIT_ID, ...payload })
+      : await call('addWorkExperience', payload);
+    if (data.error) throw new Error(data.error);
+    closeWorkExpModal();
+    loadWorkExperience();
+  } catch(e) {
+    status.style.color = '#ff4444'; status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function deleteWorkExpRow(id, btn) {
+  if (!confirm('Delete this work experience entry?')) return;
+  btn.disabled = true;
+  try {
+    const data = await call('deleteWorkExperience', { id });
+    if (data.error) throw new Error(data.error);
+    loadWorkExperience();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
+async function loadJobBoardsList() {
+  const el = document.getElementById('jobBoardsListEl');
+  el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div>';
+  try {
+    const data = await call('getJobBoardsList', {});
+    const boards = data.boards || [];
+    if (!boards.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No job boards yet.</div>'; return; }
+    el.innerHTML = '';
+    boards.forEach(b => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);';
+      const statusColor = b.status === 'Active' ? '#68d391' : 'var(--text3)';
+      row.innerHTML = `
+        <span style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border:1px solid ${statusColor}44;color:${statusColor};background:${statusColor}11;border-radius:3px;white-space:nowrap;flex-shrink:0;">${esc(b.status || '—')}</span>
+        <span style="font-size:13px;color:var(--text);flex:1;">${esc(b.name)}</span>
+        <span style="font-size:10px;color:var(--text3);">${esc(b.parser)}</span>
+        <button onclick='openEditJobBoardModal(${JSON.stringify(b).replace(/'/g,"&apos;")})' style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;">✎</button>
+        <button onclick="deleteJobBoardRow('${b.id}',this)" style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;opacity:.5;" onmouseover="this.style.opacity=1;this.style.color='#f87171'" onmouseout="this.style.opacity=.5;this.style.color='var(--text3)'" title="Delete">✕</button>
+      `;
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message}</div>`;
+  }
+}
+
+let JB_EDIT_ID = null;
+function openAddJobBoardModal() {
+  JB_EDIT_ID = null;
+  document.getElementById('jobBoardModalTitle').textContent = 'Add Job Board';
+  document.getElementById('jbName').value = ''; document.getElementById('jbFeedUrl').value = ''; document.getElementById('jbNotes').value = '';
+  document.getElementById('jbParser').value = 'generic_rss'; document.getElementById('jbStatus').value = 'Active';
+  document.getElementById('jobBoardModalStatus').textContent = '';
+  document.getElementById('jobBoardModal').classList.add('open');
+}
+function openEditJobBoardModal(b) {
+  JB_EDIT_ID = b.id;
+  document.getElementById('jobBoardModalTitle').textContent = 'Edit Job Board';
+  document.getElementById('jbName').value = b.name || ''; document.getElementById('jbFeedUrl').value = b.feedUrl || '';
+  document.getElementById('jbParser').value = b.parser || 'generic_rss'; document.getElementById('jbStatus').value = b.status || 'Active';
+  document.getElementById('jbNotes').value = b.notes || '';
+  document.getElementById('jobBoardModalStatus').textContent = '';
+  document.getElementById('jobBoardModal').classList.add('open');
+}
+function closeJobBoardModal() { document.getElementById('jobBoardModal').classList.remove('open'); }
+async function saveJobBoardModal() {
+  const name = document.getElementById('jbName').value.trim();
+  if (!name) { document.getElementById('jobBoardModalStatus').textContent = 'Name is required.'; return; }
+  const btn = document.getElementById('jobBoardSaveBtn');
+  const status = document.getElementById('jobBoardModalStatus');
+  btn.disabled = true; status.style.color = 'var(--text3)'; status.textContent = 'Saving...';
+  try {
+    const payload = {
+      name, feedUrl: document.getElementById('jbFeedUrl').value.trim(),
+      parser: document.getElementById('jbParser').value, status: document.getElementById('jbStatus').value,
+      notes: document.getElementById('jbNotes').value.trim(),
+    };
+    const data = JB_EDIT_ID
+      ? await call('updateJobBoard', { id: JB_EDIT_ID, ...payload })
+      : await call('addJobBoard', payload);
+    if (data.error) throw new Error(data.error);
+    closeJobBoardModal();
+    loadJobBoardsList();
+  } catch(e) {
+    status.style.color = '#ff4444'; status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function deleteJobBoardRow(id, btn) {
+  if (!confirm('Delete this job board?')) return;
+  btn.disabled = true;
+  try {
+    const data = await call('deleteJobBoard', { id });
+    if (data.error) throw new Error(data.error);
+    loadJobBoardsList();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false;
   }
 }
 

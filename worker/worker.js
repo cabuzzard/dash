@@ -13,6 +13,7 @@ const PLATFORMS_DB       = "8248b700ebb7428aa28d8b5246509898";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
 const JOB_BOARDS_DB      = "8ae388e65a93478bb3ad96a31b7c3f24"; // campaign-agnostic remote job board feeds, used by resume/Upwork-proposal generation
+const WORK_EXPERIENCE_DB = "d33f0d3bb7584b2c8a5e8f98444fe269"; // campaign-agnostic real career history, used by resume/Upwork-proposal generation
 const TEXT_VIDEO_SPECS_DB  = "3ce83fc9ef8b4dc185219598761abb7f";
 const TEXT_VIDEO_SCENES_DB = "afa52f6d81b7416d97696517bed8d9c2";
 // Shared design-system databases (asset-type-agnostic — carousel today, other
@@ -16439,49 +16440,119 @@ ${assemblyManifest}`;
         return json({ success: true, bufferPostId: result?.post?.id, slideCount: slideFiles.length, draft: true });
       }
 
-      // ── getAssetProductWorkHistory ──
-      // Resolves a Product's Keywords + Work History, either directly
-      // (productId — used from the Generate Assets modal before any
-      // asset/title exists yet) or via Asset -> Content Strategy (Title)
-      // -> Product (assetId — used from an existing asset row). Work
-      // History lives on the Product (not per-asset) specifically so
-      // it's entered once and reused by every resume/Upwork proposal
-      // asset under that product, instead of retyped per application.
-      if (body.action === "getAssetProductWorkHistory") {
-        const { assetId, productId: productIdParam } = body;
-        if (!assetId && !productIdParam) return json({ error: "assetId or productId required" }, 400);
-        const dashId = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+      // ── Work Experience (💼, global — TD tab "Career" section) ──
+      // A real career history is one thing, not one thing per Product —
+      // storing it per-Product (the original design) meant retyping the
+      // same facts for every product a resume/proposal might be written
+      // for. Lives in its own campaign-and-product-agnostic database,
+      // structured as one entry per role (not a single free-text blob)
+      // so the TD tab can render/add/edit/delete individual entries the
+      // same way Site TDs and Podcast items already work there.
+      const dashId16 = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+      if (body.action === "getWorkExperience") {
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        let productId = productIdParam ? productIdParam.replace(/-/g, "") : null;
-        if (!productId) {
-          const assetPage = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
-          if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
-          const titleId = assetPage.properties["Content Strategy"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
-          if (!titleId) return json({ error: "Asset is missing its Content Strategy relation" }, 400);
-          const titlePage = await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, { headers: hdr }).then(r => r.json());
-          if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
-          productId = titlePage.properties.product?.relation?.[0]?.id?.replace(/-/g,"") || null;
-          if (!productId) return json({ error: "This title has no Product set — Keywords and Work History live on the Product, set one first." }, 400);
-        }
-        const productPage = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, { headers: hdr }).then(r => r.json());
-        if (!productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
-        const productName = productPage.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
-        const keywords = (productPage.properties.Keywords?.rich_text || []).map(t => t.plain_text).join("");
-        const workHistory = (productPage.properties["Work History"]?.rich_text || []).map(t => t.plain_text).join("");
-        return json({ productId, productName, keywords, workHistory });
+        const pages = await notionQuery(WORK_EXPERIENCE_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] });
+        const items = pages.map(p => ({
+          id: p.id.replace(/-/g, ""),
+          role: p.properties.Role?.title?.map(t => t.plain_text).join("") || "",
+          employer: (p.properties.Employer?.rich_text || []).map(t => t.plain_text).join(""),
+          start: (p.properties.Start?.rich_text || []).map(t => t.plain_text).join(""),
+          end: (p.properties.End?.rich_text || []).map(t => t.plain_text).join(""),
+          current: !!p.properties.Current?.checkbox,
+          description: (p.properties.Description?.rich_text || []).map(t => t.plain_text).join(""),
+          skills: (p.properties.Skills?.rich_text || []).map(t => t.plain_text).join(""),
+        }));
+        return json({ items });
       }
 
-      // ── saveProductWorkHistory ──
-      if (body.action === "saveProductWorkHistory") {
-        const { productId, workHistory } = body;
-        if (!productId) return json({ error: "productId required" }, 400);
-        const dashId = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+      if (body.action === "addWorkExperience" || body.action === "updateWorkExperience") {
+        const { id, role, employer, start, end, current, description, skills } = body;
+        if (body.action === "addWorkExperience" && !role) return json({ error: "role required" }, 400);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, {
-          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Work History": { rich_text: chunkedRichText(String(workHistory || '')) } } }),
+        const props = {};
+        if (role !== undefined) props["Role"] = { title: [{ type: "text", text: { content: String(role).slice(0, 2000) } }] };
+        if (employer !== undefined) props["Employer"] = { rich_text: chunkedRichText(employer) };
+        if (start !== undefined) props["Start"] = { rich_text: chunkedRichText(start) };
+        if (end !== undefined) props["End"] = { rich_text: chunkedRichText(end) };
+        if (current !== undefined) props["Current"] = { checkbox: !!current };
+        if (description !== undefined) props["Description"] = { rich_text: chunkedRichText(description) };
+        if (skills !== undefined) props["Skills"] = { rich_text: chunkedRichText(skills) };
+        if (body.action === "addWorkExperience") {
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: WORK_EXPERIENCE_DB }, properties: props }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Create failed" }, createResp.status || 500);
+          return json({ success: true, id: created.id.replace(/-/g, "") });
+        } else {
+          if (!id) return json({ error: "id required" }, 400);
+          const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }),
+          });
+          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Update failed" }, patchResp.status); }
+          return json({ success: true });
+        }
+      }
+
+      if (body.action === "deleteWorkExperience") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
         });
-        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save Work History" }, patchResp.status); }
+        return json({ success: true });
+      }
+
+      // ── Job Boards (🗂️, global — TD tab "Career" section) ──
+      if (body.action === "getJobBoardsList") {
+        const pages = await notionQuery(JOB_BOARDS_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] });
+        const boards = pages.map(p => ({
+          id: p.id.replace(/-/g, ""),
+          name: p.properties.Name?.title?.map(t => t.plain_text).join("") || "",
+          feedUrl: p.properties["Feed URL"]?.url || "",
+          parser: p.properties.Parser?.select?.name || "",
+          status: p.properties.Status?.select?.name || "",
+          notes: (p.properties.Notes?.rich_text || []).map(t => t.plain_text).join(""),
+        }));
+        return json({ boards });
+      }
+
+      if (body.action === "addJobBoard" || body.action === "updateJobBoard") {
+        const { id, name, feedUrl, parser, status, notes } = body;
+        if (body.action === "addJobBoard" && !name) return json({ error: "name required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const props = {};
+        if (name !== undefined) props["Name"] = { title: [{ type: "text", text: { content: String(name).slice(0, 2000) } }] };
+        if (feedUrl !== undefined) props["Feed URL"] = { url: feedUrl || null };
+        if (parser !== undefined) props["Parser"] = parser ? { select: { name: parser } } : { select: null };
+        if (status !== undefined) props["Status"] = status ? { select: { name: status } } : { select: null };
+        if (notes !== undefined) props["Notes"] = { rich_text: chunkedRichText(notes) };
+        if (body.action === "addJobBoard") {
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: JOB_BOARDS_DB }, properties: props }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Create failed" }, createResp.status || 500);
+          return json({ success: true, id: created.id.replace(/-/g, "") });
+        } else {
+          if (!id) return json({ error: "id required" }, 400);
+          const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }),
+          });
+          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Update failed" }, patchResp.status); }
+          return json({ success: true });
+        }
+      }
+
+      if (body.action === "deleteJobBoard") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
+        });
         return json({ success: true });
       }
 
@@ -16523,10 +16594,24 @@ ${assemblyManifest}`;
         const productPage = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, { headers: hdr }).then(r => r.json());
         if (!productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
         const keywords = (productPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("");
-        const workHistory = (productPage.properties?.["Work History"]?.rich_text || []).map(t => t.plain_text).join("");
+
+        // Work History is global (💼 Career section, TD tab) — one real
+        // career, not one per Product. Format every entry into a single
+        // chronological block for the writing prompt below.
+        const workExpPages = await notionQuery(WORK_EXPERIENCE_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] });
+        const workHistory = workExpPages.map(p => {
+          const role = p.properties.Role?.title?.map(t => t.plain_text).join("") || "";
+          const employer = (p.properties.Employer?.rich_text || []).map(t => t.plain_text).join("");
+          const start = (p.properties.Start?.rich_text || []).map(t => t.plain_text).join("");
+          const end = p.properties.Current?.checkbox ? "Present" : (p.properties.End?.rich_text || []).map(t => t.plain_text).join("");
+          const description = (p.properties.Description?.rich_text || []).map(t => t.plain_text).join("");
+          const skills = (p.properties.Skills?.rich_text || []).map(t => t.plain_text).join("");
+          const dateRange = [start, end].filter(Boolean).join(" – ");
+          return `${role}${employer ? ` @ ${employer}` : ''}${dateRange ? ` (${dateRange})` : ''}\n${description}${skills ? `\nSkills: ${skills}` : ''}`;
+        }).filter(Boolean).join("\n\n");
 
         if (!workHistory.trim()) {
-          return json({ success: true, created: 0, needsWorkHistory: true, note: `This Product has no Work History yet — add it via the 📋 Work History button, then Generate again.` });
+          return json({ success: true, created: 0, needsWorkHistory: true, note: `No Work Experience entries yet — add them in the main dashboard's TD tab (💼 Career section), then Generate again.` });
         }
 
         const splitTerms = s => String(s || '').split(/[,;\n]+/).map(x => x.trim()).filter(Boolean);
