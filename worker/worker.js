@@ -17049,7 +17049,7 @@ Return ONLY the finished image-generation prompt text — no preamble, no markdo
           const resp = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'dall-e-3', prompt: richPrompt.slice(0, 4000), size: '1024x1792', quality: 'hd', style: 'vivid', n: 1, response_format: 'b64_json' }),
+            body: JSON.stringify({ model: 'dall-e-3', prompt: richPrompt.slice(0, 4000), size: '1024x1792', quality: 'hd', n: 1, response_format: 'b64_json' }),
           });
           if (!resp.ok) { const t = await resp.text(); return json({ error: `OpenAI image generation failed (HTTP ${resp.status}): ${t.slice(0, 500)}` }, 502); }
           const data = await resp.json();
