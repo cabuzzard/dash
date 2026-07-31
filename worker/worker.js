@@ -17049,11 +17049,24 @@ Return ONLY the finished image-generation prompt text — no preamble, no markdo
           const resp = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'dall-e-3', prompt: richPrompt.slice(0, 4000), size: '1024x1792', quality: 'hd', n: 1, response_format: 'b64_json' }),
+            body: JSON.stringify({ model: 'dall-e-3', prompt: richPrompt.slice(0, 4000), size: '1024x1792', quality: 'hd', n: 1 }),
           });
           if (!resp.ok) { const t = await resp.text(); return json({ error: `OpenAI image generation failed (HTTP ${resp.status}): ${t.slice(0, 500)}` }, 502); }
           const data = await resp.json();
           b64 = data.data?.[0]?.b64_json;
+          // dall-e-3 may still default to returning a temporary "url" instead
+          // of b64_json now that response_format is no longer an accepted
+          // param — fetch and convert it ourselves if that's what came back.
+          const tempUrl = data.data?.[0]?.url;
+          if (!b64 && tempUrl) {
+            const imgResp = await fetch(tempUrl);
+            if (!imgResp.ok) return json({ error: `Failed to fetch dall-e-3 temporary image URL (HTTP ${imgResp.status})` }, 502);
+            const buf = await imgResp.arrayBuffer();
+            const bytes = new Uint8Array(buf);
+            let bin = ''; const chunk = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+            b64 = btoa(bin);
+          }
         } else {
           const resp = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
