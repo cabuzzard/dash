@@ -16976,6 +16976,31 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
         return json({ success: true, created, failures: failures.length ? failures : undefined });
       }
 
+      // ── testDesignCardImage (EXPERIMENTAL, not wired into any UI) ──
+      // One-off test: can gpt-image-1 produce a usable "Design Card" — a
+      // single mockup image showing palette/typography/layout/icon style
+      // for a carousel or video motif — in one shot, as a candidate
+      // replacement for ChatGPT's Stage 1 Design Card step. Returns the
+      // raw image so the operator can visually judge quality before any
+      // pipeline decision is made. Does not touch Notion, GitHub, or any
+      // existing asset — pure throwaway experiment, safe to delete.
+      if (body.action === "testDesignCardImage") {
+        const { prompt } = body;
+        if (!prompt || !String(prompt).trim()) return json({ error: "prompt required" }, 400);
+        const OPENAI_API_KEY = (env.OPENAI_API_KEY || '').trim();
+        if (!OPENAI_API_KEY) return json({ error: "OPENAI_API_KEY not configured" }, 500);
+        const resp = await fetch('https://api.openai.com/v1/images/generations', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'gpt-image-1', prompt, size: '1024x1536', quality: 'high', n: 1 }),
+        });
+        if (!resp.ok) { const t = await resp.text(); return json({ error: `OpenAI image generation failed (HTTP ${resp.status}): ${t.slice(0, 500)}` }, 502); }
+        const data = await resp.json();
+        const b64 = data.data?.[0]?.b64_json;
+        if (!b64) return json({ error: "OpenAI returned no image data" }, 502);
+        return json({ success: true, imageB64: b64 });
+      }
+
       // ── generateJobAsset ──
       // Bulk research-and-write: searches real postings (job boards for
       // resume, Upwork via Apify for proposals) using the Product's
