@@ -17,6 +17,7 @@ const WORK_EXPERIENCE_DB = "d6b2114bceb1444382fa80bd2233a077"; // campaign-agnos
 const EDUCATION_DB       = "2d3b4dfd75ae41bcae083375c5892b44"; // campaign-agnostic education history, used by resume generation
 const SKILLS_DB          = "61397070ba9145c6b5a5a3657a182fbb"; // campaign-agnostic skills list, used by resume/Upwork-proposal generation
 const CHARACTER_ARCS_DB  = "dedbde3560464346bfcb77831cffd244"; // campaign-agnostic personal narrative arcs, topic-tagged; considered in title/asset generation where relevant
+const CAREER_AVATARS_DB  = "8fa7df53a3714427b0a72db1e8572957"; // campaign-agnostic resume personas, each linked to a curated slice of Work Experience; selected in generateJobAsset to align a resume/proposal with the target job
 const TEXT_VIDEO_SPECS_DB  = "3ce83fc9ef8b4dc185219598761abb7f";
 const TEXT_VIDEO_SCENES_DB = "afa52f6d81b7416d97696517bed8d9c2";
 // Shared design-system databases (asset-type-agnostic — carousel today, other
@@ -16749,6 +16750,73 @@ ${assemblyManifest}`;
         return json({ success: true });
       }
 
+      // ── Career Avatars (🧑‍💼, global — TD tab "Personal Research" area) ──
+      // A curated professional persona: a name/summary plus a hand-picked
+      // subset of Work Experience entries. Selected in generateJobAsset so
+      // a resume for a construction job pulls the Construction Manager
+      // avatar's linked experience (not the AI Systems one), and vice
+      // versa — instead of every resume flattening the whole career.
+      if (body.action === "getCareerAvatars") {
+        const [pages, workExpPages] = await Promise.all([
+          notionQuery(CAREER_AVATARS_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] }),
+          notionQuery(WORK_EXPERIENCE_DB, {}),
+        ]);
+        const weLabel = {};
+        workExpPages.forEach(p => {
+          const role = p.properties.Role?.title?.map(t => t.plain_text).join("") || "";
+          const employer = (p.properties.Employer?.rich_text || []).map(t => t.plain_text).join("");
+          weLabel[p.id.replace(/-/g, "")] = `${role}${employer ? ` @ ${employer}` : ''}`;
+        });
+        const items = pages.map(p => {
+          const workExpIds = (p.properties["Work Experience"]?.relation || []).map(r => r.id.replace(/-/g, ""));
+          return {
+            id: p.id.replace(/-/g, ""),
+            name: p.properties.Name?.title?.map(t => t.plain_text).join("") || "",
+            summary: (p.properties.Summary?.rich_text || []).map(t => t.plain_text).join(""),
+            status: p.properties.Status?.select?.name || "",
+            workExperienceIds: workExpIds,
+            workExperienceLabels: workExpIds.map(id => weLabel[id] || id),
+          };
+        });
+        return json({ items, allWorkExperience: workExpPages.map(p => ({ id: p.id.replace(/-/g, ""), label: weLabel[p.id.replace(/-/g, "")] })) });
+      }
+
+      if (body.action === "addCareerAvatar" || body.action === "updateCareerAvatar") {
+        const { id, name, summary, status, workExperienceIds } = body;
+        if (body.action === "addCareerAvatar" && !name) return json({ error: "name required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const props = {};
+        if (name !== undefined) props["Name"] = { title: [{ type: "text", text: { content: String(name).slice(0, 2000) } }] };
+        if (summary !== undefined) props["Summary"] = { rich_text: chunkedRichText(summary) };
+        if (status !== undefined) props["Status"] = status ? { select: { name: status } } : { select: null };
+        if (workExperienceIds !== undefined) props["Work Experience"] = { relation: (Array.isArray(workExperienceIds) ? workExperienceIds : []).map(wid => ({ id: dashId16(wid) })) };
+        if (body.action === "addCareerAvatar") {
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: CAREER_AVATARS_DB }, properties: props }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Create failed" }, createResp.status || 500);
+          return json({ success: true, id: created.id.replace(/-/g, "") });
+        } else {
+          if (!id) return json({ error: "id required" }, 400);
+          const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }),
+          });
+          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Update failed" }, patchResp.status); }
+          return json({ success: true });
+        }
+      }
+
+      if (body.action === "deleteCareerAvatar") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
+        });
+        return json({ success: true });
+      }
+
       // ── generateJobAsset ──
       // Bulk research-and-write: searches real postings (job boards for
       // resume, Upwork via Apify for proposals) using the Product's
@@ -16761,7 +16829,7 @@ ${assemblyManifest}`;
       // pulls a fresh batch of postings and adds another set, it never
       // overwrites what's already there.
       if (body.action === "generateJobAsset") {
-        const { titleId, campaignId, assetType, productId: productIdParam, researchInstructions } = body;
+        const { titleId, campaignId, assetType, productId: productIdParam, researchInstructions, avatarId } = body;
         if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
         if (!["resume", "upwork proposal"].includes(assetType)) return json({ error: 'assetType must be "resume" or "upwork proposal"' }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
@@ -16790,9 +16858,18 @@ ${assemblyManifest}`;
 
         // Work History is global (💼 Career section, TD tab) — one real
         // career, not one per Product. Format every entry into a single
-        // chronological block for the writing prompt below.
+        // chronological block for the writing prompt below. If a Career
+        // Avatar was picked, restrict this to only that persona's linked
+        // entries — so a resume for a construction job pulls the
+        // Construction Manager avatar's experience, not the whole career.
+        let avatarPage = null, avatarWorkExpIds = null;
+        if (avatarId) {
+          avatarPage = await fetch(`https://api.notion.com/v1/pages/${dashId(avatarId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          if (avatarPage?.properties) avatarWorkExpIds = new Set((avatarPage.properties["Work Experience"]?.relation || []).map(r => r.id.replace(/-/g, "")));
+        }
         const workExpPages = await notionQuery(WORK_EXPERIENCE_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] });
-        const workHistory = workExpPages.map(p => {
+        const relevantWorkExpPages = avatarWorkExpIds ? workExpPages.filter(p => avatarWorkExpIds.has(p.id.replace(/-/g, ""))) : workExpPages;
+        const workHistory = relevantWorkExpPages.map(p => {
           const role = p.properties.Role?.title?.map(t => t.plain_text).join("") || "";
           const employer = (p.properties.Employer?.rich_text || []).map(t => t.plain_text).join("");
           const start = (p.properties.Start?.rich_text || []).map(t => t.plain_text).join("");
@@ -16804,8 +16881,10 @@ ${assemblyManifest}`;
         }).filter(Boolean).join("\n\n");
 
         if (!workHistory.trim()) {
-          return json({ success: true, created: 0, needsWorkHistory: true, note: `No Work Experience entries yet — add them in the main dashboard's TD tab (💼 Career section), then Generate again.` });
+          return json({ success: true, created: 0, needsWorkHistory: true, note: avatarWorkExpIds ? `This Career Avatar has no Work Experience linked — link some entries to it in the TD tab, then Generate again.` : `No Work Experience entries yet — add them in the main dashboard's TD tab (💼 Career section), then Generate again.` });
         }
+        const avatarName = avatarPage?.properties?.Name?.title?.map(t => t.plain_text).join("") || "";
+        const avatarSummary = avatarPage?.properties?.Summary?.rich_text?.map(t => t.plain_text).join("") || "";
 
         // Education + Skills are the same global source (🎓/🛠, Career
         // section) — folded into the writing prompt alongside Work History
@@ -16932,13 +17011,13 @@ ${assemblyManifest}`;
         const written = await Promise.all(ranked.map(async posting => {
           const prompt = isResume
             ? `You are writing a tailored resume AND a tailored cover letter for this specific job posting, using the candidate's real work history below. Never invent experience, employers, dates, or achievements that aren't in the work history — only select, emphasize, and phrase what's already true to match this posting.
-
+${avatarName ? `\nPROFESSIONAL PERSONA FOR THIS RESUME: "${avatarName}" — ${avatarSummary || '(no summary on file)'}\nThe work history below has already been filtered to this persona's relevant experience. Open the resume's summary/profile in a tone consistent with this framing.\n` : ''}
 JOB POSTING: "${posting.title}"${posting.company ? ` @ ${posting.company}` : ''}
 ${posting.description}
 
 RELEVANT KEYWORDS (work these in naturally wherever genuinely true, for ATS matching — never force one that doesn't fit): ${keywords || 'none provided'}
 
-CANDIDATE'S REAL WORK HISTORY (the only source of truth for experience — do not add anything not here):
+CANDIDATE'S REAL WORK HISTORY${avatarName ? ` (curated for the "${avatarName}" persona — the only source of truth for experience)` : ' (the only source of truth for experience — do not add anything not here)'}:
 ${workHistory}
 
 CANDIDATE'S REAL EDUCATION (the only source of truth for education — omit the section entirely if empty, never invent a degree):
@@ -16949,13 +17028,13 @@ ${skillsBlock || '(none on file)'}
 
 Write plain text (use line breaks and simple markers like "—" or "•" for structure, no markdown headers). First the resume: a short summary/profile tailored to this posting, work experience (role, employer, dates, 2-4 achievement-focused bullets each, pulled and rephrased from the work history), a skills section (drawn only from the real skills list above, prioritizing whichever match this posting), and an education section (drawn only from the real education list above — omit entirely if it's empty). Then, on a line by itself exactly "===COVER LETTER===", followed by a complete tailored cover letter for this specific posting (addresses what this posting needs, references 1-2 genuinely relevant pieces of the work history, clear closing). Return ONLY the resume text, the marker line, then the cover letter — nothing else.`
             : `You are writing an Upwork proposal for this specific job listing, using the freelancer's real work history below. Never invent experience or claims that aren't in the work history.
-
+${avatarName ? `\nPROFESSIONAL PERSONA FOR THIS PROPOSAL: "${avatarName}" — ${avatarSummary || '(no summary on file)'}\nThe work history below has already been filtered to this persona's relevant experience.\n` : ''}
 UPWORK JOB LISTING: "${posting.title}"
 ${posting.description}
 
 RELEVANT KEYWORDS (work in naturally where genuinely true): ${keywords || 'none provided'}
 
-FREELANCER'S REAL WORK HISTORY (the only source of truth — do not add anything not here):
+FREELANCER'S REAL WORK HISTORY${avatarName ? ` (curated for the "${avatarName}" persona)` : ' (the only source of truth — do not add anything not here)'}:
 ${workHistory}
 
 FREELANCER'S REAL SKILLS LIST (only reference skills genuinely on this list): ${skillsBlock || '(none on file)'}
@@ -16980,7 +17059,7 @@ Write a complete Upwork proposal as plain text: open by directly addressing what
           const header = `JOB POSTING: ${w.posting.title}${w.posting.company ? ` @ ${w.posting.company}` : ''}\nSource: ${w.posting.source}\nListing: ${w.posting.url}\n\n`;
           const fullText = header + w.text;
           const assetProps = {
-            "Asset Title": { title: [{ type: "text", text: { content: `${isResume ? 'Resume' : 'Upwork Proposal'} — ${w.posting.title}${w.posting.company ? ' @ ' + w.posting.company : ''}`.slice(0, 200) } }] },
+            "Asset Title": { title: [{ type: "text", text: { content: `${isResume ? 'Resume' : 'Upwork Proposal'}${avatarName ? ` (${avatarName})` : ''} — ${w.posting.title}${w.posting.company ? ' @ ' + w.posting.company : ''}`.slice(0, 200) } }] },
             "Asset Type": { select: { name: assetType } },
             "Content Strategy": { relation: [{ id: dashId(titleId) }] },
             "Campaign": { relation: [{ id: dashId(campaignId) }] },

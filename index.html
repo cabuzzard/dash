@@ -698,6 +698,12 @@
         <div id="workExpList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 6px;">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Career Avatars <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— personas, each a curated slice of Work Experience, selectable when generating a Resume/Upwork Proposal</span></span>
+          <button onclick="openAddCareerAvatarModal()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
+        </div>
+        <div id="careerAvatarsListEl"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 6px;">
           <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Education</span>
           <button onclick="openAddEducationModal()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
         </div>
@@ -1800,6 +1806,37 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeCharacterArcModal()">Cancel</button>
       <button class="btn btn-primary" id="characterArcSaveBtn" onclick="saveCharacterArcModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Career Avatar Modal (🧠 Personal Research, TD tab) -->
+<div class="modal-bg" id="careerAvatarModal" onclick="if(event.target===this)closeCareerAvatarModal()">
+  <div class="modal">
+    <div class="modal-title" id="careerAvatarModalTitle">Add Career Avatar</div>
+    <div class="modal-field">
+      <label class="modal-label">Name</label>
+      <input class="modal-input" id="cavName" type="text" placeholder="e.g. Construction Manager" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Summary <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— short professional framing used to open a resume written from this persona</span></label>
+      <textarea class="modal-input" id="cavSummary" rows="4" style="resize:vertical;line-height:1.5;"></textarea>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Linked Work Experience <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— only these entries are used when this avatar is picked for a resume/proposal</span></label>
+      <div id="cavWorkExpChecklist" style="max-height:180px;overflow-y:auto;border:1px solid var(--border2);border-radius:4px;padding:8px 10px;font-size:12px;color:var(--text2);"></div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Status</label>
+      <select class="modal-input" id="cavStatus">
+        <option value="Draft">Draft — not selectable yet</option>
+        <option value="Ready" selected>Ready — selectable when generating</option>
+      </select>
+    </div>
+    <div id="careerAvatarModalStatus" style="font-size:12px;color:var(--text3);min-height:16px;margin-bottom:6px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeCareerAvatarModal()">Cancel</button>
+      <button class="btn btn-primary" id="careerAvatarSaveBtn" onclick="saveCareerAvatarModal()">Save</button>
     </div>
   </div>
 </div>
@@ -8548,7 +8585,7 @@ function toggleCareerSection() {
   careerCollapsed = !careerCollapsed;
   document.getElementById('careerBody').style.display = careerCollapsed ? 'none' : '';
   document.getElementById('careerToggleIcon').textContent = careerCollapsed ? '▸' : '▾';
-  if (!careerCollapsed && !careerLoaded) { careerLoaded = true; loadWorkExperience(); loadEducation(); loadSkillsList(); loadCharacterArcs(); loadJobBoardsList(); }
+  if (!careerCollapsed && !careerLoaded) { careerLoaded = true; loadWorkExperience(); loadCareerAvatars(); loadEducation(); loadSkillsList(); loadCharacterArcs(); loadJobBoardsList(); }
 }
 
 async function loadWorkExperience() {
@@ -8970,6 +9007,104 @@ async function deleteCharacterArcRow(id, btn) {
     const data = await call('deleteCharacterArc', { id });
     if (data.error) throw new Error(data.error);
     loadCharacterArcs();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
+let CAV_WORK_EXP_OPTIONS = []; // populated by loadCareerAvatars; reused by the add/edit modal's checklist
+async function loadCareerAvatars() {
+  const el = document.getElementById('careerAvatarsListEl');
+  el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div>';
+  try {
+    const data = await call('getCareerAvatars', {});
+    const items = data.items || [];
+    CAV_WORK_EXP_OPTIONS = data.allWorkExperience || [];
+    if (!items.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No career avatars yet.</div>'; return; }
+    el.innerHTML = '';
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:8px 0;border-bottom:1px solid var(--border);';
+      const statusColor = item.status === 'Ready' ? '#68d391' : 'var(--text3)';
+      row.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border:1px solid ${statusColor}44;color:${statusColor};background:${statusColor}11;border-radius:3px;white-space:nowrap;flex-shrink:0;">${esc(item.status || '—')}</span>
+          <span style="font-size:13px;color:var(--text);flex:1;line-height:1.4;">${esc(item.name)}</span>
+          <button onclick='openEditCareerAvatarModal(${JSON.stringify(item).replace(/'/g,"&apos;")})' style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;">✎</button>
+          <button onclick="deleteCareerAvatarRow('${item.id}',this)" style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;opacity:.5;" onmouseover="this.style.opacity=1;this.style.color='#f87171'" onmouseout="this.style.opacity=.5;this.style.color='var(--text3)'" title="Delete">✕</button>
+        </div>
+        ${item.summary ? `<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:4px;">${esc(item.summary)}</div>` : ''}
+        ${item.workExperienceLabels && item.workExperienceLabels.length ? `<div style="font-size:11px;color:#63b3ed;margin-top:3px;">↳ ${item.workExperienceLabels.map(esc).join(' · ')}</div>` : '<div style="font-size:11px;color:#f0b429;margin-top:3px;">⚠ No Work Experience linked yet</div>'}
+      `;
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message}</div>`;
+  }
+}
+
+function cavRenderChecklist(checkedIds) {
+  const el = document.getElementById('cavWorkExpChecklist');
+  const checked = new Set(checkedIds || []);
+  if (!CAV_WORK_EXP_OPTIONS.length) { el.innerHTML = '<div style="color:var(--text3);">No Work Experience entries yet — add some above first.</div>'; return; }
+  el.innerHTML = CAV_WORK_EXP_OPTIONS.map(we => `
+    <label style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;">
+      <input type="checkbox" class="cav-we-cb" value="${esc(we.id)}" ${checked.has(we.id) ? 'checked' : ''} />
+      <span>${esc(we.label)}</span>
+    </label>
+  `).join('');
+}
+
+let CAV_EDIT_ID = null;
+function openAddCareerAvatarModal() {
+  CAV_EDIT_ID = null;
+  document.getElementById('careerAvatarModalTitle').textContent = 'Add Career Avatar';
+  document.getElementById('cavName').value = ''; document.getElementById('cavSummary').value = '';
+  document.getElementById('cavStatus').value = 'Ready';
+  cavRenderChecklist([]);
+  document.getElementById('careerAvatarModalStatus').textContent = '';
+  document.getElementById('careerAvatarModal').classList.add('open');
+}
+function openEditCareerAvatarModal(item) {
+  CAV_EDIT_ID = item.id;
+  document.getElementById('careerAvatarModalTitle').textContent = 'Edit Career Avatar';
+  document.getElementById('cavName').value = item.name || '';
+  document.getElementById('cavSummary').value = item.summary || '';
+  document.getElementById('cavStatus').value = item.status || 'Ready';
+  cavRenderChecklist(item.workExperienceIds || []);
+  document.getElementById('careerAvatarModalStatus').textContent = '';
+  document.getElementById('careerAvatarModal').classList.add('open');
+}
+function closeCareerAvatarModal() { document.getElementById('careerAvatarModal').classList.remove('open'); }
+async function saveCareerAvatarModal() {
+  const name = document.getElementById('cavName').value.trim();
+  if (!name) { document.getElementById('careerAvatarModalStatus').textContent = 'Name is required.'; return; }
+  const btn = document.getElementById('careerAvatarSaveBtn');
+  const status = document.getElementById('careerAvatarModalStatus');
+  btn.disabled = true; status.style.color = 'var(--text3)'; status.textContent = 'Saving...';
+  try {
+    const workExperienceIds = [...document.querySelectorAll('.cav-we-cb:checked')].map(cb => cb.value);
+    const payload = { name, summary: document.getElementById('cavSummary').value.trim(), status: document.getElementById('cavStatus').value, workExperienceIds };
+    const data = CAV_EDIT_ID
+      ? await call('updateCareerAvatar', { id: CAV_EDIT_ID, ...payload })
+      : await call('addCareerAvatar', payload);
+    if (data.error) throw new Error(data.error);
+    closeCareerAvatarModal();
+    loadCareerAvatars();
+  } catch(e) {
+    status.style.color = '#ff4444'; status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function deleteCareerAvatarRow(id, btn) {
+  if (!confirm('Delete this career avatar?')) return;
+  btn.disabled = true;
+  try {
+    const data = await call('deleteCareerAvatar', { id });
+    if (data.error) throw new Error(data.error);
+    loadCareerAvatars();
   } catch(e) {
     alert('Error: ' + e.message);
     btn.disabled = false;

@@ -1017,7 +1017,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       </div>
 
       <div id="gaJobAssetWrap" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #3a3350;background:rgba(159,122,234,.06);border-radius:4px;">
-        <div style="font-size:11px;color:#b794f4;">Generate searches real postings (job boards for Resume, Upwork for Upwork Proposal) using the Product's Keywords below, writes a tailored asset for the top 5 matches, each with the posting link attached. Pick/create the Product above first — real career history is global, not per-product: manage it in the main dashboard's <strong>TD tab → 💼 Career</strong> section before generating.</div>
+        <div style="font-size:11px;color:#b794f4;margin-bottom:8px;">Generate searches real postings (job boards for Resume, Upwork for Upwork Proposal) using the Product's Keywords below, writes a tailored asset for the top 5 matches, each with the posting link attached. Pick/create the Product above first — real career history is global, not per-product: manage it in the main dashboard's <strong>TD tab → 🧠 Personal Research</strong> section before generating.</div>
+        <label class="lm-label">Career Avatar <span style="color:#777;font-weight:normal;">— optional; aligns the resume/proposal's emphasis with a specific professional persona (e.g. Construction Manager) instead of your whole career. Manage avatars in the TD tab too.</span></label>
+        <select class="modal-ta" id="gaAvatarInput">
+          <option value="">— use full work history (no avatar) —</option>
+        </select>
       </div>
 
       <div class="ga-hide-for-carousel">
@@ -4767,6 +4771,7 @@ function gaUpdateSkillHint() {
     if (avatarWrap) avatarWrap.style.display = isAvatar ? 'block' : 'none';
     if (jobWrap) jobWrap.style.display = isJobAsset ? 'block' : 'none';
     if (isAvatar) gaLoadCampaignPresenter();
+    if (isJobAsset) gaLoadCareerAvatars();
     return;
   }
   if (typeWrap) typeWrap.style.display = 'none';
@@ -4808,6 +4813,24 @@ function gaLoadCampaignPresenter() {
   w('getCampaignPresenter', { campaignId }).then(r => {
     GA_PRESENTER_CACHE = { campaignId, presenterCharacter: r.presenterCharacter || '' };
     gaApplyPresenterToField(GA_PRESENTER_CACHE.presenterCharacter);
+  }).catch(() => {});
+}
+
+// Career Avatars are global (not per-campaign), so this loads once per
+// modal open and just repopulates the select — no caching key needed.
+function gaLoadCareerAvatars() {
+  const sel = document.getElementById('gaAvatarInput');
+  if (!sel) return;
+  w('getCareerAvatars', {}).then(r => {
+    const current = sel.value;
+    sel.innerHTML = '<option value="">— use full work history (no avatar) —</option>';
+    (r.items || []).filter(a => a.status === 'Ready').forEach(a => {
+      const o = document.createElement('option');
+      o.value = a.id;
+      o.textContent = a.name;
+      sel.appendChild(o);
+    });
+    if ([...sel.options].some(o => o.value === current)) sel.value = current;
   }).catch(() => {});
 }
 
@@ -5777,6 +5800,7 @@ async function submitGenAssets() {
         description, seedKeywords, researchInstructions, designSpecId,
         assetType: isJobAsset ? skillMatch.assetType : undefined,
         productId: isJobAsset ? jobProductId : undefined,
+        avatarId: isJobAsset ? (document.getElementById('gaAvatarInput')?.value || undefined) : undefined,
       });
       if (r.error) throw new Error(r.error);
       if (isAvatarScript) {
