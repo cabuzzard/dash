@@ -12,6 +12,7 @@ const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
 const PLATFORMS_DB       = "8248b700ebb7428aa28d8b5246509898";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
+const JOB_BOARDS_DB      = "8ae388e65a93478bb3ad96a31b7c3f24"; // campaign-agnostic remote job board feeds, used by resume/Upwork-proposal generation
 const TEXT_VIDEO_SPECS_DB  = "3ce83fc9ef8b4dc185219598761abb7f";
 const TEXT_VIDEO_SCENES_DB = "afa52f6d81b7416d97696517bed8d9c2";
 // Shared design-system databases (asset-type-agnostic — carousel today, other
@@ -16439,24 +16440,29 @@ ${assemblyManifest}`;
       }
 
       // ── getAssetProductWorkHistory ──
-      // Resolves Asset -> Content Strategy (Title) -> Product, and
-      // returns that Product's Keywords + Work History. Work History
-      // lives on the Product (not per-asset) specifically so it's
-      // entered once and reused by every resume/Upwork proposal asset
-      // under that product, instead of retyped for every application.
+      // Resolves a Product's Keywords + Work History, either directly
+      // (productId — used from the Generate Assets modal before any
+      // asset/title exists yet) or via Asset -> Content Strategy (Title)
+      // -> Product (assetId — used from an existing asset row). Work
+      // History lives on the Product (not per-asset) specifically so
+      // it's entered once and reused by every resume/Upwork proposal
+      // asset under that product, instead of retyped per application.
       if (body.action === "getAssetProductWorkHistory") {
-        const { assetId } = body;
-        if (!assetId) return json({ error: "assetId required" }, 400);
+        const { assetId, productId: productIdParam } = body;
+        if (!assetId && !productIdParam) return json({ error: "assetId or productId required" }, 400);
         const dashId = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
-        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
-        const titleId = assetPage.properties["Content Strategy"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
-        if (!titleId) return json({ error: "Asset is missing its Content Strategy relation" }, 400);
-        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, { headers: hdr }).then(r => r.json());
-        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
-        const productId = titlePage.properties.product?.relation?.[0]?.id?.replace(/-/g,"") || null;
-        if (!productId) return json({ error: "This title has no Product set — Keywords and Work History live on the Product, set one first." }, 400);
+        let productId = productIdParam ? productIdParam.replace(/-/g, "") : null;
+        if (!productId) {
+          const assetPage = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
+          if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+          const titleId = assetPage.properties["Content Strategy"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+          if (!titleId) return json({ error: "Asset is missing its Content Strategy relation" }, 400);
+          const titlePage = await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, { headers: hdr }).then(r => r.json());
+          if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+          productId = titlePage.properties.product?.relation?.[0]?.id?.replace(/-/g,"") || null;
+          if (!productId) return json({ error: "This title has no Product set — Keywords and Work History live on the Product, set one first." }, 400);
+        }
         const productPage = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, { headers: hdr }).then(r => r.json());
         if (!productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
         const productName = productPage.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
@@ -16480,81 +16486,171 @@ ${assemblyManifest}`;
       }
 
       // ── generateJobAsset ──
-      // Writes the actual resume or Upwork proposal text. The one step
-      // in this pipeline that needs no web search — just Claude plus
-      // what's already in Notion: the Title's own body (the specific
-      // job/gig posting this asset is for, written there by whichever
-      // research step found it), the Product's Keywords (ATS/relevance
-      // matching), and Work History (the real, factual career
-      // background — never invented). Upserts the Asset, same
-      // non-duplicating pattern every other one-click method here uses.
+      // Bulk research-and-write: searches real postings (job boards for
+      // resume, Upwork via Apify for proposals) using the Product's
+      // Keywords + any operator override, ranks by keyword relevance,
+      // and writes ONE tailored asset per top posting (up to 5) under
+      // this title — resume type gets a resume + cover letter per
+      // posting, proposal type gets a proposal letter per listing. Each
+      // asset carries the real posting URL so the operator can open it.
+      // Additive, same as Text Video's 5-script batches: running again
+      // pulls a fresh batch of postings and adds another set, it never
+      // overwrites what's already there.
       if (body.action === "generateJobAsset") {
-        const { titleId, campaignId, assetType } = body;
+        const { titleId, campaignId, assetType, productId: productIdParam, researchInstructions } = body;
         if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
         if (!["resume", "upwork proposal"].includes(assetType)) return json({ error: 'assetType must be "resume" or "upwork proposal"' }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dashId = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const isResume = assetType === "resume";
 
         const titlePage = await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, { headers: hdr }).then(r => r.json());
         if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
         const titleName = titlePage.properties.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
-        const productId = titlePage.properties.product?.relation?.[0]?.id?.replace(/-/g,"") || null;
-        if (!productId) return json({ error: "This title has no Product set — Keywords and Work History live on the Product." }, 400);
+        let productId = productIdParam ? productIdParam.replace(/-/g, "") : (titlePage.properties.product?.relation?.[0]?.id?.replace(/-/g,"") || null);
+        if (!productId) return json({ error: "This title has no Product set — Keywords and Work History live on the Product, pick one in the modal first." }, 400);
+        // If the title didn't already carry this product relation (e.g. it
+        // was picked fresh in the modal), link it now so future runs and
+        // the Work History lookup resolve it the same way.
+        if (!titlePage.properties.product?.relation?.[0]?.id) {
+          await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "product": { relation: [{ id: dashId(productId) }] } } }),
+          }).catch(() => {});
+        }
 
         const productPage = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, { headers: hdr }).then(r => r.json());
+        if (!productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
         const keywords = (productPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("");
         const workHistory = (productPage.properties?.["Work History"]?.rich_text || []).map(t => t.plain_text).join("");
-        const isResume = assetType === "resume";
 
-        // No Work History yet: still create/upsert the Asset row (with a
-        // placeholder body explaining why) rather than hard-failing with
-        // nothing created — otherwise there's no row for the operator to
-        // even find the 📋 Work History button on the very first run for
-        // a new product. A later Generate re-run, once Work History is
-        // set, overwrites this placeholder with the real thing.
-        let text, needsWorkHistory = false;
         if (!workHistory.trim()) {
-          needsWorkHistory = true;
-          text = `[Needs Work History] Add this product's Work History via the 📋 Work History button on this asset row, then click Generate again to write the real ${isResume ? 'resume' : 'proposal'}.`;
-        } else {
-          // The job/gig posting this title represents — read the Title's
-          // own page body (written by the job-board/Upwork research
-          // step) rather than trusting a property, since a posting's
-          // full text doesn't fit cleanly into a short field.
-          const fetchAllBlocks = async pageId => {
-            let blocks = [], cursor;
-            do {
-              const url = `https://api.notion.com/v1/blocks/${pageId}/children?page_size=100${cursor ? `&start_cursor=${cursor}` : ''}`;
-              const resp = await fetch(url, { headers: hdr }).then(r => r.json());
-              blocks = blocks.concat(resp.results || []);
-              cursor = resp.has_more ? resp.next_cursor : undefined;
-            } while (cursor);
-            return blocks;
-          };
-          const blocks = await fetchAllBlocks(dashId(titleId));
-          const postingText = blocks.map(b => {
-            const rt = b[b.type]?.rich_text;
-            return Array.isArray(rt) ? rt.map(t => t.plain_text).join("") : "";
-          }).filter(Boolean).join("\n");
-          if (!postingText.trim()) return json({ error: "This title has no posting content in its body yet — the research step should have written the job/gig posting details there." }, 400);
+          return json({ success: true, created: 0, needsWorkHistory: true, note: `This Product has no Work History yet — add it via the 📋 Work History button, then Generate again.` });
+        }
 
+        const splitTerms = s => String(s || '').split(/[,;\n]+/).map(x => x.trim()).filter(Boolean);
+        const searchTerms = Array.from(new Set([...splitTerms(keywords), ...splitTerms(researchInstructions)])).slice(0, isResume ? 6 : 4);
+        if (!searchTerms.length) return json({ error: "This Product has no Keywords set, and no research instructions were given to search with." }, 400);
+
+        const stripHtml = s => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&#0?39;/g, "'").replace(/\s+/g, ' ').trim();
+
+        // ── Resume path: search the campaign-agnostic Job Boards DB ──
+        async function searchJobBoardsFor(terms) {
+          const boards = await notionQuery(JOB_BOARDS_DB, { filter: { property: "Status", select: { equals: "Active" } } });
+          const grab = (block, tag) => { const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)); return m ? m[1] : ''; };
+          const out = [];
+          for (const board of boards) {
+            const parser = board.properties.Parser?.select?.name;
+            const feedUrl = board.properties["Feed URL"]?.url;
+            const boardName = board.properties.Name?.title?.map(t => t.plain_text).join("") || "Unknown";
+            if (!feedUrl) continue;
+            try {
+              if (parser === "remoteok") {
+                const items = await fetch(feedUrl, { headers: { "User-Agent": "Mozilla/5.0 (dash-worker; job research)" } }).then(r => r.json());
+                for (const j of (Array.isArray(items) ? items : [])) {
+                  if (!j.position) continue;
+                  out.push({ title: j.position, company: j.company || '', url: j.url || (j.id ? `https://remoteok.com/remote-jobs/${j.id}` : ''), description: stripHtml(j.description).slice(0, 2000), tags: (j.tags || []).join(', '), source: boardName });
+                }
+              } else if (parser === "remotive") {
+                const data = await fetch(feedUrl, { headers: { "User-Agent": "Mozilla/5.0 (dash-worker; job research)" } }).then(r => r.json());
+                for (const j of (data.jobs || [])) {
+                  out.push({ title: j.title || '', company: j.company_name || '', url: j.url || '', description: stripHtml(j.description).slice(0, 2000), tags: (j.tags || []).join(', '), source: boardName });
+                }
+              } else if (parser === "wwr_rss" || parser === "generic_rss") {
+                const xml = await fetch(feedUrl, { headers: { "User-Agent": "Mozilla/5.0 (dash-worker; job research)" } }).then(r => r.text());
+                for (const block of xml.split('<item>').slice(1)) {
+                  out.push({ title: stripHtml(grab(block, 'title')), company: '', url: grab(block, 'link').trim(), description: stripHtml(grab(block, 'description')).slice(0, 2000), tags: [stripHtml(grab(block, 'skills')), stripHtml(grab(block, 'category'))].filter(Boolean).join(', '), source: boardName });
+                }
+              } else if (parser === "linkedin_apify") {
+                const AT = (env.APIFY_TOKEN || '').trim();
+                if (!AT) continue;
+                const resp = await fetch(`https://api.apify.com/v2/acts/cheap_scraper~linkedin-job-scraper/run-sync-get-dataset-items?token=${AT}&timeout=90`, {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ keyword: terms.slice(0, 3), workType: ['remote'], publishedAt: 'r604800', maxItems: 150 }),
+                });
+                if (!resp.ok) continue;
+                const items = await resp.json();
+                for (const j of (Array.isArray(items) ? items : [])) {
+                  if (j.dynamicFilterMatch === false) continue;
+                  out.push({ title: j.jobTitle || '', company: j.companyName || '', url: j.jobUrl || '', description: stripHtml(j.jobDescription).slice(0, 2000), tags: j.sector || '', source: boardName });
+                }
+              }
+            } catch (e) { /* one board failing shouldn't block the others */ }
+          }
+          return out;
+        }
+
+        // ── Upwork proposal path: reuse the same proven Apify actor call
+        // researchUpworkMarketTitles uses, but per-term individual listings
+        // instead of aggregate ad counts.
+        async function searchUpworkFor(terms) {
+          const AT = (env.APIFY_TOKEN || '').trim();
+          if (!AT) return [];
+          const pick = (o, keys) => { for (const k of keys) { if (o[k] != null && o[k] !== '') return o[k]; } return ''; };
+          const results = await Promise.all(terms.map(async q => {
+            try {
+              const res = await fetch(`https://api.apify.com/v2/acts/neatrat~upwork-job-scraper/run-sync-get-dataset-items?token=${AT}&timeout=60`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: q, sort: 'newest', perPage: 12, pagesToScrape: 1, maxJobAge: { value: 30, unit: 'days' } }),
+              });
+              if (!res.ok) return [];
+              const items = await res.json();
+              return (Array.isArray(items) ? items : []).filter(j => j && !j.error).map(j => {
+                const skillsRaw = pick(j, ['skills', 'tags', 'requiredSkills']);
+                return {
+                  title: String(pick(j, ['title', 'jobTitle', 'name']) || '').slice(0, 160),
+                  company: '',
+                  description: String(pick(j, ['description', 'descriptionText', 'snippet']) || '').replace(/\s+/g, ' ').trim().slice(0, 2000),
+                  url: (v => typeof v === 'string' ? v : '')(pick(j, ['url', 'link', 'jobUrl'])),
+                  tags: Array.isArray(skillsRaw) ? skillsRaw.map(s => typeof s === 'string' ? s : (s?.name || '')).filter(Boolean).join(', ') : String(skillsRaw || ''),
+                  budget: pick(j, ['budget', 'amount', 'fixedPrice', 'price']) || '',
+                  hourly: pick(j, ['hourlyRate', 'hourlyBudget', 'hourly', 'rate']) || '',
+                  source: 'Upwork',
+                };
+              }).filter(a => a.title || a.description);
+            } catch (e) { return []; }
+          }));
+          return results.flat();
+        }
+
+        const rawPostings = isResume ? await searchJobBoardsFor(searchTerms) : await searchUpworkFor(searchTerms);
+
+        const lowerTerms = searchTerms.map(t => t.toLowerCase());
+        const seen = new Set();
+        const ranked = rawPostings
+          .filter(p => p.url && !seen.has(p.url) && (seen.add(p.url), true))
+          .map(p => {
+            const hay = `${p.title} ${p.tags || ''} ${p.description || ''}`.toLowerCase();
+            const score = lowerTerms.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
+            return { ...p, score };
+          })
+          .filter(p => p.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 5);
+
+        if (!ranked.length) {
+          return json({ success: true, created: 0, needsWorkHistory: false, searchTerms, boardsOrTermsSearched: isResume ? undefined : searchTerms.length, note: `No live postings matched "${searchTerms.join(', ')}" ${isResume ? 'across the active Job Boards' : 'on Upwork'} — try broadening the Product's Keywords or adding Research Instructions.` });
+        }
+
+        // Write one tailored asset per posting, concurrently.
+        const written = await Promise.all(ranked.map(async posting => {
           const prompt = isResume
-            ? `You are writing a tailored resume for this specific job posting, using the candidate's real work history below. Never invent experience, employers, dates, or achievements that aren't in the work history — only select, emphasize, and phrase what's already true to match this posting.
+            ? `You are writing a tailored resume AND a tailored cover letter for this specific job posting, using the candidate's real work history below. Never invent experience, employers, dates, or achievements that aren't in the work history — only select, emphasize, and phrase what's already true to match this posting.
 
-JOB POSTING ("${titleName}"):
-${postingText}
+JOB POSTING: "${posting.title}"${posting.company ? ` @ ${posting.company}` : ''}
+${posting.description}
 
 RELEVANT KEYWORDS (work these in naturally wherever genuinely true, for ATS matching — never force one that doesn't fit): ${keywords || 'none provided'}
 
 CANDIDATE'S REAL WORK HISTORY (the only source of truth for experience — do not add anything not here):
 ${workHistory}
 
-Write a complete, formatted resume as plain text (use line breaks and simple markers like "—" or "•" for structure, no markdown headers) with these sections: a short summary/profile tailored to this posting, work experience (role, employer, dates, 2-4 achievement-focused bullets each, pulled and rephrased from the work history), skills (matching the posting's keywords where genuinely true), and education if present in the work history. Return ONLY the resume text, nothing else.`
+Write plain text (use line breaks and simple markers like "—" or "•" for structure, no markdown headers). First the resume: a short summary/profile tailored to this posting, work experience (role, employer, dates, 2-4 achievement-focused bullets each, pulled and rephrased from the work history), skills (matching the posting's keywords where genuinely true), and education if present in the work history. Then, on a line by itself exactly "===COVER LETTER===", followed by a complete tailored cover letter for this specific posting (addresses what this posting needs, references 1-2 genuinely relevant pieces of the work history, clear closing). Return ONLY the resume text, the marker line, then the cover letter — nothing else.`
             : `You are writing an Upwork proposal for this specific job listing, using the freelancer's real work history below. Never invent experience or claims that aren't in the work history.
 
-UPWORK JOB LISTING ("${titleName}"):
-${postingText}
+UPWORK JOB LISTING: "${posting.title}"
+${posting.description}
 
 RELEVANT KEYWORDS (work in naturally where genuinely true): ${keywords || 'none provided'}
 
@@ -16566,52 +16662,46 @@ Write a complete Upwork proposal as plain text: open by directly addressing what
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3500, messages: [{ role: "user", content: prompt }] }),
           });
           const aiData = await aiResp.json();
-          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
-          text = (aiData.content?.[0]?.text || "").trim();
-          if (!text) return json({ error: "Claude returned empty content" }, 500);
-        }
+          if (!aiResp.ok) return { posting, error: aiData.error?.message || "Claude API error" };
+          const raw = (aiData.content?.[0]?.text || "").trim();
+          if (!raw) return { posting, error: "Claude returned empty content" };
+          return { posting, text: raw };
+        }));
 
-        const assetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
-          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ filter: { and: [
-            { property: "Content Strategy", relation: { contains: dashId(titleId) } },
-            { property: "Asset Type", select: { equals: assetType } },
-          ] } }),
-        }).then(r => r.json()).catch(() => ({ results: [] }));
-        const existingAsset = (assetQuery.results || []).find(a => !a.archived);
-        const assetProps = {
-          "Body": { rich_text: chunkedRichText(text) },
-          "Status": { select: { name: needsWorkHistory ? "Needs Revision" : "Ready" } },
-          "Asset Status": { select: { name: needsWorkHistory ? "Development" : "Publish" } },
-        };
-        let assetId;
-        if (existingAsset) {
-          assetId = existingAsset.id.replace(/-/g, "");
-          await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: assetProps }),
-          });
-        } else {
-          assetProps["Asset Title"] = { title: [{ type: "text", text: { content: `${titleName} — ${isResume ? 'Resume' : 'Upwork Proposal'}`.slice(0, 200) } }] };
-          assetProps["Asset Type"] = { select: { name: assetType } };
-          assetProps["Content Strategy"] = { relation: [{ id: dashId(titleId) }] };
-          assetProps["Campaign"] = { relation: [{ id: dashId(campaignId) }] };
+        let created = 0; const assets = []; const failures = [];
+        for (const w of written) {
+          if (w.error) { failures.push({ title: w.posting.title, error: w.error }); continue; }
+          const header = `JOB POSTING: ${w.posting.title}${w.posting.company ? ` @ ${w.posting.company}` : ''}\nSource: ${w.posting.source}\nListing: ${w.posting.url}\n\n`;
+          const fullText = header + w.text;
+          const assetProps = {
+            "Asset Title": { title: [{ type: "text", text: { content: `${isResume ? 'Resume' : 'Upwork Proposal'} — ${w.posting.title}${w.posting.company ? ' @ ' + w.posting.company : ''}`.slice(0, 200) } }] },
+            "Asset Type": { select: { name: assetType } },
+            "Content Strategy": { relation: [{ id: dashId(titleId) }] },
+            "Campaign": { relation: [{ id: dashId(campaignId) }] },
+            "Body": { rich_text: chunkedRichText(fullText) },
+            "Status": { select: { name: "Ready" } },
+            "Asset Status": { select: { name: "Publish" } },
+          };
           const createResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
           });
-          const created = await createResp.json();
-          if (!createResp.ok || !created.id) return json({ error: created.message || "Asset create failed" }, createResp.status || 500);
-          assetId = created.id.replace(/-/g, "");
+          const createdPage = await createResp.json();
+          if (!createResp.ok || !createdPage.id) { failures.push({ title: w.posting.title, error: createdPage.message || "Asset create failed" }); continue; }
+          created++;
+          assets.push({ id: createdPage.id.replace(/-/g, ""), title: w.posting.title, url: w.posting.url });
         }
 
-        await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, {
-          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
-        }).catch(() => {});
+        if (created > 0) {
+          await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+          }).catch(() => {});
+        }
 
-        return json({ success: true, assetId, titleId, text, needsWorkHistory });
+        return json({ success: true, created, assets, failures: failures.length ? failures : undefined, needsWorkHistory: false, searchTerms });
       }
 
       if (body.action === "assembleAsset") return await runAssembleAsset(body, env);

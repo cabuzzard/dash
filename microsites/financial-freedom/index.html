@@ -1037,6 +1037,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <input class="modal-ta" id="gaAvatarPresenterInput" type="text" placeholder="e.g. a HeyGen avatar_id, or a reference image URL" autocomplete="off" />
       </div>
 
+      <div id="gaJobAssetWrap" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #3a3350;background:rgba(159,122,234,.06);border-radius:4px;">
+        <div style="font-size:11px;color:#b794f4;margin-bottom:6px;">Generate searches real postings (job boards for Resume, Upwork for Upwork Proposal) using the Product's Keywords below, writes a tailored asset for the top 5 matches, each with the posting link attached. Pick/create the Product above first, then check Work History is set here.</div>
+        <button type="button" class="modal-btn save" style="padding:4px 10px;font-size:11px;" onclick="openWorkHistoryModalForProduct()">📋 Work History</button>
+      </div>
+
       <div class="ga-hide-for-carousel">
         <label class="lm-label">Product <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
         <div style="position:relative;margin-bottom:10px;">
@@ -4743,9 +4748,9 @@ const GA_SKILL_METHODS = [
   { test: /video copy/i,            skill: 'make-video-copy',     label: 'Video Copy — Growth',
     hint: 'Full production skill available — models outlier YouTube videos into an original long-form script, ready to produce.' },
   { test: /\bresume\b/i,             workerAction: 'generateJobAsset', assetType: 'resume', label: 'Resume',
-    hint: 'Writes a tailored resume for this title\'s job posting (its body must already have the posting details, from a job-board research pass), using this title\'s Product\'s Keywords + Work History. First run with no Work History set yet creates the asset with a placeholder — add Work History via the 📋 button on that asset row, then hit ✨ Generate there to write the real thing.' },
+    hint: 'Searches the active remote job boards (RemoteOK, Remotive, We Work Remotely, Himalayas, Dynamite Jobs, LinkedIn) using this Product\'s Keywords + any Research Instructions below, ranks by relevance, and writes a tailored resume + cover letter for the top 5 matches — 5 new assets under this title, each with its posting link attached. Needs Work History set on the Product first (📋 button below). Running again pulls a fresh batch and adds another 5.' },
   { test: /upwork/i,                 workerAction: 'generateJobAsset', assetType: 'upwork proposal', label: 'Upwork Proposal',
-    hint: 'Writes an Upwork proposal for this title\'s job listing (its body must already have the listing details, from an Upwork research pass), using this title\'s Product\'s Keywords + Work History. First run with no Work History set yet creates the asset with a placeholder — add Work History via the 📋 button on that asset row, then hit ✨ Generate there to write the real thing.' },
+    hint: 'Searches live Upwork listings (via Apify) using this Product\'s Keywords + any Research Instructions below, ranks by relevance, and writes a tailored proposal letter for the top 5 matches — 5 new assets under this title, each with its listing link attached. Needs Work History set on the Product first (📋 button below). Running again pulls a fresh batch and adds another 5.' },
 ];
 function gaMatchSkill(methodName) {
   return GA_SKILL_METHODS.find(m => m.test.test(methodName || '')) || null;
@@ -4755,12 +4760,18 @@ function gaUpdateSkillHint() {
   if (!hint) return;
   const typeWrap = document.getElementById('gaCarouselTypeWrap');
   const avatarWrap = document.getElementById('gaAvatarPresenterWrap');
+  const jobWrap = document.getElementById('gaJobAssetWrap');
   const match = gaMatchSkill(GA_METHOD_NAME);
   const isCarousel = match?.workerAction === 'generateCarouselPreview';
   const isAvatar = match?.workerAction === 'generateAvatarScript';
+  const isJobAsset = match?.workerAction === 'generateJobAsset';
   const isWorkerAction = !!match?.workerAction;
-  document.querySelectorAll('.ga-hide-for-carousel').forEach(el => { el.style.display = isWorkerAction ? 'none' : ''; });
-  if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; if (avatarWrap) avatarWrap.style.display = 'none'; return; }
+  // Product/Platform live inside .ga-hide-for-carousel and are hidden for
+  // every other native worker method (they don't use them) — but Resume/
+  // Upwork Proposal specifically need the Product picker visible, since
+  // Keywords + Work History are resolved from it.
+  document.querySelectorAll('.ga-hide-for-carousel').forEach(el => { el.style.display = (isWorkerAction && !isJobAsset) ? 'none' : ''; });
+  if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; if (avatarWrap) avatarWrap.style.display = 'none'; if (jobWrap) jobWrap.style.display = 'none'; return; }
   hint.style.display = 'flex';
   document.getElementById('gaSkillHintText').textContent = match.hint;
   const btn = document.getElementById('gaSkillHintBtn');
@@ -4772,10 +4783,12 @@ function gaUpdateSkillHint() {
     // only for that case. Design Spec + Override Guidelines stay visible
     // for every method now (not just carousel/text-video) since they're
     // harmless/no-op when unused — only truly method-specific fields
-    // (Carousel Style, Presenter Avatar) still toggle per method here.
+    // (Carousel Style, Presenter Avatar, Work History) still toggle per
+    // method here.
     document.getElementById('gaSkillHintBtn').style.display = 'none';
     if (typeWrap) typeWrap.style.display = isCarousel ? 'block' : 'none';
     if (avatarWrap) avatarWrap.style.display = isAvatar ? 'block' : 'none';
+    if (jobWrap) jobWrap.style.display = isJobAsset ? 'block' : 'none';
     if (isAvatar) gaLoadCampaignPresenter();
     return;
   }
@@ -5557,8 +5570,7 @@ async function submitAssembleModal() {
 // asset itself, so it's shared across every resume/Upwork proposal under
 // that product instead of retyped per application.
 let WH_PRODUCT_ID = null;
-async function openWorkHistoryModal(btn) {
-  const assetId = btn.dataset.assetid;
+async function openWorkHistoryModalCore(params) {
   document.getElementById('wh-product-name').textContent = 'Loading…';
   document.getElementById('wh-keywords').textContent = '';
   document.getElementById('wh-text').value = '';
@@ -5566,7 +5578,7 @@ async function openWorkHistoryModal(btn) {
   document.getElementById('wh-save').disabled = true;
   document.getElementById('workHistoryModal').classList.add('open');
   try {
-    const data = await w('getAssetProductWorkHistory', { assetId });
+    const data = await w('getAssetProductWorkHistory', params);
     if (data.error) throw new Error(data.error);
     WH_PRODUCT_ID = data.productId;
     document.getElementById('wh-product-name').textContent = data.productName || 'Untitled Product';
@@ -5576,6 +5588,23 @@ async function openWorkHistoryModal(btn) {
   } catch (e) {
     document.getElementById('wh-product-name').textContent = 'Error';
     document.getElementById('wh-status').textContent = 'Error: ' + e.message;
+  }
+}
+async function openWorkHistoryModal(btn) {
+  return openWorkHistoryModalCore({ assetId: btn.dataset.assetid });
+}
+// Entry point from the Generate Assets modal, before any resume/Upwork
+// asset exists yet — resolves via the Product picked/typed in that modal
+// instead of an asset row (see gaResolve for the create-if-new pattern).
+async function openWorkHistoryModalForProduct() {
+  const status = document.getElementById('gaStatus');
+  try {
+    const product = await gaResolve('product', status);
+    if (!product.id) { alert('Pick or type a Product above first — Work History is stored on the Product.'); return; }
+    status.textContent = '';
+    return openWorkHistoryModalCore({ productId: product.id });
+  } catch (e) {
+    alert('Error: ' + e.message);
   }
 }
 function closeWorkHistoryModal() {
@@ -5595,7 +5624,7 @@ async function saveWorkHistoryModal() {
     const data = await w('saveProductWorkHistory', { productId: WH_PRODUCT_ID, workHistory: document.getElementById('wh-text').value.trim() });
     if (data.error) throw new Error(data.error);
     statusEl.style.color = '#68d391';
-    statusEl.textContent = 'Saved ✓ — click Generate on the asset row now to write the real text.';
+    statusEl.textContent = 'Saved ✓ — hit Generate now to write the real assets.';
   } catch (e) {
     statusEl.style.color = '#f87171';
     statusEl.textContent = 'Error: ' + e.message;
@@ -5604,7 +5633,8 @@ async function saveWorkHistoryModal() {
   }
 }
 
-// ── GENERATE (resume / upwork proposal) ─────────────────────────────────
+// ── GENERATE (resume / upwork proposal) — regenerates another batch of 5
+// from an existing asset row of this type (additive, same as Text Video).
 async function generateJobAssetFromRow(btn) {
   const titleId = btn.dataset.titleid;
   const assetType = btn.dataset.type;
@@ -5616,9 +5646,12 @@ async function generateJobAssetFromRow(btn) {
     if (r.error) throw new Error(r.error);
     if (r.needsWorkHistory) {
       alert('This product has no Work History yet — click 📋 Work History on this row, add it, then Generate again.');
+    } else if (!r.created) {
+      alert(r.note || 'No new postings matched right now — try again later or broaden the Product\'s Keywords.');
+      btn.textContent = orig;
     } else {
-      btn.textContent = '✓';
-      setTimeout(() => { btn.textContent = orig; }, 1500);
+      btn.textContent = '✓ ' + r.created;
+      setTimeout(() => { btn.textContent = orig; }, 2000);
     }
     await loadTitles();
   } catch (e) {
@@ -5816,6 +5849,16 @@ async function submitGenAssets() {
       const seedKeywords = document.getElementById('gaKeywordsInput')?.value.trim() || undefined;
       const researchInstructions = document.getElementById('gaResearchInput')?.value.trim() || undefined;
       const designSpecId = document.getElementById('gaSpecInput')?.value || undefined;
+      // Job assets need a real Product resolved (create-if-new, same as the
+      // generic path's gaResolve) since Keywords + Work History live there
+      // and the title may not carry the relation yet.
+      let jobProductId;
+      if (isJobAsset) {
+        const product = await gaResolve('product', status);
+        if (!product.id) { status.textContent = 'Pick or type a Product above first — Keywords/Work History live on it.'; status.style.color = '#fc8181'; btn.disabled = false; btn.textContent = 'Generate'; return; }
+        jobProductId = product.id;
+        status.textContent = `Searching ${skillMatch.assetType === 'resume' ? 'job boards' : 'Upwork'} for the top matches…`;
+      }
       const r = await w(skillMatch.workerAction, {
         titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, carouselType, presenter,
         designNotes,
@@ -5823,6 +5866,7 @@ async function submitGenAssets() {
         referenceImageFilename: designRefImage?.filename,
         description, seedKeywords, researchInstructions, designSpecId,
         assetType: isJobAsset ? skillMatch.assetType : undefined,
+        productId: isJobAsset ? jobProductId : undefined,
       });
       if (r.error) throw new Error(r.error);
       if (isAvatarScript) {
@@ -5858,12 +5902,16 @@ async function submitGenAssets() {
         setTimeout(closeGenAssetsModal, 3000);
       } else if (isJobAsset) {
         status.textContent = r.needsWorkHistory
-          ? `✓ Asset created, but this Product has no Work History yet — use the 📋 Work History button on that asset row to add it, then ✨ Generate there to write the real ${skillMatch.assetType}.`
-          : `✓ Wrote the ${skillMatch.assetType}, saved to the asset's Body.`;
-        status.style.color = r.needsWorkHistory ? '#f0b429' : '#68d391';
+          ? `This Product has no Work History yet — use the 📋 Work History button above to add it, then Generate again. Nothing created yet.`
+          : !r.created
+          ? (r.note || `No live postings matched right now — try broadening the Product's Keywords or Research Instructions.`)
+          : `✓ Found ${r.created} matching posting${r.created === 1 ? '' : 's'} and wrote a tailored ${skillMatch.assetType}${r.created === 1 ? '' : ' for each'} — ${r.created} new asset${r.created === 1 ? '' : 's'} under this title.${r.failures ? ` (${r.failures.length} failed — see console.)` : ''}`;
+        status.style.color = r.needsWorkHistory ? '#f0b429' : (r.created ? '#68d391' : '#f0b429');
+        if (r.failures) console.warn('generateJobAsset failures:', r.failures);
         btn.textContent = 'Done';
         await loadTitles();
-        if (!r.needsWorkHistory) setTimeout(closeGenAssetsModal, 3000);
+        if (r.created) setTimeout(closeGenAssetsModal, 3500);
+        else { btn.disabled = false; btn.textContent = 'Generate'; }
       } else {
         status.textContent = `✓ Rendered ${r.slideCount} slides — preview: ${r.previewUrl}`;
         status.style.color = '#68d391';
