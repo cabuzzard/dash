@@ -16984,18 +16984,31 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
       // Pages — a candidate replacement for ChatGPT's Stage 1 Design Card
       // step. Does NOT touch the actual Design Spec / Assembly Manifest —
       // this is a visual proposal only; nothing downstream reads it yet.
+      // ── generateDesignCardMotif ──
+      // Abandoned the image-generation-model approach entirely (gpt-image-1
+      // and dall-e-3 both reliably garbled hex codes, slide counts, and
+      // body copy — a raster model fundamentally can't guarantee exact
+      // text). This renders the Design Card from REAL HTML/CSS instead —
+      // the same Cloudflare Browser Rendering pipeline already proven in
+      // production for actual carousel slides (publishCarouselSlides).
+      // Claude writes real markup: hex values are literal CSS colors (so
+      // the printed hex text and the swatch color are guaranteed to
+      // match, not independently hallucinated), slide captions are a
+      // real ordered list (not a raster guess at sequence), icons are
+      // hand-authored inline SVG. No OpenAI dependency at all — text
+      // accuracy is structural, not probabilistic.
       if (body.action === "generateDesignCardMotif") {
-        const { campaignId, guidance, assetType, model } = body;
+        const { campaignId, guidance, assetType } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
-        const OPENAI_API_KEY = (env.OPENAI_API_KEY || '').trim();
-        if (!OPENAI_API_KEY) return json({ error: "OPENAI_API_KEY not configured" }, 500);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const GT = (env.GITHUB_TOKEN || '').trim();
         if (!GT) return json({ error: "GITHUB_TOKEN not configured" }, 500);
+        const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
+        const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
+        if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return json({ error: "CF_ACCOUNT_ID / CF_API_TOKEN not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const isCarousel = assetType !== 'text video';
-        const imageModel = model === 'dall-e-3' ? 'dall-e-3' : 'gpt-image-1';
 
         const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
         if (!campPage.properties) return json({ error: campPage.message || "Campaign not found" }, 404);
@@ -17006,84 +17019,66 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
         const targetAudience = (cp["Target Audience"]?.rich_text || []).map(t => t.plain_text).join("");
 
         const positioning = [keyMessage && `Key message: ${keyMessage}`, targetAudience && `Audience: ${targetAudience}`, painPoints && `Pain points: ${painPoints}`].filter(Boolean).join('. ') || `A brand called "${campaignName}".`;
-        const slideCountText = isCarousel ? '7' : '5';
+        const slideCount = isCarousel ? 7 : 5;
 
-        // ── Step 1: Claude art-directs a rich, fully-specified image prompt ──
-        // ChatGPT never sends a user's raw one-line brief straight to its
-        // image model — it rewrites it into a long, richly art-directed
-        // prompt first. A raw hand-written brief reliably under-performs
-        // that. This mirrors the same move: a brief goes in, a genuinely
-        // detailed (materials, rendering style, composition, exact caption
-        // text) prompt comes out, and THAT is what actually generates.
         const brief = `Brand: "${campaignName}"
 ${positioning}
-${(guidance || '').trim() ? `Operator creative direction (follow closely): ${guidance.trim()}` : ''}
-Deliverable: a single portrait-orientation "Design Card" style-guide mockup image for a${isCarousel ? ' 7-slide Instagram carousel' : ' short vertical video'}, containing:
-1. A labeled COLOR PALETTE section — 5 swatches, exact hex code printed beneath each.
-2. A labeled TYPOGRAPHY section — 3 real text specimens (headline / subhead / body) using real on-brand example words, each captioned with its role and style.
-3. A labeled LAYOUT section — ${slideCountText} numbered slide thumbnails, each with real short example headline copy fitting this brand's voice and a role caption (Hook / Proof / Insight / CTA etc.), numbered sequentially 1 through ${slideCountText} with no skips, no repeats, no typos.
-4. A labeled ICONS & MARKS section — 4 flat vector-style icons, each with a text label beneath naming it.`;
+${(guidance || '').trim() ? `Operator creative direction (follow closely): ${guidance.trim()}` : ''}`;
 
-        const expandPrompt = `You are a senior creative director writing an image-generation prompt for an AI image model — the kind ChatGPT itself writes internally before calling its own image generator: richly specific and art-directed, never a one-line brief. Write a single prompt (300-500 words) that will produce a genuinely professional, FULLY DESIGNED graphic-design "Design Card" mockup — the polished, illustrated, vector-quality kind a senior brand designer would post on Dribbble or Behance, not a rough wireframe sketch.
+        const htmlPrompt = `You are a senior brand/graphic designer building a real, self-contained HTML+CSS "Design Card" — a single-page brand style-guide document, the kind a senior designer would post on Dribbble, for a${isCarousel ? ' 7-slide Instagram carousel' : ' short vertical video'}.
 
 BRIEF:
 ${brief}
 
-Your prompt must explicitly specify: a professional flat/vector illustration rendering style (clean SVG-quality vector shapes and icons throughout, never photographic or sketchy), a specific grid/composition structure, material and texture cues (e.g. subtle paper grain, soft layered shadow depth, consistent line weights, refined spacing), a lighting/mood direction, and exact instructions for every labeled section and caption in the brief — including that hex codes and every caption must render exactly and correctly, with slide numbers sequential and non-repeating.
+Return ONLY a complete, valid, self-contained HTML document (starting with <!doctype html>, nothing before or after it, no markdown fences) that renders this Design Card. Requirements:
 
-Return ONLY the finished image-generation prompt text — no preamble, no markdown, no explanation, nothing else.`;
+- Single scrollable column, ~1080px logical width, generous padding, professional polish: subtle gradients/shadows, clean grid alignment, consistent spacing, a refined typographic hierarchy. This must look like a genuinely finished, fully-designed document — not a wireframe.
+- Load two Google Fonts via a <link href="https://fonts.googleapis.com/css2?family=...&display=swap" rel="stylesheet"> tag (pick real, specific font names that fit the brand's voice — e.g. a bold condensed display font for headlines, a clean readable sans or serif for body) and apply them via font-family in your CSS.
+- SECTION 1 — "COLOR PALETTE": a row of 5 swatches. Each swatch is a <div> with an actual inline style="background-color:#XXXXXX" — pick 5 real, cohesive hex values yourself. Directly beneath each swatch, print the SAME hex string as real text (so it can never mismatch the swatch, since it's the literal same value used twice).
+- SECTION 2 — "TYPOGRAPHY": three real text specimens — a large HEADLINE, a medium SUBHEAD, a smaller BODY paragraph — using real on-brand example words (never "Lorem Ipsum"), each with a small caption naming its role/style beneath it.
+- SECTION 3 — "LAYOUT — ${slideCount} SLIDES": exactly ${slideCount} numbered slide-thumbnail cards in a grid, each a small dark rectangle containing real, distinct, on-brand example headline copy (one or two short lines) and, beneath the card, a caption in the exact literal format "N. Role" where N is the card's actual position (1, 2, 3, ... up to ${slideCount}, in order, no skips, no repeats — you are writing this as a real ordered list in code, so get the numbering right) and Role is a short narrative-arc label (Hook, Proof Point, Insight, Framework, Tension, CTA, etc. — vary them naturally across the ${slideCount} cards).
+- SECTION 4 — "ICONS & MARKS": a row of 4 icons, each a hand-authored inline <svg> (simple geometric/line-art marks — checkmark, arrow, a brand-relevant symbol, etc. — using <path>/<line>/<circle> elements, stroke or fill matching the accent color), each with a text label beneath naming what it represents.
+- Every section is clearly labeled with a heading. No other explanatory text anywhere.
 
-        const expandResp = await fetch("https://api.anthropic.com/v1/messages", {
+Return ONLY the HTML document.`;
+
+        const htmlResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: expandPrompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: htmlPrompt }] }),
         });
-        const expandData = await expandResp.json();
-        if (!expandResp.ok) return json({ error: expandData.error?.message || "Claude prompt-expansion error" }, 500);
-        const richPrompt = (expandData.content?.[0]?.text || '').trim();
-        if (!richPrompt) return json({ error: "Claude returned an empty expanded prompt" }, 500);
+        const htmlData = await htmlResp.json();
+        if (!htmlResp.ok) return json({ error: htmlData.error?.message || "Claude HTML-generation error" }, 500);
+        let cardHtml = (htmlData.content?.[0]?.text || '').trim();
+        // Strip markdown fences if Claude wrapped the HTML despite instructions.
+        cardHtml = cardHtml.replace(/^```(?:html)?\s*/i, '').replace(/```\s*$/, '').trim();
+        if (!cardHtml || !/<html/i.test(cardHtml)) return json({ error: "Claude did not return a valid HTML document" }, 500);
 
-        // ── Step 2: generate with the chosen image model ──
-        let b64;
-        if (imageModel === 'dall-e-3') {
-          const resp = await fetch('https://api.openai.com/v1/images/generations', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'dall-e-3', prompt: richPrompt.slice(0, 4000), size: '1024x1792', quality: 'hd', n: 1 }),
+        // ── Render it via the same Browser Rendering pipeline used for real carousel slides ──
+        const sleep = ms => new Promise(res => setTimeout(res, ms));
+        let pngBuffer;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const renderResp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ html: cardHtml, viewport: { width: 1080, height: 1600, deviceScaleFactor: 1 }, gotoOptions: { waitUntil: "domcontentloaded", timeout: 15000 }, screenshotOptions: { type: "png", fullPage: true } }),
           });
-          if (!resp.ok) { const t = await resp.text(); return json({ error: `OpenAI image generation failed (HTTP ${resp.status}): ${t.slice(0, 500)}` }, 502); }
-          const data = await resp.json();
-          b64 = data.data?.[0]?.b64_json;
-          // dall-e-3 may still default to returning a temporary "url" instead
-          // of b64_json now that response_format is no longer an accepted
-          // param — fetch and convert it ourselves if that's what came back.
-          const tempUrl = data.data?.[0]?.url;
-          if (!b64 && tempUrl) {
-            const imgResp = await fetch(tempUrl);
-            if (!imgResp.ok) return json({ error: `Failed to fetch dall-e-3 temporary image URL (HTTP ${imgResp.status})` }, 502);
-            const buf = await imgResp.arrayBuffer();
-            const bytes = new Uint8Array(buf);
-            let bin = ''; const chunk = 0x8000;
-            for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-            b64 = btoa(bin);
-          }
-        } else {
-          const resp = await fetch('https://api.openai.com/v1/images/generations', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'gpt-image-1', prompt: richPrompt.slice(0, 4000), size: '1024x1536', quality: 'high', n: 1 }),
-          });
-          if (!resp.ok) { const t = await resp.text(); return json({ error: `OpenAI image generation failed (HTTP ${resp.status}): ${t.slice(0, 500)}` }, 502); }
-          const data = await resp.json();
-          b64 = data.data?.[0]?.b64_json;
+          if (renderResp.status === 429) { await sleep((parseInt(renderResp.headers.get("Retry-After") || "11", 10) + 1) * 1000); continue; }
+          if (renderResp.status === 422 && attempt < 2) { await sleep(3000); continue; }
+          if (!renderResp.ok) { const t = await renderResp.text(); return json({ error: `Browser Rendering failed (HTTP ${renderResp.status}): ${t.slice(0, 400)}` }, 502); }
+          pngBuffer = await renderResp.arrayBuffer();
+          break;
         }
-        if (!b64) return json({ error: "OpenAI returned no image data" }, 502);
+        if (!pngBuffer) return json({ error: "Browser Rendering stayed rate-limited/timed out after retries." }, 502);
+        const bytes = new Uint8Array(pngBuffer);
+        let bin = ''; const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+        const b64 = btoa(bin);
 
         // ── Host the image + a preview page on GitHub Pages ──
         const REPO = "cabuzzard/dash", BRANCH = "main";
         const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
         const deployPath = await resolveDeployPath(campaignId, hdr, dash);
-        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
         const stamp = Date.now().toString(36);
         const basePath = `web/${deployPath}/design-cards`;
         const imgName = `motif-${stamp}.png`;
@@ -17115,9 +17110,9 @@ Return ONLY the finished image-generation prompt text — no preamble, no markdo
 </style></head><body>
 <div class="wrap">
   <h1>${esc3(campaignName)} — Design Card Motif</h1>
-  <div class="sub">Generated via Claude (prompt art-direction) + ${esc3(imageModel)} (bypassing ChatGPT for this step) — a candidate visual direction, not yet wired into any render/assemble pipeline.</div>
+  <div class="sub">Rendered from real HTML/CSS via Claude + Cloudflare Browser Rendering — no OpenAI, no ChatGPT. Text/hex accuracy is structural (literal CSS values), not a raster guess.</div>
   <img src="${esc3(imageUrl)}" alt="Design card motif">
-  <div class="note">This image is a visual proposal only. Approving it doesn't change any real Design Spec or Assembly Manifest — that step still has to happen manually (or via a future automated extraction pass) once a direction is picked.</div>
+  <div class="note">This is a visual proposal only. Approving it doesn't change any real Design Spec or Assembly Manifest — that step still has to happen manually (or via a future automated extraction pass) once a direction is picked.</div>
   <div class="actions">
     <a class="btn" href="${esc3(imageUrl)}" target="_blank" rel="noopener">Open full image</a>
     <button id="approveBtn" onclick="document.getElementById('approvedMsg').style.display='block';this.disabled=true;this.textContent='✓ Approved';">✓ Approve this direction</button>
@@ -17134,7 +17129,7 @@ Return ONLY the finished image-generation prompt text — no preamble, no markdo
         if (!pagePutResp.ok) { const r = await pagePutResp.json().catch(() => ({})); return json({ error: `GitHub commit failed for preview page: ${r.message || pagePutResp.status}` }, 502); }
         const previewUrl = `https://cabuzzard.github.io/dash/${basePath}/motif-${stamp}/`;
 
-        return json({ success: true, imageUrl, previewUrl, imageModel, richPrompt });
+        return json({ success: true, imageUrl, previewUrl, cardHtml });
       }
 
       // ── generateJobAsset ──
