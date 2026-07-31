@@ -16699,21 +16699,30 @@ ${assemblyManifest}`;
       // campaign pulls AI-tagged arcs, not construction ones) — see
       // gatherRelevantCharacterArcs, used by generateMethodTitles below.
       if (body.action === "getCharacterArcs") {
+        const hdrGCA = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const pages = await notionQuery(CHARACTER_ARCS_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] });
-        const items = pages.map(p => ({
-          id: p.id.replace(/-/g, ""),
-          name: p.properties.Name?.title?.map(t => t.plain_text).join("") || "",
-          topics: (p.properties.Topics?.multi_select || []).map(o => o.name),
-          summary: (p.properties["Arc Summary"]?.rich_text || []).map(t => t.plain_text).join(""),
-          fullStory: (p.properties["Full Story"]?.rich_text || []).map(t => t.plain_text).join(""),
-          keyLessons: (p.properties["Key Lessons"]?.rich_text || []).map(t => t.plain_text).join(""),
-          status: p.properties.Status?.select?.name || "",
+        const items = await Promise.all(pages.map(async p => {
+          const campaignIds = (p.properties.Campaigns?.relation || []).map(r => r.id.replace(/-/g, ""));
+          const campaignNames = await Promise.all(campaignIds.map(async cid => {
+            const cp = await fetch(`https://api.notion.com/v1/pages/${dashId16(cid)}`, { headers: hdrGCA }).then(r => r.json()).catch(() => null);
+            return cp?.properties?.Name?.title?.map(t => t.plain_text).join("") || cid;
+          }));
+          return {
+            id: p.id.replace(/-/g, ""),
+            name: p.properties.Name?.title?.map(t => t.plain_text).join("") || "",
+            topics: (p.properties.Topics?.multi_select || []).map(o => o.name),
+            summary: (p.properties["Arc Summary"]?.rich_text || []).map(t => t.plain_text).join(""),
+            fullStory: (p.properties["Full Story"]?.rich_text || []).map(t => t.plain_text).join(""),
+            keyLessons: (p.properties["Key Lessons"]?.rich_text || []).map(t => t.plain_text).join(""),
+            status: p.properties.Status?.select?.name || "",
+            campaignIds, campaignNames,
+          };
         }));
         return json({ items });
       }
 
       if (body.action === "addCharacterArc" || body.action === "updateCharacterArc") {
-        const { id, name, topics, summary, fullStory, keyLessons, status } = body;
+        const { id, name, topics, summary, fullStory, keyLessons, status, campaignIds } = body;
         if (body.action === "addCharacterArc" && !name) return json({ error: "name required" }, 400);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const props = {};
@@ -16723,6 +16732,7 @@ ${assemblyManifest}`;
         if (fullStory !== undefined) props["Full Story"] = { rich_text: chunkedRichText(fullStory) };
         if (keyLessons !== undefined) props["Key Lessons"] = { rich_text: chunkedRichText(keyLessons) };
         if (status !== undefined) props["Status"] = status ? { select: { name: status } } : { select: null };
+        if (campaignIds !== undefined) props["Campaigns"] = { relation: (Array.isArray(campaignIds) ? campaignIds : []).map(cid => ({ id: dashId16(cid) })) };
         if (body.action === "addCharacterArc") {
           const createResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: CHARACTER_ARCS_DB }, properties: props }),
@@ -16815,6 +16825,155 @@ ${assemblyManifest}`;
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
         });
         return json({ success: true });
+      }
+
+      // ── Daily Status pipeline (📝, global) ──
+      // Turns one raw daily status update into real titles across every
+      // campaign a selected Character Arc is linked to, with exactly one
+      // clarifying round-trip: craftDailyStatusQuestions asks one sharp
+      // question per picked arc; generateDailyStatusTitles takes the
+      // answers and writes one Title per arc's linked campaign(s) — no
+      // further operator input needed. Mirrors the Trail Notes practice
+      // ("hike, answer one honest question, post it") but fanned out
+      // across every persona/campaign at once.
+      if (body.action === "craftDailyStatusQuestions") {
+        const { status, avatarIds } = body;
+        if (!status || !String(status).trim()) return json({ error: "status required" }, 400);
+        if (!Array.isArray(avatarIds) || !avatarIds.length) return json({ error: "avatarIds required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const arcs = await Promise.all(avatarIds.map(async aid => {
+          const p = await fetch(`https://api.notion.com/v1/pages/${dashId16(aid)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          if (!p?.properties) return null;
+          return {
+            id: aid,
+            name: p.properties.Name?.title?.map(t => t.plain_text).join("") || "",
+            summary: (p.properties["Arc Summary"]?.rich_text || []).map(t => t.plain_text).join(""),
+          };
+        }));
+        const validArcs = arcs.filter(Boolean);
+        if (!validArcs.length) return json({ error: "No valid Character Arcs found for the given avatarIds" }, 400);
+
+        const prompt = `You are helping turn one raw daily status update into real content for several distinct personal-brand personas, each tied to a different campaign. For EACH persona below, write exactly ONE short, sharp, honest question — in the spirit of the Trail Notes practice ("hike, answer one honest question, post it") — that, once answered, gives enough specific material to write a genuine, non-generic title for that persona's campaign. Ground every question in what is actually in today's status; never ask something answerable without it.
+
+TODAY'S STATUS:
+${status}
+
+PERSONAS:
+${validArcs.map(a => `- [${a.id}] ${a.name} — ${a.summary || '(no summary on file)'}`).join('\n')}
+
+Return ONLY a JSON array, one object per persona, in this exact order: [{"avatarId": "...", "question": "..."}]. No other text, no markdown fences.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let parsed;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('['), end = raw.lastIndexOf(']');
+          if (start === -1 || end === -1) throw new Error("No JSON array found");
+          parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        } catch (e) {
+          return json({ error: "Failed to parse questions JSON: " + e.message }, 500);
+        }
+        const byId = {}; parsed.forEach(q => { byId[q.avatarId] = q.question; });
+        const questions = validArcs.map(a => ({ avatarId: a.id, avatarName: a.name, question: byId[a.id] || `What happened today that relates to "${a.name}"?` }));
+        return json({ questions });
+      }
+
+      if (body.action === "generateDailyStatusTitles") {
+        const { status, answers } = body;
+        if (!status || !String(status).trim()) return json({ error: "status required" }, 400);
+        if (!Array.isArray(answers) || !answers.length) return json({ error: "answers required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990) } }] : [];
+
+        const created = [], failures = [];
+        for (const ans of answers) {
+          const arcPage = await fetch(`https://api.notion.com/v1/pages/${dash(ans.avatarId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          if (!arcPage?.properties) { failures.push({ avatarId: ans.avatarId, error: "Character Arc not found" }); continue; }
+          const arcName = arcPage.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled Arc";
+          const arcSummary = (arcPage.properties["Arc Summary"]?.rich_text || []).map(t => t.plain_text).join("");
+          const arcKeyLessons = (arcPage.properties["Key Lessons"]?.rich_text || []).map(t => t.plain_text).join("");
+          const campaignIds = (arcPage.properties.Campaigns?.relation || []).map(r => r.id.replace(/-/g, ""));
+          if (!campaignIds.length) { failures.push({ avatarId: ans.avatarId, avatarName: arcName, error: "This Character Arc has no Campaigns linked — link one in the TD tab first." }); continue; }
+
+          for (const campaignId of campaignIds) {
+            try {
+              const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+              if (!campPage.properties) throw new Error("Campaign not found");
+              const cp = campPage.properties;
+              const campaignName = (cp.Name?.title || cp["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
+              const keyMessage = (cp["Key Message"]?.rich_text || []).map(t => t.plain_text).join("");
+              const keywords = (cp["Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
+
+              // Auto-resolve product: only when the campaign has exactly one
+              // linked product — otherwise this stays a campaign-level title
+              // rather than guessing which product it's for.
+              const productIds = (cp["Products"]?.relation || []).map(r => r.id.replace(/-/g, ""));
+              let productId = null, productName = "";
+              if (productIds.length === 1) {
+                const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productIds[0])}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+                if (prodPage?.properties) { productId = productIds[0]; productName = prodPage.properties.Name?.title?.map(t => t.plain_text).join("") || ""; }
+              }
+
+              const prompt = `You are a content strategist writing ONE new deliverable title, grounded in a real day's raw material, for a specific personal-brand persona and campaign.
+
+TODAY'S STATUS:
+${status}
+
+PERSONA ("${arcName}"): ${arcSummary}${arcKeyLessons ? `\nKey lesson this persona draws on: ${arcKeyLessons}` : ''}
+
+PERSONA'S ANSWER TO TODAY'S QUESTION ("${ans.question || ''}"):
+${ans.answer || '(no answer given)'}
+
+CAMPAIGN: ${campaignName}
+${keyMessage ? `Key Message: ${keyMessage}` : ''}
+${keywords ? `Keywords: ${keywords}` : ''}
+${productName ? `PRODUCT: ${productName}` : ''}
+
+Write a specific, non-generic deliverable title (a thing to produce — an essay/post/video title, not a content-post headline) that channels today's real status through this persona for this campaign, plus a 2-3 sentence Core Idea grounding it in the specific details from today. Return ONLY JSON: {"title": "...", "coreIdea": "..."}. No other text, no markdown fences.`;
+
+              const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+                body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: prompt }] }),
+              });
+              const aiData = await aiResp.json();
+              if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+              const raw = aiData.content?.[0]?.text || "";
+              const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+              if (start === -1 || end === -1) throw new Error("No JSON object found in title response");
+              const titleData = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+              if (!titleData.title) throw new Error("Claude returned no title");
+
+              const props = {
+                "Title": { title: rtBlock(titleData.title) },
+                "Status": { select: { name: "Development" } },
+                "Grouping": { rich_text: rtBlock("Daily Status") },
+                "Core Idea": { rich_text: rtBlock(titleData.coreIdea || '') },
+                "Campaign": { relation: [{ id: dash(campaignId) }] },
+              };
+              if (productId) props["product"] = { relation: [{ id: dash(productId) }] };
+              const createResp = await fetch("https://api.notion.com/v1/pages", {
+                method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props }),
+              });
+              const createdPage = await createResp.json();
+              if (!createResp.ok || !createdPage.id) throw new Error(createdPage.message || "Title create failed");
+              created.push({ avatarName: arcName, campaignName, titleText: titleData.title, titleId: createdPage.id.replace(/-/g, ""), url: `https://www.notion.so/${createdPage.id.replace(/-/g, "")}` });
+            } catch (e) {
+              failures.push({ avatarId: ans.avatarId, avatarName: arcName, campaignId, error: e.message });
+            }
+          }
+        }
+        return json({ success: true, created, failures: failures.length ? failures : undefined });
       }
 
       // ── generateJobAsset ──

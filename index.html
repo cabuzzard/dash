@@ -631,6 +631,7 @@
   </div>
 
   <div class="tab-panel" id="tabTd">
+    <button onclick="openDailyStatusModal()" style="width:100%;margin-bottom:14px;padding:10px 14px;font-size:13px;font-weight:600;border:1px solid #63b3ed;border-radius:6px;background:rgba(99,179,237,.08);color:#63b3ed;cursor:pointer;text-align:left;">📝 Enter Daily Status — run it through Character Arcs into real titles</button>
     <div id="processesSection" style="margin-bottom:14px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Processes</span>
@@ -1802,6 +1803,10 @@
         <option value="Ready" selected>Ready — live, considered in generation</option>
       </select>
     </div>
+    <div class="modal-field">
+      <label class="modal-label">Linked Campaigns <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— required for the 📝 Daily Status pipeline to know where this arc's titles get written</span></label>
+      <div id="caCampaignChecklist" style="max-height:180px;overflow-y:auto;border:1px solid var(--border2);border-radius:4px;padding:8px 10px;font-size:12px;color:var(--text2);">Loading...</div>
+    </div>
     <div id="characterArcModalStatus" style="font-size:12px;color:var(--text3);min-height:16px;margin-bottom:6px;"></div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeCharacterArcModal()">Cancel</button>
@@ -1837,6 +1842,46 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeCareerAvatarModal()">Cancel</button>
       <button class="btn btn-primary" id="careerAvatarSaveBtn" onclick="saveCareerAvatarModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Daily Status Modal (📝 — status -> Character Arcs -> one question each -> titles across each arc's linked campaigns) -->
+<div class="modal-bg" id="dailyStatusModal" onclick="if(event.target===this)closeDailyStatusModal()">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-title">📝 Daily Status</div>
+
+    <div id="dsStage1">
+      <div class="modal-field">
+        <label class="modal-label">Today's Status <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— what happened, what you noticed, what you're carrying</span></label>
+        <textarea class="modal-input" id="dsStatusText" rows="6" style="resize:vertical;line-height:1.5;" placeholder="e.g. Hiked the ridge trail again today, thought about..."></textarea>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Character Arcs to run this through <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— each one you pick generates a title in its linked campaign(s)</span></label>
+        <div id="dsArcChecklist" style="max-height:220px;overflow-y:auto;border:1px solid var(--border2);border-radius:4px;padding:8px 10px;font-size:12px;color:var(--text2);">Loading...</div>
+      </div>
+      <div id="dsStage1Status" style="font-size:12px;color:var(--text3);min-height:16px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeDailyStatusModal()">Cancel</button>
+        <button class="btn btn-primary" id="dsContinueBtn" onclick="dsContinue()">Continue →</button>
+      </div>
+    </div>
+
+    <div id="dsStage2" style="display:none;">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">One question per arc — answer honestly, in the spirit of the Trail Notes practice. Titles get written automatically after this.</div>
+      <div id="dsQuestionsList"></div>
+      <div id="dsStage2Status" style="font-size:12px;color:var(--text3);min-height:16px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="dsBackToStage1()">← Back</button>
+        <button class="btn btn-primary" id="dsGenerateBtn" onclick="dsGenerate()">Generate Titles</button>
+      </div>
+    </div>
+
+    <div id="dsStage3" style="display:none;">
+      <div id="dsResultsList"></div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="closeDailyStatusModal()">Done</button>
+      </div>
     </div>
   </div>
 </div>
@@ -8943,6 +8988,7 @@ async function loadCharacterArcs() {
         </div>
         ${topicsHtml ? `<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap;">${topicsHtml}</div>` : ''}
         ${item.summary ? `<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:4px;">${esc(item.summary)}</div>` : ''}
+        ${(item.campaignNames && item.campaignNames.length) ? `<div style="font-size:11px;color:#f0b429;margin-top:3px;">↳ ${item.campaignNames.map(esc).join(' · ')}</div>` : '<div style="font-size:11px;color:#f87171;margin-top:3px;">⚠ No campaign linked — the 📝 Daily Status pipeline can\'t generate a title for this arc yet</div>'}
       `;
       el.appendChild(row);
     });
@@ -8952,6 +8998,21 @@ async function loadCharacterArcs() {
 }
 
 let CA_EDIT_ID = null;
+let CA_ALL_CAMPAIGNS = null; // cached across modal opens this session
+async function caLoadCampaignChecklist(checkedIds) {
+  const el = document.getElementById('caCampaignChecklist');
+  el.innerHTML = 'Loading...';
+  try {
+    if (!CA_ALL_CAMPAIGNS) { const data = await call('getCampaigns'); CA_ALL_CAMPAIGNS = (data.campaigns || []).filter(c => c.name); }
+    const checked = new Set(checkedIds || []);
+    el.innerHTML = CA_ALL_CAMPAIGNS.map(c => `
+      <label style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;">
+        <input type="checkbox" class="ca-camp-cb" value="${esc(c.id)}" ${checked.has(c.id) ? 'checked' : ''} />
+        <span>${esc(c.name)}</span>
+      </label>
+    `).join('');
+  } catch(e) { el.innerHTML = `<div style="color:#ff4444;">${e.message}</div>`; }
+}
 function openAddCharacterArcModal() {
   CA_EDIT_ID = null;
   document.getElementById('characterArcModalTitle').textContent = 'Add Character Arc';
@@ -8959,6 +9020,7 @@ function openAddCharacterArcModal() {
   document.getElementById('caStatus').value = 'Ready';
   document.getElementById('characterArcModalStatus').textContent = '';
   document.getElementById('characterArcModal').classList.add('open');
+  caLoadCampaignChecklist([]);
 }
 function openEditCharacterArcModal(item) {
   CA_EDIT_ID = item.id;
@@ -8971,6 +9033,7 @@ function openEditCharacterArcModal(item) {
   document.getElementById('caStatus').value = item.status || 'Ready';
   document.getElementById('characterArcModalStatus').textContent = '';
   document.getElementById('characterArcModal').classList.add('open');
+  caLoadCampaignChecklist(item.campaignIds || []);
 }
 function closeCharacterArcModal() { document.getElementById('characterArcModal').classList.remove('open'); }
 async function saveCharacterArcModal() {
@@ -8981,12 +9044,14 @@ async function saveCharacterArcModal() {
   btn.disabled = true; status.style.color = 'var(--text3)'; status.textContent = 'Saving...';
   try {
     const topics = document.getElementById('caTopics').value.split(',').map(t => t.trim()).filter(Boolean);
+    const campaignIds = [...document.querySelectorAll('.ca-camp-cb:checked')].map(cb => cb.value);
     const payload = {
       name, topics,
       summary: document.getElementById('caSummary').value.trim(),
       fullStory: document.getElementById('caFullStory').value.trim(),
       keyLessons: document.getElementById('caKeyLessons').value.trim(),
       status: document.getElementById('caStatus').value,
+      campaignIds,
     };
     const data = CA_EDIT_ID
       ? await call('updateCharacterArc', { id: CA_EDIT_ID, ...payload })
@@ -9108,6 +9173,106 @@ async function deleteCareerAvatarRow(id, btn) {
   } catch(e) {
     alert('Error: ' + e.message);
     btn.disabled = false;
+  }
+}
+
+// ── DAILY STATUS PIPELINE (📝) ───────────────────────────────────────
+// Status -> pick Character Arcs -> one clarifying question per arc ->
+// answers -> one Title written per arc's linked campaign(s). Exactly
+// one round-trip of operator input beyond the initial status.
+let DS_SELECTED_ARCS = [];
+let DS_QUESTIONS = [];
+function openDailyStatusModal() {
+  document.getElementById('dsStatusText').value = '';
+  document.getElementById('dsStage1').style.display = '';
+  document.getElementById('dsStage2').style.display = 'none';
+  document.getElementById('dsStage3').style.display = 'none';
+  document.getElementById('dsStage1Status').textContent = '';
+  document.getElementById('dsContinueBtn').disabled = false;
+  document.getElementById('dsContinueBtn').textContent = 'Continue →';
+  DS_SELECTED_ARCS = []; DS_QUESTIONS = [];
+  document.getElementById('dailyStatusModal').classList.add('open');
+  dsLoadArcChecklist();
+}
+function closeDailyStatusModal() { document.getElementById('dailyStatusModal').classList.remove('open'); }
+document.getElementById('dailyStatusModal').addEventListener('click', function(e) {
+  if (e.target === this) closeDailyStatusModal();
+});
+async function dsLoadArcChecklist() {
+  const el = document.getElementById('dsArcChecklist');
+  el.innerHTML = 'Loading...';
+  try {
+    const data = await call('getCharacterArcs', {});
+    const ready = (data.items || []).filter(a => a.status === 'Ready');
+    if (!ready.length) { el.innerHTML = '<div style="color:var(--text3);">No Ready character arcs yet — add some above first.</div>'; return; }
+    el.innerHTML = ready.map(a => `
+      <label style="display:flex;align-items:flex-start;gap:6px;padding:5px 0;cursor:pointer;border-bottom:1px solid var(--border);">
+        <input type="checkbox" class="ds-arc-cb" value="${esc(a.id)}" data-name="${esc(a.name)}" style="margin-top:2px;" />
+        <span><strong style="color:var(--text);">${esc(a.name)}</strong><br><span style="font-size:11px;color:var(--text3);">${esc((a.campaignNames || []).join(', ') || '⚠ no campaign linked — won\'t produce a title')}</span></span>
+      </label>
+    `).join('');
+  } catch(e) { el.innerHTML = `<div style="color:#ff4444;">${e.message}</div>`; }
+}
+async function dsContinue() {
+  const status = document.getElementById('dsStatusText').value.trim();
+  const dsStatus1 = document.getElementById('dsStage1Status');
+  if (!status) { dsStatus1.style.color = '#ff4444'; dsStatus1.textContent = 'Enter a status first.'; return; }
+  const checked = [...document.querySelectorAll('.ds-arc-cb:checked')];
+  if (!checked.length) { dsStatus1.style.color = '#ff4444'; dsStatus1.textContent = 'Pick at least one character arc.'; return; }
+  DS_SELECTED_ARCS = checked.map(cb => ({ id: cb.value, name: cb.dataset.name }));
+  const btn = document.getElementById('dsContinueBtn');
+  btn.disabled = true; btn.textContent = 'Crafting questions…';
+  dsStatus1.style.color = 'var(--text3)'; dsStatus1.textContent = '';
+  try {
+    const data = await call('craftDailyStatusQuestions', { status, avatarIds: DS_SELECTED_ARCS.map(a => a.id) });
+    if (data.error) throw new Error(data.error);
+    DS_QUESTIONS = data.questions || [];
+    if (!DS_QUESTIONS.length) throw new Error('No questions came back.');
+    document.getElementById('dsQuestionsList').innerHTML = DS_QUESTIONS.map(q => `
+      <div class="modal-field">
+        <label class="modal-label">${esc(q.avatarName)}</label>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:5px;line-height:1.4;">${esc(q.question)}</div>
+        <textarea class="modal-input ds-answer" rows="3" style="resize:vertical;line-height:1.5;" data-avatarid="${esc(q.avatarId)}" data-question="${esc(q.question)}" placeholder="Your answer…"></textarea>
+      </div>
+    `).join('');
+    document.getElementById('dsStage1').style.display = 'none';
+    document.getElementById('dsStage2').style.display = '';
+  } catch(e) {
+    dsStatus1.style.color = '#ff4444'; dsStatus1.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Continue →';
+  }
+}
+function dsBackToStage1() {
+  document.getElementById('dsStage2').style.display = 'none';
+  document.getElementById('dsStage1').style.display = '';
+}
+async function dsGenerate() {
+  const status = document.getElementById('dsStatusText').value.trim();
+  const answers = [...document.querySelectorAll('.ds-answer')].map(ta => ({ avatarId: ta.dataset.avatarid, question: ta.dataset.question, answer: ta.value.trim() }));
+  const btn = document.getElementById('dsGenerateBtn');
+  const dsStatus2 = document.getElementById('dsStage2Status');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  dsStatus2.style.color = 'var(--text3)'; dsStatus2.textContent = 'Writing titles across each arc\'s linked campaign(s)…';
+  try {
+    const data = await call('generateDailyStatusTitles', { status, answers });
+    if (data.error) throw new Error(data.error);
+    const createdHtml = (data.created || []).map(c => `
+      <div style="padding:8px 0;border-bottom:1px solid var(--border);">
+        <a href="${c.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;font-size:13px;">${esc(c.titleText)}</a>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${esc(c.avatarName)} → ${esc(c.campaignName)}</div>
+      </div>
+    `).join('');
+    const failedHtml = (data.failures || []).map(f => `<div style="padding:6px 0;color:#f0b429;font-size:12px;">⚠ ${esc(f.avatarName || f.avatarId)}${f.campaignId ? '' : ''}: ${esc(f.error)}</div>`).join('');
+    document.getElementById('dsResultsList').innerHTML =
+      (createdHtml ? `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:4px;">✓ ${data.created.length} title${data.created.length === 1 ? '' : 's'} created</div>${createdHtml}` : '<div style="color:var(--text3);font-size:12px;">No titles created.</div>')
+      + failedHtml;
+    document.getElementById('dsStage2').style.display = 'none';
+    document.getElementById('dsStage3').style.display = '';
+  } catch(e) {
+    dsStatus2.style.color = '#ff4444'; dsStatus2.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Generate Titles';
   }
 }
 
