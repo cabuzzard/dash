@@ -12,10 +12,10 @@ const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
 const PLATFORMS_DB       = "8248b700ebb7428aa28d8b5246509898";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
-const JOB_BOARDS_DB      = "8ae388e65a93478bb3ad96a31b7c3f24"; // campaign-agnostic remote job board feeds, used by resume/Upwork-proposal generation
-const WORK_EXPERIENCE_DB = "d33f0d3bb7584b2c8a5e8f98444fe269"; // campaign-agnostic real career history, used by resume/Upwork-proposal generation
-const EDUCATION_DB       = "a850ab1e7639415ca12326546dcc6c7a"; // campaign-agnostic education history, used by resume generation
-const SKILLS_DB          = "ceccb373dfc847c7bea43bf76007862d"; // campaign-agnostic skills list, used by resume/Upwork-proposal generation
+const JOB_BOARDS_DB      = "ddd9b57f5c5e49ffaf549197c36aeccc"; // campaign-agnostic remote job board feeds, used by resume/Upwork-proposal generation
+const WORK_EXPERIENCE_DB = "d6b2114bceb1444382fa80bd2233a077"; // campaign-agnostic real career history, used by resume/Upwork-proposal generation
+const EDUCATION_DB       = "2d3b4dfd75ae41bcae083375c5892b44"; // campaign-agnostic education history, used by resume generation
+const SKILLS_DB          = "61397070ba9145c6b5a5a3657a182fbb"; // campaign-agnostic skills list, used by resume/Upwork-proposal generation
 const TEXT_VIDEO_SPECS_DB  = "3ce83fc9ef8b4dc185219598761abb7f";
 const TEXT_VIDEO_SCENES_DB = "afa52f6d81b7416d97696517bed8d9c2";
 // Shared design-system databases (asset-type-agnostic — carousel today, other
