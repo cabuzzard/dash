@@ -695,6 +695,18 @@
         <div id="workExpList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 6px;">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Education</span>
+          <button onclick="openAddEducationModal()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
+        </div>
+        <div id="educationList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 6px;">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Skills</span>
+          <button onclick="openAddSkillModal()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
+        </div>
+        <div id="skillsListEl"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 6px;">
           <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Job Boards</span>
           <button onclick="openAddJobBoardModal()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
         </div>
@@ -1682,6 +1694,64 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeJobBoardModal()">Cancel</button>
       <button class="btn btn-primary" id="jobBoardSaveBtn" onclick="saveJobBoardModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Education Modal (💼 Career, TD tab) -->
+<div class="modal-bg" id="educationModal" onclick="if(event.target===this)closeEducationModal()">
+  <div class="modal">
+    <div class="modal-title" id="educationModalTitle">Add Education</div>
+    <div class="modal-field">
+      <label class="modal-label">Degree / Program</label>
+      <input class="modal-input" id="eduDegree" type="text" placeholder="e.g. B.A. Environmental Studies" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Institution</label>
+      <input class="modal-input" id="eduInstitution" type="text" placeholder="e.g. Prescott College" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Year</label>
+      <input class="modal-input" id="eduYear" type="text" placeholder="e.g. 2013" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Notes <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— e.g. double major, honors, relevant coursework; optional</span></label>
+      <textarea class="modal-input" id="eduNotes" rows="3" style="resize:vertical;line-height:1.5;"></textarea>
+    </div>
+    <div id="educationModalStatus" style="font-size:12px;color:var(--text3);min-height:16px;margin-bottom:6px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeEducationModal()">Cancel</button>
+      <button class="btn btn-primary" id="educationSaveBtn" onclick="saveEducationModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Skill Modal (💼 Career, TD tab) -->
+<div class="modal-bg" id="skillModal" onclick="if(event.target===this)closeSkillModal()">
+  <div class="modal">
+    <div class="modal-title" id="skillModalTitle">Add Skill</div>
+    <div class="modal-field">
+      <label class="modal-label">Skill</label>
+      <input class="modal-input" id="skillName" type="text" placeholder="e.g. Notion API Integration" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Category</label>
+      <select class="modal-input" id="skillCategory">
+        <option value="Technical" selected>Technical</option>
+        <option value="Software">Software</option>
+        <option value="Industry">Industry</option>
+        <option value="Soft Skill">Soft Skill</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Notes <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— optional context</span></label>
+      <textarea class="modal-input" id="skillNotes" rows="2" style="resize:vertical;line-height:1.5;"></textarea>
+    </div>
+    <div id="skillModalStatus" style="font-size:12px;color:var(--text3);min-height:16px;margin-bottom:6px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeSkillModal()">Cancel</button>
+      <button class="btn btn-primary" id="skillSaveBtn" onclick="saveSkillModal()">Save</button>
     </div>
   </div>
 </div>
@@ -8430,7 +8500,7 @@ function toggleCareerSection() {
   careerCollapsed = !careerCollapsed;
   document.getElementById('careerBody').style.display = careerCollapsed ? 'none' : '';
   document.getElementById('careerToggleIcon').textContent = careerCollapsed ? '▸' : '▾';
-  if (!careerCollapsed && !careerLoaded) { careerLoaded = true; loadWorkExperience(); loadJobBoardsList(); }
+  if (!careerCollapsed && !careerLoaded) { careerLoaded = true; loadWorkExperience(); loadEducation(); loadSkillsList(); loadJobBoardsList(); }
 }
 
 async function loadWorkExperience() {
@@ -8601,6 +8671,165 @@ async function deleteJobBoardRow(id, btn) {
     const data = await call('deleteJobBoard', { id });
     if (data.error) throw new Error(data.error);
     loadJobBoardsList();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
+async function loadEducation() {
+  const el = document.getElementById('educationList');
+  el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div>';
+  try {
+    const data = await call('getEducation', {});
+    const items = data.items || [];
+    if (!items.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No education entries yet.</div>'; return; }
+    el.innerHTML = '';
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:7px 0;border-bottom:1px solid var(--border);';
+      row.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:13px;color:var(--text);flex:1;line-height:1.4;">${esc(item.degree)}${item.institution ? ' <span style="color:var(--text3);">— ' + esc(item.institution) + '</span>' : ''}</span>
+          ${item.year ? `<span style="font-size:11px;color:var(--text3);white-space:nowrap;">${esc(item.year)}</span>` : ''}
+          <button onclick='openEditEducationModal(${JSON.stringify(item).replace(/'/g,"&apos;")})' style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;">✎</button>
+          <button onclick="deleteEducationRow('${item.id}',this)" style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;opacity:.5;" onmouseover="this.style.opacity=1;this.style.color='#f87171'" onmouseout="this.style.opacity=.5;this.style.color='var(--text3)'" title="Delete">✕</button>
+        </div>
+        ${item.notes ? `<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:3px;">${esc(item.notes)}</div>` : ''}
+      `;
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message}</div>`;
+  }
+}
+
+let EDU_EDIT_ID = null;
+function openAddEducationModal() {
+  EDU_EDIT_ID = null;
+  document.getElementById('educationModalTitle').textContent = 'Add Education';
+  ['eduDegree','eduInstitution','eduYear','eduNotes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('educationModalStatus').textContent = '';
+  document.getElementById('educationModal').classList.add('open');
+}
+function openEditEducationModal(item) {
+  EDU_EDIT_ID = item.id;
+  document.getElementById('educationModalTitle').textContent = 'Edit Education';
+  document.getElementById('eduDegree').value = item.degree || '';
+  document.getElementById('eduInstitution').value = item.institution || '';
+  document.getElementById('eduYear').value = item.year || '';
+  document.getElementById('eduNotes').value = item.notes || '';
+  document.getElementById('educationModalStatus').textContent = '';
+  document.getElementById('educationModal').classList.add('open');
+}
+function closeEducationModal() { document.getElementById('educationModal').classList.remove('open'); }
+async function saveEducationModal() {
+  const degree = document.getElementById('eduDegree').value.trim();
+  if (!degree) { document.getElementById('educationModalStatus').textContent = 'Degree / Program is required.'; return; }
+  const btn = document.getElementById('educationSaveBtn');
+  const status = document.getElementById('educationModalStatus');
+  btn.disabled = true; status.style.color = 'var(--text3)'; status.textContent = 'Saving...';
+  try {
+    const payload = {
+      degree, institution: document.getElementById('eduInstitution').value.trim(),
+      year: document.getElementById('eduYear').value.trim(), notes: document.getElementById('eduNotes').value.trim(),
+    };
+    const data = EDU_EDIT_ID
+      ? await call('updateEducation', { id: EDU_EDIT_ID, ...payload })
+      : await call('addEducation', payload);
+    if (data.error) throw new Error(data.error);
+    closeEducationModal();
+    loadEducation();
+  } catch(e) {
+    status.style.color = '#ff4444'; status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function deleteEducationRow(id, btn) {
+  if (!confirm('Delete this education entry?')) return;
+  btn.disabled = true;
+  try {
+    const data = await call('deleteEducation', { id });
+    if (data.error) throw new Error(data.error);
+    loadEducation();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
+async function loadSkillsList() {
+  const el = document.getElementById('skillsListEl');
+  el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div>';
+  try {
+    const data = await call('getSkills', {});
+    const items = data.items || [];
+    if (!items.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No skills yet.</div>'; return; }
+    el.innerHTML = '';
+    const catColor = { Technical: '#63b3ed', Software: '#9f7aea', Industry: '#f0b429', 'Soft Skill': '#68d391', Other: 'var(--text3)' };
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);';
+      const c = catColor[item.category] || 'var(--text3)';
+      row.innerHTML = `
+        ${item.category ? `<span style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border:1px solid ${c}44;color:${c};background:${c}11;border-radius:3px;white-space:nowrap;flex-shrink:0;">${esc(item.category)}</span>` : ''}
+        <span style="font-size:13px;color:var(--text);flex:1;">${esc(item.skill)}</span>
+        <button onclick='openEditSkillModal(${JSON.stringify(item).replace(/'/g,"&apos;")})' style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;">✎</button>
+        <button onclick="deleteSkillRow('${item.id}',this)" style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;opacity:.5;" onmouseover="this.style.opacity=1;this.style.color='#f87171'" onmouseout="this.style.opacity=.5;this.style.color='var(--text3)'" title="Delete">✕</button>
+      `;
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message}</div>`;
+  }
+}
+
+let SKILL_EDIT_ID = null;
+function openAddSkillModal() {
+  SKILL_EDIT_ID = null;
+  document.getElementById('skillModalTitle').textContent = 'Add Skill';
+  document.getElementById('skillName').value = ''; document.getElementById('skillNotes').value = ''; document.getElementById('skillCategory').value = 'Technical';
+  document.getElementById('skillModalStatus').textContent = '';
+  document.getElementById('skillModal').classList.add('open');
+}
+function openEditSkillModal(item) {
+  SKILL_EDIT_ID = item.id;
+  document.getElementById('skillModalTitle').textContent = 'Edit Skill';
+  document.getElementById('skillName').value = item.skill || '';
+  document.getElementById('skillCategory').value = item.category || 'Technical';
+  document.getElementById('skillNotes').value = item.notes || '';
+  document.getElementById('skillModalStatus').textContent = '';
+  document.getElementById('skillModal').classList.add('open');
+}
+function closeSkillModal() { document.getElementById('skillModal').classList.remove('open'); }
+async function saveSkillModal() {
+  const skill = document.getElementById('skillName').value.trim();
+  if (!skill) { document.getElementById('skillModalStatus').textContent = 'Skill is required.'; return; }
+  const btn = document.getElementById('skillSaveBtn');
+  const status = document.getElementById('skillModalStatus');
+  btn.disabled = true; status.style.color = 'var(--text3)'; status.textContent = 'Saving...';
+  try {
+    const payload = { skill, category: document.getElementById('skillCategory').value, notes: document.getElementById('skillNotes').value.trim() };
+    const data = SKILL_EDIT_ID
+      ? await call('updateSkill', { id: SKILL_EDIT_ID, ...payload })
+      : await call('addSkill', payload);
+    if (data.error) throw new Error(data.error);
+    closeSkillModal();
+    loadSkillsList();
+  } catch(e) {
+    status.style.color = '#ff4444'; status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function deleteSkillRow(id, btn) {
+  if (!confirm('Delete this skill?')) return;
+  btn.disabled = true;
+  try {
+    const data = await call('deleteSkill', { id });
+    if (data.error) throw new Error(data.error);
+    loadSkillsList();
   } catch(e) {
     alert('Error: ' + e.message);
     btn.disabled = false;

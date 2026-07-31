@@ -14,6 +14,8 @@ const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
 const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
 const JOB_BOARDS_DB      = "8ae388e65a93478bb3ad96a31b7c3f24"; // campaign-agnostic remote job board feeds, used by resume/Upwork-proposal generation
 const WORK_EXPERIENCE_DB = "d33f0d3bb7584b2c8a5e8f98444fe269"; // campaign-agnostic real career history, used by resume/Upwork-proposal generation
+const EDUCATION_DB       = "a850ab1e7639415ca12326546dcc6c7a"; // campaign-agnostic education history, used by resume generation
+const SKILLS_DB          = "ceccb373dfc847c7bea43bf76007862d"; // campaign-agnostic skills list, used by resume/Upwork-proposal generation
 const TEXT_VIDEO_SPECS_DB  = "3ce83fc9ef8b4dc185219598761abb7f";
 const TEXT_VIDEO_SCENES_DB = "afa52f6d81b7416d97696517bed8d9c2";
 // Shared design-system databases (asset-type-agnostic — carousel today, other
@@ -16556,6 +16558,102 @@ ${assemblyManifest}`;
         return json({ success: true });
       }
 
+      // ── Education (🎓, global — TD tab "Career" section) ──
+      if (body.action === "getEducation") {
+        const pages = await notionQuery(EDUCATION_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] });
+        const items = pages.map(p => ({
+          id: p.id.replace(/-/g, ""),
+          degree: p.properties.Degree?.title?.map(t => t.plain_text).join("") || "",
+          institution: (p.properties.Institution?.rich_text || []).map(t => t.plain_text).join(""),
+          year: (p.properties.Year?.rich_text || []).map(t => t.plain_text).join(""),
+          notes: (p.properties.Notes?.rich_text || []).map(t => t.plain_text).join(""),
+        }));
+        return json({ items });
+      }
+
+      if (body.action === "addEducation" || body.action === "updateEducation") {
+        const { id, degree, institution, year, notes } = body;
+        if (body.action === "addEducation" && !degree) return json({ error: "degree required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const props = {};
+        if (degree !== undefined) props["Degree"] = { title: [{ type: "text", text: { content: String(degree).slice(0, 2000) } }] };
+        if (institution !== undefined) props["Institution"] = { rich_text: chunkedRichText(institution) };
+        if (year !== undefined) props["Year"] = { rich_text: chunkedRichText(year) };
+        if (notes !== undefined) props["Notes"] = { rich_text: chunkedRichText(notes) };
+        if (body.action === "addEducation") {
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: EDUCATION_DB }, properties: props }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Create failed" }, createResp.status || 500);
+          return json({ success: true, id: created.id.replace(/-/g, "") });
+        } else {
+          if (!id) return json({ error: "id required" }, 400);
+          const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }),
+          });
+          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Update failed" }, patchResp.status); }
+          return json({ success: true });
+        }
+      }
+
+      if (body.action === "deleteEducation") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
+        });
+        return json({ success: true });
+      }
+
+      // ── Skills (🛠, global — TD tab "Career" section) ──
+      if (body.action === "getSkills") {
+        const pages = await notionQuery(SKILLS_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] });
+        const items = pages.map(p => ({
+          id: p.id.replace(/-/g, ""),
+          skill: p.properties.Skill?.title?.map(t => t.plain_text).join("") || "",
+          category: p.properties.Category?.select?.name || "",
+          notes: (p.properties.Notes?.rich_text || []).map(t => t.plain_text).join(""),
+        }));
+        return json({ items });
+      }
+
+      if (body.action === "addSkill" || body.action === "updateSkill") {
+        const { id, skill, category, notes } = body;
+        if (body.action === "addSkill" && !skill) return json({ error: "skill required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const props = {};
+        if (skill !== undefined) props["Skill"] = { title: [{ type: "text", text: { content: String(skill).slice(0, 2000) } }] };
+        if (category !== undefined) props["Category"] = category ? { select: { name: category } } : { select: null };
+        if (notes !== undefined) props["Notes"] = { rich_text: chunkedRichText(notes) };
+        if (body.action === "addSkill") {
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: SKILLS_DB }, properties: props }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Create failed" }, createResp.status || 500);
+          return json({ success: true, id: created.id.replace(/-/g, "") });
+        } else {
+          if (!id) return json({ error: "id required" }, 400);
+          const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }),
+          });
+          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Update failed" }, patchResp.status); }
+          return json({ success: true });
+        }
+      }
+
+      if (body.action === "deleteSkill") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
+        });
+        return json({ success: true });
+      }
+
       // ── generateJobAsset ──
       // Bulk research-and-write: searches real postings (job boards for
       // resume, Upwork via Apify for proposals) using the Product's
@@ -16613,6 +16711,23 @@ ${assemblyManifest}`;
         if (!workHistory.trim()) {
           return json({ success: true, created: 0, needsWorkHistory: true, note: `No Work Experience entries yet — add them in the main dashboard's TD tab (💼 Career section), then Generate again.` });
         }
+
+        // Education + Skills are the same global source (🎓/🛠, Career
+        // section) — folded into the writing prompt alongside Work History
+        // so resumes carry a real Education line and an accurate Skills
+        // section instead of inferring one from job bullets alone.
+        const [eduPages, skillPages] = await Promise.all([
+          notionQuery(EDUCATION_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] }),
+          notionQuery(SKILLS_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] }),
+        ]);
+        const educationBlock = eduPages.map(p => {
+          const degree = p.properties.Degree?.title?.map(t => t.plain_text).join("") || "";
+          const institution = (p.properties.Institution?.rich_text || []).map(t => t.plain_text).join("");
+          const year = (p.properties.Year?.rich_text || []).map(t => t.plain_text).join("");
+          const notes = (p.properties.Notes?.rich_text || []).map(t => t.plain_text).join("");
+          return `${degree}${institution ? ` — ${institution}` : ''}${year ? ` (${year})` : ''}${notes ? `\n${notes}` : ''}`;
+        }).filter(Boolean).join("\n\n");
+        const skillsBlock = skillPages.map(p => p.properties.Skill?.title?.map(t => t.plain_text).join("") || "").filter(Boolean).join(", ");
 
         const splitTerms = s => String(s || '').split(/[,;\n]+/).map(x => x.trim()).filter(Boolean);
         const searchTerms = Array.from(new Set([...splitTerms(keywords), ...splitTerms(researchInstructions)])).slice(0, isResume ? 6 : 4);
@@ -16731,7 +16846,13 @@ RELEVANT KEYWORDS (work these in naturally wherever genuinely true, for ATS matc
 CANDIDATE'S REAL WORK HISTORY (the only source of truth for experience — do not add anything not here):
 ${workHistory}
 
-Write plain text (use line breaks and simple markers like "—" or "•" for structure, no markdown headers). First the resume: a short summary/profile tailored to this posting, work experience (role, employer, dates, 2-4 achievement-focused bullets each, pulled and rephrased from the work history), skills (matching the posting's keywords where genuinely true), and education if present in the work history. Then, on a line by itself exactly "===COVER LETTER===", followed by a complete tailored cover letter for this specific posting (addresses what this posting needs, references 1-2 genuinely relevant pieces of the work history, clear closing). Return ONLY the resume text, the marker line, then the cover letter — nothing else.`
+CANDIDATE'S REAL EDUCATION (the only source of truth for education — omit the section entirely if empty, never invent a degree):
+${educationBlock || '(none on file)'}
+
+CANDIDATE'S REAL SKILLS LIST (the only source of truth for the Skills section — select and phrase from this list to match the posting, never invent a skill not here):
+${skillsBlock || '(none on file)'}
+
+Write plain text (use line breaks and simple markers like "—" or "•" for structure, no markdown headers). First the resume: a short summary/profile tailored to this posting, work experience (role, employer, dates, 2-4 achievement-focused bullets each, pulled and rephrased from the work history), a skills section (drawn only from the real skills list above, prioritizing whichever match this posting), and an education section (drawn only from the real education list above — omit entirely if it's empty). Then, on a line by itself exactly "===COVER LETTER===", followed by a complete tailored cover letter for this specific posting (addresses what this posting needs, references 1-2 genuinely relevant pieces of the work history, clear closing). Return ONLY the resume text, the marker line, then the cover letter — nothing else.`
             : `You are writing an Upwork proposal for this specific job listing, using the freelancer's real work history below. Never invent experience or claims that aren't in the work history.
 
 UPWORK JOB LISTING: "${posting.title}"
@@ -16741,6 +16862,8 @@ RELEVANT KEYWORDS (work in naturally where genuinely true): ${keywords || 'none 
 
 FREELANCER'S REAL WORK HISTORY (the only source of truth — do not add anything not here):
 ${workHistory}
+
+FREELANCER'S REAL SKILLS LIST (only reference skills genuinely on this list): ${skillsBlock || '(none on file)'}
 
 Write a complete Upwork proposal as plain text: open by directly addressing what this specific listing needs (not a generic greeting), reference 1-2 genuinely relevant pieces of the work history as proof, state a clear next step/CTA. Keep it tight — Upwork proposals that ramble lose to ones that don't. Return ONLY the proposal text, nothing else.`;
 
