@@ -16,6 +16,7 @@ const JOB_BOARDS_DB      = "ddd9b57f5c5e49ffaf549197c36aeccc"; // campaign-agnos
 const WORK_EXPERIENCE_DB = "d6b2114bceb1444382fa80bd2233a077"; // campaign-agnostic real career history, used by resume/Upwork-proposal generation
 const EDUCATION_DB       = "2d3b4dfd75ae41bcae083375c5892b44"; // campaign-agnostic education history, used by resume generation
 const SKILLS_DB          = "61397070ba9145c6b5a5a3657a182fbb"; // campaign-agnostic skills list, used by resume/Upwork-proposal generation
+const CHARACTER_ARCS_DB  = "dedbde3560464346bfcb77831cffd244"; // campaign-agnostic personal narrative arcs, topic-tagged; considered in title/asset generation where relevant
 const TEXT_VIDEO_SPECS_DB  = "3ce83fc9ef8b4dc185219598761abb7f";
 const TEXT_VIDEO_SCENES_DB = "afa52f6d81b7416d97696517bed8d9c2";
 // Shared design-system databases (asset-type-agnostic — carousel today, other
@@ -157,6 +158,36 @@ async function notionQuery(dbId, body) {
     cursor = data.next_cursor;
   }
   return results;
+}
+
+// Pulls the operator's real personal narrative arcs (🎭 Character Arcs,
+// global — "Personal Research" area, distinct from per-campaign market
+// Research) that are topically relevant to the given context text, so
+// title/asset generation stays on-topic — an AI campaign draws AI-tagged
+// arcs, not construction ones. Scored the same way generateJobAsset scores
+// job-posting relevance: term-overlap against Topics + Name + Summary,
+// ranked, capped. Returns [] (never throws) so a Character Arcs outage
+// never blocks the generation it's optionally enriching.
+async function gatherRelevantCharacterArcs(searchText, maxResults = 3) {
+  try {
+    const pages = await notionQuery(CHARACTER_ARCS_DB, { filter: { property: "Status", select: { equals: "Ready" } } });
+    const terms = String(searchText || '').toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 2);
+    if (!terms.length) return [];
+    const scored = pages.map(p => {
+      const name = p.properties.Name?.title?.map(t => t.plain_text).join("") || "";
+      const topics = (p.properties.Topics?.multi_select || []).map(o => o.name);
+      const summary = (p.properties["Arc Summary"]?.rich_text || []).map(t => t.plain_text).join("");
+      const keyLessons = (p.properties["Key Lessons"]?.rich_text || []).map(t => t.plain_text).join("");
+      const hay = `${name} ${topics.join(' ')} ${summary}`.toLowerCase();
+      const score = terms.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
+      return { name, topics, summary, keyLessons, score };
+    }).filter(a => a.score > 0).sort((a, b) => b.score - a.score).slice(0, maxResults);
+    return scored;
+  } catch (e) { return []; }
+}
+function formatCharacterArcsBlock(arcs) {
+  if (!arcs.length) return '';
+  return `\nPERSONAL RESEARCH — RELEVANT CHARACTER ARCS (real personal narrative, topic-matched to this content — weave in only where it genuinely strengthens an angle or title; never force one that doesn't fit, never embellish beyond what's written here):\n${arcs.map(a => `- "${a.name}" [${a.topics.join(', ')}]: ${a.summary}${a.keyLessons ? ` — Key lesson: ${a.keyLessons}` : ''}`).join('\n')}\n`;
 }
 
 // Resolves a campaign's own Buffer account credentials from its 🔑 Logins
@@ -5663,6 +5694,12 @@ Unique Angle: ${ptxt("Unique Angle")}`;
         const hasTrendResearch = contextMode === "blend" && !!trendResearch;
         const isolateNote = contextMode === "isolate" ? "\n(Isolate mode — this run intentionally excludes campaign-level research; grounded in this product's own fields only.)\n" : "";
 
+        // Personal Research — Character Arcs relevant to this specific
+        // campaign/method/product (topic-matched, never the full list).
+        const arcSearchText = [campaignName, methodName, research.keywords, hasProduct ? productSection.slice(0, 400) : ''].join(' ');
+        const relevantArcs = await gatherRelevantCharacterArcs(arcSearchText);
+        const characterArcsBlock = formatCharacterArcsBlock(relevantArcs);
+
         const campaignResearchBlock = contextMode === "blend" ? `CAMPAIGN: ${campaignName}
 CAMPAIGN RESEARCH:
 Keywords: ${research.keywords}
@@ -5682,12 +5719,13 @@ METHOD FRAMEWORK:
 ${methodBody || "(No framework defined — infer phases and groupings from method name and best practices)"}
 
 ${productSection}
-${growthStrategyBody ? `\nAPPROVED GROWTH STRATEGY (operator-selected — this is the primary direction; favor titles from whichever grouping in here was written for the "${methodName}" method, and stay consistent with its stated rationale/platform. Still cover every phase/grouping the method framework itself defines below.):\n${growthStrategyBody}\n` : ''}${(strategyGuidance || '').trim() ? `\nOPERATOR GUIDANCE ON APPLYING THE STRATEGY (overrides/refines how the above should be used for this run specifically):\n${strategyGuidance.trim()}\n` : ''}${parentSeed.text ? `\nSEED IDEA (this run was started from an existing title — use it as inspiration/starting point for the angle, still organized across the framework's phases and groupings, not a rewrite of the seed itself):\n${parentSeed.text}\n` : ''}${body.seedKeyword ? `\nSEED KEYWORD (operator-picked — every title should target this specific keyword/angle, not the campaign's keyword list broadly):\n${body.seedKeyword}\n` : ''}
+${growthStrategyBody ? `\nAPPROVED GROWTH STRATEGY (operator-selected — this is the primary direction; favor titles from whichever grouping in here was written for the "${methodName}" method, and stay consistent with its stated rationale/platform. Still cover every phase/grouping the method framework itself defines below.):\n${growthStrategyBody}\n` : ''}${(strategyGuidance || '').trim() ? `\nOPERATOR GUIDANCE ON APPLYING THE STRATEGY (overrides/refines how the above should be used for this run specifically):\n${strategyGuidance.trim()}\n` : ''}${parentSeed.text ? `\nSEED IDEA (this run was started from an existing title — use it as inspiration/starting point for the angle, still organized across the framework's phases and groupings, not a rewrite of the seed itself):\n${parentSeed.text}\n` : ''}${body.seedKeyword ? `\nSEED KEYWORD (operator-picked — every title should target this specific keyword/angle, not the campaign's keyword list broadly):\n${body.seedKeyword}\n` : ''}${characterArcsBlock}
 INSTRUCTIONS:
 - Read the method framework carefully. Each Phase heading in the framework is a Phase. Each Grouping heading is a Grouping.
 - Generate titles for EVERY phase and grouping defined in the framework.
 - Each title must be specific to this ${contextMode === "blend" ? "campaign" : "product"}${hasProduct && contextMode === "blend" ? " and product" : ""}${parentSeed.text ? " and should extend or riff on the seed idea above where it fits naturally" : ""} — use real names, real keywords, real positioning language. No generic titles.
 ${hasTrendResearch ? '- Ground titles in the trending research above wherever it fits the pillar/grouping — especially any pillar about timing, seasonality, or current moments. Prefer angles the trend research shows real demand for over generic ones.' : ''}
+${relevantArcs.length ? '- A personal character arc is available above for this topic — where it genuinely fits, one title may draw on it directly (personal story angle), but never force it into a grouping it doesn\'t belong in.' : ''}
 - Titles are deliverable names (things to produce), not content post headlines.
 - Aim for 2–3 titles per grouping unless the framework specifies otherwise.
 - Flag whether each title is a multi-slide / carousel / swipe-style deliverable (the method framework describes this — look for words like "slide", "carousel", "swipe", "panel") with "slideFormat": true. Otherwise "slideFormat": false. Do NOT write the slide content itself here — that happens in a separate follow-up step. Just flag it.
@@ -16645,6 +16683,63 @@ ${assemblyManifest}`;
       }
 
       if (body.action === "deleteSkill") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
+        });
+        return json({ success: true });
+      }
+
+      // ── Character Arcs (🎭, global — TD tab "Personal Research" area) ──
+      // Real personal narrative, topic-tagged so a specific campaign/method
+      // only draws on the arcs relevant to what it's actually about (an AI
+      // campaign pulls AI-tagged arcs, not construction ones) — see
+      // gatherRelevantCharacterArcs, used by generateMethodTitles below.
+      if (body.action === "getCharacterArcs") {
+        const pages = await notionQuery(CHARACTER_ARCS_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] });
+        const items = pages.map(p => ({
+          id: p.id.replace(/-/g, ""),
+          name: p.properties.Name?.title?.map(t => t.plain_text).join("") || "",
+          topics: (p.properties.Topics?.multi_select || []).map(o => o.name),
+          summary: (p.properties["Arc Summary"]?.rich_text || []).map(t => t.plain_text).join(""),
+          fullStory: (p.properties["Full Story"]?.rich_text || []).map(t => t.plain_text).join(""),
+          keyLessons: (p.properties["Key Lessons"]?.rich_text || []).map(t => t.plain_text).join(""),
+          status: p.properties.Status?.select?.name || "",
+        }));
+        return json({ items });
+      }
+
+      if (body.action === "addCharacterArc" || body.action === "updateCharacterArc") {
+        const { id, name, topics, summary, fullStory, keyLessons, status } = body;
+        if (body.action === "addCharacterArc" && !name) return json({ error: "name required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const props = {};
+        if (name !== undefined) props["Name"] = { title: [{ type: "text", text: { content: String(name).slice(0, 2000) } }] };
+        if (topics !== undefined) props["Topics"] = { multi_select: (Array.isArray(topics) ? topics : String(topics || '').split(',').map(t => t.trim()).filter(Boolean)).map(t => ({ name: t })) };
+        if (summary !== undefined) props["Arc Summary"] = { rich_text: chunkedRichText(summary) };
+        if (fullStory !== undefined) props["Full Story"] = { rich_text: chunkedRichText(fullStory) };
+        if (keyLessons !== undefined) props["Key Lessons"] = { rich_text: chunkedRichText(keyLessons) };
+        if (status !== undefined) props["Status"] = status ? { select: { name: status } } : { select: null };
+        if (body.action === "addCharacterArc") {
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: CHARACTER_ARCS_DB }, properties: props }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Create failed" }, createResp.status || 500);
+          return json({ success: true, id: created.id.replace(/-/g, "") });
+        } else {
+          if (!id) return json({ error: "id required" }, 400);
+          const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }),
+          });
+          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Update failed" }, patchResp.status); }
+          return json({ success: true });
+        }
+      }
+
+      if (body.action === "deleteCharacterArc") {
         const { id } = body;
         if (!id) return json({ error: "id required" }, 400);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };

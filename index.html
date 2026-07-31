@@ -678,13 +678,16 @@
       </div>
     </div>
 
-    <!-- CAREER — campaign-agnostic: a real career history and a list of job
-         board feeds are each one thing, not one per campaign/product, so
-         they live here instead of anywhere per-campaign. Feeds this data
-         into resume/Upwork-proposal generation on every campaign microsite. -->
+    <!-- PERSONAL RESEARCH — campaign-agnostic, distinct from the per-campaign
+         🔬 Research DB (market/audience/keyword research for one campaign).
+         This is personal-information research: real career history, job
+         board feeds, and topic-tagged character arcs are each one thing,
+         not one per campaign/product, so they live here instead of
+         anywhere per-campaign, and feed resume/Upwork/title generation on
+         every campaign microsite. -->
     <div id="careerSection" style="margin-top:24px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="toggleCareerSection()">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">💼 Career</span>
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">🧠 Personal Research</span>
         <span id="careerToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
       </div>
       <div id="careerBody" style="display:none;">
@@ -705,6 +708,12 @@
           <button onclick="openAddSkillModal()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
         </div>
         <div id="skillsListEl"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 6px;">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Character Arcs <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— topic-tagged, considered in title generation where relevant</span></span>
+          <button onclick="openAddCharacterArcModal()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
+        </div>
+        <div id="characterArcsListEl"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 6px;">
           <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Job Boards</span>
@@ -1752,6 +1761,45 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeSkillModal()">Cancel</button>
       <button class="btn btn-primary" id="skillSaveBtn" onclick="saveSkillModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Character Arc Modal (🧠 Personal Research, TD tab) -->
+<div class="modal-bg" id="characterArcModal" onclick="if(event.target===this)closeCharacterArcModal()">
+  <div class="modal">
+    <div class="modal-title" id="characterArcModalTitle">Add Character Arc</div>
+    <div class="modal-field">
+      <label class="modal-label">Name</label>
+      <input class="modal-input" id="caName" type="text" placeholder="e.g. From Solar Door-Knocker to AI Systems Builder" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Topics <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— comma-separated; only campaigns/titles about a matching topic will draw on this arc. Existing: AI, Mindset, Founding Companies, Construction, Marketing, Real Estate, Solar & Renewable Energy, Content & Media, Accessibility, Business Consulting — or type a new one</span></label>
+      <input class="modal-input" id="caTopics" type="text" placeholder="e.g. AI, Founding Companies" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Arc Summary <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— short version: starting point, turning point, where it led</span></label>
+      <textarea class="modal-input" id="caSummary" rows="3" style="resize:vertical;line-height:1.5;"></textarea>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Full Story <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— the fuller narrative with real beats/details; optional</span></label>
+      <textarea class="modal-input" id="caFullStory" rows="6" style="resize:vertical;line-height:1.5;"></textarea>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Key Lessons <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— the takeaway(s) that make this useful as a content angle</span></label>
+      <textarea class="modal-input" id="caKeyLessons" rows="2" style="resize:vertical;line-height:1.5;"></textarea>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Status <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— only "Ready" arcs are considered during title generation</span></label>
+      <select class="modal-input" id="caStatus">
+        <option value="Draft">Draft — not used yet</option>
+        <option value="Ready" selected>Ready — live, considered in generation</option>
+      </select>
+    </div>
+    <div id="characterArcModalStatus" style="font-size:12px;color:var(--text3);min-height:16px;margin-bottom:6px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeCharacterArcModal()">Cancel</button>
+      <button class="btn btn-primary" id="characterArcSaveBtn" onclick="saveCharacterArcModal()">Save</button>
     </div>
   </div>
 </div>
@@ -8500,7 +8548,7 @@ function toggleCareerSection() {
   careerCollapsed = !careerCollapsed;
   document.getElementById('careerBody').style.display = careerCollapsed ? 'none' : '';
   document.getElementById('careerToggleIcon').textContent = careerCollapsed ? '▸' : '▾';
-  if (!careerCollapsed && !careerLoaded) { careerLoaded = true; loadWorkExperience(); loadEducation(); loadSkillsList(); loadJobBoardsList(); }
+  if (!careerCollapsed && !careerLoaded) { careerLoaded = true; loadWorkExperience(); loadEducation(); loadSkillsList(); loadCharacterArcs(); loadJobBoardsList(); }
 }
 
 async function loadWorkExperience() {
@@ -8830,6 +8878,98 @@ async function deleteSkillRow(id, btn) {
     const data = await call('deleteSkill', { id });
     if (data.error) throw new Error(data.error);
     loadSkillsList();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
+async function loadCharacterArcs() {
+  const el = document.getElementById('characterArcsListEl');
+  el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div>';
+  try {
+    const data = await call('getCharacterArcs', {});
+    const items = data.items || [];
+    if (!items.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No character arcs yet.</div>'; return; }
+    el.innerHTML = '';
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:8px 0;border-bottom:1px solid var(--border);';
+      const statusColor = item.status === 'Ready' ? '#68d391' : 'var(--text3)';
+      const topicsHtml = (item.topics || []).map(t => `<span style="font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 6px;border:1px solid #63b3ed44;color:#63b3ed;background:#63b3ed11;border-radius:3px;white-space:nowrap;">${esc(t)}</span>`).join(' ');
+      row.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border:1px solid ${statusColor}44;color:${statusColor};background:${statusColor}11;border-radius:3px;white-space:nowrap;flex-shrink:0;">${esc(item.status || '—')}</span>
+          <span style="font-size:13px;color:var(--text);flex:1;line-height:1.4;">${esc(item.name)}</span>
+          <button onclick='openEditCharacterArcModal(${JSON.stringify(item).replace(/'/g,"&apos;")})' style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;">✎</button>
+          <button onclick="deleteCharacterArcRow('${item.id}',this)" style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 5px;flex-shrink:0;opacity:.5;" onmouseover="this.style.opacity=1;this.style.color='#f87171'" onmouseout="this.style.opacity=.5;this.style.color='var(--text3)'" title="Delete">✕</button>
+        </div>
+        ${topicsHtml ? `<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap;">${topicsHtml}</div>` : ''}
+        ${item.summary ? `<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:4px;">${esc(item.summary)}</div>` : ''}
+      `;
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message}</div>`;
+  }
+}
+
+let CA_EDIT_ID = null;
+function openAddCharacterArcModal() {
+  CA_EDIT_ID = null;
+  document.getElementById('characterArcModalTitle').textContent = 'Add Character Arc';
+  ['caName','caTopics','caSummary','caFullStory','caKeyLessons'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('caStatus').value = 'Ready';
+  document.getElementById('characterArcModalStatus').textContent = '';
+  document.getElementById('characterArcModal').classList.add('open');
+}
+function openEditCharacterArcModal(item) {
+  CA_EDIT_ID = item.id;
+  document.getElementById('characterArcModalTitle').textContent = 'Edit Character Arc';
+  document.getElementById('caName').value = item.name || '';
+  document.getElementById('caTopics').value = (item.topics || []).join(', ');
+  document.getElementById('caSummary').value = item.summary || '';
+  document.getElementById('caFullStory').value = item.fullStory || '';
+  document.getElementById('caKeyLessons').value = item.keyLessons || '';
+  document.getElementById('caStatus').value = item.status || 'Ready';
+  document.getElementById('characterArcModalStatus').textContent = '';
+  document.getElementById('characterArcModal').classList.add('open');
+}
+function closeCharacterArcModal() { document.getElementById('characterArcModal').classList.remove('open'); }
+async function saveCharacterArcModal() {
+  const name = document.getElementById('caName').value.trim();
+  if (!name) { document.getElementById('characterArcModalStatus').textContent = 'Name is required.'; return; }
+  const btn = document.getElementById('characterArcSaveBtn');
+  const status = document.getElementById('characterArcModalStatus');
+  btn.disabled = true; status.style.color = 'var(--text3)'; status.textContent = 'Saving...';
+  try {
+    const topics = document.getElementById('caTopics').value.split(',').map(t => t.trim()).filter(Boolean);
+    const payload = {
+      name, topics,
+      summary: document.getElementById('caSummary').value.trim(),
+      fullStory: document.getElementById('caFullStory').value.trim(),
+      keyLessons: document.getElementById('caKeyLessons').value.trim(),
+      status: document.getElementById('caStatus').value,
+    };
+    const data = CA_EDIT_ID
+      ? await call('updateCharacterArc', { id: CA_EDIT_ID, ...payload })
+      : await call('addCharacterArc', payload);
+    if (data.error) throw new Error(data.error);
+    closeCharacterArcModal();
+    loadCharacterArcs();
+  } catch(e) {
+    status.style.color = '#ff4444'; status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function deleteCharacterArcRow(id, btn) {
+  if (!confirm('Delete this character arc?')) return;
+  btn.disabled = true;
+  try {
+    const data = await call('deleteCharacterArc', { id });
+    if (data.error) throw new Error(data.error);
+    loadCharacterArcs();
   } catch(e) {
     alert('Error: ' + e.message);
     btn.disabled = false;
