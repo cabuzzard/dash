@@ -16976,19 +16976,53 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
         return json({ success: true, created, failures: failures.length ? failures : undefined });
       }
 
-      // ── testDesignCardImage (EXPERIMENTAL, not wired into any UI) ──
-      // One-off test: can gpt-image-1 produce a usable "Design Card" — a
-      // single mockup image showing palette/typography/layout/icon style
-      // for a carousel or video motif — in one shot, as a candidate
-      // replacement for ChatGPT's Stage 1 Design Card step. Returns the
-      // raw image so the operator can visually judge quality before any
-      // pipeline decision is made. Does not touch Notion, GitHub, or any
-      // existing asset — pure throwaway experiment, safe to delete.
-      if (body.action === "testDesignCardImage") {
-        const { prompt } = body;
-        if (!prompt || !String(prompt).trim()) return json({ error: "prompt required" }, 400);
+      // ── generateDesignCardMotif (EXPERIMENTAL — ChatGPT-bypass candidate) ──
+      // Generates a single, richly-detailed "Design Card" mockup image via
+      // gpt-image-1 (palette with printed hex codes, real typography
+      // specimens, per-slide layout wireframes carrying real example copy,
+      // labeled icons) and hosts a real preview page for it on GitHub
+      // Pages — a candidate replacement for ChatGPT's Stage 1 Design Card
+      // step. Does NOT touch the actual Design Spec / Assembly Manifest —
+      // this is a visual proposal only; nothing downstream reads it yet.
+      if (body.action === "generateDesignCardMotif") {
+        const { campaignId, guidance, assetType } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
         const OPENAI_API_KEY = (env.OPENAI_API_KEY || '').trim();
         if (!OPENAI_API_KEY) return json({ error: "OPENAI_API_KEY not configured" }, 500);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const isCarousel = assetType !== 'text video';
+
+        const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+        if (!campPage.properties) return json({ error: campPage.message || "Campaign not found" }, 404);
+        const cp = campPage.properties;
+        const campaignName = (cp.Name?.title || cp["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
+        const keyMessage = (cp["Key Message"]?.rich_text || []).map(t => t.plain_text).join("");
+        const painPoints = (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join("");
+        const targetAudience = (cp["Target Audience"]?.rich_text || []).map(t => t.plain_text).join("");
+
+        const positioning = [keyMessage && `Key message: ${keyMessage}`, targetAudience && `Audience: ${targetAudience}`, painPoints && `Pain points: ${painPoints}`].filter(Boolean).join('. ') || `A brand called "${campaignName}".`;
+        const slideCountText = isCarousel ? '7' : '5';
+
+        const prompt = `A single professional graphic-design "style guide" / brand design-card mockup image, laid out like a mood board on a clean neutral background, portrait orientation, professional graphic-design-portfolio quality. It presents the complete visual design system for a${isCarousel ? ' 7-slide Instagram carousel' : ' short vertical video'} for the brand "${campaignName}".
+
+BRAND POSITIONING: ${positioning}
+${(guidance || '').trim() ? `OPERATOR CREATIVE DIRECTION (follow this closely): ${guidance.trim()}` : ''}
+
+The image must contain these labeled sections, all real and legible, not abstract placeholders:
+
+1. "COLOR PALETTE" — a row of 5 solid color swatches. Print the actual hex code (e.g. "#1A1A1A") as small legible text directly beneath each swatch.
+
+2. "TYPOGRAPHY" — three separate text specimens stacked or side by side, each using real example words relevant to this brand's voice (not "Lorem Ipsum" or generic placeholder words): a large HEADLINE specimen, a medium SUBHEAD specimen, and a smaller BODY TEXT specimen. Beneath each specimen print a small caption naming its role and approximate style (e.g. "Headline — Bold Condensed Sans").
+
+3. "LAYOUT — ${slideCountText} SLIDES" — a grid of ${slideCountText} numbered rectangular slide thumbnails (1 through ${slideCountText}), each showing a distinct, realistic layout with actual short example headline/body text rendered small but legible inside the thumbnail (not gray bars) — real words fitting this brand's voice, different content per slide, following a natural narrative arc (hook, substance, payoff/CTA). Print a short caption beneath each thumbnail naming its role (e.g. "1. Hook", "2. Proof Point", "${slideCountText}. Call to Action").
+
+4. "ICONS & MARKS" — a row of 4 simple geometric/line-art icon or decorative-mark samples in the accent color, bold minimal style, each with a small text label beneath naming what it represents.
+
+Absolutely no other instructional or explanatory text anywhere in the image beyond the section headers and captions specified above — this is a visual design reference, not a document.`;
+
         const resp = await fetch('https://api.openai.com/v1/images/generations', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
@@ -16998,7 +17032,63 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
         const data = await resp.json();
         const b64 = data.data?.[0]?.b64_json;
         if (!b64) return json({ error: "OpenAI returned no image data" }, 502);
-        return json({ success: true, imageB64: b64 });
+
+        // ── Host the image + a preview page on GitHub Pages ──
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const stamp = Date.now().toString(36);
+        const basePath = `web/${deployPath}/design-cards`;
+        const imgName = `motif-${stamp}.png`;
+        const esc3 = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${basePath}/${imgName}`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" },
+          body: JSON.stringify({ message: `Design Card motif: ${campaignName}`, content: b64, branch: BRANCH }),
+        });
+        if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); return json({ error: `GitHub commit failed for image: ${r.message || putResp.status}` }, 502); }
+        const imageUrl = `https://cabuzzard.github.io/dash/${basePath}/${imgName}`;
+
+        const pageHtml = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${esc3(campaignName)} — Design Card Motif</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#111; font-family:system-ui,sans-serif; padding:32px 20px 64px; }
+  .wrap { max-width:560px; margin:0 auto; }
+  h1 { color:#fff; font-size:20px; margin-bottom:4px; }
+  .sub { color:#888; font-size:13px; margin-bottom:24px; line-height:1.5; }
+  img { width:100%; border-radius:8px; display:block; box-shadow:0 4px 24px rgba(0,0,0,.5); margin-bottom:20px; }
+  .note { color:#aaa; font-size:12px; line-height:1.6; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:6px; padding:12px 14px; margin-bottom:20px; }
+  .actions { display:flex; gap:10px; flex-wrap:wrap; }
+  button, a.btn { font-size:13px; font-weight:600; padding:9px 16px; border-radius:6px; border:1px solid #333; background:#1a1a1a; color:#ddd; cursor:pointer; text-decoration:none; display:inline-block; }
+  #approveBtn { border-color:#68d391; color:#68d391; }
+  #approveBtn:hover { background:#68d39122; }
+  #approvedMsg { display:none; color:#68d391; font-size:13px; margin-top:14px; line-height:1.6; }
+</style></head><body>
+<div class="wrap">
+  <h1>${esc3(campaignName)} — Design Card Motif</h1>
+  <div class="sub">Generated directly via gpt-image-1 (bypassing ChatGPT for this step) — a candidate visual direction, not yet wired into any render/assemble pipeline.</div>
+  <img src="${esc3(imageUrl)}" alt="Design card motif">
+  <div class="note">This image is a visual proposal only. Approving it doesn't change any real Design Spec or Assembly Manifest — that step still has to happen manually (or via a future automated extraction pass) once a direction is picked.</div>
+  <div class="actions">
+    <a class="btn" href="${esc3(imageUrl)}" target="_blank" rel="noopener">Open full image</a>
+    <button id="approveBtn" onclick="document.getElementById('approvedMsg').style.display='block';this.disabled=true;this.textContent='✓ Approved';">✓ Approve this direction</button>
+  </div>
+  <div id="approvedMsg">Marked approved on this page (not yet persisted anywhere in Notion). Tell Claude you approved this motif and it'll take it from here.</div>
+</div>
+</body></html>`;
+
+        const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+        const pagePutResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${basePath}/motif-${stamp}/index.html`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" },
+          body: JSON.stringify({ message: `Design Card preview page: ${campaignName}`, content: toB64Text(pageHtml), branch: BRANCH }),
+        });
+        if (!pagePutResp.ok) { const r = await pagePutResp.json().catch(() => ({})); return json({ error: `GitHub commit failed for preview page: ${r.message || pagePutResp.status}` }, 502); }
+        const previewUrl = `https://cabuzzard.github.io/dash/${basePath}/motif-${stamp}/`;
+
+        return json({ success: true, imageUrl, previewUrl });
       }
 
       // ── generateJobAsset ──
