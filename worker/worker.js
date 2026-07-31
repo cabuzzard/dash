@@ -16985,15 +16985,17 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
       // step. Does NOT touch the actual Design Spec / Assembly Manifest —
       // this is a visual proposal only; nothing downstream reads it yet.
       if (body.action === "generateDesignCardMotif") {
-        const { campaignId, guidance, assetType } = body;
+        const { campaignId, guidance, assetType, model } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const OPENAI_API_KEY = (env.OPENAI_API_KEY || '').trim();
         if (!OPENAI_API_KEY) return json({ error: "OPENAI_API_KEY not configured" }, 500);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const GT = (env.GITHUB_TOKEN || '').trim();
         if (!GT) return json({ error: "GITHUB_TOKEN not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const isCarousel = assetType !== 'text video';
+        const imageModel = model === 'dall-e-3' ? 'dall-e-3' : 'gpt-image-1';
 
         const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
         if (!campPage.properties) return json({ error: campPage.message || "Campaign not found" }, 404);
@@ -17006,31 +17008,62 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
         const positioning = [keyMessage && `Key message: ${keyMessage}`, targetAudience && `Audience: ${targetAudience}`, painPoints && `Pain points: ${painPoints}`].filter(Boolean).join('. ') || `A brand called "${campaignName}".`;
         const slideCountText = isCarousel ? '7' : '5';
 
-        const prompt = `A single professional graphic-design "style guide" / brand design-card mockup image, laid out like a mood board on a clean neutral background, portrait orientation, professional graphic-design-portfolio quality. It presents the complete visual design system for a${isCarousel ? ' 7-slide Instagram carousel' : ' short vertical video'} for the brand "${campaignName}".
+        // ── Step 1: Claude art-directs a rich, fully-specified image prompt ──
+        // ChatGPT never sends a user's raw one-line brief straight to its
+        // image model — it rewrites it into a long, richly art-directed
+        // prompt first. A raw hand-written brief reliably under-performs
+        // that. This mirrors the same move: a brief goes in, a genuinely
+        // detailed (materials, rendering style, composition, exact caption
+        // text) prompt comes out, and THAT is what actually generates.
+        const brief = `Brand: "${campaignName}"
+${positioning}
+${(guidance || '').trim() ? `Operator creative direction (follow closely): ${guidance.trim()}` : ''}
+Deliverable: a single portrait-orientation "Design Card" style-guide mockup image for a${isCarousel ? ' 7-slide Instagram carousel' : ' short vertical video'}, containing:
+1. A labeled COLOR PALETTE section — 5 swatches, exact hex code printed beneath each.
+2. A labeled TYPOGRAPHY section — 3 real text specimens (headline / subhead / body) using real on-brand example words, each captioned with its role and style.
+3. A labeled LAYOUT section — ${slideCountText} numbered slide thumbnails, each with real short example headline copy fitting this brand's voice and a role caption (Hook / Proof / Insight / CTA etc.), numbered sequentially 1 through ${slideCountText} with no skips, no repeats, no typos.
+4. A labeled ICONS & MARKS section — 4 flat vector-style icons, each with a text label beneath naming it.`;
 
-BRAND POSITIONING: ${positioning}
-${(guidance || '').trim() ? `OPERATOR CREATIVE DIRECTION (follow this closely): ${guidance.trim()}` : ''}
+        const expandPrompt = `You are a senior creative director writing an image-generation prompt for an AI image model — the kind ChatGPT itself writes internally before calling its own image generator: richly specific and art-directed, never a one-line brief. Write a single prompt (300-500 words) that will produce a genuinely professional, FULLY DESIGNED graphic-design "Design Card" mockup — the polished, illustrated, vector-quality kind a senior brand designer would post on Dribbble or Behance, not a rough wireframe sketch.
 
-The image must contain these labeled sections, all real and legible, not abstract placeholders:
+BRIEF:
+${brief}
 
-1. "COLOR PALETTE" — a row of 5 solid color swatches. Print the actual hex code (e.g. "#1A1A1A") as small legible text directly beneath each swatch.
+Your prompt must explicitly specify: a professional flat/vector illustration rendering style (clean SVG-quality vector shapes and icons throughout, never photographic or sketchy), a specific grid/composition structure, material and texture cues (e.g. subtle paper grain, soft layered shadow depth, consistent line weights, refined spacing), a lighting/mood direction, and exact instructions for every labeled section and caption in the brief — including that hex codes and every caption must render exactly and correctly, with slide numbers sequential and non-repeating.
 
-2. "TYPOGRAPHY" — three separate text specimens stacked or side by side, each using real example words relevant to this brand's voice (not "Lorem Ipsum" or generic placeholder words): a large HEADLINE specimen, a medium SUBHEAD specimen, and a smaller BODY TEXT specimen. Beneath each specimen print a small caption naming its role and approximate style (e.g. "Headline — Bold Condensed Sans").
+Return ONLY the finished image-generation prompt text — no preamble, no markdown, no explanation, nothing else.`;
 
-3. "LAYOUT — ${slideCountText} SLIDES" — a grid of ${slideCountText} numbered rectangular slide thumbnails (1 through ${slideCountText}), each showing a distinct, realistic layout with actual short example headline/body text rendered small but legible inside the thumbnail (not gray bars) — real words fitting this brand's voice, different content per slide, following a natural narrative arc (hook, substance, payoff/CTA). Print a short caption beneath each thumbnail naming its role (e.g. "1. Hook", "2. Proof Point", "${slideCountText}. Call to Action").
-
-4. "ICONS & MARKS" — a row of 4 simple geometric/line-art icon or decorative-mark samples in the accent color, bold minimal style, each with a small text label beneath naming what it represents.
-
-Absolutely no other instructional or explanatory text anywhere in the image beyond the section headers and captions specified above — this is a visual design reference, not a document.`;
-
-        const resp = await fetch('https://api.openai.com/v1/images/generations', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'gpt-image-1', prompt, size: '1024x1536', quality: 'high', n: 1 }),
+        const expandResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: expandPrompt }] }),
         });
-        if (!resp.ok) { const t = await resp.text(); return json({ error: `OpenAI image generation failed (HTTP ${resp.status}): ${t.slice(0, 500)}` }, 502); }
-        const data = await resp.json();
-        const b64 = data.data?.[0]?.b64_json;
+        const expandData = await expandResp.json();
+        if (!expandResp.ok) return json({ error: expandData.error?.message || "Claude prompt-expansion error" }, 500);
+        const richPrompt = (expandData.content?.[0]?.text || '').trim();
+        if (!richPrompt) return json({ error: "Claude returned an empty expanded prompt" }, 500);
+
+        // ── Step 2: generate with the chosen image model ──
+        let b64;
+        if (imageModel === 'dall-e-3') {
+          const resp = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'dall-e-3', prompt: richPrompt.slice(0, 4000), size: '1024x1792', quality: 'hd', style: 'vivid', n: 1, response_format: 'b64_json' }),
+          });
+          if (!resp.ok) { const t = await resp.text(); return json({ error: `OpenAI image generation failed (HTTP ${resp.status}): ${t.slice(0, 500)}` }, 502); }
+          const data = await resp.json();
+          b64 = data.data?.[0]?.b64_json;
+        } else {
+          const resp = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'gpt-image-1', prompt: richPrompt.slice(0, 4000), size: '1024x1536', quality: 'high', n: 1 }),
+          });
+          if (!resp.ok) { const t = await resp.text(); return json({ error: `OpenAI image generation failed (HTTP ${resp.status}): ${t.slice(0, 500)}` }, 502); }
+          const data = await resp.json();
+          b64 = data.data?.[0]?.b64_json;
+        }
         if (!b64) return json({ error: "OpenAI returned no image data" }, 502);
 
         // ── Host the image + a preview page on GitHub Pages ──
@@ -17069,7 +17102,7 @@ Absolutely no other instructional or explanatory text anywhere in the image beyo
 </style></head><body>
 <div class="wrap">
   <h1>${esc3(campaignName)} — Design Card Motif</h1>
-  <div class="sub">Generated directly via gpt-image-1 (bypassing ChatGPT for this step) — a candidate visual direction, not yet wired into any render/assemble pipeline.</div>
+  <div class="sub">Generated via Claude (prompt art-direction) + ${esc3(imageModel)} (bypassing ChatGPT for this step) — a candidate visual direction, not yet wired into any render/assemble pipeline.</div>
   <img src="${esc3(imageUrl)}" alt="Design card motif">
   <div class="note">This image is a visual proposal only. Approving it doesn't change any real Design Spec or Assembly Manifest — that step still has to happen manually (or via a future automated extraction pass) once a direction is picked.</div>
   <div class="actions">
@@ -17088,7 +17121,7 @@ Absolutely no other instructional or explanatory text anywhere in the image beyo
         if (!pagePutResp.ok) { const r = await pagePutResp.json().catch(() => ({})); return json({ error: `GitHub commit failed for preview page: ${r.message || pagePutResp.status}` }, 502); }
         const previewUrl = `https://cabuzzard.github.io/dash/${basePath}/motif-${stamp}/`;
 
-        return json({ success: true, imageUrl, previewUrl });
+        return json({ success: true, imageUrl, previewUrl, imageModel, richPrompt });
       }
 
       // ── generateJobAsset ──
