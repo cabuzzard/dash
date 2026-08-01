@@ -11627,12 +11627,15 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           // vivid-vs-muted contrast, so it's a third text/color-only type.
           const isCollection = carouselType === 'curated-collection';
           const isHiddenPotential = carouselType === 'hidden-potential';
+          const isNumberedBreakdown = carouselType === 'numbered-breakdown';
 
           // Format-specific headline/body semantics only — everything else
           // (per-slide production/visual-planning metadata, carousel-level
           // packages) is shared across all three formats in one prompt, per
           // the "Generate Carousel Asset Package" spec below.
-          const formatDirective = isCollection
+          const formatDirective = isNumberedBreakdown
+            ? `FORMAT: NUMBERED BREAKDOWN — an information-dense "roundup" carousel, structured as a cover, then one numbered-list slide per category, then a close. This format's slide COUNT is not fixed at 7: it is exactly 2 + however many natural categories the topic breaks into. Determine 2-4 natural categories that genuinely fit the content (do not force a specific number) and structure the carousel as: Slide 1 = COVER — "headline" is a bold statement of the total item count and topic (e.g. "21 Things To Install In Claude"), "body" is a one-line subtitle framing the value/promise (e.g. "Plugins, skills, and MCP servers."). Slides 2 through (N-1) = one CATEGORY slide per category — "headline" is the category name plus its item count (e.g. "PLUG-INS — 7 installs"), "body" is a numbered list of every item in that category as separate lines, each formatted exactly "NN Name — one-line description" (zero-padded two-digit number, en dash, real specific content per item grounded in the actual topic/research, never placeholders), one line per item separated by a newline character, in display order. Final slide = CTA — "headline" is a short recap/summary line, "body" is a follow/save/next-step prompt. Every category slide's "production.layoutType" must be exactly "numbered-list" and "production.informationDensity" must be "heavy", so downstream design generation knows to render it as a list, not a single headline+paragraph.`
+            : isCollection
             ? `FORMAT: CURATED COLLECTION — a set of standalone slides under one theme, NOT a narrative with a beginning/middle/end. Every single slide must work completely on its own — a viewer who sees ONLY that one slide, with zero other context, must still get the full point. Do NOT write a hook-then-insights-then-CTA arc; do NOT reference "the next slide" or build on a previous one. Each slide's "headline" is a self-contained short statement, insight, or quote-style line related to the theme; "body" is an optional one-line elaboration or attribution (can be empty if the headline says it all).`
             : isHiddenPotential
             ? `FORMAT: HIDDEN POTENTIAL — every slide is a split "stress → benefit" contrast. For each slide write TWO very short paired lines (3-8 words each, rendered side by side, so brevity is critical): "headline" = the STRESS side (a specific, honest pain point, friction, or fear tied to the topic); "body" = the BENEFIT side (the specific, concrete payoff on the other side of that exact stress — not a generic platitude, it must resolve the specific stress just named). Every pair must be a genuine, specific stress-to-benefit arc grounded in the actual title/topic — not generic filler. Vary the 7 pairs so the carousel builds a fuller picture across slides, not the same contrast repeated.`
@@ -11645,7 +11648,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           // checklist). Per the spec: visual planning is yes/no flags ONLY —
           // no image prompts, no illustration-style descriptions; a separate
           // Visual Director stage owns all visual decisions downstream.
-          const slidePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing a full Carousel Asset Package for this title — not just slide copy. Write EXACTLY 7 slides, no more, no fewer.
+          const slidePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing a full Carousel Asset Package for this title — not just slide copy. ${isNumberedBreakdown ? 'Write however many slides the FORMAT below specifies (2 + your chosen category count) — do not default to 7.' : 'Write EXACTLY 7 slides, no more, no fewer.'}
 
 TITLE: ${titleName}
 ${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}${overrideBlock}
@@ -11674,7 +11677,7 @@ Also provide, once for the whole carousel:
 - 3-5 hashtags (no # prefix needed) — required, never leave empty
 
 Return ONLY this JSON object, no other text, no markdown fences:
-{ "slides": [ { "headline": "...", "body": "...", "role": "...", "objective": "...", "keyTakeaway": "...", "speakerNotes": "...", "cta": "...", "production": { "layoutType": "...", "textHierarchy": "...", "informationDensity": "...", "visualComplexity": "...", "reusableVisualCandidate": true, "existingAssetCandidate": false }, "visualPlanning": { "needsCustomVisual": true, "needsSupportingGraphic": false, "needsEmphasis": false, "needsComparison": false, "needsProcessExplanation": true } }, ... exactly 7 total ... ], "contentSummary": { "coreMessage": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "...", "brandIntent": "..." }, "hookPackage": { "primary": "...", "alt1": "...", "alt2": "..." }, "contentFlow": "...", "educationalAssets": "...", "productionChecklist": ["...", "..."], "seoPublishing": { "linkedinCaption": "...", "xPost": "...", "description": "...", "keywords": "...", "altText": "...", "searchIntent": "..." }, "caption": "...", "hashtags": ["...", "..."] }`;
+{ "slides": [ { "headline": "...", "body": "...", "role": "...", "objective": "...", "keyTakeaway": "...", "speakerNotes": "...", "cta": "...", "production": { "layoutType": "...", "textHierarchy": "...", "informationDensity": "...", "visualComplexity": "...", "reusableVisualCandidate": true, "existingAssetCandidate": false }, "visualPlanning": { "needsCustomVisual": true, "needsSupportingGraphic": false, "needsEmphasis": false, "needsComparison": false, "needsProcessExplanation": true } }, ... ${isNumberedBreakdown ? '2 + your chosen category count total, per FORMAT above' : 'exactly 7 total'} ... ], "contentSummary": { "coreMessage": "...", "targetAudience": "...", "funnelStage": "...", "primaryGoal": "...", "brandIntent": "..." }, "hookPackage": { "primary": "...", "alt1": "...", "alt2": "..." }, "contentFlow": "...", "educationalAssets": "...", "productionChecklist": ["...", "..."], "seoPublishing": { "linkedinCaption": "...", "xPost": "...", "description": "...", "keywords": "...", "altText": "...", "searchIntent": "..." }, "caption": "...", "hashtags": ["...", "..."] }`;
 
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
@@ -11872,7 +11875,22 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // no drift between "what generate/refine produces" and "what the
         // editor starts from".
         const isHiddenPotential = carouselType === 'hidden-potential';
-        const defaultCss = isHiddenPotential ? `
+        const isNumberedBreakdown = carouselType === 'numbered-breakdown';
+        const numberedCss = `
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { width:1080px; height:1350px; background:${spec.bg}; font-family:'${spec.bodyFont}',serif; padding:100px 90px 90px; position:relative; overflow:hidden; display:flex; flex-direction:column; }
+  .num { font-family:'IBM Plex Mono',monospace; font-size:22px; color:${spec.accent}; letter-spacing:0.14em; text-transform:uppercase; margin-bottom:30px; }
+  h1 { font-family:'${spec.headlineFont}',serif; font-size:50px; line-height:1.16; color:${spec.ink}; margin-bottom:34px; font-weight:600; }
+  .list { display:flex; flex-direction:column; gap:24px; flex:1; justify-content:center; }
+  .row { display:flex; align-items:baseline; gap:22px; }
+  .row .n { font-family:'IBM Plex Mono',monospace; font-size:22px; color:${spec.accent}; min-width:44px; flex:none; }
+  .row .t { font-family:'${spec.bodyFont}',serif; font-size:26px; line-height:1.4; color:${spec.ink}; opacity:0.9; }
+  .row .t strong { font-weight:600; opacity:1; }
+  p { font-family:'${spec.bodyFont}',serif; font-size:29px; line-height:1.55; color:${spec.ink}; opacity:0.82; }
+  .counter { position:absolute; bottom:64px; right:74px; font-family:'IBM Plex Mono',monospace; font-size:19px; color:${spec.accent}; }
+  .rule { position:absolute; left:90px; right:90px; top:70px; height:1px; background:${spec.accent}; opacity:0.35; }
+`;
+        const defaultCss = isNumberedBreakdown ? numberedCss : isHiddenPotential ? `
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { width:1080px; height:1350px; overflow:hidden; }
   body { font-family:'${spec.bodyFont}',serif; position:relative; background:${spec.accent}; }
@@ -11917,7 +11935,31 @@ Return ONLY this JSON object, no other text, no markdown fences:
   <div class="counter">${idx + 1} / ${total}</div>
 </body></html>`;
 
-        const slideHtml = isHiddenPotential ? slideHtmlHiddenPotential : slideHtmlDefault;
+        // Numbered Breakdown: a category slide's body is several "NN Name —
+        // description" lines (one per catalog item) separated by newlines;
+        // parsed into real list rows instead of one squashed <p>. A cover or
+        // CTA slide's body is a plain one-liner (no newline), so it falls
+        // through to the same <p> the default template uses.
+        const numberedRows = body => String(body || '').split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+          const m = line.match(/^(\d{1,2})[.)]?\s+(.+?)\s*[—–-]\s*(.+)$/);
+          return m
+            ? `<div class="row"><span class="n">${esc(m[1].padStart(2, '0'))}</span><span class="t"><strong>${esc(m[2])}</strong> — ${esc(m[3])}</span></div>`
+            : `<div class="row"><span class="t">${esc(line)}</span></div>`;
+        }).join('');
+        const slideHtmlNumbered = (slide, idx, total, css) => {
+          const isList = /\n/.test(slide.body || '');
+          return `<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(spec.headlineFont)}:wght@600;700&family=${encodeURIComponent(spec.bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
+<style>${css}</style></head><body>
+  <div class="rule"></div>
+  <div class="num">${String(idx + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}</div>
+  <h1>${esc(slide.headline)}</h1>
+  ${isList ? `<div class="list">${numberedRows(slide.body)}</div>` : `<p>${esc(slide.body)}</p>`}
+  <div class="counter">${idx + 1} / ${total}</div>
+</body></html>`;
+        };
+
+        const slideHtml = isNumberedBreakdown ? slideHtmlNumbered : isHiddenPotential ? slideHtmlHiddenPotential : slideHtmlDefault;
         const effectiveCss = defaultCss;
 
         // A combined multi-page HTML source for Canva import — each slide's
@@ -12753,7 +12795,7 @@ ${updatedManifestText}`;
 
 TITLE: ${titleName}
 CAROUSEL FORMAT: ${carouselType || 'triple-hook'}
-${carouselType === 'hidden-potential' ? 'Each slide is a paired split: "headline" = STRESS (left side, 3-8 words) and "body" = BENEFIT (right side, 3-8 words) that resolves that exact stress. Keep both sides within that length whenever you touch a slide.' : ''}
+${carouselType === 'hidden-potential' ? 'Each slide is a paired split: "headline" = STRESS (left side, 3-8 words) and "body" = BENEFIT (right side, 3-8 words) that resolves that exact stress. Keep both sides within that length whenever you touch a slide.' : ''}${carouselType === 'numbered-breakdown' ? 'This is a cover + one-numbered-list-slide-per-category + CTA structure. On any category slide, "body" is a numbered list of items, one per line, each formatted "NN Name — one-line description" and separated by newline characters — preserve that exact per-line format when editing.' : ''}
 ${briefBlock}${overrideBlock}
 CURRENT SLIDES (JSON):
 ${JSON.stringify({ slides, caption, hashtags })}
