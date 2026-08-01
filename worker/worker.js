@@ -9557,18 +9557,41 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
           filter: { property: "Canva Link", url: { is_not_empty: true } },
           sorts: [{ property: "Title", direction: "ascending" }],
         });
-        const templates = rows.map(r => {
+        let templates = rows.map(r => {
           const fieldMap = (r.properties?.["Field Map"]?.rich_text || []).map(t => t.plain_text).join("");
           const archetypes = (r.properties?.["Compatible Archetypes"]?.rich_text || []).map(t => t.plain_text).join("");
+          const templateType = r.properties?.["Template Type"]?.select?.name || "";
           return {
             id: r.id.replace(/-/g, ""),
             title: r.properties?.Title?.title?.map(t => t.plain_text).join("") || "Untitled",
             canvaLink: r.properties?.["Canva Link"]?.url || "",
+            templateType,
             fieldMap,
             archetypes,
-            isMapped: !!(fieldMap && archetypes),
+            inherited: false,
           };
         });
+        // Template Type is the "reskinned copy" shortcut: a row that
+        // shares a Type with an already-mapped row inherits that row's
+        // Field Map/Compatible Archetypes automatically — the whole point
+        // of separating "which structural Type is this" from "which exact
+        // Canva design is this asset," per the operator's own design.
+        // "New / Needs Mapping" (or no Type at all) never inherits — those
+        // stay unmapped until Claude inspects the design by hand.
+        const canonicalByType = {};
+        for (const t of templates) {
+          if (t.templateType && t.templateType !== 'New / Needs Mapping' && t.fieldMap && t.archetypes && !canonicalByType[t.templateType]) {
+            canonicalByType[t.templateType] = t;
+          }
+        }
+        templates = templates.map(t => {
+          if ((!t.fieldMap || !t.archetypes) && t.templateType && canonicalByType[t.templateType] && canonicalByType[t.templateType].id !== t.id) {
+            const src = canonicalByType[t.templateType];
+            return { ...t, fieldMap: t.fieldMap || src.fieldMap, archetypes: t.archetypes || src.archetypes, inherited: true };
+          }
+          return t;
+        });
+        templates = templates.map(t => ({ ...t, isMapped: !!(t.fieldMap && t.archetypes) }));
         return json({ templates });
       }
 
