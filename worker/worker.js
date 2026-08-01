@@ -12672,6 +12672,26 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           await putFile(`${basePath}/slide-${String(i + 1).padStart(2, '0')}.png`, toB64Bin(pngBuffers[i]), `Render from Assembly Manifest: ${titleName} — slide ${i + 1}`);
         }
 
+        // Canva import source — same mechanism as publishCarouselSlides'
+        // canvaSourceHtml (Canva's HTML importer decomposes a page per
+        // data-document-role="page" element into a real editable design,
+        // not a flattened image), but this renderer previously never wrote
+        // one, so a ChatGPT-manifest-driven carousel had no Canva path at
+        // all. Rebuilt fresh from the current manifest/layout templates on
+        // every render, so it never drifts from what the PNGs show.
+        const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+        const bodyInnerOf = html => (html.match(/<body[^>]*>([\s\S]*)<\/body>/) || [, ''])[1].trim();
+        const canvaSourceHtml = `<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(headlineFont)}:wght@600;700&family=${encodeURIComponent(bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
+<style>${css}
+body { width:auto; height:auto; overflow:visible; padding:0; }
+</style></head><body>
+${slides.map((s, i) => `  <div data-document-role="page" data-label="Slide ${i + 1}" style="width:1080px;height:1350px;overflow:hidden;position:relative;background:${bg};">
+${bodyInnerOf(slideHtml(s))}
+  </div>`).join('\n')}
+</body></html>`;
+        await putFile(`${basePath}/canva-source.html`, toB64Text(canvaSourceHtml), `Render from Assembly Manifest: ${titleName} — Canva source`);
+
         const designLink = `https://cabuzzard.github.io/dash/${basePath}/`;
         await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
