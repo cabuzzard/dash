@@ -11868,6 +11868,23 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const REPO = "cabuzzard/dash", BRANCH = "main";
         const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
 
+        // Campaign Logins convenience block for the preview page — same
+        // best-effort query as the Assembly Review page, so an operator
+        // reviewing a freshly-generated carousel has one-click access to
+        // the accounts they'd post it from without leaving this page.
+        let campaignLogins = [];
+        try {
+          const loginRows = await notionQuery(LOGINS_DB, {
+            filter: { property: "Campaign", relation: { contains: dash(campaignId) } },
+            sorts: [{ property: "Name", direction: "ascending" }],
+          });
+          campaignLogins = loginRows.map(l => ({
+            name: l.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+            url: `https://www.notion.so/${l.id.replace(/-/g, '')}`,
+            status: l.properties.Status?.select?.name || "",
+          }));
+        } catch (e) {}
+
         // ── Step 4: render each slide to a real PNG via Browser Rendering ──
         // CSS lives separately from the HTML skeleton (rather than inline in
         // one template string) so the gallery page's HTML/CSS editor (see
@@ -12095,6 +12112,16 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
   .grid img { width:100%; border-radius:6px; display:block; box-shadow:0 4px 20px rgba(0,0,0,.4); }
   .cap { max-width:640px; margin:36px auto 0; color:#ccc; font-size:14px; line-height:1.7; white-space:pre-wrap; }
   .tags { max-width:640px; margin:14px auto 0; color:#666; font-size:12px; }
+  .metaHead { max-width:640px; margin:14px auto 0; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .copyBtn { padding:6px 12px; background:#333; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; font-family:inherit; }
+  .copyBtn:hover { background:#444; }
+  .copyStatus { font-size:11px; color:#68d391; margin-left:8px; }
+  .loginsWrap { max-width:640px; margin:20px auto 0; }
+  .loginLinks { display:flex; flex-wrap:wrap; gap:8px; }
+  .loginLinks a { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; background:#1a1a1a; border:1px solid #333; border-radius:16px; color:#e6e6e6; text-decoration:none; font-size:12px; }
+  .loginLinks a:hover { background:#242424; border-color:#444; }
+  .loginLinks .status { font-size:10px; color:#888; text-transform:uppercase; letter-spacing:.04em; }
+  .loginLinks .status.active { color:#68d391; }
   .refine { max-width:640px; margin:32px auto 0; padding-top:24px; border-top:1px solid #262626; }
   .refine input, .refine textarea, .refine button { font-family:inherit; font-size:13px; }
   .refine input[type=password] { width:90px; padding:9px 10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; letter-spacing:0.2em; }
@@ -12116,8 +12143,10 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
   <h1>${esc(titleName)}</h1>
   <div class="sub">Carousel preview — ${slides.length} slides — for approval / layout review, not yet published</div>
   <div class="grid">${pngBuffers.map((_, i) => `<img id="slideImg${i}" src="slide-${String(i + 1).padStart(2, '0')}.png" alt="Slide ${i + 1}">`).join('')}</div>
+  ${(caption || hashtags) ? `<div class="metaHead"><span></span><span><button class="copyBtn" id="copyCaptionBtn">Copy caption + hashtags</button><span class="copyStatus" id="copyCaptionStatus"></span></span></div>` : ''}
   ${caption ? `<div class="cap">${esc(caption)}</div>` : ''}
   ${hashtags ? `<div class="tags">${esc(hashtags)}</div>` : ''}
+  ${campaignLogins.length ? `<div class="loginsWrap"><div class="loginLinks">${campaignLogins.map(l => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}${l.status ? `<span class="status${l.status === 'Active' ? ' active' : ''}">${esc(l.status)}</span>` : ''}</a>`).join('')}</div></div>` : ''}
   <div class="refine">
     <div class="hint">Want a change made? Describe it below and it'll be edited and re-rendered in place — no need to go back to Generate Assets.</div>
     <div class="row" id="refinePinRow">
@@ -12151,6 +12180,19 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
     var CAMPAIGN_ID = ${JSON.stringify(campaignId)};
     var CAROUSEL_TYPE = ${JSON.stringify(carouselType || 'triple-hook')};
     var SLIDE_HTMLS = ${JSON.stringify(slides.map((s, i) => slideHtml(s, i, slides.length, effectiveCss)))};
+    var COPY_CAPTION_TEXT = ${JSON.stringify([caption, hashtags].filter(Boolean).join('\n\n'))};
+    var copyCaptionBtn = document.getElementById('copyCaptionBtn');
+    var copyCaptionStatus = document.getElementById('copyCaptionStatus');
+    if (copyCaptionBtn) {
+      copyCaptionBtn.onclick = function () {
+        navigator.clipboard.writeText(COPY_CAPTION_TEXT).then(function () {
+          copyCaptionStatus.textContent = 'Copied!';
+          setTimeout(function () { copyCaptionStatus.textContent = ''; }, 2000);
+        }, function () {
+          copyCaptionStatus.textContent = 'Copy failed — select text manually.';
+        });
+      };
+    }
     var refineToken = null;
     document.getElementById('refineUnlockBtn').addEventListener('click', function () {
       var pin = document.getElementById('refinePin').value.trim();
