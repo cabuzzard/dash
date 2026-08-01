@@ -12396,6 +12396,7 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         const slideSections = sections.filter(s => /^Slide \d+/i.test(s.heading));
         if (!slideSections.length) throw new Error("This title has no Slide N blocks to render from — regenerate it via Generate Assets first.");
 
+        const VALID_LAYOUT_TEMPLATES = ['cover', 'all-text', 'object', 'conclusion'];
         const slides = slideSections.map((s, idx) => {
           const headline = (s.lines.find(l => l.bold) || s.lines[0] || {}).text || '';
           const bodyText = (s.lines.find(l => !l.bold) || {}).text || '';
@@ -12404,7 +12405,18 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           const footerLabel = (rawFooter && !/label$/i.test(rawFooter)) ? rawFooter : (m.role || titleName);
           const graphicSvg = (m.style?.graphicSvg || '').trim();
           const backgroundPrompt = (m.style?.backgroundPrompt || '').trim();
-          return { number: idx + 1, role: m.role || '', headline, body: bodyText, footerLabel, graphicSvg, backgroundPrompt };
+          // Prefer the manifest's own choice; fall back to a sensible
+          // default by slide position/content when it's missing or not one
+          // of the four real templates (old manifests, or a ChatGPT
+          // response that skipped this field) — never a blank/broken layout.
+          const rawLT = (m.style?.layoutTemplate || '').trim().toLowerCase();
+          let layoutTemplate = VALID_LAYOUT_TEMPLATES.includes(rawLT) ? rawLT : null;
+          if (!layoutTemplate) {
+            if (idx === 0) layoutTemplate = 'cover';
+            else if (idx === slideSections.length - 1) layoutTemplate = 'conclusion';
+            else layoutTemplate = graphicSvg ? 'object' : 'all-text';
+          }
+          return { number: idx + 1, role: m.role || '', headline, body: bodyText, footerLabel, graphicSvg, backgroundPrompt, layoutTemplate };
         });
         const total = slides.length;
 
@@ -12506,19 +12518,36 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         };
         const scrimRgb = hexLuminance(ink) > 150 ? '0,0,0' : '255,255,255';
 
+        // Four named layout templates, geometry owned here (not invented
+        // per-slide by ChatGPT) so every carousel — whatever carouselType
+        // wrote its copy — gets a real, non-overlapping box layout instead
+        // of one flat headline+paragraph template. ChatGPT/the manifest
+        // only picks WHICH template fits each slide (style.layoutTemplate)
+        // and supplies the content that goes in it; the pixel math is
+        // deterministic. Canvas is 1080x1350 with a 96px safe margin.
+        const LAYOUT_TEMPLATES = {
+          cover:      { headline: { x: 96, y: 110, w: 888, h: 260 }, graphic: { x: 96, y: 400, w: 888, h: 560 }, content: { x: 96, y: 990, w: 888, h: 150 } },
+          'all-text': { headline: { x: 96, y: 110, w: 888, h: 150 }, graphic: null, content: { x: 96, y: 290, w: 888, h: 850 } },
+          object:     { headline: { x: 96, y: 110, w: 888, h: 150 }, graphic: { x: 660, y: 760, w: 320, h: 320 }, content: { x: 96, y: 290, w: 520, h: 850 } },
+          conclusion: { headline: { x: 96, y: 360, w: 888, h: 220 }, graphic: { x: 465, y: 160, w: 150, h: 150 }, content: { x: 96, y: 620, w: 888, h: 260 } },
+        };
+        const boxStyle = b => b ? `left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px;` : '';
+
         const css = `
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { width:1080px; height:1350px; background:${bg}; font-family:'${bodyFont}',serif; position:relative; overflow:hidden; padding:96px; display:flex; flex-direction:column; justify-content:center; }
+  body { width:1080px; height:1350px; background:${bg}; font-family:'${bodyFont}',serif; position:relative; overflow:hidden; }
   .scrim { position:absolute; inset:0; background:linear-gradient(180deg, rgba(${scrimRgb},0.05) 0%, rgba(${scrimRgb},0.2) 45%, rgba(${scrimRgb},0.65) 100%); }
-  .rule { position:absolute; left:96px; top:96px; width:64px; height:4px; background:${accent}; z-index:2; }
-  .icon { position:absolute; left:96px; top:128px; z-index:2; }
-  .graphic { position:absolute; right:96px; bottom:190px; width:300px; height:300px; z-index:2; }
-  .graphic.compact { width:150px; height:150px; bottom:170px; opacity:0.92; }
-  .graphic svg { width:100% !important; height:100% !important; }
-  .role { position:relative; z-index:2; font-family:'${bodyFont}',serif; font-size:20px; letter-spacing:0.18em; text-transform:uppercase; color:${accent}; margin-bottom:28px; font-weight:600; }
-  h1 { position:relative; z-index:2; font-family:'${headlineFont}',serif; font-size:60px; line-height:1.16; color:${ink}; font-weight:700; margin-bottom:28px; max-width:820px; }
-  p { position:relative; z-index:2; font-family:'${bodyFont}',serif; font-size:31px; line-height:1.5; color:${ink}; opacity:0.85; max-width:820px; }
-  .list { position:relative; z-index:2; display:flex; flex-direction:column; gap:16px; max-width:640px; }
+  .rule { position:absolute; left:96px; top:64px; width:64px; height:4px; background:${accent}; z-index:2; }
+  .graphic { position:absolute; z-index:2; }
+  .graphic svg { width:100%; height:100%; }
+  .graphic.fallback { display:flex; align-items:center; justify-content:center; }
+  .graphic.fallback svg { width:48px; height:48px; }
+  .headline-box { position:absolute; z-index:2; }
+  .role { font-family:'${bodyFont}',serif; font-size:18px; letter-spacing:0.18em; text-transform:uppercase; color:${accent}; margin-bottom:14px; font-weight:600; }
+  h1 { font-family:'${headlineFont}',serif; font-size:54px; line-height:1.15; color:${ink}; font-weight:700; }
+  .content-box { position:absolute; z-index:2; overflow:hidden; }
+  p { font-family:'${bodyFont}',serif; font-size:29px; line-height:1.5; color:${ink}; opacity:0.85; }
+  .list { display:flex; flex-direction:column; gap:16px; height:100%; justify-content:center; }
   .row { display:flex; align-items:baseline; gap:16px; }
   .row .n { font-family:'${bodyFont}',serif; font-size:19px; color:${accent}; min-width:38px; flex:none; font-weight:600; }
   .row .t { font-family:'${bodyFont}',serif; font-size:23px; line-height:1.35; color:${ink}; opacity:0.88; }
@@ -12547,17 +12576,24 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         }).join('');
         const slideHtml = slide => {
           const isList = /\n/.test(slide.body || '');
+          const tpl = LAYOUT_TEMPLATES[slide.layoutTemplate] || LAYOUT_TEMPLATES['all-text'];
           return `<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(headlineFont)}:wght@600;700&family=${encodeURIComponent(bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
 <style>${css}</style></head><body${slide.backgroundImageB64 ? ` style="background-image:url(data:image/png;base64,${slide.backgroundImageB64});background-size:cover;background-position:center;"` : ''}>
   ${slide.backgroundImageB64 ? '<div class="scrim"></div>' : ''}
   <div class="rule"></div>
-  ${slide.graphicSvg
-    ? `<div class="graphic${isList ? ' compact' : ''}">${sanitizeSvg(slide.graphicSvg)}</div>`
-    : `<svg class="icon" width="36" height="36" viewBox="0 0 36 36" fill="none" stroke="${accent}" stroke-width="2"><circle cx="18" cy="18" r="14"/><path d="M11 18h14M18 11v14"/></svg>`}
-  ${slide.role ? `<div class="role">${esc(slide.role)}</div>` : ''}
-  <h1>${esc(slide.headline)}</h1>
-  ${isList ? `<div class="list">${numberedRows(slide.body)}</div>` : `<p>${esc(slide.body)}</p>`}
+  ${tpl.graphic
+    ? (slide.graphicSvg
+        ? `<div class="graphic" style="${boxStyle(tpl.graphic)}">${sanitizeSvg(slide.graphicSvg)}</div>`
+        : `<div class="graphic fallback" style="${boxStyle(tpl.graphic)}"><svg viewBox="0 0 36 36" fill="none" stroke="${accent}" stroke-width="2"><circle cx="18" cy="18" r="14"/><path d="M11 18h14M18 11v14"/></svg></div>`)
+    : ''}
+  <div class="headline-box" style="${boxStyle(tpl.headline)}">
+    ${slide.role ? `<div class="role">${esc(slide.role)}</div>` : ''}
+    <h1>${esc(slide.headline)}</h1>
+  </div>
+  <div class="content-box" style="${boxStyle(tpl.content)}">
+    ${isList ? `<div class="list">${numberedRows(slide.body)}</div>` : `<p>${esc(slide.body)}</p>`}
+  </div>
   <div class="divider"></div>
   <div class="footer">${esc(slide.footerLabel)}</div>
   <div class="num">${String(slide.number).padStart(2, '0')}/${String(total).padStart(2, '0')}</div>
@@ -15767,7 +15803,7 @@ The deterministic, machine-readable counterpart to the two sections above — a 
         ? '"headline": "verbatim from Final Written Asset above, never reworded", "body": "verbatim from Final Written Asset above, never reworded"'
         : '"narration": "verbatim from Final Written Asset above, never reworded", "onScreenText": "verbatim from Final Written Asset above, never reworded"'} },
       "style": { ${assetType === 'carousel'
-        ? '"headlineTreatment": "e.g. Playfair Display Bold, not the copy itself", "bodyTreatment": "e.g. EB Garamond Regular, not the copy itself", "dividerStyle": "...", "iconStyle": "...", "diagramStyle": "...", "graphicSvg": "a complete self-contained inline SVG element (opening svg tag through closing svg tag) rendering this slide\'s real icon, diagram, or illustration graphic per the approved Visual Design Card above -- actual markup, not a description of one; give it its own viewBox for sizing, use only the resolved palette hex values from designTokens above, no external image or font references, no script tags; use an empty string if this slide is intentionally graphic-free / pure typography. STATIC ONLY even on a Motion Cover slide (see Production Method above) -- no SMIL animate tags, no CSS keyframes/transition inside a style block; a Motion Cover\'s intended motion is declared separately via this slide\'s motion field below, never baked into the SVG itself. If a Motion Cover slide\'s graphic has the one element meant to move, wrap it in its own labeled group with a clear id attribute so motion.animationSequence below can target it.", "backgroundPrompt": "an image-generation prompt (plain descriptive text, NOT markup) for this slide\'s full-bleed background art or illustration, matching the mood/subject/palette of the approved Visual Design Card above -- describe style, subject, composition, and color explicitly since the generator has no other context; never ask for any text, letters, numbers, or words to appear in the image, since the actual headline/body copy is rendered separately on top of it; use an empty string if this slide should just use the flat background color instead", "footerLabel": "actual short label text to print, e.g. the slide role in caps — never a generic description such as section label", "slideNumberFormat": "e.g. 01/07"'
+        ? '"layoutTemplate": "cover, all-text, object, or conclusion -- see Layout Templates below, required on every slide", "headlineTreatment": "e.g. Playfair Display Bold, not the copy itself", "bodyTreatment": "e.g. EB Garamond Regular, not the copy itself", "dividerStyle": "...", "iconStyle": "...", "diagramStyle": "...", "graphicSvg": "a complete self-contained inline SVG element (opening svg tag through closing svg tag) rendering this slide\'s real icon, diagram, or illustration graphic per the approved Visual Design Card above -- actual markup, not a description of one; give it its own viewBox for sizing, use only the resolved palette hex values from designTokens above, no external image or font references, no script tags; use an empty string if this slide is intentionally graphic-free / pure typography. STATIC ONLY even on a Motion Cover slide (see Production Method above) -- no SMIL animate tags, no CSS keyframes/transition inside a style block; a Motion Cover\'s intended motion is declared separately via this slide\'s motion field below, never baked into the SVG itself. If a Motion Cover slide\'s graphic has the one element meant to move, wrap it in its own labeled group with a clear id attribute so motion.animationSequence below can target it.", "backgroundPrompt": "an image-generation prompt (plain descriptive text, NOT markup) for this slide\'s full-bleed background art or illustration, matching the mood/subject/palette of the approved Visual Design Card above -- describe style, subject, composition, and color explicitly since the generator has no other context; never ask for any text, letters, numbers, or words to appear in the image, since the actual headline/body copy is rendered separately on top of it; use an empty string if this slide should just use the flat background color instead", "footerLabel": "actual short label text to print, e.g. the slide role in caps — never a generic description such as section label", "slideNumberFormat": "e.g. 01/07"'
         : '"diagramStyle": "...", "iconStyle": "...", "captionStyle": "...", "graphicSvg": "a complete self-contained inline SVG element rendering this scene\'s real icon/diagram/illustration graphic per the approved Visual Design Card above -- actual markup, not a description; empty string if none. STATIC ONLY: no SMIL animate tags, no CSS keyframes/transition inside a style block, no script tags -- Remotion owns 100% of the animation and needs a motionless object to drive frame-by-frame, not one with its own internal animation clock. If this graphic has parts meant to move independently or reveal in sequence (e.g. an arrow that slides in after a circle appears), wrap each such part in its own labeled group element with a clear id attribute (e.g. id circle, id arrow) -- those exact ids are what motion.animationSequence below targets; a single ungrouped blob can only be animated as one unit."'} },
       ${assetType === 'carousel'
         ? '"export": { "filename": "...", "format": "PNG", "width": 0, "height": 0 }, "animated": false, "motion": null'
@@ -15777,7 +15813,18 @@ The deterministic, machine-readable counterpart to the two sections above — a 
 }
 \`\`\`
 
-${assetType === 'text video' ? `A text video assembles into ONE continuous Remotion composition — it is never one file per scene, which is why scenes carry \`timing\`/\`motion\` instead of \`export\`; only the top-level \`render\` object describes output. \`timing.durationSec\` is a PRE-AUDIO ESTIMATE (\`timingStatus: "estimated"\`) — it must be internally consistent (\`revealDurationSec + readDurationSec + transitionDurationSec\` should sum to approximately \`durationSec\`) and must scale with \`motion.complexityBudget\`/\`motion.animationBudget\`: a High-complexity, animation-heavy scene needs measurably more \`durationSec\` than a Low-complexity scene with similar narration length. This estimate is what the Mandatory Render Sequence below resolves against real narration audio — the build session recalculates it and should update \`timingStatus\` to \`"audio_resolved"\` once it does, per that sequence's own step 8; it is not something to skip because "real timing comes later."
+${assetType === 'carousel' ? `**Layout Templates — every slide must declare one via \`style.layoutTemplate\`.** This system renders from four fixed, named box layouts (their pixel geometry is owned by the renderer, not something you compute) — your job is choosing which one fits each slide and writing content sized to it, not inventing coordinates:
+
+- **cover** — slide 1 only. Full-width headline near the top, a large prominent graphic filling most of the middle of the frame, a short one-line subtitle near the bottom. Use this to make the opening slide read as visually distinct/bigger than the interior slides.
+- **all-text** — a content slide with NO graphic: full-width headline, full-width text/list area below it. Use this when a slide's content doesn't have a natural diagram, or you deliberately want a text-only pause in the rhythm.
+- **object** — a content slide WITH a graphic: headline across the top, a smaller graphic tucked bottom-right, and the text/list area narrower on the left so it never overlaps the graphic. This is the default for a slide that has real diagram/icon content to show alongside its text.
+- **conclusion** — the final slide only. A calmer, centered composition: a small centered mark near the top, headline centered mid-frame, closing/CTA text below it — deliberately more open and less busy than the interior slides, so the carousel visibly winds down instead of just stopping.
+
+Pick **cover** for slide 1 and **conclusion** for the last slide by default (only deviate with a stated reason); for every slide in between, choose **object** when you're giving it a real \`graphicSvg\` and **all-text** when you're not — never leave \`layoutTemplate\` blank or invent a fifth name, that value is read literally by the renderer. If this carousel's slides are a Hidden Potential stress/benefit split (each slide two short paired lines, not a headline+body), these four templates don't apply — that format renders through its own fixed split-screen treatment; just set \`layoutTemplate\` to \`"all-text"\` on every slide as a harmless placeholder and skip the rest of this guidance.
+
+A slide whose body is a numbered list (Numbered Breakdown category slides) renders as real list rows automatically whenever its \`copy.body\` contains actual newline characters between items — write it as literal separate lines (\`"01 Name — description\\n02 Name — description..."\`), not a single run-on sentence with numbers inline; the renderer handles column widths, row spacing, and number-column alignment itself, so you supply the correctly-line-broken text, not layout numbers.
+
+` : ''}${assetType === 'text video' ? `A text video assembles into ONE continuous Remotion composition — it is never one file per scene, which is why scenes carry \`timing\`/\`motion\` instead of \`export\`; only the top-level \`render\` object describes output. \`timing.durationSec\` is a PRE-AUDIO ESTIMATE (\`timingStatus: "estimated"\`) — it must be internally consistent (\`revealDurationSec + readDurationSec + transitionDurationSec\` should sum to approximately \`durationSec\`) and must scale with \`motion.complexityBudget\`/\`motion.animationBudget\`: a High-complexity, animation-heavy scene needs measurably more \`durationSec\` than a Low-complexity scene with similar narration length. This estimate is what the Mandatory Render Sequence below resolves against real narration audio — the build session recalculates it and should update \`timingStatus\` to \`"audio_resolved"\` once it does, per that sequence's own step 8; it is not something to skip because "real timing comes later."
 
 **Division of labor for motion, stated explicitly because it is easy to get backwards: you (this conversation) design the static SVG objects and declare HOW they should be revealed — you never write animation code.** Remotion is what actually animates frame-by-frame, in a separate build session that has real narration timing to work from; it consumes \`graphicSvg\` as a motionless object and \`motion.animationSequence\` as its choreography spec. Your job for each entry in \`animationSequence\` is to decide, in plain language, which named part of the graphic moves (\`targetId\`), what kind of motion (\`animation\` — fade/slide/scale/draw-on/hold/etc.), and roughly when relative to the scene start (\`delaySec\`/\`durationSec\`) — never a CSS/JS/Remotion code snippet, never an SVG \`<animate>\` tag. If a graphic has no parts that need independent timing, one \`animationSequence\` entry with \`targetId: "scene"\` covering the whole graphic is correct and sufficient — don't invent sub-part choreography a design doesn't call for.` : ''}
 
