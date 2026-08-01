@@ -17038,16 +17038,16 @@ Return ONLY a complete, valid, self-contained HTML document (starting with <!doc
 - Load two Google Fonts via a <link href="https://fonts.googleapis.com/css2?family=...&display=swap" rel="stylesheet"> tag (pick real, specific font names that fit the brand's voice — e.g. a bold condensed display font for headlines, a clean readable sans or serif for body) and apply them via font-family in your CSS.
 - SECTION 1 — "COLOR PALETTE": a row of 5 swatches. Each swatch is a <div> with an actual inline style="background-color:#XXXXXX" (a subtle gradient overlay on top is fine for depth) — pick 5 real, cohesive hex values yourself. Directly beneath each swatch, print the SAME hex string as real text (so it can never mismatch the swatch, since it's the literal same value used twice).
 - SECTION 2 — "TYPOGRAPHY": three real text specimens — a large HEADLINE, a medium SUBHEAD, a smaller BODY paragraph — using real on-brand example words (never "Lorem Ipsum"), each with a small caption naming its role/style beneath it.
-- SECTION 3 — "LAYOUT — ${slideCount} SLIDES": exactly ${slideCount} numbered slide-thumbnail cards in a grid, each with a real illustrated background (a gradient mesh or a small abstract inline-SVG graphic element specific to that slide's role, not a flat solid rectangle) containing real, distinct, on-brand example headline copy (one or two short lines) and, beneath the card, a caption in the exact literal format "N. Role" where N is the card's actual position (1, 2, 3, ... up to ${slideCount}, in order, no skips, no repeats — you are writing this as a real ordered list in code, so get the numbering right) and Role is a short narrative-arc label (Hook, Proof Point, Insight, Framework, Tension, CTA, etc. — vary them naturally across the ${slideCount} cards).
-- SECTION 4 — "ICONS & MARKS": a row of 4 icons, each a hand-authored inline <svg> — richer small illustrated marks with real depth (gradient fills, layered shapes, subtle shading — not single-stroke line glyphs), brand-relevant symbols, each with a text label beneath naming what it represents.
-- Every section is clearly labeled with a heading. No other explanatory text anywhere.
+- SECTION 3 — "LAYOUT — ${slideCount} SLIDES": exactly ${slideCount} numbered slide-thumbnail cards in a grid, each a compact CSS gradient background (2-3 color stops, no per-card SVG artwork — keep these lightweight) containing real, distinct, on-brand example headline copy (one short line each) and, beneath the card, a caption in the exact literal format "N. Role" where N is the card's actual position (1, 2, 3, ... up to ${slideCount}, in order, no skips, no repeats — you are writing this as a real ordered list in code, so get the numbering right) and Role is a short narrative-arc label (Hook, Proof Point, Insight, Framework, Tension, CTA, etc. — vary them naturally across the ${slideCount} cards).
+- SECTION 4 — "ICONS & MARKS": a row of 4 icons, each a hand-authored inline <svg> (keep each under ~10 path/shape elements — a couple of layered shapes plus one gradient fill is enough for depth, not an elaborate scene), brand-relevant symbols, each with a text label beneath naming what it represents.
+- Every section is clearly labeled with a heading. No other explanatory text anywhere. Keep the whole document as compact as it can be while still meeting every requirement above — avoid unnecessary repetition or verbose CSS.
 
 Return ONLY the HTML document.`;
 
         const htmlResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 20000, messages: [{ role: "user", content: htmlPrompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 12000, messages: [{ role: "user", content: htmlPrompt }] }),
         });
         const htmlData = await htmlResp.json();
         if (!htmlResp.ok) return json({ error: htmlData.error?.message || "Claude HTML-generation error" }, 500);
