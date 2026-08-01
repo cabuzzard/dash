@@ -11885,6 +11885,20 @@ Return ONLY this JSON object, no other text, no markdown fences:
           }));
         } catch (e) {}
 
+        // Looked up here (not just at the Step 6 upsert below) so the
+        // gallery page can show an existing Canva Link immediately, same
+        // "if we have one, always show it" rule as the Assembly Review
+        // page — reused at Step 6 instead of querying Assets twice.
+        const assetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Content Strategy", relation: { contains: dash(titleId) } },
+            { property: "Asset Type", select: { equals: "carousel" } },
+          ] } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const existingAsset = (assetQuery.results || []).find(a => !a.archived);
+        const canvaLink = existingAsset?.properties?.["Canva Link"]?.url || "";
+
         // ── Step 4: render each slide to a real PNG via Browser Rendering ──
         // CSS lives separately from the HTML skeleton (rather than inline in
         // one template string) so the gallery page's HTML/CSS editor (see
@@ -12171,8 +12185,8 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
     <div class="status" id="editorStatus"></div>
   </div>
   <div style="max-width:900px;margin:20px auto 0;">
-    <a href="${canvaPromptUrl}" target="_blank" style="display:inline-block;padding:9px 16px;background:#00C4CC;color:#111;text-decoration:none;border-radius:4px;font-size:13px;font-weight:600;">Send to Canva →</a>
-    <div style="color:#666;font-size:12px;margin-top:6px;">Opens a new Claude chat with the import + Notion save-back already spelled out — just hit send.</div>
+    ${canvaLink ? `<a href="${esc(canvaLink)}" target="_blank" style="display:inline-block;padding:9px 16px;background:#00C4CC;color:#111;text-decoration:none;border-radius:4px;font-size:13px;font-weight:600;">🎨 Open in Canva</a><div style="color:#666;font-size:12px;margin-top:6px;">Already imported — opens the existing editable design.</div>`
+      : `<a href="${canvaPromptUrl}" target="_blank" style="display:inline-block;padding:9px 16px;background:#00C4CC;color:#111;text-decoration:none;border-radius:4px;font-size:13px;font-weight:600;">Send to Canva →</a><div style="color:#666;font-size:12px;margin-top:6px;">Opens a new Claude chat with the import + Notion save-back already spelled out — just hit send.</div>`}
   </div>
   <script>
     var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -12282,14 +12296,8 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         const previewUrl = `https://cabuzzard.github.io/dash/${basePath}/`;
 
         // ── Step 6: upsert the Assets DB record + move the title to Review ──
-        const assetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
-          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ filter: { and: [
-            { property: "Content Strategy", relation: { contains: dash(titleId) } },
-            { property: "Asset Type", select: { equals: "carousel" } },
-          ] } }),
-        }).then(r => r.json()).catch(() => ({ results: [] }));
-        const existingAsset = (assetQuery.results || []).find(a => !a.archived);
+        // assetQuery/existingAsset already looked up earlier (see Canva
+        // Link comment above) — reused here rather than queried twice.
 
         const assetProps = {
           "Design Link": { url: previewUrl },
@@ -16022,6 +16030,12 @@ ${assemblyManifest}`;
 
         const postCaption = sectionText('Caption');
         const hashtags = sectionText('Hashtags');
+        // Shown wherever this review page renders action buttons whenever
+        // it's set on the Asset, regardless of how it got there (the
+        // gallery page's "Send to Canva" handoff, a direct MCP import, or
+        // typed in by hand) — never gated to carousel specifically, since
+        // any asset type could end up with one.
+        const canvaLink = assetPage.properties["Canva Link"]?.url || "";
         const finalDescription = description || postCaption;
         const finalAltText = altText || '';
         const platformTitle = titleName;
@@ -16170,6 +16184,7 @@ ${assemblyManifest}`;
       <span>
         <button class="copyBtn" id="copyCaptionBtn">Copy caption + hashtags</button><span class="copyStatus" id="copyCaptionStatus"></span>
         ${assetType === 'carousel' ? `<button class="copyBtn" id="sendBufferBtn" style="margin-left:8px;">Send to Buffer (Draft)</button><span class="copyStatus" id="sendBufferStatus"></span>` : ''}
+        ${canvaLink ? `<a class="copyBtn" style="margin-left:8px;text-decoration:none;display:inline-block;" href="${esc2(canvaLink)}" target="_blank" rel="noopener">🎨 Open in Canva</a>` : ''}
       </span>
     </div>
     <table>${metaRows.map(([k, v]) => `<tr><td>${esc2(k)}</td><td>${esc2(v).replace(/\n/g, '<br>')}</td></tr>`).join('')}</table>
