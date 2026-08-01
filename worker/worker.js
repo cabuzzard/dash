@@ -12512,11 +12512,17 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
   .scrim { position:absolute; inset:0; background:linear-gradient(180deg, rgba(${scrimRgb},0.05) 0%, rgba(${scrimRgb},0.2) 45%, rgba(${scrimRgb},0.65) 100%); }
   .rule { position:absolute; left:96px; top:96px; width:64px; height:4px; background:${accent}; z-index:2; }
   .icon { position:absolute; left:96px; top:128px; z-index:2; }
-  .graphic { position:absolute; left:96px; top:118px; width:64px; height:64px; z-index:2; }
+  .graphic { position:absolute; right:96px; bottom:190px; width:300px; height:300px; z-index:2; }
+  .graphic.compact { width:150px; height:150px; bottom:170px; opacity:0.92; }
   .graphic svg { width:100% !important; height:100% !important; }
   .role { position:relative; z-index:2; font-family:'${bodyFont}',serif; font-size:20px; letter-spacing:0.18em; text-transform:uppercase; color:${accent}; margin-bottom:28px; font-weight:600; }
   h1 { position:relative; z-index:2; font-family:'${headlineFont}',serif; font-size:60px; line-height:1.16; color:${ink}; font-weight:700; margin-bottom:28px; max-width:820px; }
   p { position:relative; z-index:2; font-family:'${bodyFont}',serif; font-size:31px; line-height:1.5; color:${ink}; opacity:0.85; max-width:820px; }
+  .list { position:relative; z-index:2; display:flex; flex-direction:column; gap:16px; max-width:640px; }
+  .row { display:flex; align-items:baseline; gap:16px; }
+  .row .n { font-family:'${bodyFont}',serif; font-size:19px; color:${accent}; min-width:38px; flex:none; font-weight:600; }
+  .row .t { font-family:'${bodyFont}',serif; font-size:23px; line-height:1.35; color:${ink}; opacity:0.88; }
+  .row .t strong { font-weight:700; opacity:1; }
   .divider { position:absolute; left:96px; right:96px; bottom:150px; height:1px; background:${ink}; opacity:0.15; z-index:2; }
   .footer { position:absolute; left:96px; bottom:88px; font-family:'${bodyFont}',serif; font-size:15px; letter-spacing:0.14em; text-transform:uppercase; color:${ink}; opacity:0.5; z-index:2; }
   .num { position:absolute; right:96px; bottom:88px; font-family:'${bodyFont}',serif; font-size:15px; color:${accent}; letter-spacing:0.08em; z-index:2; }
@@ -12528,21 +12534,35 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         const sanitizeSvg = s => String(s || '')
           .replace(/<script[\s\S]*?<\/script>/gi, '')
           .replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, '');
-        const slideHtml = slide => `<!doctype html><html><head><meta charset="utf-8">
+        // A manifest body can be a plain one-liner (cover/CTA slides) or a
+        // "\n"-joined numbered list (Numbered Breakdown category slides,
+        // e.g. "01 Name — description") — HTML collapses raw newlines
+        // inside a <p> into nothing, which is what made list slides render
+        // as one dense run-on paragraph. Split real list rows out instead.
+        const numberedRows = body => String(body || '').split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+          const m = line.match(/^(\d{1,2})[.)]?\s+(.+?)\s*[—–-]\s*(.+)$/);
+          return m
+            ? `<div class="row"><span class="n">${esc(m[1].padStart(2, '0'))}</span><span class="t"><strong>${esc(m[2])}</strong> — ${esc(m[3])}</span></div>`
+            : `<div class="row"><span class="t">${esc(line)}</span></div>`;
+        }).join('');
+        const slideHtml = slide => {
+          const isList = /\n/.test(slide.body || '');
+          return `<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(headlineFont)}:wght@600;700&family=${encodeURIComponent(bodyFont)}:wght@400;500&display=swap" rel="stylesheet">
 <style>${css}</style></head><body${slide.backgroundImageB64 ? ` style="background-image:url(data:image/png;base64,${slide.backgroundImageB64});background-size:cover;background-position:center;"` : ''}>
   ${slide.backgroundImageB64 ? '<div class="scrim"></div>' : ''}
   <div class="rule"></div>
   ${slide.graphicSvg
-    ? `<div class="graphic">${sanitizeSvg(slide.graphicSvg)}</div>`
+    ? `<div class="graphic${isList ? ' compact' : ''}">${sanitizeSvg(slide.graphicSvg)}</div>`
     : `<svg class="icon" width="36" height="36" viewBox="0 0 36 36" fill="none" stroke="${accent}" stroke-width="2"><circle cx="18" cy="18" r="14"/><path d="M11 18h14M18 11v14"/></svg>`}
   ${slide.role ? `<div class="role">${esc(slide.role)}</div>` : ''}
   <h1>${esc(slide.headline)}</h1>
-  <p>${esc(slide.body)}</p>
+  ${isList ? `<div class="list">${numberedRows(slide.body)}</div>` : `<p>${esc(slide.body)}</p>`}
   <div class="divider"></div>
   <div class="footer">${esc(slide.footerLabel)}</div>
   <div class="num">${String(slide.number).padStart(2, '0')}/${String(total).padStart(2, '0')}</div>
 </body></html>`;
+        };
 
         const sleep = ms => new Promise(res => setTimeout(res, ms));
         const renderSlide = async html => {
