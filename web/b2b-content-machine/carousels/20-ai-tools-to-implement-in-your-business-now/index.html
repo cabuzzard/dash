@@ -1,0 +1,161 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>20 Ai Tools to implement in your business now. — Carousel Preview</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#111; font-family:system-ui,sans-serif; padding:32px 20px; }
+  h1 { color:#fff; font-size:20px; margin-bottom:6px; }
+  .sub { color:#888; font-size:13px; margin-bottom:28px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; max-width:1200px; margin:0 auto; }
+  .grid img { width:100%; border-radius:6px; display:block; box-shadow:0 4px 20px rgba(0,0,0,.4); }
+  .cap { max-width:640px; margin:36px auto 0; color:#ccc; font-size:14px; line-height:1.7; white-space:pre-wrap; }
+  .tags { max-width:640px; margin:14px auto 0; color:#666; font-size:12px; }
+  .refine { max-width:640px; margin:32px auto 0; padding-top:24px; border-top:1px solid #262626; }
+  .refine input, .refine textarea, .refine button { font-family:inherit; font-size:13px; }
+  .refine input[type=password] { width:90px; padding:9px 10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; letter-spacing:0.2em; }
+  .refine textarea { width:100%; padding:10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; resize:vertical; box-sizing:border-box; }
+  .refine button { padding:9px 16px; background:#333; color:#fff; border:none; border-radius:4px; cursor:pointer; }
+  .refine button:hover { background:#444; }
+  .refine button:disabled { opacity:0.5; cursor:default; }
+  .refine .row { display:flex; gap:8px; align-items:center; }
+  .refine .err { color:#e66; font-size:12px; margin-top:6px; min-height:14px; }
+  .refine .status { color:#888; font-size:12px; margin-top:8px; min-height:14px; }
+  .refine .hint { color:#666; font-size:12px; margin-bottom:10px; }
+  .editor { max-width:900px; margin:28px auto 0; padding-top:20px; border-top:1px solid #262626; }
+  .editor .row2 { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; margin-top:10px; }
+  .editor select { background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px; padding:6px 8px; font-size:12px; }
+  .editor textarea { flex:1; min-width:260px; height:300px; padding:10px; background:#1a1a1a; border:1px solid #333; color:#ddd; border-radius:4px; resize:vertical; box-sizing:border-box; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; line-height:1.5; }
+  .editor .preview-wrap { width:216px; height:270px; overflow:hidden; position:relative; border:1px solid #333; border-radius:4px; flex-shrink:0; background:#000; }
+  .editor .preview-wrap iframe { width:1080px; height:1350px; border:0; transform:scale(0.2); transform-origin:top left; position:absolute; top:0; left:0; }
+</style></head><body>
+  <h1>20 Ai Tools to implement in your business now.</h1>
+  <div class="sub">Carousel preview — 6 slides — for approval / layout review, not yet published</div>
+  <div class="grid"><img id="slideImg0" src="slide-01.png" alt="Slide 1"><img id="slideImg1" src="slide-02.png" alt="Slide 2"><img id="slideImg2" src="slide-03.png" alt="Slide 3"><img id="slideImg3" src="slide-04.png" alt="Slide 4"><img id="slideImg4" src="slide-05.png" alt="Slide 5"><img id="slideImg5" src="slide-06.png" alt="Slide 6"></div>
+  <div class="cap">You do not need a developer. You do not need a technical background. You need the right 20 tools.
+
+I organised every AI tool a small business owner actually needs into four categories — writing, operations, sales, and design — so you can stop researching and start implementing.
+
+Here is what is inside this carousel:
+
+Writing and Content: ChatGPT, Claude, Jasper, Copy.ai, Writesonic, Grammarly Business
+Automation and Operations: Zapier, Make, Notion AI, Reclaim.ai, Fireflies.ai, Otter.ai, Relay.app
+Customer and Sales: Tidio, HubSpot AI, Lavender, Gong
+Design and Media: Canva AI, Descript, ElevenLabs
+
+The move is simple. Pick one tool from each category. Implement it this week. You will have a more capable AI-assisted business than the majority of your competitors before the month is out.
+
+Save this post so you have the list when you are ready. And follow for more practical AI guides built specifically for business owners, not engineers.</div>
+  <div class="tags">#aitools #smallbusiness #businessautomation #nocode #entrepreneurship</div>
+  <div class="refine">
+    <div class="hint">Want a change made? Describe it below and it'll be edited and re-rendered in place — no need to go back to Generate Assets.</div>
+    <div class="row" id="refinePinRow">
+      <input type="password" id="refinePin" maxlength="4" inputmode="numeric" placeholder="PIN">
+      <button id="refineUnlockBtn">Unlock</button>
+    </div>
+    <div class="err" id="refineErr"></div>
+    <div id="refineEditRow" style="display:none;">
+      <textarea id="refineInput" rows="2" placeholder="e.g. 'make slide 4 punchier' or 'swap the accent color to a deep blue'"></textarea>
+      <div style="margin-top:8px;"><button id="refineBtn">Refine design</button></div>
+      <div class="status" id="refineStatus"></div>
+    </div>
+  </div>
+  <div class="editor" id="editorRow" style="display:none;">
+    <div class="hint" style="color:#666;font-size:12px;">Direct HTML/CSS edit, one slide at a time — the preview updates as you type. Render commits it as that slide's image (this only changes the picture, not the stored slide text — a future Generate/Refine still uses the built-in design).</div>
+    <label style="font-size:12px;color:#888;">Slide <select id="editorSlideSelect"></select></label>
+    <div class="row2">
+      <textarea id="editorHtmlInput" spellcheck="false"></textarea>
+      <div class="preview-wrap"><iframe id="editorPreview"></iframe></div>
+    </div>
+    <div style="margin-top:8px;"><button id="editorRenderBtn">Render to PNG</button></div>
+    <div class="status" id="editorStatus"></div>
+  </div>
+  <div style="max-width:900px;margin:20px auto 0;">
+    <a href="https://claude.ai/new?q=Import%20this%20Instagram%20carousel%20design%20into%20Canva%20using%20the%20Canva%20MCP%20import-design-from-url%20tool%3A%20https%3A%2F%2Fcabuzzard.github.io%2Fdash%2Fweb%2Fb2b-content-machine%2Fcarousels%2F20-ai-tools-to-implement-in-your-business-now%2Fcanva-source.html%20%E2%80%94%20name%20it%20%2220%20Ai%20Tools%20to%20implement%20in%20your%20business%20now.%20%E2%80%94%20Carousel%22.%20Then%20find%20the%20Notion%20Asset%20page%20in%20the%20Assets%20DB%20(e91bdb6e770b4d298e9f62166a0fd5de)%20whose%20Content%20Strategy%20relation%20contains%203af1f7d3a4bb817ba363f3765b1aab48%20and%20whose%20Asset%20Type%20is%20%22carousel%22%2C%20and%20set%20its%20%22Canva%20Link%22%20property%20to%20the%20resulting%20Canva%20edit%20URL.%20Report%20the%20Canva%20edit%20link%20back%20to%20me." target="_blank" style="display:inline-block;padding:9px 16px;background:#00C4CC;color:#111;text-decoration:none;border-radius:4px;font-size:13px;font-weight:600;">Send to Canva →</a>
+    <div style="color:#666;font-size:12px;margin-top:6px;">Opens a new Claude chat with the import + Notion save-back already spelled out — just hit send.</div>
+  </div>
+  <script>
+    var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+    var TITLE_ID = "3af1f7d3a4bb817ba363f3765b1aab48";
+    var CAMPAIGN_ID = "35c1f7d3a4bb81568338f64d95ef3a36";
+    var CAROUSEL_TYPE = "numbered-breakdown";
+    var SLIDE_HTMLS = ["<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  body { width:1080px; height:1350px; background:#050505; font-family:'Inter',serif; padding:100px 90px 90px; position:relative; overflow:hidden; display:flex; flex-direction:column; }\n  .num { font-family:'IBM Plex Mono',monospace; font-size:22px; color:#9EFF3A; letter-spacing:0.14em; text-transform:uppercase; margin-bottom:30px; }\n  h1 { font-family:'Sora',serif; font-size:50px; line-height:1.16; color:#FFFFFF; margin-bottom:34px; font-weight:600; }\n  .list { display:flex; flex-direction:column; gap:24px; flex:1; justify-content:center; }\n  .row { display:flex; align-items:baseline; gap:22px; }\n  .row .n { font-family:'IBM Plex Mono',monospace; font-size:22px; color:#9EFF3A; min-width:44px; flex:none; }\n  .row .t { font-family:'Inter',serif; font-size:26px; line-height:1.4; color:#FFFFFF; opacity:0.9; }\n  .row .t strong { font-weight:600; opacity:1; }\n  p { font-family:'Inter',serif; font-size:29px; line-height:1.55; color:#FFFFFF; opacity:0.82; }\n  .counter { position:absolute; bottom:64px; right:74px; font-family:'IBM Plex Mono',monospace; font-size:19px; color:#9EFF3A; }\n  .rule { position:absolute; left:90px; right:90px; top:70px; height:1px; background:#9EFF3A; opacity:0.35; }\n</style></head><body>\n  <div class=\"rule\"></div>\n  <div class=\"num\">01 / 06</div>\n  <h1>20 AI Tools To Implement In Your Business Now</h1>\n  <p>No coding required. No IT department needed. Just results.</p>\n  <div class=\"counter\">1 / 6</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  body { width:1080px; height:1350px; background:#050505; font-family:'Inter',serif; padding:100px 90px 90px; position:relative; overflow:hidden; display:flex; flex-direction:column; }\n  .num { font-family:'IBM Plex Mono',monospace; font-size:22px; color:#9EFF3A; letter-spacing:0.14em; text-transform:uppercase; margin-bottom:30px; }\n  h1 { font-family:'Sora',serif; font-size:50px; line-height:1.16; color:#FFFFFF; margin-bottom:34px; font-weight:600; }\n  .list { display:flex; flex-direction:column; gap:24px; flex:1; justify-content:center; }\n  .row { display:flex; align-items:baseline; gap:22px; }\n  .row .n { font-family:'IBM Plex Mono',monospace; font-size:22px; color:#9EFF3A; min-width:44px; flex:none; }\n  .row .t { font-family:'Inter',serif; font-size:26px; line-height:1.4; color:#FFFFFF; opacity:0.9; }\n  .row .t strong { font-weight:600; opacity:1; }\n  p { font-family:'Inter',serif; font-size:29px; line-height:1.55; color:#FFFFFF; opacity:0.82; }\n  .counter { position:absolute; bottom:64px; right:74px; font-family:'IBM Plex Mono',monospace; font-size:19px; color:#9EFF3A; }\n  .rule { position:absolute; left:90px; right:90px; top:70px; height:1px; background:#9EFF3A; opacity:0.35; }\n</style></head><body>\n  <div class=\"rule\"></div>\n  <div class=\"num\">02 / 06</div>\n  <h1>WRITING AND CONTENT — 6 tools</h1>\n  <div class=\"list\"><div class=\"row\"><span class=\"n\">01</span><span class=\"t\"><strong>ChatGPT</strong> — drafts emails, proposals, SOPs, and social posts from a plain-English prompt</span></div><div class=\"row\"><span class=\"n\">02</span><span class=\"t\"><strong>Claude</strong> — longer-form writing, document summarisation, and nuanced brand voice matching</span></div><div class=\"row\"><span class=\"n\">03</span><span class=\"t\"><strong>Jasper</strong> — marketing copy templates pre-built for ads, landing pages, and product descriptions</span></div><div class=\"row\"><span class=\"n\">04</span><span class=\"t\"><strong>Copy.ai</strong> — fills a structured brief and outputs multiple copy variations for A/B testing</span></div><div class=\"row\"><span class=\"n\">05</span><span class=\"t\"><strong>Writesonic</strong> — SEO-optimised blog articles generated from a keyword and brief in minutes</span></div><div class=\"row\"><span class=\"n\">06</span><span class=\"t\"><strong>Grammarly Business</strong> — real-time tone, clarity, and brand-consistency checks across every team member's writing</span></div></div>\n  <div class=\"counter\">2 / 6</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  body { width:1080px; height:1350px; background:#050505; font-family:'Inter',serif; padding:100px 90px 90px; position:relative; overflow:hidden; display:flex; flex-direction:column; }\n  .num { font-family:'IBM Plex Mono',monospace; font-size:22px; color:#9EFF3A; letter-spacing:0.14em; text-transform:uppercase; margin-bottom:30px; }\n  h1 { font-family:'Sora',serif; font-size:50px; line-height:1.16; color:#FFFFFF; margin-bottom:34px; font-weight:600; }\n  .list { display:flex; flex-direction:column; gap:24px; flex:1; justify-content:center; }\n  .row { display:flex; align-items:baseline; gap:22px; }\n  .row .n { font-family:'IBM Plex Mono',monospace; font-size:22px; color:#9EFF3A; min-width:44px; flex:none; }\n  .row .t { font-family:'Inter',serif; font-size:26px; line-height:1.4; color:#FFFFFF; opacity:0.9; }\n  .row .t strong { font-weight:600; opacity:1; }\n  p { font-family:'Inter',serif; font-size:29px; line-height:1.55; color:#FFFFFF; opacity:0.82; }\n  .counter { position:absolute; bottom:64px; right:74px; font-family:'IBM Plex Mono',monospace; font-size:19px; color:#9EFF3A; }\n  .rule { position:absolute; left:90px; right:90px; top:70px; height:1px; background:#9EFF3A; opacity:0.35; }\n</style></head><body>\n  <div class=\"rule\"></div>\n  <div class=\"num\">03 / 06</div>\n  <h1>AUTOMATION AND OPERATIONS — 7 tools</h1>\n  <div class=\"list\"><div class=\"row\"><span class=\"n\">07</span><span class=\"t\"><strong>Zapier</strong> — connects 6,000+ apps and triggers automated workflows without writing a single line of code</span></div><div class=\"row\"><span class=\"n\">08</span><span class=\"t\"><strong>Make (formerly Integromat)</strong> — visual drag-and-drop automation builder for multi-step business processes</span></div><div class=\"row\"><span class=\"n\">09</span><span class=\"t\"><strong>Notion AI</strong> — summarises meeting notes, generates project plans, and answers questions inside your existing workspace</span></div><div class=\"row\"><span class=\"n\">10</span><span class=\"t\"><strong>Reclaim.ai</strong> — automatically schedules focus time, meetings, and tasks to protect productive hours</span></div><div class=\"row\"><span class=\"n\">11</span><span class=\"t\"><strong>Fireflies.ai</strong> — joins calls, transcribes conversations, and surfaces action items within minutes of hang-up</span></div><div class=\"row\"><span class=\"n\">12</span><span class=\"t\"><strong>Otter.ai</strong> — live transcription and AI-generated meeting summaries synced across your team</span></div><div class=\"row\"><span class=\"n\">13</span><span class=\"t\"><strong>Relay.app</strong> — builds people-in-the-loop automations where AI drafts and a human approves before anything sends</span></div></div>\n  <div class=\"counter\">3 / 6</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  body { width:1080px; height:1350px; background:#050505; font-family:'Inter',serif; padding:100px 90px 90px; position:relative; overflow:hidden; display:flex; flex-direction:column; }\n  .num { font-family:'IBM Plex Mono',monospace; font-size:22px; color:#9EFF3A; letter-spacing:0.14em; text-transform:uppercase; margin-bottom:30px; }\n  h1 { font-family:'Sora',serif; font-size:50px; line-height:1.16; color:#FFFFFF; margin-bottom:34px; font-weight:600; }\n  .list { display:flex; flex-direction:column; gap:24px; flex:1; justify-content:center; }\n  .row { display:flex; align-items:baseline; gap:22px; }\n  .row .n { font-family:'IBM Plex Mono',monospace; font-size:22px; color:#9EFF3A; min-width:44px; flex:none; }\n  .row .t { font-family:'Inter',serif; font-size:26px; line-height:1.4; color:#FFFFFF; opacity:0.9; }\n  .row .t strong { font-weight:600; opacity:1; }\n  p { font-family:'Inter',serif; font-size:29px; line-height:1.55; color:#FFFFFF; opacity:0.82; }\n  .counter { position:absolute; bottom:64px; right:74px; font-family:'IBM Plex Mono',monospace; font-size:19px; color:#9EFF3A; }\n  .rule { position:absolute; left:90px; right:90px; top:70px; height:1px; background:#9EFF3A; opacity:0.35; }\n</style></head><body>\n  <div class=\"rule\"></div>\n  <div class=\"num\">04 / 06</div>\n  <h1>CUSTOMER AND SALES — 4 tools</h1>\n  <div class=\"list\"><div class=\"row\"><span class=\"n\">14</span><span class=\"t\"><strong>Tidio</strong> — AI-powered live chat and chatbot that qualifies leads and answers FAQs around the clock</span></div><div class=\"row\"><span class=\"n\">15</span><span class=\"t\"><strong>HubSpot AI</strong> — scores leads, drafts follow-up emails, and surfaces the next best action inside your CRM</span></div><div class=\"row\"><span class=\"n\">16</span><span class=\"t\"><strong>Lavender</strong> — analyses outbound sales emails in real time and scores them for reply likelihood before you hit send</span></div><div class=\"row\"><span class=\"n\">17</span><span class=\"t\"><strong>Gong</strong> — records sales calls, identifies winning talk patterns, and flags at-risk deals automatically</span></div></div>\n  <div class=\"counter\">4 / 6</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  body { width:1080px; height:1350px; background:#050505; font-family:'Inter',serif; padding:100px 90px 90px; position:relative; overflow:hidden; display:flex; flex-direction:column; }\n  .num { font-family:'IBM Plex Mono',monospace; font-size:22px; color:#9EFF3A; letter-spacing:0.14em; text-transform:uppercase; margin-bottom:30px; }\n  h1 { font-family:'Sora',serif; font-size:50px; line-height:1.16; color:#FFFFFF; margin-bottom:34px; font-weight:600; }\n  .list { display:flex; flex-direction:column; gap:24px; flex:1; justify-content:center; }\n  .row { display:flex; align-items:baseline; gap:22px; }\n  .row .n { font-family:'IBM Plex Mono',monospace; font-size:22px; color:#9EFF3A; min-width:44px; flex:none; }\n  .row .t { font-family:'Inter',serif; font-size:26px; line-height:1.4; color:#FFFFFF; opacity:0.9; }\n  .row .t strong { font-weight:600; opacity:1; }\n  p { font-family:'Inter',serif; font-size:29px; line-height:1.55; color:#FFFFFF; opacity:0.82; }\n  .counter { position:absolute; bottom:64px; right:74px; font-family:'IBM Plex Mono',monospace; font-size:19px; color:#9EFF3A; }\n  .rule { position:absolute; left:90px; right:90px; top:70px; height:1px; background:#9EFF3A; opacity:0.35; }\n</style></head><body>\n  <div class=\"rule\"></div>\n  <div class=\"num\">05 / 06</div>\n  <h1>DESIGN AND MEDIA — 3 tools</h1>\n  <div class=\"list\"><div class=\"row\"><span class=\"n\">18</span><span class=\"t\"><strong>Canva AI</strong> — generates on-brand social graphics, presentations, and marketing materials from a text description</span></div><div class=\"row\"><span class=\"n\">19</span><span class=\"t\"><strong>Descript</strong> — edits video and podcast recordings by editing the text transcript, removing the need for timeline editing skills</span></div><div class=\"row\"><span class=\"n\">20</span><span class=\"t\"><strong>ElevenLabs</strong> — clones a voice or generates a professional voiceover from typed script in under a minute</span></div></div>\n  <div class=\"counter\">5 / 6</div>\n</body></html>","<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n  * { margin:0; padding:0; box-sizing:border-box; }\n  body { width:1080px; height:1350px; background:#050505; font-family:'Inter',serif; padding:100px 90px 90px; position:relative; overflow:hidden; display:flex; flex-direction:column; }\n  .num { font-family:'IBM Plex Mono',monospace; font-size:22px; color:#9EFF3A; letter-spacing:0.14em; text-transform:uppercase; margin-bottom:30px; }\n  h1 { font-family:'Sora',serif; font-size:50px; line-height:1.16; color:#FFFFFF; margin-bottom:34px; font-weight:600; }\n  .list { display:flex; flex-direction:column; gap:24px; flex:1; justify-content:center; }\n  .row { display:flex; align-items:baseline; gap:22px; }\n  .row .n { font-family:'IBM Plex Mono',monospace; font-size:22px; color:#9EFF3A; min-width:44px; flex:none; }\n  .row .t { font-family:'Inter',serif; font-size:26px; line-height:1.4; color:#FFFFFF; opacity:0.9; }\n  .row .t strong { font-weight:600; opacity:1; }\n  p { font-family:'Inter',serif; font-size:29px; line-height:1.55; color:#FFFFFF; opacity:0.82; }\n  .counter { position:absolute; bottom:64px; right:74px; font-family:'IBM Plex Mono',monospace; font-size:19px; color:#9EFF3A; }\n  .rule { position:absolute; left:90px; right:90px; top:70px; height:1px; background:#9EFF3A; opacity:0.35; }\n</style></head><body>\n  <div class=\"rule\"></div>\n  <div class=\"num\">06 / 06</div>\n  <h1>20 tools. Four categories. Zero coding required.</h1>\n  <p>Save this list and start with one tool from each category this week. Follow for weekly AI implementation guides built for business owners, not developers.</p>\n  <div class=\"counter\">6 / 6</div>\n</body></html>"];
+    var refineToken = null;
+    document.getElementById('refineUnlockBtn').addEventListener('click', function () {
+      var pin = document.getElementById('refinePin').value.trim();
+      var errEl = document.getElementById('refineErr');
+      errEl.textContent = '';
+      fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auth', pin: pin }) })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.token) { errEl.textContent = d.error || 'Wrong PIN'; return; }
+          refineToken = d.token;
+          document.getElementById('refinePinRow').style.display = 'none';
+          document.getElementById('refineEditRow').style.display = 'block';
+          document.getElementById('editorRow').style.display = 'block';
+        })
+        .catch(function () { errEl.textContent = 'Connection error'; });
+    });
+    document.getElementById('refineBtn').addEventListener('click', function () {
+      var instruction = document.getElementById('refineInput').value.trim();
+      var statusEl = document.getElementById('refineStatus');
+      var btn = document.getElementById('refineBtn');
+      if (!instruction) { statusEl.textContent = 'Describe what to change first.'; return; }
+      statusEl.textContent = 'Refining… slides render one at a time, this can take a minute or two.';
+      btn.disabled = true;
+      fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'refineCarouselPreview', token: refineToken, titleId: TITLE_ID, campaignId: CAMPAIGN_ID, carouselType: CAROUSEL_TYPE, instruction: instruction }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
+          statusEl.textContent = 'Done — reloading…';
+          setTimeout(function () { location.href = location.pathname + '?refined=' + Date.now(); }, 900);
+        })
+        .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
+    });
+
+    var editorIdx = 0;
+    function editorUpdatePreview() {
+      document.getElementById('editorPreview').srcdoc = document.getElementById('editorHtmlInput').value;
+    }
+    function editorLoadSlide(i) {
+      editorIdx = i;
+      document.getElementById('editorHtmlInput').value = SLIDE_HTMLS[i];
+      editorUpdatePreview();
+    }
+    (function () {
+      var sel = document.getElementById('editorSlideSelect');
+      for (var i = 0; i < SLIDE_HTMLS.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = i; opt.textContent = 'Slide ' + (i + 1);
+        sel.appendChild(opt);
+      }
+      sel.addEventListener('change', function () { editorLoadSlide(parseInt(sel.value, 10)); });
+    })();
+    document.getElementById('editorHtmlInput').addEventListener('input', editorUpdatePreview);
+    editorLoadSlide(0);
+
+    document.getElementById('editorRenderBtn').addEventListener('click', function () {
+      var html = document.getElementById('editorHtmlInput').value;
+      var statusEl = document.getElementById('editorStatus');
+      var btn = document.getElementById('editorRenderBtn');
+      var num = String(editorIdx + 1).padStart(2, '0');
+      var base = location.pathname.replace(/^\/dash\//, '').replace(/\/$/, '');
+      var path = base + '/slide-' + num + '.png';
+      statusEl.textContent = 'Rendering…';
+      btn.disabled = true;
+      fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'renderSlideHtml', token: refineToken, path: path, html: html }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (!res.ok || res.d.error) { statusEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; return; }
+          statusEl.textContent = 'Rendered — reloading…';
+          setTimeout(function () { location.href = location.pathname + '?edited=' + Date.now(); }, 700);
+        })
+        .catch(function (e) { statusEl.textContent = 'Error: ' + e.message; btn.disabled = false; });
+    });
+  </script>
+</body></html>
