@@ -17047,7 +17047,7 @@ Return ONLY the HTML document.`;
         const htmlResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: htmlPrompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 20000, messages: [{ role: "user", content: htmlPrompt }] }),
         });
         const htmlData = await htmlResp.json();
         if (!htmlResp.ok) return json({ error: htmlData.error?.message || "Claude HTML-generation error" }, 500);
@@ -17055,6 +17055,7 @@ Return ONLY the HTML document.`;
         // Strip markdown fences if Claude wrapped the HTML despite instructions.
         cardHtml = cardHtml.replace(/^```(?:html)?\s*/i, '').replace(/```\s*$/, '').trim();
         if (!cardHtml || !/<html/i.test(cardHtml)) return json({ error: "Claude did not return a valid HTML document" }, 500);
+        if (!/<\/html>\s*$/i.test(cardHtml)) return json({ error: `Claude's HTML response was cut off before finishing (hit the token limit) — got ${cardHtml.length} chars ending mid-document. Try again; if it keeps truncating, the design brief may need to ask for less content per section.` }, 500);
 
         // ── Render it via the same Browser Rendering pipeline used for real carousel slides ──
         const sleep = ms => new Promise(res => setTimeout(res, ms));
