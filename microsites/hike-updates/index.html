@@ -4977,6 +4977,26 @@ async function openGenAssetsModal(titleId) {
   const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
   if (isolateRadio) isolateRadio.checked = true;
   const carouselTypeSel = document.getElementById('gaCarouselTypeInput');
+  if (carouselTypeSel) {
+    // "Globals" carousel layout templates (Canva-mapped rows in Main TD,
+    // per operator request) — appended after the 4 native-rendered styles
+    // on every modal open so a newly-added template shows up without a
+    // page reload. Additive and best-effort: a fetch failure just leaves
+    // the native styles working, never blocks the modal.
+    Array.from(carouselTypeSel.querySelectorAll('option[data-dynamic-template]')).forEach(o => o.remove());
+    try {
+      const tRes = await w('getCarouselTemplates');
+      (tRes.templates || []).forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = 'canva-template:' + t.id;
+        const firstArchetype = t.archetypes ? t.archetypes.split(',')[0].trim() : '';
+        opt.textContent = '🎨 ' + t.title + (t.isMapped ? (firstArchetype ? ' — ' + firstArchetype : '') : ' (needs mapping — ask Claude)');
+        opt.title = t.archetypes ? ('Compatible archetypes: ' + t.archetypes) : 'Not yet mapped to archetypes — Claude needs to inspect this design before it can be used.';
+        opt.dataset.dynamicTemplate = '1';
+        carouselTypeSel.appendChild(opt);
+      });
+    } catch (e) { /* additive only — see comment above */ }
+  }
   // Remembers the last style picked in THIS browser, rather than silently
   // resetting to Triple Hook every time the modal opens — that reset was
   // causing accidental regenerate-with-wrong-style, since it's easy not to

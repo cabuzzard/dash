@@ -9540,6 +9540,38 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         return json({ todos: todos.filter(Boolean) });
       }
 
+      // ── getCarouselTemplates ──
+      // The "Globals" registry (living in Main TD for now, per operator
+      // request — rows with a Canva Link set, filtered on that rather than
+      // the "Carousel Template" checkbox so a row added via the Notion
+      // "➕ Add Carousel Template" form still shows up even if the checkbox
+      // wasn't ticked). Each becomes a selectable Carousel style option in
+      // the Generate Assets modal, alongside the four native-rendered
+      // types. A template with no Field Map/Compatible Archetypes filled
+      // in yet (freshly added, not mapped by Claude) is still returned —
+      // isMapped tells the frontend to show it as "(needs mapping)" rather
+      // than hiding it, since the operator explicitly wants new rows to
+      // appear immediately, not silently wait for a manual pass.
+      if (body.action === "getCarouselTemplates") {
+        const rows = await notionQuery(MAIN_TD_DB, {
+          filter: { property: "Canva Link", url: { is_not_empty: true } },
+          sorts: [{ property: "Title", direction: "ascending" }],
+        });
+        const templates = rows.map(r => {
+          const fieldMap = (r.properties?.["Field Map"]?.rich_text || []).map(t => t.plain_text).join("");
+          const archetypes = (r.properties?.["Compatible Archetypes"]?.rich_text || []).map(t => t.plain_text).join("");
+          return {
+            id: r.id.replace(/-/g, ""),
+            title: r.properties?.Title?.title?.map(t => t.plain_text).join("") || "Untitled",
+            canvaLink: r.properties?.["Canva Link"]?.url || "",
+            fieldMap,
+            archetypes,
+            isMapped: !!(fieldMap && archetypes),
+          };
+        });
+        return json({ templates });
+      }
+
       // ── PRODUCTSITE: getProductTodos ──
       if (body.action === "getProductTodos") {
         const { productId } = body;
@@ -11538,6 +11570,14 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       if (body.action === "generateCarouselPreview") {
         const { titleId, campaignId, carouselType, description, seedKeywords, researchInstructions, designSpecId } = body;
         if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
+        // Canva-template-mapped styles (the "Globals" registry in Main TD)
+        // are selectable in the dropdown but not wired for generation yet —
+        // falling through to the default Triple Hook directive here would
+        // silently write mismatched copy under a misleading label, which is
+        // worse than refusing outright.
+        if (typeof carouselType === 'string' && carouselType.startsWith('canva-template:')) {
+          return json({ error: "This carousel style maps to a Canva template — content generation and Canva population for that path aren't wired yet. Pick one of the four built-in styles for now; ask Claude to build the Canva-template generation path next." }, 400);
+        }
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
         const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
@@ -12855,6 +12895,9 @@ ${updatedManifestText}`;
       if (body.action === "refineCarouselPreview") {
         const { titleId, campaignId, carouselType, instruction, description, seedKeywords, researchInstructions, designSpecId } = body;
         if (!titleId || !campaignId || !instruction) return json({ error: "titleId, campaignId, and instruction required" }, 400);
+        if (typeof carouselType === 'string' && carouselType.startsWith('canva-template:')) {
+          return json({ error: "This carousel style maps to a Canva template — content generation and Canva population for that path aren't wired yet. Pick one of the four built-in styles for now; ask Claude to build the Canva-template generation path next." }, 400);
+        }
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
         const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
