@@ -17025,7 +17025,7 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
 ${positioning}
 ${(guidance || '').trim() ? `Operator creative direction (follow closely): ${guidance.trim()}` : ''}`;
 
-        const htmlPrompt = `You are a senior brand/graphic designer building a real, self-contained HTML+CSS+SVG "Design Card" — a single-page brand style-guide document, the kind a senior designer would post on Dribbble, for a${isCarousel ? ' 7-slide Instagram carousel' : ' short vertical video'}. This must look genuinely illustrated and textured, not flat and merely functional — treat inline SVG as a full illustration tool, not just simple line icons.
+        const htmlPrompt = `You are an elite viral social-content designer — the kind studios charge five figures for one carousel system, because it consistently stops the scroll on Instagram/LinkedIn/TikTok. You are building a real, self-contained HTML+CSS+SVG "Design Card" — a single-page brand style-guide document, the kind you'd post on Dribbble, for a${isCarousel ? ' 7-slide Instagram carousel' : ' short vertical video'}. Design for virality: bold immediate hierarchy, high contrast, a distinct memorable motif someone would recognize mid-scroll — never generic corporate/stock-photo blandness. This must look genuinely illustrated and textured, not flat and merely functional — treat inline SVG as a full illustration tool, not just simple line icons.
 
 BRIEF:
 ${brief}
@@ -17041,6 +17041,7 @@ Return ONLY a complete, valid, self-contained HTML document (starting with <!doc
 - SECTION 3 — "LAYOUT — ${slideCount} SLIDES": exactly ${slideCount} numbered slide-thumbnail cards in a grid, each a compact CSS gradient background (2-3 color stops, no per-card SVG artwork — keep these lightweight) containing real, distinct, on-brand example headline copy (one short line each) and, beneath the card, a caption in the exact literal format "N. Role" where N is the card's actual position (1, 2, 3, ... up to ${slideCount}, in order, no skips, no repeats — you are writing this as a real ordered list in code, so get the numbering right) and Role is a short narrative-arc label (Hook, Proof Point, Insight, Framework, Tension, CTA, etc. — vary them naturally across the ${slideCount} cards).
 - SECTION 4 — "ICONS & MARKS": a row of 4 icons, each a hand-authored inline <svg> (keep each under ~10 path/shape elements — a couple of layered shapes plus one gradient fill is enough for depth, not an elaborate scene), brand-relevant symbols, each with a text label beneath naming what it represents.
 - Every section is clearly labeled with a heading. No other explanatory text anywhere. Keep the whole document as compact as it can be while still meeting every requirement above — avoid unnecessary repetition or verbose CSS.
+- RESOLVED TOKENS: from your 5-swatch palette, designate exactly which hex value is the primary SLIDE BACKGROUND, which is the high-contrast TEXT/INK color, and which single color is the supporting ACCENT (used for dividers/icons/CTAs) — real practical rendering choices, not just swatch order. Just before the closing </body> tag, embed these as valid JSON (no comments, no trailing commas) inside: <script type="application/json" id="design-tokens">{"name":"(2-4 word name for this exact aesthetic direction)","bg":"#XXXXXX","ink":"#XXXXXX","accent":"#XXXXXX","headlineFont":"(the exact headline font-family you loaded)","bodyFont":"(the exact body font-family you loaded)","notes":"(1-2 sentences: the aesthetic + what to avoid, for future asset generation to follow)"}</script>
 
 Return ONLY the HTML document.`;
 
@@ -17056,6 +17057,20 @@ Return ONLY the HTML document.`;
         cardHtml = cardHtml.replace(/^```(?:html)?\s*/i, '').replace(/```\s*$/, '').trim();
         if (!cardHtml || !/<html/i.test(cardHtml)) return json({ error: "Claude did not return a valid HTML document" }, 500);
         if (!/<\/html>\s*$/i.test(cardHtml)) return json({ error: `Claude's HTML response was cut off before finishing (hit the token limit) — got ${cardHtml.length} chars ending mid-document. Try again; if it keeps truncating, the design brief may need to ask for less content per section.` }, 500);
+
+        // Pull the resolved bg/ink/accent/fonts Claude designated out of the
+        // design-tokens script tag it was asked to embed — this is what lets
+        // an approved motif get templated onto the campaign (see
+        // applyVisualSystemToCampaign below) instead of staying a one-off
+        // image nobody can act on programmatically.
+        let resolvedDesign = null;
+        const tokensMatch = cardHtml.match(/<script[^>]*id=["']design-tokens["'][^>]*>([\s\S]*?)<\/script>/i);
+        if (tokensMatch) {
+          try {
+            const t = JSON.parse(tokensMatch[1].trim());
+            if (t && t.bg && t.ink && t.accent) resolvedDesign = { name: t.name || campaignName, bg: t.bg, ink: t.ink, accent: t.accent, headlineFont: t.headlineFont || '', bodyFont: t.bodyFont || '', notes: t.notes || '' };
+          } catch (e) { /* preview still renders fine without it — Approve just won't be available */ }
+        }
 
         // ── Render it via the same Browser Rendering pipeline used for real carousel slides ──
         const sleep = ms => new Promise(res => setTimeout(res, ms));
@@ -17107,20 +17122,73 @@ Return ONLY the HTML document.`;
   .note { color:#aaa; font-size:12px; line-height:1.6; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:6px; padding:12px 14px; margin-bottom:20px; }
   .actions { display:flex; gap:10px; flex-wrap:wrap; }
   button, a.btn { font-size:13px; font-weight:600; padding:9px 16px; border-radius:6px; border:1px solid #333; background:#1a1a1a; color:#ddd; cursor:pointer; text-decoration:none; display:inline-block; }
-  #approveBtn { border-color:#68d391; color:#68d391; }
-  #approveBtn:hover { background:#68d39122; }
+  input[type=password] { font-size:13px; padding:9px 12px; border-radius:6px; border:1px solid #333; background:#1a1a1a; color:#ddd; width:80px; }
+  #approveBtn, #unlockBtn { border-color:#68d391; color:#68d391; }
+  #approveBtn:hover, #unlockBtn:hover { background:#68d39122; }
+  #approveBtn:disabled { opacity:.5; cursor:default; }
   #approvedMsg { display:none; color:#68d391; font-size:13px; margin-top:14px; line-height:1.6; }
+  #approveErr { color:#e57373; font-size:12px; margin-top:8px; }
+  .tokens { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+  .tok { display:flex; align-items:center; gap:6px; font-size:11px; color:#aaa; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:20px; padding:4px 10px 4px 4px; }
+  .sw { width:16px; height:16px; border-radius:50%; border:1px solid #333; flex:none; }
 </style></head><body>
 <div class="wrap">
   <h1>${esc3(campaignName)} — Design Card Motif</h1>
   <div class="sub">Rendered from real HTML/CSS via Claude + Cloudflare Browser Rendering — no OpenAI, no ChatGPT. Text/hex accuracy is structural (literal CSS values), not a raster guess.</div>
   <img src="${esc3(imageUrl)}" alt="Design card motif">
-  <div class="note">This is a visual proposal only. Approving it doesn't change any real Design Spec or Assembly Manifest — that step still has to happen manually (or via a future automated extraction pass) once a direction is picked.</div>
-  <div class="actions">
-    <a class="btn" href="${esc3(imageUrl)}" target="_blank" rel="noopener">Open full image</a>
-    <button id="approveBtn" onclick="document.getElementById('approvedMsg').style.display='block';this.disabled=true;this.textContent='✓ Approved';">✓ Approve this direction</button>
+  ${resolvedDesign ? `<div class="tokens">
+    <span class="tok"><span class="sw" style="background:${esc3(resolvedDesign.bg)}"></span>bg ${esc3(resolvedDesign.bg)}</span>
+    <span class="tok"><span class="sw" style="background:${esc3(resolvedDesign.ink)}"></span>ink ${esc3(resolvedDesign.ink)}</span>
+    <span class="tok"><span class="sw" style="background:${esc3(resolvedDesign.accent)}"></span>accent ${esc3(resolvedDesign.accent)}</span>
+    <span class="tok">${esc3(resolvedDesign.headlineFont)} / ${esc3(resolvedDesign.bodyFont)}</span>
   </div>
-  <div id="approvedMsg">Marked approved on this page (not yet persisted anywhere in Notion). Tell Claude you approved this motif and it'll take it from here.</div>
+  <div class="note">Approving templates this exact palette + typography onto <strong>${esc3(campaignName)}</strong>'s Design Spec — every carousel/text-video generated for this campaign afterward inherits it automatically, no manual step.</div>
+  <div class="actions" id="pinRow">
+    <a class="btn" href="${esc3(imageUrl)}" target="_blank" rel="noopener">Open full image</a>
+    <input type="password" id="pin" maxlength="4" inputmode="numeric" placeholder="PIN">
+    <button id="unlockBtn">Unlock to approve</button>
+  </div>
+  <div class="actions" id="approveRow" style="display:none;">
+    <button id="approveBtn">✓ Approve — template to campaign</button>
+  </div>
+  <div id="approveErr"></div>
+  <div id="approvedMsg"></div>
+  <script>
+    var WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+    var CAMPAIGN_ID = ${JSON.stringify(campaignId)};
+    var RESOLVED_DESIGN = ${JSON.stringify(resolvedDesign)};
+    var pinToken = null;
+    document.getElementById('unlockBtn').addEventListener('click', function () {
+      var pin = document.getElementById('pin').value.trim();
+      var errEl = document.getElementById('approveErr');
+      errEl.textContent = '';
+      fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auth', pin: pin }) })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.token) { errEl.textContent = d.error || 'Wrong PIN'; return; }
+          pinToken = d.token;
+          document.getElementById('pinRow').style.display = 'none';
+          document.getElementById('approveRow').style.display = 'flex';
+        })
+        .catch(function () { errEl.textContent = 'Connection error'; });
+    });
+    document.getElementById('approveBtn').addEventListener('click', function () {
+      var btn = this, errEl = document.getElementById('approveErr'), okEl = document.getElementById('approvedMsg');
+      errEl.textContent = ''; btn.disabled = true; btn.textContent = 'Applying…';
+      fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ action: 'applyVisualSystemToCampaign', token: pinToken, campaignId: CAMPAIGN_ID }, RESOLVED_DESIGN)),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (!res.ok || res.d.error) { errEl.textContent = 'Error: ' + (res.d.error || 'unknown'); btn.disabled = false; btn.textContent = '✓ Approve — template to campaign'; return; }
+          btn.textContent = '✓ Applied'; okEl.style.display = 'block';
+          okEl.textContent = 'Templated onto ' + (CAMPAIGN_ID ? 'this campaign' : 'the campaign') + '\\'s Design Spec — future carousels/text videos here now use this motif by default.';
+        })
+        .catch(function (e) { errEl.textContent = 'Error: ' + e.message; btn.disabled = false; btn.textContent = '✓ Approve — template to campaign'; });
+    });
+  </script>` : `<div class="note">This design card didn't come back with clean resolved color/font tokens, so it can't be templated onto the campaign directly — treat it as a visual proposal only, or try generating again.</div>
+  <div class="actions"><a class="btn" href="${esc3(imageUrl)}" target="_blank" rel="noopener">Open full image</a></div>`}
 </div>
 </body></html>`;
 
@@ -17132,7 +17200,57 @@ Return ONLY the HTML document.`;
         if (!pagePutResp.ok) { const r = await pagePutResp.json().catch(() => ({})); return json({ error: `GitHub commit failed for preview page: ${r.message || pagePutResp.status}` }, 502); }
         const previewUrl = `https://cabuzzard.github.io/dash/${basePath}/motif-${stamp}/`;
 
-        return json({ success: true, imageUrl, previewUrl, cardHtml });
+        return json({ success: true, imageUrl, previewUrl, cardHtml, resolvedDesign });
+      }
+
+      // ── applyVisualSystemToCampaign ──
+      // Closes the loop generateDesignCardMotif's preview page opens: takes
+      // the resolved bg/ink/accent/fonts an operator approved and writes
+      // them into the campaign's Design Spec (creating one if none exists
+      // yet, otherwise updating the existing one in place so campaigns that
+      // already have a spec get restyled rather than forked). Everything
+      // downstream that reads a campaign's Design Spec — publishCarouselSlides,
+      // refineCarouselPreview, buildCarouselSpecDraft/buildTextVideoSpecDraft
+      // — picks this up automatically on the next generation, with no other
+      // step required. This is the "template it to other assets" half of
+      // the Research → Visual Brief → render → template pipeline.
+      if (body.action === "applyVisualSystemToCampaign") {
+        const { campaignId, name, bg, ink, accent, headlineFont, bodyFont, notes } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        if (!bg || !ink || !accent) return json({ error: "Incomplete design tokens (need bg/ink/accent)" }, 400);
+        const campPage = await fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json());
+        if (!campPage.properties) return json({ error: campPage.message || "Campaign not found" }, 404);
+        const rt = v => v ? [{ type: "text", text: { content: String(v).slice(0, 2000) } }] : [];
+        const props = {
+          Background: { rich_text: rt(bg) }, Ink: { rich_text: rt(ink) }, Accent: { rich_text: rt(accent) },
+          "Headline Font": { rich_text: rt(headlineFont) }, "Body Font": { rich_text: rt(bodyFont) },
+          "Aesthetic Description": { rich_text: rt(notes) },
+        };
+        const existingSpecId = campPage.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+        let specId;
+        if (existingSpecId) {
+          specId = existingSpecId.replace(/-/g, "");
+          if (name) props.Name = { title: [{ type: "text", text: { content: String(name).slice(0, 100) } }] };
+          const upd = await fetch(`https://api.notion.com/v1/pages/${dsDash(specId)}`, {
+            method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }),
+          });
+          if (!upd.ok) { const r = await upd.json().catch(() => ({})); return json({ error: r.message || "Update failed" }, upd.status); }
+        } else {
+          props.Name = { title: [{ type: "text", text: { content: String(name || "Design Spec").slice(0, 100) } }] };
+          props["Campaigns"] = { relation: [{ id: dsDash(campaignId) }] };
+          const created = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: DESIGN_SPECS_DB }, properties: props }),
+          }).then(r => r.json());
+          if (!created.id) return json({ error: created.message || "Create failed" }, 500);
+          specId = created.id.replace(/-/g, "");
+          const attach = await fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, {
+            method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Design Spec": { relation: [{ id: dsDash(specId) }] } } }),
+          });
+          if (!attach.ok) { const r = await attach.json().catch(() => ({})); return json({ error: `Spec created but attach failed: ${r.message || attach.status}` }, 502); }
+        }
+        return json({ success: true, specId });
       }
 
       // ── generateJobAsset ──
