@@ -3642,12 +3642,9 @@ function renderLinks() {
     return '' +
       '<div id="linkRow_' + p.id + '" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface);">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">' +
-          '<div style="min-width:0;flex:1;">' +
-            '<div style="display:flex;align-items:center;gap:8px;">' +
-              platformBadge +
-              '<span style="font-size:13px;font-weight:600;color:var(--text);">' + esc(p.name) + '</span>' +
-            '</div>' +
-            '<span style="font-size:11px;color:var(--text3);">' + (p.account ? '@' + esc(p.account) : '') + (dateStr ? (p.account ? ' · ' : '') + dateStr : '') + '</span>' +
+          '<div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">' +
+            platformBadge +
+            '<span style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (p.account ? '@' + esc(p.account) : '') + (dateStr ? (p.account ? ' · ' : '') + dateStr : '') + '</span>' +
           '</div>' +
           '<div style="display:flex;align-items:center;flex-shrink:0;">' +
             '<span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:' + linksStatusColor(p.status) + ';">' + esc(p.status) + '</span>' +
@@ -3659,6 +3656,7 @@ function renderLinks() {
             deleteBtn +
           '</div>' +
         '</div>' +
+        '<div style="margin-top:6px;font-size:13px;font-weight:600;color:var(--text);line-height:1.4;">' + esc(p.name) + '</div>' +
         savedNoteBlock + notesBlock + errorBlock +
       '</div>';
   }).join('');
