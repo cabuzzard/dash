@@ -11704,7 +11704,12 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         await enrichUnprocessedSavedPosts(env, { limit: 10 });
         const rows = await notionQuery(SAVED_POSTS_DB, {
-          sorts: [{ property: "Date Saved", direction: "descending" }],
+          // Sort by Notion's own created_time, not the "Date Saved" property
+          // — that property is only as reliable as whatever wrote it (the
+          // iOS Shortcut), while created_time is set automatically and never
+          // wrong, so newly-added rows always sort to the top regardless of
+          // what Date Saved says.
+          sorts: [{ timestamp: "created_time", direction: "descending" }],
         });
         const posts = rows.map(p => {
           const pr = p.properties || {};
