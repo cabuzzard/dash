@@ -3627,6 +3627,9 @@ function renderLinks() {
     const notesBlock = p.notes
       ? '<div style="margin-top:6px;font-size:12px;color:var(--text2);line-height:1.5;">' + esc(p.notes) + '</div>'
       : '';
+    const savedNoteBlock = p.savedNote
+      ? '<div style="margin-top:6px;font-size:12px;color:var(--text);line-height:1.5;">📌 ' + esc(p.savedNote) + '</div>'
+      : '';
     const runBtn = (p.status !== 'Done')
       ? '<button onclick="retryLinkRow(\'' + p.id + '\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">' + (p.error ? '↺ Retry' : '▶ Run') + '</button>'
       : '';
@@ -3656,7 +3659,7 @@ function renderLinks() {
             deleteBtn +
           '</div>' +
         '</div>' +
-        notesBlock + errorBlock +
+        savedNoteBlock + notesBlock + errorBlock +
       '</div>';
   }).join('');
 }

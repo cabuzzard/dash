@@ -11704,6 +11704,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
             status: pr.Status?.status?.name || "",
             dateSaved: pr["Date Saved"]?.date?.start || "",
             notes: pr.Notes?.rich_text?.[0]?.plain_text || "",
+            savedNote: (pr["Saved Note"]?.rich_text || []).map(t => t.plain_text).join("") || "",
             error: pr["Summary Error"]?.rich_text?.[0]?.plain_text || "",
             notionUrl: p.url,
           };
