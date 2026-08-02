@@ -11788,14 +11788,18 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       if (body.action === "backfillSavedPostDates") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         const rows = await notionQuery(SAVED_POSTS_DB, {});
+        // Skip rows already fixed by a prior call (idempotent + resumable —
+        // each invocation is capped well under Cloudflare's subrequest limit,
+        // so this needs to be called repeatedly until remaining hits 0).
+        const remaining = rows.filter(page => (page.properties?.["Date Saved"]?.date?.start || "") !== page.created_time);
         let fixed = 0;
-        for (const page of rows) {
+        for (const page of remaining.slice(0, 40)) {
           try {
             await patchSavedPostPage(page.id, { "Date Saved": { date: { start: page.created_time } } });
             fixed++;
           } catch (e) { /* one bad row never blocks the rest */ }
         }
-        return json({ total: rows.length, fixed });
+        return json({ total: rows.length, remainingBefore: remaining.length, fixed });
       }
 
       // ── generateCarouselPreview ──
