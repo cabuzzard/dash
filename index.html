@@ -738,9 +738,8 @@
   </div>
 
   <div class="tab-panel" id="tabLinks">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+    <div style="margin-bottom:12px;">
       <a class="add-link" onclick="loadLinks()">↺ Refresh</a>
-      <button id="linksRunBtn" onclick="runLinksPipeline()" style="font-size:11px;font-weight:600;padding:4px 12px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▶ Run Now</button>
     </div>
     <div id="linksContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
@@ -2475,6 +2474,28 @@
   </div>
 </div>
 
+<!-- Analyze Modal (Links tab): cross-references a saved post's full
+     transcript against Methods/Strategy/Research across every campaign.
+     Read-only suggestions with a per-suggestion manual Apply — modeled on
+     this codebase's "recommendation, never auto-write" pattern. -->
+<div class="modal-overlay" id="analyzeModal" style="display:none;" onclick="if(event.target===this)closeAnalyzeModal()">
+  <div class="modal" style="width:560px;max-width:96vw;max-height:88vh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div class="modal-title" style="margin:0;font-size:14px;">Analyze Saved Post</div>
+      <span onclick="closeAnalyzeModal()" style="cursor:pointer;color:var(--text3);font-size:18px;">✕</span>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Additional instructions <span style="color:var(--text3);font-weight:400;">(optional — supplements, never replaces, the default analysis)</span></label>
+      <textarea class="modal-input" id="anInstructionsInput" rows="2" style="resize:vertical;" placeholder="Optional — add context to steer this analysis, e.g. focus on the Foreclosure Fraud campaign…"></textarea>
+    </div>
+    <div style="margin-bottom:10px;">
+      <button class="btn btn-primary" id="anRunBtn" onclick="runAnalyze()">Run Analysis</button>
+    </div>
+    <div id="anStatus" style="font-size:12px;color:var(--text3);margin-bottom:8px;min-height:16px;"></div>
+    <div id="anResults"></div>
+  </div>
+</div>
+
 <!-- Edit Asset Modal (components + login) -->
 <div class="modal-overlay" id="editAssetModal" style="display:none;" onclick="if(event.target===this)closeEditAssetModal()">
   <div class="modal" style="max-height:88vh;display:flex;flex-direction:column;width:560px;max-width:96vw;">
@@ -3606,8 +3627,11 @@ function renderLinks() {
     const notesBlock = p.notes
       ? '<div style="margin-top:6px;font-size:12px;color:var(--text2);line-height:1.5;">' + esc(p.notes) + '</div>'
       : '';
-    const retryBtn = (p.status !== 'Done')
-      ? '<button onclick="retryLinkRow(\'' + p.id + '\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">↺ Retry</button>'
+    const runBtn = (p.status !== 'Done')
+      ? '<button onclick="retryLinkRow(\'' + p.id + '\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">' + (p.error ? '↺ Retry' : '▶ Run') + '</button>'
+      : '';
+    const analyzeBtn = (p.status === 'Done')
+      ? '<button onclick="openAnalyzeModal(\'' + p.id + '\')" title="Cross-reference this transcript against your Methods/Strategy/Research" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">🔍 Analyze</button>'
       : '';
     const deleteBtn = '<button onclick="deleteLinkRow(\'' + p.id + '\')" title="Delete" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0 0 0 8px;flex-shrink:0;color:var(--text3);">🗑</button>';
     const titleBtn = '<button onclick="openLinkTitleModal(\'' + p.id + '\')" title="Create a Content Strategy title from this post" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">✚ title</button>';
@@ -3627,28 +3651,14 @@ function renderLinks() {
             (p.url ? '<a href="' + esc(p.url) + '" target="_blank" style="margin-left:10px;color:var(--text3);text-decoration:none;font-size:12px;">🔗</a>' : '') +
             (p.notionUrl ? '<a href="' + esc(p.notionUrl) + '" target="_blank" style="margin-left:6px;color:var(--text3);text-decoration:none;font-size:12px;">↗</a>' : '') +
             titleBtn +
-            retryBtn +
+            runBtn +
+            analyzeBtn +
             deleteBtn +
           '</div>' +
         '</div>' +
         notesBlock + errorBlock +
       '</div>';
   }).join('');
-}
-
-async function runLinksPipeline() {
-  const btn = document.getElementById('linksRunBtn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Running…';
-  try {
-    const result = await call('runSavedPostsPipeline');
-    showToast('Processed ' + result.processed + ' (' + result.ok + ' ok, ' + result.failed + ' failed)', result.failed ? 'error' : 'success');
-    await loadLinks();
-  } catch(e) {
-    showToast('Failed: ' + e.message, 'error');
-  }
-  btn.disabled = false;
-  btn.textContent = '▶ Run Now';
 }
 
 async function retryLinkRow(id) {
@@ -3771,6 +3781,77 @@ function openLinkTitleModal(postId) {
   setTimeout(() => document.getElementById('ltTitleInput').focus(), 120);
 }
 function closeLinkTitleModal() { document.getElementById('linkTitleModal').style.display = 'none'; }
+
+let ANALYZE_POST_ID = null;
+let ANALYZE_DATA = null;
+
+function openAnalyzeModal(postId) {
+  ANALYZE_POST_ID = postId;
+  ANALYZE_DATA = null;
+  document.getElementById('anInstructionsInput').value = '';
+  document.getElementById('anStatus').textContent = '';
+  document.getElementById('anResults').innerHTML = '';
+  const btn = document.getElementById('anRunBtn');
+  btn.disabled = false; btn.textContent = 'Run Analysis';
+  document.getElementById('analyzeModal').style.display = 'flex';
+}
+function closeAnalyzeModal() { document.getElementById('analyzeModal').style.display = 'none'; }
+
+async function runAnalyze() {
+  const btn = document.getElementById('anRunBtn');
+  const status = document.getElementById('anStatus');
+  const instructions = document.getElementById('anInstructionsInput').value.trim();
+  btn.disabled = true; btn.textContent = 'Analyzing…'; status.textContent = '';
+  document.getElementById('anResults').innerHTML = '';
+  try {
+    const r = await call('analyzeSavedPostForMethods', { pageId: ANALYZE_POST_ID, instructions: instructions || undefined });
+    ANALYZE_DATA = r.suggestions || [];
+    renderAnalyzeSuggestions();
+    status.textContent = ANALYZE_DATA.length ? '' : 'No suggestions — nothing in this transcript looked worth adding.';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+  }
+  btn.disabled = false; btn.textContent = 'Re-analyze';
+}
+
+function renderAnalyzeSuggestions() {
+  const el = document.getElementById('anResults');
+  if (!ANALYZE_DATA || !ANALYZE_DATA.length) { el.innerHTML = ''; return; }
+  const typeLabel = t => t === 'method' ? 'Method' : t === 'strategyField' ? 'Strategy' : t === 'research' ? 'Research' : t;
+  el.innerHTML = ANALYZE_DATA.map((s, idx) => `
+    <div style="padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:10px;background:var(--surface2);color:var(--text2);border:1px solid var(--border2);">${esc(typeLabel(s.targetType))}</span>
+        <span style="font-size:13px;font-weight:600;color:var(--text);">${esc(s.targetName || '')}</span>
+        <span style="font-size:11px;color:var(--text3);">${esc(s.contextName || '')}</span>
+        ${s.fieldName ? `<span style="font-size:11px;color:var(--text3);">· ${esc(s.fieldName)}</span>` : ''}
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">${esc(s.rationale || '')}</div>
+      <div style="font-size:12px;color:var(--text);line-height:1.5;white-space:pre-wrap;background:var(--surface2);padding:8px;border-radius:4px;margin-bottom:8px;">${esc(s.suggestedAddition || '')}</div>
+      <div id="anApplyWrap${idx}">
+        <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" id="anApplyBtn${idx}" onclick="applyAnalyzeSuggestion(${idx})">Apply</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function applyAnalyzeSuggestion(idx) {
+  const s = (ANALYZE_DATA || [])[idx];
+  if (!s) return;
+  const btn = document.getElementById('anApplyBtn' + idx);
+  btn.disabled = true; btn.textContent = 'Applying…';
+  const p = LINKS_POSTS.find(x => x.id === ANALYZE_POST_ID) || {};
+  try {
+    await call('applySavedPostSuggestion', {
+      targetType: s.targetType, targetId: s.targetId, fieldName: s.fieldName,
+      suggestedAddition: s.suggestedAddition, sourceName: p.name || 'Saved Post',
+    });
+    document.getElementById('anApplyWrap' + idx).innerHTML = '<span style="font-size:11px;color:#68d391;">✓ Applied</span>';
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'Apply';
+    showToast('Apply failed: ' + e.message, 'error');
+  }
+}
 
 async function submitLinkTitle() {
   const title = document.getElementById('ltTitleInput').value.trim();

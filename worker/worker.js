@@ -1524,6 +1524,18 @@ async function fetchSavedPostContent(env, platform, url) {
     return { text: title, transcript, author, note };
   }
 
+  if (platform === "Facebook") {
+    const items = await callApifyActor(AT, "scrapepilot~facebook-reels-downloader-video-metadata-extractor", { url });
+    const post = items?.[0];
+    if (!post || !post.download_url) throw new Error("Facebook video not found or unavailable (private/deleted)");
+    const text = post.description || post.title || "";
+    const author = post.uploader || "";
+    let transcript = "", note = "";
+    try { transcript = await transcribeViaElevenLabs(env, post.download_url); }
+    catch (e) { note = `Reel/video post — transcription failed (${e.message}), summarized from caption only.`; }
+    return { text, transcript, author, note };
+  }
+
   throw new Error(`Unsupported platform: ${platform}`);
 }
 
@@ -1605,8 +1617,49 @@ function detectPlatformFromUrl(url) {
     if (host === "x.com" || host.endsWith(".x.com") || host === "twitter.com" || host.endsWith(".twitter.com")) return "X";
     if (host === "instagram.com" || host.endsWith(".instagram.com")) return "Instagram";
     if (host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be") return "YouTube";
+    if (host === "facebook.com" || host.endsWith(".facebook.com") || host === "fb.watch") return "Facebook";
   } catch { /* invalid URL */ }
   return null;
+}
+
+// Cheap, free "clean save" enrichment — never touches Apify/ElevenLabs/Claude.
+// The iOS Shortcut only reliably sets URL, so any row still missing Name has
+// never been enriched. Runs automatically (cron backstop + eagerly on every
+// getSavedPosts load) so a freshly-saved link shows a real title/platform/
+// date immediately, without the operator having to spend a manual Run to
+// see anything beyond a bare URL. Fixes the "Date Saved" field at the same
+// time — the Shortcut writes an unreliable constant there, so this always
+// overwrites it with the page's own real Notion created_time.
+async function enrichUnprocessedSavedPosts(env, { limit = 50 } = {}) {
+  try {
+    const rows = await notionQuery(SAVED_POSTS_DB, { filter: { property: "Name", title: { is_empty: true } } });
+    for (const page of rows.slice(0, limit)) {
+      try {
+        const props = page.properties || {};
+        const url = (props.URL?.url || "").trim();
+        const platform = props.Platform?.select?.name || (url ? detectPlatformFromUrl(url) : null);
+        let title = "";
+        if (url) {
+          try {
+            const resp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; dash-link-preview/1.0)" } });
+            const html = await resp.text();
+            const og = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+                    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+            const titleTag = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+            title = decodeHtmlEntities((og?.[1] || titleTag?.[1] || "").trim());
+          } catch (e) { /* best-effort — falls through to the placeholder below */ }
+        }
+        if (!title) title = `${platform || "Unknown"} post`;
+
+        const patchProps = {
+          Name: { title: [{ type: "text", text: { content: title.slice(0, 200) } }] },
+          "Date Saved": { date: { start: page.created_time } },
+        };
+        if (platform && !props.Platform?.select?.name) patchProps.Platform = { select: { name: platform } };
+        await patchSavedPostPage(page.id, patchProps);
+      } catch (e) { /* one bad row never blocks the rest */ }
+    }
+  } catch (e) { /* never throw out of scheduled()/getSavedPosts */ }
 }
 
 async function processSavedPost(env, page) {
@@ -1650,15 +1703,134 @@ async function processSavedPost(env, page) {
   }
 }
 
-async function runSavedPostsPipeline(env, limit) {
-  const rows = await notionQuery(SAVED_POSTS_DB, {
-    filter: { property: "Status", status: { equals: "Not started" } },
+// Cross-references a Saved Post's transcript against the operator's actual
+// Methods/Strategy/Research across every campaign — modeled on
+// generateGrowthStrategy's "recommendation, never auto-write" contract
+// (reads broadly, writes nothing itself, returns concrete suggestions for
+// the operator to selectively apply via applySavedPostSuggestion below).
+// `instructions` is optional free text from the operator that supplements
+// — never replaces — the default analysis.
+async function analyzeSavedPostForMethods(env, { pageId, instructions }) {
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+  const transcriptText = await extractBlocksTextRecursive(hdr, pageId);
+  if (!transcriptText.trim()) throw new Error("No transcript/content found on this saved post yet — run it first.");
+
+  const terms = transcriptText.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 2);
+  const scoreText = hay => terms.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
+
+  const [methodRows, strategyRows, researchRows, productRows, campaignRows] = await Promise.all([
+    notionQuery(METHODS_DB, { filter: { property: "Status", select: { equals: "Live" } } }),
+    notionQuery(STRATEGY_DB, { filter: { property: "Method", relation: { is_empty: true } } }),
+    notionQuery(RESEARCH_DB, {}),
+    notionQuery(PRODUCTS_DB, {}),
+    notionQuery(CAMPAIGNS_DB, {}),
+  ]);
+
+  const productNameById = {};
+  productRows.forEach(p => { productNameById[p.id.replace(/-/g,"")] = p.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled Product"; });
+  const campaignNameById = {};
+  campaignRows.forEach(c => { campaignNameById[c.id.replace(/-/g,"")] = c.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled Campaign"; });
+  // Methods relate to Products, not the reverse — resolve methodId -> product name via each Product's own Methods relation.
+  const methodProductName = {};
+  productRows.forEach(p => {
+    const pname = productNameById[p.id.replace(/-/g,"")];
+    (p.properties?.Methods?.relation || []).forEach(r => { methodProductName[r.id.replace(/-/g,"")] = pname; });
   });
-  const toRun = limit ? rows.slice(0, limit) : rows;
-  const results = [];
-  for (const page of toRun) results.push(await processSavedPost(env, page));
-  return { processed: results.length, ok: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, results };
+
+  // Stage 1: cheap scoring on Name+Notes only (properties, no extra fetch).
+  const scoredMethods = methodRows.map(m => {
+    const name = m.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled Method";
+    const notes = m.properties?.Notes?.rich_text?.map(t => t.plain_text).join("") || "";
+    return { id: m.id.replace(/-/g,""), name, notes, score: scoreText(`${name} ${notes}`.toLowerCase()) };
+  }).filter(m => m.score > 0).sort((a, b) => b.score - a.score).slice(0, 5);
+
+  // Stage 2: only for the shortlisted Methods, fetch the real Phase/Grouping framework text.
+  for (const m of scoredMethods) {
+    try { m.body = await extractBlocksTextRecursive(hdr, dash(m.id)); } catch (e) { m.body = ""; }
+  }
+
+  const strategyCandidates = strategyRows.map(s => {
+    const productId = (s.properties?.Product?.relation || [])[0]?.id?.replace(/-/g,"") || "";
+    const fields = {};
+    STRATEGY_FIELDS.forEach(f => { fields[f] = s.properties?.[f]?.rich_text?.map(t => t.plain_text).join("") || ""; });
+    return { id: s.id.replace(/-/g,""), productName: productNameById[productId] || "Untitled Product", fields };
+  });
+
+  const researchFieldNames = ["Keywords", "Notes", "Thoughts", "Key Message", "Statement", "Unique Opportunity"];
+  const researchCandidates = researchRows.map(r => {
+    const campaignId = (r.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || "";
+    const fields = {};
+    researchFieldNames.forEach(f => { fields[f] = r.properties?.[f]?.rich_text?.map(t => t.plain_text).join("") || ""; });
+    return { id: r.id.replace(/-/g,""), campaignName: campaignNameById[campaignId] || "Untitled Campaign", fields };
+  });
+
+  const methodsBlock = scoredMethods.map(m =>
+    `### Method: ${m.name} (id: ${m.id})\nProduct: ${methodProductName[m.id] || "Unknown"}\nNotes: ${m.notes}\nFramework:\n${(m.body || "").slice(0, 2000)}`
+  ).join("\n\n");
+  const strategyBlock = strategyCandidates.map(s =>
+    `### Strategy — ${s.productName} (id: ${s.id})\n${STRATEGY_FIELDS.map(f => `${f}: ${s.fields[f]}`).filter(l => !l.endsWith(": ")).join("\n")}`
+  ).join("\n\n");
+  const researchBlock = researchCandidates.map(r =>
+    `### Research — ${r.campaignName} (id: ${r.id})\n${Object.entries(r.fields).map(([k, v]) => `${k}: ${v}`).filter(l => !l.endsWith(": ")).join("\n")}`
+  ).join("\n\n");
+
+  const instructionsBlock = (instructions && instructions.trim())
+    ? `\n# Additional Instructions From Operator\nThe following supplements — never replaces — the analysis instructions above. Use it to steer emphasis (e.g. focus on a particular campaign/angle), not to override the requirement that every suggestion be concrete and grounded in the transcript.\n${instructions.trim()}\n`
+    : "";
+
+  const prompt = `You are analyzing a saved social post's transcript to see whether it contains insight worth folding into the operator's EXISTING Methods, positioning Strategy, or campaign Research. Only suggest concrete, specific additions clearly grounded in the transcript content below — never invent a target that isn't in the candidate lists, and never suggest a vague "this is relevant" note with nothing concrete to add.
+
+# Saved Post Transcript/Content
+${transcriptText.slice(0, 12000)}
+${instructionsBlock}
+# Candidate Methods (only these — never invent one)
+${methodsBlock || "(none scored as relevant)"}
+
+# Candidate Strategy Records (only these — never invent one)
+${strategyBlock || "(none)"}
+
+# Candidate Research Records (only these — never invent one)
+${researchBlock || "(none)"}
+
+Respond ONLY with JSON: {"suggestions": [{"targetType": "method"|"strategyField"|"research", "targetId": "...", "targetName": "...", "contextName": "product or campaign name", "fieldName": "exact field name for strategyField/research, omit for method", "rationale": "1-2 sentences, why this is worth adding", "suggestedAddition": "the actual concrete text to add"}]}
+If nothing is genuinely worth adding, return {"suggestions": []} — do not force suggestions.`;
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6", max_tokens: 2000,
+      system: "You are a careful research analyst. You only ever propose grounded, specific, non-redundant additions to existing documents — never generic observations, never fabricated targets.",
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data?.error?.message || "Claude analysis failed");
+  const raw = data.content?.[0]?.text || "";
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Could not parse analysis response");
+  const parsed = JSON.parse(sanitizeJsonControlChars(match[0]));
+  const suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : [];
+
+  // Log the raw suggestions onto the Saved Post's own page — a durable
+  // record even if never applied, without needing a dedicated tracking DB.
+  if (suggestions.length) {
+    try {
+      const blocks = [
+        { object: "block", type: "heading_2", heading_2: { rich_text: [{ type: "text", text: { content: "Analysis Suggestions" } }] } },
+        ...suggestions.map(s => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: [{ type: "text", text: { content: `[${s.targetType}] ${s.targetName} (${s.contextName || ""}): ${s.suggestedAddition}`.slice(0, 1990) } }] } })),
+      ];
+      await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+        method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ children: blocks }),
+      });
+    } catch (e) { /* best-effort logging only — never block returning suggestions to the client */ }
+  }
+
+  return { suggestions };
 }
+
 
 export default {
   async fetch(request, env) {
@@ -11517,6 +11689,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       // ── Saved Posts (Links tab) ──
       if (body.action === "getSavedPosts") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        await enrichUnprocessedSavedPosts(env, { limit: 10 });
         const rows = await notionQuery(SAVED_POSTS_DB, {
           sorts: [{ property: "Date Saved", direction: "descending" }],
         });
@@ -11536,12 +11709,6 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           };
         });
         return json({ posts });
-      }
-
-      if (body.action === "runSavedPostsPipeline") {
-        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const summary = await runSavedPostsPipeline(env, body.limit);
-        return json(summary);
       }
 
       if (body.action === "retrySavedPost") {
@@ -11569,6 +11736,47 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const data = await resp.json();
         if (!resp.ok) return json({ error: data.message || "Failed to delete" }, 500);
         return json({ ok: true });
+      }
+
+      if (body.action === "analyzeSavedPostForMethods") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const { pageId, instructions } = body;
+        if (!pageId) return json({ error: "pageId required" }, 400);
+        try {
+          const result = await analyzeSavedPostForMethods(env, { pageId, instructions });
+          return json(result);
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
+
+      if (body.action === "applySavedPostSuggestion") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const { targetType, targetId, fieldName, suggestedAddition, sourceName } = body;
+        if (!targetType || !targetId || !suggestedAddition) return json({ error: "targetType, targetId, and suggestedAddition required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const tag = `\n\n[From saved post: ${sourceName || "unknown"}]\n${suggestedAddition}`;
+        const chunk = s => { const out = []; let r = s; while (r.length) { out.push({ type: "text", text: { content: r.slice(0, 1900) } }); r = r.slice(1900); } return out; };
+        try {
+          let notionField = null;
+          if (targetType === "method") notionField = "Notes";
+          else if (targetType === "strategyField") {
+            if (!fieldName || !STRATEGY_FIELDS.includes(fieldName)) return json({ error: "Unknown strategy field: " + fieldName }, 400);
+            notionField = fieldName;
+          } else if (targetType === "research") {
+            if (!fieldName) return json({ error: "fieldName required for research" }, 400);
+            notionField = fieldName;
+          } else return json({ error: "Unknown targetType: " + targetType }, 400);
+
+          const page = await fetch(`https://api.notion.com/v1/pages/${dash(targetId)}`, { headers: hdr }).then(r => r.json());
+          const current = page.properties?.[notionField]?.rich_text?.map(t => t.plain_text).join("") || "";
+          const resp = await fetch(`https://api.notion.com/v1/pages/${dash(targetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { [notionField]: { rich_text: chunk(current + tag) } } }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) return json({ error: data.message || "Update failed" }, resp.status);
+          return json({ success: true });
+        } catch (e) { return json({ error: e.message }, 500); }
       }
 
       // ── generateCarouselPreview ──
@@ -18095,7 +18303,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
 
   async scheduled(event, env, ctx) {
     if (event.cron === "*/30 * * * *") {
-      ctx.waitUntil(runSavedPostsPipeline(env).catch(e => console.error('savedPostsPipeline failed:', e.message)));
+      ctx.waitUntil(enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
       return;
     }
     ctx.waitUntil(deepScan(env).catch(e => console.error('deepScan failed:', e.message)));
