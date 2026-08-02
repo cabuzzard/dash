@@ -1641,13 +1641,18 @@ async function enrichUnprocessedSavedPosts(env, { limit = 50 } = {}) {
         let title = "";
         if (url) {
           try {
-            const resp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; dash-link-preview/1.0)" } });
-            const html = await resp.text();
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+            let html;
+            try {
+              const resp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; dash-link-preview/1.0)" }, signal: controller.signal });
+              html = await resp.text();
+            } finally { clearTimeout(timeoutId); }
             const og = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
                     || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
             const titleTag = html.match(/<title[^>]*>([^<]+)<\/title>/i);
             title = decodeHtmlEntities((og?.[1] || titleTag?.[1] || "").trim());
-          } catch (e) { /* best-effort — falls through to the placeholder below */ }
+          } catch (e) { /* best-effort (timeout or fetch failure) — falls through to the placeholder below */ }
         }
         if (!title) title = `${platform || "Unknown"} post`;
 
