@@ -11779,33 +11779,6 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         } catch (e) { return json({ error: e.message }, 500); }
       }
 
-      // ── ONE-TIME MAINTENANCE — backfillSavedPostDates ──
-      // Fixes the pre-existing "Date Saved" bug (the iOS Shortcut wrote the
-      // same constant date on every row) across ALL Saved Posts rows, not
-      // just the ones enrichUnprocessedSavedPosts would naturally touch —
-      // this covers the already-Done rows too. Run once after this deploy,
-      // then delete this action.
-      if (body.action === "backfillSavedPostDates") {
-        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const rows = await notionQuery(SAVED_POSTS_DB, {});
-        // Skip rows already fixed by a prior call (idempotent + resumable —
-        // each invocation is capped well under Cloudflare's subrequest limit,
-        // so this needs to be called repeatedly until remaining hits 0).
-        // Notion rounds a date property's stored value to the minute and
-        // reformats the timezone suffix (Z -> +00:00), so comparing the full
-        // ISO string against created_time never matches even right after a
-        // successful fix — compare only to minute precision instead.
-        const remaining = rows.filter(page => (page.properties?.["Date Saved"]?.date?.start || "").slice(0, 16) !== (page.created_time || "").slice(0, 16));
-        let fixed = 0;
-        for (const page of remaining.slice(0, 40)) {
-          try {
-            await patchSavedPostPage(page.id, { "Date Saved": { date: { start: page.created_time } } });
-            fixed++;
-          } catch (e) { /* one bad row never blocks the rest */ }
-        }
-        return json({ total: rows.length, remainingBefore: remaining.length, fixed });
-      }
-
       // ── generateCarouselPreview ──
       // The Worker-native carousel path: no Canva, no chat tab. Writes the
       // 7-slide script to the title (if it doesn't have one yet — same
