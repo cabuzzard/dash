@@ -11791,7 +11791,11 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         // Skip rows already fixed by a prior call (idempotent + resumable —
         // each invocation is capped well under Cloudflare's subrequest limit,
         // so this needs to be called repeatedly until remaining hits 0).
-        const remaining = rows.filter(page => (page.properties?.["Date Saved"]?.date?.start || "") !== page.created_time);
+        // Notion rounds a date property's stored value to the minute and
+        // reformats the timezone suffix (Z -> +00:00), so comparing the full
+        // ISO string against created_time never matches even right after a
+        // successful fix — compare only to minute precision instead.
+        const remaining = rows.filter(page => (page.properties?.["Date Saved"]?.date?.start || "").slice(0, 16) !== (page.created_time || "").slice(0, 16));
         let fixed = 0;
         for (const page of remaining.slice(0, 40)) {
           try {
