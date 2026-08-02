@@ -1632,7 +1632,15 @@ function detectPlatformFromUrl(url) {
 // overwrites it with the page's own real Notion created_time.
 async function enrichUnprocessedSavedPosts(env, { limit = 50 } = {}) {
   try {
-    const rows = await notionQuery(SAVED_POSTS_DB, { filter: { property: "Name", title: { is_empty: true } } });
+    // The iOS Shortcut writes a literal "Saved Post" placeholder title (never
+    // actually empty), so an unenriched row has to be matched on that literal
+    // too, not just a truly-empty title.
+    const rows = await notionQuery(SAVED_POSTS_DB, {
+      filter: { or: [
+        { property: "Name", title: { is_empty: true } },
+        { property: "Name", title: { equals: "Saved Post" } },
+      ] },
+    });
     for (const page of rows.slice(0, limit)) {
       try {
         const props = page.properties || {};
