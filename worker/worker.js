@@ -46,6 +46,11 @@ const DRIVES_DB          = "3751f7d3a4bb806cb133ff9182306ec8";
 const RESUMES_DB         = "3751f7d3a4bb80599583c9aef8d10b05";
 const DESIGN_SPECS_DB    = "3981f7d3a4bb817c8edad15db64fa50d";
 const SAVED_POSTS_DB     = "0a037d3a9a9a4289a41f76050055c795";
+// Resume header — kept in sync by hand with the 📇 Contact Info Notion page
+// (under 🏠 Home); used to print a real contact header on generated resume
+// .docx files (generateJobAsset's docx build).
+const RESUME_CONTACT_NAME = "Evan Raymond";
+const RESUME_CONTACT_LINE = "(831) 818-5680 — info@webguyleadgeneration.com";
 
 // Strategy DB (per-PRODUCT, not per-method) — a fixed positioning schema
 // true for the product regardless of which platform/method it's marketed
@@ -265,6 +270,162 @@ async function uploadBytesToNotionFileProperty(dashedPageId, propName, fileName,
   const patchData = await patchResp.json();
   if (!patchResp.ok) throw new Error(patchData.message || `Failed to attach file to ${propName}`);
   return patchData.properties?.[propName]?.files?.slice(-1)[0]?.file?.url || null;
+}
+
+// ── Minimal DOCX generator, no dependencies ──
+// wrangler.toml sets no_bundle=true (this is a single-file Worker, no
+// npm/esbuild bundling step), so an npm docx library can't be imported —
+// bare specifiers like `import "docx"` have nothing to resolve against at
+// deploy time. A .docx is just a ZIP of a few small XML parts, and a valid
+// ZIP doesn't require compression (method 0 / "stored" is legal), so this
+// hand-rolls just enough of both formats in plain JS: CRC-32 + a stored-mode
+// ZIP writer, and a document.xml with direct run formatting (no styles.xml)
+// for a resume + cover letter. Used by generateJobAsset's resume path only.
+const DOCX_TEXT_ENCODER = new TextEncoder();
+let CRC32_TABLE = null;
+function crc32(bytes) {
+  if (!CRC32_TABLE) {
+    CRC32_TABLE = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      CRC32_TABLE[n] = c >>> 0;
+    }
+  }
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function uint8ToBase64(bytes) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+function buildZip(files) {
+  const leU16 = n => [n & 0xff, (n >> 8) & 0xff];
+  const leU32 = n => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff];
+  const localParts = [], centralParts = [];
+  let offset = 0;
+  for (const f of files) {
+    const nameBytes = DOCX_TEXT_ENCODER.encode(f.name);
+    const data = f.data;
+    const crc = crc32(data);
+    const localHeader = new Uint8Array([
+      ...leU32(0x04034b50), ...leU16(20), ...leU16(0), ...leU16(0), ...leU16(0), ...leU16(0),
+      ...leU32(crc), ...leU32(data.length), ...leU32(data.length),
+      ...leU16(nameBytes.length), ...leU16(0),
+      ...nameBytes,
+    ]);
+    localParts.push(localHeader, data);
+    const localOffset = offset;
+    offset += localHeader.length + data.length;
+    centralParts.push(new Uint8Array([
+      ...leU32(0x02014b50), ...leU16(20), ...leU16(20), ...leU16(0), ...leU16(0), ...leU16(0), ...leU16(0),
+      ...leU32(crc), ...leU32(data.length), ...leU32(data.length),
+      ...leU16(nameBytes.length), ...leU16(0), ...leU16(0), ...leU16(0), ...leU16(0),
+      ...leU32(0), ...leU32(localOffset),
+      ...nameBytes,
+    ]));
+  }
+  const centralSize = centralParts.reduce((n, p) => n + p.length, 0);
+  const centralOffset = offset;
+  const end = new Uint8Array([
+    ...leU32(0x06054b50), ...leU16(0), ...leU16(0),
+    ...leU16(files.length), ...leU16(files.length),
+    ...leU32(centralSize), ...leU32(centralOffset), ...leU16(0),
+  ]);
+  const allParts = [...localParts, ...centralParts, end];
+  const out = new Uint8Array(allParts.reduce((n, p) => n + p.length, 0));
+  let pos = 0;
+  for (const p of allParts) { out.set(p, pos); pos += p.length; }
+  return out;
+}
+function xmlEscape(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+function docxRun(text, opts) {
+  opts = opts || {};
+  const rPr = [];
+  if (opts.bold) rPr.push('<w:b/>');
+  if (opts.italic) rPr.push('<w:i/>');
+  if (opts.size) rPr.push(`<w:sz w:val="${opts.size}"/><w:szCs w:val="${opts.size}"/>`);
+  const rPrXml = rPr.length ? `<w:rPr>${rPr.join('')}</w:rPr>` : '';
+  return `<w:r>${rPrXml}<w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r>`;
+}
+function docxPara(runsXml, pPrXml) {
+  return `<w:p>${pPrXml || ''}${runsXml}</w:p>`;
+}
+// resumeJson: { summary, experience: [{role,employer,dates,bullets}], skills: [], education: [], coverLetter }
+function buildResumeDocxBase64(resumeJson, posting) {
+  const paras = [];
+  const heading = (text, pageBreak) => paras.push(docxPara(
+    docxRun(text, { bold: true, size: 24 }),
+    `<w:pPr>${pageBreak ? '<w:pageBreakBefore/>' : ''}<w:spacing w:before="240" w:after="100"/><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="999999"/></w:pBdr></w:pPr>`
+  ));
+  const normal = text => paras.push(docxPara(docxRun(text), '<w:pPr><w:spacing w:after="100"/></w:pPr>'));
+  const bullet = text => paras.push(docxPara(docxRun('•  ' + text), '<w:pPr><w:spacing w:after="40"/><w:ind w:left="360"/></w:pPr>'));
+
+  paras.push(docxPara(docxRun(RESUME_CONTACT_NAME, { bold: true, size: 36 }), '<w:pPr><w:jc w:val="center"/><w:spacing w:after="40"/></w:pPr>'));
+  paras.push(docxPara(docxRun(RESUME_CONTACT_LINE, { size: 20 }), '<w:pPr><w:jc w:val="center"/><w:spacing w:after="200"/></w:pPr>'));
+  if (posting && posting.title) normal(`Target role: ${posting.title}${posting.company ? ' @ ' + posting.company : ''}`);
+
+  if (resumeJson.summary) { heading('SUMMARY'); normal(resumeJson.summary); }
+
+  if (Array.isArray(resumeJson.experience) && resumeJson.experience.length) {
+    heading('EXPERIENCE');
+    resumeJson.experience.forEach(e => {
+      const head = [e.role, e.employer].filter(Boolean).join(' — ');
+      paras.push(docxPara(
+        docxRun(head, { bold: true }) + (e.dates ? docxRun('   ' + e.dates, { italic: true, size: 18 }) : ''),
+        '<w:pPr><w:spacing w:before="120" w:after="40"/></w:pPr>'
+      ));
+      (e.bullets || []).forEach(b => bullet(b));
+    });
+  }
+
+  if (Array.isArray(resumeJson.skills) && resumeJson.skills.length) { heading('SKILLS'); normal(resumeJson.skills.join('  •  ')); }
+  if (Array.isArray(resumeJson.education) && resumeJson.education.length) { heading('EDUCATION'); resumeJson.education.forEach(normal); }
+
+  if (resumeJson.coverLetter) {
+    heading('COVER LETTER', true);
+    String(resumeJson.coverLetter).split(/\n{2,}/).map(s => s.trim()).filter(Boolean).forEach(p => {
+      paras.push(docxPara(docxRun(p), '<w:pPr><w:spacing w:after="180"/></w:pPr>'));
+    });
+  }
+
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paras.join('')}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080"/></w:sectPr></w:body></w:document>`;
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
+  const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
+
+  const zipBytes = buildZip([
+    { name: '[Content_Types].xml', data: DOCX_TEXT_ENCODER.encode(contentTypesXml) },
+    { name: '_rels/.rels', data: DOCX_TEXT_ENCODER.encode(rootRelsXml) },
+    { name: 'word/document.xml', data: DOCX_TEXT_ENCODER.encode(documentXml) },
+  ]);
+  return uint8ToBase64(zipBytes);
+}
+// Flattens the resume JSON back into the same marker-based plain-text shape
+// the Body property (and the asset row's 📄 View modal) have always carried
+// — so nothing downstream needs to know the writing prompt now asks for JSON.
+function renderResumeJsonAsText(j) {
+  const lines = [];
+  if (j.summary) { lines.push(j.summary, ''); }
+  if (Array.isArray(j.experience)) {
+    j.experience.forEach(e => {
+      const head = [e.role, e.employer].filter(Boolean).join(' — ') + (e.dates ? ` (${e.dates})` : '');
+      lines.push(head);
+      (e.bullets || []).forEach(b => lines.push(`• ${b}`));
+      lines.push('');
+    });
+  }
+  if (Array.isArray(j.skills) && j.skills.length) { lines.push('Skills: ' + j.skills.join(', '), ''); }
+  if (Array.isArray(j.education) && j.education.length) { lines.push('Education:'); j.education.forEach(e => lines.push(e)); lines.push(''); }
+  lines.push('===COVER LETTER===');
+  lines.push(j.coverLetter || '');
+  return lines.join('\n').trim();
 }
 
 // Whenever a Method gets attached to a Product (AI-matched or manually), also
@@ -17987,7 +18148,9 @@ ${educationBlock || '(none on file)'}
 CANDIDATE'S REAL SKILLS LIST (the only source of truth for the Skills section — select and phrase from this list to match the posting, never invent a skill not here):
 ${skillsBlock || '(none on file)'}
 
-Write plain text (use line breaks and simple markers like "—" or "•" for structure, no markdown headers). First the resume: a short summary/profile tailored to this posting, work experience (role, employer, dates, 2-4 achievement-focused bullets each, pulled and rephrased from the work history), a skills section (drawn only from the real skills list above, prioritizing whichever match this posting), and an education section (drawn only from the real education list above — omit entirely if it's empty). Then, on a line by itself exactly "===COVER LETTER===", followed by a complete tailored cover letter for this specific posting (addresses what this posting needs, references 1-2 genuinely relevant pieces of the work history, clear closing). Return ONLY the resume text, the marker line, then the cover letter — nothing else.`
+Return ONLY a single JSON object (no markdown code fences, no other text before or after) with this exact shape:
+{"summary": "short profile paragraph tailored to this posting", "experience": [{"role": "...", "employer": "...", "dates": "...", "bullets": ["achievement-focused bullet pulled and rephrased from the work history", "..."]}], "skills": ["skill drawn only from the real skills list, prioritizing matches to this posting"], "education": ["formatted education line, e.g. degree — institution (year) — omit the whole array if none on file"], "coverLetter": "complete tailored cover letter for this specific posting as plain text, paragraphs separated by a blank line — addresses what this posting needs, references 1-2 genuinely relevant pieces of the work history, clear closing"}
+2-4 bullets per experience entry. Every experience/education/skills value must trace back to the real data above — never invent one.`
             : `You are writing an Upwork proposal for this specific job listing, using the freelancer's real work history below. Never invent experience or claims that aren't in the work history.
 ${avatarName ? `\nPROFESSIONAL PERSONA FOR THIS PROPOSAL: "${avatarName}" — ${avatarSummary || '(no summary on file)'}\nThe work history below has already been filtered to this persona's relevant experience.\n` : ''}
 UPWORK JOB LISTING: "${posting.title}"
@@ -18011,7 +18174,22 @@ Write a complete Upwork proposal as plain text: open by directly addressing what
           if (!aiResp.ok) return { posting, error: aiData.error?.message || "Claude API error" };
           const raw = (aiData.content?.[0]?.text || "").trim();
           if (!raw) return { posting, error: "Claude returned empty content" };
-          return { posting, text: raw };
+          if (!isResume) return { posting, text: raw };
+
+          // Resume path returns structured JSON (for the docx build below) —
+          // parse it, then flatten to the same plain-text shape the Body
+          // property has always carried so nothing downstream breaks. A
+          // parse failure falls back to treating the raw text as-is (no
+          // docx gets built for this posting, but the asset still saves).
+          let resumeJson = null;
+          try {
+            const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+            resumeJson = JSON.parse(cleaned);
+          } catch (e) { /* fall through to plain-text-only below */ }
+          if (!resumeJson || typeof resumeJson !== 'object') return { posting, text: raw };
+
+          const text = renderResumeJsonAsText(resumeJson);
+          return { posting, text, resumeJson };
         }));
 
         let created = 0; const assets = []; const failures = [];
@@ -18035,6 +18213,19 @@ Write a complete Upwork proposal as plain text: open by directly addressing what
           if (!createResp.ok || !createdPage.id) { failures.push({ title: w.posting.title, error: createdPage.message || "Asset create failed" }); continue; }
           created++;
           assets.push({ id: createdPage.id.replace(/-/g, ""), title: w.posting.title, url: w.posting.url });
+
+          // Attach a real formatted .docx (resume + cover letter) to the
+          // asset — only possible when the writing prompt's JSON parsed
+          // cleanly above (w.resumeJson). Best-effort: the Body text asset
+          // is already saved either way, so a docx build/upload failure
+          // here is logged but never fails the whole posting.
+          if (isResume && w.resumeJson) {
+            try {
+              const docxBase64 = buildResumeDocxBase64(w.resumeJson, w.posting);
+              const fileSlug = (w.posting.title || 'resume').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'resume';
+              await uploadBytesToNotionFileProperty(dashId(createdPage.id), "Resume Document", `${fileSlug}-resume.docx`, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", docxBase64, false);
+            } catch (e) { failures.push({ title: w.posting.title, error: `Asset saved, but .docx attach failed: ${e.message || e}` }); }
+          }
         }
 
         if (created > 0) {
