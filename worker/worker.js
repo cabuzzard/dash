@@ -428,6 +428,54 @@ function renderResumeJsonAsText(j) {
   return lines.join('\n').trim();
 }
 
+// Writes the same resume JSON as real Notion page CONTENT (not just the flat
+// Body property) — headings/bold/italic/bullets that survive a copy-paste
+// out of Notion into Google Docs or Word with their formatting intact, which
+// a plain-text property cannot do. Additive alongside the .docx attachment
+// and the Body property, not a replacement for either.
+function notionText(content, opts) {
+  opts = opts || {};
+  return [{
+    type: "text",
+    text: { content: String(content == null ? '' : content).slice(0, 2000) },
+    annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" },
+  }];
+}
+const nHeading2   = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: notionText(text, { bold: true }) } });
+const nParagraph  = richText => ({ object: "block", type: "paragraph", paragraph: { rich_text: richText } });
+const nBullet     = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: notionText(text) } });
+const nDivider    = () => ({ object: "block", type: "divider", divider: {} });
+function buildResumeNotionBlocks(resumeJson, posting) {
+  const blocks = [];
+  blocks.push({ object: "block", type: "heading_1", heading_1: { rich_text: notionText(RESUME_CONTACT_NAME, { bold: true }) } });
+  blocks.push(nParagraph(notionText(RESUME_CONTACT_LINE, { italic: true })));
+  if (posting && posting.title) blocks.push(nParagraph(notionText(`Target role: ${posting.title}${posting.company ? ' @ ' + posting.company : ''}`)));
+  blocks.push(nDivider());
+
+  if (resumeJson.summary) { blocks.push(nHeading2('Summary')); blocks.push(nParagraph(notionText(resumeJson.summary))); }
+
+  if (Array.isArray(resumeJson.experience) && resumeJson.experience.length) {
+    blocks.push(nHeading2('Experience'));
+    resumeJson.experience.forEach(e => {
+      const head = [e.role, e.employer].filter(Boolean).join(' — ');
+      const rt = notionText(head, { bold: true });
+      if (e.dates) rt.push(...notionText('   ' + e.dates, { italic: true }));
+      blocks.push(nParagraph(rt));
+      (e.bullets || []).forEach(b => blocks.push(nBullet(b)));
+    });
+  }
+
+  if (Array.isArray(resumeJson.skills) && resumeJson.skills.length) { blocks.push(nHeading2('Skills')); blocks.push(nParagraph(notionText(resumeJson.skills.join(', ')))); }
+  if (Array.isArray(resumeJson.education) && resumeJson.education.length) { blocks.push(nHeading2('Education')); resumeJson.education.forEach(line => blocks.push(nParagraph(notionText(line)))); }
+
+  if (resumeJson.coverLetter) {
+    blocks.push(nDivider());
+    blocks.push(nHeading2('Cover Letter'));
+    String(resumeJson.coverLetter).split(/\n{2,}/).map(s => s.trim()).filter(Boolean).forEach(p => blocks.push(nParagraph(notionText(p))));
+  }
+  return blocks;
+}
+
 // Whenever a Method gets attached to a Product (AI-matched or manually), also
 // attach it to every Campaign that Product is linked to, so it shows up in
 // the campaign microsite's Methods field too — not just on the product.
@@ -18225,6 +18273,21 @@ Write a complete Upwork proposal as plain text: open by directly addressing what
               const fileSlug = (w.posting.title || 'resume').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'resume';
               await uploadBytesToNotionFileProperty(dashId(createdPage.id), "Resume Document", `${fileSlug}-resume.docx`, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", docxBase64, false);
             } catch (e) { failures.push({ title: w.posting.title, error: `Asset saved, but .docx attach failed: ${e.message || e}` }); }
+
+            // Also write real formatted page content (headings/bold/bullets)
+            // so opening the asset in Notion and copy-pasting straight into
+            // Google Docs/Word keeps that formatting — a flat text property
+            // can't carry formatting across a clipboard paste, real blocks can.
+            try {
+              const blocks = buildResumeNotionBlocks(w.resumeJson, w.posting);
+              for (let i = 0; i < blocks.length; i += 90) {
+                const appendResp = await fetch(`https://api.notion.com/v1/blocks/${dashId(createdPage.id)}/children`, {
+                  method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                  body: JSON.stringify({ children: blocks.slice(i, i + 90) }),
+                });
+                if (!appendResp.ok) { const r = await appendResp.json().catch(() => ({})); throw new Error(r.message || `Block append failed (${appendResp.status})`); }
+              }
+            } catch (e) { failures.push({ title: w.posting.title, error: `Asset saved, but formatted page content failed: ${e.message || e}` }); }
           }
         }
 
