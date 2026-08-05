@@ -17764,7 +17764,7 @@ Return ONLY the HTML document.`;
       // pulls a fresh batch of postings and adds another set, it never
       // overwrites what's already there.
       if (body.action === "generateJobAsset") {
-        const { titleId, campaignId, assetType, productId: productIdParam, researchInstructions, avatarId } = body;
+        const { titleId, campaignId, assetType, productId: productIdParam, researchInstructions, avatarId, source } = body;
         if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
         if (!["resume", "upwork proposal"].includes(assetType)) return json({ error: 'assetType must be "resume" or "upwork proposal"' }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
@@ -17838,11 +17838,28 @@ Return ONLY the HTML document.`;
         }).filter(Boolean).join("\n\n");
         const skillsBlock = skillPages.map(p => p.properties.Skill?.title?.map(t => t.plain_text).join("") || "").filter(Boolean).join(", ");
 
+        const sourceUrl = String(source || '').trim();
         const splitTerms = s => String(s || '').split(/[,;\n]+/).map(x => x.trim()).filter(Boolean);
         const searchTerms = Array.from(new Set([...splitTerms(keywords), ...splitTerms(researchInstructions)])).slice(0, isResume ? 6 : 4);
-        if (!searchTerms.length) return json({ error: "This Product has no Keywords set, and no research instructions were given to search with." }, 400);
+        if (!sourceUrl && !searchTerms.length) return json({ error: "This Product has no Keywords set, and no research instructions or Source URL were given to search with." }, 400);
 
         const stripHtml = s => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&#0?39;/g, "'").replace(/\s+/g, ' ').trim();
+
+        // ── Source override: a specific job posting/org page, given directly
+        // by the operator, that skips the job-board/Upwork search entirely.
+        // Built to look exactly like one `rawPostings` entry so it flows
+        // through the exact same ranking/writing code below unchanged.
+        async function fetchSourcePosting(url) {
+          const resp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (dash-worker; job research)" } });
+          if (!resp.ok) throw new Error(`Couldn't fetch that URL (HTTP ${resp.status})`);
+          const html = await resp.text();
+          const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+          const pageTitle = titleMatch ? stripHtml(titleMatch[1]) : '';
+          const cleaned = html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ');
+          const description = stripHtml(cleaned).slice(0, 4000);
+          if (!description) throw new Error("That URL returned no readable text to write from.");
+          return { title: pageTitle || url, company: '', url, description, tags: '', source: 'Manual Source' };
+        }
 
         // ── Resume path: search the campaign-agnostic Job Boards DB ──
         async function searchJobBoardsFor(terms) {
@@ -17923,23 +17940,32 @@ Return ONLY the HTML document.`;
           return results.flat();
         }
 
-        const rawPostings = isResume ? await searchJobBoardsFor(searchTerms) : await searchUpworkFor(searchTerms);
+        let ranked;
+        if (sourceUrl) {
+          try {
+            ranked = [await fetchSourcePosting(sourceUrl)];
+          } catch (e) {
+            return json({ error: `Source URL: ${e.message || e}` }, 400);
+          }
+        } else {
+          const rawPostings = isResume ? await searchJobBoardsFor(searchTerms) : await searchUpworkFor(searchTerms);
 
-        const lowerTerms = searchTerms.map(t => t.toLowerCase());
-        const seen = new Set();
-        const ranked = rawPostings
-          .filter(p => p.url && !seen.has(p.url) && (seen.add(p.url), true))
-          .map(p => {
-            const hay = `${p.title} ${p.tags || ''} ${p.description || ''}`.toLowerCase();
-            const score = lowerTerms.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
-            return { ...p, score };
-          })
-          .filter(p => p.score > 0)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 5);
+          const lowerTerms = searchTerms.map(t => t.toLowerCase());
+          const seen = new Set();
+          ranked = rawPostings
+            .filter(p => p.url && !seen.has(p.url) && (seen.add(p.url), true))
+            .map(p => {
+              const hay = `${p.title} ${p.tags || ''} ${p.description || ''}`.toLowerCase();
+              const score = lowerTerms.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
+              return { ...p, score };
+            })
+            .filter(p => p.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 5);
 
-        if (!ranked.length) {
-          return json({ success: true, created: 0, needsWorkHistory: false, searchTerms, boardsOrTermsSearched: isResume ? undefined : searchTerms.length, note: `No live postings matched "${searchTerms.join(', ')}" ${isResume ? 'across the active Job Boards' : 'on Upwork'} — try broadening the Product's Keywords or adding Research Instructions.` });
+          if (!ranked.length) {
+            return json({ success: true, created: 0, needsWorkHistory: false, searchTerms, boardsOrTermsSearched: isResume ? undefined : searchTerms.length, note: `No live postings matched "${searchTerms.join(', ')}" ${isResume ? 'across the active Job Boards' : 'on Upwork'} — try broadening the Product's Keywords or adding Research Instructions, or paste a Source URL to target a specific posting directly.` });
+          }
         }
 
         // Write one tailored asset per posting, concurrently.

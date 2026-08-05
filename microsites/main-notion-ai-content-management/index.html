@@ -1023,6 +1023,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <select class="modal-ta" id="gaAvatarInput">
           <option value="">— use full work history (no avatar) —</option>
         </select>
+        <label class="lm-label" style="margin-top:8px;">Source URL <span style="color:#777;font-weight:normal;">— optional; a specific job posting/org page to write for instead of searching. Overrides the job board/Upwork search entirely — the page is fetched and used as the single target posting.</span></label>
+        <input class="modal-ta" id="gaSourceInput" type="text" placeholder="e.g. https://example.org/careers/webmaster" autocomplete="off" />
       </div>
 
       <div class="ga-hide-for-carousel">
@@ -4971,7 +4973,7 @@ async function openGenAssetsModal(titleId) {
   GA_TITLE_ID = titleId; GA_CAMPAIGN_ID = null;
   GA_METHOD_ID = null; GA_METHOD_NAME = '';
   GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
-  ['gaTitleInput','gaMethodInput','gaProductInput','gaDescInput','gaKeywordsInput','gaResearchInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaDesignRefImageInput'].forEach(id => {
+  ['gaTitleInput','gaMethodInput','gaProductInput','gaDescInput','gaKeywordsInput','gaResearchInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaDesignRefImageInput','gaSourceInput'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
@@ -5807,11 +5809,14 @@ async function submitGenAssets() {
       // generic path's gaResolve) since Keywords + Work History live there
       // and the title may not carry the relation yet.
       let jobProductId;
+      const sourceUrl = isJobAsset ? (document.getElementById('gaSourceInput')?.value.trim() || undefined) : undefined;
       if (isJobAsset) {
         const product = await gaResolve('product', status);
         if (!product.id) { status.textContent = 'Pick or type a Product above first — Keywords/Work History live on it.'; status.style.color = '#fc8181'; btn.disabled = false; btn.textContent = 'Generate'; return; }
         jobProductId = product.id;
-        status.textContent = `Searching ${skillMatch.assetType === 'resume' ? 'job boards' : 'Upwork'} for the top matches…`;
+        status.textContent = sourceUrl
+          ? `Reading the source URL and writing the ${skillMatch.assetType} for it…`
+          : `Searching ${skillMatch.assetType === 'resume' ? 'job boards' : 'Upwork'} for the top matches…`;
       }
       const r = await w(skillMatch.workerAction, {
         titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, carouselType, presenter,
@@ -5821,6 +5826,7 @@ async function submitGenAssets() {
         description, seedKeywords, researchInstructions, designSpecId,
         assetType: isJobAsset ? skillMatch.assetType : undefined,
         productId: isJobAsset ? jobProductId : undefined,
+        source: sourceUrl,
         avatarId: isJobAsset ? (document.getElementById('gaAvatarInput')?.value || undefined) : undefined,
       });
       if (r.error) throw new Error(r.error);
