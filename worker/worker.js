@@ -36,6 +36,7 @@ const CAROUSEL_SPECS_DB        = "ff84f1d161504a778e9ed29dfd4e02a6";
 const SLIDE_SPECS_DB           = "69f9b4be4b9143568d4baacc920fb657";
 const CAROUSEL_QA_RUNS_DB      = "bdefa812e111424194bba11953b32854";
 const GROWTH_STRATEGY_DB       = "437b8c2615234b6bbe4a694b31f3000f";
+const STRATEGY_SLOTS_DB        = "cc6bf6dc995e485d8c5bd13c33b7e0fa"; // one row per Growth Strategy grouping angle (e.g. "Behind the Scenes #1") -- tracks Open/Filled + the Title created from it
 const LEADS_DB           = "e4518a459f004eb0b9646e48d8718705";
 const SM_ACCOUNTS_DB     = "aa6a16f2a77245bfb5efd9a8eb314b07";
 const EMAILS_DB          = "6252e9917027488fb628436aabb89947";
@@ -2417,9 +2418,23 @@ export default {
         // downstream research flows read back via buildTitleSeedContext.
         // productId used to be silently ignored here — product sites were
         // creating titles with no product relation at all.
-        const { title, campaignId, productId, methodId, status, grouping, description, seedKeywords, researchInstructions } = body;
+        const { title, campaignId, productId: productIdParam, methodId, status, grouping, description, seedKeywords, researchInstructions, slotId } = body;
         if (!title) return json({ error: "title required" }, 400);
         const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        // Optional: filling a Strategy Slot (from the Add Idea modal's "Fill
+        // an open Strategy Slot" picker) dictates the Product — the slot's
+        // own Product relation wins if the caller didn't separately resolve
+        // one client-side.
+        let productId = productIdParam;
+        let slotPage = null;
+        if (slotId) {
+          slotPage = await fetch(`https://api.notion.com/v1/pages/${dashId(slotId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          if (slotPage?.properties && !productId) {
+            productId = (slotPage.properties.Product?.relation || [])[0]?.id?.replace(/-/g,"") || productId;
+          }
+        }
 
         const props = {
           Title:  { title: [{ type: "text", text: { content: title } }] },
@@ -2436,12 +2451,24 @@ export default {
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
-        return json({ success: true, id: result.id.replace(/-/g,"") });
+        const newTitleId = result.id.replace(/-/g,"");
+
+        // Mark the slot Filled and link it to the Title that filled it —
+        // best-effort, a failure here shouldn't undo the title that just
+        // saved successfully.
+        if (slotId && slotPage?.properties) {
+          await fetch(`https://api.notion.com/v1/pages/${dashId(slotId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Status": { select: { name: "Filled" } }, "Title": { relation: [{ id: dashId(newTitleId) }] } } }),
+          }).catch(() => {});
+        }
+
+        return json({ success: true, id: newTitleId });
       }
 
       if (body.action === "renameTodoItem") {
@@ -6337,8 +6364,40 @@ Return ONLY this JSON object, no other text, no markdown fences:
           }),
         }).then(r => r.json());
         if (!createResp.id) return json({ error: createResp.message || "Failed to create Growth Strategy page" }, 500);
+        const strategyId = createResp.id.replace(/-/g, "");
 
-        return json({ success: true, id: createResp.id.replace(/-/g, ""), url: createResp.url, groupingCount: groupings.length });
+        // One Strategy Slot row per grouping angle (e.g. "Behind the Scenes
+        // #1") — the trackable, fillable counterpart to the prose bullets
+        // above. Best-effort: a slot-creation failure doesn't fail the
+        // strategy itself, which already saved successfully.
+        const slotResults = await Promise.all(groupings.flatMap(g => {
+          const titles = Array.isArray(g.titles) ? g.titles : [];
+          return titles.map((angle, i) => {
+            const seq = i + 1;
+            const name = `${g.name || 'Untitled'} #${seq}`;
+            return fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                parent: { database_id: STRATEGY_SLOTS_DB },
+                properties: {
+                  "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
+                  "Growth Strategy": { relation: [{ id: dash(strategyId) }] },
+                  "Campaign": { relation: [{ id: dash(campaignId) }] },
+                  "Product": { relation: [{ id: dash(productId) }] },
+                  "Grouping": { rich_text: [{ type: "text", text: { content: String(g.name || '').slice(0, 1990) } }] },
+                  "Sequence": { number: seq },
+                  "Angle": { rich_text: [{ type: "text", text: { content: String(angle || '').slice(0, 1990) } }] },
+                  "Method Name": { rich_text: [{ type: "text", text: { content: String(g.recommendedMethod || '').slice(0, 1990) } }] },
+                  "Platform": { rich_text: [{ type: "text", text: { content: String(g.recommendedPlatform || platformOverride || '').slice(0, 1990) } }] },
+                  "Status": { select: { name: "Open" } },
+                },
+              }),
+            }).then(r => r.json()).catch(e => ({ error: String(e) }));
+          });
+        }));
+        const slotsCreated = slotResults.filter(r => r && r.id).length;
+
+        return json({ success: true, id: strategyId, url: createResp.url, groupingCount: groupings.length, slotsCreated });
       }
 
       // ── listGrowthStrategies ──
@@ -6389,6 +6448,74 @@ Return ONLY this JSON object, no other text, no markdown fences:
           summary: (page.properties?.Summary?.rich_text || []).map(t => t.plain_text).join(""),
           body: bodyText,
         });
+      }
+
+      // ── getCampaignStrategies ──
+      // Powers the campaign microsite's "🚀 Strategies" panel (every Growth
+      // Strategy for this campaign, with real fill-progress per grouping)
+      // and the Add Idea modal's "Fill an open Strategy Slot" dropdown
+      // (same data, the modal just filters to status === "Open" client-side).
+      if (body.action === "getCampaignStrategies") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const [stratQ, slotQ] = await Promise.all([
+          notionQuery(GROWTH_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } }, sorts: [{ timestamp: "created_time", direction: "descending" }] }),
+          notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } }, sorts: [{ property: "Sequence", direction: "ascending" }] }),
+        ]);
+
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const productIds = Array.from(new Set(stratQ.flatMap(s => (s.properties?.Product?.relation || []).map(r => r.id.replace(/-/g,"")))));
+        const productPages = productIds.length
+          ? await Promise.all(productIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)))
+          : [];
+        const productNameById = {};
+        productPages.filter(Boolean).forEach(p => { productNameById[p.id.replace(/-/g,"")] = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product"; });
+
+        const slotsByStrategy = {};
+        slotQ.forEach(s => {
+          const stratId = (s.properties?.["Growth Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"");
+          if (!stratId) return;
+          (slotsByStrategy[stratId] ||= []).push({
+            id: s.id.replace(/-/g,""),
+            name: (s.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Slot",
+            grouping: (s.properties?.Grouping?.rich_text || []).map(t => t.plain_text).join(""),
+            sequence: s.properties?.Sequence?.number ?? null,
+            angle: (s.properties?.Angle?.rich_text || []).map(t => t.plain_text).join(""),
+            methodName: (s.properties?.["Method Name"]?.rich_text || []).map(t => t.plain_text).join(""),
+            platform: (s.properties?.Platform?.rich_text || []).map(t => t.plain_text).join(""),
+            status: s.properties?.Status?.select?.name || "Open",
+            titleId: (s.properties?.Title?.relation || [])[0]?.id?.replace(/-/g,"") || null,
+          });
+        });
+
+        const strategies = stratQ.map(s => {
+          const id = s.id.replace(/-/g,"");
+          const productId = (s.properties?.Product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+          const slots = slotsByStrategy[id] || [];
+          const groupingOrder = [];
+          const byGrouping = {};
+          slots.forEach(slot => {
+            const g = slot.grouping || "Ungrouped";
+            if (!byGrouping[g]) { byGrouping[g] = []; groupingOrder.push(g); }
+            byGrouping[g].push(slot);
+          });
+          return {
+            id,
+            name: (s.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled",
+            status: s.properties?.Status?.select?.name || "Draft",
+            productId,
+            productName: productId ? (productNameById[productId] || "Untitled Product") : null,
+            groupings: groupingOrder.map(g => ({
+              name: g,
+              slots: byGrouping[g],
+              filledCount: byGrouping[g].filter(sl => sl.status === "Filled").length,
+              totalCount: byGrouping[g].length,
+            })),
+          };
+        });
+
+        return json({ success: true, strategies });
       }
 
       // ── saveMethodTitles ──

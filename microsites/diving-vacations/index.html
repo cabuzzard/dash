@@ -298,6 +298,19 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- SEC 2b: one col — every Growth Strategy for this campaign, with real
+     fill-progress per grouping (not the titles themselves — the planned
+     slots, e.g. "Behind the Scenes #1", and whether a real Title has been
+     made from each one yet). Strategies are built off Products (🚀 button
+     on a product row above); this just makes them visible/trackable at the
+     campaign level instead of buried per-product. -->
+<div class="one-col">
+  <h2>Strategies <button class="td-add-btn-inline" onclick="loadCampaignStrategies()" title="Refresh">⟳</button></h2>
+  <div class="content">
+    <div id="strategies-panel"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+  </div>
+</div>
+
 <!-- SEC 3: three col — logins / development titles / publish titles -->
 <div class="three-col">
   <div class="col">
@@ -962,6 +975,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
                onblur="setTimeout(()=>{const d=document.getElementById('atProductDD'); if(d) d.style.display='none';},180)" />
         <div id="atProductDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
       </div>
+
+      <label class="lm-label">Fill an open Strategy Slot <span style="color:#777;font-weight:normal;">— optional; picks a planned slot (e.g. "Behind the Scenes #1") from an approved Growth Strategy. Sets the Product above to match (strategies are per-product) and marks the slot filled once this title is created. Leave blank to ignore.</span></label>
+      <select class="modal-ta" id="atSlotInput" onchange="atSlotPicked(this)" style="margin-bottom:10px;">
+        <option value="">— none —</option>
+      </select>
 
       <label class="lm-label">Description of content</label>
       <textarea class="modal-ta" id="atDescInput" rows="3" placeholder="What this content is and should communicate…" style="margin-bottom:10px;resize:vertical;"></textarea>
@@ -3842,6 +3860,7 @@ function init() {
   loadSmPosts();
   loadDeliverables();
   loadDesignSpecs();
+  loadCampaignStrategies();
 }
 
 // ── DELIVERABLES ─────────────────────────────────────────────────────
@@ -4588,6 +4607,56 @@ async function copyRenderCommand() {
 let AT_METHOD_ID = null, AT_METHOD_NAME = '';
 let AT_PRODUCT_ID = null, AT_PRODUCT_NAME = '';
 let AT_METHODS = [], AT_PRODUCTS = [];
+let AT_SLOT_ID = null;
+
+// Populates the "Fill an open Strategy Slot" dropdown from whatever the
+// Strategies panel already loaded (CAMPAIGN_STRATEGIES_CACHE) — no extra
+// round-trip. Open slots only; a slot with a Title already linked is done.
+function atPopulateSlotDropdown() {
+  const sel = document.getElementById('atSlotInput');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— none —</option>';
+  (CAMPAIGN_STRATEGIES_CACHE || []).forEach(s => {
+    (s.groupings || []).forEach(g => {
+      (g.slots || []).filter(sl => sl.status === 'Open').forEach(sl => {
+        const opt = document.createElement('option');
+        opt.value = sl.id;
+        opt.textContent = `${s.name} → ${sl.name}: ${(sl.angle || '').slice(0, 60)}`;
+        opt.dataset.productId = s.productId || '';
+        opt.dataset.productName = s.productName || '';
+        opt.dataset.angle = sl.angle || '';
+        opt.dataset.method = sl.methodName || '';
+        sel.appendChild(opt);
+      });
+    });
+  });
+}
+// Selecting a slot dictates the Product (strategies are per-product) — locks
+// the Product field and seeds Idea/Method text if they're still empty.
+// Deselecting (back to "— none —") releases all of that back to normal.
+function atSlotPicked(selectEl) {
+  const productInput = document.getElementById('atProductInput');
+  const titleInput = document.getElementById('addTitleInput');
+  const methodInput = document.getElementById('atMethodInput');
+  const countInput = document.getElementById('atCountInput');
+  if (!selectEl.value) {
+    AT_SLOT_ID = null;
+    if (productInput) productInput.readOnly = false;
+    if (countInput) countInput.disabled = false;
+    return;
+  }
+  const opt = selectEl.selectedOptions[0];
+  AT_SLOT_ID = selectEl.value;
+  const productId = opt.dataset.productId, productName = opt.dataset.productName;
+  if (productId && productName) {
+    AT_PRODUCT_ID = productId; AT_PRODUCT_NAME = productName;
+    if (productInput) { productInput.value = productName; productInput.readOnly = true; }
+    if (!AT_PRODUCTS.some(p => p.id === productId)) AT_PRODUCTS.push({ id: productId, name: productName });
+  }
+  if (titleInput && !titleInput.value.trim() && opt.dataset.angle) titleInput.value = opt.dataset.angle;
+  if (methodInput && !methodInput.value.trim() && opt.dataset.method) methodInput.value = opt.dataset.method;
+  if (countInput) { countInput.value = '1'; countInput.disabled = true; }
+}
 
 async function atEnsureLists() {
   try {
@@ -4663,6 +4732,12 @@ function openAddTitleModal() {
   });
   AT_METHOD_ID = null; AT_METHOD_NAME = '';
   AT_PRODUCT_ID = null; AT_PRODUCT_NAME = '';
+  AT_SLOT_ID = null;
+  const productInput = document.getElementById('atProductInput');
+  if (productInput) productInput.readOnly = false;
+  const countInput = document.getElementById('atCountInput');
+  if (countInput) { countInput.disabled = false; countInput.value = '1'; }
+  atPopulateSlotDropdown();
   document.getElementById('addTitleStatus').textContent = '';
   document.getElementById('addTitleSaveBtn').disabled = false;
   document.getElementById('addTitleSaveBtn').textContent = 'Create';
@@ -4686,7 +4761,9 @@ async function submitAddTitle() {
   try {
     const method  = await atResolve('method', status);
     const product = await atResolve('product', status);
-    const atCount = parseInt(document.getElementById('atCountInput')?.value) || 1;
+    // A picked Strategy Slot maps to exactly one planned post — ignore any
+    // count > 1 left over from before the slot was picked.
+    const atCount = AT_SLOT_ID ? 1 : (parseInt(document.getElementById('atCountInput')?.value) || 1);
     const common = {
       campaignId: CAMPAIGN_ID,
       methodId:  method.id  || undefined,
@@ -4700,14 +4777,15 @@ async function submitAddTitle() {
       const r = await w('generateIdeaTitles', { title, count: atCount, ...common });
       status.textContent = '✓ Generated ' + r.created + ' titles' + (r.failed ? ' (' + r.failed + ' failed)' : '');
     } else {
-      status.textContent = 'Creating title…';
-      await w('createDevTitle', { title, status: 'Development', ...common });
+      status.textContent = AT_SLOT_ID ? 'Creating title and filling the strategy slot…' : 'Creating title…';
+      await w('createDevTitle', { title, status: 'Development', slotId: AT_SLOT_ID || undefined, ...common });
     }
     closeAddTitleModal();
     loadTitles();
     // refresh side panels if we created something new mid-flow
     if (method.created  && typeof loadMethods  === 'function') loadMethods();
     if (product.created && typeof loadProducts === 'function') loadProducts();
+    if (AT_SLOT_ID && typeof loadCampaignStrategies === 'function') loadCampaignStrategies();
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     btn.disabled = false; btn.textContent = 'Create';
@@ -5515,6 +5593,54 @@ function openAssetBodyModal(btn) {
 function closeAssetBodyModal() {
   document.getElementById('assetBodyModal').classList.remove('open');
   ASSET_BODY_MODAL_ID = null;
+}
+
+// ── Campaign Strategies panel ───────────────────────────────────────────
+// Every Growth Strategy for this campaign with real slot fill-progress —
+// cached so the Add Idea modal's "Fill an open Strategy Slot" picker can
+// reuse it without a second round-trip.
+let CAMPAIGN_STRATEGIES_CACHE = [];
+async function loadCampaignStrategies() {
+  const el = document.getElementById('strategies-panel');
+  if (!el) return;
+  try {
+    const r = await w('getCampaignStrategies', { campaignId: CAMPAIGN_ID });
+    CAMPAIGN_STRATEGIES_CACHE = r.strategies || [];
+    renderStrategiesPanel(CAMPAIGN_STRATEGIES_CACHE);
+  } catch (e) {
+    el.innerHTML = '<div class="empty">Error loading strategies.</div>';
+  }
+}
+function renderStrategiesPanel(strategies) {
+  const el = document.getElementById('strategies-panel');
+  if (!el) return;
+  if (!strategies.length) { el.innerHTML = '<div class="empty">No Growth Strategies yet — generate one from the 🚀 button on a product row above.</div>'; return; }
+  el.innerHTML = strategies.map(s => {
+    const groupingsHtml = s.groupings.map(g => {
+      const slotsHtml = g.slots.map(slot => {
+        const filled = slot.status === 'Filled';
+        const badge = filled
+          ? `<a href="https://www.notion.so/${slot.titleId}" target="_blank" style="font-size:9px;color:#68d391;text-decoration:none;flex-shrink:0;">✓ filled</a>`
+          : `<span style="font-size:9px;color:#e8ff47;flex-shrink:0;">○ open</span>`;
+        return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
+          + `<span style="flex:1;min-width:0;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(slot.name)} — ${esc((slot.angle || '').slice(0, 80))}</span>`
+          + badge
+          + `</div>`;
+      }).join('');
+      return `<div style="margin:8px 0;">`
+        + `<div style="font-size:11px;font-weight:700;color:#888;display:flex;justify-content:space-between;"><span>${esc(g.name)}</span><span style="color:#555;">${g.filledCount}/${g.totalCount} filled</span></div>`
+        + slotsHtml
+        + `</div>`;
+    }).join('');
+    return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #222;">`
+      + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">`
+      + `<span style="font-size:13px;font-weight:700;color:#fff;cursor:pointer;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
+      + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#888;">${esc(s.status)}</span>`
+      + (s.productName ? `<span style="font-size:10px;color:#666;">${esc(s.productName)}</span>` : '')
+      + `</div>`
+      + (groupingsHtml || '<div class="empty" style="font-size:11px;">No slots recorded for this strategy.</div>')
+      + `</div>`;
+  }).join('');
 }
 // (openVisualBriefModal / closeVisualBriefModal / submitVisualBrief defined
 // further down, near the old generateVisualBrief location, to keep the
