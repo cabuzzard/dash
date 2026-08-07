@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Small Business Tools That Just Work — No Coding, No IT Department</title>
+<meta name="description" content="We audit, set up, and manage the small business tools that actually save you time — easy to install, no coding required, no IT department needed.">
+<meta name="keywords" content="small business tools, easy to install small business tools, small business software, small business tools no coding, small business tools for beginners">
+<meta name="robots" content="index, follow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  :root {
+    --bg: #080c14;
+    --surface: #0e1420;
+    --card: #111827;
+    --blue: #3b82f6;
+    --blue-lt: #60a5fa;
+    --cyan: #06b6d4;
+    --emerald: #10b981;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --text3: #475569;
+    --border: rgba(59,130,246,.15);
+  }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); line-height: 1.65; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 0 24px; }
+
+  header.hero {
+    position: relative; overflow: hidden;
+    padding: 90px 0 70px; text-align: center;
+    background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(59,130,246,.18) 0%, transparent 70%), var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: .72rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--cyan); border: 1px solid rgba(6,182,212,.3); background: rgba(6,182,212,.06);
+    padding: 6px 16px; border-radius: 20px; margin-bottom: 26px;
+  }
+  h1 {
+    font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 800; line-height: 1.15;
+    letter-spacing: -.02em; max-width: 640px; margin: 0 auto 22px;
+  }
+  h1 .blue { color: var(--blue-lt); }
+  .sub { font-size: 1.05rem; color: var(--text2); max-width: 560px; margin: 0 auto 8px; line-height: 1.75; }
+
+  section { padding: 60px 0; border-bottom: 1px solid var(--border); }
+  h2 { font-size: 1.6rem; font-weight: 800; margin-bottom: 16px; letter-spacing: -.01em; }
+  p.body-text { font-size: 1rem; color: var(--text2); max-width: 600px; margin-bottom: 14px; }
+
+  .cat-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 24px;
+  }
+  .cat-item {
+    font-size: .88rem; color: var(--text); background: var(--card);
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px;
+  }
+  @media (max-width: 560px) { .cat-grid { grid-template-columns: 1fr; } }
+
+  .stack { margin-top: 12px; display: grid; gap: 18px; }
+  .pkg {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px;
+  }
+  .pkg.primary { border-color: rgba(59,130,246,.5); background: linear-gradient(180deg, rgba(59,130,246,.08), var(--card)); }
+  .pkg-eyebrow { font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--cyan); margin-bottom: 8px; }
+  .pkg-name { font-size: 1.25rem; font-weight: 800; margin-bottom: 8px; }
+  .pkg-desc { font-size: .92rem; color: var(--text2); margin-bottom: 16px; line-height: 1.6; }
+  .pkg-price { font-size: 1rem; font-weight: 700; color: var(--text); margin-bottom: 18px; }
+  .pkg-price span { color: var(--text3); font-weight: 500; font-size: .82rem; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: .9rem; font-weight: 700; letter-spacing: .01em;
+    padding: 13px 26px; border-radius: 8px; text-decoration: none;
+    cursor: pointer; border: none; width: 100%;
+  }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: var(--blue-lt); }
+  .btn-outline { background: transparent; color: var(--text); border: 1px solid rgba(255,255,255,.18); }
+  .btn-outline:hover { border-color: var(--blue); color: var(--blue-lt); }
+
+  .cta-block { text-align: center; padding: 80px 0 70px; border-bottom: none; }
+  .cta-block h2 { margin-bottom: 10px; }
+  .cta-block p { color: var(--text2); font-size: .96rem; margin-bottom: 30px; }
+  .lead-form { margin-top: 8px; text-align: left; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
+  .form-group { margin-bottom: 16px; }
+  .lead-form label { display: block; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; }
+  .lead-form input, .lead-form textarea, .lead-form select {
+    width: 100%; padding: 12px 14px; font-family: inherit; font-size: .95rem;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); outline: none;
+  }
+  .lead-form textarea { resize: vertical; min-height: 80px; }
+  .lead-form .submit-btn:disabled { opacity: .6; cursor: not-allowed; }
+  .form-msg { margin-top: 18px; font-size: .92rem; display: none; padding: 14px 16px; border-radius: 8px; text-align: left; }
+  .form-msg.success { background: rgba(16,185,129,.12); color: #6ee7b7; border: 1px solid rgba(16,185,129,.3); }
+  .form-msg.error { background: rgba(239,68,68,.12); color: #fca5a5; border: 1px solid rgba(239,68,68,.3); }
+  .selected-package { font-size: .82rem; color: var(--cyan); margin-bottom: 18px; display: none; }
+
+  footer { font-size: .82rem; color: var(--text3); text-align: center; padding: 32px 0 60px; }
+  @media (max-width: 640px) { h1 { font-size: 1.9rem; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">Easy to Install · Actually Useful</div>
+    <h1>Small business tools that just <span class="blue">work</span> — no coding, no IT department.</h1>
+    <p class="sub">You didn't start a business to become your own IT department. We help small business owners pick, set up, and maintain the tools that actually save time — plug-and-play, no downloads, no technical background needed.</p>
+  </header>
+
+  <section>
+    <h2>Too many tabs. Too many hats. Not enough you.</h2>
+    <p class="body-text">Somewhere between accounting, CRM, invoicing, scheduling, and social media, most small business owners end up running half a dozen tools that don't talk to each other — and switching between them all day is quietly killing your productivity.</p>
+    <p class="body-text">You're already wearing every hat in the business. You shouldn't have to be the ops manager and the IT department too — and you can't exactly afford to hire either one.</p>
+  </section>
+
+  <section>
+    <h2>You don't have to DIY your stack</h2>
+    <p class="body-text">We audit what you're already using, cut what's not earning its keep, and set up the tools that actually fit how your business runs — consolidated where it makes sense, integrated everywhere else, and installed in a way that doesn't require a developer to maintain.</p>
+    <p class="body-text">No coding. No ten-tab tutorials. No "just figure it out" — just a stack that works together, set up by someone who's done it before.</p>
+  </section>
+
+  <section>
+    <h2>Every corner of your business, covered</h2>
+    <p class="body-text">Whatever's slowing you down, it's probably in this list.</p>
+    <div class="cat-grid">
+      <div class="cat-item">Accounting &amp; invoicing</div>
+      <div class="cat-item">CRM &amp; customer follow-up</div>
+      <div class="cat-item">Scheduling &amp; bookings</div>
+      <div class="cat-item">Marketing &amp; social media</div>
+      <div class="cat-item">Website &amp; online presence</div>
+      <div class="cat-item">Project &amp; task management</div>
+      <div class="cat-item">Team communication</div>
+      <div class="cat-item">AI-powered automation</div>
+    </div>
+  </section>
+
+  <section style="border-bottom:none;">
+    <h2>How we help</h2>
+    <div class="stack">
+      <div class="pkg primary">
+        <div class="pkg-eyebrow">Start here</div>
+        <div class="pkg-name">Business Tools Audit</div>
+        <div class="pkg-desc">Not sure which tools you actually need? We audit your current stack — every subscription, every app — and tell you exactly what to keep, what to cut, and what to add. One engagement, one clear plan.</div>
+        <div class="pkg-price">Starting at $[X] <span>one-time</span></div>
+        <button type="button" class="btn btn-primary" onclick="selectPackage('audit')">Get My Tools Audit</button>
+      </div>
+      <div class="pkg">
+        <div class="pkg-eyebrow">The natural next step</div>
+        <div class="pkg-name">Tools Management Retainer</div>
+        <div class="pkg-desc">Once your stack is right, someone has to keep it that way. We manage updates, new-tool setup, and troubleshooting on an ongoing basis — so your tools keep working without becoming your job.</div>
+        <div class="pkg-price">Starting at $[X]<span>/mo</span></div>
+        <button type="button" class="btn btn-outline" onclick="selectPackage('retainer')">Start My Retainer</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta-block" id="leadSection">
+    <h2>Ready to stop wrangling your tech stack?</h2>
+    <p>Tell us a bit about your business and we'll follow up to get started.</p>
+    <div class="selected-package" id="selectedPackageLabel"></div>
+    <form id="leadForm" class="lead-form" novalidate>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-email">Email *</label>
+          <input type="email" id="f-email" name="email" required placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label for="f-phone">Phone *</label>
+          <input type="tel" id="f-phone" name="phone" required placeholder="(555) 000-0000" autocomplete="tel" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="f-package">Which one? <span style="text-transform:none;letter-spacing:0;">(you can change your mind)</span></label>
+        <select id="f-package" onchange="selectPackage(this.value)">
+          <option value="audit">Business Tools Audit</option>
+          <option value="retainer">Tools Management Retainer</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="f-note">What's slowing you down? <span style="text-transform:none;letter-spacing:0;">(optional)</span></label>
+        <textarea id="f-note" name="note" placeholder="What tools you're using now, what's not working..." maxlength="600"></textarea>
+      </div>
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-theme="dark" style="margin:4px 0 16px;"></div>
+      <button type="submit" class="btn btn-primary submit-btn" id="submitBtn">Get Started</button>
+    </form>
+    <div class="form-msg" id="formMsg"></div>
+  </div>
+
+  <footer>Webguy Business Services · Small Business Tools</footer>
+</div>
+<script>
+const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+const PACKAGE_FRAUD_TYPES = { audit: 'Webguy - Sm Biz Tools Audit', retainer: 'Webguy - Sm Biz Tools Retainer' };
+const PACKAGE_LABELS = { audit: 'Business Tools Audit', retainer: 'Tools Management Retainer' };
+let selectedPackage = 'audit';
+
+function selectPackage(pkg) {
+  selectedPackage = pkg;
+  document.getElementById('f-package').value = pkg;
+  const label = document.getElementById('selectedPackageLabel');
+  label.textContent = 'Selected: ' + PACKAGE_LABELS[pkg];
+  label.style.display = 'block';
+  document.getElementById('leadSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+document.getElementById('leadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const msg = document.getElementById('formMsg');
+  const email = document.getElementById('f-email').value.trim();
+  const phone = document.getElementById('f-phone').value.trim();
+  const note  = document.getElementById('f-note').value.trim();
+  selectedPackage = document.getElementById('f-package').value || selectedPackage;
+
+  if (!email || !phone) {
+    msg.textContent = 'Please fill in your email and phone.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    msg.textContent = 'Please enter a valid email address.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    return;
+  }
+  if (!/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) {
+    msg.textContent = 'Please enter a valid phone number.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    return;
+  }
+  const tsToken = document.querySelector('[name="cf-turnstile-response"]')?.value || '';
+  const fraudType = PACKAGE_FRAUD_TYPES[selectedPackage] || PACKAGE_FRAUD_TYPES.audit;
+  const noteWithPackage = `[${PACKAGE_LABELS[selectedPackage]}] ${note}`.trim();
+
+  btn.disabled = true; btn.textContent = 'Submitting…'; msg.style.display = 'none';
+  try {
+    const res = await fetch(WORKER_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'submitLead', campaign: 'sm-business-software-tools', email, phone, fraudType, note: noteWithPackage, tsToken })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    document.getElementById('leadForm').style.display = 'none';
+    msg.innerHTML = '<strong>Got it.</strong><br>We\'ll follow up shortly about your ' + PACKAGE_LABELS[selectedPackage] + '.';
+    msg.className = 'form-msg success'; msg.style.display = 'block';
+  } catch(err) {
+    msg.textContent = 'Something went wrong. Please try again.';
+    msg.className = 'form-msg error'; msg.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Get Started';
+  }
+});
+</script>
+</body>
+</html>
