@@ -104,6 +104,36 @@
 
   footer { font-size: .82rem; color: var(--text3); text-align: center; padding: 32px 0 60px; }
   @media (max-width: 640px) { h1 { font-size: 1.9rem; } }
+
+  /* Tool Stack Assessment quiz — reuses the palette/components above, no new tokens */
+  .hero-quiz-link { display: inline-block; margin-top: 6px; font-size: .88rem; color: var(--cyan); text-decoration: none; font-weight: 600; }
+  .hero-quiz-link:hover { color: var(--blue-lt); }
+  .quiz-section { text-align: left; }
+  .quiz-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: .72rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--cyan); border: 1px solid rgba(6,182,212,.3); background: rgba(6,182,212,.06);
+    padding: 6px 16px; border-radius: 20px; margin-bottom: 16px;
+  }
+  .quiz-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin-top: 20px; }
+  .quiz-progress { font-size: .76rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text3); margin-bottom: 10px; }
+  .quiz-progress-track { width: 100%; height: 6px; border-radius: 3px; background: var(--surface); overflow: hidden; margin-bottom: 22px; }
+  .quiz-progress-bar { height: 100%; background: var(--blue); border-radius: 3px; transition: width .25s ease; }
+  .quiz-q-text { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; line-height: 1.45; }
+  .quiz-options { display: grid; gap: 10px; }
+  .quiz-option {
+    width: 100%; text-align: left; padding: 14px 18px; font-family: inherit; font-size: .95rem; font-weight: 600;
+    color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  }
+  .quiz-option:hover, .quiz-option:focus-visible { border-color: var(--blue); color: var(--blue-lt); }
+  .quiz-result-tier { font-size: 1.5rem; font-weight: 800; color: var(--blue-lt); margin-bottom: 10px; }
+  .quiz-result-diagnosis { font-size: .96rem; color: var(--text2); line-height: 1.65; margin-bottom: 22px; max-width: 100%; }
+  .quiz-reassurance { font-size: .82rem; color: var(--text3); margin-top: 14px; }
+  .quiz-restart {
+    margin-top: 18px; background: none; border: none; color: var(--text3);
+    font-size: .82rem; text-decoration: underline; cursor: pointer; font-family: inherit; padding: 4px 0;
+  }
+  .quiz-restart:hover { color: var(--text2); }
 </style>
 </head>
 <body>
@@ -112,7 +142,15 @@
     <div class="eyebrow">Easy to Install · Actually Useful</div>
     <h1>Small business tools that just <span class="blue">work</span> — no coding, no IT department.</h1>
     <p class="sub">You didn't start a business to become your own IT department. We help small business owners pick, set up, and maintain the tools that actually save time — plug-and-play, no downloads, no technical background needed.</p>
+    <a class="hero-quiz-link" href="#assessment">Take the Free Tool Stack Assessment ↓</a>
   </header>
+
+  <section class="quiz-section" id="assessment">
+    <div class="quiz-eyebrow">Free · 2 Minutes · No Signup</div>
+    <h2>Tool Stack Assessment</h2>
+    <p class="body-text">Answer 6 quick questions and get an instant read on how much your current stack is costing you — the same lens we use in the paid audit, free.</p>
+    <div class="quiz-box" id="quizApp"></div>
+  </section>
 
   <section>
     <h2>Too many tabs. Too many hats. Not enough you.</h2>
@@ -255,6 +293,75 @@ document.getElementById('leadForm').addEventListener('submit', async (e) => {
     btn.disabled = false; btn.textContent = 'Get Started';
   }
 });
+
+// ── Tool Stack Assessment quiz ── client-side only, no backend, no storage.
+// A free mini version of the paid audit — its only job is to warm the
+// visitor up and send them to book a call, not to sell anything self-serve.
+const BOOKING_URL = 'https://calendly.com/flipoclock/15min';
+const QUIZ_QUESTIONS = [
+  { text: 'How many separate tools/apps does your business currently use?', options: [
+    { label: '1–3', pts: 0 }, { label: '4–7', pts: 1 }, { label: '8+', pts: 2 },
+  ]},
+  { text: 'Do any of your tools do the same thing (e.g., two calendar apps, two invoicing tools)?', options: [
+    { label: 'No', pts: 0 }, { label: 'Not sure', pts: 1 }, { label: 'Yes', pts: 2 },
+  ]},
+  { text: 'How much time do you spend each week switching between tools or re-entering the same data?', options: [
+    { label: 'Under 1hr', pts: 0 }, { label: '1–3hrs', pts: 1 }, { label: '3+ hrs', pts: 2 },
+  ]},
+  { text: 'Does anyone on your team have clear ownership of maintaining/troubleshooting your tools?', options: [
+    { label: 'Yes', pts: 0 }, { label: 'No', pts: 2 },
+  ]},
+  { text: 'Roughly how much do you spend monthly across all business software?', options: [
+    { label: 'Under $100', pts: 0 }, { label: '$100–$500', pts: 1 }, { label: '$500+', pts: 2 },
+  ]},
+  { text: "Do you know off the top of your head which tools you'd cancel tomorrow if you had to cut costs?", options: [
+    { label: 'Yes', pts: 0 }, { label: 'Not sure', pts: 1 }, { label: 'No', pts: 2 },
+  ]},
+];
+const QUIZ_TIERS = [
+  { max: 3,  name: 'Lean',       diagnosis: 'Your stack is in decent shape, but a quick outside look often still finds quick wins.' },
+  { max: 7,  name: 'Cluttered',  diagnosis: "You've likely got overlap and wasted spend. This is exactly the kind of situation the audit is built for." },
+  { max: 12, name: 'Overloaded', diagnosis: 'Your stack is actively costing you time and money every week. This is a priority fix, not a someday project.' },
+];
+let quizIndex = 0, quizScore = 0;
+
+function quizRender() {
+  const app = document.getElementById('quizApp');
+  if (!app) return;
+  if (quizIndex >= QUIZ_QUESTIONS.length) { quizRenderResult(app); return; }
+  const q = QUIZ_QUESTIONS[quizIndex];
+  const pct = Math.round((quizIndex / QUIZ_QUESTIONS.length) * 100);
+  app.innerHTML = `
+    <div class="quiz-progress">Question ${quizIndex + 1} of ${QUIZ_QUESTIONS.length}</div>
+    <div class="quiz-progress-track"><div class="quiz-progress-bar" style="width:${pct}%"></div></div>
+    <div class="quiz-q-text">${q.text}</div>
+    <div class="quiz-options">
+      ${q.options.map((o, i) => `<button type="button" class="quiz-option" data-idx="${i}">${o.label}</button>`).join('')}
+    </div>
+  `;
+  app.querySelectorAll('.quiz-option').forEach(optBtn => {
+    optBtn.addEventListener('click', () => {
+      const opt = q.options[parseInt(optBtn.dataset.idx, 10)];
+      quizScore += opt.pts;
+      quizIndex++;
+      quizRender();
+    });
+  });
+}
+function quizRenderResult(app) {
+  const tier = QUIZ_TIERS.find(t => quizScore <= t.max) || QUIZ_TIERS[QUIZ_TIERS.length - 1];
+  app.innerHTML = `
+    <div class="quiz-progress">Your Result</div>
+    <div class="quiz-progress-track"><div class="quiz-progress-bar" style="width:100%"></div></div>
+    <div class="quiz-result-tier">${tier.name}</div>
+    <p class="quiz-result-diagnosis">${tier.diagnosis}</p>
+    <a class="btn btn-primary" href="${BOOKING_URL}" target="_blank" rel="noopener">Book Your Free Onboarding Call</a>
+    <p class="quiz-reassurance">15-minute call. No pitch — just a walkthrough of what we'd look at first.</p>
+    <button type="button" class="quiz-restart" onclick="quizRestart()">Retake the assessment</button>
+  `;
+}
+function quizRestart() { quizIndex = 0; quizScore = 0; quizRender(); }
+quizRender();
 </script>
 </body>
 </html>
