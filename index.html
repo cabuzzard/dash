@@ -116,8 +116,11 @@
   .tool-name { flex:1 1 140px; font-weight:600; }
   .tool-category { flex:1 1 130px; }
   .tool-desc { flex:2 1 200px; }
-  .tool-link { flex:1.4 1 160px; }
-  .tool-aff { flex:1.4 1 160px; }
+  .tool-link, .tool-aff { flex:1.4 1 160px; display:flex; align-items:center; gap:4px; min-width:0; }
+  .tool-link .tool-input, .tool-aff .tool-input { flex:1; min-width:0; }
+  .tool-link-open { flex:0 0 auto; font-size:12px; color:var(--text3); text-decoration:none; padding:3px 5px; border-radius:4px; }
+  .tool-link-open:hover { color:var(--text); background:var(--surface2); }
+  .tool-link-open-empty { opacity:.25; pointer-events:none; }
   .tool-del { flex:0 0 auto; background:none; border:none; color:var(--text3); cursor:pointer; font-size:12px; padding:4px 6px; opacity:.6; }
   .tool-del:hover { opacity:1; color:#f87171; }
   @media (max-width:640px) { .tool-row { flex-direction:column; align-items:stretch; } .tool-input { width:100%; } }
@@ -9100,6 +9103,23 @@ function toolField(id, field, value, cls, placeholder) {
   return `<input class="tool-input ${cls}" data-id="${id || ''}" data-field="${field}" value="${esc(value || '')}" placeholder="${esc(placeholder || '')}" onblur="saveToolField(this)"${listAttr} />`;
 }
 
+// Link/Affiliate Link fields stay editable (same input as every other
+// field) but get a small clickable "↗" alongside them so the URL can be
+// opened without having to select-all/copy out of the input first.
+function toolHref(u) {
+  const v = (u || '').trim();
+  if (!v) return '';
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(v) ? v : 'https://' + v;
+}
+function toolLinkField(id, field, value, wrapCls, placeholder) {
+  const input = `<input class="tool-input" data-id="${id || ''}" data-field="${field}" value="${esc(value || '')}" placeholder="${esc(placeholder || '')}" onblur="saveToolField(this)" />`;
+  const href = toolHref(value);
+  const openLink = href
+    ? `<a class="tool-link-open" href="${esc(href)}" target="_blank" rel="noopener" title="Open ${esc(href)}">↗</a>`
+    : `<span class="tool-link-open tool-link-open-empty">↗</span>`;
+  return `<span class="${wrapCls}">${input}${openLink}</span>`;
+}
+
 function renderToolsList() {
   const el = document.getElementById('toolsListEl');
   const q = (document.getElementById('toolsSearch')?.value || '').trim().toLowerCase();
@@ -9110,8 +9130,8 @@ function renderToolsList() {
       ${toolField(null, 'name', t.name, 'tool-name', 'Tool name')}
       ${toolField(null, 'category', t.category, 'tool-category', 'Category')}
       ${toolField(null, 'description', t.description, 'tool-desc', 'Purpose / description')}
-      ${toolField(null, 'link', t.link, 'tool-link', 'Link')}
-      ${toolField(null, 'affiliateLink', t.affiliateLink, 'tool-aff', 'Affiliate link (optional)')}
+      ${toolLinkField(null, 'link', t.link, 'tool-link', 'Link')}
+      ${toolLinkField(null, 'affiliateLink', t.affiliateLink, 'tool-aff', 'Affiliate link (optional)')}
       <button class="tool-del" onclick="removeNewToolRow(${i})" title="Discard">✕</button>
     </div>`).join('');
 
@@ -9132,8 +9152,8 @@ function renderToolsList() {
         ${toolField(t.id, 'name', t.name, 'tool-name', 'Tool name')}
         ${toolField(t.id, 'category', t.category, 'tool-category', 'Category')}
         ${toolField(t.id, 'description', t.description, 'tool-desc', 'Purpose / description')}
-        ${toolField(t.id, 'link', t.link, 'tool-link', 'Link')}
-        ${toolField(t.id, 'affiliateLink', t.affiliateLink, 'tool-aff', 'Affiliate link (optional)')}
+        ${toolLinkField(t.id, 'link', t.link, 'tool-link', 'Link')}
+        ${toolLinkField(t.id, 'affiliateLink', t.affiliateLink, 'tool-aff', 'Affiliate link (optional)')}
         <button class="tool-del" onclick="deleteToolRow('${t.id}',this)" title="Delete">✕</button>
       </div>`).join('')}
   `).join('');
@@ -9189,6 +9209,16 @@ async function saveToolField(inputEl) {
     const data = await call('updateTool', { id, [field]: value });
     if (data.error) throw new Error(data.error);
     if (item) item[field] = value;
+    if (field === 'link' || field === 'affiliateLink') {
+      const wrap = row.querySelector(field === 'link' ? '.tool-link' : '.tool-aff');
+      const linkEl = wrap ? wrap.querySelector('.tool-link-open') : null;
+      if (linkEl) {
+        const href = toolHref(value);
+        linkEl.outerHTML = href
+          ? `<a class="tool-link-open" href="${esc(href)}" target="_blank" rel="noopener" title="Open ${esc(href)}">↗</a>`
+          : `<span class="tool-link-open tool-link-open-empty">↗</span>`;
+      }
+    }
   } catch(e) {
     alert('Error saving: ' + e.message);
   } finally {
