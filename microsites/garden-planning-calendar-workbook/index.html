@@ -5675,12 +5675,25 @@ async function loadCampaignStrategies() {
     el.innerHTML = '<div class="empty">Error loading strategies.</div>';
   }
 }
+// Both the per-strategy section and each grouping sub-section start
+// collapsed — only the header (name/status/counts + arrow) renders until
+// clicked. Toggling is handled by one shared function keyed off element id,
+// same ▶/▾ arrow convention used elsewhere in this file (e.g. title groups).
+function toggleStrategyCollapse(bodyId, arrowEl) {
+  const body = document.getElementById(bodyId);
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (arrowEl) arrowEl.textContent = isOpen ? '▶' : '▾';
+}
 function renderStrategiesPanel(strategies) {
   const el = document.getElementById('strategies-panel');
   if (!el) return;
   if (!strategies.length) { el.innerHTML = '<div class="empty">No Growth Strategies yet — generate one from the 🚀 button on a product row above.</div>'; return; }
   el.innerHTML = strategies.map(s => {
-    const groupingsHtml = s.groupings.map(g => {
+    const stratBodyId = `strat-body-${s.id}`;
+    const groupingsHtml = s.groupings.map((g, gi) => {
+      const gBodyId = `${stratBodyId}-grp-${gi}`;
       const slotsHtml = g.slots.map(slot => {
         const filled = slot.status === 'Filled';
         const badge = filled
@@ -5692,17 +5705,23 @@ function renderStrategiesPanel(strategies) {
           + `</div>`;
       }).join('');
       return `<div style="margin:8px 0;">`
-        + `<div style="font-size:11px;font-weight:700;color:#888;display:flex;justify-content:space-between;"><span>${esc(g.name)}</span><span style="color:#555;">${g.filledCount}/${g.totalCount} filled</span></div>`
-        + slotsHtml
+        + `<div style="font-size:11px;font-weight:700;color:#888;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleStrategyCollapse('${gBodyId}', this.querySelector('.gs-arrow'))">`
+        + `<span style="display:flex;align-items:center;gap:6px;min-width:0;"><span class="gs-arrow" style="font-size:8px;color:#555;flex-shrink:0;">▶</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span></span>`
+        + `<span style="color:#555;flex-shrink:0;">${g.filledCount}/${g.totalCount} filled</span>`
+        + `</div>`
+        + `<div id="${gBodyId}" style="display:none;margin-top:4px;">${slotsHtml}</div>`
         + `</div>`;
     }).join('');
     return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #222;">`
       + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">`
+      + `<span class="gs-arrow" style="font-size:8px;color:#555;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stratBodyId}', this)">▶</span>`
       + `<span style="font-size:13px;font-weight:700;color:#fff;cursor:pointer;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
       + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#888;">${esc(s.status)}</span>`
       + (s.productName ? `<span style="font-size:10px;color:#666;">${esc(s.productName)}</span>` : '')
       + `</div>`
+      + `<div id="${stratBodyId}" style="display:none;">`
       + (groupingsHtml || '<div class="empty" style="font-size:11px;">No slots recorded for this strategy.</div>')
+      + `</div>`
       + `</div>`;
   }).join('');
 }
