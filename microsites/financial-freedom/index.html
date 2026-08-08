@@ -1051,6 +1051,37 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- CREATE TITLE FROM STRATEGY SLOT MODAL — the "+ title" button on a slot
+     row in the Strategies tab. One AI call: writes a real title AND its
+     full script/content (into the new title's page body) for exactly this
+     slot's planned angle, grounded in its parent Growth Strategy. Method is
+     picked here (not fixed by the slot) since one slot can be turned into
+     several different titles across different methods — the same slot stays
+     clickable after it's Filled for exactly that reason. -->
+<div class="modal-overlay" id="ctsModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title">Create Title from Strategy Slot</div>
+      <button class="modal-close" onclick="closeCreateTitleFromSlotModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <div class="modal-hint" id="ctsSlotContext" style="margin-bottom:14px;"></div>
+
+      <label class="lm-label">Method <span style="color:var(--danger,#e05);">*</span> <span style="color:#777;font-weight:normal;">— several titles can be made from the same slot, one per method</span></label>
+      <select class="modal-ta" id="ctsMethod" style="margin-bottom:10px;"></select>
+
+      <label class="lm-label">Guidance <span style="color:#777;font-weight:normal;">— optional; steers how the strategy is applied for this specific title/script. Left blank, the strategy alone drives it.</span></label>
+      <textarea class="modal-ta" id="ctsGuidance" rows="3" placeholder="Any specific angle, tone, or instruction for this title/script…" style="resize:vertical;"></textarea>
+
+      <div id="ctsStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeCreateTitleFromSlotModal()">Cancel</button>
+      <button class="modal-btn save" id="ctsGoBtn" onclick="submitCreateTitleFromSlot()">Generate</button>
+    </div>
+  </div>
+</div>
+
 <!-- GENERATE ASSETS MODAL — same shape as the Add Idea modal, prefilled from
      an existing title; on Generate it creates N real Asset records linked to
      the title (they render as rows under the publish title). -->
@@ -5695,13 +5726,19 @@ function renderStrategiesPanel(strategies) {
     const groupingsHtml = s.groupings.map((g, gi) => {
       const gBodyId = `${stratBodyId}-grp-${gi}`;
       const slotsHtml = g.slots.map(slot => {
-        const filled = slot.status === 'Filled';
-        const badge = filled
-          ? `<a href="https://www.notion.so/${slot.titleId}" target="_blank" style="font-size:9px;color:#68d391;text-decoration:none;flex-shrink:0;">✓ filled</a>`
+        const titles = slot.titles || (slot.titleId ? [{ id: slot.titleId, name: 'title' }] : []);
+        // A slot can be filled more than once — once per Method — so this
+        // shows every title made from it (each links out to its Notion
+        // page), not just whether it's "done". "+ title" stays clickable
+        // regardless of fill state for exactly that reason.
+        const badge = titles.length
+          ? titles.map(t => `<a href="https://www.notion.so/${t.id}" target="_blank" title="${esc(t.name)}" style="font-size:9px;color:#68d391;text-decoration:none;flex-shrink:0;">✓</a>`).join(' ')
           : `<span style="font-size:9px;color:#e8ff47;flex-shrink:0;">○ open</span>`;
+        const createBtn = `<button onclick="openCreateTitleFromSlotModal('${slot.id}','${s.id}')" title="Create a title + script from this slot" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">+ title</button>`;
         return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
           + `<span style="flex:1;min-width:0;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(slot.name)} — ${esc((slot.angle || '').slice(0, 80))}</span>`
           + badge
+          + createBtn
           + `</div>`;
       }).join('');
       return `<div style="margin:8px 0;">`
@@ -5725,6 +5762,75 @@ function renderStrategiesPanel(strategies) {
       + `</div>`;
   }).join('');
 }
+
+// ── Create Title from Strategy Slot ("+ title" on a slot row) ──────────
+// One AI call: title + full script, grounded in this exact slot's angle
+// and its parent Growth Strategy, for whichever Method the operator picks
+// here (not fixed by the slot — one slot can become several titles, one
+// per method). Reuses the already-loaded CAMPAIGN_STRATEGIES_CACHE to find
+// the slot/strategy/product context instead of a second round-trip.
+let CTS_SLOT = null;
+function openCreateTitleFromSlotModal(slotId, strategyId) {
+  const strat = (CAMPAIGN_STRATEGIES_CACHE || []).find(s => s.id === strategyId);
+  let slot = null, groupingName = '';
+  if (strat) {
+    for (const g of (strat.groupings || [])) {
+      const found = (g.slots || []).find(sl => sl.id === slotId);
+      if (found) { slot = found; groupingName = g.name; break; }
+    }
+  }
+  if (!slot) { alert('Could not find that strategy slot — try refreshing the Strategies tab.'); return; }
+  CTS_SLOT = { id: slotId, strategyId, name: slot.name, angle: slot.angle, methodName: slot.methodName, groupingName, productName: strat.productName || '' };
+
+  document.getElementById('ctsSlotContext').innerHTML =
+    `<strong>${esc(strat.name)}</strong> → ${esc(groupingName)}: ${esc(slot.name)}<br>`
+    + `<span style="color:#888;">${esc(slot.angle || '')}</span>`
+    + (strat.productName ? `<br><span style="color:#666;">Product: ${esc(strat.productName)}</span>` : '');
+
+  const methodSel = document.getElementById('ctsMethod');
+  methodSel.innerHTML = (METHOD_ITEMS || []).length
+    ? METHOD_ITEMS.map(m => `<option value="${m.id}"${slot.methodName && m.name === slot.methodName ? ' selected' : ''}>${esc(m.name)}</option>`).join('')
+    : '<option value="">No methods yet — add one under Products &amp; Methods first</option>';
+
+  document.getElementById('ctsGuidance').value = '';
+  document.getElementById('ctsStatus').textContent = '';
+  const btn = document.getElementById('ctsGoBtn');
+  btn.disabled = false; btn.textContent = 'Generate';
+  document.getElementById('ctsModal').classList.add('open');
+}
+function closeCreateTitleFromSlotModal() {
+  document.getElementById('ctsModal').classList.remove('open');
+  CTS_SLOT = null;
+}
+document.getElementById('ctsModal').addEventListener('click', function(e) {
+  if (e.target === this) closeCreateTitleFromSlotModal();
+});
+async function submitCreateTitleFromSlot() {
+  if (!CTS_SLOT) return;
+  const methodId = document.getElementById('ctsMethod').value;
+  const status = document.getElementById('ctsStatus');
+  if (!methodId) { status.textContent = 'Pick a method first.'; status.style.color = '#fc8181'; return; }
+  const guidance = document.getElementById('ctsGuidance').value.trim();
+  const btn = document.getElementById('ctsGoBtn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  status.style.color = '#888';
+  status.textContent = 'Writing title and script…';
+  try {
+    const data = await w('generateTitleFromSlot', { slotId: CTS_SLOT.id, methodId, guidance: guidance || undefined, campaignId: CAMPAIGN_ID });
+    if (data.error) throw new Error(data.error);
+    status.textContent = `✓ Created "${data.title}"`;
+    status.style.color = '#68d391';
+    btn.textContent = 'Done';
+    loadCampaignStrategies();
+    if (typeof loadTitles === 'function') loadTitles();
+    setTimeout(closeCreateTitleFromSlotModal, 1500);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Generate';
+  }
+}
+
 // (openVisualBriefModal / closeVisualBriefModal / submitVisualBrief defined
 // further down, near the old generateVisualBrief location, to keep the
 // Visual Brief Setup modal's JS together with its HTML block below.)
