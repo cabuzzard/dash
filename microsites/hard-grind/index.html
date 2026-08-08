@@ -186,6 +186,25 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 .smp-topvids { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
 .smp-topvid  { font-size: 10px; color: #4a7ab5; text-decoration: none; border: 1px solid #2a3a5a; padding: 1px 6px; white-space: nowrap; transition: color .15s; }
 .smp-topvid:hover { color: #7aaee0; border-color: #4a7ab5; }
+/* TAB NAV — wraps the existing stacked rows below the topbar into pages;
+   every element/ID inside a tab-page is untouched, this only toggles which
+   row is visible. */
+.tab-nav {
+  display: flex; flex-wrap: wrap; gap: 2px;
+  background: #0a0a0a; border-bottom: 1px solid #161616;
+  padding: 0 20px; position: sticky; top: 40px; z-index: 15;
+  overflow-x: auto;
+}
+.tab-btn {
+  font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; color: #5f5f5f;
+  background: none; border: none; border-bottom: 2px solid transparent;
+  padding: 12px 14px; cursor: pointer; white-space: nowrap; transition: color .15s, border-color .15s;
+}
+.tab-btn:hover { color: #c9c9c9; }
+.tab-btn.active { color: #e8ff47; border-bottom-color: #e8ff47; }
+.tab-page { display: none; }
+.tab-page.active { display: block; }
 </style>
 </head>
 <body>
@@ -217,6 +236,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- TAB NAV -->
+<div class="tab-nav" id="tabNav">
+  <button class="tab-btn active" data-tab="tab-campaign" onclick="switchTab('tab-campaign')">Campaign</button>
+  <button class="tab-btn" data-tab="tab-keywords" onclick="switchTab('tab-keywords')">Keywords &amp; Notes</button>
+  <button class="tab-btn" data-tab="tab-products" onclick="switchTab('tab-products')">Products &amp; Methods</button>
+  <button class="tab-btn" data-tab="tab-strategies" onclick="switchTab('tab-strategies')">Strategies</button>
+  <button class="tab-btn" data-tab="tab-titles" onclick="switchTab('tab-titles')">Titles &amp; Logins</button>
+  <button class="tab-btn" data-tab="tab-research" onclick="switchTab('tab-research')">Research</button>
+  <button class="tab-btn" data-tab="tab-growth" onclick="switchTab('tab-growth')">Growth Tools</button>
+</div>
+
+<div class="tab-page active" id="tab-campaign">
 <!-- SEC 1: three col — campaign meta / statement / unique opportunity -->
 <div class="three-col">
   <div class="col">
@@ -248,6 +279,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+</div>
+<div class="tab-page" id="tab-keywords">
 <!-- SEC 1b: three col — keywords / product ideas / notes -->
 <div class="three-col">
   <div class="col">
@@ -276,6 +309,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+</div>
+<div class="tab-page" id="tab-products">
 <!-- SEC 2: three col — products / methods / files -->
 <div class="three-col">
   <div class="col">
@@ -298,6 +333,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+</div>
+<div class="tab-page" id="tab-strategies">
 <!-- SEC 2b: one col — every Growth Strategy for this campaign, with real
      fill-progress per grouping (not the titles themselves — the planned
      slots, e.g. "Behind the Scenes #1", and whether a real Title has been
@@ -311,6 +348,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+</div>
+<div class="tab-page" id="tab-titles">
 <!-- SEC 3: three col — logins / development titles / publish titles -->
 <div class="three-col">
   <div class="col">
@@ -333,6 +372,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+</div>
+<div class="tab-page" id="tab-research">
 <!-- SEC 4: three col — SM trends / seed channels / news feed -->
 <div class="three-col">
   <div class="col">
@@ -367,6 +408,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+</div>
+<div class="tab-page" id="tab-growth">
 <!-- SEC 5: four col — tiktok shop / kdp best sellers / SM posts / main TD -->
 <div class="four-col">
   <div class="col">
@@ -405,6 +448,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="td-list" id="td-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
+</div>
 </div>
 
 
@@ -3843,7 +3887,27 @@ async function applyStatusChange(titleId, newStage) {
   }
 }
 
+// Switches which tab-page row is visible — every element/ID inside stays
+// exactly where it was, this only toggles display. Remembers the last tab
+// per-browser (not per-campaign) so a reload doesn't dump you back on
+// Campaign every time.
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-page').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  const page = document.getElementById(tabId);
+  const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+  if (page) page.classList.add('active');
+  if (btn) btn.classList.add('active');
+  try { localStorage.setItem('activeMicrositeTab', tabId); } catch(e) {}
+}
+function restoreActiveTab() {
+  let tabId = null;
+  try { tabId = localStorage.getItem('activeMicrositeTab'); } catch(e) {}
+  if (tabId && document.getElementById(tabId)) switchTab(tabId);
+}
+
 function init() {
+  restoreActiveTab();
   const micrositeEl = document.getElementById('r-microsite');
   if (micrositeEl) {
     if (typeof SITE_URL !== 'undefined' && SITE_URL) {
