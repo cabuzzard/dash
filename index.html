@@ -106,6 +106,22 @@
   .wo-dot { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:5px; vertical-align:middle; }
   .wo-empty { font-size:12px; color:var(--text3); padding:6px 0 2px; }
 
+  /* ── TOOLS TAB ── */
+  .tool-group-hdr { font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text3); padding:14px 0 6px; border-top:1px solid var(--border); }
+  .tool-group-hdr:first-child { border-top:none; padding-top:0; }
+  .tool-row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:6px 0; border-bottom:1px solid var(--border); }
+  .tool-input { font-family:inherit; font-size:12px; padding:6px 8px; background:var(--surface); border:1px solid var(--border2); border-radius:6px; color:var(--text); outline:none; min-width:0; transition:opacity .15s; }
+  .tool-input::placeholder { color:var(--text3); }
+  .tool-input:focus { border-color:var(--text3); }
+  .tool-name { flex:1 1 140px; font-weight:600; }
+  .tool-category { flex:1 1 130px; }
+  .tool-desc { flex:2 1 200px; }
+  .tool-link { flex:1.4 1 160px; }
+  .tool-aff { flex:1.4 1 160px; }
+  .tool-del { flex:0 0 auto; background:none; border:none; color:var(--text3); cursor:pointer; font-size:12px; padding:4px 6px; opacity:.6; }
+  .tool-del:hover { opacity:1; color:#f87171; }
+  @media (max-width:640px) { .tool-row { flex-direction:column; align-items:stretch; } .tool-input { width:100%; } }
+
   /* ── DOMAINS TAB ── */
   .dom-stat-bar { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
   .dom-stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 18px; min-width:90px; }
@@ -575,6 +591,7 @@
     <div class="tab" onclick="switchTab('domains')">Domains</div>
     <div class="tab" onclick="switchTab('trades')">Trades</div>
     <div class="tab" onclick="switchTab('links')">Links</div>
+    <div class="tab" onclick="switchTab('tools')">Tools</div>
   </div>
 
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
@@ -746,7 +763,18 @@
     </div>
   </div>
 
-
+  <!-- 🧰 TOOLS TAB — campaign-agnostic global software-tools reference.
+       Category/Description/Link/Affiliate Link are all directly editable
+       inline per-row (save on blur), plus "+ Add New Tool" for a fresh row. -->
+  <div class="tab-panel" id="tabTools">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+      <input id="toolsSearch" type="text" placeholder="Filter by name, category, description…" oninput="renderToolsList()" style="flex:1;min-width:160px;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
+      <button onclick="openAddToolRow()" style="font-size:12px;font-weight:600;padding:7px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:transparent;color:var(--text2);cursor:pointer;white-space:nowrap;">+ Add New Tool</button>
+    </div>
+    <div id="toolsListEl">
+      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+    </div>
+  </div>
 
 
   <div class="tab-panel" id="tabDomains">
@@ -2805,6 +2833,7 @@ let prodLoaded = false;
 let devLoaded  = false;
 let tdTabLoaded = false;
 let linksLoaded = false;
+let toolsLoaded = false;
 
 const ASSET_STATUS_CYCLE = ['Publish', 'Published'];
 function assetStatusStyle(status) {
@@ -3570,6 +3599,7 @@ function switchTab(name) {
   if (name === 'platforms') { loadPlatformMatrix(); if (!smAccsLoaded) loadSmAccounts(); if (!emailsLoaded) loadEmails(); }
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
   if (name === 'links'     && !linksLoaded)  { linksLoaded  = true; loadLinks(); }
+  if (name === 'tools'     && !toolsLoaded)  { toolsLoaded  = true; loadToolsList(); }
   if (name === 'trades') {
     if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); }
     startTradesAutoRefresh();
@@ -9042,6 +9072,138 @@ async function deleteSkillRow(id, btn) {
     const data = await call('deleteSkill', { id });
     if (data.error) throw new Error(data.error);
     loadSkillsList();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
+// ── TOOLS TAB (global software-tools reference) ─────────────────────────
+let TOOLS_DATA = [];
+let TOOLS_NEW_ROWS = []; // unsaved new-tool rows (id: null) — kept separate so they always render first, independent of search/category grouping
+const TOOL_CATEGORIES = ['Meetings & Notes','Automation','AI Coding / App Building','Sales & Lead Gen','Content Creation','Ops/Finance & Analytics','Email & Productivity','CRM/Business Platform','Outreach & Lead Gen','Sales/Checkout & Business Ops','Creator Monetization','AI Agents / Ops','PR','Community'];
+
+async function loadToolsList() {
+  const el = document.getElementById('toolsListEl');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getTools', {});
+    TOOLS_DATA = data.items || [];
+    renderToolsList();
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ff4444;padding:6px 0;">${e.message}</div>`;
+  }
+}
+
+function toolField(id, field, value, cls, placeholder) {
+  const listAttr = field === 'category' ? ' list="toolCategoryList"' : '';
+  return `<input class="tool-input ${cls}" data-id="${id || ''}" data-field="${field}" value="${esc(value || '')}" placeholder="${esc(placeholder || '')}" onblur="saveToolField(this)"${listAttr} />`;
+}
+
+function renderToolsList() {
+  const el = document.getElementById('toolsListEl');
+  const q = (document.getElementById('toolsSearch')?.value || '').trim().toLowerCase();
+  const datalist = `<datalist id="toolCategoryList">${TOOL_CATEGORIES.map(c => `<option value="${esc(c)}">`).join('')}</datalist>`;
+
+  const newRowsHtml = TOOLS_NEW_ROWS.map((t, i) => `
+    <div class="tool-row" data-newidx="${i}">
+      ${toolField(null, 'name', t.name, 'tool-name', 'Tool name')}
+      ${toolField(null, 'category', t.category, 'tool-category', 'Category')}
+      ${toolField(null, 'description', t.description, 'tool-desc', 'Purpose / description')}
+      ${toolField(null, 'link', t.link, 'tool-link', 'Link')}
+      ${toolField(null, 'affiliateLink', t.affiliateLink, 'tool-aff', 'Affiliate link (optional)')}
+      <button class="tool-del" onclick="removeNewToolRow(${i})" title="Discard">✕</button>
+    </div>`).join('');
+
+  const filtered = TOOLS_DATA.filter(t => !q || [t.name, t.category, t.description, t.link].join(' ').toLowerCase().includes(q));
+  const byCategory = {};
+  const catOrder = [];
+  filtered.forEach(t => {
+    const c = t.category || 'Uncategorized';
+    if (!byCategory[c]) { byCategory[c] = []; catOrder.push(c); }
+    byCategory[c].push(t);
+  });
+  catOrder.sort();
+
+  const existingHtml = catOrder.map(cat => `
+    <div class="tool-group-hdr">${esc(cat)} <span style="color:var(--text3);font-weight:400;">(${byCategory[cat].length})</span></div>
+    ${byCategory[cat].map(t => `
+      <div class="tool-row" data-id="${t.id}">
+        ${toolField(t.id, 'name', t.name, 'tool-name', 'Tool name')}
+        ${toolField(t.id, 'category', t.category, 'tool-category', 'Category')}
+        ${toolField(t.id, 'description', t.description, 'tool-desc', 'Purpose / description')}
+        ${toolField(t.id, 'link', t.link, 'tool-link', 'Link')}
+        ${toolField(t.id, 'affiliateLink', t.affiliateLink, 'tool-aff', 'Affiliate link (optional)')}
+        <button class="tool-del" onclick="deleteToolRow('${t.id}',this)" title="Delete">✕</button>
+      </div>`).join('')}
+  `).join('');
+
+  el.innerHTML = datalist + newRowsHtml + existingHtml + (!newRowsHtml && !existingHtml ? '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No tools yet.</div>' : '');
+}
+
+function openAddToolRow() {
+  TOOLS_NEW_ROWS.unshift({ name: '', category: '', description: '', link: '', affiliateLink: '' });
+  renderToolsList();
+  const first = document.querySelector('#toolsListEl .tool-row[data-newidx="0"] .tool-name');
+  if (first) first.focus();
+}
+
+function removeNewToolRow(idx) {
+  TOOLS_NEW_ROWS.splice(idx, 1);
+  renderToolsList();
+}
+
+async function saveToolField(inputEl) {
+  const field = inputEl.dataset.field;
+  const value = inputEl.value.trim();
+  const row = inputEl.closest('.tool-row');
+  const id = inputEl.dataset.id;
+
+  if (!id) {
+    // Unsaved new row — keep the typed value live in TOOLS_NEW_ROWS so it
+    // survives a re-render, but only actually create the Notion page once
+    // Name is filled in (the one required field).
+    const idx = parseInt(row.dataset.newidx, 10);
+    if (Number.isInteger(idx) && TOOLS_NEW_ROWS[idx]) TOOLS_NEW_ROWS[idx][field] = value;
+    if (field !== 'name' || !value) return;
+    inputEl.style.opacity = '.6';
+    try {
+      const payload = { ...TOOLS_NEW_ROWS[idx] };
+      const data = await call('addTool', payload);
+      if (data.error) throw new Error(data.error);
+      TOOLS_NEW_ROWS.splice(idx, 1);
+      TOOLS_DATA.unshift({ id: data.id, ...payload });
+      renderToolsList();
+    } catch(e) {
+      alert('Error creating tool: ' + e.message);
+      inputEl.style.opacity = '1';
+    }
+    return;
+  }
+
+  // Existing row — save just this one field.
+  const item = TOOLS_DATA.find(t => t.id === id);
+  if (item && item[field] === value) return; // no change
+  inputEl.style.opacity = '.6';
+  try {
+    const data = await call('updateTool', { id, [field]: value });
+    if (data.error) throw new Error(data.error);
+    if (item) item[field] = value;
+  } catch(e) {
+    alert('Error saving: ' + e.message);
+  } finally {
+    inputEl.style.opacity = '1';
+  }
+}
+
+async function deleteToolRow(id, btn) {
+  if (!confirm('Delete this tool?')) return;
+  btn.disabled = true;
+  try {
+    const data = await call('deleteTool', { id });
+    if (data.error) throw new Error(data.error);
+    TOOLS_DATA = TOOLS_DATA.filter(t => t.id !== id);
+    renderToolsList();
   } catch(e) {
     alert('Error: ' + e.message);
     btn.disabled = false;

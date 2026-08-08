@@ -47,6 +47,7 @@ const DRIVES_DB          = "3751f7d3a4bb806cb133ff9182306ec8";
 const RESUMES_DB         = "3751f7d3a4bb80599583c9aef8d10b05";
 const DESIGN_SPECS_DB    = "3981f7d3a4bb817c8edad15db64fa50d";
 const SAVED_POSTS_DB     = "0a037d3a9a9a4289a41f76050055c795";
+const TOOLS_DB           = "019e7132eeac48ccb77d805f99b085ea"; // campaign-agnostic global software-tools reference (Hermes "Tools" tab) — Name/Category/Description/Link/Affiliate Link/Source/Notes
 // Resume header — kept in sync by hand with the 📇 Contact Info Notion page
 // (under 🏠 Home); used to print a real contact header on generated resume
 // .docx files (generateJobAsset's docx build).
@@ -17524,6 +17525,66 @@ ${assemblyManifest}`;
       }
 
       if (body.action === "deleteSkill") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
+        });
+        return json({ success: true });
+      }
+
+      // ── Tools (🧰, global — Hermes "Tools" tab) ──
+      // Campaign-agnostic reference list of software tools (creator/vendor
+      // recommendations, internal picks, whatever). One row per tool with a
+      // canonical Link plus an optional Affiliate Link (blank when none
+      // exists) — same upsert-by-id shape as Skills/Job Boards/Education
+      // above, editable inline per-field from the Tools tab's list rows.
+      if (body.action === "getTools") {
+        const pages = await notionQuery(TOOLS_DB, { sorts: [{ property: "Category", direction: "ascending" }] });
+        const items = pages.map(p => ({
+          id: p.id.replace(/-/g, ""),
+          name: p.properties.Name?.title?.map(t => t.plain_text).join("") || "",
+          category: p.properties.Category?.select?.name || "",
+          description: (p.properties.Description?.rich_text || []).map(t => t.plain_text).join(""),
+          link: p.properties.Link?.url || "",
+          affiliateLink: p.properties["Affiliate Link"]?.url || "",
+          source: p.properties.Source?.select?.name || "",
+          notes: (p.properties.Notes?.rich_text || []).map(t => t.plain_text).join(""),
+        }));
+        return json({ items });
+      }
+
+      if (body.action === "addTool" || body.action === "updateTool") {
+        const { id, name, category, description, link, affiliateLink, source, notes } = body;
+        if (body.action === "addTool" && !name) return json({ error: "name required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const props = {};
+        if (name !== undefined) props["Name"] = { title: [{ type: "text", text: { content: String(name).slice(0, 2000) } }] };
+        if (category !== undefined) props["Category"] = category ? { select: { name: category } } : { select: null };
+        if (description !== undefined) props["Description"] = { rich_text: chunkedRichText(description) };
+        if (link !== undefined) props["Link"] = { url: link || null };
+        if (affiliateLink !== undefined) props["Affiliate Link"] = { url: affiliateLink || null };
+        if (source !== undefined) props["Source"] = source ? { select: { name: source } } : { select: null };
+        if (notes !== undefined) props["Notes"] = { rich_text: chunkedRichText(notes) };
+        if (body.action === "addTool") {
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: TOOLS_DB }, properties: props }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Create failed" }, createResp.status || 500);
+          return json({ success: true, id: created.id.replace(/-/g, "") });
+        } else {
+          if (!id) return json({ error: "id required" }, 400);
+          const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId16(id)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }),
+          });
+          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Update failed" }, patchResp.status); }
+          return json({ success: true });
+        }
+      }
+
+      if (body.action === "deleteTool") {
         const { id } = body;
         if (!id) return json({ error: "id required" }, 400);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
