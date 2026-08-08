@@ -2862,6 +2862,12 @@ function openMethodModal() {
   methodModalSelectedId = null;
   document.getElementById('methodModal').classList.add('open');
   setTimeout(() => document.getElementById('method-modal-input').focus(), 100);
+  // Methods are global (independent of any campaign) — ALL_METHODS was only
+  // ever populated once at page load, so refetch here too in case one was
+  // created elsewhere in this same session since then.
+  w('searchMethods', { query: '' }).then(r => {
+    if (r.methods && r.methods.length) { ALL_METHODS = r.methods; filterMethodDd(); }
+  }).catch(() => {});
 }
 
 function closeMethodModal() {
@@ -5787,16 +5793,36 @@ function openCreateTitleFromSlotModal(slotId, strategyId) {
     + `<span style="color:#888;">${esc(slot.angle || '')}</span>`
     + (strat.productName ? `<br><span style="color:#666;">Product: ${esc(strat.productName)}</span>` : '');
 
-  const methodSel = document.getElementById('ctsMethod');
-  methodSel.innerHTML = (METHOD_ITEMS || []).length
-    ? METHOD_ITEMS.map(m => `<option value="${m.id}"${slot.methodName && m.name === slot.methodName ? ' selected' : ''}>${esc(m.name)}</option>`).join('')
-    : '<option value="">No methods yet — add one under Products &amp; Methods first</option>';
+  // Methods are global (script length, 30s Reel vs. Carousel vs. long-form,
+  // etc.) and completely independent of Growth Strategy/campaign — every
+  // existing Live method should be pickable here, not just ones already
+  // attached to this campaign. Seed instantly from ALL_METHODS (populated
+  // on page load), then always refetch so a method created elsewhere since
+  // then still shows up (same rationale as atEnsureLists for Add Idea).
+  ctsRenderMethodOptions(ALL_METHODS || [], slot.methodName);
+  w('searchMethods', { query: '' }).then(r => {
+    if (r.methods && r.methods.length && CTS_SLOT && CTS_SLOT.id === slotId) {
+      ALL_METHODS = r.methods;
+      ctsRenderMethodOptions(ALL_METHODS, slot.methodName);
+    }
+  }).catch(() => {});
 
   document.getElementById('ctsGuidance').value = '';
   document.getElementById('ctsStatus').textContent = '';
   const btn = document.getElementById('ctsGoBtn');
   btn.disabled = false; btn.textContent = 'Generate';
   document.getElementById('ctsModal').classList.add('open');
+}
+function ctsRenderMethodOptions(methods, preferredName) {
+  const sel = document.getElementById('ctsMethod');
+  const prevValue = sel.value;
+  sel.innerHTML = methods.length
+    ? methods.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('')
+    : '<option value="">No methods yet — add one under Products &amp; Methods first</option>';
+  // Preserve whatever was already picked across a refresh; otherwise default
+  // to the slot's own recommended method, if it's in the list.
+  if (prevValue && methods.some(m => m.id === prevValue)) sel.value = prevValue;
+  else if (preferredName) { const m = methods.find(m => m.name === preferredName); if (m) sel.value = m.id; }
 }
 function closeCreateTitleFromSlotModal() {
   document.getElementById('ctsModal').classList.remove('open');
