@@ -5668,7 +5668,7 @@ async function loadCampaignStrategies() {
   const el = document.getElementById('strategies-panel');
   if (!el) return;
   try {
-    const r = await w('getCampaignStrategies', { campaignId: CAMPAIGN_ID });
+    const r = await w('getCampaignGrowthStrategies', { campaignId: CAMPAIGN_ID });
     CAMPAIGN_STRATEGIES_CACHE = r.strategies || [];
     renderStrategiesPanel(CAMPAIGN_STRATEGIES_CACHE);
   } catch (e) {

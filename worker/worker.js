@@ -6450,12 +6450,17 @@ Return ONLY this JSON object, no other text, no markdown fences:
         });
       }
 
-      // ── getCampaignStrategies ──
+      // ── getCampaignGrowthStrategies ──
       // Powers the campaign microsite's "🚀 Strategies" panel (every Growth
       // Strategy for this campaign, with real fill-progress per grouping)
       // and the Add Idea modal's "Fill an open Strategy Slot" dropdown
       // (same data, the modal just filters to status === "Open" client-side).
-      if (body.action === "getCampaignStrategies") {
+      // NOTE: named distinctly from the older, unrelated "getCampaignStrategies"
+      // action above (positioning-Strategy status + Method Briefs per product) —
+      // the two used to share this name, which meant the first `if` block (the
+      // older one) always won and this handler was silently unreachable. That's
+      // why the Strategies tab always rendered empty regardless of real data.
+      if (body.action === "getCampaignGrowthStrategies") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
