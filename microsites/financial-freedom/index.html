@@ -4895,7 +4895,7 @@ function buildCanvaPortPrompt(assetId, titleId, canvaLink) {
     + `3. Use copy-design to duplicate the template into a new design — NEVER edit the original template directly.\n`
     + `4. Map each table row to the matching field on the copy by page/position, and populate it via edit-design. Verify each page's thumbnail after editing; if a field overflows its box, shorten/reformat the text rather than letting it run over.\n`
     + `5. Commit the transaction once every page looks right.\n`
-    + `6. Save the resulting copy's URL back onto the Asset's "Design Link" property in Notion.`;
+    + `6. Save the resulting copy's URL back onto the Asset's "Design Link" property in Notion — this is what publishes it: the dashboard's Published Assets section reads Design Link to build that asset row's "↗ View" link, so this step is what actually makes the finished design show up there, not an optional bookkeeping step.`;
 }
 async function copyCanvaPortPrompt(btn) {
   const { assetid: assetId, titleid: titleId, canvalink: canvaLink } = btn.dataset;
