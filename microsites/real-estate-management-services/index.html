@@ -5771,6 +5771,19 @@ async function submitGenAssets() {
   // by method, instead of a second button next to this one (the render/
   // script output IS the asset).
   const skillMatch = gaMatchSkill(GA_METHOD_NAME);
+  // Skill-only methods (no workerAction — e.g. "Carousel — Template CSV
+  // Export") have no worker-side generation path at all; the hint box
+  // already says so ("Chat-only — not runnable from this button"), but
+  // nothing previously stopped this button from falling through to the
+  // generic generateTitleAssets path anyway, which then tried to generate
+  // "concepts" for an assetType literally named after the skill and choked
+  // on the JSON. Stop here instead of pretending this button can do it.
+  if (skillMatch && !skillMatch.workerAction) {
+    status.textContent = `This method is chat-only — Generate can't run it. ${skillMatch.hint}`;
+    status.style.color = '#f0b429';
+    btn.disabled = false; btn.textContent = 'Generate';
+    return;
+  }
   if (skillMatch && skillMatch.workerAction) {
     const isAvatarScript = skillMatch.workerAction === 'generateAvatarScript';
     const isTextVideoScript = skillMatch.workerAction === 'generateTextVideoScript';
