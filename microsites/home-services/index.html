@@ -106,22 +106,6 @@
 .method-row:last-child { border-bottom: none; }
 .method-name { flex: 1; font-size: 13px; color: #c9c9c9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .method-name:hover { color: #fff; text-decoration: underline; }
-/* METHOD GENERATE MODAL */
-#method-gen-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000; align-items:center; justify-content:center; }
-#method-gen-modal.open { display:flex; }
-.method-gen-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:24px; width:360px; max-width:92vw; }
-.method-gen-box h3 { margin:0 0 4px; font-size:15px; color:#fff; }
-.method-gen-subtitle { font-size:12px; color:#666; margin-bottom:16px; }
-.method-gen-products { display:flex; flex-direction:column; gap:6px; margin-bottom:16px; max-height:200px; overflow-y:auto; }
-.mgp-option { display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid #333; border-radius:6px; cursor:pointer; font-size:13px; color:#c9c9c9; transition:border-color .15s,background .15s; }
-.mgp-option:hover { border-color:#555; background:rgba(255,255,255,.04); }
-.mgp-option.selected { border-color:#63b3ed; background:rgba(99,179,237,.1); color:#fff; }
-.mgp-option input[type=radio] { accent-color:#63b3ed; }
-.method-gen-actions { display:flex; gap:8px; justify-content:flex-end; }
-.method-gen-go { padding:6px 16px; background:#63b3ed; color:#000; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
-.method-gen-go:disabled { opacity:.5; cursor:default; }
-.method-gen-cancel { padding:6px 12px; background:transparent; color:#888; border:1px solid #333; border-radius:6px; font-size:13px; cursor:pointer; }
-.method-gen-status { font-size:12px; color:#888; margin-top:10px; text-align:center; min-height:16px; }
 /* PRODUCT LIST */
 .product-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .product-row:last-child { border-bottom: none; }
@@ -359,7 +343,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2>Development Titles <button class="td-add-btn-inline" onclick="openAddTitleModal()" title="Add title">+</button></h2>
+    <h2>Development Titles <button class="td-add-btn-inline" onclick="openCreateTitleFromSlotModal()" title="Generate title">+</button></h2>
     <div class="content">
       <div class="title-list" id="devTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -990,82 +974,34 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
 </div>
-<!-- ADD TITLE MODAL — idea input: title + method/product (pick or create) +
-     content description + seed keywords + research instructions. The extra
-     fields land on the Content Strategy record (Core Idea / "seed idea" /
-     Notes) and are read back by the research flows via buildTitleSeedContext. -->
-<div class="modal-overlay" id="addTitleModal">
-  <div class="modal" style="max-width:520px;">
-    <div class="modal-head">
-      <div class="modal-title">Add Idea</div>
-      <button class="modal-close" onclick="closeAddTitleModal()">✕</button>
-    </div>
-    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
-      <label class="lm-label">Idea (title) <span style="color:var(--danger,#e05);">*</span></label>
-      <input class="modal-ta" id="addTitleInput" type="text" placeholder="The idea — becomes the title…" autocomplete="off" style="margin-bottom:10px;" />
-
-      <label class="lm-label">Method <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
-      <div style="position:relative;margin-bottom:10px;">
-        <input class="modal-ta" id="atMethodInput" type="text" placeholder="Search methods, or type a new method name…" autocomplete="off"
-               oninput="atFilter('method')" onfocus="atFilter('method')"
-               onblur="setTimeout(()=>{const d=document.getElementById('atMethodDD'); if(d) d.style.display='none';},180)" />
-        <div id="atMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
-      </div>
-
-      <label class="lm-label">Product <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
-      <div style="position:relative;margin-bottom:10px;">
-        <input class="modal-ta" id="atProductInput" type="text" placeholder="Search products, or type a new product name…" autocomplete="off"
-               oninput="atFilter('product')" onfocus="atFilter('product')"
-               onblur="setTimeout(()=>{const d=document.getElementById('atProductDD'); if(d) d.style.display='none';},180)" />
-        <div id="atProductDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
-      </div>
-
-      <label class="lm-label">Fill an open Strategy Slot <span style="color:#777;font-weight:normal;">— optional; picks a planned slot (e.g. "Behind the Scenes #1") from an approved Growth Strategy. Sets the Product above to match (strategies are per-product) and marks the slot filled once this title is created. Leave blank to ignore.</span></label>
-      <select class="modal-ta" id="atSlotInput" onchange="atSlotPicked(this)" style="margin-bottom:10px;">
-        <option value="">— none —</option>
-      </select>
-
-      <label class="lm-label">Description of content</label>
-      <textarea class="modal-ta" id="atDescInput" rows="3" placeholder="What this content is and should communicate…" style="margin-bottom:10px;resize:vertical;"></textarea>
-
-      <label class="lm-label">Seed keywords</label>
-      <input class="modal-ta" id="atKeywordsInput" type="text" placeholder="comma, separated, seed keywords" autocomplete="off" style="margin-bottom:10px;" />
-
-      <label class="lm-label">Research instructions</label>
-      <textarea class="modal-ta" id="atResearchInput" rows="3" placeholder="How research for this idea should run — sources to check, angles to take, what to look for, what to avoid…" style="margin-bottom:10px;resize:vertical;"></textarea>
-
-      <label class="lm-label">Titles to create <span style="color:#777;font-weight:normal;">— 1 saves this idea as-is; more = AI generates that many distinct titles from it</span></label>
-      <select class="modal-ta" id="atCountInput" style="margin-bottom:10px;width:200px;">
-        <option value="1">1 — just this idea</option>
-        <option value="3">3 — generate</option>
-        <option value="5">5 — generate</option>
-        <option value="10">10 — generate</option>
-      </select>
-
-      <div id="addTitleStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="modal-btn cancel" onclick="closeAddTitleModal()">Cancel</button>
-      <button class="modal-btn save" id="addTitleSaveBtn" onclick="submitAddTitle()">Create</button>
-    </div>
-  </div>
-</div>
-
-<!-- CREATE TITLE FROM STRATEGY SLOT MODAL — the "+ title" button on a slot
-     row in the Strategies tab. One AI call: writes a real title AND its
-     full script/content (into the new title's page body) for exactly this
-     slot's planned angle, grounded in its parent Growth Strategy. Method is
-     picked here (not fixed by the slot) since one slot can be turned into
-     several different titles across different methods — the same slot stays
-     clickable after it's Filled for exactly that reason. -->
+<!-- GENERATE TITLE MODAL — the ONE title-creation flow: Product (or none) ->
+     Slot (or none, filtered to that product's Growth Strategy) -> Method ->
+     Generate. Replaces the old batch "Generate Titles" modal and "Add Idea"
+     modal (both retired). One AI call writes a real title AND its full
+     script/content into the new title's page body — grounded in the slot's
+     planned angle + parent Growth Strategy when a slot is picked, or just
+     the product's positioning Strategy + method framework + guidance when
+     not. Opened from: "+" next to Development Titles (nothing preset), a
+     Method row click (method preset), or "+ title" on a Strategy Slot row
+     (product+slot preset) — the slot stays clickable after it's Filled
+     since one slot can become several titles across different methods. -->
 <div class="modal-overlay" id="ctsModal">
   <div class="modal" style="max-width:520px;">
     <div class="modal-head">
-      <div class="modal-title">Create Title from Strategy Slot</div>
+      <div class="modal-title">Generate Title</div>
       <button class="modal-close" onclick="closeCreateTitleFromSlotModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
-      <div class="modal-hint" id="ctsSlotContext" style="margin-bottom:14px;"></div>
+      <label class="lm-label">Product <span style="color:#777;font-weight:normal;">— optional</span></label>
+      <select class="modal-ta" id="ctsProduct" onchange="ctsOnProductChange()" style="margin-bottom:10px;">
+        <option value="">— none —</option>
+      </select>
+
+      <label class="lm-label">Strategy Slot <span style="color:#777;font-weight:normal;">— optional; a planned angle from this product's Growth Strategy</span></label>
+      <select class="modal-ta" id="ctsSlot" onchange="ctsOnSlotChange()" disabled style="margin-bottom:8px;">
+        <option value="">— none —</option>
+      </select>
+      <div class="modal-hint" id="ctsSlotContext" style="display:none;margin-bottom:10px;"></div>
 
       <label class="lm-label">Method <span style="color:var(--danger,#e05);">*</span> <span style="color:#777;font-weight:normal;">— several titles can be made from the same slot, one per method</span></label>
       <select class="modal-ta" id="ctsMethod" style="margin-bottom:10px;"></select>
@@ -1111,18 +1047,14 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       </div>
 
       <!-- Additive, method-specific fields go here — shown/hidden per method
-           by gaUpdateSkillHint(). Carousel style is the reference example:
-           add more of these (wrapped div, hidden by default, toggled in
-           gaUpdateSkillHint) as new methods come back online. -->
-      <div id="gaCarouselTypeWrap" style="display:none;margin-bottom:10px;">
-        <label class="lm-label">Carousel style <span style="color:#777;font-weight:normal;">— starting point only; Override Guidelines below can replace this entirely with a custom format</span></label>
-        <select id="gaCarouselTypeInput" class="modal-ta" onchange="try{localStorage.setItem('gaCarouselType', this.value);}catch(e){}">
-          <option value="triple-hook">Triple Hook (default) — slides 1-3 each a standalone hook, then substance, then CTA</option>
-          <option value="curated-collection">Curated Collection — 7 standalone theme/quote slides, no narrative arc</option>
-          <option value="hidden-potential">Hidden Potential — split stress / benefit contrast per slide, grayscale vs. color, chevron divider</option>
-          <option value="numbered-breakdown">Numbered Breakdown — cover + one numbered-list slide per category + CTA (e.g. "21 things to install in X")</option>
-        </select>
-      </div>
+           by gaUpdateSkillHint(). The old "Carousel style" picker (Triple
+           Hook / Curated Collection / Hidden Potential / Numbered
+           Breakdown) that used to live here was removed — Methods now link
+           directly to one Template (Methods DB "Template" field) instead of
+           picking a style variant at generation time. All JS that reads
+           #gaCarouselTypeWrap/#gaCarouselTypeInput is null-safe (optional
+           chaining / `if (el)` guards), so removing this element needed no
+           other changes. -->
 
       <div id="gaAvatarPresenterWrap" style="display:none;margin-bottom:10px;">
         <label class="lm-label">Presenter avatar <span id="gaAvatarPresenterLabel" style="color:#777;font-weight:normal;">— checking for a saved campaign presenter…</span></label>
@@ -1302,7 +1234,7 @@ function esc(s) {
 // all AI research/generation prompts. A visible editable field is injected
 // into each research/generation modal when it opens — edit it anywhere and
 // the new value applies to every subsequent run on this device.
-const RG_MODAL_IDS = ['method-gen-modal','smPromptModal','fieldResearchModal','addTitleModal','genAssetsModal','ecosystemModal','productMethodsModal','design-spec-modal'];
+const RG_MODAL_IDS = ['ctsModal','smPromptModal','fieldResearchModal','genAssetsModal','ecosystemModal','productMethodsModal','design-spec-modal'];
 function rgVal() { try { return (localStorage.getItem('rg_guidelines') || '').trim(); } catch(e) { return ''; } }
 function rgSave(v) { try { localStorage.setItem('rg_guidelines', (v || '').trim()); } catch(e) {} }
 function rgInject(modalEl) {
@@ -2644,185 +2576,11 @@ function renderMethods() {
   METHOD_ITEMS.forEach(m => {
     const row = document.createElement('div');
     row.className = 'method-row';
-    row.innerHTML = `<span class="method-name" onclick="openMethodGenModal('${m.id}','${m.name}')" title="Generate titles for this method">${m.name}</span><button class="td-del" onclick="removeMethod('${m.id}', this)" title="Remove">✕</button>`;
+    row.innerHTML = `<span class="method-name" onclick="openCreateTitleFromSlotModal({methodId:'${m.id}'})" title="Generate a title for this method">${m.name}</span><button class="td-del" onclick="removeMethod('${m.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }
 
-let MGM_METHOD_ID = null, MGM_METHOD_NAME = '', MGM_PRODUCT_ID = null;
-
-function openMethodGenModal(methodId, methodName) {
-  MGM_METHOD_ID = methodId; MGM_METHOD_NAME = methodName; MGM_PRODUCT_ID = null;
-  document.getElementById('mgm-title').textContent = 'Generate: ' + methodName;
-  document.getElementById('mgm-status').textContent = '';
-  document.getElementById('mgm-go').disabled = true;
-  const blendRadio = document.querySelector('input[name="mgmContext"][value="blend"]');
-  if (blendRadio) blendRadio.checked = true;
-  const el = document.getElementById('mgm-products');
-  const noneOpt = `<label class="mgp-option"><input type="radio" name="mgp" value="${CAMPAIGN_ID}" onchange="MGM_PRODUCT_ID=CAMPAIGN_ID;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false;mgmRefreshKeywordPicker();mgmRefreshStrategyPicker()"> <em style="color:#a78bfa">&#9670; Campaign</em></label>`;
-  el.innerHTML = noneOpt + PRODUCT_ITEMS.map(p => `<label class="mgp-option"><input type="radio" name="mgp" value="${p.id}" onchange="MGM_PRODUCT_ID=this.value;document.querySelectorAll('.mgp-option').forEach(o=>o.classList.remove('selected'));this.closest('.mgp-option').classList.add('selected');document.getElementById('mgm-go').disabled=false;mgmRefreshKeywordPicker();mgmRefreshStrategyPicker()"> ${p.name}</label>`).join('');
-  document.getElementById('method-gen-modal').classList.add('open');
-  mgmRefreshKeywordPicker();
-  mgmRefreshStrategyPicker();
-}
-// Seed-keyword picker for SEO Post — hidden for every other method. Research
-// Keywords fields are sometimes clustered prose, not a flat list, so this
-// asks the server to structure them into pickable groups rather than
-// silently guessing (see getSeedKeywordCandidates).
-let MGM_KEYWORD_TOKEN = 0;
-async function mgmRefreshKeywordPicker() {
-  const wrap = document.getElementById('mgm-keyword-wrap');
-  const sel = document.getElementById('mgm-keyword');
-  if (!wrap || !sel) return;
-  // Carousel and Upwork-market methods use their own bespoke live-research
-  // flows (see runMethodGenerate) and don't read a seed keyword at all.
-  // Every other method goes through the unified generateMethodTitles
-  // pipeline, where a picked keyword is optional grounding — SEO Post is the
-  // only one that forces every title's grouping to match it deterministically.
-  const isBespoke = /carousel/i.test(MGM_METHOD_NAME) || (/upwork/i.test(MGM_METHOD_NAME) && /title|market|trend/i.test(MGM_METHOD_NAME));
-  if (isBespoke) { wrap.style.display = 'none'; return; }
-  wrap.style.display = 'block';
-  sel.innerHTML = '<option>Loading…</option>';
-  const myToken = ++MGM_KEYWORD_TOKEN;
-  try {
-    const productId = (MGM_PRODUCT_ID && MGM_PRODUCT_ID !== CAMPAIGN_ID) ? MGM_PRODUCT_ID : undefined;
-    const data = await w('getSeedKeywordCandidates', { campaignId: CAMPAIGN_ID, productId });
-    if (myToken !== MGM_KEYWORD_TOKEN) return;
-    const groups = data.groups || [];
-    const isSeoPost = /seo post/i.test(MGM_METHOD_NAME);
-    const noneOpt = isSeoPost ? '' : '<option value="">(none — let the method framework decide)</option>';
-    if (!groups.length) { sel.innerHTML = noneOpt || '<option value="">(none found — will fall back to method name)</option>'; return; }
-    sel.innerHTML = noneOpt + groups.map(g => {
-      const label = g.label ? esc(g.label) : (g.source === 'product' ? 'Product Keywords' : 'Campaign Keywords');
-      const opts = (g.keywords || []).map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('');
-      return `<optgroup label="${label}">${opts}</optgroup>`;
-    }).join('');
-  } catch(e) {
-    if (myToken !== MGM_KEYWORD_TOKEN) return;
-    sel.innerHTML = '<option value="">(could not load — will fall back to method name)</option>';
-  }
-}
-
-// Growth Strategy picker for the Generate Titles modal — only meaningful
-// when a real product is selected (Growth Strategy is per-product); hidden
-// for the "Campaign" option since there's no product to look strategies up
-// against.
-let MGM_STRATEGY_TOKEN = 0;
-async function mgmRefreshStrategyPicker() {
-  const wrap = document.getElementById('mgm-strategy-wrap');
-  const sel = document.getElementById('mgm-strategy');
-  if (!wrap || !sel) return;
-  document.getElementById('mgm-strategy-guidance').value = '';
-  if (!MGM_PRODUCT_ID || MGM_PRODUCT_ID === CAMPAIGN_ID) { wrap.style.display = 'none'; sel.innerHTML = '<option value="">No strategy</option>'; return; }
-  wrap.style.display = 'block';
-  sel.innerHTML = '<option value="">Loading…</option>';
-  const myToken = ++MGM_STRATEGY_TOKEN;
-  try {
-    const data = await w('listGrowthStrategies', { productId: MGM_PRODUCT_ID });
-    if (myToken !== MGM_STRATEGY_TOKEN) return;
-    const strategies = data.strategies || [];
-    sel.innerHTML = '<option value="">No strategy</option>' + strategies.map(s =>
-      `<option value="${s.id}">${esc(s.name)} (${s.status}${s.platformOverride ? ' — ' + esc(s.platformOverride) : ''})</option>`
-    ).join('');
-  } catch(e) {
-    if (myToken !== MGM_STRATEGY_TOKEN) return;
-    sel.innerHTML = '<option value="">No strategy (could not load)</option>';
-  }
-}
-
-function closeMethodGenModal() {
-  document.getElementById('method-gen-modal').classList.remove('open');
-  MGM_METHOD_ID = null; MGM_PRODUCT_ID = null;
-}
-
-async function runMethodGenerate() {
-  if (!MGM_METHOD_ID || !MGM_PRODUCT_ID) return;
-  const btn = document.getElementById('mgm-go');
-  const status = document.getElementById('mgm-status');
-  btn.disabled = true; btn.textContent = 'Generating…';
-  status.style.color = '#888';
-  try {
-    // The "carousel" method gets a dedicated research-driven flow (merges
-    // campaign+product keywords, folds in existing trend research, optional
-    // live Instagram benchmarking, recommends 10 titles+descriptions) instead
-    // of the generic framework-phase title generator used by every other method.
-    if (/carousel/i.test(MGM_METHOD_NAME)) {
-      status.textContent = 'Researching trends and merging keywords…';
-      const data = await w('researchAndGenerateCarouselTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
-      if (data.error) throw new Error(data.error);
-      const trendNote = data.hasExistingTrendResearch ? `grounded in ${data.existingTrendSource}` : 'no existing trend research on file';
-      const liveNote = data.apifyConfigured ? `, benchmarked against ${data.referencesFound} live Instagram posts (${data.carouselReferencesFound} carousels)` : ', no live Instagram benchmarking (APIFY_TOKEN not configured)';
-      status.textContent = `✓ Recommended ${data.created} carousel concepts — ${trendNote}${liveNote}`;
-      status.style.color = '#68d391';
-      btn.textContent = 'Done';
-      setTimeout(closeMethodGenModal, 2200);
-      return;
-    }
-
-    // The "Upwork Titles"/"Upwork Market" method finds active Upwork markets for
-    // the seed keyword and proposes titles aimed at real demand (checked BEFORE
-    // the proposal method so a market-named method doesn't hit proposals).
-    if (/upwork/i.test(MGM_METHOD_NAME) && /title|market|trend/i.test(MGM_METHOD_NAME)) {
-      status.textContent = 'Finding active Upwork markets and proposing titles…';
-      const data = await w('researchUpworkMarketTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
-      if (data.error) throw new Error(data.error);
-      const activeCount = (data.markets || []).filter(m => m.adCount).length;
-      const dNote = data.hasDemand ? `found ${data.totalAds} live ads across ${activeCount} active market${activeCount === 1 ? '' : 's'}` : (data.apifyConfigured ? 'no live ads matched — titles are AI-suggested' : 'no live search (APIFY_TOKEN off) — titles are AI-suggested');
-      status.textContent = `✓ Proposed ${data.created} Upwork market titles — ${dNote}`;
-      status.style.color = data.hasDemand ? '#68d391' : '#f0b429';
-      btn.textContent = 'Done';
-      setTimeout(closeMethodGenModal, 2600);
-      return;
-    }
-
-    const contextMode = (document.querySelector('input[name="mgmContext"]:checked') || {}).value || 'blend';
-    const mgmIsBespoke = /carousel/i.test(MGM_METHOD_NAME) || (/upwork/i.test(MGM_METHOD_NAME) && /title|market|trend/i.test(MGM_METHOD_NAME));
-    const seedKeyword = mgmIsBespoke ? undefined : (document.getElementById('mgm-keyword')?.value || undefined);
-    const growthStrategyId = document.getElementById('mgm-strategy')?.value || undefined;
-    const strategyGuidance = document.getElementById('mgm-strategy-guidance')?.value.trim() || undefined;
-    status.textContent = contextMode === 'isolate' ? 'Reading method framework and product strategy (isolated — no campaign research)…' : 'Reading method framework and product strategy…';
-    const data = await w('generateMethodTitles', { campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID, contextMode, seedKeyword, growthStrategyId, strategyGuidance });
-    if (data.error) throw new Error(data.error);
-    const titles = data.titles || [];
-    let saved = 0;
-    const followUpTitles = [];
-    for (let i = 0; i < titles.length; i += 10) {
-      status.textContent = 'Saving ' + Math.min(i + 10, titles.length) + ' / ' + titles.length + ' titles…';
-      const r = await w('saveMethodTitles', { titles: titles.slice(i, i + 10), campaignId: CAMPAIGN_ID, methodId: MGM_METHOD_ID, productId: MGM_PRODUCT_ID });
-      if (r.error) throw new Error(r.error);
-      saved += r.created;
-      followUpTitles.push(...(r.titles || []));
-    }
-    // Slide/carousel-format and subhead-outline (SEO Post) titles get their
-    // content written in separate, small follow-up calls (one per title) so
-    // one giant AI call doesn't time out.
-    let followDone = 0, followFailed = 0, firstFollowErr = '';
-    for (const ft of followUpTitles) {
-      status.textContent = 'Writing ' + (ft.slideFormat ? 'slides' : 'outline') + ' ' + (followDone + followFailed + 1) + ' / ' + followUpTitles.length + '…';
-      try {
-        const action = ft.slideFormat ? 'generateTitleSlides' : 'generateTitleSubheads';
-        const fr = await w(action, { pageId: ft.id, title: ft.title, campaignId: CAMPAIGN_ID });
-        if (fr.error) throw new Error(fr.error);
-        followDone++;
-      } catch(e) { followFailed++; if (!firstFollowErr) firstFollowErr = e.message; }
-    }
-    const trendNote = data.hasTrendResearch ? ` — grounded in ${data.trendSource}` : ' — no trend research on file, ran on static campaign research only (press ⟳ search under SM Trends first for trend-grounded titles)';
-    if (!followUpTitles.length) {
-      status.textContent = '✓ Created ' + saved + ' titles' + trendNote + ' — none were flagged as carousel/slide or outline format (check the Method name/framework)';
-      status.style.color = '#f0b429';
-    } else {
-      status.textContent = '✓ Created ' + saved + ' titles' + trendNote + ' (' + followDone + '/' + followUpTitles.length + ' follow-ups written' + (followFailed ? ', ' + followFailed + ' failed: ' + firstFollowErr : '') + ')';
-      status.style.color = followFailed ? '#fc8181' : (data.hasTrendResearch ? '#68d391' : '#f0b429');
-    }
-    btn.textContent = 'Done';
-    if (!followFailed && followUpTitles.length === followDone && data.hasTrendResearch) setTimeout(closeMethodGenModal, 1800);
-    else btn.disabled = false;
-  } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-    status.style.color = '#fc8181';
-    btn.disabled = false; btn.textContent = 'Generate';
-  }
-}
 async function loadMethods() {
   const el = document.getElementById('method-list');
   try {
@@ -4699,200 +4457,6 @@ async function copyRenderCommand() {
   }
 }
 
-// ── ADD TITLE MODAL (idea input) ─────────────────────────────────────
-// Method/Product are search-and-pick over the full DBs; typing a name that
-// matches nothing creates that method/product on save (deferred — nothing
-// is written until Create). Selected ids are kept only while the input text
-// still equals the picked name, so free-editing the text reverts to
-// create-new semantics.
-let AT_METHOD_ID = null, AT_METHOD_NAME = '';
-let AT_PRODUCT_ID = null, AT_PRODUCT_NAME = '';
-let AT_METHODS = [], AT_PRODUCTS = [];
-let AT_SLOT_ID = null;
-
-// Populates the "Fill an open Strategy Slot" dropdown from whatever the
-// Strategies panel already loaded (CAMPAIGN_STRATEGIES_CACHE) — no extra
-// round-trip. Open slots only; a slot with a Title already linked is done.
-function atPopulateSlotDropdown() {
-  const sel = document.getElementById('atSlotInput');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">— none —</option>';
-  (CAMPAIGN_STRATEGIES_CACHE || []).forEach(s => {
-    (s.groupings || []).forEach(g => {
-      (g.slots || []).filter(sl => sl.status === 'Open').forEach(sl => {
-        const opt = document.createElement('option');
-        opt.value = sl.id;
-        opt.textContent = `${s.name} → ${sl.name}: ${(sl.angle || '').slice(0, 60)}`;
-        opt.dataset.productId = s.productId || '';
-        opt.dataset.productName = s.productName || '';
-        opt.dataset.angle = sl.angle || '';
-        opt.dataset.method = sl.methodName || '';
-        sel.appendChild(opt);
-      });
-    });
-  });
-}
-// Selecting a slot dictates the Product (strategies are per-product) — locks
-// the Product field and seeds Idea/Method text if they're still empty.
-// Deselecting (back to "— none —") releases all of that back to normal.
-function atSlotPicked(selectEl) {
-  const productInput = document.getElementById('atProductInput');
-  const titleInput = document.getElementById('addTitleInput');
-  const methodInput = document.getElementById('atMethodInput');
-  const countInput = document.getElementById('atCountInput');
-  if (!selectEl.value) {
-    AT_SLOT_ID = null;
-    if (productInput) productInput.readOnly = false;
-    if (countInput) countInput.disabled = false;
-    return;
-  }
-  const opt = selectEl.selectedOptions[0];
-  AT_SLOT_ID = selectEl.value;
-  const productId = opt.dataset.productId, productName = opt.dataset.productName;
-  if (productId && productName) {
-    AT_PRODUCT_ID = productId; AT_PRODUCT_NAME = productName;
-    if (productInput) { productInput.value = productName; productInput.readOnly = true; }
-    if (!AT_PRODUCTS.some(p => p.id === productId)) AT_PRODUCTS.push({ id: productId, name: productName });
-  }
-  if (titleInput && !titleInput.value.trim() && opt.dataset.angle) titleInput.value = opt.dataset.angle;
-  if (methodInput && !methodInput.value.trim() && opt.dataset.method) methodInput.value = opt.dataset.method;
-  if (countInput) { countInput.value = '1'; countInput.disabled = true; }
-}
-
-async function atEnsureLists() {
-  try {
-    // seed instantly from the page-level caches so the dropdown isn't empty…
-    if (!AT_METHODS.length && typeof ALL_METHODS !== 'undefined' && ALL_METHODS.length) AT_METHODS = ALL_METHODS;
-    if (!AT_PRODUCTS.length && typeof ALL_PRODUCTS !== 'undefined' && ALL_PRODUCTS.length) AT_PRODUCTS = ALL_PRODUCTS;
-    // …but ALWAYS refetch: caching-once meant products/methods created after
-    // page load (or from another tab/session) never appeared in the picker
-    const [m, p] = await Promise.all([
-      w('searchMethods', { query: '' }),
-      w('searchProducts', { query: '' }),
-    ]);
-    if (m.methods && m.methods.length) AT_METHODS = m.methods;
-    if (p.products && p.products.length) AT_PRODUCTS = p.products;
-  } catch(e) { /* lists are a convenience — typing a new name still works */ }
-}
-
-function atFilter(kind) {
-  const inp  = document.getElementById(kind === 'method' ? 'atMethodInput' : 'atProductInput');
-  const dd   = document.getElementById(kind === 'method' ? 'atMethodDD' : 'atProductDD');
-  const list = kind === 'method' ? AT_METHODS : AT_PRODUCTS;
-  const q = inp.value.trim(), qL = q.toLowerCase();
-  // free-editing the text invalidates a previous pick unless it still matches
-  if (kind === 'method' && q !== AT_METHOD_NAME) { AT_METHOD_ID = null; AT_METHOD_NAME = ''; }
-  if (kind === 'product' && q !== AT_PRODUCT_NAME) { AT_PRODUCT_ID = null; AT_PRODUCT_NAME = ''; }
-  dd.innerHTML = '';
-  const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
-  matches.forEach(x => {
-    const div = document.createElement('div');
-    div.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#c9c9c9;border-bottom:1px solid #222;';
-    div.onmouseenter = () => div.style.background = '#333';
-    div.onmouseleave = () => div.style.background = '';
-    div.textContent = x.name;
-    div.onmousedown = () => {
-      if (kind === 'method') { AT_METHOD_ID = x.id; AT_METHOD_NAME = x.name; }
-      else { AT_PRODUCT_ID = x.id; AT_PRODUCT_NAME = x.name; }
-      inp.value = x.name;
-      dd.style.display = 'none';
-    };
-    dd.appendChild(div);
-  });
-  const exact = list.some(x => x.name.toLowerCase() === qL);
-  if (q && !exact) {
-    const div = document.createElement('div');
-    div.style.cssText = 'padding:8px 12px;font-size:12px;color:#e8ff47;font-style:italic;border-bottom:1px solid #222;';
-    div.textContent = `＋ new ${kind} "${q}" will be created on Create`;
-    dd.appendChild(div);
-  }
-  dd.style.display = (matches.length || (q && !exact)) ? 'block' : 'none';
-}
-
-// Resolve an input to an id: picked id → exact-name match → create new.
-async function atResolve(kind, statusEl) {
-  const inp = document.getElementById(kind === 'method' ? 'atMethodInput' : 'atProductInput');
-  const val = inp.value.trim();
-  if (!val) return { id: null, created: false };
-  const pickedId   = kind === 'method' ? AT_METHOD_ID : AT_PRODUCT_ID;
-  const pickedName = kind === 'method' ? AT_METHOD_NAME : AT_PRODUCT_NAME;
-  if (pickedId && val === pickedName) return { id: pickedId, created: false };
-  const list = kind === 'method' ? AT_METHODS : AT_PRODUCTS;
-  const match = list.find(x => x.name.toLowerCase() === val.toLowerCase());
-  if (match) return { id: match.id, created: false };
-  statusEl.textContent = `Creating new ${kind} "${val}"…`;
-  const res = await w(kind === 'method' ? 'createMethod' : 'createProduct', { title: val });
-  if (res.error) throw new Error(res.error);
-  list.push({ id: res.id, name: val });
-  return { id: res.id, created: true };
-}
-
-function openAddTitleModal() {
-  ['addTitleInput','atMethodInput','atProductInput','atDescInput','atKeywordsInput','atResearchInput'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = '';
-  });
-  AT_METHOD_ID = null; AT_METHOD_NAME = '';
-  AT_PRODUCT_ID = null; AT_PRODUCT_NAME = '';
-  AT_SLOT_ID = null;
-  const productInput = document.getElementById('atProductInput');
-  if (productInput) productInput.readOnly = false;
-  const countInput = document.getElementById('atCountInput');
-  if (countInput) { countInput.disabled = false; countInput.value = '1'; }
-  atPopulateSlotDropdown();
-  document.getElementById('addTitleStatus').textContent = '';
-  document.getElementById('addTitleSaveBtn').disabled = false;
-  document.getElementById('addTitleSaveBtn').textContent = 'Create';
-  document.getElementById('addTitleModal').classList.add('open');
-  atEnsureLists(); // fire-and-forget — dropdowns populate when it lands
-  setTimeout(() => document.getElementById('addTitleInput').focus(), 200);
-}
-function closeAddTitleModal() {
-  document.getElementById('addTitleModal').classList.remove('open');
-}
-document.getElementById('addTitleModal').addEventListener('click', function(e) {
-  if (e.target === this) closeAddTitleModal();
-});
-async function submitAddTitle() {
-  const title = document.getElementById('addTitleInput').value.trim();
-  if (!title) { document.getElementById('addTitleInput').focus(); return; }
-  const btn = document.getElementById('addTitleSaveBtn');
-  const status = document.getElementById('addTitleStatus');
-  btn.disabled = true; btn.textContent = 'Creating…';
-  status.textContent = '';
-  try {
-    const method  = await atResolve('method', status);
-    const product = await atResolve('product', status);
-    // A picked Strategy Slot maps to exactly one planned post — ignore any
-    // count > 1 left over from before the slot was picked.
-    const atCount = AT_SLOT_ID ? 1 : (parseInt(document.getElementById('atCountInput')?.value) || 1);
-    const common = {
-      campaignId: CAMPAIGN_ID,
-      methodId:  method.id  || undefined,
-      productId: product.id || undefined,
-      description:          document.getElementById('atDescInput').value.trim()     || undefined,
-      seedKeywords:         document.getElementById('atKeywordsInput').value.trim() || undefined,
-      researchInstructions: document.getElementById('atResearchInput').value.trim() || undefined,
-    };
-    if (atCount > 1) {
-      status.textContent = 'Generating ' + atCount + ' titles…';
-      const r = await w('generateIdeaTitles', { title, count: atCount, ...common });
-      status.textContent = '✓ Generated ' + r.created + ' titles' + (r.failed ? ' (' + r.failed + ' failed)' : '');
-    } else {
-      status.textContent = AT_SLOT_ID ? 'Creating title and filling the strategy slot…' : 'Creating title…';
-      await w('createDevTitle', { title, status: 'Development', slotId: AT_SLOT_ID || undefined, ...common });
-    }
-    closeAddTitleModal();
-    loadTitles();
-    // refresh side panels if we created something new mid-flow
-    if (method.created  && typeof loadMethods  === 'function') loadMethods();
-    if (product.created && typeof loadProducts === 'function') loadProducts();
-    if (AT_SLOT_ID && typeof loadCampaignStrategies === 'function') loadCampaignStrategies();
-  } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-    btn.disabled = false; btn.textContent = 'Create';
-  }
-}
-
 // ── GENERATE ASSETS MODAL (🧩 per title row) ─────────────────────────
 // Prefills every field from the existing title (getTitleDetails), lets the
 // operator adjust, then generateTitleAssets creates N real Asset records
@@ -5098,6 +4662,26 @@ function gaSpecInputChanged() {
 function gaUpdateContextVisibility() {
   const wrap = document.getElementById('gaContextModeWrap');
   if (wrap) wrap.style.display = 'none';
+}
+
+// Shared product/method picker lists — used by the Generate Assets modal's
+// autocomplete (gaFilter/gaResolve below). Used to also feed the removed
+// Add Idea modal; kept here since Generate Assets still depends on it.
+let AT_METHODS = [], AT_PRODUCTS = [];
+async function atEnsureLists() {
+  try {
+    // seed instantly from the page-level caches so the dropdown isn't empty…
+    if (!AT_METHODS.length && typeof ALL_METHODS !== 'undefined' && ALL_METHODS.length) AT_METHODS = ALL_METHODS;
+    if (!AT_PRODUCTS.length && typeof ALL_PRODUCTS !== 'undefined' && ALL_PRODUCTS.length) AT_PRODUCTS = ALL_PRODUCTS;
+    // …but ALWAYS refetch: caching-once meant products/methods created after
+    // page load (or from another tab/session) never appeared in the picker
+    const [m, p] = await Promise.all([
+      w('searchMethods', { query: '' }),
+      w('searchProducts', { query: '' }),
+    ]);
+    if (m.methods && m.methods.length) AT_METHODS = m.methods;
+    if (p.products && p.products.length) AT_PRODUCTS = p.products;
+  } catch(e) { /* lists are a convenience — typing a new name still works */ }
 }
 
 const GA_KIND_CFG = {
@@ -5749,7 +5333,7 @@ function renderStrategiesPanel(strategies) {
         const badge = titles.length
           ? titles.map(t => `<a href="https://www.notion.so/${t.id}" target="_blank" title="${esc(t.name)}" style="font-size:9px;color:#68d391;text-decoration:none;flex-shrink:0;">✓</a>`).join(' ')
           : `<span style="font-size:9px;color:#e8ff47;flex-shrink:0;">○ open</span>`;
-        const createBtn = `<button onclick="openCreateTitleFromSlotModal('${slot.id}','${s.id}')" title="Create a title + script from this slot" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">+ title</button>`;
+        const createBtn = `<button onclick="openCreateTitleFromSlotModal({slotId:'${slot.id}',strategyId:'${s.id}'})" title="Create a title + script from this slot" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">+ title</button>`;
         return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
           + `<span style="flex:1;min-width:0;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(slot.name)} — ${esc((slot.angle || '').slice(0, 80))}</span>`
           + badge
@@ -5778,49 +5362,69 @@ function renderStrategiesPanel(strategies) {
   }).join('');
 }
 
-// ── Create Title from Strategy Slot ("+ title" on a slot row) ──────────
-// One AI call: title + full script, grounded in this exact slot's angle
-// and its parent Growth Strategy, for whichever Method the operator picks
-// here (not fixed by the slot — one slot can become several titles, one
-// per method). Reuses the already-loaded CAMPAIGN_STRATEGIES_CACHE to find
-// the slot/strategy/product context instead of a second round-trip.
-let CTS_SLOT = null;
-function openCreateTitleFromSlotModal(slotId, strategyId) {
-  const strat = (CAMPAIGN_STRATEGIES_CACHE || []).find(s => s.id === strategyId);
-  let slot = null, groupingName = '';
-  if (strat) {
-    for (const g of (strat.groupings || [])) {
+// ── Generate Title modal (the ONE title-creation flow) ──────────────────
+// Product (or none) -> Slot (or none, scoped to that product's Growth
+// Strategy) -> Method -> Generate. Replaces the old batch "Generate
+// Titles" modal and "Add Idea" modal — both retired. Strategy already does
+// the bulk step (generateGrowthStrategy bulk-creates the Slots); titles get
+// filled in one at a time from here, at whatever pace, same as product
+// creation. One AI call (generateTitleFromSlot) writes a real title AND
+// its full script into the page body whether or not a slot/product was
+// picked. Opened three ways: "+" next to Development Titles (nothing
+// preset), a Method row click (method preset), or "+ title" on a Strategy
+// Slot row (product+slot preset, from the Strategies tab).
+let CTS_SLOT = null; // set only when opened with a preset slot; read by submit as a flag, not the source of truth (the live dropdowns are)
+
+function ctsFindSlot(slotId) {
+  if (!slotId) return null;
+  for (const s of (CAMPAIGN_STRATEGIES_CACHE || [])) {
+    for (const g of (s.groupings || [])) {
       const found = (g.slots || []).find(sl => sl.id === slotId);
-      if (found) { slot = found; groupingName = g.name; break; }
+      if (found) return { slot: found, groupingName: g.name, strategyName: s.name, strategyId: s.id, productId: s.productId, productName: s.productName };
     }
   }
-  if (!slot) { alert('Could not find that strategy slot — try refreshing the Strategies tab.'); return; }
-  CTS_SLOT = { id: slotId, strategyId, name: slot.name, angle: slot.angle, methodName: slot.methodName, groupingName, productName: strat.productName || '' };
-
-  document.getElementById('ctsSlotContext').innerHTML =
-    `<strong>${esc(strat.name)}</strong> → ${esc(groupingName)}: ${esc(slot.name)}<br>`
-    + `<span style="color:#888;">${esc(slot.angle || '')}</span>`
-    + (strat.productName ? `<br><span style="color:#666;">Product: ${esc(strat.productName)}</span>` : '');
-
-  // Methods are global (script length, 30s Reel vs. Carousel vs. long-form,
-  // etc.) and completely independent of Growth Strategy/campaign — every
-  // existing Live method should be pickable here, not just ones already
-  // attached to this campaign. Seed instantly from ALL_METHODS (populated
-  // on page load), then always refetch so a method created elsewhere since
-  // then still shows up (same rationale as atEnsureLists for Add Idea).
-  ctsRenderMethodOptions(ALL_METHODS || [], slot.methodName);
-  w('searchMethods', { query: '' }).then(r => {
-    if (r.methods && r.methods.length && CTS_SLOT && CTS_SLOT.id === slotId) {
-      ALL_METHODS = r.methods;
-      ctsRenderMethodOptions(ALL_METHODS, slot.methodName);
-    }
-  }).catch(() => {});
-
-  document.getElementById('ctsGuidance').value = '';
-  document.getElementById('ctsStatus').textContent = '';
-  const btn = document.getElementById('ctsGoBtn');
-  btn.disabled = false; btn.textContent = 'Generate';
-  document.getElementById('ctsModal').classList.add('open');
+  return null;
+}
+function ctsPopulateProducts(selectedId) {
+  const sel = document.getElementById('ctsProduct');
+  sel.innerHTML = '<option value="">— none —</option>' + (PRODUCT_ITEMS || []).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  sel.value = selectedId || '';
+}
+function ctsPopulateSlots(productId, selectedSlotId) {
+  const sel = document.getElementById('ctsSlot');
+  if (!productId) { sel.innerHTML = '<option value="">— none —</option>'; sel.disabled = true; sel.value = ''; return; }
+  sel.disabled = false;
+  const opts = ['<option value="">— none —</option>'];
+  (CAMPAIGN_STRATEGIES_CACHE || []).filter(s => s.productId === productId).forEach(s => {
+    (s.groupings || []).forEach(g => {
+      (g.slots || []).forEach(sl => {
+        const mark = sl.status === 'Filled' ? '✓' : '○';
+        opts.push(`<option value="${sl.id}">${mark} ${esc(s.name)} → ${esc(g.name)}: ${esc((sl.angle || '').slice(0, 60))}</option>`);
+      });
+    });
+  });
+  sel.innerHTML = opts.join('');
+  sel.value = selectedSlotId || '';
+}
+function ctsUpdateSlotContext() {
+  const found = ctsFindSlot(document.getElementById('ctsSlot').value);
+  const ctxEl = document.getElementById('ctsSlotContext');
+  if (!found) { ctxEl.style.display = 'none'; ctxEl.innerHTML = ''; return; }
+  ctxEl.style.display = 'block';
+  ctxEl.innerHTML = `<strong>${esc(found.strategyName)}</strong> → ${esc(found.groupingName)}: ${esc(found.slot.name)}<br><span style="color:#888;">${esc(found.slot.angle || '')}</span>`;
+}
+function ctsOnProductChange() {
+  ctsPopulateSlots(document.getElementById('ctsProduct').value, null);
+  ctsOnSlotChange();
+}
+function ctsOnSlotChange() {
+  ctsUpdateSlotContext();
+  const found = ctsFindSlot(document.getElementById('ctsSlot').value);
+  const methodSel = document.getElementById('ctsMethod');
+  if (found && methodSel && !methodSel.value && found.slot.methodName) {
+    const m = (ALL_METHODS || []).find(mm => mm.name === found.slot.methodName);
+    if (m) methodSel.value = m.id;
+  }
 }
 function ctsRenderMethodOptions(methods, preferredName) {
   const sel = document.getElementById('ctsMethod');
@@ -5833,6 +5437,51 @@ function ctsRenderMethodOptions(methods, preferredName) {
   if (prevValue && methods.some(m => m.id === prevValue)) sel.value = prevValue;
   else if (preferredName) { const m = methods.find(m => m.name === preferredName); if (m) sel.value = m.id; }
 }
+
+// opts: {} (fresh, from "+ Add title") | {methodId} (from a Method row
+// click) | {slotId, strategyId} (from "+ title" on a Strategy Slot row).
+function openCreateTitleFromSlotModal(opts) {
+  opts = opts || {};
+  CTS_SLOT = null;
+  let presetProductId = '', presetSlotId = '', slotMethodNameHint = null;
+
+  if (opts.slotId && opts.strategyId) {
+    const found = ctsFindSlot(opts.slotId);
+    if (!found || found.strategyId !== opts.strategyId) { alert('Could not find that strategy slot — try refreshing the Strategies tab.'); return; }
+    CTS_SLOT = { id: opts.slotId, strategyId: opts.strategyId };
+    presetProductId = found.productId || '';
+    presetSlotId = opts.slotId;
+    slotMethodNameHint = found.slot.methodName;
+  }
+
+  ctsPopulateProducts(presetProductId);
+  ctsPopulateSlots(presetProductId, presetSlotId);
+  ctsUpdateSlotContext();
+
+  // Methods are global (script length, 30s Reel vs. Carousel vs. long-form,
+  // etc.) and completely independent of Growth Strategy/campaign — every
+  // existing Live method should be pickable here, not just ones already
+  // attached to this campaign. Seed instantly from ALL_METHODS (populated
+  // on page load), then always refetch so a method created elsewhere since
+  // then still shows up.
+  const methodSel = document.getElementById('ctsMethod');
+  methodSel.value = '';
+  ctsRenderMethodOptions(ALL_METHODS || [], slotMethodNameHint);
+  if (opts.methodId) methodSel.value = opts.methodId;
+  w('searchMethods', { query: '' }).then(r => {
+    if (r.methods && r.methods.length) {
+      ALL_METHODS = r.methods;
+      ctsRenderMethodOptions(ALL_METHODS, slotMethodNameHint);
+      if (opts.methodId) methodSel.value = opts.methodId;
+    }
+  }).catch(() => {});
+
+  document.getElementById('ctsGuidance').value = '';
+  document.getElementById('ctsStatus').textContent = '';
+  const btn = document.getElementById('ctsGoBtn');
+  btn.disabled = false; btn.textContent = 'Generate';
+  document.getElementById('ctsModal').classList.add('open');
+}
 function closeCreateTitleFromSlotModal() {
   document.getElementById('ctsModal').classList.remove('open');
   CTS_SLOT = null;
@@ -5841,22 +5490,23 @@ document.getElementById('ctsModal').addEventListener('click', function(e) {
   if (e.target === this) closeCreateTitleFromSlotModal();
 });
 async function submitCreateTitleFromSlot() {
-  if (!CTS_SLOT) return;
   const methodId = document.getElementById('ctsMethod').value;
   const status = document.getElementById('ctsStatus');
   if (!methodId) { status.textContent = 'Pick a method first.'; status.style.color = '#fc8181'; return; }
+  const slotId = document.getElementById('ctsSlot').value || undefined;
+  const productId = document.getElementById('ctsProduct').value || undefined;
   const guidance = document.getElementById('ctsGuidance').value.trim();
   const btn = document.getElementById('ctsGoBtn');
   btn.disabled = true; btn.textContent = 'Generating…';
   status.style.color = '#888';
   status.textContent = 'Writing title and script…';
   try {
-    const data = await w('generateTitleFromSlot', { slotId: CTS_SLOT.id, methodId, guidance: guidance || undefined, campaignId: CAMPAIGN_ID });
+    const data = await w('generateTitleFromSlot', { slotId, methodId, productId, guidance: guidance || undefined, campaignId: CAMPAIGN_ID });
     if (data.error) throw new Error(data.error);
     status.textContent = `✓ Created "${data.title}"`;
     status.style.color = '#68d391';
     btn.textContent = 'Done';
-    loadCampaignStrategies();
+    if (slotId && typeof loadCampaignStrategies === 'function') loadCampaignStrategies();
     if (typeof loadTitles === 'function') loadTitles();
     setTimeout(closeCreateTitleFromSlotModal, 1500);
   } catch(e) {
@@ -6446,34 +6096,6 @@ async function runRegenKeywords() {
   if (btn) { btn.disabled = false; btn.textContent = '⟳ regen'; }
 }
 </script>
-<div id="method-gen-modal" onclick="if(event.target===this)closeMethodGenModal()">
-  <div class="method-gen-box">
-    <h3 id="mgm-title">Generate Titles</h3>
-    <div class="method-gen-subtitle">Select a product to generate content titles for this method</div>
-    <div class="method-gen-products" id="mgm-products"></div>
-    <div class="method-gen-subtitle" style="margin-top:10px;">Research scope</div>
-    <div style="display:flex;gap:14px;margin-top:4px;font-size:12px;color:#ccc;">
-      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="mgmContext" value="blend" checked> Blend — campaign + product</label>
-      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="mgmContext" value="isolate"> Isolate — product only</label>
-    </div>
-    <div id="mgm-keyword-wrap" style="display:none;margin-top:10px;">
-      <div class="method-gen-subtitle">Seed keyword <span style="color:#777;font-weight:normal;">— optional grounding (required-in-effect for SEO Post); research is sometimes clustered, pick one angle</span></div>
-      <select id="mgm-keyword" class="modal-ta" style="margin-top:4px;width:100%;"></select>
-    </div>
-    <div id="mgm-strategy-wrap" style="display:none;margin-top:10px;">
-      <div class="method-gen-subtitle">Growth Strategy <span style="color:#777;font-weight:normal;">— optional; ground these titles in an approved recommendation for this product</span></div>
-      <select id="mgm-strategy" class="modal-ta" style="margin-top:4px;width:100%;">
-        <option value="">No strategy</option>
-      </select>
-      <textarea id="mgm-strategy-guidance" class="modal-ta" rows="2" placeholder="Optional guidance on how to apply the strategy above to this run (overrides/refines it)..." style="margin-top:6px;font-size:11px;line-height:1.5;resize:vertical;"></textarea>
-    </div>
-    <div class="method-gen-actions">
-      <button class="method-gen-cancel" onclick="closeMethodGenModal()">Cancel</button>
-      <button class="method-gen-go" id="mgm-go" onclick="runMethodGenerate()" disabled>Generate</button>
-    </div>
-    <div class="method-gen-status" id="mgm-status"></div>
-  </div>
-</div>
 <div id="build-carousel-modal" onclick="if(event.target===this)closeBuildModal()">
   <div class="bc-box">
     <h3>Build Carousel</h3>

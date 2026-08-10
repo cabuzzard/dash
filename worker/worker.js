@@ -6536,38 +6536,39 @@ Return ONLY this JSON object, no other text, no markdown fences:
       }
 
       // ── generateTitleFromSlot ──
-      // The "+ title" button on a Strategy Slot row in the campaign
-      // microsite's Strategies tab. Distinct from both generateMethodTitles
-      // (batch, per-Method, titles only — script content is a separate
-      // follow-up limited to slide/subhead formats) and createDevTitle
-      // (manual, no AI) — this is a single-shot AI action scoped to exactly
-      // one planned slot: pick a Method, optionally add guidance, get back
-      // one real title with its full script/content already written into
-      // the page body, and the slot marked Filled. Deliberately does NOT
-      // pull in campaign-wide research/trends the way generateMethodTitles
-      // does — the slot's own angle + its parent Growth Strategy's full
-      // body are already the grounding; this stays tightly scoped to them.
-      // A slot can be filled more than once (one title per Method) — the
-      // slot's Title relation is appended to, never replaced, and Status
-      // simply stays "Filled" once true.
+      // The single "Generate Title" modal — Product (or none) → Slot (or
+      // none) → Method → Generate, the only title-creation entry point now
+      // (Generate Titles' batch modal and Add Idea were retired in favor of
+      // this one). slotId is optional: with one, this is scoped to exactly
+      // that planned angle + its parent Growth Strategy (unchanged
+      // behavior). Without one, it's the same single-shot AI title+script
+      // write, grounded in just the product's positioning Strategy + the
+      // method's framework + guidance — no slot to fill, no campaign-wide
+      // research/trend blending either way. A slot can be filled more than
+      // once (one title per Method) — its Title relation is appended to,
+      // never replaced, and Status simply stays "Filled" once true.
       if (body.action === "generateTitleFromSlot") {
-        const { slotId, methodId, guidance, campaignId: campaignIdParam } = body;
-        if (!slotId || !methodId) return json({ error: "slotId and methodId required" }, 400);
+        const { slotId, methodId, guidance, campaignId: campaignIdParam, productId: productIdParam } = body;
+        if (!methodId) return json({ error: "methodId required" }, 400);
+        if (!slotId && !campaignIdParam) return json({ error: "campaignId required when no slot is given" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
-        const slotPage = await fetch(`https://api.notion.com/v1/pages/${dash(slotId)}`, { headers: hdr }).then(r => r.json());
-        if (!slotPage.properties) return json({ error: slotPage.message || "Strategy Slot not found" }, 404);
-        const sp = slotPage.properties;
-        const slotName = (sp.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Slot";
-        const grouping = (sp.Grouping?.rich_text || []).map(t => t.plain_text).join("");
-        const angle = (sp.Angle?.rich_text || []).map(t => t.plain_text).join("");
-        const platform = (sp.Platform?.rich_text || []).map(t => t.plain_text).join("");
-        const growthStrategyId = (sp["Growth Strategy"]?.relation || [])[0]?.id || null; // already dashed (from Notion)
-        const productId = (sp.Product?.relation || [])[0]?.id || null;                   // already dashed
-        const campaignId = (sp.Campaign?.relation || [])[0]?.id || (campaignIdParam ? dash(campaignIdParam) : null);
-        const existingTitleIds = (sp.Title?.relation || []).map(r => r.id.replace(/-/g, ""));
+        let slotName = '', grouping = '', angle = '', platform = '', growthStrategyId = null, productId = productIdParam ? dash(productIdParam) : null, campaignId = campaignIdParam ? dash(campaignIdParam) : null, existingTitleIds = [];
+        if (slotId) {
+          const slotPage = await fetch(`https://api.notion.com/v1/pages/${dash(slotId)}`, { headers: hdr }).then(r => r.json());
+          if (!slotPage.properties) return json({ error: slotPage.message || "Strategy Slot not found" }, 404);
+          const sp = slotPage.properties;
+          slotName = (sp.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Slot";
+          grouping = (sp.Grouping?.rich_text || []).map(t => t.plain_text).join("");
+          angle = (sp.Angle?.rich_text || []).map(t => t.plain_text).join("");
+          platform = (sp.Platform?.rich_text || []).map(t => t.plain_text).join("");
+          growthStrategyId = (sp["Growth Strategy"]?.relation || [])[0]?.id || null; // already dashed (from Notion)
+          productId = (sp.Product?.relation || [])[0]?.id || productId;             // already dashed — slot's own relation wins if both given
+          campaignId = (sp.Campaign?.relation || [])[0]?.id || campaignId;
+          existingTitleIds = (sp.Title?.relation || []).map(r => r.id.replace(/-/g, ""));
+        }
 
         const [methodPage, methodBody, growthStrategyBody, productPage] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, { headers: hdr }).then(r => r.json()),
@@ -6600,19 +6601,17 @@ Return ONLY this JSON object, no other text, no markdown fences:
           }
         }
 
-        const prompt = `You are a content writer. Write ONE deliverable title and its full script/content for a specific planned content angle.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content writer. Write ONE deliverable title and its full script/content${slotId ? ' for a specific planned content angle' : ''}.
 
-SLOT: ${slotName} (grouping: "${grouping}")
-PLANNED ANGLE: ${angle}
-${platform ? `PLATFORM: ${platform}\n` : ''}
+${slotId ? `SLOT: ${slotName} (grouping: "${grouping}")\nPLANNED ANGLE: ${angle}\n` : ''}${platform ? `PLATFORM: ${platform}\n` : ''}
 METHOD: ${methodName}
 METHOD FRAMEWORK:
 ${methodBody || "(No framework defined — infer format from the method name and best practices)"}
 
 ${productSection}
-${growthStrategyBody ? `\nGROWTH STRATEGY (full context this slot was planned under — stay consistent with its rationale/platform):\n${growthStrategyBody}\n` : ''}${(guidance || '').trim() ? `\nOPERATOR GUIDANCE (overrides/refines how the strategy above should be applied to this specific title — follow this over the strategy's general direction wherever they conflict):\n${guidance.trim()}\n` : '\n(No operator guidance given — write strictly from the strategy and angle above.)\n'}
+${growthStrategyBody ? `\nGROWTH STRATEGY (full context this slot was planned under — stay consistent with its rationale/platform):\n${growthStrategyBody}\n` : ''}${(guidance || '').trim() ? `\nOPERATOR GUIDANCE (overrides/refines how the strategy above should be applied to this specific title — follow this over the strategy's general direction wherever they conflict):\n${guidance.trim()}\n` : `\n(No operator guidance given — write strictly from ${slotId ? 'the strategy and angle above' : 'the product/method context above'}.)\n`}
 INSTRUCTIONS:
-- Write a specific, concrete deliverable title for this exact angle — refine/sharpen the planned angle above into a real title, don't just restate it verbatim.
+- Write a specific, concrete deliverable title${slotId ? ' for this exact angle — refine/sharpen the planned angle above into a real title, don\'t just restate it verbatim' : ' grounded in the product/method context and any guidance above'}.
 - Decide the right script format from the method: "slides" if the method framework/name is about a carousel/swipe/multi-slide post, "subheads" if it's an SEO/pillar/outline post, otherwise "script" for everything else (Reels, talking-head videos, single posts, emails, etc.).
 - "slides": write EXACTLY 7 slides (headline+body each), a caption (150-200 words), and 8-10 hashtags.
 - "subheads": write EXACTLY 3 H2-style subheads, each with a 2-3 sentence description.
@@ -6707,11 +6706,14 @@ Only populate the array(s)/fields relevant to the chosen format; leave the other
         // never replace, so a second/third title from a different Method
         // doesn't erase the link to an earlier one. Best-effort: a failure
         // here doesn't undo the title, which already saved successfully.
-        const mergedIds = Array.from(new Set([...existingTitleIds, newTitleId]));
-        await fetch(`https://api.notion.com/v1/pages/${dash(slotId)}`, {
-          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Status": { select: { name: "Filled" } }, "Title": { relation: mergedIds.map(id => ({ id: dash(id) })) } } }),
-        }).catch(() => {});
+        // Only applicable when a slot was actually given.
+        if (slotId) {
+          const mergedIds = Array.from(new Set([...existingTitleIds, newTitleId]));
+          await fetch(`https://api.notion.com/v1/pages/${dash(slotId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Status": { select: { name: "Filled" } }, "Title": { relation: mergedIds.map(id => ({ id: dash(id) })) } } }),
+          }).catch(() => {});
+        }
 
         return json({ success: true, id: newTitleId, title: titleText, format });
       }
