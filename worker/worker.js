@@ -7833,6 +7833,102 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return json({ success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode });
         }
 
+        // ── "Template CSV Export"-style table asset: ONE finished Page |
+        // Field | Content table, not N visual concept options. The generic
+        // concept-options path below has a hardcoded JSON schema built
+        // around an image description + caption per option — it cannot
+        // produce a table no matter what the Method's own framework says,
+        // which is what was actually breaking ("Could not parse generated
+        // concepts": Claude trying to reconcile a table-shaped instruction
+        // with an incompatible forced schema). This reshapes the title's
+        // pillar content into a real field-by-field manifest instead —
+        // grounded in the Method's own framework (if it names specific
+        // pages/fields to follow) and the picked Platform — meant to be
+        // ported into a template (e.g. Canva) later, no MCP/Canva
+        // involvement at generation time. Skips the grading gate: a
+        // technical table isn't a viral concept to score.
+        if (/template csv/i.test(assetType)) {
+          const [pillarContent, methodFrameworkText] = await Promise.all([
+            extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
+            (methodId && methodId !== "__none__") ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
+          ]);
+          if (!pillarContent) return json({ error: "This title has no pillar content yet — Generate Assets reshapes existing content, it doesn't compose from scratch. Pillar content writes automatically on title creation; wait for it to finish, then try again." }, 400);
+
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing a table-formatted content manifest for this title — a Page | Field | Content table reshaping the pillar content below into the field structure a template (e.g. a multi-page Canva carousel design) will later be filled from. This is a technical handoff document, not a social post: no hashtags, no CTA copy, no visual/image descriptions.
+
+TITLE: ${title}
+${platformName ? `PLATFORM: ${platformName}\n` : ''}${methodFrameworkText ? `METHOD FRAMEWORK (if this defines specific page/field names or a page count, follow them exactly — otherwise use your judgment):\n${methodFrameworkText.slice(0, 2000)}\n` : ''}
+PILLAR CONTENT (the source material — reshape THIS into the table; don't invent new facts beyond what's here):
+${pillarContent}
+${(description || '').trim() ? `\nOPERATOR OVERRIDE (follow this): ${description.trim()}\n` : ''}
+Produce one row per distinct field on each page/slide (e.g. Headline, Body, Badge, Payoff) — real, specific, ready-to-port content, never placeholders.
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "rows": [ { "page": "...", "field": "...", "content": "..." } ] }`;
+
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+          let table;
+          try {
+            const raw = aiData.content?.[0]?.text || "";
+            const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+            if (start === -1 || end === -1) throw new Error("No JSON object found");
+            table = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          } catch(e) {
+            return json({ error: "Failed to parse table JSON: " + e.message }, 502);
+          }
+          const rows = (Array.isArray(table.rows) ? table.rows : []).filter(r => r && r.field);
+          if (!rows.length) return json({ error: "No table rows generated — try again" }, 502);
+
+          const mdRows = rows.map(r => `| ${String(r.page||'').replace(/\|/g,'/')} | ${String(r.field||'').replace(/\|/g,'/')} | ${String(r.content||'').replace(/\|/g,'/').replace(/\n/g,' ')} |`);
+          const markdownTable = ["| Page | Field | Content |", "|---|---|---|", ...mdRows].join("\n");
+
+          const assetProps = {
+            "Asset Title":      { title: [{ type: "text", text: { content: String(title).slice(0, 200) } }] },
+            "Asset Status":     { select: { name: "Publish" } },
+            "Asset Type":       { select: { name: String(assetType).slice(0, 100) } },
+            "Body":             { rich_text: [{ type: "text", text: { content: markdownTable.slice(0, 1990) } }] },
+            "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+          };
+          if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
+          if (platformId) assetProps["Platform"] = { relation: [{ id: dsDash(platformId) }] };
+          const assetResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+          });
+          const assetResult = await assetResp.json();
+          if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create table asset" }, 502);
+          const assetId = assetResult.id.replace(/-/g, "");
+
+          // Full table into the asset's own page body — Body property above
+          // is a truncated preview only. Grouped by page (a heading_3 per
+          // page, matching the block conventions used elsewhere so this
+          // stays consistent with how other titles/assets read).
+          const rtBlock = text => text ? [{ type: "text", text: { content: String(text) } }] : [];
+          const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+          const children = [];
+          let pageLabel = null;
+          rows.forEach(r => {
+            if (r.page !== pageLabel) { pageLabel = r.page; children.push({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(String(pageLabel || 'Untitled page')) } }); }
+            children.push(para(`${r.field}: ${r.content}`));
+          });
+          for (let i = 0; i < children.length; i += 90) {
+            await fetch(`https://api.notion.com/v1/blocks/${dsDash(assetId)}/children`, {
+              method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ children: children.slice(i, i + 90) }),
+            }).catch(() => {});
+          }
+
+          return json({ success: true, created: 1, assets: [{ id: assetId, title }], rowCount: rows.length });
+        }
+
         // design spec: explicit modal pick wins, else campaign default →
         // product override → hard defaults
         let spec = { ...DESIGN_SPEC_DEFAULTS };
