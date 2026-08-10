@@ -1071,41 +1071,21 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <input class="modal-ta" id="gaSourceInput" type="text" placeholder="e.g. https://example.org/careers/webmaster" autocomplete="off" />
       </div>
 
-      <div class="ga-hide-for-carousel">
-        <label class="lm-label">Product <span style="color:#777;font-weight:normal;">— pick existing or type a new name</span></label>
-        <div style="position:relative;margin-bottom:10px;">
-          <input class="modal-ta" id="gaProductInput" type="text" placeholder="Search products…" autocomplete="off"
-                 oninput="gaFilter('product')" onfocus="gaFilter('product')"
-                 onblur="setTimeout(()=>{const d=document.getElementById('gaProductDD'); if(d) d.style.display='none';},180)" />
-          <div id="gaProductDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
-        </div>
-        <div id="gaStrategyLink" style="margin:-4px 0 10px;"></div>
-      </div>
-
-      <div class="ga-hide-for-carousel">
-        <label class="lm-label">Platform <span style="color:#777;font-weight:normal;">— from the Platforms DB; what this asset is packaged for (optional)</span></label>
-        <select id="gaPlatformInput" class="modal-ta" style="margin-bottom:10px;">
-          <option value="">— none —</option>
-        </select>
-      </div>
-
-      <label class="lm-label">Design spec <span style="color:#777;font-weight:normal;">— which visual system these assets use; campaign globals plus any saved specs</span></label>
-      <select class="modal-ta" id="gaSpecInput" style="margin-bottom:10px;" onchange="gaSpecInputChanged()">
-        <option value="">Campaign default</option>
+      <label class="lm-label">Platform <span style="color:#777;font-weight:normal;">— from the Platforms DB; what this asset is packaged for (optional)</span></label>
+      <select id="gaPlatformInput" class="modal-ta" style="margin-bottom:10px;">
+        <option value="">— none —</option>
       </select>
 
-      <label class="lm-label">Override guidelines <span style="color:#777;font-weight:normal;">— optional; free-text direction that overrides the defaults above, including inventing a new carousel type/format or any other structural override, not just tone. A sample image is optional too.</span></label>
-      <input class="modal-ta" id="gaDesignRefImageInput" type="file" accept="image/*" style="height:auto;padding:8px 10px;margin-bottom:8px;" />
-      <textarea class="modal-ta" id="gaDesignRefNotesInput" rows="3" placeholder="e.g. lean into the campaign's editorial palette; avoid stock-photo energy; keep hooks punchier than usual — or: use a 5-slide listicle format instead of the 7-slide default, one line per item..." style="font-size:12px;line-height:1.5;resize:vertical;margin-bottom:10px;"></textarea>
-
-      <label class="lm-label">Description of content <span style="color:#777;font-weight:normal;">— optional override/grounding note</span></label>
-      <textarea class="modal-ta" id="gaDescInput" rows="3" style="margin-bottom:10px;resize:vertical;"></textarea>
-
-      <label class="lm-label">Seed keywords <span style="color:#777;font-weight:normal;">— optional, supplements the campaign's own Research keywords</span></label>
-      <input class="modal-ta" id="gaKeywordsInput" type="text" autocomplete="off" style="margin-bottom:10px;" />
-
-      <label class="lm-label">Research instructions <span style="color:#777;font-weight:normal;">— optional grounding/override note</span></label>
-      <textarea class="modal-ta" id="gaResearchInput" rows="3" style="margin-bottom:10px;resize:vertical;"></textarea>
+      <!-- This modal takes a title whose content is already fully composed
+           (from strategy/research/product, upstream of here) and reshapes it
+           into a method-specific asset — it is not a content-writing form.
+           Everything that used to duplicate content composition (Design
+           Spec, Product, a separate image ref, Description/Seed Keywords/
+           Research Instructions, the injected Research Guidelines field —
+           see RG_MODAL_IDS below) was removed per operator instruction; this
+           one field is the only override surface left. -->
+      <label class="lm-label">Override / notes <span style="color:#777;font-weight:normal;">— optional; free-text direction that overrides the defaults, e.g. structure/format changes, tone, or a specific angle for this asset.</span></label>
+      <textarea class="modal-ta" id="gaDesignRefNotesInput" rows="4" placeholder="e.g. use a 5-slide listicle instead of the 7-slide default; lean into the campaign's editorial palette; keep hooks punchier than usual..." style="font-size:12px;line-height:1.5;resize:vertical;margin-bottom:10px;"></textarea>
 
       <div id="gaContextModeWrap" style="display:none;margin-bottom:10px;">
         <label class="lm-label">Research scope</label>
@@ -1234,7 +1214,7 @@ function esc(s) {
 // all AI research/generation prompts. A visible editable field is injected
 // into each research/generation modal when it opens — edit it anywhere and
 // the new value applies to every subsequent run on this device.
-const RG_MODAL_IDS = ['ctsModal','smPromptModal','fieldResearchModal','genAssetsModal','ecosystemModal','productMethodsModal','design-spec-modal'];
+const RG_MODAL_IDS = ['ctsModal','smPromptModal','fieldResearchModal','ecosystemModal','productMethodsModal','design-spec-modal'];
 function rgVal() { try { return (localStorage.getItem('rg_guidelines') || '').trim(); } catch(e) { return ''; } }
 function rgSave(v) { try { localStorage.setItem('rg_guidelines', (v || '').trim()); } catch(e) {} }
 function rgInject(modalEl) {
@@ -4526,27 +4506,20 @@ function gaUpdateSkillHint() {
   const isCarousel = match?.workerAction === 'generateCarouselPreview';
   const isAvatar = match?.workerAction === 'generateAvatarScript';
   const isJobAsset = match?.workerAction === 'generateJobAsset';
-  const isWorkerAction = !!match?.workerAction;
-  // Product/Platform live inside .ga-hide-for-carousel and are hidden for
-  // every other native worker method (they don't use them) — but Resume/
-  // Upwork Proposal specifically need the Product picker visible, since
-  // Keywords + Work History are resolved from it.
-  document.querySelectorAll('.ga-hide-for-carousel').forEach(el => { el.style.display = (isWorkerAction && !isJobAsset) ? 'none' : ''; });
   if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; if (avatarWrap) avatarWrap.style.display = 'none'; if (jobWrap) jobWrap.style.display = 'none'; return; }
   hint.style.display = 'flex';
   document.getElementById('gaSkillHintText').textContent = match.hint;
   const btn = document.getElementById('gaSkillHintBtn');
+  // The "Run {skill} in Claude" button is parked (hidden) for every
+  // method, skill-only or worker-native — per operator instruction, the
+  // modal is being stripped down to one working method (Carousel) with
+  // everything else re-added non-destructively later. The hint text still
+  // shows so the method's status is visible; only the action button is
+  // gone. onclick stays wired below so un-hiding it later is a one-line
+  // change, not a rebuild.
+  btn.style.display = 'none';
 
   if (match.workerAction) {
-    // No second button here — the previews ARE the asset, so the one
-    // "Generate" button at the bottom of the modal does this directly for
-    // a carousel method (see submitGenAssets). This box is informational
-    // only for that case. Design Spec + Override Guidelines stay visible
-    // for every method now (not just carousel/text-video) since they're
-    // harmless/no-op when unused — only truly method-specific fields
-    // (Carousel Style, Presenter Avatar, Work History) still toggle per
-    // method here.
-    document.getElementById('gaSkillHintBtn').style.display = 'none';
     if (typeWrap) typeWrap.style.display = isCarousel ? 'block' : 'none';
     if (avatarWrap) avatarWrap.style.display = isAvatar ? 'block' : 'none';
     if (jobWrap) jobWrap.style.display = isJobAsset ? 'block' : 'none';
@@ -4556,7 +4529,6 @@ function gaUpdateSkillHint() {
   }
   if (typeWrap) typeWrap.style.display = 'none';
   if (avatarWrap) avatarWrap.style.display = 'none';
-  document.getElementById('gaSkillHintBtn').style.display = '';
 
   btn.textContent = `Run ${match.skill} in Claude`;
   btn.onclick = () => {
@@ -4624,50 +4596,6 @@ function gaLoadCareerAvatars() {
 }
 
 let GA_PRODUCT_ID = null, GA_PRODUCT_NAME = '';
-// Populate the design-spec picker with every spec attached to the campaign
-// (rebuilds each open, so it resets to "Campaign default" and picks up
-// newly-created specs). The default spec is labeled.
-async function gaLoadSpecs() {
-  const sel = document.getElementById('gaSpecInput');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">Campaign default</option>';
-  const cid = GA_CAMPAIGN_ID
-    || (typeof CAMPAIGN_ID !== 'undefined' ? CAMPAIGN_ID : '')
-    || (typeof PRODUCT_CAMPAIGN_ID !== 'undefined' ? PRODUCT_CAMPAIGN_ID : '');
-  if (!cid) return;
-  try {
-    const d = await w('getCampaignDesignSpecs', { campaignId: cid });
-    (d.specs || []).forEach(s => {
-      const o = document.createElement('option');
-      o.value = s.id;
-      o.textContent = s.name + (d.attachedId === s.id ? ' (default)' : '');
-      sel.appendChild(o);
-    });
-  } catch(e) { /* picker stays on Campaign default */ }
-  const genOpt = document.createElement('option');
-  genOpt.value = '__generate__';
-  genOpt.textContent = '✨ Generate new spec (opens Claude)…';
-  sel.appendChild(genOpt);
-}
-
-// Picking "Generate new spec" hands off to the create-design-specs SKILL
-// (chat-only — it's the real thing: a Canva-backed design via the Canva
-// MCP, not a flat AI image the worker could fake) instead of trying to
-// reimplement design generation here. Revert the select afterward so this
-// never accidentally submits with the sentinel value.
-let GA_SPEC_PREV_VALUE = '';
-function gaSpecInputChanged() {
-  const sel = document.getElementById('gaSpecInput');
-  if (sel.value === '__generate__') {
-    sel.value = GA_SPEC_PREV_VALUE;
-    const campaignId = GA_CAMPAIGN_ID || CAMPAIGN_ID;
-    const campaignName = (document.getElementById('r-name')?.textContent || '').trim();
-    const prompt = `Run the create-design-specs skill for campaign "${campaignName || campaignId}" (Campaigns DB page ID: ${campaignId}). Generate 3 researched, Canva-backed design specs.`;
-    window.open('https://claude.ai/new?q=' + encodeURIComponent(prompt), '_blank');
-  } else {
-    GA_SPEC_PREV_VALUE = sel.value;
-  }
-}
 // Asset Type is no longer operator-picked (see gaAssetTypeForMethod) so
 // Research Scope — which only ever mattered for the SEO Post asset type —
 // has no live trigger left; SEO Post isn't a selectable (Live) method
@@ -4761,7 +4689,13 @@ function gaFilter(kind) {
 
 async function gaResolve(kind, statusEl) {
   const cfg = GA_KIND_CFG[kind];
-  const val = document.getElementById(cfg.input).value.trim();
+  const inputEl = document.getElementById(cfg.input);
+  // Product's field was removed from the modal (see genAssetsModal markup)
+  // — gaResolve('product', ...) still gets called by the job-asset and
+  // generic-fallback paths, so this stays a clean "nothing picked" instead
+  // of throwing on the missing element.
+  if (!inputEl) return { id: null };
+  const val = inputEl.value.trim();
   if (!val) return { id: null };
   const picked = gaSel(kind);
   if (picked.id && val === picked.name) return { id: picked.id };
@@ -4779,7 +4713,7 @@ async function openGenAssetsModal(titleId) {
   GA_TITLE_ID = titleId; GA_CAMPAIGN_ID = null;
   GA_METHOD_ID = null; GA_METHOD_NAME = '';
   GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
-  ['gaTitleInput','gaMethodInput','gaProductInput','gaDescInput','gaKeywordsInput','gaResearchInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaDesignRefImageInput','gaSourceInput'].forEach(id => {
+  ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
@@ -4820,15 +4754,15 @@ async function openGenAssetsModal(titleId) {
   gaRenderExisting(titleId); // synchronous, from the cache makeTitleRow() populated
   try {
     const d = await w('getTitleDetails', { titleId });
-    document.getElementById('gaTitleInput').value    = d.title || '';
-    document.getElementById('gaDescInput').value     = d.description || '';
-    document.getElementById('gaKeywordsInput').value = d.seedKeywords || '';
-    document.getElementById('gaResearchInput').value = d.researchInstructions || '';
+    document.getElementById('gaTitleInput').value = d.title || '';
     if (d.methodId) {
       GA_METHOD_ID = d.methodId; GA_METHOD_NAME = d.methodName || '';
       document.getElementById('gaMethodInput').value = d.methodName || '';
     }
-    if (d.productId) { GA_PRODUCT_ID = d.productId; GA_PRODUCT_NAME = d.productName || ''; document.getElementById('gaProductInput').value = d.productName || ''; }
+    // Product's field is gone from this modal — state is still tracked
+    // (openBuildModal elsewhere falls back to it) but there's no input to
+    // write the name into anymore.
+    if (d.productId) { GA_PRODUCT_ID = d.productId; GA_PRODUCT_NAME = d.productName || ''; }
     GA_CAMPAIGN_ID = d.campaignId || CAMPAIGN_ID;
     status.textContent = '';
   } catch(e) {
@@ -4836,8 +4770,6 @@ async function openGenAssetsModal(titleId) {
     status.textContent = 'Could not prefill from title (' + e.message + ') — fields are editable.';
   }
   gaUpdateSkillHint();
-  gaLoadSpecs(); // needs GA_CAMPAIGN_ID — fire-and-forget
-  gaRefreshStrategyLink(); // reference-only link, never blended into generation
   gaLoadPlatforms(); // fire-and-forget
   btn.disabled = false;
 }
@@ -5843,24 +5775,22 @@ async function submitGenAssets() {
     try {
       const carouselType = document.getElementById('gaCarouselTypeInput')?.value || undefined;
       const presenter = document.getElementById('gaAvatarPresenterInput')?.value.trim() || undefined;
-      // Override Guidelines (always visible now — see modal markup) — free
-      // text that can override tone/palette OR the carousel type/format
-      // itself; an optional sample image goes with it. Read here rather
-      // than on file-select since there's no live preview in this modal,
-      // just a one-shot read at submit time.
-      const designNotes = document.getElementById('gaDesignRefNotesInput')?.value.trim() || undefined;
-      const designRefFile = document.getElementById('gaDesignRefImageInput')?.files?.[0] || null;
-      const designRefImage = designRefFile ? await readImageAsBase64(designRefFile) : null;
-      // Description/Keywords/Research stay live for these methods too now
-      // (previously generic-path-only) — additional grounding/override
-      // text alongside the campaign's own auto-fetched Research.
-      const description = document.getElementById('gaDescInput')?.value.trim() || undefined;
-      const seedKeywords = document.getElementById('gaKeywordsInput')?.value.trim() || undefined;
-      const researchInstructions = document.getElementById('gaResearchInput')?.value.trim() || undefined;
-      const designSpecId = document.getElementById('gaSpecInput')?.value || undefined;
+      // The modal's content-grounding fields (Description/Seed Keywords/
+      // Research Instructions/Design Spec/a separate image ref) were
+      // removed — this modal reshapes a title whose content is already
+      // fully composed upstream, it doesn't compose content itself
+      // anymore. One override field is left; its text rides along on
+      // every override-shaped param a given worker action accepts so
+      // nothing downstream needs its own change to keep working.
+      const overrideText = document.getElementById('gaDesignRefNotesInput')?.value.trim() || undefined;
+      const platformId = document.getElementById('gaPlatformInput')?.value || undefined;
+      const platformName = platformId ? document.getElementById('gaPlatformInput').selectedOptions[0].textContent : undefined;
       // Job assets need a real Product resolved (create-if-new, same as the
       // generic path's gaResolve) since Keywords + Work History live there
-      // and the title may not carry the relation yet.
+      // and the title may not carry the relation yet. Product's own field
+      // is gone from the modal (gaResolve returns { id: null } cleanly
+      // now), so this reliably hits the "Pick or type a Product" message
+      // below until Resume/Upwork Proposal get their fields back.
       let jobProductId;
       const sourceUrl = isJobAsset ? (document.getElementById('gaSourceInput')?.value.trim() || undefined) : undefined;
       if (isJobAsset) {
@@ -5873,10 +5803,9 @@ async function submitGenAssets() {
       }
       const r = await w(skillMatch.workerAction, {
         titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, carouselType, presenter,
-        designNotes,
-        referenceImageBase64: designRefImage?.base64,
-        referenceImageFilename: designRefImage?.filename,
-        description, seedKeywords, researchInstructions, designSpecId,
+        designNotes: overrideText,
+        description: overrideText, seedKeywords: overrideText, researchInstructions: overrideText,
+        platformId, platformName,
         assetType: isJobAsset ? skillMatch.assetType : undefined,
         productId: isJobAsset ? jobProductId : undefined,
         source: sourceUrl,
@@ -5949,6 +5878,7 @@ async function submitGenAssets() {
     // Live-only picker right now) and no Asset Type field to ask anymore;
     // best-effort default to the method's own name.
     const assetType = GA_METHOD_NAME || 'Post';
+    const overrideText = document.getElementById('gaDesignRefNotesInput')?.value.trim() || undefined;
     status.textContent = 'Generating asset concepts… (this can take a couple minutes — each concept may go through several grade-and-retry passes). Leave this tab open.';
     const r = await w('generateTitleAssets', {
       titleId: GA_TITLE_ID,
@@ -5956,11 +5886,8 @@ async function submitGenAssets() {
       methodId:    method.id    || undefined,
       productId:   product.id   || undefined,
       assetType,
-      designSpecId: document.getElementById('gaSpecInput').value || undefined,
       title,
-      description:          document.getElementById('gaDescInput').value.trim()     || undefined,
-      seedKeywords:         document.getElementById('gaKeywordsInput').value.trim() || undefined,
-      researchInstructions: document.getElementById('gaResearchInput').value.trim() || undefined,
+      description: overrideText, seedKeywords: overrideText, researchInstructions: overrideText,
       count: 4,
       contextMode: (document.querySelector('input[name="gaContext"]:checked') || {}).value || 'isolate',
       platformId: document.getElementById('gaPlatformInput')?.value || undefined,
