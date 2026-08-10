@@ -4918,6 +4918,15 @@ const GA_CAROUSEL_ASSET_TYPE_RE = /drawing post/i;
 // real PNGs via Cloudflare's Browser Rendering REST API and hosts them on
 // GitHub Pages, entirely inside the Worker — no chat tab, one button here.
 const GA_SKILL_METHODS = [
+  // Checked BEFORE the generic /carousel/i entry below — this method's name
+  // ("carousel — Template CSV Export") would otherwise match that broader
+  // pattern first (Array.find takes the first match) and get routed into
+  // generateCarouselPreview, which has no Canva-template input at all and
+  // 400s. This method is chat-only by design (needs a specific Canva
+  // template attached in a live Claude session, Canva MCP connected) — no
+  // worker action exists or should exist for it.
+  { test: /template csv/i,          skill: 'audit-canva-template-csv', label: 'Carousel — Template CSV',
+    hint: 'Chat-only — not runnable from this button. Attach the specific Canva template in a live Claude chat (Canva MCP connected) and hand off below; it audits every text field into a CSV ready for Canva Bulk Create/Autofill.' },
   { test: /carousel/i,              workerAction: 'generateCarouselPreview', label: 'Carousel',
     hint: 'The one carousel path, entirely in-dashboard — writes the 7-slide script to this title in Notion (if it doesn\'t have one yet), renders each slide as a real image, and publishes a hosted preview page for approval. Don\'t like it? Edit the slide text on this title in Notion, then run it again — it rebuilds the preview from your edits. Instagram publishing is a separate step, not done here yet.' },
   { test: /text pic/i,              skill: 'make-text-pic',      label: 'Text Pic',
