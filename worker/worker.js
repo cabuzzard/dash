@@ -14827,6 +14827,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         "Production Assembly Package":  { type: "rich_text" },
         "Assembly Manifest":            { type: "rich_text" },
         "Assembly Review Page":         { type: "url" },
+        "Canva Field Audit":            { type: "rich_text" },
       };
 
       // Maps the row-level upload buttons' docType to the Notion property
@@ -14844,6 +14845,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         visualBrief: "Visual Production Brief",
         assemblyPackage: "Production Assembly Package",
         manifest: "Assembly Manifest",
+        canvaFieldAudit: "Canva Field Audit",
       };
 
       // Parses the single-file "render package" ChatGPT now produces
@@ -14919,9 +14921,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // pasted single section. The manifest content always requires valid
       // JSON, since assembly consumes it as structured data, not prose.
       if (body.action === "uploadAssetDocument") {
-        const { assetId, docType, text } = body;
+        const { assetId, docType, text, canvaLink } = body;
         const trimmed = String(text || "").trim();
-        if (!assetId || !docType) return json({ error: "assetId and a valid docType (renderPackage, visualBrief, assemblyPackage, or manifest) required" }, 400);
+        if (!assetId || !docType) return json({ error: "assetId and a valid docType (renderPackage, visualBrief, assemblyPackage, manifest, or canvaFieldAudit) required" }, 400);
         if (!trimmed) return json({ error: "That file is empty." }, 400);
 
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -14939,7 +14941,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (parsed.assemblyInstructions) props[ASSET_DOC_FIELDS.assemblyPackage] = { rich_text: chunkedRichText(parsed.assemblyInstructions) };
         } else {
           const field = ASSET_DOC_FIELDS[docType];
-          if (!field) return json({ error: "assetId and a valid docType (renderPackage, visualBrief, assemblyPackage, or manifest) required" }, 400);
+          if (!field) return json({ error: "assetId and a valid docType (renderPackage, visualBrief, assemblyPackage, manifest, or canvaFieldAudit) required" }, 400);
           if (docType === "manifest") {
             const jsonStart = trimmed.indexOf('{'), jsonEnd = trimmed.lastIndexOf('}');
             try {
@@ -14950,6 +14952,12 @@ Return ONLY this JSON object, no other text, no markdown fences:
             }
           }
           props = { [field]: { rich_text: chunkedRichText(trimmed) } };
+          // canvaFieldAudit is written BEFORE the operator ports the audited
+          // copy into the actual Canva design, per operator instruction ("write
+          // it to the asset first, then we port") — the template link is
+          // usually already known at that point, so accept it in the same
+          // call rather than requiring a second round-trip to set it.
+          if (docType === "canvaFieldAudit" && canvaLink) props["Canva Link"] = { url: String(canvaLink) };
         }
 
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
@@ -14958,6 +14966,48 @@ Return ONLY this JSON object, no other text, no markdown fences:
         });
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save document to Notion" }, patchResp.status); }
         return json({ success: true, fieldsWritten: Object.keys(props), length: trimmed.length });
+      }
+
+      // ── resolveCarouselAsset ──
+      // The audit-canva-template-csv chat-only skill has no worker action of
+      // its own (see GA_SKILL_METHODS in the microsite template) — it needs
+      // *something* to point uploadAssetDocument's new canvaFieldAudit
+      // docType at, so the audited field table can be saved to a real Asset
+      // record before the operator ports the copy into Canva, instead of
+      // the audit only ever living in this chat. Finds-or-creates the
+      // title's "carousel" Asset (same Asset Type generateCarouselPreview
+      // uses — this is still a carousel, just Canva-authored instead of
+      // auto-rendered) using the same match/create shape as that action's
+      // Step 6 upsert, minus anything render-specific.
+      if (body.action === "resolveCarouselAsset") {
+        const { titleId, campaignId, titleName } = body;
+        if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const assetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Content Strategy", relation: { contains: dash(titleId) } },
+            { property: "Asset Type", select: { equals: "carousel" } },
+          ] } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const existingAsset = (assetQuery.results || []).find(a => !a.archived);
+        if (existingAsset) {
+          return json({ assetId: existingAsset.id.replace(/-/g, ""), created: false, canvaLink: existingAsset.properties?.["Canva Link"]?.url || "" });
+        }
+        const createResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: {
+            "Asset Title": { title: [{ type: "text", text: { content: `${titleName || "Carousel"} — Carousel`.slice(0, 200) } }] },
+            "Asset Type": { select: { name: "carousel" } },
+            "Content Strategy": { relation: [{ id: dash(titleId) }] },
+            "Campaign": { relation: [{ id: dash(campaignId) }] },
+            "Status": { select: { name: "Draft" } },
+          } }),
+        });
+        const created = await createResp.json();
+        if (!createResp.ok || !created.id) return json({ error: created.message || "Asset create failed" }, createResp.status || 500);
+        return json({ assetId: created.id.replace(/-/g, ""), created: true, canvaLink: "" });
       }
 
       // ── buildTextVideoSpecDraft ──

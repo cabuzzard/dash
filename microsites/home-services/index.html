@@ -4488,9 +4488,14 @@ const GA_SKILL_METHODS = [
   // generateCarouselPreview, which has no Canva-template input at all and
   // 400s. This method is chat-only by design (needs a specific Canva
   // template attached in a live Claude session, Canva MCP connected) — no
-  // worker action exists or should exist for it.
+  // single worker action can run the audit itself. It DOES have two worker
+  // actions behind it now (resolveCarouselAsset, uploadAssetDocument's
+  // canvaFieldAudit docType) that the chat skill is required to call —
+  // per operator instruction, the audited field table gets saved to this
+  // title's carousel Asset FIRST, then the copy is ported into Canva. See
+  // the prompt built below.
   { test: /template csv/i,          skill: 'audit-canva-template-csv', label: 'Carousel — Template CSV',
-    hint: 'Chat-only — not runnable from this button. Attach the specific Canva template in a live Claude chat (Canva MCP connected) and hand off below; it audits every text field into a CSV ready for Canva Bulk Create/Autofill.' },
+    hint: 'Chat-only — not runnable from this button. Attach the specific Canva template in a live Claude chat (Canva MCP connected) and hand off below. It audits every text field, saves that table to this title’s Asset first (resolveCarouselAsset + uploadAssetDocument), then ports the copy into the Canva template.' },
   { test: /carousel/i,              workerAction: 'generateCarouselPreview', label: 'Carousel',
     hint: 'The one carousel path, entirely in-dashboard — writes the 7-slide script to this title in Notion (if it doesn\'t have one yet), renders each slide as a real image, and publishes a hosted preview page for approval. Don\'t like it? Edit the slide text on this title in Notion, then run it again — it rebuilds the preview from your edits. Instagram publishing is a separate step, not done here yet.' },
   { test: /text pic/i,              skill: 'make-text-pic',      label: 'Text Pic',
@@ -4559,7 +4564,16 @@ function gaUpdateSkillHint() {
     const titleText = document.getElementById('gaTitleInput').value;
     const campaignId = GA_CAMPAIGN_ID || CAMPAIGN_ID;
     const campaignName = (document.getElementById('r-name')?.textContent || '').trim();
-    const prompt = `Run the ${match.skill} skill for the Content Strategy title "${titleText}" (page ID: ${titleId}), campaign "${campaignName || campaignId}" (Campaigns DB page ID: ${campaignId}).`;
+    let prompt = `Run the ${match.skill} skill for the Content Strategy title "${titleText}" (page ID: ${titleId}), campaign "${campaignName || campaignId}" (Campaigns DB page ID: ${campaignId}).`;
+    // Per operator instruction: the audited field table must be saved to a
+    // real Asset record BEFORE any copy is ported into the Canva template —
+    // never just live in the chat transcript. Spelled out here (not just in
+    // this file's comments) since a fresh claude.ai chat has no other way
+    // to know these two worker actions exist or that they're required, not
+    // optional.
+    if (match.skill === 'audit-canva-template-csv') {
+      prompt += ` Required order of operations — the Asset must be fully written in Notion BEFORE any Canva MCP build/edit begins, not after: (1) READ-ONLY pass over the attached Canva template via the Canva MCP (read-design) to see every text field, its position, and its size constraints — do not call edit-design yet. (2) Draft the fill copy for every field from that audit. (3) Call ${WORKER_URL} with { action: 'resolveCarouselAsset', titleId: '${titleId}', campaignId: '${campaignId}', titleName: '${titleText.replace(/'/g, "\\'")}' } to get an assetId (find-or-create, Asset Type "carousel"). (4) Call { action: 'uploadAssetDocument', assetId, docType: 'canvaFieldAudit', text: '<markdown table of every page/field/drafted content>', canvaLink: '<the Canva template URL>' } to save that table to the Asset. Steps 1-4 must all complete before step 5. (5) Only now begin the Canva MCP build: call edit-design to write the drafted copy into the template, verify each page's thumbnail, then commit the transaction.`;
+    }
     window.open('https://claude.ai/new?q=' + encodeURIComponent(prompt), '_blank');
   };
 }
