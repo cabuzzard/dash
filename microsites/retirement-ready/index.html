@@ -1578,7 +1578,61 @@ async function loadTitles() {
     const dev = titles
       .filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage))
       .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
-    const pub = titles.filter(t => ['Publish','Published','Done'].includes(t.stage));
+    // Publish/Assets section is no longer title-stage-gated — a title
+    // leaving Development doesn't affect whether its assets show here (see
+    // renderPublishedAssets below, which gates per-asset instead). Reads
+    // across every title this fetch returned, dev-family or not.
+    const pub = titles;
+    // Hoisted out of makeTitleRow so the restructured Publish/Assets section
+    // (renderPublishedAssets below — assets grouped by source title, not
+    // title rows) can render the exact same asset row, not a duplicate.
+    function renderAssetRow(a, titleId, productId) {
+      if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
+      const ar = document.createElement('div');
+      ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
+      // Pared down to just the two visual-production handoff buttons for
+      // now (everything else — platform/status/grade badges, design/
+      // Canva links, sync, render, copy-script, Notion link, delete —
+      // removed at the operator's request while this workflow is the
+      // focus; re-add from git history if any of it's needed again).
+      const viewLink = a.assemblyReviewPage || a.designLink || '';
+      ar.innerHTML = `<span style="font-size:9px;color:#666;flex-shrink:0;">↳</span>`
+        + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.title)}</span>`
+        + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
+        + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" data-productid="${productId || ''}" onclick="openVisualBriefModal(this)" title="Set up and assemble the Visual Production Source Document (Editing Authority tiers/Asset Metadata/Production Method/Audience/Research/Content Foundation/Growth Strategy Context/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Opens a setup modal first: pick a Growth Strategy for context, lock specific normally-MUTABLE design fields to IMMUTABLE for this asset, and write operator guidelines. Text Video assets are told to declare Simple vs. Custom Remotion Build (custom builds get a mandatory voice-first render sequence) and to keep the Asset ID attached through every revision. Also drafts every field of the structured Design Specification via Claude, tagged Immutable/Constrained/Mutable/Derived-at-production so ChatGPT knows exactly what it can and can't change — Text Video into 🎬 Text Video Specs / 🎞️ Text Video Scenes, Carousel into 🎠 Carousel Specifications / 🃏 Slide Specifications (plus the shared Color Palette/Typography/Visual Style/Grid/Layout/Diagram/Platform Preset databases, reused across the whole campaign)." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
+        + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'renderPackage')" title="Upload RENDER_PACKAGE.yaml — the single file ChatGPT now returns (visualBrief + assemblyInstructions + assemblyManifest sections) — split automatically and saved to this asset's Visual Production Brief / Production Assembly Package / Assembly Manifest properties, no modal needed." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">📦 Render Package</button>` : '')
+        + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for any asset type with a registered renderer (carousel today), RE-RENDERS from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
+        + ((a.type === 'resume' || a.type === 'upwork proposal') ? `<button class="td-view-body" data-assetid="${a.id}" data-title="${esc(a.title)}" onclick="openAssetBodyModal(this)" title="View the written ${esc(a.type)} text (and cover letter, for Resume) — this asset type has no render/preview link, the text itself is the deliverable." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">📄 View</button>` : '')
+        + ((a.type === 'resume' || a.type === 'upwork proposal') ? `<button class="td-generate-job" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" onclick="generateJobAssetFromRow(this)" title="Pull a fresh batch of 5 matching postings and write a tailored ${esc(a.type)} for each (real career history is global — edit it in the main dashboard's TD tab, Career section)." style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">✨ Generate</button>` : '')
+        + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
+      return ar;
+    }
+    // Renders the Publish/Assets section: PUBLISHED ASSETS grouped by their
+    // source title's name — not title rows. Per operator instruction, a
+    // title leaving Development is unrelated to whether its assets should
+    // show here; this reads every title's assets regardless of the title's
+    // own stage/section and gates purely on each asset's own status.
+    function renderPublishedAssets(titles, container) {
+      container.innerHTML = '';
+      const PUBLISH_GATE = ['Publish', 'Published'];
+      const flat = titles.flatMap(t => (t.assets || [])
+        .filter(a => PUBLISH_GATE.includes(a.status))
+        .map(a => ({ asset: a, titleId: t.id, titleName: t.title, productId: t.productId })));
+      if (!flat.length) { container.innerHTML = '<div class="empty">None.</div>'; return; }
+      const order = [], byTitle = {};
+      flat.forEach(f => {
+        if (!byTitle[f.titleId]) { byTitle[f.titleId] = { name: f.titleName, productId: f.productId, items: [] }; order.push(f.titleId); }
+        byTitle[f.titleId].items.push(f.asset);
+      });
+      order.forEach(titleId => {
+        const group = byTitle[titleId];
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);';
+        hdr.innerHTML = `<span style="flex:1;font-size:12px;color:#c9c9c9;font-weight:600;">${esc(group.name)}</span><a class="title-link" href="https://www.notion.so/${titleId}" target="_blank">↗</a><span style="font-size:10px;color:#666;">${group.items.length}</span>`;
+        container.appendChild(hdr);
+        group.items.forEach(a => container.appendChild(renderAssetRow(a, titleId, group.productId)));
+      });
+    }
     function makeTitleRow(t, section) {
       // Cached so the Generate Assets modal can show "existing assets for
       // this title" without a second round-trip — refreshed every loadTitles().
@@ -1587,53 +1641,12 @@ async function loadTitles() {
       div.className = 'title-row';
       div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       if (!t.assets || !t.assets.length) return div;
-      // render each linked asset as an indented row, with its grade badge
+      // render each linked asset as an indented row, with its grade badge —
+      // always flat here (this function only ever renders the Development
+      // section now; the Publish section is renderPublishedAssets above).
       const wrap = document.createElement('div');
       wrap.appendChild(div);
-      const renderAssetRow = a => {
-        if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
-        const ar = document.createElement('div');
-        ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
-        // Pared down to just the two visual-production handoff buttons for
-        // now (everything else — platform/status/grade badges, design/
-        // Canva links, sync, render, copy-script, Notion link, delete —
-        // removed at the operator's request while this workflow is the
-        // focus; re-add from git history if any of it's needed again).
-        const viewLink = a.assemblyReviewPage || a.designLink || '';
-        ar.innerHTML = `<span style="font-size:9px;color:#666;flex-shrink:0;">↳</span>`
-          + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.title)}</span>`
-          + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
-          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${t.id}" data-type="${esc(a.type)}" data-productid="${t.productId || ''}" onclick="openVisualBriefModal(this)" title="Set up and assemble the Visual Production Source Document (Editing Authority tiers/Asset Metadata/Production Method/Audience/Research/Content Foundation/Growth Strategy Context/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Opens a setup modal first: pick a Growth Strategy for context, lock specific normally-MUTABLE design fields to IMMUTABLE for this asset, and write operator guidelines. Text Video assets are told to declare Simple vs. Custom Remotion Build (custom builds get a mandatory voice-first render sequence) and to keep the Asset ID attached through every revision. Also drafts every field of the structured Design Specification via Claude, tagged Immutable/Constrained/Mutable/Derived-at-production so ChatGPT knows exactly what it can and can't change — Text Video into 🎬 Text Video Specs / 🎞️ Text Video Scenes, Carousel into 🎠 Carousel Specifications / 🃏 Slide Specifications (plus the shared Color Palette/Typography/Visual Style/Grid/Layout/Diagram/Platform Preset databases, reused across the whole campaign)." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
-          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'renderPackage')" title="Upload RENDER_PACKAGE.yaml — the single file ChatGPT now returns (visualBrief + assemblyInstructions + assemblyManifest sections) — split automatically and saved to this asset's Visual Production Brief / Production Assembly Package / Assembly Manifest properties, no modal needed." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">📦 Render Package</button>` : '')
-          + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${t.id}" data-type="${esc(a.type)}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for any asset type with a registered renderer (carousel today), RE-RENDERS from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
-          + ((a.type === 'resume' || a.type === 'upwork proposal') ? `<button class="td-view-body" data-assetid="${a.id}" data-title="${esc(a.title)}" onclick="openAssetBodyModal(this)" title="View the written ${esc(a.type)} text (and cover letter, for Resume) — this asset type has no render/preview link, the text itself is the deliverable." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">📄 View</button>` : '')
-          + ((a.type === 'resume' || a.type === 'upwork proposal') ? `<button class="td-generate-job" data-assetid="${a.id}" data-titleid="${t.id}" data-type="${esc(a.type)}" onclick="generateJobAssetFromRow(this)" title="Pull a fresh batch of 5 matching postings and write a tailored ${esc(a.type)} for each (real career history is global — edit it in the main dashboard's TD tab, Career section)." style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">✨ Generate</button>` : '')
-          + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
-        return ar;
-      };
-      if (section === 'pub') {
-        // Publish section: cluster a title's sub-assets by Asset Type/
-        // method (e.g. a title with 5 text-video scripts + 1 carousel
-        // reads as two labeled groups instead of one flat list) — Dev
-        // section keeps the flat list since titles there usually only
-        // have a handful of draft assets, not a mixed batch.
-        const groupOrder = [], byType = {};
-        t.assets.forEach(a => {
-          const key = a.type || 'Other';
-          if (!byType[key]) { byType[key] = []; groupOrder.push(key); }
-          byType[key].push(a);
-        });
-        groupOrder.forEach(key => {
-          const items = byType[key];
-          const hdr = document.createElement('div');
-          hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 10px 3px 20px;font-size:10px;color:#777;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.008);';
-          hdr.innerHTML = `<span>${esc(key)}</span><span style="color:#555;">${items.length}</span>`;
-          wrap.appendChild(hdr);
-          items.forEach(a => wrap.appendChild(renderAssetRow(a)));
-        });
-      } else {
-        t.assets.forEach(a => wrap.appendChild(renderAssetRow(a)));
-      }
+      t.assets.forEach(a => wrap.appendChild(renderAssetRow(a, t.id, t.productId)));
       // assets still carrying the placeholder Canva search link → offer the
       // Claude handoff that generates the real designs and saves links back
       const pendingDesigns = t.assets.filter(a => /canva\.com\/templates\/\?query/i.test(a.designLink || ''));
@@ -1763,7 +1776,7 @@ async function loadTitles() {
       });
     }
     renderTitlesNested(dev, devEl, 'dev');
-    renderTitlesNested(pub, pubEl, 'pub');
+    renderPublishedAssets(pub, pubEl);
   } catch(e) {
     devEl.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
     pubEl.innerHTML = '<div class="empty">—</div>';

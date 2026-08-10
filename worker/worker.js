@@ -538,6 +538,162 @@ async function extractBlocksTextRecursive(hdr, blockId, depth = 0) {
   return parts.filter(Boolean).join("\n");
 }
 
+// Reads just the "Pillar Content" heading_3 section of a title's own page
+// body — mirrors generateCarouselPreview's parseSlides() section-scanning
+// approach (a title's page can carry several distinct heading_3 sections —
+// a slide script, notes, this pillar section — so this reads only the one
+// section, not a flat dump of the whole page). Returns "" if the title has
+// no pillar section yet (e.g. a legacy title predating this feature, or a
+// prior writePillarContent call failed).
+async function extractPillarContent(hdr, titleId) {
+  const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+  const blocks = blocksResp.results || [];
+  let inSection = false;
+  const lines = [];
+  for (const b of blocks) {
+    if (b.type === "heading_3") {
+      const heading = (b.heading_3?.rich_text || []).map(t => t.plain_text).join("");
+      inSection = heading.trim().toLowerCase() === "pillar content";
+      continue;
+    }
+    if (b.type === "heading_1" || b.type === "heading_2") { inSection = false; continue; }
+    if (inSection && (b.type === "paragraph" || b.type === "bulleted_list_item")) {
+      const text = (b[b.type]?.rich_text || []).map(t => t.plain_text).join("");
+      if (text) lines.push(text);
+    }
+  }
+  return lines.join("\n\n");
+}
+
+// Composes a full-length pillar piece for a title — grounded in Campaign
+// Research + Product fields + Product Strategy (the same fields
+// generateMethodTitles already merges, see docs/methods-titles-assets.md)
+// plus the Method's own framework text when a method is already known — and
+// appends it to the title's own page body as a new "Pillar Content"
+// heading_3 section (readable back via extractPillarContent above). This is
+// the source material Generate Assets reshapes per Method+Platform; it does
+// not invent the strategic positioning, only writes the long-form piece
+// from what Research/Product/Strategy already establish. `extraContext` lets
+// an already-well-grounded creation site (one that already has a full
+// Strategy doc, Growth Strategy body, or live-scraped research in scope)
+// pass it straight through instead of being refetched here. `guidance` is
+// optional free-text operator direction, layered on top of — never instead
+// of — the automatic grounding.
+//
+// Never throws past its own boundary: title creation must not fail because
+// pillar-writing failed. Callers should `.catch()` this and surface a
+// warning instead of letting it break the surrounding action.
+async function writePillarContent(hdr, env, { titleId, titleText, campaignId, productId, methodId, guidance, extraContext }) {
+  if (!env.ANTHROPIC_API_KEY) return { skipped: true, reason: "no ANTHROPIC_API_KEY" };
+  const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const rt = (props, key) => (props?.[key]?.rich_text || []).map(t => t.plain_text).join("");
+  const parts = [];
+
+  if (campaignId) {
+    try {
+      const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+        method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+      }).then(r => r.json()).catch(() => ({ results: [] }));
+      const rp = (researchRows.results || [])[0]?.properties;
+      if (rp) {
+        const researchLines = [
+          rt(rp, "Statement")          && `Statement: ${rt(rp, "Statement")}`,
+          rt(rp, "Unique Opportunity") && `Unique Opportunity: ${rt(rp, "Unique Opportunity")}`,
+          rt(rp, "Key Message")        && `Key Message: ${rt(rp, "Key Message")}`,
+          rt(rp, "Campaign Goal")      && `Campaign Goal: ${rt(rp, "Campaign Goal")}`,
+          rt(rp, "Pain Points")        && `Pain Points: ${rt(rp, "Pain Points")}`,
+          rt(rp, "Keywords")          && `Keywords: ${rt(rp, "Keywords")}`,
+        ].filter(Boolean);
+        if (researchLines.length) parts.push(`CAMPAIGN RESEARCH:\n${researchLines.join("\n")}`);
+      }
+    } catch (e) { /* best-effort — pillar still writes from whatever else is available */ }
+  }
+
+  const hasProduct = productId && productId !== "__none__";
+  if (hasProduct) {
+    try {
+      const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+      if (prodPage?.properties) {
+        const pp = prodPage.properties;
+        const productLines = [
+          rt(pp, "Keywords")        && `Keywords: ${rt(pp, "Keywords")}`,
+          rt(pp, "Avatar")          && `Avatar: ${rt(pp, "Avatar")}`,
+          rt(pp, "Transformation")  && `Transformation: ${rt(pp, "Transformation")}`,
+          rt(pp, "Offer Structure") && `Offer Structure: ${rt(pp, "Offer Structure")}`,
+          rt(pp, "Proof Points")    && `Proof Points: ${rt(pp, "Proof Points")}`,
+          rt(pp, "Objections")      && `Objections: ${rt(pp, "Objections")}`,
+          rt(pp, "Unique Angle")    && `Unique Angle: ${rt(pp, "Unique Angle")}`,
+        ].filter(Boolean);
+        if (productLines.length) parts.push(`PRODUCT:\n${productLines.join("\n")}`);
+      }
+      // Product Strategy = Strategy DB record with Method empty (the
+      // positioning doc) — NOT a Method Brief (Method set). Filtering on
+      // Method:is_empty here is the fix for the real bug documented in
+      // docs/methods-titles-assets.md (querying by Product alone can
+      // silently return a Brief instead).
+      const stratRows = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+        method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ filter: { and: [
+          { property: "Product", relation: { contains: dash(productId) } },
+          { property: "Method", relation: { is_empty: true } },
+        ] } }),
+      }).then(r => r.json()).catch(() => ({ results: [] }));
+      const sp = (stratRows.results || [])[0]?.properties;
+      if (sp) {
+        const stratLines = STRATEGY_FIELDS.map(f => rt(sp, f) && `${f}: ${rt(sp, f)}`).filter(Boolean);
+        if (stratLines.length) parts.push(`PRODUCT STRATEGY (positioning):\n${stratLines.join("\n")}`);
+      }
+    } catch (e) { /* best-effort */ }
+  }
+
+  if (methodId && !extraContext) {
+    try {
+      const methodText = await extractBlocksTextRecursive(hdr, dash(methodId));
+      if (methodText) parts.push(`METHOD FRAMEWORK:\n${methodText.slice(0, 3000)}`);
+    } catch (e) { /* best-effort */ }
+  }
+
+  if (extraContext) parts.push(String(extraContext).slice(0, 4000));
+  if (guidance) parts.push(`OPERATOR GUIDANCE (follow this): ${guidance}`);
+
+  const groundingBlock = parts.join("\n\n");
+  if (!groundingBlock.trim()) return { skipped: true, reason: "no grounding available yet for this title" };
+
+  const prompt = `You are writing the PILLAR piece for a content title — a full-length, complete piece of writing that captures everything worth saying on this topic, grounded strictly in the research/positioning below. This is the raw source material a later step will reshape into platform-specific assets (a carousel, a video script, a post) — it is not itself a finished social post, so don't write it as one: no hashtags, no CTA button copy, no slide-numbered structure.
+
+TITLE: ${titleText}
+
+${groundingBlock}
+
+Write 800-1500 words of substantive, specific, well-organized prose — real claims and examples grounded in the material above, not generic filler. Plain paragraphs, no headers, no meta-commentary ("in this piece we will..."). Return ONLY the piece itself, nothing else.`;
+
+  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+  });
+  const aiData = await aiResp.json();
+  if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error writing pillar content");
+  const pillarText = (aiData.content?.[0]?.text || "").trim();
+  if (!pillarText) throw new Error("Pillar content came back empty");
+
+  const heading3 = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: [{ type: "text", text: { content: text } }] } });
+  const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: text } }] } });
+  const paragraphs = pillarText.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const children = [heading3("Pillar Content")];
+  paragraphs.forEach(p => { for (let i = 0; i < p.length; i += 1900) children.push(para(p.slice(i, i + 1900))); });
+  for (let i = 0; i < children.length; i += 90) {
+    const resp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children`, {
+      method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ children: children.slice(i, i + 90) }),
+    });
+    if (!resp.ok) { const r = await resp.json().catch(() => ({})); throw new Error(r.message || "Failed to write pillar content to title"); }
+  }
+  return { success: true, wordCount: pillarText.split(/\s+/).length };
+}
+
 // Parses a Method's own page body into its natural Phase > Grouping
 // structure by BLOCK TYPE (heading_1/2 = phase boundary, heading_3 =
 // grouping boundary within the current phase, bullets/numbered items =
@@ -2058,7 +2214,7 @@ If nothing is genuinely worth adding, return {"suggestions": []} — do not forc
 
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     // Load secrets from environment on every request (.trim() guards against
     // trailing newlines that piped input (e.g. PowerShell) can introduce)
     NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
@@ -2469,7 +2625,16 @@ export default {
           }).catch(() => {});
         }
 
-        return json({ success: true, id: newTitleId });
+        // Pillar content should exist on a title the moment it's created —
+        // Generate Assets reshapes this, it doesn't compose from scratch.
+        // Best-effort: must not fail title creation, which already saved.
+        let pillarWarning;
+        await writePillarContent(hdr, env, {
+          titleId: newTitleId, titleText: title, campaignId, productId, methodId,
+          guidance: [description, researchInstructions].filter(Boolean).join(" — ") || undefined,
+        }).catch(e => { pillarWarning = e.message; });
+
+        return json({ success: true, id: newTitleId, pillarWarning });
       }
 
       if (body.action === "renameTodoItem") {
@@ -6702,6 +6867,16 @@ Only populate the array(s)/fields relevant to the chosen format; leave the other
           }).catch(() => {});
         }
 
+        // Pillar content should exist on a title the moment it's created —
+        // this site already gathered the richest grounding of any creation
+        // path (method framework + product/strategy + growth strategy), so
+        // pass it straight through as extraContext instead of refetching.
+        let pillarWarning;
+        await writePillarContent(hdr, env, {
+          titleId: newTitleId, titleText, campaignId, productId, methodId, guidance,
+          extraContext: [methodBody && `METHOD FRAMEWORK:\n${methodBody}`, productSection, growthStrategyBody && `GROWTH STRATEGY:\n${growthStrategyBody}`].filter(Boolean).join("\n\n"),
+        }).catch(e => { pillarWarning = e.message; });
+
         // Mark the slot Filled and APPEND this title to its Title relation —
         // never replace, so a second/third title from a different Method
         // doesn't erase the link to an earlier one. Best-effort: a failure
@@ -6715,7 +6890,7 @@ Only populate the array(s)/fields relevant to the chosen format; leave the other
           }).catch(() => {});
         }
 
-        return json({ success: true, id: newTitleId, title: titleText, format });
+        return json({ success: true, id: newTitleId, title: titleText, format, pillarWarning });
       }
 
       // ── saveMethodTitles ──
@@ -6756,6 +6931,15 @@ Only populate the array(s)/fields relevant to the chosen format; leave the other
           // timeout).
           if ((t.slideFormat || t.subheadFormat) && page.id) {
             saved.push({ id: page.id.replace(/-/g, ""), title: t.title, slideFormat: !!t.slideFormat, subheadFormat: !!t.subheadFormat });
+          }
+          // Pillar content, same 524-timeout reasoning above — one more
+          // Claude call per title would make an already-slow batch loop
+          // worse, so this runs via ctx.waitUntil AFTER the response is
+          // sent instead of being awaited inline. Best-effort; failures are
+          // swallowed (nothing in this batch response can surface them).
+          if (page.id) {
+            const newTitleId = page.id.replace(/-/g, "");
+            ctx.waitUntil(writePillarContent(hdr, env, { titleId: newTitleId, titleText: t.title, campaignId, productId: hasProduct ? productId : undefined, methodId }).catch(() => {}));
           }
         }
         return json({ created, titles: saved });
@@ -7467,7 +7651,18 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
             body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props }),
           });
           const result = await resp.json();
-          if (resp.ok && result.id) created.push({ id: result.id.replace(/-/g,""), title: idea.title });
+          if (resp.ok && result.id) {
+            const newTitleId = result.id.replace(/-/g,"");
+            created.push({ id: newTitleId, title: idea.title });
+            // Same 524-timeout reasoning as saveMethodTitles's batch loop —
+            // one more Claude call per title inline would slow an
+            // already-multi-title batch further, so pillar-writing runs in
+            // the background via ctx.waitUntil instead of being awaited.
+            ctx.waitUntil(writePillarContent(dsHdr, env, {
+              titleId: newTitleId, titleText: idea.title, campaignId, productId, methodId,
+              guidance: [idea.angle, researchInstructions].filter(Boolean).join(" — ") || undefined,
+            }).catch(() => {}));
+          }
           else failures.push(result.message || "create failed");
         }
         if (!created.length) return json({ error: "All title creates failed: " + (failures[0] || "unknown") }, 502);
@@ -8048,7 +8243,17 @@ Return ONLY a JSON array of exactly 10 objects, each shaped exactly like this �
             body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props, children }),
           });
           const page = await resp.json();
-          if (page.id) { created++; saved.push({ id: page.id.replace(/-/g, ""), title: titleText, description }); }
+          if (page.id) {
+            created++;
+            const newTitleId = page.id.replace(/-/g, "");
+            saved.push({ id: newTitleId, title: titleText, description });
+            // Batch loop (up to 10) — background via ctx.waitUntil, same
+            // 524-timeout reasoning as the other batch title-creation sites.
+            ctx.waitUntil(writePillarContent(hdr, env, {
+              titleId: newTitleId, titleText, campaignId, productId: hasProduct ? productId : undefined, methodId,
+              extraContext: [productSection, `CONCEPT DESCRIPTION: ${description}`, existingTrendResearch && `TREND RESEARCH: ${existingTrendResearch.slice(0, 1000)}`].filter(Boolean).join("\n\n"),
+            }).catch(() => {}));
+          }
           else saveErrors.push({ title: titleText, status: resp.status, error: page.message || JSON.stringify(page).slice(0, 300) });
         }
         return json({
@@ -8264,7 +8469,17 @@ Return ONLY a JSON array of exactly 10 objects — no other text, no fences:
             body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props, children }),
           });
           const page = await resp.json();
-          if (page.id) { created++; saved.push({ id: page.id.replace(/-/g, ''), title: titleText }); }
+          if (page.id) {
+            created++;
+            const newTitleId = page.id.replace(/-/g, '');
+            saved.push({ id: newTitleId, title: titleText });
+            // Batch loop (up to 10) — background via ctx.waitUntil, same
+            // 524-timeout reasoning as the other batch title-creation sites.
+            ctx.waitUntil(writePillarContent(hdr, env, {
+              titleId: newTitleId, titleText, campaignId, productId: hasProduct ? productId : undefined, methodId,
+              extraContext: [`CONCEPT DESCRIPTION: ${description}`, `ACTIVE MARKET: ${market ? market.query : (c.market || '?')} — ${c.demandSignal || (market ? `${market.adCount} live ads` : 'unvalidated')}`].filter(Boolean).join("\n\n"),
+            }).catch(() => {}));
+          }
           else saveErrors.push({ title: titleText, status: resp.status, error: page.message || JSON.stringify(page).slice(0, 300) });
         }
         return json({
@@ -12355,7 +12570,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       // the planned integration, UPLOAD_POST_API_KEY is already provisioned
       // but unused).
       if (body.action === "generateCarouselPreview") {
-        const { titleId, campaignId, carouselType, description, seedKeywords, researchInstructions, designSpecId } = body;
+        const { titleId, campaignId, carouselType, description, seedKeywords, researchInstructions, designSpecId, platformName } = body;
         if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
         // Canva-template-mapped styles (the "Globals" registry in Main TD)
         // are selectable in the dropdown but not wired for generation yet —
@@ -12432,6 +12647,13 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
 
         let { slides, caption, hashtags } = await parseSlides();
 
+        // Pillar content is the source material this method reshapes — see
+        // writePillarContent/extractPillarContent above. A legacy title
+        // predating this feature (or a prior write failure) just has none;
+        // that's handled below by falling back to the old Keywords-only
+        // grounding rather than failing.
+        const pillarContent = await extractPillarContent(hdr, titleId).catch(() => "");
+
         // ── Step 2: no slide script yet — write one (same prompt as generateTitleSlides) ──
         if (!slides.length) {
           let keywords = "";
@@ -12442,6 +12664,9 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
           keywords = rt(researchRaw, "Keywords");
           if (seedKeywords) keywords = [keywords, seedKeywords].filter(Boolean).join(', ');
+          const pillarBlock = pillarContent
+            ? `\nPILLAR CONTENT (this title's already-written source material — reshape THIS into the carousel below; don't invent new facts beyond what's here):\n${pillarContent}\n`
+            : '';
 
           // Two text-only carousel types — both reuse the exact same slide
           // block format (heading_3 "Slide N" -> bold headline -> plain body
@@ -12475,10 +12700,10 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           // checklist). Per the spec: visual planning is yes/no flags ONLY —
           // no image prompts, no illustration-style descriptions; a separate
           // Visual Director stage owns all visual decisions downstream.
-          const slidePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing a full Carousel Asset Package for this title — not just slide copy. ${isNumberedBreakdown ? 'Write however many slides the FORMAT below specifies (2 + your chosen category count) — do not default to 7.' : 'Write EXACTLY 7 slides, no more, no fewer.'}
+          const slidePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing a full Carousel Asset Package for this title — reshaping its pillar content below for this specific Method (Carousel)${platformName ? ` and Platform (${platformName})` : ''} — not just slide copy. ${isNumberedBreakdown ? 'Write however many slides the FORMAT below specifies (2 + your chosen category count) — do not default to 7.' : 'Write EXACTLY 7 slides, no more, no fewer.'}
 
 TITLE: ${titleName}
-${keywords ? `KEYWORDS: ${keywords}\n` : ''}${briefBlock}${overrideBlock}
+${keywords ? `KEYWORDS: ${keywords}\n` : ''}${pillarBlock}${briefBlock}${overrideBlock}
 ${formatDirective}
 
 Every slide must have a non-empty "headline". No em-dashes, no banned marketing filler ("unlock", "game-changer", "supercharge", "leverage").
@@ -13129,10 +13354,16 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
         const assetProps = {
           "Design Link": { url: previewUrl },
           "Status": { select: { name: "Ready" } },
-          "Asset Status": { select: { name: "Development" } },
+          // "Publish" (not "Development") — the carousel has actually
+          // finished rendering here, so per the operator's Asset Status
+          // vocabulary this is "fully generated, ready to compile/publish,"
+          // not still in progress. "Published" is the separate, later,
+          // manually-set true-live state. This is what the restructured
+          // Publish/Assets section (frontend, grouped by title) gates on.
+          "Asset Status": { select: { name: "Publish" } },
           "Body": { rich_text: [{ type: "text", text: { content: caption.slice(0, 1990) } }] },
           "Notes": { rich_text: [{ type: "text", text: { content: hashtags.slice(0, 1990) } }] },
-          "Platform Name": { select: { name: "Instagram" } },
+          "Platform Name": { select: { name: platformName || "Instagram" } },
         };
         let assetId;
         if (existingAsset) {
@@ -18112,7 +18343,15 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
               });
               const createdPage = await createResp.json();
               if (!createResp.ok || !createdPage.id) throw new Error(createdPage.message || "Title create failed");
-              created.push({ avatarName: arcName, campaignName, titleText: titleData.title, titleId: createdPage.id.replace(/-/g, ""), url: `https://www.notion.so/${createdPage.id.replace(/-/g, "")}` });
+              const newTitleId = createdPage.id.replace(/-/g, "");
+              // Pillar content, grounded in the persona/status material this
+              // title was already written from — best-effort, doesn't fail
+              // title creation which already succeeded.
+              await writePillarContent(hdr, env, {
+                titleId: newTitleId, titleText: titleData.title, campaignId, productId,
+                extraContext: `PERSONA ("${arcName}"): ${arcSummary}${arcKeyLessons ? `\nKey lesson: ${arcKeyLessons}` : ''}\n\nTODAY'S STATUS: ${status}\n\nPERSONA'S ANSWER ("${ans.question || ''}"): ${ans.answer || ''}\n\nCORE IDEA: ${titleData.coreIdea || ''}`,
+              }).catch(() => {});
+              created.push({ avatarName: arcName, campaignName, titleText: titleData.title, titleId: newTitleId, url: `https://www.notion.so/${newTitleId}` });
             } catch (e) {
               failures.push({ avatarId: ans.avatarId, avatarName: arcName, campaignId, error: e.message });
             }

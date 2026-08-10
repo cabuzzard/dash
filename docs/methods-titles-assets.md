@@ -211,29 +211,87 @@ fallback (when no explicit pick arrives) also strips a leading `CLUSTER
 
 ## Modal 3 — "Generate Assets" (🧩, the only button left on a title row)
 
-Worker action: `generateTitleAssets`. Same modal, same action, on both
-surfaces, prefilled from `getTitleDetails`. This is now the **single**
-per-title action — the old separate Build Carousel (🎨), Generate More
-Titles (+), and Create Product From Title (♻) buttons were removed as
-redundant entry points; see "Two execution paths" above for where their
-functionality lives now (skill handoffs, or the title-generation dispatch
-already covered by Modal 2 / a product's own Methods panel).
+Worker action: `generateTitleAssets` (generic fallback) or a method-specific
+worker action (Carousel: `generateCarouselPreview`) routed via
+`GA_SKILL_METHODS`. Same modal, same action set, on both the Development and
+Publish/Assets sections — see "Pillar content" below for why that's now a
+meaningful design point, not just a UI convenience.
+
+**As of this pass, the modal's input surface was deliberately stripped down**
+to Title (read-only) / Method / Platform (now always visible, not
+conditionally hidden) / one free-text **Override / notes** field — Design
+Spec, Product, the image-reference upload, and the separate Description/Seed
+Keywords/Research Instructions fields were all removed. This isn't a
+regression: this modal's job is to **reshape a title's already-written
+pillar content** into a Method-and-Platform-specific asset, not to compose
+content from scratch — the content-grounding fields were redundant with the
+pillar content described below, which is now the actual source material.
+The one override field feeds every override-shaped param a given worker
+action accepts. `Product`, Avatar Presenter, and the Career
+Avatar/Source URL fields are parked (not deleted — still wired, just hidden)
+pending Resume/Upwork Proposal and Avatar Video being re-added
+non-destructively; only Carousel is guaranteed fully working today.
 
 **On open, the modal shows:**
 - **Existing assets already generated for this title** (from
-  `getTitles`, which now attaches asset summaries at *any* title stage with
-  linked assets, not just Publish-stage) — so you see what's already there,
-  including its grade, before generating more.
-- **Method/Product prefilled** from the title. If the Method matches a row
-  in the skills table above, a hint box offers the real production skill;
-  a carousel method additionally offers **Build Carousel** (render an
-  existing slide script in-browser).
+  `getTitles`, which attaches asset summaries at *any* title stage with
+  linked assets) — so you see what's already there, including its grade,
+  before generating more.
+- **Method prefilled** from the title. If the Method matches a row in the
+  skills table above, a hint box shows the real production skill's status
+  (its "Run in Claude" button is currently parked, same reasoning as above).
 
 **Default generation behavior (most asset types):** N (1-8, default 4)
 **distinct visual concept options** to choose between — Design Spec
 colors/fonts, Canva query if the method is Drawing Post/Carousel-flagged
 (Asset Type auto-suggests `drawing post`, still editable) — each run through
 the **grading gate** below before being saved.
+
+### Pillar content — the source Generate Assets reshapes
+
+Every title created through one of the flow's live entry points (see
+"Title creation" below) gets a full-length **pillar** piece — 800-1500 words,
+grounded in Campaign Research + Product fields + Product Strategy (and the
+Method's own framework text, when a method is already known at creation
+time) — written into the title's own Notion page body as a `Pillar Content`
+heading_3 section (`writePillarContent`/`extractPillarContent`, `worker.js`
+near `extractBlocksTextRecursive`). This is the actual source material:
+Generate Assets doesn't invent content, it reshapes this piece for a
+specific Method and Platform. `generateCarouselPreview` reads it via
+`extractPillarContent` when writing a title's first slide script, falling
+back to the old thin Research-Keywords grounding for legacy titles that
+predate this feature.
+
+**Title creation is not one action.** Ten places in `worker.js` create a
+Content Strategy page; three have no active UI caller
+(`generateTitlesFromProductStrategy`, `generateTitlesFromStrategy` — the
+legacy "Method Brief" path — and `generateTrafficMethodTitles`) and are
+removal candidates, not wired to pillar-writing. The seven live ones —
+`createDevTitle` (manual Add Idea), `generateTitleFromSlot` (the Strategy
+Slots step), `saveMethodTitles` (persistence for the main
+`generateMethodTitles` pipeline), `generateIdeaTitles` (Add Idea's
+AI-expand), `researchAndGenerateCarouselTitles`, `researchUpworkMarketTitles`,
+and `generateDailyStatusTitles` — each call `writePillarContent` right after
+creating the title. The three batch-creation sites (`saveMethodTitles`,
+`generateIdeaTitles`, `researchAndGenerateCarouselTitles`,
+`researchUpworkMarketTitles`) run it via `ctx.waitUntil` (background, after
+the response is sent) rather than awaiting inline — the same per-title batch
+loops already avoid heavy inline work for Cloudflare's 524 timeout, and one
+more Claude call per title would make that worse.
+
+### Publish/Assets section — decoupled from title stage
+
+The dashboard's "Publish" section no longer lists titles by stage. It lists
+**published assets, grouped by their source title's name**, gated on each
+asset's own `Asset Status` being `Publish` or `Published` — independent of
+what stage the source title itself is in. A title leaving Development is a
+separate, real event (still stage-gated in the Development section) that
+doesn't by itself move or hide its assets; practically an operator moves a
+title out of Development once all its assets are published, but nothing
+enforces that coupling in code. `generateCarouselPreview` sets a newly
+rendered carousel's `Asset Status` to `"Publish"` (not `"Development"`) once
+rendering actually completes — see `renderPublishedAssets` in the microsite
+template for the grouping/rendering logic.
 
 ### The grading gate — every concept is graded by skill, not by a human
 
@@ -275,24 +333,20 @@ grading (it's a single finished article, not concept options):
   Avatar/Transformation/Offer/Proof Points/Unique Angle as grounding.
   **Never includes the Product Strategy doc** — deliberately excluded.
 
-**Platform and Login** (both asset shapes): a Platform picker (from the
-real Platforms DB via `getPlatforms`) feeds the asset-writing prompt
-("write for this platform's norms") and sets both the Asset's `Platform
-Name` (quick-reference select) and its real `Platform` relation. A Login
-picker, auto-filtered to accounts on the chosen Platform (`getLogins`'
-`platformIds`), sets the Asset's `Login` relation — since a Login is one
-specific account instance of a Platform. Both are optional.
+**Platform** (always visible, per the pillar-content stripdown above): a
+Platform picker (from the real Platforms DB via `getPlatforms`) feeds the
+asset-writing prompt and, for the generic `generateTitleAssets` path, sets
+the Asset's `Platform Name`/`Platform` relation. A Login picker is currently
+parked along with Product (see above) — it isn't shown in the modal today,
+though the underlying `Login` relation/`getLogins` plumbing still exists for
+when it's re-added.
 
-**Design Spec picker** offers: an existing campaign spec, "Campaign
-default," or **"✨ Generate new spec (opens Claude)"** — which hands off to
-the `create-design-specs` skill (real Canva-backed spec) rather than
-reimplementing spec generation in the Worker. There is no dashboard-native
-"generate a new spec" action anymore — see "Two execution paths" above for
-why.
-
-**The Generate Assets modal also links the product's Strategy doc** (via
-`getProductStrategy`) for the operator to reference manually — this is
-purely informational, never merged into generation.
+**Design Spec picker and the product Strategy-doc link are both removed**
+from this modal as of the pillar-content stripdown above (Design Spec — "it's
+in Canva now," per the operator; the Strategy-doc link depended on the now-
+removed Product field). `create-design-specs` (the chat skill, real
+Canva-backed spec generation) still exists and is unaffected — it's just no
+longer offered from inside this modal.
 
 ---
 
