@@ -975,16 +975,17 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 <!-- GENERATE TITLE MODAL — the ONE title-creation flow: Product (or none) ->
-     Slot (or none, filtered to that product's Growth Strategy) -> Method ->
-     Generate. Replaces the old batch "Generate Titles" modal and "Add Idea"
-     modal (both retired). One AI call writes a real title AND its full
-     script/content into the new title's page body — grounded in the slot's
-     planned angle + parent Growth Strategy when a slot is picked, or just
-     the product's positioning Strategy + method framework + guidance when
-     not. Opened from: "+" next to Development Titles (nothing preset), a
-     Method row click (method preset), or "+ title" on a Strategy Slot row
-     (product+slot preset) — the slot stays clickable after it's Filled
-     since one slot can become several titles across different methods. -->
+     Slot (or none, filtered to that product's Growth Strategy) -> Generate.
+     Replaces the old batch "Generate Titles" modal and "Add Idea" modal
+     (both retired). Method is deliberately NOT part of this flow (per
+     operator instruction) — a title only ever gets its pillar content here
+     (grounded in the slot's planned angle + parent Growth Strategy when a
+     slot is picked, or just the product's positioning Strategy + guidance
+     when not); method-specific shaping happens later, at the Generate
+     Assets stage. Opened from: "+" next to Development Titles (nothing
+     preset), or "+ title" on a Strategy Slot row (product+slot preset) —
+     the slot stays clickable after it's Filled since one slot can become
+     several titles. -->
 <div class="modal-overlay" id="ctsModal">
   <div class="modal" style="max-width:520px;">
     <div class="modal-head">
@@ -1003,11 +1004,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       </select>
       <div class="modal-hint" id="ctsSlotContext" style="display:none;margin-bottom:10px;"></div>
 
-      <label class="lm-label">Method <span style="color:var(--danger,#e05);">*</span> <span style="color:#777;font-weight:normal;">— several titles can be made from the same slot, one per method</span></label>
-      <select class="modal-ta" id="ctsMethod" style="margin-bottom:10px;"></select>
-
-      <label class="lm-label">Guidance <span style="color:#777;font-weight:normal;">— optional; steers how the strategy is applied for this specific title/script. Left blank, the strategy alone drives it.</span></label>
-      <textarea class="modal-ta" id="ctsGuidance" rows="3" placeholder="Any specific angle, tone, or instruction for this title/script…" style="resize:vertical;"></textarea>
+      <label class="lm-label">Guidance <span style="color:#777;font-weight:normal;">— optional; steers how the strategy is applied for this specific title/pillar content. Left blank, the strategy alone drives it.</span></label>
+      <textarea class="modal-ta" id="ctsGuidance" rows="3" placeholder="Any specific angle, tone, or instruction for this title…" style="resize:vertical;"></textarea>
 
       <div id="ctsStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
     </div>
@@ -2569,7 +2567,7 @@ function renderMethods() {
   METHOD_ITEMS.forEach(m => {
     const row = document.createElement('div');
     row.className = 'method-row';
-    row.innerHTML = `<span class="method-name" onclick="openCreateTitleFromSlotModal({methodId:'${m.id}'})" title="Generate a title for this method">${m.name}</span><button class="td-del" onclick="removeMethod('${m.id}', this)" title="Remove">✕</button>`;
+    row.innerHTML = `<span class="method-name" onclick="openCreateTitleFromSlotModal()" title="Generate a title (method no longer applies until the asset stage)">${m.name}</span><button class="td-del" onclick="removeMethod('${m.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }
@@ -5375,31 +5373,17 @@ function ctsOnProductChange() {
 }
 function ctsOnSlotChange() {
   ctsUpdateSlotContext();
-  const found = ctsFindSlot(document.getElementById('ctsSlot').value);
-  const methodSel = document.getElementById('ctsMethod');
-  if (found && methodSel && !methodSel.value && found.slot.methodName) {
-    const m = (ALL_METHODS || []).find(mm => mm.name === found.slot.methodName);
-    if (m) methodSel.value = m.id;
-  }
-}
-function ctsRenderMethodOptions(methods, preferredName) {
-  const sel = document.getElementById('ctsMethod');
-  const prevValue = sel.value;
-  sel.innerHTML = methods.length
-    ? methods.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('')
-    : '<option value="">No methods yet — add one under Products &amp; Methods first</option>';
-  // Preserve whatever was already picked across a refresh; otherwise default
-  // to the slot's own recommended method, if it's in the list.
-  if (prevValue && methods.some(m => m.id === prevValue)) sel.value = prevValue;
-  else if (preferredName) { const m = methods.find(m => m.name === preferredName); if (m) sel.value = m.id; }
 }
 
-// opts: {} (fresh, from "+ Add title") | {methodId} (from a Method row
-// click) | {slotId, strategyId} (from "+ title" on a Strategy Slot row).
+// opts: {} (fresh, from "+ Add title") | {slotId, strategyId} (from
+// "+ title" on a Strategy Slot row). Method is deliberately not part of
+// this flow anymore (see the modal's own comment above) — a Method row
+// click still opens this same "create a title" modal, just with nothing
+// method-specific preset.
 function openCreateTitleFromSlotModal(opts) {
   opts = opts || {};
   CTS_SLOT = null;
-  let presetProductId = '', presetSlotId = '', slotMethodNameHint = null;
+  let presetProductId = '', presetSlotId = '';
 
   if (opts.slotId && opts.strategyId) {
     const found = ctsFindSlot(opts.slotId);
@@ -5407,30 +5391,11 @@ function openCreateTitleFromSlotModal(opts) {
     CTS_SLOT = { id: opts.slotId, strategyId: opts.strategyId };
     presetProductId = found.productId || '';
     presetSlotId = opts.slotId;
-    slotMethodNameHint = found.slot.methodName;
   }
 
   ctsPopulateProducts(presetProductId);
   ctsPopulateSlots(presetProductId, presetSlotId);
   ctsUpdateSlotContext();
-
-  // Methods are global (script length, 30s Reel vs. Carousel vs. long-form,
-  // etc.) and completely independent of Growth Strategy/campaign — every
-  // existing Live method should be pickable here, not just ones already
-  // attached to this campaign. Seed instantly from ALL_METHODS (populated
-  // on page load), then always refetch so a method created elsewhere since
-  // then still shows up.
-  const methodSel = document.getElementById('ctsMethod');
-  methodSel.value = '';
-  ctsRenderMethodOptions(ALL_METHODS || [], slotMethodNameHint);
-  if (opts.methodId) methodSel.value = opts.methodId;
-  w('searchMethods', { query: '' }).then(r => {
-    if (r.methods && r.methods.length) {
-      ALL_METHODS = r.methods;
-      ctsRenderMethodOptions(ALL_METHODS, slotMethodNameHint);
-      if (opts.methodId) methodSel.value = opts.methodId;
-    }
-  }).catch(() => {});
 
   document.getElementById('ctsGuidance').value = '';
   document.getElementById('ctsStatus').textContent = '';
@@ -5446,18 +5411,16 @@ document.getElementById('ctsModal').addEventListener('click', function(e) {
   if (e.target === this) closeCreateTitleFromSlotModal();
 });
 async function submitCreateTitleFromSlot() {
-  const methodId = document.getElementById('ctsMethod').value;
   const status = document.getElementById('ctsStatus');
-  if (!methodId) { status.textContent = 'Pick a method first.'; status.style.color = '#fc8181'; return; }
   const slotId = document.getElementById('ctsSlot').value || undefined;
   const productId = document.getElementById('ctsProduct').value || undefined;
   const guidance = document.getElementById('ctsGuidance').value.trim();
   const btn = document.getElementById('ctsGoBtn');
   btn.disabled = true; btn.textContent = 'Generating…';
   status.style.color = '#888';
-  status.textContent = 'Writing title and script…';
+  status.textContent = 'Writing title and pillar content…';
   try {
-    const data = await w('generateTitleFromSlot', { slotId, methodId, productId, guidance: guidance || undefined, campaignId: CAMPAIGN_ID });
+    const data = await w('generateTitleFromSlot', { slotId, productId, guidance: guidance || undefined, campaignId: CAMPAIGN_ID });
     if (data.error) throw new Error(data.error);
     status.textContent = `✓ Created "${data.title}"`;
     status.style.color = '#68d391';

@@ -6715,8 +6715,15 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // once (one title per Method) — its Title relation is appended to,
       // never replaced, and Status simply stays "Filled" once true.
       if (body.action === "generateTitleFromSlot") {
-        const { slotId, methodId, guidance, campaignId: campaignIdParam, productId: productIdParam } = body;
-        if (!methodId) return json({ error: "methodId required" }, 400);
+        // Method is deliberately NOT part of this action anymore (per
+        // operator instruction) — it used to require a method and write a
+        // method-shaped script (slides/subheads/script format decided by
+        // the method framework) directly into the new title. That's the
+        // exact "method-specific instruction" that doesn't belong at
+        // title/pillar creation — this now only writes a title + its
+        // method-agnostic pillar content (via writePillarContent below).
+        // Method-specific shaping happens later, at Generate Assets.
+        const { slotId, guidance, campaignId: campaignIdParam, productId: productIdParam } = body;
         if (!slotId && !campaignIdParam) return json({ error: "campaignId required when no slot is given" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -6737,13 +6744,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
           existingTitleIds = (sp.Title?.relation || []).map(r => r.id.replace(/-/g, ""));
         }
 
-        const [methodPage, methodBody, growthStrategyBody, productPage] = await Promise.all([
-          fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, { headers: hdr }).then(r => r.json()),
-          extractBlocksTextRecursive(hdr, dash(methodId)),
+        const [growthStrategyBody, productPage] = await Promise.all([
           growthStrategyId ? extractBlocksTextRecursive(hdr, growthStrategyId).catch(() => '') : Promise.resolve(''),
           productId ? fetch(`https://api.notion.com/v1/pages/${productId}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
         ]);
-        const methodName = (methodPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Unknown Method";
 
         let productSection = "No product linked to this slot.";
         if (productId && productPage?.properties) {
@@ -6768,37 +6772,20 @@ Return ONLY this JSON object, no other text, no markdown fences:
           }
         }
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content writer. Write ONE deliverable title and its full script/content${slotId ? ' for a specific planned content angle' : ''}.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist. Write ONE specific, concrete deliverable title${slotId ? ' for a specific planned content angle' : ''} — a thing to produce, not a content-post headline. Do not write any script, slides, or body content — only the title. Its actual content is written separately, method-agnostically, right after this.
 
 ${slotId ? `SLOT: ${slotName} (grouping: "${grouping}")\nPLANNED ANGLE: ${angle}\n` : ''}${platform ? `PLATFORM: ${platform}\n` : ''}
-METHOD: ${methodName}
-METHOD FRAMEWORK:
-${methodBody || "(No framework defined — infer format from the method name and best practices)"}
-
 ${productSection}
-${growthStrategyBody ? `\nGROWTH STRATEGY (full context this slot was planned under — stay consistent with its rationale/platform):\n${growthStrategyBody}\n` : ''}${(guidance || '').trim() ? `\nOPERATOR GUIDANCE (overrides/refines how the strategy above should be applied to this specific title — follow this over the strategy's general direction wherever they conflict):\n${guidance.trim()}\n` : `\n(No operator guidance given — write strictly from ${slotId ? 'the strategy and angle above' : 'the product/method context above'}.)\n`}
-INSTRUCTIONS:
-- Write a specific, concrete deliverable title${slotId ? ' for this exact angle — refine/sharpen the planned angle above into a real title, don\'t just restate it verbatim' : ' grounded in the product/method context and any guidance above'}.
-- Decide the right script format from the method: "slides" if the method framework/name is about a carousel/swipe/multi-slide post, "subheads" if it's an SEO/pillar/outline post, otherwise "script" for everything else (Reels, talking-head videos, single posts, emails, etc.).
-- "slides": write EXACTLY 7 slides (headline+body each), a caption (150-200 words), and 8-10 hashtags.
-- "subheads": write EXACTLY 3 H2-style subheads, each with a 2-3 sentence description.
-- "script": write 3-6 real sections (name them to fit the method, e.g. Hook / Body beats / CTA), each with real, ready-to-record/post content — not an outline, not placeholders.
+${growthStrategyBody ? `\nGROWTH STRATEGY (full context this slot was planned under — stay consistent with its rationale/platform):\n${growthStrategyBody}\n` : ''}${(guidance || '').trim() ? `\nOPERATOR GUIDANCE (overrides/refines how the strategy above should be applied to this specific title — follow this over the strategy's general direction wherever they conflict):\n${guidance.trim()}\n` : `\n(No operator guidance given — write strictly from ${slotId ? 'the strategy and angle above' : 'the product context above'}.)\n`}
+${slotId ? 'Refine/sharpen the planned angle above into a real title — don\'t just restate it verbatim.' : 'Ground the title in the product context and any guidance above.'}
 
 Return ONLY this JSON object, no other text, no markdown fences:
-{
-  "title": "...",
-  "format": "slides" | "subheads" | "script",
-  "slides": [ { "headline": "...", "body": "..." } ],
-  "caption": "...", "hashtags": ["..."],
-  "subheads": [ { "heading": "...", "description": "..." } ],
-  "script": [ { "section": "...", "content": "..." } ]
-}
-Only populate the array(s)/fields relevant to the chosen format; leave the others empty.`;
+{ "title": "..." }`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: prompt }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
@@ -6809,7 +6796,7 @@ Only populate the array(s)/fields relevant to the chosen format; leave the other
           if (start === -1 || end === -1) throw new Error("No JSON object found");
           plan = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
         } catch(e) {
-          return json({ error: "Failed to parse title/script JSON: " + e.message }, 500);
+          return json({ error: "Failed to parse title JSON: " + e.message }, 500);
         }
         const titleText = String(plan.title || slotName || angle || "Untitled").slice(0, 2000);
 
@@ -6820,7 +6807,6 @@ Only populate the array(s)/fields relevant to the chosen format; leave the other
         if (grouping) props["Grouping"] = { rich_text: [{ type: "text", text: { content: grouping.slice(0, 1990) } }] };
         if (campaignId) props["Campaign"] = { relation: [{ id: campaignId }] };
         if (productId) props["product"] = { relation: [{ id: productId }] };
-        if (methodId) props["method"] = { relation: [{ id: dash(methodId) }] };
 
         const createResp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
@@ -6830,52 +6816,12 @@ Only populate the array(s)/fields relevant to the chosen format; leave the other
         if (!createResp.ok || !created.id) return json({ error: created.message || "Failed to create title" }, createResp.status || 500);
         const newTitleId = created.id.replace(/-/g, "");
 
-        // Write the generated script into the new page's body — block shape
-        // depends on which format Claude chose (same block conventions as
-        // generateTitleSlides/generateTitleSubheads, so downstream tooling
-        // that reads "Slide N" blocks for carousel assets still works).
-        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
-        const heading3 = t => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(t) } });
-        const heading2 = t => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(t) } });
-        const para = (t, o = {}) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(t, o) } });
-        const divider = () => ({ object: "block", type: "divider", divider: {} });
-
-        const children = [];
-        const format = (plan.format === 'slides' || plan.format === 'subheads') ? plan.format : 'script';
-        if (format === 'slides') {
-          const slides = (Array.isArray(plan.slides) ? plan.slides : []).filter(s => s && (s.headline || s.body));
-          slides.forEach((s, i) => {
-            children.push(heading3(`Slide ${i + 1} (${i + 1}/${slides.length})`));
-            if (s.headline) children.push(para(s.headline, { bold: true }));
-            if (s.body) children.push(para(s.body));
-            children.push(divider());
-          });
-          if (plan.caption) { children.push(heading3('Caption')); children.push(para(plan.caption)); }
-          if (Array.isArray(plan.hashtags) && plan.hashtags.length) { children.push(heading3('Hashtags')); children.push(para(plan.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' '))); }
-        } else if (format === 'subheads') {
-          const subheads = (Array.isArray(plan.subheads) ? plan.subheads : []).filter(s => s && s.heading);
-          if (subheads.length) children.push(heading3('Outline'));
-          subheads.forEach(s => { children.push(heading2(s.heading)); if (s.description) children.push(para(s.description)); });
-        } else {
-          const sections = (Array.isArray(plan.script) ? plan.script : []).filter(s => s && (s.section || s.content));
-          sections.forEach(s => { if (s.section) children.push(heading3(s.section)); if (s.content) children.push(para(s.content)); });
-        }
-        if ((guidance || '').trim()) { children.push(divider()); children.push(heading3('Operator Guidance Used')); children.push(para(guidance.trim())); }
-
-        if (children.length) {
-          await fetch(`https://api.notion.com/v1/blocks/${dash(newTitleId)}/children`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ children: children.slice(0, 100) }),
-          }).catch(() => {});
-        }
-
         // Pillar content should exist on a title the moment it's created —
         // this site already gathered rich product/strategy/growth-strategy
         // context, so pass it straight through as extraContext instead of
-        // refetching. Method framework is deliberately excluded — per
-        // operator instruction, pillar content stays method-agnostic, and
-        // this site's own generation above (title/script) is where the
-        // method actually shapes anything.
+        // refetching. Method is deliberately absent from this whole action
+        // now — pillar content stays method-agnostic, method-specific
+        // shaping happens later at Generate Assets.
         let pillarWarning;
         await writePillarContent(hdr, env, {
           titleId: newTitleId, titleText, campaignId, productId, guidance,
@@ -6895,7 +6841,7 @@ Only populate the array(s)/fields relevant to the chosen format; leave the other
           }).catch(() => {});
         }
 
-        return json({ success: true, id: newTitleId, title: titleText, format, pillarWarning });
+        return json({ success: true, id: newTitleId, title: titleText, pillarWarning });
       }
 
       // ── saveMethodTitles ──
