@@ -1597,6 +1597,8 @@ async function loadTitles() {
       ar.innerHTML = `<span style="font-size:9px;color:#666;flex-shrink:0;">↳</span>`
         + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.title)}</span>`
         + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
+        + (a.canvaLink ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyCanvaPortPrompt(this)" title="Copy a ready-to-paste prompt for porting this asset's table content into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the table." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
+        + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" rel="noopener" title="Open this asset's Notion page" style="flex-shrink:0;">↗</a>`
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" data-productid="${productId || ''}" onclick="openVisualBriefModal(this)" title="Set up and assemble the Visual Production Source Document (Editing Authority tiers/Asset Metadata/Production Method/Audience/Research/Content Foundation/Growth Strategy Context/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Opens a setup modal first: pick a Growth Strategy for context, lock specific normally-MUTABLE design fields to IMMUTABLE for this asset, and write operator guidelines. Text Video assets are told to declare Simple vs. Custom Remotion Build (custom builds get a mandatory voice-first render sequence) and to keep the Asset ID attached through every revision. Also drafts every field of the structured Design Specification via Claude, tagged Immutable/Constrained/Mutable/Derived-at-production so ChatGPT knows exactly what it can and can't change — Text Video into 🎬 Text Video Specs / 🎞️ Text Video Scenes, Carousel into 🎠 Carousel Specifications / 🃏 Slide Specifications (plus the shared Color Palette/Typography/Visual Style/Grid/Layout/Diagram/Platform Preset databases, reused across the whole campaign)." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'renderPackage')" title="Upload RENDER_PACKAGE.yaml — the single file ChatGPT now returns (visualBrief + assemblyInstructions + assemblyManifest sections) — split automatically and saved to this asset's Visual Production Brief / Production Assembly Package / Assembly Manifest properties, no modal needed." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">📦 Render Package</button>` : '')
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for any asset type with a registered renderer (carousel today), RE-RENDERS from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
@@ -4863,6 +4865,41 @@ async function deleteAssetRow(assetId, btn) {
 async function syncFromCanva(btn) {
   const title = btn.dataset.title, titleId = btn.dataset.titleid, canvaLink = btn.dataset.canvalink;
   const prompt = `Sync the Canva edits from this design back into the carousel template: ${canvaLink}\n\nThis is for the Content Strategy title "${title}" (https://www.notion.so/${titleId}). Read the current Canva design (read-design + a fresh export/thumbnail), figure out what changed versus the CSS currently used for this carousel type in worker.js's publishCarouselSlides, update that CSS to match, deploy the Worker, then regenerate this carousel.`;
+  try {
+    await navigator.clipboard.writeText(prompt);
+    const orig = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    setTimeout(() => { btn.textContent = orig; }, 1400);
+  } catch(e) {
+    alert(prompt);
+  }
+}
+
+// Copies a ready-to-paste porting prompt for a table-formatted asset (e.g.
+// a Template CSV Export asset) into its linked Canva template — the
+// "Copy Canva prompt" button on the asset row, shown whenever the asset has
+// a Canva Link (set from the Method's own "Canva Template Link" property at
+// generation time, see the /template csv/i branch of generateTitleAssets in
+// worker.js). This is a claude.ai/chat handoff, not a worker action — real
+// Canva MCP tool calls (copy-design, read-design, edit-design) can only run
+// in a live chat session, never from this Cloudflare Worker. Per operator
+// instruction: copy the template first, NEVER edit the original directly.
+function buildCanvaPortPrompt(assetId, titleId, canvaLink) {
+  return `Port this asset's table content into its linked Canva template.\n\n`
+    + `Asset page: https://www.notion.so/${assetId}\n`
+    + `Title page: https://www.notion.so/${titleId}\n`
+    + `Canva template: ${canvaLink}\n\n`
+    + `Process:\n`
+    + `1. Read the Asset page in Notion — its page body is a Page | Field | Content table (grouped by page under heading_3 sections).\n`
+    + `2. Read the Canva template via the Canva MCP (read-design) to see every text field, its position, and its size constraints.\n`
+    + `3. Use copy-design to duplicate the template into a new design — NEVER edit the original template directly.\n`
+    + `4. Map each table row to the matching field on the copy by page/position, and populate it via edit-design. Verify each page's thumbnail after editing; if a field overflows its box, shorten/reformat the text rather than letting it run over.\n`
+    + `5. Commit the transaction once every page looks right.\n`
+    + `6. Save the resulting copy's URL back onto the Asset's "Design Link" property in Notion.`;
+}
+async function copyCanvaPortPrompt(btn) {
+  const { assetid: assetId, titleid: titleId, canvalink: canvaLink } = btn.dataset;
+  const prompt = buildCanvaPortPrompt(assetId, titleId, canvaLink);
   try {
     await navigator.clipboard.writeText(prompt);
     const orig = btn.textContent;

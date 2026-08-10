@@ -696,6 +696,21 @@ Write 800-1500 words of substantive, specific, well-organized prose — real cla
   return { success: true, wordCount: pillarText.split(/\s+/).length };
 }
 
+// Ensures a single select/url/rich_text property exists on a database
+// before writing to it — Notion rejects a page-property write for a key
+// that isn't already in the database's schema. Only ever adds, mirrors the
+// ensureAssetsDbProperties pattern used elsewhere (assembleAsset) but
+// generic to any database, since this needs to touch METHODS_DB, not
+// ASSETS_DB.
+async function ensureDbProperty(hdr, dbId, name, type) {
+  const dbResp = await fetch(`https://api.notion.com/v1/databases/${dbId}`, { headers: hdr }).then(r => r.json());
+  if (dbResp.properties && dbResp.properties[name]) return;
+  await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+    method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: { [name]: { [type]: {} } } }),
+  });
+}
+
 // Parses a Method's own page body into its natural Phase > Grouping
 // structure by BLOCK TYPE (heading_1/2 = phase boundary, heading_3 =
 // grouping boundary within the current phase, bullets/numbered items =
@@ -7848,11 +7863,20 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // involvement at generation time. Skips the grading gate: a
         // technical table isn't a viral concept to score.
         if (/template csv/i.test(assetType)) {
-          const [pillarContent, methodFrameworkText] = await Promise.all([
+          const hasMethod = methodId && methodId !== "__none__";
+          if (hasMethod) await ensureDbProperty(dsHdr, METHODS_DB, "Canva Template Link", "url").catch(() => {});
+          const [pillarContent, methodFrameworkText, methodPage] = await Promise.all([
             extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
-            (methodId && methodId !== "__none__") ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
+            hasMethod ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
+            hasMethod ? fetch(`https://api.notion.com/v1/pages/${dsDash(methodId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
           ]);
           if (!pillarContent) return json({ error: "This title has no pillar content yet — Generate Assets reshapes existing content, it doesn't compose from scratch. Pillar content writes automatically on title creation; wait for it to finish, then try again." }, 400);
+          // Tracked on the Method itself (per operator: "the template can be
+          // tracked to the specific method") — set once, in Notion, on the
+          // Method page's "Canva Template Link" property (schema ensured
+          // above). Copied onto every asset this method produces so a later
+          // porting chat has the template link ready without being asked.
+          const canvaTemplateLink = methodPage?.properties?.["Canva Template Link"]?.url || "";
 
           const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing a table-formatted content manifest for this title — a Page | Field | Content table reshaping the pillar content below into the field structure a template (e.g. a multi-page Canva carousel design) will later be filled from. This is a technical handoff document, not a social post: no hashtags, no CTA copy, no visual/image descriptions.
 
@@ -7898,6 +7922,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
           if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
           if (platformId) assetProps["Platform"] = { relation: [{ id: dsDash(platformId) }] };
+          if (canvaTemplateLink) assetProps["Canva Link"] = { url: canvaTemplateLink };
           const assetResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { ...dsHdr, "Content-Type": "application/json" },
@@ -7926,7 +7951,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             }).catch(() => {});
           }
 
-          return json({ success: true, created: 1, assets: [{ id: assetId, title }], rowCount: rows.length });
+          return json({ success: true, created: 1, assets: [{ id: assetId, title }], rowCount: rows.length, canvaTemplateLink: canvaTemplateLink || undefined });
         }
 
         // design spec: explicit modal pick wins, else campaign default →
