@@ -4475,21 +4475,18 @@ const GA_CAROUSEL_ASSET_TYPE_RE = /drawing post/i;
 // real PNGs via Cloudflare's Browser Rendering REST API and hosts them on
 // GitHub Pages, entirely inside the Worker — no chat tab, one button here.
 const GA_SKILL_METHODS = [
-  // Checked BEFORE the generic /carousel/i entry below — this method's name
-  // ("carousel — Template CSV Export") would otherwise match that broader
-  // pattern first (Array.find takes the first match) and get routed into
-  // generateCarouselPreview, which has no Canva-template input at all and
-  // 400s. This method is chat-only by design (needs a specific Canva
-  // template attached in a live Claude session, Canva MCP connected) — no
-  // single worker action can run the audit itself. It DOES have two worker
-  // actions behind it now (resolveCarouselAsset, uploadAssetDocument's
-  // canvaFieldAudit docType) that the chat skill is required to call —
-  // per operator instruction, the audited field table gets saved to this
-  // title's carousel Asset FIRST, then the copy is ported into Canva. See
-  // the prompt built below.
-  { test: /template csv/i,          skill: 'audit-canva-template-csv', label: 'Carousel — Template CSV',
-    hint: 'Chat-only — not runnable from this button. Attach the specific Canva template in a live Claude chat (Canva MCP connected) and hand off below. It audits every text field, saves that table to this title’s Asset first (resolveCarouselAsset + uploadAssetDocument), then ports the copy into the Canva template.' },
-  { test: /carousel/i,              workerAction: 'generateCarouselPreview', label: 'Carousel',
+  // "Carousel — Template CSV Export" deliberately has NO entry here (per
+  // operator instruction) — it's not a chat-only skill anymore. It falls
+  // through to the generic generateTitleAssets path below like any other
+  // method: writes structured content straight to an Asset record, shaped
+  // by whatever this Method's own framework/instructions (its Notion page
+  // body) specify — that's the "table formatted output, delineated by the
+  // method" the operator asked for, and it needs no Canva/MCP involvement
+  // at generation time. Porting that table into an actual Canva template is
+  // a separate, later step. The /carousel/i test below is written to NOT
+  // match this method's name, so it doesn't get misrouted into
+  // generateCarouselPreview (the real-image-rendering path) either.
+  { test: /carousel(?!.*template csv)/i, workerAction: 'generateCarouselPreview', label: 'Carousel',
     hint: 'The one carousel path, entirely in-dashboard — writes the 7-slide script to this title in Notion (if it doesn\'t have one yet), renders each slide as a real image, and publishes a hosted preview page for approval. Don\'t like it? Edit the slide text on this title in Notion, then run it again — it rebuilds the preview from your edits. Instagram publishing is a separate step, not done here yet.' },
   { test: /text pic/i,              skill: 'make-text-pic',      label: 'Text Pic',
     hint: 'Full production skill available — writes a hook-driven line and builds it as a real Canva image in the campaign\'s design spec.' },

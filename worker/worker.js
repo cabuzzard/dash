@@ -568,9 +568,11 @@ async function extractPillarContent(hdr, titleId) {
 
 // Composes a full-length pillar piece for a title — grounded in Campaign
 // Research + Product fields + Product Strategy (the same fields
-// generateMethodTitles already merges, see docs/methods-titles-assets.md)
-// plus the Method's own framework text when a method is already known — and
-// appends it to the title's own page body as a new "Pillar Content"
+// generateMethodTitles already merges, see docs/methods-titles-assets.md).
+// Deliberately METHOD-AGNOSTIC per operator instruction: method-specific
+// instruction belongs at the Generate Assets stage, not pillar creation, so
+// no Method framework text is fetched here even when methodId is known.
+// Appends the result to the title's own page body as a new "Pillar Content"
 // heading_3 section (readable back via extractPillarContent above). This is
 // the source material Generate Assets reshapes per Method+Platform; it does
 // not invent the strategic positioning, only writes the long-form piece
@@ -648,12 +650,12 @@ async function writePillarContent(hdr, env, { titleId, titleText, campaignId, pr
     } catch (e) { /* best-effort */ }
   }
 
-  if (methodId && !extraContext) {
-    try {
-      const methodText = await extractBlocksTextRecursive(hdr, dash(methodId));
-      if (methodText) parts.push(`METHOD FRAMEWORK:\n${methodText.slice(0, 3000)}`);
-    } catch (e) { /* best-effort */ }
-  }
+  // Deliberately no Method framework grounding here (per operator
+  // instruction): pillar content stays method-agnostic — Research/Product/
+  // Strategy only. Method-specific shaping/instruction belongs at the
+  // Generate Assets stage, not title/pillar creation. `methodId` is still
+  // accepted (some call sites resolve it anyway for their own title-
+  // generation prompt) but intentionally unused here.
 
   if (extraContext) parts.push(String(extraContext).slice(0, 4000));
   if (guidance) parts.push(`OPERATOR GUIDANCE (follow this): ${guidance}`);
@@ -6868,13 +6870,16 @@ Only populate the array(s)/fields relevant to the chosen format; leave the other
         }
 
         // Pillar content should exist on a title the moment it's created —
-        // this site already gathered the richest grounding of any creation
-        // path (method framework + product/strategy + growth strategy), so
-        // pass it straight through as extraContext instead of refetching.
+        // this site already gathered rich product/strategy/growth-strategy
+        // context, so pass it straight through as extraContext instead of
+        // refetching. Method framework is deliberately excluded — per
+        // operator instruction, pillar content stays method-agnostic, and
+        // this site's own generation above (title/script) is where the
+        // method actually shapes anything.
         let pillarWarning;
         await writePillarContent(hdr, env, {
-          titleId: newTitleId, titleText, campaignId, productId, methodId, guidance,
-          extraContext: [methodBody && `METHOD FRAMEWORK:\n${methodBody}`, productSection, growthStrategyBody && `GROWTH STRATEGY:\n${growthStrategyBody}`].filter(Boolean).join("\n\n"),
+          titleId: newTitleId, titleText, campaignId, productId, guidance,
+          extraContext: [productSection, growthStrategyBody && `GROWTH STRATEGY:\n${growthStrategyBody}`].filter(Boolean).join("\n\n"),
         }).catch(e => { pillarWarning = e.message; });
 
         // Mark the slot Filled and APPEND this title to its Title relation —
@@ -15200,16 +15205,17 @@ Return ONLY this JSON object, no other text, no markdown fences:
       }
 
       // ── resolveCarouselAsset ──
-      // The audit-canva-template-csv chat-only skill has no worker action of
-      // its own (see GA_SKILL_METHODS in the microsite template) — it needs
-      // *something* to point uploadAssetDocument's new canvaFieldAudit
-      // docType at, so the audited field table can be saved to a real Asset
-      // record before the operator ports the copy into Canva, instead of
-      // the audit only ever living in this chat. Finds-or-creates the
-      // title's "carousel" Asset (same Asset Type generateCarouselPreview
-      // uses — this is still a carousel, just Canva-authored instead of
-      // auto-rendered) using the same match/create shape as that action's
-      // Step 6 upsert, minus anything render-specific.
+      // "Carousel — Template CSV Export" is no longer a chat-only skill (see
+      // GA_SKILL_METHODS in the microsite template) — it's a normal method
+      // routed through generateTitleAssets, which writes its table-formatted
+      // output straight to an Asset itself. This action + uploadAssetDocument's
+      // canvaFieldAudit docType remain available for the SEPARATE, later,
+      // manual step of actually porting a title's output into a live Canva
+      // template (a real chat session with the Canva MCP connected) — find-
+      // or-create the title's "carousel" Asset (same Asset Type
+      // generateCarouselPreview uses — this is still a carousel, just
+      // Canva-authored instead of auto-rendered) using the same match/create
+      // shape as that action's Step 6 upsert, minus anything render-specific.
       if (body.action === "resolveCarouselAsset") {
         const { titleId, campaignId, titleName } = body;
         if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
