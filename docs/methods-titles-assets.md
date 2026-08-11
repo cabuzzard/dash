@@ -251,16 +251,32 @@ the **grading gate** below before being saved.
 
 Every title created through one of the flow's live entry points (see
 "Title creation" below) gets a full-length **pillar** piece — 800-1500 words,
-grounded in Campaign Research + Product fields + Product Strategy (and the
-Method's own framework text, when a method is already known at creation
-time) — written into the title's own Notion page body as a `Pillar Content`
-heading_3 section (`writePillarContent`/`extractPillarContent`, `worker.js`
-near `extractBlocksTextRecursive`). This is the actual source material:
+grounded in Campaign Research + Product fields + Product Strategy — written
+into the title's own Notion page body as a `Pillar Content` heading_3
+section (`writePillarContent`/`extractPillarContent`, `worker.js` near
+`extractBlocksTextRecursive`). Deliberately method-agnostic: no Method
+framework text is fetched here even when a method is already known at
+creation time — method-specific shaping happens later, at the Generate
+Assets stage, not pillar creation. This is the actual source material:
 Generate Assets doesn't invent content, it reshapes this piece for a
 specific Method and Platform. `generateCarouselPreview` reads it via
 `extractPillarContent` when writing a title's first slide script, falling
 back to the old thin Research-Keywords grounding for legacy titles that
 predate this feature.
+
+**Product Strategy auto-generates too, the first time it's needed.**
+`writePillarContent` calls `ensureProductStrategy` before reading the
+Strategy record — if the product has no Strategy yet (Method-empty record
+in `STRATEGY_DB`), it writes one in a single Claude call covering all of
+`STRATEGY_FIELDS` (Customer/Niche/Pain Points/Emotions/Solution/Benefits/
+Unique Opportunity/Transformation/Offer Structure/Proof Points/Objections),
+grounded in the product's own fields + Campaign Research. This exists so
+clear customer psychology, pain points, and objections are available to
+every pillar regardless of whether the operator manually visited the
+product page and ran `generateStrategyField` first. Same "resolve once,
+never auto-patch after first creation" discipline as
+`resolveCampaignDesignDefaults` — an existing Strategy record, even a
+partially-filled one, is left completely untouched.
 
 **Title creation is not one action.** Ten places in `worker.js` create a
 Content Strategy page; three have no active UI caller

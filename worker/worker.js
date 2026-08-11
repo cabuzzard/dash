@@ -630,6 +630,14 @@ async function writePillarContent(hdr, env, { titleId, titleText, campaignId, pr
         ].filter(Boolean);
         if (productLines.length) parts.push(`PRODUCT:\n${productLines.join("\n")}`);
       }
+      // Per operator instruction: clear customer psychology/pain points/
+      // objections should ground every pillar regardless of whether the
+      // operator visited the product page and ran generateStrategyField
+      // first — auto-generate a full Strategy record here if this product
+      // doesn't have one yet (no-op if it already does; see
+      // ensureProductStrategy's own "never auto-patch" discipline).
+      await ensureProductStrategy(hdr, env, productId, campaignId);
+
       // Product Strategy = Strategy DB record with Method empty (the
       // positioning doc) — NOT a Method Brief (Method set). Filtering on
       // Method:is_empty here is the fix for the real bug documented in
@@ -696,6 +704,97 @@ Write 800-1500 words of substantive, specific, well-organized prose — real cla
   return { success: true, wordCount: pillarText.split(/\s+/).length };
 }
 
+
+// Auto-generates a product's Strategy record (all STRATEGY_FIELDS in one
+// Claude call) the first time a title needs one and none exists yet — per
+// operator instruction, clear customer psychology/pain points/objections
+// should ground every pillar regardless of whether the operator manually
+// visited the product page and ran generateStrategyField first. Search-or-
+// create, keyed by Product, same "resolve once, never auto-patch after
+// first creation" discipline as resolveCampaignDesignDefaults elsewhere in
+// this file — an existing record (even a partially-filled one) is left
+// completely untouched; this only ever fills the gap when NONE exists.
+// Best-effort throughout: never throws, a failure here just means the
+// pillar writes with whatever grounding it already has.
+async function ensureProductStrategy(hdr, env, productId, campaignId) {
+  const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  try {
+    const existing = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+      method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ filter: { and: [
+        { property: "Product", relation: { contains: dash(productId) } },
+        { property: "Method", relation: { is_empty: true } },
+      ] } }),
+    }).then(r => r.json()).catch(() => ({ results: [] }));
+    if ((existing.results || []).length) return;
+
+    if (!env.ANTHROPIC_API_KEY) return;
+    const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+    if (!prodPage?.properties) return;
+    const pp = prodPage.properties;
+    const rt = key => (pp[key]?.rich_text || []).map(t => t.plain_text).join("");
+    const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+    const productDesc = rt("Description");
+    const productKeywords = rt("Keywords");
+
+    let researchBlock = "";
+    if (campaignId) {
+      const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+        method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+      }).then(r => r.json()).catch(() => ({ results: [] }));
+      const rp = (researchRows.results || [])[0]?.properties;
+      if (rp) {
+        const rtR = key => (rp[key]?.rich_text || []).map(t => t.plain_text).join("");
+        const lines = [
+          rtR("Statement") && `Statement: ${rtR("Statement")}`,
+          rtR("Pain Points") && `Pain Points: ${rtR("Pain Points")}`,
+          rtR("Unique Opportunity") && `Unique Opportunity: ${rtR("Unique Opportunity")}`,
+        ].filter(Boolean);
+        if (lines.length) researchBlock = `\nCAMPAIGN RESEARCH:\n${lines.join("\n")}\n`;
+      }
+    }
+
+    const fieldList = STRATEGY_FIELDS.map(f => `- ${f}: ${STRATEGY_FIELD_HINTS[f]}`).join("\n");
+    const prompt = `You are a marketing strategist writing a product's complete core strategy document — a fixed positioning reference used across every marketing channel this product is sold through, not tied to any one platform. This is being generated automatically because no Strategy exists yet for this product, so titles have real customer psychology, pain points, and objections to draw from instead of starting blind.
+
+PRODUCT: ${productName}
+DESCRIPTION: ${productDesc || "(none)"}
+KEYWORDS: ${productKeywords || "(none)"}
+${researchBlock}
+Write ALL of these fields — each 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain Points, Objections):
+${fieldList}
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "Customer": "...", "Niche": "...", "Pain Points": "...", "Emotions": "...", "Solution": "...", "Benefits": "...", "Unique Opportunity": "...", "Transformation": "...", "Offer Structure": "...", "Proof Points": "...", "Objections": "..." }`;
+
+    const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
+    });
+    const aiData = await aiResp.json();
+    if (!aiResp.ok) return;
+    const raw = aiData.content?.[0]?.text || "";
+    const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+    if (start === -1 || end === -1) return;
+    const fields = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+
+    const props = {
+      Name: { title: [{ type: "text", text: { content: `${productName} — Strategy`.slice(0, 200) } }] },
+      Product: { relation: [{ id: dash(productId) }] },
+      Status: { select: { name: "Current" } },
+    };
+    STRATEGY_FIELDS.forEach(f => {
+      const val = String(fields[f] || "").trim();
+      if (val) props[f] = { rich_text: [{ type: "text", text: { content: val.slice(0, 1990) } }] };
+    });
+    await fetch("https://api.notion.com/v1/pages", {
+      method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ parent: { database_id: STRATEGY_DB }, properties: props }),
+    });
+  } catch (e) { /* best-effort — pillar still writes from whatever grounding it already has */ }
+}
 
 // Parses a Method's own page body into its natural Phase > Grouping
 // structure by BLOCK TYPE (heading_1/2 = phase boundary, heading_3 =
