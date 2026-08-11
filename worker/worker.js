@@ -610,6 +610,35 @@ async function extractPillarContent(hdr, titleId) {
 // Never throws past its own boundary: title creation must not fail because
 // pillar-writing failed. Callers should `.catch()` this and surface a
 // warning instead of letting it break the surrounding action.
+//
+// Safe to call repeatedly as a genuine "regenerate" — before writing, any
+// existing "Pillar Content" heading_3 section (same boundary logic as
+// extractPillarContent: from that heading up to the next heading_1/2/3, or
+// end of the page) is archived first. Without this, a second call would
+// just append a second "Pillar Content" section rather than replacing the
+// first, which is exactly the operation an operator-triggered rewrite needs.
+async function clearExistingPillarSection(hdr, titleId) {
+  const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  try {
+    const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+    const blocks = blocksResp.results || [];
+    const toDelete = [];
+    let inSection = false;
+    for (const b of blocks) {
+      if (b.type === "heading_3") {
+        const heading = (b.heading_3?.rich_text || []).map(t => t.plain_text).join("");
+        inSection = heading.trim().toLowerCase() === "pillar content";
+        if (inSection) toDelete.push(b.id);
+        continue;
+      }
+      if (b.type === "heading_1" || b.type === "heading_2") { inSection = false; continue; }
+      if (inSection) toDelete.push(b.id);
+    }
+    for (const id of toDelete) {
+      await fetch(`https://api.notion.com/v1/blocks/${id}`, { method: "DELETE", headers: hdr }).catch(() => {});
+    }
+  } catch (e) { /* best-effort — worst case the new section appends after a stale one */ }
+}
 async function writePillarContent(hdr, env, { titleId, titleText, campaignId, productId, methodId, guidance, extraContext }) {
   if (!env.ANTHROPIC_API_KEY) return { skipped: true, reason: "no ANTHROPIC_API_KEY" };
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -667,14 +696,8 @@ async function writePillarContent(hdr, env, { titleId, titleText, campaignId, pr
       // Method:is_empty here is the fix for the real bug documented in
       // docs/methods-titles-assets.md (querying by Product alone can
       // silently return a Brief instead).
-      const stratRows = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-        method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-        body: JSON.stringify({ filter: { and: [
-          { property: "Product", relation: { contains: dash(productId) } },
-          { property: "Method", relation: { is_empty: true } },
-        ] } }),
-      }).then(r => r.json()).catch(() => ({ results: [] }));
-      const sp = (stratRows.results || [])[0]?.properties;
+      const stratRecord = await findBestStrategyRecord(hdr, productId).catch(() => null);
+      const sp = stratRecord?.properties;
       if (sp) {
         const stratLines = STRATEGY_FIELDS.map(f => rt(sp, f) && `${f}: ${rt(sp, f)}`).filter(Boolean);
         if (stratLines.length) parts.push(`PRODUCT STRATEGY (positioning):\n${stratLines.join("\n")}`);
@@ -712,6 +735,12 @@ Write 800-1500 words of substantive, specific, well-organized prose — real cla
   if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error writing pillar content");
   const pillarText = (aiData.content?.[0]?.text || "").trim();
   if (!pillarText) throw new Error("Pillar content came back empty");
+
+  // New content generated successfully — safe now to clear whatever old
+  // "Pillar Content" section exists before appending the replacement.
+  // Ordered after the Claude call (not before) so a failed generation never
+  // wipes out perfectly good existing pillar content.
+  await clearExistingPillarSection(hdr, titleId);
 
   const heading3 = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: [{ type: "text", text: { content: text } }] } });
   const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: text } }] } });
