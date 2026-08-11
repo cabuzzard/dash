@@ -7964,16 +7964,20 @@ Return ONLY this JSON object, no other text, no markdown fences:
           // ready without being asked.
           const canvaTemplateLink = methodPage?.properties?.["Template"]?.url || "";
 
-          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing a table-formatted content manifest for this title — a Page | Field | Content table reshaping the pillar content below into the field structure a template (e.g. a multi-page Canva carousel design) will later be filled from. This is a technical handoff document, not a social post: no hashtags, no CTA copy, no visual/image descriptions.
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing the full package for a templated carousel post: a Page | Field | Content table reshaping the pillar content below into the field structure a template (e.g. a multi-page Canva carousel design) will later be filled from, PLUS the social post caption and hashtags that will accompany the finished carousel when it's published. No visual/image descriptions in the table — that stays a technical handoff document — but the caption and hashtags are the real, finished, platform-native post copy.
 
 TITLE: ${title}
-${platformName ? `PLATFORM: ${platformName}\n` : ''}${methodFrameworkText ? `METHOD FRAMEWORK (if this defines specific page/field names or a page count, follow them exactly — otherwise use your judgment):\n${methodFrameworkText.slice(0, 2000)}\n` : ''}
+${platformName ? `PLATFORM: ${platformName} — write the caption and hashtags in this platform's native conventions (length, tone, hashtag count/style, line breaks). A LinkedIn caption reads nothing like a TikTok caption.\n` : ''}${methodFrameworkText ? `METHOD FRAMEWORK (if this defines specific page/field names or a page count, follow them exactly — otherwise use your judgment):\n${methodFrameworkText.slice(0, 2000)}\n` : ''}
 PILLAR CONTENT (the source material — reshape THIS into the table; don't invent new facts beyond what's here):
 ${pillarContent}
 ${(description || '').trim() ? `\nOPERATOR OVERRIDE (follow this): ${description.trim()}\n` : ''}
 Produce one row per distinct field on each page/slide (e.g. Headline, Body, Badge, Payoff) — real, specific, ready-to-port content, never placeholders.
 
-Produce the table by calling the submit_table tool — do not include the table as plain text.`;
+Also produce:
+- "caption": the finished post caption for the platform above — a real hook line plus supporting copy, written to actually accompany this carousel when posted, not a summary of it.
+- "hashtags": a single string of space-separated hashtags (e.g. "#tag1 #tag2 #tag3"), sized and styled to the platform's own hashtag conventions.
+
+Produce all of this by calling the submit_table tool — do not include any of it as plain text.`;
 
           // Tool-forced structured output instead of asking for raw JSON text
           // and regex/JSON.parse-ing it: content rows routinely contain
@@ -7990,7 +7994,7 @@ Produce the table by calling the submit_table tool — do not include the table 
               model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }],
               tools: [{
                 name: "submit_table",
-                description: "Submit the Page | Field | Content table rows for this asset.",
+                description: "Submit the Page | Field | Content table rows for this asset, plus its post caption and hashtags.",
                 input_schema: {
                   type: "object",
                   properties: {
@@ -8006,8 +8010,10 @@ Produce the table by calling the submit_table tool — do not include the table 
                         required: ["page", "field", "content"],
                       },
                     },
+                    caption: { type: "string" },
+                    hashtags: { type: "string" },
                   },
-                  required: ["rows"],
+                  required: ["rows", "caption", "hashtags"],
                 },
               }],
               tool_choice: { type: "tool", name: "submit_table" },
@@ -8031,6 +8037,8 @@ Produce the table by calling the submit_table tool — do not include the table 
             "Body":             { rich_text: [{ type: "text", text: { content: markdownTable.slice(0, 1990) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
           };
+          if (table.caption)  assetProps["Post Caption"] = { rich_text: [{ type: "text", text: { content: String(table.caption).slice(0, 1990) } }] };
+          if (table.hashtags) assetProps["Hashtags"]     = { rich_text: [{ type: "text", text: { content: String(table.hashtags).slice(0, 1990) } }] };
           if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
           if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
           if (platformId) assetProps["Platform"] = { relation: [{ id: dsDash(platformId) }] };
