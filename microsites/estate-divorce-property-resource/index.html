@@ -4893,9 +4893,10 @@ function buildCanvaPortPrompt(assetId, titleId, canvaLink) {
     + `1. Read the Asset page in Notion — its page body is a Page | Field | Content table (grouped by page under heading_3 sections).\n`
     + `2. Read the Canva template via the Canva MCP (read-design) to see every text field, its position, and its size constraints.\n`
     + `3. Use copy-design to duplicate the template into a new design — NEVER edit the original template directly.\n`
-    + `4. Map each table row to the matching field on the copy by page/position, and populate it via edit-design. Verify each page's thumbnail after editing; if a field overflows its box, shorten/reformat the text rather than letting it run over.\n`
-    + `5. Commit the transaction once every page looks right.\n`
-    + `6. Save the resulting copy's URL back onto the Asset's "Design Link" property in Notion — this is what publishes it: the dashboard's Published Assets section reads Design Link to build that asset row's "↗ View" link, so this step is what actually makes the finished design show up there, not an optional bookkeeping step.`;
+    + `4. Rename the copy (update_title) to the Asset page's own "Asset Title" property value — copy-design keeps the template's original generic name (e.g. "webguy carousel 2"), which is fine for the shared template but wrong for a finished, published design; every templated method's output gets renamed this same way, not just this one.\n`
+    + `5. Map each table row to the matching field on the copy by page/position, and populate it via edit-design. Verify each page's thumbnail after editing; if a field overflows its box, shorten/reformat the text rather than letting it run over.\n`
+    + `6. Commit the transaction once every page looks right.\n`
+    + `7. Save the resulting copy's URL back onto the Asset's "Design Link" property in Notion — this is what publishes it: the dashboard's Published Assets section reads Design Link to build that asset row's "↗ View" link, so this step is what actually makes the finished design show up there, not an optional bookkeeping step.`;
 }
 async function copyCanvaPortPrompt(btn) {
   const { assetid: assetId, titleid: titleId, canvalink: canvaLink } = btn.dataset;
