@@ -7949,10 +7949,34 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // technical table isn't a viral concept to score.
         if (/template csv/i.test(assetType)) {
           const hasMethod = methodId && methodId !== "__none__";
-          const [pillarContent, methodFrameworkText, methodPage] = await Promise.all([
+          const [pillarContent, methodFrameworkText, methodPage, strategyFields] = await Promise.all([
             extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
             hasMethod ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
             hasMethod ? fetch(`https://api.notion.com/v1/pages/${dsDash(methodId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+            // The positioning Strategy record's own Benefits/Proof Points/Pain
+            // Points fields — plain, already-researched bullet statements
+            // ("A clear picture of where their current workflow is breaking
+            // down"), distinct from and upstream of the pillar content's essay
+            // prose. Pillar content is one creative reformulation away from
+            // these already (research → strategy bullets → pillar essay);
+            // reshaping the essay AGAIN into slide copy compounds that into
+            // content that reads clever/abstract instead of plainly stated —
+            // exactly what this fetch exists to correct by handing the model
+            // the original plain phrasing directly, not just its own summary
+            // of it.
+            hasProduct ? fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+              method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ filter: { and: [
+                { property: "Product", relation: { contains: dsDash(productId) } },
+                { property: "Method", relation: { is_empty: true } },
+              ] } }),
+            }).then(r => r.json()).then(q => {
+              const rec = (q.results || []).find(r => (r.properties?.Benefits?.rich_text || []).length || (r.properties?.["Proof Points"]?.rich_text || []).length);
+              if (!rec) return null;
+              const rt = key => (rec.properties?.[key]?.rich_text || []).map(t => t.plain_text).join("");
+              const benefits = rt("Benefits"), proofPoints = rt("Proof Points"), painPoints = rt("Pain Points");
+              return (benefits || proofPoints || painPoints) ? { benefits, proofPoints, painPoints } : null;
+            }).catch(() => null) : Promise.resolve(null),
           ]);
           if (!pillarContent) return json({ error: "This title has no pillar content yet — Generate Assets reshapes existing content, it doesn't compose from scratch. Pillar content writes automatically on title creation; wait for it to finish, then try again." }, 400);
           // Tracked on the Method itself (per operator: "the template can be
@@ -7964,14 +7988,20 @@ Return ONLY this JSON object, no other text, no markdown fences:
           // ready without being asked.
           const canvaTemplateLink = methodPage?.properties?.["Template"]?.url || "";
 
-          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing the full package for a templated carousel post: a Page | Field | Content table reshaping the pillar content below into the field structure a template (e.g. a multi-page Canva carousel design) will later be filled from, PLUS the social post caption and hashtags that will accompany the finished carousel when it's published. No visual/image descriptions in the table — that stays a technical handoff document — but the caption and hashtags are the real, finished, platform-native post copy.
+          const strategyBlock = strategyFields ? `
+RESEARCHED BENEFITS & PROOF POINTS (the product's own positioning research — already written in the plain, concrete register this table's Feature/Benefit/Problem/Solution-style fields should match. Lift phrasing from here directly wherever a table field maps to one of these bullets; adapt only for length, never rewrite into cleverer, more abstract, or punchier language than what's here):
+${strategyFields.benefits ? `Benefits:\n${strategyFields.benefits}\n` : ''}${strategyFields.proofPoints ? `Proof Points:\n${strategyFields.proofPoints}\n` : ''}${strategyFields.painPoints ? `Pain Points (ground any Problem-side fields in these):\n${strategyFields.painPoints}\n` : ''}` : '';
+
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing the full package for a templated carousel post: a Page | Field | Content table reshaping the source material below into the field structure a template (e.g. a multi-page Canva carousel design) will later be filled from, PLUS the social post caption and hashtags that will accompany the finished carousel when it's published. No visual/image descriptions in the table — that stays a technical handoff document — but the caption and hashtags are the real, finished, platform-native post copy.
 
 TITLE: ${title}
 ${platformName ? `PLATFORM: ${platformName} — write the caption and hashtags in this platform's native conventions (length, tone, hashtag count/style, line breaks). A LinkedIn caption reads nothing like a TikTok caption.\n` : ''}${methodFrameworkText ? `METHOD FRAMEWORK (if this defines specific page/field names or a page count, follow them exactly — otherwise use your judgment):\n${methodFrameworkText.slice(0, 2000)}\n` : ''}
-PILLAR CONTENT (the source material — reshape THIS into the table; don't invent new facts beyond what's here):
+PILLAR CONTENT (background/context only — do not lift sentences from this essay for the table's feature/benefit fields; it's here so you understand the full argument, not so you can paraphrase it):
 ${pillarContent}
-${(description || '').trim() ? `\nOPERATOR OVERRIDE (follow this): ${description.trim()}\n` : ''}
+${strategyBlock}${(description || '').trim() ? `\nOPERATOR OVERRIDE (follow this): ${description.trim()}\n` : ''}
 Produce one row per distinct field on each page/slide (e.g. Headline, Body, Badge, Payoff) — real, specific, ready-to-port content, never placeholders.
+
+Writing style for the table (this is the part that's gone wrong before — read carefully): write plainly and concretely, the way the RESEARCHED BENEFITS & PROOF POINTS above are already written. A benefit statement should read like a direct, confident claim a founder would say to a customer's face — not a caption trying to be clever. No metaphor, no wordplay, no compressed ad-copy phrasing, no invented cleverness layered on top of what the research already says plainly. If a researched bullet fits a field, use it close to verbatim rather than reinterpreting it.
 
 Also produce:
 - "caption": the finished post caption for the platform above — a real hook line plus supporting copy, written to actually accompany this carousel when posted, not a summary of it.
