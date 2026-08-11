@@ -28,6 +28,10 @@ Hyperframes renders locally: it plays an AI-authored animated webpage in headles
 
 ## Workflow (run every step)
 
+**Read `.claude/skills/_content-governance.md` first.** It governs how every method sources
+research (Strategy DB dedup rule, Pillar Content as primary source material) and the voice-fit
+bar every label/caption must clear once written or trimmed to fit.
+
 ### Step 0 — Ground it in real positioning (Notion connector)
 Don't hand Hyperframes a bare topic — a generic explainer is forgettable. Gather:
 - **Research** (Research DB by Campaign relation): Keywords, Statement, Unique Opportunity, Key Message.

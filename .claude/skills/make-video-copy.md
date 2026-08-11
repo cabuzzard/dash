@@ -22,6 +22,11 @@ Model the **structure, packaging, and topic**; never copy the script, footage, o
 
 ## Workflow
 
+**Read `.claude/skills/_content-governance.md` first.** It governs how every method sources
+research (Strategy DB dedup rule) and the voice-fit bar every line of the rewritten script must
+clear — the campaign's positioning/Strategy record, not just "campaign voice" in the abstract,
+is what "this campaign's positioning" in Step 0 below actually means.
+
 ### Step 0 — Campaign context + seed list (Notion connector)
 Resolve the campaign; read its niche, keyword list, Target Audience, voice/register, **and the Research record's "Seed Channels" field** (the keyword-derived seed list). Use that seed list unless the user supplied their own. If "Seed Channels" is empty, ask the user to run the Seed Channels ⟳ search on the campaign panel (populates it from the keywords) or paste channels. The rewrite must land in *this* campaign's positioning — not the seed channel's.
 

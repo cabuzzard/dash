@@ -19,6 +19,10 @@ This is the production skill for the **"Text Video"** Method (Notion Methods DB 
 
 ## Workflow (run every step)
 
+**Read `.claude/skills/_content-governance.md` first.** It governs how every method sources
+research (Strategy DB dedup rule, Pillar Content as primary source material) and the voice-fit
+bar the script must clear once written or trimmed to fit.
+
 ### Step 0 — Gather context (Notion connector)
 - Resolve the campaign ID (title's `Campaign` relation, or the campaign's microsite `CAMPAIGN_ID`).
 - Read **Research** (Research DB by Campaign relation): Keywords, Statement, Unique Opportunity, Key Message; and the **Campaign** page: Target Audience, Pain Points. If a product is linked: Avatar, Transformation, Objections.

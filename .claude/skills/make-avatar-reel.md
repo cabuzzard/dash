@@ -24,6 +24,10 @@ Two of the three steps need things a Cloudflare Worker can't do: HeyGen/ElevenLa
 
 ## Workflow
 
+**Read `.claude/skills/_content-governance.md` first.** It governs how every method sources
+research (Strategy DB dedup rule, Pillar Content as primary source material) and the voice-fit
+bar the presenter's script must clear once written or trimmed to fit.
+
 ### Step 0 — Get the script pieces (Notion connector)
 Read the title's page body and extract, verbatim:
 - **Voiceover script (to-camera)** — clean spoken prose only. This drives both ElevenLabs and HeyGen; confirm it with the user before spending render credits on either (HeyGen bills per minute of output).

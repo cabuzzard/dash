@@ -4559,16 +4559,9 @@ function gaUpdateSkillHint() {
   hint.style.display = 'flex';
   document.getElementById('gaSkillHintText').textContent = match.hint;
   const btn = document.getElementById('gaSkillHintBtn');
-  // The "Run {skill} in Claude" button is parked (hidden) for every
-  // method, skill-only or worker-native — per operator instruction, the
-  // modal is being stripped down to one working method (Carousel) with
-  // everything else re-added non-destructively later. The hint text still
-  // shows so the method's status is visible; only the action button is
-  // gone. onclick stays wired below so un-hiding it later is a one-line
-  // change, not a rebuild.
-  btn.style.display = 'none';
 
   if (match.workerAction) {
+    btn.style.display = 'none';
     if (typeWrap) typeWrap.style.display = isCarousel ? 'block' : 'none';
     if (avatarWrap) avatarWrap.style.display = isAvatar ? 'block' : 'none';
     if (jobWrap) jobWrap.style.display = isJobAsset ? 'block' : 'none';
@@ -4579,23 +4572,53 @@ function gaUpdateSkillHint() {
   if (typeWrap) typeWrap.style.display = 'none';
   if (avatarWrap) avatarWrap.style.display = 'none';
 
-  btn.textContent = `Run ${match.skill} in Claude`;
+  // Chat-only skill (no in-Worker renderer): build a fully self-contained
+  // handoff prompt server-side (buildSkillHandoffPrompt — resolves the
+  // canonical deduped Strategy record, Pillar Content, Product/Campaign
+  // Research, the Method's own framework text, and pulls the skill's own
+  // .md + the shared _content-governance.md straight from GitHub) and copy
+  // it to the clipboard, same needsHandoff pattern used elsewhere on this
+  // page. Paste-able into any Claude Code chat — it carries its own
+  // instructions and pre-resolved research, no local repo context needed.
+  btn.style.display = 'inline-block';
+  btn.textContent = `Copy ${match.skill} prompt`;
   btn.onclick = () => {
     const titleId = GA_TITLE_ID;
-    const titleText = document.getElementById('gaTitleInput').value;
     const campaignId = GA_CAMPAIGN_ID || CAMPAIGN_ID;
-    const campaignName = (document.getElementById('r-name')?.textContent || '').trim();
-    let prompt = `Run the ${match.skill} skill for the Content Strategy title "${titleText}" (page ID: ${titleId}), campaign "${campaignName || campaignId}" (Campaigns DB page ID: ${campaignId}).`;
-    // Per operator instruction: the audited field table must be saved to a
-    // real Asset record BEFORE any copy is ported into the Canva template —
-    // never just live in the chat transcript. Spelled out here (not just in
-    // this file's comments) since a fresh claude.ai chat has no other way
-    // to know these two worker actions exist or that they're required, not
-    // optional.
-    if (match.skill === 'audit-canva-template-csv') {
-      prompt += ` Required order of operations — the Asset must be fully written in Notion BEFORE any Canva MCP build/edit begins, not after: (1) READ-ONLY pass over the attached Canva template via the Canva MCP (read-design) to see every text field, its position, and its size constraints — do not call edit-design yet. (2) Draft the fill copy for every field from that audit. (3) Call ${WORKER_URL} with { action: 'resolveCarouselAsset', titleId: '${titleId}', campaignId: '${campaignId}', titleName: '${titleText.replace(/'/g, "\\'")}' } to get an assetId (find-or-create, Asset Type "carousel"). (4) Call { action: 'uploadAssetDocument', assetId, docType: 'canvaFieldAudit', text: '<markdown table of every page/field/drafted content>', canvaLink: '<the Canva template URL>' } to save that table to the Asset. Steps 1-4 must all complete before step 5. (5) Only now begin the Canva MCP build: call edit-design to write the drafted copy into the template, verify each page's thumbnail, then commit the transaction.`;
-    }
-    window.open('https://claude.ai/new?q=' + encodeURIComponent(prompt), '_blank');
+    if (!titleId) { alert('Save this title first (or open it from an existing row) before generating a handoff prompt.'); return; }
+    btn.disabled = true;
+    const prevText = btn.textContent;
+    btn.textContent = 'Building prompt…';
+    fetch(WORKER_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'buildSkillHandoffPrompt', token: SESSION_TOKEN, titleId, campaignId, skillName: match.skill }),
+    })
+      .then(r => r.json().then(d => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        btn.disabled = false;
+        if (!ok || d.error) { btn.textContent = prevText; alert('Could not build prompt: ' + (d.error || 'unknown error')); return; }
+        let prompt = d.handoffPrompt;
+        // Per operator instruction: the audited field table must be saved to
+        // a real Asset record BEFORE any copy is ported into the Canva
+        // template — never just live in the chat transcript. Appended here
+        // (on top of the skill's own instructions) since it's an ordering
+        // rule specific to this button's use case, not the skill file itself.
+        if (match.skill === 'audit-canva-template-csv') {
+          const titleText = document.getElementById('gaTitleInput')?.value || '';
+          prompt += `\n\n## Required order of operations (this button's own rule, on top of the skill above)\n\nThe Asset must be fully written in Notion BEFORE any Canva MCP build/edit begins, not after: (1) READ-ONLY pass over the attached Canva template via the Canva MCP (read-design) to see every text field, its position, and its size constraints — do not call edit-design yet. (2) Draft the fill copy for every field from that audit. (3) Call ${WORKER_URL} with { action: 'resolveCarouselAsset', titleId: '${titleId}', campaignId: '${campaignId}', titleName: '${titleText.replace(/'/g, "\\'")}' } to get an assetId (find-or-create, Asset Type "carousel"). (4) Call { action: 'uploadAssetDocument', assetId, docType: 'canvaFieldAudit', text: '<markdown table of every page/field/drafted content>', canvaLink: '<the Canva template URL>' } to save that table to the Asset. Steps 1-4 must all complete before step 5. (5) Only now begin the Canva MCP build: call edit-design to write the drafted copy into the template, verify each page's thumbnail, then commit the transaction.`;
+        }
+        navigator.clipboard.writeText(prompt).then(() => {
+          btn.textContent = 'Copied! Paste into a Claude Code chat';
+          setTimeout(() => { btn.textContent = prevText; }, 3000);
+        }, () => {
+          btn.textContent = prevText;
+          const ta = document.createElement('textarea');
+          ta.value = prompt; ta.rows = 8; ta.style.width = '100%'; ta.style.marginTop = '8px';
+          btn.parentNode.appendChild(ta);
+          alert('Clipboard write failed — copy the prompt from the box that just appeared.');
+        });
+      })
+      .catch(e => { btn.disabled = false; btn.textContent = prevText; alert('Error: ' + e.message); });
   };
 }
 

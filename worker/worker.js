@@ -12915,6 +12915,133 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         } catch (e) { return json({ error: e.message }, 500); }
       }
 
+      // ── buildSkillHandoffPrompt ──
+      // Powers the "Run {skill} in Claude" button for chat-only methods
+      // (GA_SKILL_METHODS entries with a `skill` name — Text Pic, Video Copy
+      // — Growth, Avatar Reel, etc. — anything with no in-Worker renderer).
+      // The button used to just open claude.ai/new with a one-line "Run the
+      // X skill for title Y" prompt — worthless outside a chat that already
+      // has this repo's .claude/skills/*.md loaded as local context, and
+      // even then it left research-fetching to the fresh chat itself, which
+      // is exactly the step that produced duplicate/incomplete Strategy
+      // reads and "too clever" copy before those were fixed server-side
+      // (findBestStrategyRecord, writePillarContent). This builds one fully
+      // self-contained prompt instead — pulls the skill's own .md + the
+      // shared _content-governance.md skill straight from GitHub (so the
+      // repo stays the one source of truth, nothing duplicated into
+      // worker.js), and does all the research fetching itself using the
+      // same dedup-safe logic already proven elsewhere, so the receiving
+      // chat's job is narrowed to "write this asset in this exact voice
+      // from this exact data" — not "go figure out what the research is."
+      // Paste-able into literally any Claude Code chat, anywhere, with no
+      // dependency on local repo context.
+      if (body.action === "buildSkillHandoffPrompt") {
+        const { titleId, campaignId, skillName } = body;
+        if (!titleId || !skillName) return json({ error: "titleId and skillName required" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
+        const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github.raw", "User-Agent": "dash-worker" };
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const rt = (props, key) => (props?.[key]?.rich_text || []).map(t => t.plain_text).join("");
+
+        try {
+          const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+          if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+          const titleName = (titlePage.properties.Title?.title || []).map(t => t.plain_text).join("") || "Untitled";
+          const productId = (titlePage.properties.product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+          const methodId = (titlePage.properties.method?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+          const resolvedCampaignId = campaignId || (titlePage.properties.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+
+          const [skillMdResp, governanceMdResp, campaignPage, methodPage, productPage, pillarContent] = await Promise.all([
+            fetch(`https://api.github.com/repos/${REPO}/contents/.claude/skills/${skillName}.md?ref=${BRANCH}`, { headers: gh }),
+            fetch(`https://api.github.com/repos/${REPO}/contents/.claude/skills/_content-governance.md?ref=${BRANCH}`, { headers: gh }),
+            resolvedCampaignId ? fetch(`https://api.notion.com/v1/pages/${dash(resolvedCampaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : null,
+            methodId ? fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : null,
+            productId ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : null,
+            extractPillarContent(hdr, titleId).catch(() => ""),
+          ]);
+          if (!skillMdResp.ok) return json({ error: `Could not fetch .claude/skills/${skillName}.md from GitHub (HTTP ${skillMdResp.status})` }, 502);
+          const skillMd = await skillMdResp.text();
+          const governanceMd = governanceMdResp.ok ? await governanceMdResp.text() : "(governance file unavailable — proceed on the skill's own instructions, but still apply the voice-fit and research-sourcing discipline described in this repo's _content-governance.md)";
+
+          const campaignName = (campaignPage?.properties?.Name?.title || campaignPage?.properties?.["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || resolvedCampaignId || "";
+          let researchBlock = "";
+          if (resolvedCampaignId) {
+            const rq = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(resolvedCampaignId) } } }),
+            }).then(r => r.json()).catch(() => ({ results: [] }));
+            const rp = (rq.results || [])[0]?.properties;
+            if (rp) {
+              const lines = [
+                rt(rp, "Statement") && `Statement: ${rt(rp, "Statement")}`,
+                rt(rp, "Unique Opportunity") && `Unique Opportunity: ${rt(rp, "Unique Opportunity")}`,
+                rt(rp, "Key Message") && `Key Message: ${rt(rp, "Key Message")}`,
+                rt(rp, "Campaign Goal") && `Campaign Goal: ${rt(rp, "Campaign Goal")}`,
+                rt(rp, "Pain Points") && `Pain Points: ${rt(rp, "Pain Points")}`,
+                rt(rp, "Keywords") && `Keywords: ${rt(rp, "Keywords")}`,
+              ].filter(Boolean);
+              if (lines.length) researchBlock = lines.join("\n");
+            }
+          }
+
+          const productName = (productPage?.properties?.Name?.title || []).map(t => t.plain_text).join("");
+          let productBlock = "";
+          let strategyBlock = "";
+          if (productId && productPage?.properties) {
+            const pp = productPage.properties;
+            const lines = [
+              rt(pp, "Keywords") && `Keywords: ${rt(pp, "Keywords")}`,
+              rt(pp, "Avatar") && `Avatar: ${rt(pp, "Avatar")}`,
+              rt(pp, "Transformation") && `Transformation: ${rt(pp, "Transformation")}`,
+              rt(pp, "Offer Structure") && `Offer Structure: ${rt(pp, "Offer Structure")}`,
+              rt(pp, "Proof Points") && `Proof Points: ${rt(pp, "Proof Points")}`,
+              rt(pp, "Objections") && `Objections: ${rt(pp, "Objections")}`,
+              rt(pp, "Unique Angle") && `Unique Angle: ${rt(pp, "Unique Angle")}`,
+            ].filter(Boolean);
+            if (lines.length) productBlock = lines.join("\n");
+
+            const stratRecord = await findBestStrategyRecord(hdr, productId).catch(() => null);
+            const sp = stratRecord?.properties;
+            if (sp) {
+              const stratLines = STRATEGY_FIELDS.map(f => rt(sp, f) && `${f}: ${rt(sp, f)}`).filter(Boolean);
+              if (stratLines.length) strategyBlock = stratLines.join("\n");
+            }
+          }
+
+          const methodName = (methodPage?.properties?.Name?.title || methodPage?.properties?.["Method"]?.title || []).map(t => t.plain_text).join("");
+          let methodFrameworkBlock = "";
+          if (methodId) {
+            methodFrameworkBlock = await extractBlocksTextRecursive(hdr, dash(methodId)).catch(() => "");
+          }
+
+          const section = (title, body) => body && body.trim() ? `## ${title}\n\n${body.trim()}\n` : "";
+          const handoffPrompt = [
+            `You are executing the **${skillName}** skill for Content Strategy title "${titleName}" (Notion page ID: ${titleId}), campaign "${campaignName}" (Campaigns DB page ID: ${resolvedCampaignId || 'none'}).`,
+            `Everything you need is below — pre-resolved research, the skill's own instructions, and the global governance rules that apply to every method. Do not skip the governance section; it is not optional context, it defines the quality bar this output is judged against.`,
+            section("Global Content Governance (applies to every method — read this first)", governanceMd),
+            section(`Skill Instructions (${skillName})`, skillMd),
+            section("Method Framework (this method's own page body in the Methods DB)", methodFrameworkBlock),
+            section("Pre-Resolved Research — Product Strategy (canonical, deduped record; use this over re-querying)", strategyBlock),
+            section("Pre-Resolved Research — Pillar Content (this title's own source material, if it has one)", pillarContent),
+            section("Pre-Resolved Research — Product fields", productBlock),
+            section("Pre-Resolved Research — Campaign Research", researchBlock),
+            section("Concrete IDs", [
+              `Title page ID: ${titleId}`,
+              `Campaign page ID: ${resolvedCampaignId || 'none'}`,
+              productId ? `Product page ID: ${productId} (${productName || 'unnamed'})` : `Product: none linked`,
+              methodId ? `Method page ID: ${methodId} (${methodName || 'unnamed'})` : `Method: none linked`,
+              `Worker URL (for any worker-action calls the skill instructions reference): https://jolly-darkness-5dcc.trailnotes2026.workers.dev`,
+            ].join("\n")),
+            `If the pre-resolved research above is missing a field the skill needs, it's fine to fetch it yourself via the Notion connector (same DB IDs the skill instructions list) — but always prefer what's already resolved above over re-deriving it, and if you do fetch more from the Strategy DB, filter by \`Product\` relation AND \`Method\` is_empty, then pick the result with the most non-empty fields (see governance section) rather than taking the first match.`,
+          ].filter(Boolean).join("\n");
+
+          return json({ success: true, handoffPrompt, titleName, skillName });
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
+
       // ── generateCarouselPreview ──
       // The Worker-native carousel path: no Canva, no chat tab. Writes the
       // 7-slide script to the title (if it doesn't have one yet — same

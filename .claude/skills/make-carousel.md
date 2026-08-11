@@ -26,6 +26,10 @@ Research DB `557e6b7b8c434a578d45ecb0a8329f63` · Design Specs DB `3981f7d3a4bb8
 
 ## Workflow
 
+**Read `.claude/skills/_content-governance.md` first.** It governs how every method sources
+research (Strategy DB dedup rule, Pillar Content as primary source material) and the voice-fit
+bar every slide's headline/body must clear once written or trimmed to fit.
+
 ### Step 0 — Check for existing slide copy on the title (this decides fresh vs. regenerate)
 Fetch the title page's body via the Notion connector. It uses a fixed block structure — a `heading_3` "Slide N (N/total)" followed by a bold paragraph (headline) and a plain paragraph (body), repeated per slide, then a `Caption` heading and a `Hashtags` heading. This is the exact structure the dashboard's own carousel tooling reads and writes, so staying compatible with it means slide copy is always editable from Notion regardless of which path (this skill, or the dashboard) touched it last.
 

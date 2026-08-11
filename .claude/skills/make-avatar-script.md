@@ -19,6 +19,10 @@ This is the script tool for the **"Avatar Video"** Method (Notion Methods DB →
 
 ## Workflow (run every step)
 
+**Read `.claude/skills/_content-governance.md` first.** It governs how every method sources
+research (Strategy DB dedup rule, Pillar Content as primary source material) and the voice-fit
+bar the script must clear once written or trimmed to fit.
+
 ### Step 0 — Context + presenter character (Notion connector)
 - Resolve the campaign ID (title's `Campaign` relation, or the microsite `CAMPAIGN_ID`).
 - Read **Research** (by Campaign relation): Keywords, Statement, Unique Opportunity, Key Message; **Campaign** page: Target Audience, Pain Points; product (if linked): Avatar, Transformation, Objections.

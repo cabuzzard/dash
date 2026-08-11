@@ -22,6 +22,10 @@ Assets DB `e91bdb6e770b4d298e9f62166a0fd5de` · Design Specs DB `3981f7d3a4bb817
 
 ## Workflow
 
+**Read `.claude/skills/_content-governance.md` first.** It governs how every method sources
+research (Strategy DB dedup rule, Pillar Content as primary source material) and the voice-fit
+bar any slide copy you write or trim must clear.
+
 ### Step 0 — Read the slide copy and resolve design direction
 Fetch the title page's body. It uses the same fixed block structure every other carousel tool in this repo reads/writes: `heading_3` "Slide N (N/total)" → bold paragraph (headline) → plain paragraph (body) → divider, repeated, then `Caption` and `Hashtags` headings. If no slide copy exists yet, write it first using the same prompt/format `generateCarouselPreview`'s Step 2 uses (or just call that Worker action to write it, then re-fetch) — don't duplicate a separate copywriting pass here.
 

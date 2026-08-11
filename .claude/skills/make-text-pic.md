@@ -13,18 +13,25 @@ This is the production skill for the **"text pic"** Method (Notion Methods DB �
 - **designSpecId** (optional) — which campaign Design Spec to render in. Default: the campaign's attached/first Canva-backed spec.
 
 ## Constants
-- Research DB `557e6b7b8c434a578d45ecb0a8329f63` · Campaigns DB `087b1163b4e64975bc7a4b686ff801de` · Content Strategy DB `9fa5f42f010b47e7a82032607e07d6a1` · Design Specs DB `3981f7d3a4bb817c8edad15db64fa50d`.
+- Research DB `557e6b7b8c434a578d45ecb0a8329f63` · Campaigns DB `087b1163b4e64975bc7a4b686ff801de` · Content Strategy DB `9fa5f42f010b47e7a82032607e07d6a1` · Design Specs DB `3981f7d3a4bb817c8edad15db64fa50d` · Strategy DB `6f7a8666944746b2ae98d41db0c4e419` (Customer/Niche/Pain Points/Emotions/Solution/Benefits/Unique Opportunity/Transformation/Offer Structure/Proof Points/Objections — the real positioning doc; see governance file for the dedup rule).
 
 **Auth / data access:** the dashboard Worker gates every action behind the admin session token (needs the PIN). This skill runs in chat, so do **all** Notion reads/writes through the **Notion connector** — no PIN needed. Use the Canva MCP for designs and WebSearch for hooks.
 
 ## Workflow (run every step)
+
+**Read `.claude/skills/_content-governance.md` first.** It governs how every method sources
+research (the Strategy DB has known duplicate records per product — never take the first query
+result, see that file for the dedup rule) and the voice-fit bar every line of copy must clear,
+including the hook line and kicker below. Step 0 here is this method's *specific* fields to
+pull; the governance file's Strategy DB + Pillar Content steps still apply on top of it.
 
 ### Step 0 — Gather context
 - Resolve the campaign ID (from the title's `Campaign` relation via the Notion connector, or from the campaign's microsite `CAMPAIGN_ID`).
 - Read, via the Notion connector (avoids the dashboard's expiring session token):
   - **Research** (query Research DB by `Campaign` relation): Statement, Unique Opportunity, Key Message, Keywords, and any TikTok Trends / Trend Intelligence.
   - **Campaign** page: Target Audience, Pain Points, Key Message.
-  - If a **product** is linked to the idea/title: its Avatar, Transformation, Objections, Unique Angle.
+  - If a **product** is linked to the idea/title: its Avatar, Transformation, Objections, Unique Angle — AND its Strategy DB record (query by `Product` relation + `Method` is_empty, pick the most-complete result per the governance file's dedup rule). The Strategy record's Benefits/Proof Points/Customer/Emotions fields are the primary source for the hook line's language — write close to that phrasing, don't paraphrase it into something more "clever."
+  - If the title has a **Pillar Content** section already (`### Pillar Content` heading in its page body), read it — it's already-grounded source material, reshape from it rather than recomposing from raw research.
 - Read the campaign's **Design Spec** via the Notion connector: the campaign page's own **"Design Spec"** relation is the **default that applies to every method unless overridden at this publish stage**. Use `designSpecId` if the caller named one now; otherwise use the campaign default; if none is set, query the Design Specs DB for one belonging to this campaign (Campaigns relation), preferring a Canva-backed one (its "Canva Link" contains `/d/`); else fall back to a clean built-in default. Keep the chosen spec's Background/Ink/Accent + Headline/Body fonts + Aesthetic Description.
 
 ### Step 1 — Research a current, converting hook/arc

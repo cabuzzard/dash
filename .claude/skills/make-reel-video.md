@@ -22,6 +22,10 @@ The render is a local Node/Remotion/ffmpeg pipeline that needs the ElevenLabs AP
 
 ## Workflow
 
+**Read `.claude/skills/_content-governance.md` first.** It governs how every method sources
+research (Strategy DB dedup rule, Pillar Content as primary source material) and the voice-fit
+bar any on-screen text you write or trim must clear.
+
 ### Step 0 — Get the voiceover script (Notion connector)
 If handed a specific Asset record (the normal case — the dashboard's 🎬 button links to one), read **that Asset page's own body** and extract the **"Voiceover Script (to-camera)"** section — the clean spoken prose. Only fall back to the parent title's page body if the Asset page itself has no script section (an older asset predating the per-asset format). Do NOT include on-screen-text markup, shot notes, timestamps, or `[Hook]`-style labels; those break text-to-speech. If the user pasted a raw script, use that. Confirm the exact spoken text with the user before spending an ElevenLabs render.
 
