@@ -85,6 +85,30 @@ const STRATEGY_FIELD_HINTS = {
   "Proof Points": "The kind of proof, results, and credibility signals this product should point to.",
   "Objections": "The top objections a buyer would have and the honest answer to each.",
 };
+// Notion has no atomic "create if missing" — confirmed to have actually
+// happened: several near-simultaneous generateStrategyField calls for the
+// same product each independently queried "does a Strategy record exist?",
+// all saw no results yet, and each created its own duplicate record, ending
+// up with 4 separate pages for one product, each holding a different subset
+// of fields. Every Strategy read/write site queries through this helper
+// instead of blindly taking query results[0], so they all converge on the
+// SAME record (whichever duplicate has the most fields already filled in,
+// tie-broken by Notion's default order) rather than surfacing whichever one
+// Notion's query happens to return first.
+async function findBestStrategyRecord(hdr, productId) {
+  const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+    method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+    body: JSON.stringify({ filter: { and: [
+      { property: "Product", relation: { contains: dash(productId) } },
+      { property: "Method", relation: { is_empty: true } },
+    ] } }),
+  }).then(r => r.json()).catch(() => ({ results: [] }));
+  const results = q.results || [];
+  if (!results.length) return null;
+  const filledCount = r => STRATEGY_FIELDS.reduce((n, f) => n + ((r.properties?.[f]?.rich_text || []).length ? 1 : 0), 0);
+  return results.reduce((best, r) => filledCount(r) > filledCount(best) ? r : best, results[0]);
+}
 const CORS = {
   "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -719,14 +743,7 @@ Write 800-1500 words of substantive, specific, well-organized prose — real cla
 async function ensureProductStrategy(hdr, env, productId, campaignId) {
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   try {
-    const existing = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-      method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-      body: JSON.stringify({ filter: { and: [
-        { property: "Product", relation: { contains: dash(productId) } },
-        { property: "Method", relation: { is_empty: true } },
-      ] } }),
-    }).then(r => r.json()).catch(() => ({ results: [] }));
-    if ((existing.results || []).length) return;
+    if (await findBestStrategyRecord(hdr, productId)) return;
 
     if (!env.ANTHROPIC_API_KEY) return;
     const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
@@ -3236,6 +3253,14 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         });
         const result = await patchResp.json();
         if (!patchResp.ok) return json({ error: result.message || "Update failed" }, patchResp.status);
+        // Mandatory research: the moment a product is actually placed into a
+        // campaign — which every product-creation flow in the UI does
+        // immediately after createProduct, so this is "when the product is
+        // created" for all practical purposes — make sure it has a Strategy
+        // record. ensureProductStrategy no-ops if one already exists (never
+        // auto-patches), so this only ever fills a genuine gap; background
+        // via ctx.waitUntil so this response doesn't wait on a Claude call.
+        ctx.waitUntil(ensureProductStrategy({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, env, productId, campaignId).catch(() => {}));
         return json({ success: true });
       }
 
@@ -4910,16 +4935,8 @@ Return ONLY a JSON object, no other text, no markdown fences:
       if (body.action === "getProductStrategy") {
         const { productId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
-        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ filter: { and: [
-            { property: "Product", relation: { contains: dash(productId) } },
-            { property: "Method", relation: { is_empty: true } },
-          ] } }),
-        }).then(r => r.json());
-        const record = (q.results || [])[0];
+        const record = await findBestStrategyRecord(hdr, productId);
         if (!record) return json({ strategy: null });
         const props = record.properties || {};
         const rt = key => (props[key]?.rich_text || []).map(t => t.plain_text).join("");
@@ -4983,7 +5000,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
       // Points). Upserts by PRODUCT only, writing just this one property —
       // every other field is untouched.
       if (body.action === "generateStrategyField") {
-        const { productId, field } = body;
+        const { productId, field, campaignId } = body;
         if (!productId || !field) return json({ error: "productId and field required" }, 400);
         if (!STRATEGY_FIELDS.includes(field)) return json({ error: "Unknown field: " + field }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
@@ -4995,6 +5012,29 @@ Return ONLY a JSON object, no other text, no markdown fences:
         const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
         const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
         const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+
+        // Campaign Research grounding — previously missing entirely from this
+        // action, so per-field regeneration only ever had the product's own
+        // thin Description/Keywords to work from.
+        let researchBlock = '';
+        if (campaignId) {
+          const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const rp = (researchRows.results || [])[0]?.properties;
+          if (rp) {
+            const rtR = key => (rp[key]?.rich_text || []).map(t => t.plain_text).join("");
+            const lines = [
+              rtR("Statement") && `Statement: ${rtR("Statement")}`,
+              rtR("Unique Opportunity") && `Unique Opportunity: ${rtR("Unique Opportunity")}`,
+              rtR("Key Message") && `Key Message: ${rtR("Key Message")}`,
+              rtR("Campaign Goal") && `Campaign Goal: ${rtR("Campaign Goal")}`,
+              rtR("Pain Points") && `Pain Points: ${rtR("Pain Points")}`,
+            ].filter(Boolean);
+            if (lines.length) researchBlock = `\nCAMPAIGN RESEARCH:\n${lines.join("\n")}\n`;
+          }
+        }
 
         // Best-effort: pull the mapped phase's text from whichever attached
         // method actually defines it.
@@ -5014,16 +5054,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
         }
 
         // Existing other fields on this Strategy record, for coherence.
-        // Method: is_empty excludes per-method Briefs, which share this same
-        // Product relation but are a different record (see getProductStrategy).
-        const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ filter: { and: [
-            { property: "Product", relation: { contains: dash(productId) } },
-            { property: "Method", relation: { is_empty: true } },
-          ] } }),
-        }).then(r => r.json());
-        const existing = (q.results || [])[0];
+        const existing = await findBestStrategyRecord(hdr, productId);
         const existingProps = existing?.properties || {};
         const otherFieldsText = STRATEGY_FIELDS.filter(f => f !== field).map(f => {
           const v = (existingProps[f]?.rich_text || []).map(t => t.plain_text).join("");
@@ -5035,7 +5066,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
 KEYWORDS: ${productKeywords || "(none)"}
-${otherFieldsText ? `\nALREADY-ESTABLISHED STRATEGY (stay consistent with this):\n${otherFieldsText}\n` : ''}${phaseSource ? `\nRELEVANT FRAMEWORK GUIDANCE (from an attached method's "${phaseSourceName}" section — use this to inform what to write, don't just restate it verbatim):\n${phaseSource}\n` : ''}
+${researchBlock}${otherFieldsText ? `\nALREADY-ESTABLISHED STRATEGY (stay consistent with this):\n${otherFieldsText}\n` : ''}${phaseSource ? `\nRELEVANT FRAMEWORK GUIDANCE (from an attached method's "${phaseSourceName}" section — use this to inform what to write, don't just restate it verbatim):\n${phaseSource}\n` : ''}
 FIELD TO WRITE: ${field}
 ${STRATEGY_FIELD_HINTS[field] || ''}
 
@@ -5082,6 +5113,103 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
         return json({ success: true, strategyId, url: strategyUrl, text });
       }
 
+      // ── regenerateAllStrategyFields ──
+      // Explicit, user-triggered full re-run of every Strategy field in ONE
+      // Claude call — always overwrites, unlike ensureProductStrategy's
+      // "only fill if nothing exists yet" discipline. This is the "Run All
+      // Research" action in the Product Research modal: grounded in the
+      // product's own fields, Campaign Research, and any operator guidance,
+      // upserting onto the single canonical Strategy record (via
+      // findBestStrategyRecord) instead of risking a new duplicate.
+      if (body.action === "regenerateAllStrategyFields") {
+        const { productId, campaignId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+        const pp = productPage.properties || {};
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+        const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+
+        let researchBlock = '';
+        if (campaignId) {
+          const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const rp = (researchRows.results || [])[0]?.properties;
+          if (rp) {
+            const rtR = key => (rp[key]?.rich_text || []).map(t => t.plain_text).join("");
+            const lines = [
+              rtR("Statement") && `Statement: ${rtR("Statement")}`,
+              rtR("Unique Opportunity") && `Unique Opportunity: ${rtR("Unique Opportunity")}`,
+              rtR("Key Message") && `Key Message: ${rtR("Key Message")}`,
+              rtR("Campaign Goal") && `Campaign Goal: ${rtR("Campaign Goal")}`,
+              rtR("Pain Points") && `Pain Points: ${rtR("Pain Points")}`,
+            ].filter(Boolean);
+            if (lines.length) researchBlock = `\nCAMPAIGN RESEARCH:\n${lines.join("\n")}\n`;
+          }
+        }
+
+        const fieldList = STRATEGY_FIELDS.map(f => `- ${f}: ${STRATEGY_FIELD_HINTS[f]}`).join("\n");
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a marketing strategist writing a product's complete core strategy document — a fixed positioning reference used across every marketing channel this product is sold through, not tied to any one platform. This is a full re-run, replacing every field with a fresh pass — write the strongest possible version of each, don't hedge toward whatever may have been there before.
+
+PRODUCT: ${productName}
+DESCRIPTION: ${productDesc || "(none)"}
+KEYWORDS: ${productKeywords || "(none)"}
+${researchBlock}
+Write ALL of these fields — each 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain Points, Objections, Benefits, Proof Points):
+${fieldList}
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "Customer": "...", "Niche": "...", "Pain Points": "...", "Emotions": "...", "Solution": "...", "Benefits": "...", "Unique Opportunity": "...", "Transformation": "...", "Offer Structure": "...", "Proof Points": "...", "Objections": "..." }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        const raw = aiData.content?.[0]?.text || "";
+        const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+        if (start === -1 || end === -1) return json({ error: "Failed to parse strategy JSON" }, 502);
+        let fields;
+        try { fields = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1))); }
+        catch (e) { return json({ error: "Failed to parse strategy JSON: " + e.message }, 502); }
+
+        const props = { Status: { select: { name: "Current" } } };
+        STRATEGY_FIELDS.forEach(f => {
+          const val = String(fields[f] || "").trim();
+          if (val) props[f] = { rich_text: [{ type: "text", text: { content: val.slice(0, 1990) } }] };
+        });
+
+        const existing = await findBestStrategyRecord(hdr, productId);
+        let strategyId, strategyUrl;
+        if (existing) {
+          strategyId = existing.id.replace(/-/g,""); strategyUrl = existing.url;
+          await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: props }),
+          });
+        } else {
+          props.Name = { title: [{ type: "text", text: { content: `${productName} — Strategy`.slice(0, 200) } }] };
+          props.Product = { relation: [{ id: dash(productId) }] };
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: STRATEGY_DB }, properties: props }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Strategy create failed" }, createResp.status || 500);
+          strategyId = created.id.replace(/-/g,""); strategyUrl = created.url;
+        }
+
+        return json({ success: true, strategyId, url: strategyUrl, fields });
+      }
+
       // ── updateProductStrategyField ──
       // Hand-edit / manual entry for one Strategy field — same upsert as
       // generateStrategyField but writes a caller-supplied value directly.
@@ -5095,14 +5223,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
         const rtChunks = [];
         for (let i = 0; i < Math.max(rtStr.length, 1); i += 2000) rtChunks.push({ type: "text", text: { content: rtStr.slice(i, i + 2000) } });
 
-        const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ filter: { and: [
-            { property: "Product", relation: { contains: dash(productId) } },
-            { property: "Method", relation: { is_empty: true } },
-          ] } }),
-        }).then(r => r.json());
-        const existing = (q.results || [])[0];
+        const existing = await findBestStrategyRecord(hdr, productId);
         if (existing) {
           const strategyId = existing.id.replace(/-/g,"");
           await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, {
@@ -7964,14 +8085,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             // exactly what this fetch exists to correct by handing the model
             // the original plain phrasing directly, not just its own summary
             // of it.
-            hasProduct ? fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-              method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
-              body: JSON.stringify({ filter: { and: [
-                { property: "Product", relation: { contains: dsDash(productId) } },
-                { property: "Method", relation: { is_empty: true } },
-              ] } }),
-            }).then(r => r.json()).then(q => {
-              const rec = (q.results || []).find(r => (r.properties?.Benefits?.rich_text || []).length || (r.properties?.["Proof Points"]?.rich_text || []).length);
+            hasProduct ? findBestStrategyRecord(dsHdr, productId).then(rec => {
               if (!rec) return null;
               const rt = key => (rec.properties?.[key]?.rich_text || []).map(t => t.plain_text).join("");
               const benefits = rt("Benefits"), proofPoints = rt("Proof Points"), painPoints = rt("Pain Points");

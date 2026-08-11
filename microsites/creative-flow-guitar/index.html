@@ -2754,12 +2754,7 @@ function makeProductRow(p) {
   const isActive = p.status === 'Active';
   row.className = 'product-row ' + (isActive ? 'is-active' : 'is-development');
   row.dataset.productId = p.id;
-  // Every row gets a product-site control: a "site" link when one exists, or a
-  // "+ site" button that deploys one (createProductSite) when it doesn't.
   const psStyle = 'font-size:10px;color:#555;text-decoration:none;flex-shrink:0;padding:1px 4px;border:1px solid #5f5f5f;border-radius:3px;line-height:1.6;';
-  const psLink = p.productsite
-    ? `<a href="${p.productsite}" target="_blank" rel="noopener" title="Product site" style="${psStyle}">site</a>`
-    : `<button class="td-add-btn-inline" onclick="addProductSite('${p.id}', this)" title="Create product site" style="${psStyle};background:none;cursor:pointer;">+ site</button>`;
   // Type badge = the product's FORMAT (PDF/Email/Quiz/Coaching/Membership/
   // etc.) — shown here; Marketing Phase (funnel role) is used for sort order
   // only and is written into the attached method's methodology text instead
@@ -2767,14 +2762,19 @@ function makeProductRow(p) {
   const typeBadge = p.type
     ? `<span title="Type" style="font-size:9px;color:#888;border:1px solid #5f5f5f;border-radius:3px;padding:1px 5px;flex-shrink:0;white-space:nowrap;">${p.type}</span>`
     : '';
-  // Small per-row Strategy link — opens the editable Strategy modal instead
-  // of a dedicated page section. Dot colour reflects Status when a Strategy
-  // record already exists (Current=green, Stale=yellow, Draft/none=grey).
+  // Product Research link — opens the Product Research modal (all of a
+  // product's Strategy fields: Pain Points/Benefits/Proof Points/etc., with
+  // per-field or run-all research generation and an operator guidance box).
+  // This replaced the old standalone "site"/"+ site" product-site link —
+  // product pages/sites are retired; research now lives entirely in the
+  // Strategy record behind this modal, positioned where that link used to
+  // be. Dot colour reflects Status when a Strategy record already exists
+  // (Current=green, Stale=yellow, Draft/none=grey).
   const stratColor = p.strategyStatus === 'Current' ? '#68d391' : (p.strategyStatus === 'Stale' ? '#f0b429' : '#555');
-  const stratLink = `<button class="td-add-btn-inline" onclick="openStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Product Strategy" style="${psStyle};background:none;cursor:pointer;color:${stratColor};">strategy</button>`;
+  const researchLink = `<button class="td-add-btn-inline" onclick="openStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Product Research" style="${psStyle};background:none;cursor:pointer;color:${stratColor};">research</button>`;
   const growthPlanBtn = `<button class="td-add-btn-inline" onclick="openGrowthStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Generate Growth Strategy — recommends title groupings, methods, and platforms for this product" style="${psStyle};background:none;cursor:pointer;">🚀</button>`;
   const growthPlanDropdown = `<select onmousedown="populateStrategyDropdown(this,'${p.id}')" onchange="onStrategyDropdownChange(this)" title="View Growth Strategies for this product" style="font-size:9px;background:#141414;color:#888;border:1px solid #5f5f5f;border-radius:3px;padding:1px 2px;max-width:56px;flex-shrink:0;"><option value="">plans</option></select>`;
-  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}<button class="td-add-btn-inline" onclick="openProductMethodsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Review methods for this product">⚙</button>${stratLink}${growthPlanBtn}${growthPlanDropdown}${psLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}<button class="td-add-btn-inline" onclick="openProductMethodsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Review methods for this product">⚙</button>${growthPlanBtn}${growthPlanDropdown}${researchLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
 }
 
@@ -3800,9 +3800,11 @@ function renderSmFields() {
 function openStrategyModal(productId, productName) {
   SM_PRODUCT_ID = productId;
   SM_STRATEGY = { fields: {}, url: null };
-  document.getElementById('sm-modal-title').textContent = (productName || 'Product') + ' — Strategy';
+  document.getElementById('sm-modal-title').textContent = (productName || 'Product') + ' — Research';
   document.getElementById('sm-fields').innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   document.getElementById('strategyFieldsStatus').textContent = '';
+  const guidanceEl = document.getElementById('sm-guidance');
+  if (guidanceEl) guidanceEl.value = '';
   document.getElementById('strategyModal').classList.add('open');
   loadSmStrategy();
 }
@@ -3825,7 +3827,8 @@ async function genSmField(field) {
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   if (status) { status.textContent = `Generating "${field}"…`; status.style.color = '#888'; }
   try {
-    const r = await w('generateStrategyField', { productId: SM_PRODUCT_ID, field });
+    const guidance = (document.getElementById('sm-guidance')?.value || '').trim();
+    const r = await w('generateStrategyField', { productId: SM_PRODUCT_ID, field, campaignId: CAMPAIGN_ID, researchGuidelines: guidance || undefined });
     if (r.error) throw new Error(r.error);
     SM_STRATEGY.fields[field] = r.text;
     SM_STRATEGY.url = r.url;
@@ -3836,6 +3839,27 @@ async function genSmField(field) {
   } catch(e) {
     if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
     if (btn) { btn.disabled = false; btn.textContent = '↻'; }
+  }
+}
+
+async function regenerateAllSmFields() {
+  const btn = document.getElementById('sm-run-all-btn');
+  const status = document.getElementById('strategyFieldsStatus');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (status) { status.textContent = 'Re-running all research fields…'; status.style.color = '#888'; }
+  try {
+    const guidance = (document.getElementById('sm-guidance')?.value || '').trim();
+    const r = await w('regenerateAllStrategyFields', { productId: SM_PRODUCT_ID, campaignId: CAMPAIGN_ID, researchGuidelines: guidance || undefined });
+    if (r.error) throw new Error(r.error);
+    SM_STRATEGY = { fields: r.fields || {}, url: r.url };
+    renderSmFields();
+    if (status) { status.textContent = '✓ All fields regenerated.'; status.style.color = '#68d391'; }
+    const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
+    if (idx !== -1) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; renderProducts(); }
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Run All Research'; }
   }
 }
 
@@ -6179,9 +6203,14 @@ async function runRegenKeywords() {
 </div>
 <div class="modal-overlay" id="strategyModal" onclick="if(event.target===this)closeStrategyModal()">
   <div class="modal" style="max-width:600px;padding:20px;max-height:85vh;overflow-y:auto;">
-    <div class="modal-title" id="sm-modal-title">Product Strategy</div>
+    <div class="modal-title" id="sm-modal-title">Product Research</div>
     <button class="modal-close" onclick="closeStrategyModal()">✕</button>
-    <div style="font-size:11px;color:#666;margin:6px 0 12px;">Fixed positioning — true regardless of which platform/method this product is marketed through.</div>
+    <div style="font-size:11px;color:#666;margin:6px 0 12px;">Fixed positioning — true regardless of which platform/method this product is marketed through. This is the product's official research record; every asset/pillar generation for this product reads from here.</div>
+    <div style="margin-bottom:12px;">
+      <label class="lm-label">Additional Guidance <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; layered on top of Campaign Research when generating or re-running fields, not a replacement for it</span></label>
+      <textarea id="sm-guidance" class="modal-ta" rows="2" style="width:100%;margin-top:6px;font-size:12px;resize:vertical;min-height:44px!important;padding:6px 8px;" placeholder="e.g. lean into the DIY-to-hire transition angle, avoid enterprise language"></textarea>
+      <button class="td-add-btn-inline" id="sm-run-all-btn" style="font-size:11px;padding:4px 10px;margin-top:6px;" onclick="regenerateAllSmFields()">Run All Research</button>
+    </div>
     <div id="sm-fields"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     <div id="strategyFieldsStatus" style="font-size:12px;min-height:16px;margin-top:8px;"></div>
     <div class="modal-actions">
