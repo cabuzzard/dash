@@ -7973,25 +7973,51 @@ ${pillarContent}
 ${(description || '').trim() ? `\nOPERATOR OVERRIDE (follow this): ${description.trim()}\n` : ''}
 Produce one row per distinct field on each page/slide (e.g. Headline, Body, Badge, Payoff) — real, specific, ready-to-port content, never placeholders.
 
-Return ONLY this JSON object, no other text, no markdown fences:
-{ "rows": [ { "page": "...", "field": "...", "content": "..." } ] }`;
+Produce the table by calling the submit_table tool — do not include the table as plain text.`;
 
+          // Tool-forced structured output instead of asking for raw JSON text
+          // and regex/JSON.parse-ing it: content rows routinely contain
+          // quoted phrases ("the 'no-code' movement", a client quote, etc.)
+          // that break naive JSON.parse on an unescaped embedded quote
+          // ("Failed to parse table JSON: Expected ',' or '}' ..."). Forcing
+          // the model to call this tool makes Anthropic emit already-valid
+          // JSON for tool_use.input server-side, so there's nothing left to
+          // hand-parse or get wrong.
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }],
+              tools: [{
+                name: "submit_table",
+                description: "Submit the Page | Field | Content table rows for this asset.",
+                input_schema: {
+                  type: "object",
+                  properties: {
+                    rows: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          page: { type: "string" },
+                          field: { type: "string" },
+                          content: { type: "string" },
+                        },
+                        required: ["page", "field", "content"],
+                      },
+                    },
+                  },
+                  required: ["rows"],
+                },
+              }],
+              tool_choice: { type: "tool", name: "submit_table" },
+            }),
           });
           const aiData = await aiResp.json();
           if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
-          let table;
-          try {
-            const raw = aiData.content?.[0]?.text || "";
-            const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-            if (start === -1 || end === -1) throw new Error("No JSON object found");
-            table = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
-          } catch(e) {
-            return json({ error: "Failed to parse table JSON: " + e.message }, 502);
-          }
+          const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_table");
+          if (!toolUse || !toolUse.input) return json({ error: "Claude did not return a table — try again" }, 502);
+          const table = toolUse.input;
           const rows = (Array.isArray(table.rows) ? table.rows : []).filter(r => r && r.field);
           if (!rows.length) return json({ error: "No table rows generated — try again" }, 502);
 
