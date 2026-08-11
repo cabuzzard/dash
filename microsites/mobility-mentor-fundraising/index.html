@@ -1598,8 +1598,12 @@ async function loadTitles() {
       // removed at the operator's request while this workflow is the
       // focus; re-add from git history if any of it's needed again).
       const viewLink = a.assemblyReviewPage || a.designLink || '';
+      // Method (Asset Type), not the title — the title is already implied
+      // by the row's hierarchy (nested under a Development title row, or
+      // under a Publish Assets group header); what differentiates several
+      // assets under the same title is which method produced each one.
       ar.innerHTML = `<span style="font-size:9px;color:#666;flex-shrink:0;">↳</span>`
-        + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.title)}</span>`
+        + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.type || a.title)}</span>`
         + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
         + (a.canvaLink ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyCanvaPortPrompt(this)" title="Copy a ready-to-paste prompt for porting this asset's table content into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the table." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
         + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" rel="noopener" title="Open this asset's Notion page" style="flex-shrink:0;">↗</a>`
