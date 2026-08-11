@@ -349,7 +349,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2>Published Assets</h2>
+    <h2>Publish Assets</h2>
     <div class="content">
       <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -1581,6 +1581,10 @@ async function loadTitles() {
     // renderPublishedAssets below, which gates per-asset instead). Reads
     // across every title this fetch returned, dev-family or not.
     const pub = titles;
+    // Shared between renderPublishedAssets and makeTitleRow below — an
+    // asset at either status belongs in Publish Assets only, never under
+    // its title's row in Development (previously both showed it).
+    const PUBLISH_GATE = ['Publish', 'Published'];
     // Hoisted out of makeTitleRow so the restructured Publish/Assets section
     // (renderPublishedAssets below — assets grouped by source title, not
     // title rows) can render the exact same asset row, not a duplicate.
@@ -1614,7 +1618,6 @@ async function loadTitles() {
     // own stage/section and gates purely on each asset's own status.
     function renderPublishedAssets(titles, container) {
       container.innerHTML = '';
-      const PUBLISH_GATE = ['Publish', 'Published'];
       const flat = titles.flatMap(t => (t.assets || [])
         .filter(a => PUBLISH_GATE.includes(a.status))
         .map(a => ({ asset: a, titleId: t.id, titleName: t.title, productId: t.productId })));
@@ -1628,7 +1631,11 @@ async function loadTitles() {
         const group = byTitle[titleId];
         const hdr = document.createElement('div');
         hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);';
-        hdr.innerHTML = `<span style="flex:1;font-size:12px;color:#c9c9c9;font-weight:600;">${esc(group.name)}</span><a class="title-link" href="https://www.notion.so/${titleId}" target="_blank">↗</a><span style="font-size:10px;color:#666;">${group.items.length}</span>`;
+        // Same 🧩 Generate Assets entry point as a Development title row —
+        // an operator finding a title here (already publishing) still
+        // needs to spin up more assets from it: a different method, or
+        // another pass at the same method.
+        hdr.innerHTML = `<span style="flex:1;font-size:12px;color:#c9c9c9;font-weight:600;">${esc(group.name)}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${titleId}')" title="Generate more assets from this title — a different method, or another pass at the same one">🧩</button><a class="title-link" href="https://www.notion.so/${titleId}" target="_blank">↗</a><span style="font-size:10px;color:#666;">${group.items.length}</span>`;
         container.appendChild(hdr);
         group.items.forEach(a => container.appendChild(renderAssetRow(a, titleId, group.productId)));
       });
@@ -1640,16 +1647,20 @@ async function loadTitles() {
       const div = document.createElement('div');
       div.className = 'title-row';
       div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
-      if (!t.assets || !t.assets.length) return div;
+      // Publish/Published assets never show here — they belong exclusively
+      // to the Publish Assets section (renderPublishedAssets above). Only
+      // still-drafting assets render under a Development title row.
+      const draftAssets = (t.assets || []).filter(a => !PUBLISH_GATE.includes(a.status));
+      if (!draftAssets.length) return div;
       // render each linked asset as an indented row, with its grade badge —
       // always flat here (this function only ever renders the Development
       // section now; the Publish section is renderPublishedAssets above).
       const wrap = document.createElement('div');
       wrap.appendChild(div);
-      t.assets.forEach(a => wrap.appendChild(renderAssetRow(a, t.id, t.productId)));
+      draftAssets.forEach(a => wrap.appendChild(renderAssetRow(a, t.id, t.productId)));
       // assets still carrying the placeholder Canva search link → offer the
       // Claude handoff that generates the real designs and saves links back
-      const pendingDesigns = t.assets.filter(a => /canva\.com\/templates\/\?query/i.test(a.designLink || ''));
+      const pendingDesigns = draftAssets.filter(a => /canva\.com\/templates\/\?query/i.test(a.designLink || ''));
       if (pendingDesigns.length) {
         const pr = document.createElement('div');
         pr.style.cssText = 'display:flex;align-items:center;padding:4px 10px 6px 28px;border-bottom:1px solid rgba(255,255,255,.04);';
@@ -4896,7 +4907,7 @@ function buildCanvaPortPrompt(assetId, titleId, canvaLink) {
     + `4. Rename the copy (update_title) to the Asset page's own "Asset Title" property value — copy-design keeps the template's original generic name (e.g. "webguy carousel 2"), which is fine for the shared template but wrong for a finished, published design; every templated method's output gets renamed this same way, not just this one.\n`
     + `5. Map each table row to the matching field on the copy by page/position, and populate it via edit-design. Verify each page's thumbnail after editing; if a field overflows its box, shorten/reformat the text rather than letting it run over.\n`
     + `6. Commit the transaction once every page looks right.\n`
-    + `7. Save the resulting copy's URL back onto the Asset's "Design Link" property in Notion — this is what publishes it: the dashboard's Published Assets section reads Design Link to build that asset row's "↗ View" link, so this step is what actually makes the finished design show up there, not an optional bookkeeping step.`;
+    + `7. Save the resulting copy's URL back onto the Asset's "Design Link" property in Notion — this is what publishes it: the dashboard's Publish Assets section reads Design Link to build that asset row's "↗ View" link, so this step is what actually makes the finished design show up there, not an optional bookkeeping step.`;
 }
 async function copyCanvaPortPrompt(btn) {
   const { assetid: assetId, titleid: titleId, canvalink: canvaLink } = btn.dataset;
