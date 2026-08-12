@@ -974,6 +974,19 @@ async function genPsTitles(methodId, isDestination, parentMethodId) {
       const r = await w('researchUpworkMarketTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID });
       if (r.error) throw new Error(r.error);
       created = r.created || 0;
+    } else if (/resume/i.test(name) || /upwork/i.test(name)) {
+      // Resume / Upwork Proposal — live listing research, not an AI title
+      // brainstorm: searches real Job Board / Upwork postings (merged
+      // campaign + product Keywords) and writes ONE development title whose
+      // Pillar Content section is the ranked list of real listings. Pick one
+      // from that list and paste its link into the campaign microsite's
+      // Generate Assets -> Source URL field to write a tailored resume or
+      // proposal for it (generateJobAsset, unaffected by this action).
+      if (!PRODUCT_CAMPAIGN_ID) throw new Error('No campaign linked to this product — link one in Notion first.');
+      const assetType = /resume/i.test(name) ? 'resume' : 'upwork proposal';
+      const r = await w('researchJobListingTitles', { campaignId: PRODUCT_CAMPAIGN_ID, methodId, productId: PRODUCT_ID, assetType });
+      if (r.error) throw new Error(r.error);
+      created = r.created || 0;
     } else {
       // Unified pipeline for every other method type — Keywords -> Research ->
       // Product Strategy -> Method (framework) -> Title, the same call
