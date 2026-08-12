@@ -323,10 +323,10 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
      fill-progress per grouping (not the titles themselves — the planned
      slots, e.g. "Behind the Scenes #1", and whether a real Title has been
      made from each one yet). Strategies are built off Products (🚀 button
-     on a product row above); this just makes them visible/trackable at the
-     campaign level instead of buried per-product. -->
+     on a product row above, or the + button here); this just makes them
+     visible/trackable at the campaign level instead of buried per-product. -->
 <div class="one-col">
-  <h2>Strategies <button class="td-add-btn-inline" onclick="loadCampaignStrategies()" title="Refresh">⟳</button></h2>
+  <h2>Strategies <button class="td-add-btn-inline" onclick="openAddStrategyModal()" title="Add strategy">+</button><button class="td-add-btn-inline" onclick="loadCampaignStrategies()" title="Refresh">⟳</button></h2>
   <div class="content">
     <div id="strategies-panel"><div class="loading"><div class="spinner"></div>Loading…</div></div>
   </div>
@@ -811,7 +811,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- GENERATE GROWTH STRATEGY MODAL (the 🚀 button on a product row) -->
+<!-- GENERATE GROWTH STRATEGY MODAL (the 🚀 button on a product row, and the
+     "+" button on the Strategies tab — the latter shows a Product picker
+     since there's no row context to preset it from) -->
 <div class="modal-overlay" id="growthStrategyModal">
   <div class="modal" style="max-width:480px;">
     <div class="modal-head">
@@ -819,9 +821,17 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeGrowthStrategyModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="modal-hint" id="gsProductLabel"></div>
+      <div class="modal-hint" id="gsProductLabel" style="display:none;"></div>
+      <div id="gsProductPickerWrap" style="display:none;">
+        <label class="lm-label">Product</label>
+        <select class="modal-ta" id="gsProductSelect" style="height:32px;padding:5px 10px;font-size:12px;width:100%;"></select>
+      </div>
+      <label class="lm-label" style="margin-top:10px;">Title <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to auto-name it "{Product} Growth Strategy — {date}"</span></label>
+      <input class="modal-ta" id="gsTitleInput" type="text" placeholder="e.g. Q3 TikTok Push" style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
       <label class="lm-label" style="margin-top:10px;">Platform Focus <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to let the strategy recommend the best platform(s) itself</span></label>
       <input class="modal-ta" id="gsPlatformInput" type="text" placeholder="e.g. TikTok, LinkedIn..." style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
+      <label class="lm-label" style="margin-top:10px;">Guidance <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; steers how this strategy is generated (angle, tone, constraints). Left blank, any standing research guidelines still apply.</span></label>
+      <textarea class="modal-ta" id="gsGuidanceInput" rows="3" style="width:100%;margin-top:4px;resize:vertical;" placeholder="e.g. focus on beginner-friendly angles, avoid discount-driven hooks..."></textarea>
       <div class="modal-status" id="gsStatus" style="white-space:pre-wrap;"></div>
     </div>
     <div class="modal-foot">
@@ -5249,31 +5259,63 @@ async function promoteAssetDesign(idx) {
   }
 }
 
-// Growth Strategy — the 🚀 button + "plans" dropdown on a product row.
-// Generating never creates titles or touches a Method; it's a reviewable
-// recommendation (title groupings + methods + platforms) the operator acts
-// on by hand via the existing per-Method Generate Titles flow (which can
-// also pick one of these as grounding — see mgmRefreshStrategyPicker).
+// Growth Strategy — the 🚀 button + "plans" dropdown on a product row, and
+// the "+" button on the Strategies tab. Generating never creates titles or
+// touches a Method; it's a reviewable recommendation (title groupings +
+// methods + platforms) the operator acts on by hand via the existing
+// per-Method Generate Titles flow (which can also pick one of these as
+// grounding — see mgmRefreshStrategyPicker).
 let GS_PRODUCT_ID = null;
+function gsResetFields() {
+  document.getElementById('gsTitleInput').value = '';
+  document.getElementById('gsPlatformInput').value = '';
+  document.getElementById('gsGuidanceInput').value = '';
+  document.getElementById('gsStatus').textContent = '';
+}
 function openGrowthStrategyModal(productId, productName) {
   GS_PRODUCT_ID = productId;
-  document.getElementById('gsProductLabel').textContent = `Product: ${productName}`;
-  document.getElementById('gsPlatformInput').value = '';
-  document.getElementById('gsStatus').textContent = '';
+  document.getElementById('gsProductPickerWrap').style.display = 'none';
+  const label = document.getElementById('gsProductLabel');
+  label.style.display = '';
+  label.textContent = `Product: ${productName}`;
+  gsResetFields();
+  document.getElementById('growthStrategyModal').classList.add('open');
+}
+// The Strategies-tab "+" button — no row context to preset a product from,
+// so this shows a picker instead of the fixed product label.
+function openAddStrategyModal() {
+  GS_PRODUCT_ID = null;
+  document.getElementById('gsProductLabel').style.display = 'none';
+  document.getElementById('gsProductPickerWrap').style.display = '';
+  const sel = document.getElementById('gsProductSelect');
+  sel.innerHTML = (PRODUCT_ITEMS && PRODUCT_ITEMS.length)
+    ? PRODUCT_ITEMS.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')
+    : '<option value="">No products yet — add one first</option>';
+  gsResetFields();
   document.getElementById('growthStrategyModal').classList.add('open');
 }
 function closeGrowthStrategyModal() {
   document.getElementById('growthStrategyModal').classList.remove('open');
 }
 async function submitGrowthStrategy() {
-  const platformOverride = document.getElementById('gsPlatformInput').value.trim();
+  const productId = GS_PRODUCT_ID || document.getElementById('gsProductSelect').value;
   const statusEl = document.getElementById('gsStatus');
+  if (!productId) { statusEl.textContent = 'Pick a product first.'; return; }
+  const strategyTitle = document.getElementById('gsTitleInput').value.trim();
+  const platformOverride = document.getElementById('gsPlatformInput').value.trim();
+  const guidance = document.getElementById('gsGuidanceInput').value.trim();
   const btn = document.getElementById('gsGenBtn');
   btn.disabled = true; statusEl.textContent = 'Generating…';
   try {
-    const r = await w('generateGrowthStrategy', { campaignId: CAMPAIGN_ID, productId: GS_PRODUCT_ID, platformOverride: platformOverride || undefined });
+    const r = await w('generateGrowthStrategy', {
+      campaignId: CAMPAIGN_ID, productId,
+      platformOverride: platformOverride || undefined,
+      strategyTitle: strategyTitle || undefined,
+      researchGuidelines: guidance || undefined,
+    });
     statusEl.textContent = `Created — ${r.groupingCount} grouping${r.groupingCount === 1 ? '' : 's'} ✓`;
-    delete GS_STRATEGY_CACHE[GS_PRODUCT_ID]; // force the dropdown to refetch next open
+    delete GS_STRATEGY_CACHE[productId]; // force the dropdown to refetch next open
+    loadCampaignStrategies();
     setTimeout(closeGrowthStrategyModal, 1000);
   } catch(e) {
     statusEl.textContent = 'Error: ' + e.message;

@@ -897,6 +897,135 @@ async function buildTitleSeedContext(hdr, parentTitleId, parentTitleText) {
   } catch { return fallback; }
 }
 
+// ── Job/Upwork listing search helpers ──
+// Shared by generateJobAsset (writes a resume/proposal for top-ranked or a
+// specific listing) and researchJobListingTitles (writes a development title
+// whose pillar content IS the list of matching listings). Originally nested
+// inside generateJobAsset only; hoisted here so both call sites share one
+// implementation instead of two copies drifting apart.
+const stripHtml = s => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&#0?39;/g, "'").replace(/\s+/g, ' ').trim();
+
+// Resume path: search the campaign-agnostic Job Boards DB.
+async function searchJobBoardsFor(env, terms) {
+  const boards = await notionQuery(JOB_BOARDS_DB, { filter: { property: "Status", select: { equals: "Active" } } });
+  const grab = (block, tag) => { const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)); return m ? m[1] : ''; };
+  const out = [];
+  for (const board of boards) {
+    const parser = board.properties.Parser?.select?.name;
+    const feedUrl = board.properties["Feed URL"]?.url;
+    const boardName = board.properties.Name?.title?.map(t => t.plain_text).join("") || "Unknown";
+    if (!feedUrl) continue;
+    try {
+      if (parser === "remoteok") {
+        const items = await fetch(feedUrl, { headers: { "User-Agent": "Mozilla/5.0 (dash-worker; job research)" } }).then(r => r.json());
+        for (const j of (Array.isArray(items) ? items : [])) {
+          if (!j.position) continue;
+          out.push({ title: j.position, company: j.company || '', url: j.url || (j.id ? `https://remoteok.com/remote-jobs/${j.id}` : ''), description: stripHtml(j.description).slice(0, 2000), tags: (j.tags || []).join(', '), source: boardName });
+        }
+      } else if (parser === "remotive") {
+        const data = await fetch(feedUrl, { headers: { "User-Agent": "Mozilla/5.0 (dash-worker; job research)" } }).then(r => r.json());
+        for (const j of (data.jobs || [])) {
+          out.push({ title: j.title || '', company: j.company_name || '', url: j.url || '', description: stripHtml(j.description).slice(0, 2000), tags: (j.tags || []).join(', '), source: boardName });
+        }
+      } else if (parser === "wwr_rss" || parser === "generic_rss") {
+        const xml = await fetch(feedUrl, { headers: { "User-Agent": "Mozilla/5.0 (dash-worker; job research)" } }).then(r => r.text());
+        for (const block of xml.split('<item>').slice(1)) {
+          out.push({ title: stripHtml(grab(block, 'title')), company: '', url: grab(block, 'link').trim(), description: stripHtml(grab(block, 'description')).slice(0, 2000), tags: [stripHtml(grab(block, 'skills')), stripHtml(grab(block, 'category'))].filter(Boolean).join(', '), source: boardName });
+        }
+      } else if (parser === "linkedin_apify") {
+        const AT = (env.APIFY_TOKEN || '').trim();
+        if (!AT) continue;
+        const resp = await fetch(`https://api.apify.com/v2/acts/cheap_scraper~linkedin-job-scraper/run-sync-get-dataset-items?token=${AT}&timeout=90`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword: terms.slice(0, 3), workType: ['remote'], publishedAt: 'r604800', maxItems: 150 }),
+        });
+        if (!resp.ok) continue;
+        const items = await resp.json();
+        for (const j of (Array.isArray(items) ? items : [])) {
+          if (j.dynamicFilterMatch === false) continue;
+          out.push({ title: j.jobTitle || '', company: j.companyName || '', url: j.jobUrl || '', description: stripHtml(j.jobDescription).slice(0, 2000), tags: j.sector || '', source: boardName });
+        }
+      }
+    } catch (e) { /* one board failing shouldn't block the others */ }
+  }
+  return out;
+}
+
+// Upwork path: reuse the same proven Apify actor call researchUpworkMarketTitles
+// uses, but per-term individual listings instead of aggregate ad counts.
+async function searchUpworkFor(env, terms) {
+  const AT = (env.APIFY_TOKEN || '').trim();
+  if (!AT) return [];
+  const pick = (o, keys) => { for (const k of keys) { if (o[k] != null && o[k] !== '') return o[k]; } return ''; };
+  const results = await Promise.all(terms.map(async q => {
+    try {
+      const res = await fetch(`https://api.apify.com/v2/acts/neatrat~upwork-job-scraper/run-sync-get-dataset-items?token=${AT}&timeout=60`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q, sort: 'newest', perPage: 12, pagesToScrape: 1, maxJobAge: { value: 30, unit: 'days' } }),
+      });
+      if (!res.ok) return [];
+      const items = await res.json();
+      return (Array.isArray(items) ? items : []).filter(j => j && !j.error).map(j => {
+        const skillsRaw = pick(j, ['skills', 'tags', 'requiredSkills']);
+        return {
+          title: String(pick(j, ['title', 'jobTitle', 'name']) || '').slice(0, 160),
+          company: '',
+          description: String(pick(j, ['description', 'descriptionText', 'snippet']) || '').replace(/\s+/g, ' ').trim().slice(0, 2000),
+          url: (v => typeof v === 'string' ? v : '')(pick(j, ['url', 'link', 'jobUrl'])),
+          tags: Array.isArray(skillsRaw) ? skillsRaw.map(s => typeof s === 'string' ? s : (s?.name || '')).filter(Boolean).join(', ') : String(skillsRaw || ''),
+          budget: pick(j, ['budget', 'amount', 'fixedPrice', 'price']) || '',
+          hourly: pick(j, ['hourlyRate', 'hourlyBudget', 'hourly', 'rate']) || '',
+          source: 'Upwork',
+        };
+      }).filter(a => a.title || a.description);
+    } catch (e) { return []; }
+  }));
+  return results.flat();
+}
+
+// Job-seeker / marketplace noise that never helps match a client's ad — e.g.
+// "freelance jobs, work from home, remote work" is what a job HUNTER types,
+// not what a hiring CLIENT titles their listing with. Revived from the
+// deprecated researchAndGenerateUpworkProposals action (removed in commit
+// 3ab2c395, superseded at the time by researchUpworkMarketTitles) — that
+// action's query-cleaning was never carried over into generateJobAsset when
+// it was built, so generateJobAsset's search terms are raw, unstripped
+// Keywords text. Reused here to turn both campaign and product Keywords into
+// real, short, client-facing search phrases.
+const JOB_SEARCH_STOPWORDS = new Set(['for','the','and','or','of','to','in','on','with','without','your','you','their','is','are','not','but','from','that','this','it','no','a','an','we','our','they']);
+const JOB_SEARCH_NOISE = new Set(['job','jobs','work','working','remote','home','freelance','freelancer','freelancing','hire','hiring','gig','gigs','online','part','full','time','parttime','fulltime','position','positions','opportunity','opportunities','career','careers','income','money','earn','earning','side','hustle','board','boards','listing','listings','platform','platforms','best','legitimate','flexible','find','get','got','start','search','how','upwork','fiverr','paying','pay','contract','contractor','independent','economy','benefits','employment','client','clients','project','projects','need','needed','looking','wanted']);
+const stripJobSearchNoise = s => String(s || '').toLowerCase().split(/[^a-z0-9+#]+/).filter(w => w.length >= 2 && !JOB_SEARCH_STOPWORDS.has(w) && !JOB_SEARCH_NOISE.has(w));
+
+// Merges campaign-level Keywords (Research DB, falling back to the campaign
+// page's own Keywords property) with product-level Keywords/positioning text
+// already gathered by the caller, then runs the noise-stripping above to
+// produce clean short search phrases. Used by both generateJobAsset (which
+// previously only searched on Product Keywords) and researchJobListingTitles,
+// satisfying "match the product AND campaign keywords."
+async function buildJobSearchContext(hdr, { campaignId, productKeywords, productPositionText, researchInstructions, isResume }) {
+  const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const rt = (results, key) => { for (const r of (results.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+  let campaignKeywords = '';
+  try {
+    const [researchRaw, campRaw] = await Promise.all([
+      fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+        method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+      }).then(r => r.json()),
+      fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
+    ]);
+    campaignKeywords = rt(researchRaw, "Keywords") || (campRaw.properties?.["Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
+  } catch (e) { /* best-effort — search still works from product keywords alone */ }
+
+  const splitTerms = s => String(s || '').split(/[,;\n]+/).map(x => x.trim()).filter(Boolean);
+  const rawTerms = Array.from(new Set([...splitTerms(productKeywords), ...splitTerms(campaignKeywords), ...splitTerms(researchInstructions)]));
+  const cleanPhrases = Array.from(new Set(rawTerms.map(t => stripJobSearchNoise(t).join(' ')).filter(Boolean)));
+  const fallback = stripJobSearchNoise(productPositionText || '').slice(0, 6).join(' ');
+  const searchTerms = (cleanPhrases.length ? cleanPhrases : (fallback ? [fallback] : rawTerms)).slice(0, isResume ? 6 : 4);
+
+  return { searchTerms, campaignKeywords };
+}
+
 // Optional operator "research guidelines" — free-text routing recommendations
 // sent by the front-end with every request (see w() in the site templates).
 // Prepended to AI research/generation prompts so the operator can steer
@@ -6645,7 +6774,7 @@ No other text. No markdown fences.`;
       // prior run — one product can have several of these over time,
       // browsable via the row's dropdown.
       if (body.action === "generateGrowthStrategy") {
-        const { campaignId, productId, platformOverride } = body;
+        const { campaignId, productId, platformOverride, strategyTitle, researchGuidelines } = body;
         if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -6694,7 +6823,7 @@ No other text. No markdown fences.`;
           ? `PLATFORM FOCUS (required): every grouping must target "${platformOverride.trim()}" specifically — do not recommend any other platform.`
           : `No platform override was given — recommend the platform(s) that genuinely fit best per grouping based on the content and audience; they can differ across groupings.`;
 
-        const prompt = `You are a growth strategist. Given the research and positioning below for this product, produce a content growth strategy: a small number (3-6) of thematic title groupings (series/clusters an operator would actually produce together), each with specific title angles, the best content Method, and the best platform. This is a recommendation for a human to review and act on — be concrete and specific, not generic.
+        const prompt = `${researchGuidelinesBlock(researchGuidelines)}You are a growth strategist. Given the research and positioning below for this product, produce a content growth strategy: a small number (3-6) of thematic title groupings (series/clusters an operator would actually produce together), each with specific title angles, the best content Method, and the best platform. This is a recommendation for a human to review and act on — be concrete and specific, not generic.
 
 ${platformInstruction}
 
@@ -6741,7 +6870,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const recommendedPlatforms = Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : [];
 
         const dateLabel = new Date(campPage.last_edited_time || Date.now()).toISOString().slice(0, 10);
-        const strategyName = `${productName} Growth Strategy — ${dateLabel}`;
+        const strategyName = ((strategyTitle || '').trim() || `${productName} Growth Strategy — ${dateLabel}`).slice(0, 200);
         const esc3 = s => String(s || '');
         const rtBlock = text => [{ type: "text", text: { content: esc3(text) } }];
         const children = [
@@ -8851,6 +8980,120 @@ Return ONLY a JSON array of exactly 10 objects — no other text, no fences:
           created, titles: saved, saveErrors: saveErrors.length ? saveErrors : undefined,
           candidates, markets: markets.map(m => ({ query: m.query, adCount: m.adCount })),
           totalAds, hasDemand, apifyConfigured: !!AT, note: apifyNote || undefined,
+        });
+      }
+
+      // ── researchJobListingTitles ──
+      // Live-research title generation for the Resume / Upwork Proposal
+      // methods — the individual-listing counterpart to
+      // researchUpworkMarketTitles (which proposes market ANGLES for the
+      // "Upwork Titles" method, not real postings). Searches the Job Boards
+      // DB (resume) or Upwork via Apify (upwork proposal) using merged
+      // campaign + product Keywords (buildJobSearchContext), ranks by
+      // relevance, and writes ONE development title whose "Pillar Content"
+      // section IS the ranked list of real listings — title/company/tags/
+      // budget, each linking to the real posting. No LLM essay call here,
+      // deliberately: the pillar asset for this method genuinely is the list
+      // itself, not prose about it. The operator picks one listing from that
+      // list and pastes its URL into Generate Assets' Source URL field
+      // (generateJobAsset) to write a tailored resume/proposal for it — this
+      // action only researches and lists, it never writes the asset itself.
+      // Routed when the Method name matches /resume/i, or /upwork/i without
+      // also matching /title|market|trend/i (that combination still routes
+      // to researchUpworkMarketTitles above).
+      if (body.action === "researchJobListingTitles") {
+        const { campaignId, methodId, productId, assetType, parentTitle, parentTitleId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        if (!["resume", "upwork proposal"].includes(assetType)) return json({ error: 'assetType must be "resume" or "upwork proposal"' }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const isResume = assetType === "resume";
+        const parentSeed = await buildTitleSeedContext(hdr, parentTitleId, parentTitle);
+        const hasProduct = productId && productId !== '__none__' && productId !== campaignId;
+
+        let productName = "", productKeywords = "", productPositionText = "";
+        if (hasProduct) {
+          const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+          const pp = productPage.properties || {};
+          const ptxt = prop => (pp[prop]?.rich_text || []).map(x => x.plain_text).join("") || "";
+          productName = (pp.Name?.title || []).map(x => x.plain_text).join("") || "";
+          productKeywords = ptxt("Keywords");
+          productPositionText = [productName, ptxt("Description"), ptxt("Avatar"), ptxt("Unique Angle"), ptxt("Offer Structure"), ptxt("Notes")].filter(Boolean).join(" ");
+        }
+
+        const jobSearchCtx = await buildJobSearchContext(hdr, {
+          campaignId, productKeywords, productPositionText,
+          researchInstructions: parentSeed.keywords, isResume,
+        });
+        const searchTerms = jobSearchCtx.searchTerms;
+        if (!searchTerms.length) return json({ error: "No campaign or product Keywords on file to search with — add Keywords in Research or on the Product first." }, 400);
+
+        const rawPostings = isResume ? await searchJobBoardsFor(env, searchTerms) : await searchUpworkFor(env, searchTerms);
+        const lowerTerms = searchTerms.map(t => t.toLowerCase());
+        const seen = new Set();
+        const ranked = rawPostings
+          .filter(p => p.url && !seen.has(p.url) && (seen.add(p.url), true))
+          .map(p => {
+            const hay = `${p.title} ${p.tags || ''} ${p.description || ''}`.toLowerCase();
+            const score = lowerTerms.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
+            return { ...p, score };
+          })
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 15);
+
+        const noResultsNote = !ranked.length
+          ? `No live listings matched "${searchTerms.join(', ')}" ${isResume ? 'across the active Job Boards' : 'on Upwork'} — try broadening the Product's Keywords or campaign Research Keywords, or paste a Source URL directly in Generate Assets to target a specific posting.`
+          : undefined;
+
+        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: opts.url ? { url: opts.url } : null }, annotations: { bold: !!opts.bold, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+        const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+        const bullet = (text, opts = {}) => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text, opts) } });
+
+        const label = isResume ? "Resume" : "Upwork Proposal";
+        const titleText = `${label} Opportunities — ${searchTerms.slice(0, 3).join(', ')}`.slice(0, 200);
+        const grouping = isResume ? "Job Board Listings" : "Upwork Listings";
+
+        const props = {
+          "Title":     { title: rtBlock(titleText) },
+          "Status":    { select: { name: "Development" } },
+          "Grouping":  { rich_text: rtBlock(grouping) },
+          "Core Idea": { rich_text: rtBlock(`${ranked.length} live listing${ranked.length === 1 ? '' : 's'} matching: ${searchTerms.join(', ')}`.slice(0, 1990)) },
+          "Campaign":  { relation: [{ id: dash(campaignId) }] },
+        };
+        if (methodId) props["method"] = { relation: [{ id: dash(methodId) }] };
+        if (hasProduct) props["product"] = { relation: [{ id: dash(productId) }] };
+
+        // The Pillar Content section IS the list of listings — see the
+        // block comment above for why this deliberately skips the standard
+        // writePillarContent LLM-essay call every other title-creation site
+        // uses.
+        const children = [heading("Pillar Content")];
+        if (ranked.length) {
+          ranked.forEach(p => {
+            const meta = [p.company, p.type, p.budget, p.hourly, p.tags].filter(Boolean).join(' · ');
+            children.push(bullet(`${p.title}${meta ? ` — ${meta}` : ''} (${p.source}) ↗`.slice(0, 1990), { url: p.url, bold: true }));
+          });
+        } else {
+          children.push(para(noResultsNote));
+        }
+        children.push(heading("Research Notes"));
+        children.push(bullet(`Search terms used: ${searchTerms.join(', ')}`.slice(0, 1990)));
+        if (parentSeed.text) children.push(bullet(`Seed: ${parentSeed.text}`.slice(0, 1990)));
+        if (noResultsNote && ranked.length) children.push(bullet(noResultsNote.slice(0, 1990)));
+
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props, children }),
+        });
+        const page = await resp.json();
+        if (!page.id) return json({ error: page.message || "Failed to create title" }, 500);
+        const newTitleId = page.id.replace(/-/g, '');
+
+        return json({
+          success: true, created: 1, id: newTitleId, title: titleText,
+          listingsFound: ranked.length, searchTerms,
+          note: noResultsNote,
         });
       }
 
@@ -19217,11 +19460,9 @@ Return ONLY the HTML document.`;
         const skillsBlock = skillPages.map(p => p.properties.Skill?.title?.map(t => t.plain_text).join("") || "").filter(Boolean).join(", ");
 
         const sourceUrl = String(source || '').trim();
-        const splitTerms = s => String(s || '').split(/[,;\n]+/).map(x => x.trim()).filter(Boolean);
-        const searchTerms = Array.from(new Set([...splitTerms(keywords), ...splitTerms(researchInstructions)])).slice(0, isResume ? 6 : 4);
+        const jobSearchCtx = sourceUrl ? { searchTerms: [] } : await buildJobSearchContext(hdr, { campaignId, productKeywords: keywords, productPositionText: keywords, researchInstructions, isResume });
+        const searchTerms = jobSearchCtx.searchTerms;
         if (!sourceUrl && !searchTerms.length) return json({ error: "This Product has no Keywords set, and no research instructions or Source URL were given to search with." }, 400);
-
-        const stripHtml = s => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&#0?39;/g, "'").replace(/\s+/g, ' ').trim();
 
         // ── Source override: a specific job posting/org page, given directly
         // by the operator, that skips the job-board/Upwork search entirely.
@@ -19239,85 +19480,6 @@ Return ONLY the HTML document.`;
           return { title: pageTitle || url, company: '', url, description, tags: '', source: 'Manual Source' };
         }
 
-        // ── Resume path: search the campaign-agnostic Job Boards DB ──
-        async function searchJobBoardsFor(terms) {
-          const boards = await notionQuery(JOB_BOARDS_DB, { filter: { property: "Status", select: { equals: "Active" } } });
-          const grab = (block, tag) => { const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)); return m ? m[1] : ''; };
-          const out = [];
-          for (const board of boards) {
-            const parser = board.properties.Parser?.select?.name;
-            const feedUrl = board.properties["Feed URL"]?.url;
-            const boardName = board.properties.Name?.title?.map(t => t.plain_text).join("") || "Unknown";
-            if (!feedUrl) continue;
-            try {
-              if (parser === "remoteok") {
-                const items = await fetch(feedUrl, { headers: { "User-Agent": "Mozilla/5.0 (dash-worker; job research)" } }).then(r => r.json());
-                for (const j of (Array.isArray(items) ? items : [])) {
-                  if (!j.position) continue;
-                  out.push({ title: j.position, company: j.company || '', url: j.url || (j.id ? `https://remoteok.com/remote-jobs/${j.id}` : ''), description: stripHtml(j.description).slice(0, 2000), tags: (j.tags || []).join(', '), source: boardName });
-                }
-              } else if (parser === "remotive") {
-                const data = await fetch(feedUrl, { headers: { "User-Agent": "Mozilla/5.0 (dash-worker; job research)" } }).then(r => r.json());
-                for (const j of (data.jobs || [])) {
-                  out.push({ title: j.title || '', company: j.company_name || '', url: j.url || '', description: stripHtml(j.description).slice(0, 2000), tags: (j.tags || []).join(', '), source: boardName });
-                }
-              } else if (parser === "wwr_rss" || parser === "generic_rss") {
-                const xml = await fetch(feedUrl, { headers: { "User-Agent": "Mozilla/5.0 (dash-worker; job research)" } }).then(r => r.text());
-                for (const block of xml.split('<item>').slice(1)) {
-                  out.push({ title: stripHtml(grab(block, 'title')), company: '', url: grab(block, 'link').trim(), description: stripHtml(grab(block, 'description')).slice(0, 2000), tags: [stripHtml(grab(block, 'skills')), stripHtml(grab(block, 'category'))].filter(Boolean).join(', '), source: boardName });
-                }
-              } else if (parser === "linkedin_apify") {
-                const AT = (env.APIFY_TOKEN || '').trim();
-                if (!AT) continue;
-                const resp = await fetch(`https://api.apify.com/v2/acts/cheap_scraper~linkedin-job-scraper/run-sync-get-dataset-items?token=${AT}&timeout=90`, {
-                  method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ keyword: terms.slice(0, 3), workType: ['remote'], publishedAt: 'r604800', maxItems: 150 }),
-                });
-                if (!resp.ok) continue;
-                const items = await resp.json();
-                for (const j of (Array.isArray(items) ? items : [])) {
-                  if (j.dynamicFilterMatch === false) continue;
-                  out.push({ title: j.jobTitle || '', company: j.companyName || '', url: j.jobUrl || '', description: stripHtml(j.jobDescription).slice(0, 2000), tags: j.sector || '', source: boardName });
-                }
-              }
-            } catch (e) { /* one board failing shouldn't block the others */ }
-          }
-          return out;
-        }
-
-        // ── Upwork proposal path: reuse the same proven Apify actor call
-        // researchUpworkMarketTitles uses, but per-term individual listings
-        // instead of aggregate ad counts.
-        async function searchUpworkFor(terms) {
-          const AT = (env.APIFY_TOKEN || '').trim();
-          if (!AT) return [];
-          const pick = (o, keys) => { for (const k of keys) { if (o[k] != null && o[k] !== '') return o[k]; } return ''; };
-          const results = await Promise.all(terms.map(async q => {
-            try {
-              const res = await fetch(`https://api.apify.com/v2/acts/neatrat~upwork-job-scraper/run-sync-get-dataset-items?token=${AT}&timeout=60`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: q, sort: 'newest', perPage: 12, pagesToScrape: 1, maxJobAge: { value: 30, unit: 'days' } }),
-              });
-              if (!res.ok) return [];
-              const items = await res.json();
-              return (Array.isArray(items) ? items : []).filter(j => j && !j.error).map(j => {
-                const skillsRaw = pick(j, ['skills', 'tags', 'requiredSkills']);
-                return {
-                  title: String(pick(j, ['title', 'jobTitle', 'name']) || '').slice(0, 160),
-                  company: '',
-                  description: String(pick(j, ['description', 'descriptionText', 'snippet']) || '').replace(/\s+/g, ' ').trim().slice(0, 2000),
-                  url: (v => typeof v === 'string' ? v : '')(pick(j, ['url', 'link', 'jobUrl'])),
-                  tags: Array.isArray(skillsRaw) ? skillsRaw.map(s => typeof s === 'string' ? s : (s?.name || '')).filter(Boolean).join(', ') : String(skillsRaw || ''),
-                  budget: pick(j, ['budget', 'amount', 'fixedPrice', 'price']) || '',
-                  hourly: pick(j, ['hourlyRate', 'hourlyBudget', 'hourly', 'rate']) || '',
-                  source: 'Upwork',
-                };
-              }).filter(a => a.title || a.description);
-            } catch (e) { return []; }
-          }));
-          return results.flat();
-        }
-
         let ranked;
         if (sourceUrl) {
           try {
@@ -19326,7 +19488,7 @@ Return ONLY the HTML document.`;
             return json({ error: `Source URL: ${e.message || e}` }, 400);
           }
         } else {
-          const rawPostings = isResume ? await searchJobBoardsFor(searchTerms) : await searchUpworkFor(searchTerms);
+          const rawPostings = isResume ? await searchJobBoardsFor(env, searchTerms) : await searchUpworkFor(env, searchTerms);
 
           const lowerTerms = searchTerms.map(t => t.toLowerCase());
           const seen = new Set();
