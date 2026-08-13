@@ -6483,23 +6483,16 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const sIds = [...new Set(titleList.map(t => t.strategyId).filter(x => x !== '__none__'))];
         const dashify = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const fetchName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?" }; } catch(e) { return { id, name: "?" }; } };
-        // Methods also carry a Template URL (the Canva design template used
-        // to produce this method's assets) — grabbed in the same page fetch
-        // as the name so the Edit Strategy modal can show a clickable link
-        // with no extra round-trip.
-        const fetchMethodInfo = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?", template: p.properties?.Template?.url || "" }; } catch(e) { return { id, name: "?", template: "" }; } };
         // Growth Strategy's title property is "Strategy Name", not "Name" —
         // needs its own fetch helper.
         const fetchStrategyName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "?" }; } catch(e) { return { id, name: "?" }; } };
-        const [prodPages, methPages, stratPages] = await Promise.all([Promise.all(pIds.map(fetchName)), Promise.all(mIds.map(fetchMethodInfo)), Promise.all(sIds.map(fetchStrategyName))]);
+        const [prodPages, methPages, stratPages] = await Promise.all([Promise.all(pIds.map(fetchName)), Promise.all(mIds.map(fetchName)), Promise.all(sIds.map(fetchStrategyName))]);
         const pNames = Object.fromEntries(prodPages.map(p => [p.id, p.name]));
         const mNames = Object.fromEntries(methPages.map(p => [p.id, p.name]));
-        const mTemplates = Object.fromEntries(methPages.map(p => [p.id, p.template]));
         const sNames = Object.fromEntries(stratPages.map(p => [p.id, p.name]));
         titleList.forEach(t => {
           t.productName  = t.productId === '__none__' ? 'No Product' : (pNames[t.productId] || '?');
           t.methodName   = t.methodId  === '__none__' ? 'No Method'  : (mNames[t.methodId]  || '?');
-          t.methodTemplateLink = t.methodId === '__none__' ? '' : (mTemplates[t.methodId] || '');
           t.strategyName = t.strategyId === '__none__' ? 'No Strategy' : (sNames[t.strategyId] || '?');
           const parts = (t._rawGrouping || '').split(' > ');
           t.phase    = parts.length > 1 ? parts[0].trim() : '';
@@ -6546,7 +6539,6 @@ Return ONLY a JSON array — no other text, no markdown fences:
                 // needs no extra round-trip.
                 hashtags: p["Hashtags"]?.rich_text?.map(x => x.plain_text).join("") || "",
                 postCaption: p["Post Caption"]?.rich_text?.map(x => x.plain_text).join("") || "",
-                linkOrCta: p["Link or CTA"]?.url || "",
               };
             } catch(e) { return null; }
           }))).filter(Boolean);
@@ -11308,54 +11300,54 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         return json({ success: true });
       }
 
-      // ── getPillarContent ──
-      // Returns a title's current Pillar Content section as plain text —
-      // backs the Edit Strategy modal's textarea prefill (openEditStrategyModal
-      // in the microsite template).
-      if (body.action === "getPillarContent") {
-        const { titleId } = body;
-        if (!titleId) return json({ error: "titleId required" }, 400);
+      // ── updateGrowthStrategy ──
+      // Saves edits made in the (now editable) View Strategy modal — Strategy
+      // Name, Status, Summary as properties, plus the full page body text,
+      // which is replaced wholesale (every existing top-level block deleted,
+      // then rewritten as plain paragraphs from the edited text) rather than
+      // patched — the operator is rewriting the whole document as free text
+      // in one textarea, not editing individual headings/bullets.
+      if (body.action === "updateGrowthStrategy") {
+        const { strategyId, name, status, summary, body: bodyText } = body;
+        if (!strategyId) return json({ error: "strategyId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const text = await extractPillarContent(hdr, dash(titleId)).catch(() => "");
-        return json({ text });
-      }
+        const dashedId = dash(strategyId);
 
-      // ── regeneratePillarContent ──
-      // The Edit Strategy modal's "Regenerate" action: optionally renames
-      // the title, then re-runs writePillarContent with the operator's
-      // hand-edited text as guidance — an AI rewrite pass grounded in the
-      // same Research/Product/Strategy context pillar creation always uses,
-      // but steered heavily by what the operator just wrote.
-      // writePillarContent's own clearExistingPillarSection call replaces
-      // the existing Pillar Content section rather than appending a second
-      // one, so this is a true in-place regenerate, not an append.
-      if (body.action === "regeneratePillarContent") {
-        const { titleId, titleText, campaignId, productId, methodId, guidance } = body;
-        if (!titleId) return json({ error: "titleId required" }, 400);
-        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        if (titleText) {
-          const renameResp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+        const props = {};
+        if (name !== undefined && name !== "") props["Strategy Name"] = { title: [{ text: { content: name } }] };
+        if (status !== undefined && status !== "") props["Status"] = { select: { name: status } };
+        if (summary !== undefined) props["Summary"] = { rich_text: summary ? [{ text: { content: summary.slice(0, 1900) } }] : [] };
+        if (Object.keys(props).length) {
+          const propResp = await fetch(`https://api.notion.com/v1/pages/${dashedId}`, {
             method: "PATCH",
             headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { Title: { title: [{ text: { content: titleText } }] } } }),
+            body: JSON.stringify({ properties: props }),
           });
-          if (!renameResp.ok) { const err = await renameResp.json().catch(() => ({})); return json({ error: err.message || "Title rename failed" }, renameResp.status); }
+          if (!propResp.ok) { const err = await propResp.json().catch(() => ({})); return json({ error: err.message || "Property update failed" }, propResp.status); }
         }
-        let result;
-        try {
-          result = await writePillarContent(hdr, env, {
-            titleId,
-            titleText: titleText || undefined,
-            campaignId: campaignId && campaignId !== '__none__' ? campaignId : undefined,
-            productId: productId && productId !== '__none__' ? productId : undefined,
-            methodId: methodId && methodId !== '__none__' ? methodId : undefined,
-            guidance,
-          });
-        } catch (e) { return json({ error: e.message || "Regeneration failed" }, 500); }
-        if (result?.skipped) return json({ success: true, skipped: true, reason: result.reason });
-        return json({ success: true, wordCount: result?.wordCount });
+
+        if (bodyText !== undefined) {
+          try {
+            const existing = await fetch(`https://api.notion.com/v1/blocks/${dashedId}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+            const toDelete = (existing.results || []).map(b => b.id);
+            for (const id of toDelete) {
+              await fetch(`https://api.notion.com/v1/blocks/${id}`, { method: "DELETE", headers: hdr }).catch(() => {});
+            }
+          } catch (e) { /* best-effort — worst case new paragraphs append after stale blocks */ }
+          const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: text } }] } });
+          const paragraphs = String(bodyText).split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+          const children = [];
+          paragraphs.forEach(p => { for (let i = 0; i < p.length; i += 1900) children.push(para(p.slice(i, i + 1900))); });
+          for (let i = 0; i < children.length; i += 90) {
+            const resp = await fetch(`https://api.notion.com/v1/blocks/${dashedId}/children`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ children: children.slice(i, i + 90) }),
+            });
+            if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Failed to write strategy body" }, 500); }
+          }
+        }
+        return json({ success: true });
       }
 
       // ── updatePublishFields ──
