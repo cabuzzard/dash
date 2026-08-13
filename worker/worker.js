@@ -3094,6 +3094,37 @@ export default {
         return json({ success: true });
       }
 
+      // ── getProductStacks ──
+      // Distinct Product Stack values already in use across the whole
+      // Products DB — feeds the Add Product modal's Product Stack dropdown
+      // (search-existing-or-create-new), same pattern as getProductTypes.
+      if (body.action === "getProductStacks") {
+        const rows = await notionQuery(PRODUCTS_DB, { page_size: 100 });
+        const seen = new Map();
+        for (const p of rows) {
+          const s = (p.properties?.["Product Stack"]?.rich_text || []).map(x => x.plain_text).join("").trim();
+          if (s && !seen.has(s.toLowerCase())) seen.set(s.toLowerCase(), s);
+        }
+        return json({ stacks: [...seen.values()].sort((a, b) => a.localeCompare(b)) });
+      }
+
+      // ── setProductStack ──
+      // Explicitly (re)writes a product's Product Stack property, same
+      // creation-race reasoning as setProductType.
+      if (body.action === "setProductStack") {
+        const { productId, stack } = body;
+        if (!productId || !stack) return json({ error: "productId and stack required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Product Stack": { rich_text: [{ type: "text", text: { content: String(stack).slice(0, 100) } }] } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
       // ── updateProductTitleDescription ──
       // Lets the ⚙ Methods modal edit a product's Name/Description in place
       // (pre-filled from Notion when the modal opens) — since these are the
@@ -3164,13 +3195,17 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       }
 
       if (body.action === "createProduct") {
-        const { title, type, description } = body;
+        const { title, type, description, stack } = body;
         if (!title) return json({ error: "title required" }, 400);
         const createProps = { Name: { title: [{ type: "text", text: { content: title } }] } };
         // Type = concrete FORMAT (PDF/Email/Quiz/Coaching/Membership/etc.) —
         // set at manual creation so the ecosystem/method pipeline (run right
         // after by the front-end) has a real signal to work from.
         if (type) createProps["Type"] = { rich_text: [{ type: "text", text: { content: String(type).slice(0, 100) } }] };
+        // Product Stack = a free-text grouping label (e.g. "Coaching Suite")
+        // the operator assigns manually — purely organizational, unlike Type/
+        // Ecosystem which feed other pipelines.
+        if (stack) createProps["Product Stack"] = { rich_text: [{ type: "text", text: { content: String(stack).slice(0, 100) } }] };
         if (description) createProps["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
@@ -3387,6 +3422,9 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           // Type = concrete FORMAT (PDF/Email/Quiz/Coaching/Membership/etc.) —
           // shown on the row and fed into matchProductMethod's matching.
           type: (p.properties?.["Type"]?.rich_text || []).map(t => t.plain_text).join("") || null,
+          // Product Stack = operator-assigned grouping label — shown on the
+          // row as a badge, purely organizational (see createProduct).
+          stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("") || null,
           // Marketing Phase = funnel role (Top of funnel/Lead-in/Core
           // offer/Retention) — orders rows within an ecosystem group.
           marketingPhase: (p.properties?.["Marketing Phase"]?.rich_text || []).map(t => t.plain_text).join("") || null,
@@ -6435,20 +6473,27 @@ Return ONLY a JSON array — no other text, no markdown fences:
             scheduled: props["Scheduled Date"]?.date?.start || "",
             productId: (props.product?.relation || [])[0]?.id?.replace(/-/g,"") || "__none__",
             methodId:  (props.method?.relation  || [])[0]?.id?.replace(/-/g,"") || "__none__",
+            strategyId: (props["Growth Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"") || "__none__",
             assetIds:  (props.Assets?.relation || []).map(r => r.id.replace(/-/g,"")),
           };
         });
-        // Resolve product + method names
+        // Resolve product + method + strategy names
         const pIds = [...new Set(titleList.map(t => t.productId).filter(x => x !== '__none__'))];
         const mIds = [...new Set(titleList.map(t => t.methodId).filter(x => x !== '__none__'))];
+        const sIds = [...new Set(titleList.map(t => t.strategyId).filter(x => x !== '__none__'))];
         const dashify = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const fetchName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?" }; } catch(e) { return { id, name: "?" }; } };
-        const [prodPages, methPages] = await Promise.all([Promise.all(pIds.map(fetchName)), Promise.all(mIds.map(fetchName))]);
+        // Growth Strategy's title property is "Strategy Name", not "Name" —
+        // needs its own fetch helper.
+        const fetchStrategyName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "?" }; } catch(e) { return { id, name: "?" }; } };
+        const [prodPages, methPages, stratPages] = await Promise.all([Promise.all(pIds.map(fetchName)), Promise.all(mIds.map(fetchName)), Promise.all(sIds.map(fetchStrategyName))]);
         const pNames = Object.fromEntries(prodPages.map(p => [p.id, p.name]));
         const mNames = Object.fromEntries(methPages.map(p => [p.id, p.name]));
+        const sNames = Object.fromEntries(stratPages.map(p => [p.id, p.name]));
         titleList.forEach(t => {
-          t.productName = t.productId === '__none__' ? 'No Product' : (pNames[t.productId] || '?');
-          t.methodName  = t.methodId  === '__none__' ? 'No Method'  : (mNames[t.methodId]  || '?');
+          t.productName  = t.productId === '__none__' ? 'No Product' : (pNames[t.productId] || '?');
+          t.methodName   = t.methodId  === '__none__' ? 'No Method'  : (mNames[t.methodId]  || '?');
+          t.strategyName = t.strategyId === '__none__' ? 'No Strategy' : (sNames[t.strategyId] || '?');
           const parts = (t._rawGrouping || '').split(' > ');
           t.phase    = parts.length > 1 ? parts[0].trim() : '';
           t.grouping = parts.length > 1 ? parts.slice(1).join(' > ').trim() : (t._rawGrouping || '');
@@ -6951,14 +6996,20 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // Feeds both the Product row's "plans" dropdown and the Generate
       // Titles modal's "Choose Strategy" dropdown — same list, same shape.
       if (body.action === "listGrowthStrategies") {
-        const { productId } = body;
-        if (!productId) return json({ error: "productId required" }, 400);
+        // productId is the common case (a title/product row already knows its
+        // product); campaignId is a fallback for contexts with no product —
+        // e.g. editing an existing title that has none — filtering by
+        // Campaign instead of Product. At least one is required.
+        const { productId, campaignId } = body;
+        if (!productId && !campaignId) return json({ error: "productId or campaignId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const q = await fetch(`https://api.notion.com/v1/databases/${GROWTH_STRATEGY_DB}/query`, {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({
-            filter: { property: "Product", relation: { contains: dash(productId) } },
+            filter: productId
+              ? { property: "Product", relation: { contains: dash(productId) } }
+              : { property: "Campaign", relation: { contains: dash(campaignId) } },
             sorts: [{ timestamp: "created_time", direction: "descending" }],
           }),
         }).then(r => r.json()).catch(() => ({ results: [] }));
@@ -7102,7 +7153,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // title/pillar creation — this now only writes a title + its
         // method-agnostic pillar content (via writePillarContent below).
         // Method-specific shaping happens later, at Generate Assets.
-        const { slotId, guidance, campaignId: campaignIdParam, productId: productIdParam } = body;
+        const { slotId, guidance, campaignId: campaignIdParam, productId: productIdParam, growthStrategyId: growthStrategyIdParam } = body;
         if (!slotId && !campaignIdParam) return json({ error: "campaignId required when no slot is given" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -7117,10 +7168,14 @@ Return ONLY this JSON object, no other text, no markdown fences:
           grouping = (sp.Grouping?.rich_text || []).map(t => t.plain_text).join("");
           angle = (sp.Angle?.rich_text || []).map(t => t.plain_text).join("");
           platform = (sp.Platform?.rich_text || []).map(t => t.plain_text).join("");
-          growthStrategyId = (sp["Growth Strategy"]?.relation || [])[0]?.id || null; // already dashed (from Notion)
+          growthStrategyId = (sp["Growth Strategy"]?.relation || [])[0]?.id || null; // already dashed (from Notion) — the slot's own strategy always wins over a client-passed one
           productId = (sp.Product?.relation || [])[0]?.id || productId;             // already dashed — slot's own relation wins if both given
           campaignId = (sp.Campaign?.relation || [])[0]?.id || campaignId;
           existingTitleIds = (sp.Title?.relation || []).map(r => r.id.replace(/-/g, ""));
+        } else if (growthStrategyIdParam && growthStrategyIdParam !== '__none__') {
+          // No slot — a one-off title (e.g. a "tool guide") the operator still
+          // wants attributed to an overall Growth Strategy, picked directly.
+          growthStrategyId = dash(growthStrategyIdParam);
         }
 
         const [growthStrategyBody, productPage] = await Promise.all([
@@ -7186,6 +7241,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         if (grouping) props["Grouping"] = { rich_text: [{ type: "text", text: { content: grouping.slice(0, 1990) } }] };
         if (campaignId) props["Campaign"] = { relation: [{ id: campaignId }] };
         if (productId) props["product"] = { relation: [{ id: productId }] };
+        if (growthStrategyId) props["Growth Strategy"] = { relation: [{ id: growthStrategyId }] };
 
         const createResp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
@@ -11212,6 +11268,26 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { Status: { select: { name: stage } } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── updateTitleStrategy ──
+      // Lets the operator set/change/clear which Growth Strategy an existing
+      // Development title is linked to — the edit-time counterpart to
+      // generateTitleFromSlot's growthStrategyId (which only sets this at
+      // creation time). growthStrategyId '' or '__none__' clears the link.
+      if (body.action === "updateTitleStrategy") {
+        const { titleId, growthStrategyId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const clear = !growthStrategyId || growthStrategyId === '__none__';
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Growth Strategy": { relation: clear ? [] : [{ id: dash(growthStrategyId) }] } } }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);

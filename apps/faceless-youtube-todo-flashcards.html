@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faceless YouTube channel — to-do flashcards</title>
+<style>
+  :root {
+    --bg: #f7f6f2;
+    --surface: #ffffff;
+    --border: #e2e0d8;
+    --text-primary: #1c1c1a;
+    --text-secondary: #6b6a63;
+    --text-muted: #97958c;
+    --accent: #185fa5;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .wrap {
+    width: 100%;
+    max-width: 480px;
+  }
+  h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+  p.subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0 0 20px;
+  }
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+  }
+  #counter {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  #section {
+    font-size: 13px;
+    color: var(--text-muted);
+    text-transform: capitalize;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px 24px;
+    min-height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  #card-text {
+    font-size: 17px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  button {
+    flex: 1;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    background: var(--surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  button:hover { background: #f0efe9; }
+  button:active { transform: scale(0.98); }
+  .dots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 16px;
+    justify-content: center;
+  }
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+    cursor: pointer;
+  }
+  .dot.active { background: var(--accent); }
+  footer {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Faceless YouTube channel — to-do flashcards</h1>
+  <p class="subtitle">22 action items, in the order the guide presents them.</p>
+
+  <div class="meta-row">
+    <span id="counter">card 1 of 22</span>
+    <span id="section"></span>
+  </div>
+
+  <div class="card">
+    <p id="card-text">Loading…</p>
+  </div>
+
+  <div class="controls">
+    <button id="prev">&larr; back</button>
+    <button id="next">next &rarr;</button>
+  </div>
+
+  <div class="dots" id="dots"></div>
+
+  <footer>Use ← / → arrow keys to navigate</footer>
+</div>
+
+<script>
+const cards = [
+ {s:"1. strategy", t:"Pick a high-CPM niche if maximizing revenue: finance and investing, AI and technology, or business and entrepreneurship."},
+ {s:"1. strategy", t:"Or pick a high-volume niche for scale: true crime, facts and trivia, or motivation."},
+ {s:"1. strategy", t:"Choose a brand-first channel name (e.g. \"Wealth simplified\") rather than a creator-first name."},
+ {s:"2. ai workflow", t:"Write scripts with a strong hook in the first 3 seconds, e.g. \"the number 1 mistake ruining your videos.\""},
+ {s:"2. ai workflow", t:"Set ElevenLabs stability to 30 to 45 percent for natural pauses and breaths."},
+ {s:"2. ai workflow", t:"Set ElevenLabs similarity to 70 to 85 percent to keep character style without artifacts."},
+ {s:"2. ai workflow", t:"Set ElevenLabs style exaggeration to 0 to 10 percent to avoid an overly dramatic sound."},
+ {s:"2. ai workflow", t:"Build a consistent AI avatar host: generate a character sheet in Midjourney, then animate lip-sync in HeyGen."},
+ {s:"2. ai workflow", t:"Use an automation tool like AITuber to turn a script into a full video (visuals, voiceover, captions) in about 2 minutes."},
+ {s:"2. ai workflow", t:"Use the YouTube Audio Library for music, or build a \"proof pack\" (license certificate + screenshot of terms) for any external track."},
+ {s:"3. algorithm", t:"Prioritize YouTube Shorts, since they get pushed to new viewers regardless of follower count."},
+ {s:"3. algorithm", t:"Use the 3-second micro-tutorial template: problem (0-2s), 3 quick steps (3-20s), before/after payoff (21-25s)."},
+ {s:"3. algorithm", t:"Use the curiosity-gap template: mystery (0-5s), rising tension with new info every 5-7s, surprising reveal (36-45s)."},
+ {s:"3. algorithm", t:"Add a curious-question text overlay (e.g. \"what did he do?\") as the Short's thumbnail to boost SEO and click-through."},
+ {s:"3. algorithm", t:"Add burned-in, high-contrast captions, since 83-85 percent of short-form video is watched without sound."},
+ {s:"4. monetization", t:"Track fan-funding requirements: 500 subscribers plus 3,000 watch hours, or 3 million Shorts views."},
+ {s:"4. monetization", t:"Track full ad-revenue requirements: 1,000 subscribers plus 4,000 long-form watch hours, or 10 million Shorts views."},
+ {s:"4. monetization", t:"Add personal reflections or context in the script to satisfy the 2025 \"inauthentic content\" rule."},
+ {s:"4. monetization", t:"Use high-quality AI voices with emotional range rather than generic ones."},
+ {s:"4. monetization", t:"Avoid templated videos where every clip shares the same music, pacing, and structure."},
+ {s:"4. monetization", t:"Turn on the \"altered content\" toggle in YouTube Studio if the AI voice or footage could be mistaken for real people or events."},
+ {s:"5. launch", t:"Publish 3 test videos in the first week to gather data on which topics and thumbnails drive impressions."}
+];
+
+let i = 0;
+const textEl = document.getElementById('card-text');
+const secEl = document.getElementById('section');
+const countEl = document.getElementById('counter');
+const dotsEl = document.getElementById('dots');
+
+function buildDots() {
+  dotsEl.innerHTML = '';
+  cards.forEach((_, idx) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (idx === i ? ' active' : '');
+    d.addEventListener('click', () => { i = idx; render(); });
+    dotsEl.appendChild(d);
+  });
+}
+
+function render() {
+  textEl.textContent = cards[i].t;
+  secEl.textContent = cards[i].s;
+  countEl.textContent = 'card ' + (i + 1) + ' of ' + cards.length;
+  [...dotsEl.children].forEach((d, idx) => d.classList.toggle('active', idx === i));
+}
+
+document.getElementById('next').addEventListener('click', () => {
+  i = (i + 1) % cards.length;
+  render();
+});
+document.getElementById('prev').addEventListener('click', () => {
+  i = (i - 1 + cards.length) % cards.length;
+  render();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') { i = (i + 1) % cards.length; render(); }
+  if (e.key === 'ArrowLeft') { i = (i - 1 + cards.length) % cards.length; render(); }
+});
+
+buildDots();
+render();
+</script>
+</body>
+</html>

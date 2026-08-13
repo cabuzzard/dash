@@ -125,6 +125,12 @@
   .tool-del:hover { opacity:1; color:#f87171; }
   @media (max-width:640px) { .tool-row { flex-direction:column; align-items:stretch; } .tool-input { width:100%; } }
 
+  /* ── STACK TAB (static reference table, reuses .dtable for the table itself) ── */
+  .stack-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .stack-table { min-width:640px; }
+  .stack-table th.sortable { cursor:pointer; user-select:none; }
+  .stack-table th.sortable:hover { color:var(--text2); }
+
   /* ── DOMAINS TAB ── */
   .dom-stat-bar { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
   .dom-stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 18px; min-width:90px; }
@@ -595,6 +601,7 @@
     <div class="tab" onclick="switchTab('trades')">Trades</div>
     <div class="tab" onclick="switchTab('links')">Links</div>
     <div class="tab" onclick="switchTab('tools')">Tools</div>
+    <div class="tab" onclick="switchTab('stack')">Stack</div>
   </div>
 
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
@@ -776,6 +783,34 @@
     </div>
     <div id="toolsListEl">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+    </div>
+  </div>
+
+  <!-- 📦 STACK TAB — static reference table of every tool option per function
+       needed to sell/deliver the GHL Business Suite product (website launch,
+       AI Front Desk, full business suite offers). Data is hardcoded in
+       renderStackTable() below, not backend-fetched — this is a fixed
+       reference doc, not an editable dataset like the Tools tab. -->
+  <div class="tab-panel" id="tabStack">
+    <div style="margin-bottom:14px;">
+      <div class="wo-title">Business Suite Product Stack</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px;">Every tool option for each function needed to sell and deliver the GHL Business Suite product (website launch, AI Front Desk, full business suite offers).</div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+      <input id="stackSearch" type="text" placeholder="Filter by function, option, source, notes…" oninput="renderStackTable()" style="flex:1;min-width:160px;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
+    </div>
+    <div class="stack-table-wrap">
+      <table class="dtable stack-table">
+        <thead>
+          <tr>
+            <th class="sortable" id="stackThFunction" onclick="sortStackByFunction()">Function</th>
+            <th>Options</th>
+            <th>Source</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody id="stackTableBody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -2837,6 +2872,7 @@ let devLoaded  = false;
 let tdTabLoaded = false;
 let linksLoaded = false;
 let toolsLoaded = false;
+let stackLoaded = false;
 
 const ASSET_STATUS_CYCLE = ['Publish', 'Published'];
 function assetStatusStyle(status) {
@@ -3603,6 +3639,7 @@ function switchTab(name) {
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
   if (name === 'links'     && !linksLoaded)  { linksLoaded  = true; loadLinks(); }
   if (name === 'tools'     && !toolsLoaded)  { toolsLoaded  = true; loadToolsList(); }
+  if (name === 'stack'     && !stackLoaded)  { stackLoaded  = true; renderStackTable(); }
   if (name === 'trades') {
     if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); }
     startTradesAutoRefresh();
@@ -9238,6 +9275,55 @@ async function deleteToolRow(id, btn) {
     alert('Error: ' + e.message);
     btn.disabled = false;
   }
+}
+
+// ── STACK TAB (static "Business Suite Product Stack" reference table) ──
+// Hardcoded, not backend-fetched — this is a fixed reference doc (every
+// tool option per function needed to sell/deliver the GHL Business Suite
+// product), not a live editable dataset like the Tools tab above.
+const STACK_DATA = [
+  { fn: 'Website Generator', options: ['1ClickWebsite.ai', 'Lovable', 'Replit', 'GHL Website Builder'], sources: ['Chat', 'Tools DB', 'Tools DB', 'Tools DB'], notes: '1ClickWebsite is purpose-built for this exact play; Lovable/Replit are general-purpose, more manual' },
+  { fn: 'Temp/Free Hosting', options: ['Cloudflare Pages', 'GitHub Pages', '1ClickHosting ($10/site/mo)'], sources: ['Chat', 'Chat', 'Chat'], notes: 'Cloudflare/GitHub only work if the site is exported static; 1ClickHosting keeps it live WordPress' },
+  { fn: 'Production Hosting', options: ['1ClickHosting', "Client's own WP host", 'Cloudflare (static only)'], sources: ['Chat', 'Chat', 'Chat'], notes: 'Static loses WP admin editability for the client' },
+  { fn: 'CRM / Pipeline', options: ['GoHighLevel'], sources: ['Tools DB'], notes: 'No real alternative surfaced — this is the one-tool answer here' },
+  { fn: 'Voice AI Receptionist', options: ['GHL native Voice AI', 'Vapi', 'Atlas (YourAtlas)', 'Retell AI', 'Synthflow'], sources: ['Chat', 'Tools DB', 'Tools DB', 'Chat', 'Chat'], notes: 'Atlas and Vapi are both in the Tools DB — worth a head-to-head before picking' },
+  { fn: 'Text/DM Automation', options: ['GHL Conversation AI/missed-call text-back', 'ManyChat', 'Revio', 'ChatAid'], sources: ['Chat', 'Chat', 'Tools DB', 'Tools DB'], notes: 'ManyChat wins on IG/FB-native automation; Revio/ChatAid are DM-focused sales co-pilots' },
+  { fn: 'Payments', options: ['Stripe', 'GHL native billing'], sources: ['Tools DB', 'Chat'], notes: 'GHL billing runs on Stripe under the hood for most setups anyway' },
+  { fn: 'Automation / Glue', options: ['Zapier', 'Make.com', 'n8n', 'Gumloop'], sources: ['Tools DB'], notes: "Needed to bridge GHL, Vapi, and ManyChat since they don't natively talk" },
+  { fn: 'Lead Sourcing', options: ['LeadBomb.io', 'Squibb AI', 'Apify'], sources: ['Tools DB', 'Tools DB', 'connected MCP'], notes: 'This is for outreach to prospects, not the client-facing product' },
+  { fn: 'List Cleaning', options: ['ScrubMyList'], sources: ['Tools DB'], notes: 'Cleans scraped prospect lists before outreach' },
+  { fn: 'Reputation / Reviews', options: ['GHL native review automation'], sources: ['Chat'], notes: 'Already bundled into the Full Suite tier' },
+  { fn: 'Reporting / KPI Dashboards', options: ['GHL native reporting', 'Precision', 'Alysio'], sources: ['Chat', 'Tools DB', 'Tools DB'], notes: 'Precision/Alysio slated for the held-back Growth Ops Retainer tier' },
+  { fn: 'Demo/Content Creation', options: ['Opusclip', 'Clipfy', 'HeyGen', 'ElevenLabs', 'Gamma'], sources: ['Tools DB'], notes: 'Gamma specifically for the sales one-pager/pitch deck' },
+  { fn: 'Sales Call Notes', options: ['Fathom', 'Granola'], sources: ['Tools DB'], notes: 'For recording/summarizing discovery calls' },
+  { fn: 'Community/Membership', options: ['Skool'], sources: ['Tools DB'], notes: 'For productizing the teaching/upsell layer, if pursued' },
+  { fn: 'Failed Payment Recovery', options: ['FlexPay'], sources: ['Tools DB'], notes: 'Relevant once collecting recurring retainers' },
+  { fn: 'Checkout Pages', options: ['Purple Turret', 'GHL native checkout'], sources: ['Tools DB', 'Chat'], notes: "Only needed for a dedicated page outside GHL's funnel builder" },
+];
+let STACK_SORT_DIR = 1;
+
+function sortStackByFunction() {
+  STACK_SORT_DIR *= -1;
+  renderStackTable();
+}
+
+function renderStackTable() {
+  const el = document.getElementById('stackTableBody');
+  if (!el) return;
+  const th = document.getElementById('stackThFunction');
+  if (th) th.textContent = 'Function' + (STACK_SORT_DIR === 1 ? ' ↑' : ' ↓');
+
+  const q = (document.getElementById('stackSearch')?.value || '').trim().toLowerCase();
+  const filtered = STACK_DATA.filter(r => !q || [r.fn, r.options.join(' '), r.sources.join(' '), r.notes].join(' ').toLowerCase().includes(q));
+  filtered.sort((a, b) => a.fn.localeCompare(b.fn) * STACK_SORT_DIR);
+
+  el.innerHTML = filtered.map(r => `
+    <tr>
+      <td style="font-weight:600;color:var(--text);white-space:nowrap;">${esc(r.fn)}</td>
+      <td>${r.options.map(esc).join('<br>')}</td>
+      <td style="color:var(--text3);white-space:nowrap;">${r.sources.map(esc).join('<br>')}</td>
+      <td style="color:var(--text3);">${esc(r.notes)}</td>
+    </tr>`).join('') || `<tr><td colspan="4" style="color:var(--text3);padding:16px 14px;">No matches.</td></tr>`;
 }
 
 async function loadCharacterArcs() {
