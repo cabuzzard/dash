@@ -14,14 +14,14 @@
 <style>
 /* STATUS CHANGE BUTTON */
 .title-status-btn {
-  font-size: 11px; color: #5f5f5f; background: none; border: 1px solid #5f5f5f;
+  font-size: 11px; color: #fff; background: none; border: 1px solid #5f5f5f;
   padding: 1px 6px; cursor: pointer; font-family: 'Syne', sans-serif;
   flex-shrink: 0; transition: all .15s; line-height: 1.4;
 }
 .title-status-btn:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
 /* CREATE ASSET BUTTON + MODAL */
 .title-asset-btn {
-  font-size: 12px; color: #5f5f5f; background: none; border: 1px solid #5f5f5f;
+  font-size: 12px; color: #fff; background: none; border: 1px solid #5f5f5f;
   padding: 1px 6px; cursor: pointer; font-family: 'Syne', sans-serif;
   flex-shrink: 0; transition: all .15s; line-height: 1.4;
 }
@@ -31,48 +31,48 @@
 #build-carousel-modal.open { display:flex; }
 .bc-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:20px; width:min(94vw, 900px); max-height:92vh; overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
 .bc-box h3 { margin:0; font-size:15px; color:#fff; }
-.bc-subtitle { font-size:12px; color:#666; margin-top:-8px; }
-.bc-status { font-size:12px; color:#888; min-height:16px; }
+.bc-subtitle { font-size:12px; color:#fff; margin-top:-8px; }
+.bc-status { font-size:12px; color:#fff; min-height:16px; }
 .bc-body { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
 .bc-canvas-wrap { flex-shrink:0; }
 .bc-canvas-wrap canvas { width:270px; height:337px; border-radius:6px; border:1px solid #333; background:#faf6f0; }
 .bc-nav { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px; }
-.bc-nav button { background:none; border:1px solid #333; color:#c9c9c9; padding:3px 10px; border-radius:4px; cursor:pointer; font-size:12px; }
+.bc-nav button { background:none; border:1px solid #333; color:#fff; padding:3px 10px; border-radius:4px; cursor:pointer; font-size:12px; }
 .bc-nav button:hover { border-color:#f6ad55; color:#f6ad55; }
-.bc-nav span { font-size:12px; color:#888; min-width:40px; text-align:center; }
+.bc-nav span { font-size:12px; color:#fff; min-width:40px; text-align:center; }
 .bc-thumbs { display:flex; flex-wrap:wrap; gap:8px; flex:1; min-width:220px; }
 .bc-thumb { width:64px; height:80px; border-radius:4px; border:1px solid #333; cursor:pointer; background:#faf6f0; }
 .bc-thumb.active { border-color:#f6ad55; box-shadow:0 0 0 1px #f6ad55; }
 .bc-actions { display:flex; gap:8px; flex-wrap:wrap; }
-.bc-actions button { background:#f6ad55; color:#5f5f5f; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; }
-.bc-actions button.secondary { background:none; border:1px solid #333; color:#c9c9c9; }
+.bc-actions button { background:#f6ad55; color:#fff; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; }
+.bc-actions button.secondary { background:none; border:1px solid #333; color:#fff; }
 .bc-actions button:disabled { opacity:.5; cursor:default; }
 /* DESIGN SPEC MODAL */
 #design-spec-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.8); z-index:1000; align-items:center; justify-content:center; }
 #design-spec-modal.open { display:flex; }
 .ds-box { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:20px; width:min(94vw, 460px); max-height:90vh; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
 .ds-box h3 { margin:0; font-size:15px; color:#fff; }
-.ds-subtitle { font-size:11px; color:#666; margin-top:-8px; }
+.ds-subtitle { font-size:11px; color:#fff; margin-top:-8px; }
 .ds-field { display:flex; flex-direction:column; gap:4px; }
-.ds-field label { font-size:11px; color:#999; text-transform:uppercase; letter-spacing:.03em; }
+.ds-field label { font-size:11px; color:#fff; text-transform:uppercase; letter-spacing:.03em; }
 .ds-field input[type=color] { width:100%; height:34px; border:1px solid #333; border-radius:6px; background:none; padding:2px; cursor:pointer; }
 .ds-field input[type=text], .ds-field textarea, .ds-field select {
-  background:#0d0d1a; border:1px solid #333; color:#c9c9c9; padding:7px 9px; border-radius:6px; font-size:13px; font-family:inherit;
+  background:#0d0d1a; border:1px solid #333; color:#fff; padding:7px 9px; border-radius:6px; font-size:13px; font-family:inherit;
 }
 .ds-field textarea { resize:vertical; min-height:56px; }
 .ds-row { display:flex; gap:12px; }
 .ds-row .ds-field { flex:1; }
 .ds-actions { display:flex; justify-content:flex-end; gap:8px; }
-.ds-actions button { background:#f6ad55; color:#5f5f5f; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; }
-.ds-actions button.secondary { background:none; border:1px solid #333; color:#c9c9c9; }
+.ds-actions button { background:#f6ad55; color:#fff; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; }
+.ds-actions button.secondary { background:none; border:1px solid #333; color:#fff; }
 .ds-status { font-size:12px; min-height:16px; }
 .ds-list { display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; }
 .ds-spec-card { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #333; border-radius:6px; }
 .ds-spec-card.attached { border-color:#f6ad55; background:rgba(246,173,85,.08); }
 .ds-swatches { display:flex; gap:3px; flex-shrink:0; }
 .ds-swatch { width:14px; height:14px; border-radius:50%; border:1px solid rgba(255,255,255,.2); }
-.ds-spec-name { flex:1; font-size:13px; color:#c9c9c9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ds-spec-card button { background:none; border:1px solid #333; color:#999; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:11px; flex-shrink:0; }
+.ds-spec-name { flex:1; font-size:13px; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ds-spec-card button { background:none; border:1px solid #333; color:#fff; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:11px; flex-shrink:0; }
 .ds-spec-card button:hover { border-color:#f6ad55; color:#f6ad55; }
 /* Campaign "Design" section: small clickable spec tiles */
 .ds-icon-row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
@@ -87,7 +87,7 @@
 .ds-icon .ds-icon-canva:hover { color:#f6ad55; }
 /* Build modal: spec picker chips */
 .bc-spec-picker { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px; }
-.bc-spec-chip { display:flex; align-items:center; gap:5px; padding:3px 8px; border:1px solid #333; border-radius:14px; cursor:pointer; font-size:11px; color:#c9c9c9; }
+.bc-spec-chip { display:flex; align-items:center; gap:5px; padding:3px 8px; border:1px solid #333; border-radius:14px; cursor:pointer; font-size:11px; color:#fff; }
 .bc-spec-chip.active { border-color:#f6ad55; color:#f6ad55; background:rgba(246,173,85,.1); }
 .bc-spec-chip .ds-swatch { width:10px; height:10px; }
 /* STATUS OPTION GRID */
@@ -98,26 +98,26 @@
 .status-opt-btn:disabled { cursor: default; }
 /* LOGIN LIST */
 .login-platform-group { margin-bottom: 14px; }
-.login-platform-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #555; padding-bottom: 6px; border-bottom: 1px solid #5f5f5f; margin-bottom: 6px; }
+.login-platform-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #fff; padding-bottom: 6px; border-bottom: 1px solid #5f5f5f; margin-bottom: 6px; }
 .login-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .login-row:last-child { border-bottom: none; }
 /* METHOD LIST */
 .method-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .method-row:last-child { border-bottom: none; }
-.method-name { flex: 1; font-size: 13px; color: #c9c9c9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.method-name { flex: 1; font-size: 13px; color: #fff; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .method-name:hover { color: #fff; text-decoration: underline; }
 /* PRODUCT LIST */
 .product-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .product-row:last-child { border-bottom: none; }
-.product-name { flex: 1; font-size: 13px; color: #c9c9c9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product-name { flex: 1; font-size: 13px; color: #fff; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .product-row.is-active .product-name { color: #68d391; }
 .product-row.is-development .product-name { color: #718096; }
 .product-status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-right: 2px; }
 .is-active .product-status-dot { background: #68d391; }
 .is-development .product-status-dot { background: #4a5568; }
 .login-meta { flex: 1; min-width: 0; }
-.login-name { font-size: 13px; color: #c9c9c9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.login-sub  { font-size: 11px; color: #555; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.login-name { font-size: 13px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.login-sub  { font-size: 11px; color: #fff; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .login-cat  { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; letter-spacing: .04em; }
 .cat-personal     { color: #378ADD; border: 1px solid #378ADD44; background: #378ADD11; }
 .cat-company-page { color: #1D9E75; border: 1px solid #1D9E7544; background: #1D9E7511; }
@@ -126,8 +126,8 @@
 .cat-affiliate    { color: #D85A30; border: 1px solid #D85A3044; background: #D85A3011; }
 .ls-active   { font-size: 10px; padding: 2px 6px; color: #5ec95e; border: 1px solid #1e5c1e; flex-shrink: 0; }
 .ls-planning { font-size: 10px; padding: 2px 6px; color: #c9a800; border: 1px solid #6b5a00; flex-shrink: 0; }
-.ls-paused   { font-size: 10px; padding: 2px 6px; color: #888;    border: 1px solid #444;    flex-shrink: 0; }
-.ls-inactive { font-size: 10px; padding: 2px 6px; color: #555;    border: 1px solid #333;    flex-shrink: 0; }
+.ls-paused   { font-size: 10px; padding: 2px 6px; color: #fff;    border: 1px solid #444;    flex-shrink: 0; }
+.ls-inactive { font-size: 10px; padding: 2px 6px; color: #fff;    border: 1px solid #333;    flex-shrink: 0; }
 /* MODAL — lighter background, scrollable body */
 .modal-overlay { background: rgba(0,0,0,0.35) !important; }
 .modal { background: #3a3a3a !important; max-height: 90vh; display: flex; flex-direction: column; }
@@ -136,29 +136,29 @@
 input.modal-ta  { height: 32px !important; min-height: 0 !important; padding: 4px 10px !important; font-size: 13px !important; box-sizing: border-box; }
 select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 8px !important;   font-size: 13px !important; box-sizing: border-box; }
 /* Field labels inside modals */
-.lm-label { display: block; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #666; margin: 0 0 4px; }
+.lm-label { display: block; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #fff; margin: 0 0 4px; }
 /* Platform autocomplete dropdown */
-.plat-dd-item { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #c9c9c9; border-bottom: 1px solid #1e1e1e; }
+.plat-dd-item { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #fff; border-bottom: 1px solid #1e1e1e; }
 .plat-dd-item:hover { background: #393939; }
 .plat-dd-create { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #e8ff47; border-bottom: 1px solid #1e1e1e; font-style: italic; }
 .plat-dd-create:hover { background: #393939; }
 /* SM POSTS APPROVAL */
-.smp-section-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #555; padding: 4px 0 6px; border-bottom: 1px solid #5f5f5f; margin-bottom: 6px; }
+.smp-section-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #fff; padding: 4px 0 6px; border-bottom: 1px solid #5f5f5f; margin-bottom: 6px; }
 .smp-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.04); transition: opacity .2s; }
 .smp-row:last-child { border-bottom: none; }
 .smp-info { flex: 1; min-width: 0; }
-.smp-title { font-size: 13px; color: #c9c9c9; line-height: 1.3; }
-.smp-copy  { font-size: 11px; color: #555; margin-top: 3px; line-height: 1.4; }
+.smp-title { font-size: 13px; color: #fff; line-height: 1.3; }
+.smp-copy  { font-size: 11px; color: #fff; margin-top: 3px; line-height: 1.4; }
 .smp-plats { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.smp-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; color: #888; border: 1px solid #5f5f5f; background: #5f5f5f; }
+.smp-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; color: #fff; border: 1px solid #5f5f5f; background: #5f5f5f; }
 .smp-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; padding-top: 1px; }
 .smp-approve { background: none; border: 1px solid #1e5c1e; color: #5ec95e; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
 .smp-approve:hover { background: rgba(94,201,94,.15); }
 .smp-delete  { background: none; border: 1px solid #5c1e1e; color: #c95e5e; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
 .smp-delete:hover  { background: rgba(201,94,94,.15); }
-.smp-link { font-size: 13px; color: #555; text-decoration: none; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; transition: color .15s; }
-.smp-link:hover { color: #c9c9c9; }
-.smp-approved .smp-title { color: #666; }
+.smp-link { font-size: 13px; color: #fff; text-decoration: none; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; transition: color .15s; }
+.smp-link:hover { color: #fff; }
+.smp-approved .smp-title { color: #fff; }
 .smp-edit   { background: none; border: 1px solid #3a3a2a; color: #9e9e5e; font-size: 13px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
 .smp-edit:hover   { background: rgba(158,158,94,.15); }
 .smp-image  { background: none; border: 1px solid #2a4a3a; color: #5ec99e; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
@@ -166,7 +166,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 .smp-bgpath { font-size: 10px; color: #3a6a4a; margin-top: 3px; font-family: monospace; word-break: break-all; }
 .smp-render { background: none; border: 1px solid #2a3a5a; color: #5e8ec9; font-size: 12px; width: 26px; height: 26px; cursor: pointer; transition: all .15s; line-height: 1; }
 .smp-render:hover { background: rgba(94,142,201,.15); }
-.smp-localpath { font-size: 10px; color: #444; margin-top: 3px; font-family: monospace; word-break: break-all; }
+.smp-localpath { font-size: 10px; color: #fff; margin-top: 3px; font-family: monospace; word-break: break-all; }
 .smp-topvids { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
 .smp-topvid  { font-size: 10px; color: #4a7ab5; text-decoration: none; border: 1px solid #2a3a5a; padding: 1px 6px; white-space: nowrap; transition: color .15s; }
 .smp-topvid:hover { color: #7aaee0; border-color: #4a7ab5; }
@@ -181,11 +181,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 }
 .tab-btn {
   font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700;
-  letter-spacing: .08em; text-transform: uppercase; color: #5f5f5f;
+  letter-spacing: .08em; text-transform: uppercase; color: #fff;
   background: none; border: none; border-bottom: 2px solid transparent;
   padding: 12px 14px; cursor: pointer; white-space: nowrap; transition: color .15s, border-color .15s;
 }
-.tab-btn:hover { color: #c9c9c9; }
+.tab-btn:hover { color: #fff; }
 .tab-btn.active { color: #e8ff47; border-bottom-color: #e8ff47; }
 .tab-page { display: none; }
 .tab-page.active { display: block; }
@@ -268,7 +268,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 <!-- SEC 1b: three col — keywords / product ideas / notes -->
 <div class="three-col">
   <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span class="editable" onclick="openModal('keywords')">Keywords</span><button id="kwRegenBtn" onclick="runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#555;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button></h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span class="editable" onclick="openModal('keywords')">Keywords</span><button id="kwRegenBtn" onclick="runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button></h2>
     <div class="content">
       <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -489,7 +489,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <input class="modal-ta" id="esTitleInput" type="text" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" />
       <label class="lm-label" for="esTemplateLink" style="margin-top:10px;">Design Template</label>
       <div style="margin-top:4px;"><a id="esTemplateLink" href="#" target="_blank" rel="noopener" style="font-size:12px;color:#68d391;">—</a></div>
-      <label class="lm-label" for="esPillarInput" style="margin-top:10px;">Strategy Content <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(the title's Pillar Content — rewrite or edit it, then Regenerate feeds your edit back into the strategy engine as guidance for a fresh AI pass)</span></label>
+      <label class="lm-label" for="esPillarInput" style="margin-top:10px;">Strategy Content <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(the title's Pillar Content — rewrite or edit it, then Regenerate feeds your edit back into the strategy engine as guidance for a fresh AI pass)</span></label>
       <textarea class="modal-ta" id="esPillarInput" rows="14" style="resize:vertical;min-height:220px!important;margin-top:4px;line-height:1.5;"></textarea>
       <div class="modal-status" id="esStatus"></div>
     </div>
@@ -511,15 +511,15 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="modal-hint">Creates a login in Notion linked to this campaign — appears in Hermes platform matrix at campaign × platform</div>
       <label class="lm-label">Name</label>
       <input class="modal-ta" id="lm-name" type="text" placeholder="Login name…" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
-      <label class="lm-label">Platform <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— type to search, or type a new name to create</span></label>
+      <label class="lm-label">Platform <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— type to search, or type a new name to create</span></label>
       <div style="position:relative;margin-bottom:12px;" id="lm-plat-wrap">
         <input class="modal-ta" id="lm-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:32px;padding:5px 10px;" autocomplete="off"
           oninput="filterLmPlatforms()" onfocus="filterLmPlatforms()" />
         <input type="hidden" id="lm-plat-id" value="" />
         <div id="lm-plat-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
       </div>
-      <label class="lm-label">Category <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
-      <select class="modal-ta" id="lm-category" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+      <label class="lm-label">Category <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
+      <select class="modal-ta" id="lm-category" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#fff;border:1px solid #333;">
         <option value="">— Category —</option>
         <option value="Personal">Personal</option>
         <option value="Company Page">Company Page</option>
@@ -528,7 +528,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <option value="Affiliate">Affiliate</option>
       </select>
       <label class="lm-label">Status</label>
-      <select class="modal-ta" id="lm-login-status" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+      <select class="modal-ta" id="lm-login-status" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#fff;border:1px solid #333;">
         <option value="Planning">Planning</option>
         <option value="Active">Active</option>
         <option value="Paused">Paused</option>
@@ -557,15 +557,15 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="modal-body">
       <label class="lm-label">Name</label>
       <input class="modal-ta" id="le-name" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
-      <label class="lm-label">Platform <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— type to search, or create new</span></label>
+      <label class="lm-label">Platform <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— type to search, or create new</span></label>
       <div style="position:relative;margin-bottom:12px;" id="le-plat-wrap">
         <input class="modal-ta" id="le-plat-input" type="text" placeholder="LinkedIn, Substack…" style="height:32px;padding:5px 10px;" autocomplete="off"
           oninput="filterLePlatforms()" onfocus="filterLePlatforms()" />
         <input type="hidden" id="le-plat-id" value="" />
         <div id="le-plat-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
       </div>
-      <label class="lm-label">Category <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
-      <select class="modal-ta" id="le-category" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+      <label class="lm-label">Category <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— drives badge colour in matrix</span></label>
+      <select class="modal-ta" id="le-category" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#fff;border:1px solid #333;">
         <option value="">— Category —</option>
         <option value="Personal">Personal</option>
         <option value="Company Page">Company Page</option>
@@ -574,38 +574,38 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <option value="Affiliate">Affiliate</option>
       </select>
       <label class="lm-label">Status</label>
-      <select class="modal-ta" id="le-status" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#c9c9c9;border:1px solid #333;">
+      <select class="modal-ta" id="le-status" style="height:32px;padding:0 8px;margin-bottom:12px;background:#1e1e1e;color:#fff;border:1px solid #333;">
         <option value="Planning">Planning</option>
         <option value="Active">Active</option>
         <option value="Paused">Paused</option>
         <option value="Inactive">Inactive</option>
       </select>
-      <label class="lm-label">Content Length <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— what this login publishes</span></label>
+      <label class="lm-label">Content Length <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— what this login publishes</span></label>
       <div style="display:flex;gap:14px;margin-bottom:12px;">
-        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#c9c9c9;cursor:pointer;"><input type="checkbox" id="le-type-long" value="long form" /> Long form</label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#c9c9c9;cursor:pointer;"><input type="checkbox" id="le-type-short" value="short form" /> Short form</label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#fff;cursor:pointer;"><input type="checkbox" id="le-type-long" value="long form" /> Long form</label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#fff;cursor:pointer;"><input type="checkbox" id="le-type-short" value="short form" /> Short form</label>
       </div>
       <label class="lm-label">Username / handle</label>
       <input class="modal-ta" id="le-usr" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
       <label class="lm-label">Account URL</label>
       <input class="modal-ta" id="le-url" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
-      <label class="lm-label">Title <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— profile/publication title</span></label>
+      <label class="lm-label">Title <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— profile/publication title</span></label>
       <input class="modal-ta" id="le-title" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
-      <label class="lm-label">Headline <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— tagline / short position statement</span></label>
+      <label class="lm-label">Headline <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— tagline / short position statement</span></label>
       <input class="modal-ta" id="le-headline" type="text" style="height:32px;padding:5px 10px;margin-bottom:12px;" autocomplete="off" />
       <div style="margin-bottom:14px;padding:10px 12px;background:#1a1a1a;border:1px solid #333;border-radius:6px;">
-        <div style="font-size:11px;color:#888;margin-bottom:8px;">Generate this login's bio + profile picture (+ banner, if this platform uses one) from the campaign's own product/CTA/message and this platform's Character Limit/Content Rules. Any brief you've already written below is kept as-is, not overwritten.</div>
+        <div style="font-size:11px;color:#fff;margin-bottom:8px;">Generate this login's bio + profile picture (+ banner, if this platform uses one) from the campaign's own product/CTA/message and this platform's Character Limit/Content Rules. Any brief you've already written below is kept as-is, not overwritten.</div>
         <button type="button" class="modal-btn save" id="le-generate-btn" style="padding:6px 12px;font-size:12px;" onclick="generateLeAssets()">Generate Assets</button>
         <span class="modal-status" id="le-generate-status" style="margin-left:8px;"></span>
       </div>
       <label class="lm-label">Bio</label>
       <textarea class="modal-ta" id="le-bio" rows="4" style="padding:8px 10px;margin-bottom:12px;resize:vertical;" placeholder="Full bio / about text for this login…"></textarea>
-      <label class="lm-label">Profile Pic Brief <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— what the avatar image should look like, drawing from campaign design/research</span></label>
+      <label class="lm-label">Profile Pic Brief <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— what the avatar image should look like, drawing from campaign design/research</span></label>
       <textarea class="modal-ta" id="le-profilepic-brief" rows="2" style="padding:8px 10px;margin-bottom:12px;resize:vertical;" placeholder="e.g. Mountain man illustration — weathered, present, Sierra Nevada aesthetic."></textarea>
       <label class="lm-label">Banner Brief</label>
       <textarea class="modal-ta" id="le-banner-brief" rows="2" style="padding:8px 10px;margin-bottom:12px;resize:vertical;" placeholder="e.g. Wilderness landscape at golden hour, no text overlay."></textarea>
 
-      <label class="lm-label">Picture <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— the real uploaded avatar image</span></label>
+      <label class="lm-label">Picture <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— the real uploaded avatar image</span></label>
       <div id="le-picture-wrap" style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
         <div id="le-picture-thumb" style="width:48px;height:48px;border-radius:6px;background:#1e1e1e;border:1px solid #333;flex-shrink:0;background-size:cover;background-position:center;"></div>
         <button type="button" class="modal-btn cancel" style="padding:5px 10px;font-size:11px;" onclick="document.getElementById('le-picture-file').click()">Upload…</button>
@@ -614,22 +614,22 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       </div>
       <div class="modal-status" id="le-picture-status" style="margin-bottom:12px;"></div>
 
-      <label class="lm-label">Banner Image <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— generated by Generate Assets above, when this platform uses one</span></label>
+      <label class="lm-label">Banner Image <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— generated by Generate Assets above, when this platform uses one</span></label>
       <div id="le-banner-wrap" style="display:none;align-items:center;gap:10px;margin-bottom:12px;">
         <div id="le-banner-thumb" style="width:96px;height:32px;border-radius:6px;background:#1e1e1e;border:1px solid #333;flex-shrink:0;background-size:cover;background-position:center;"></div>
         <a id="le-banner-link" href="#" target="_blank" style="font-size:11px;color:#68d391;text-decoration:none;">↗ Full size</a>
       </div>
 
-      <label class="lm-label">Files <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— documents / assets attached to this login</span></label>
+      <label class="lm-label">Files <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— documents / assets attached to this login</span></label>
       <div id="le-files-list" style="margin-bottom:6px;"></div>
       <button type="button" class="modal-btn cancel" style="padding:5px 10px;font-size:11px;margin-bottom:4px;" onclick="document.getElementById('le-files-file').click()">+ Add file</button>
       <input type="file" id="le-files-file" style="display:none;" onchange="uploadLeFile()" />
       <div class="modal-status" id="le-files-status" style="margin-bottom:12px;"></div>
 
-      <label class="lm-label">Linked Assets <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— platform-specific content published under this login</span></label>
-      <div id="le-assets-list" style="margin-bottom:12px;font-size:12px;color:#555;">Loading…</div>
+      <label class="lm-label">Linked Assets <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— platform-specific content published under this login</span></label>
+      <div id="le-assets-list" style="margin-bottom:12px;font-size:12px;color:#fff;">Loading…</div>
 
-      <div style="font-size:11px;color:#555;margin-bottom:4px;">To change platform or campaign relations, open the full record in Notion:</div>
+      <div style="font-size:11px;color:#fff;margin-bottom:4px;">To change platform or campaign relations, open the full record in Notion:</div>
       <a id="le-notion-link" href="#" target="_blank" class="notion-link" style="font-size:12px;">↗ Open in Notion</a>
       <div class="modal-status" id="le-status-msg"></div>
     </div>
@@ -653,17 +653,17 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <input class="modal-ta" id="product-modal-input" type="text" placeholder="Product name…" style="height:32px;padding:5px 10px;" autocomplete="off" oninput="filterProductDd()" onfocus="filterProductDd()" />
         <div id="product-modal-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
       </div>
-      <label class="lm-label" for="product-modal-type" style="margin-top:8px;">Type <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(format — only used when creating a new product)</span></label>
+      <label class="lm-label" for="product-modal-type" style="margin-top:8px;">Type <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(format — only used when creating a new product)</span></label>
       <div style="position:relative;margin-bottom:4px;" id="product-modal-type-wrap">
         <input class="modal-ta" id="product-modal-type" type="text" placeholder="Search existing types or add new…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" oninput="filterTypeDd()" onfocus="filterTypeDd()" />
         <div id="product-modal-type-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
       </div>
-      <label class="lm-label" for="product-modal-stack" style="margin-top:8px;">Product Stack <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(optional — a grouping of related products, e.g. "Coaching Suite")</span></label>
+      <label class="lm-label" for="product-modal-stack" style="margin-top:8px;">Product Stack <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(optional — a grouping of related products, e.g. "Coaching Suite")</span></label>
       <div style="position:relative;margin-bottom:4px;" id="product-modal-stack-wrap">
         <input class="modal-ta" id="product-modal-stack" type="text" placeholder="Search existing stacks or add new…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" oninput="filterStackDd()" onfocus="filterStackDd()" />
         <div id="product-modal-stack-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
       </div>
-      <label class="lm-label" for="product-modal-desc" style="margin-top:8px;">Description <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(optional — grounds the marketing funnel research)</span></label>
+      <label class="lm-label" for="product-modal-desc" style="margin-top:8px;">Description <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(optional — grounds the marketing funnel research)</span></label>
       <textarea class="modal-ta" id="product-modal-desc" rows="3" style="resize:vertical;min-height:60px!important;margin-top:4px;" placeholder="What is this product, briefly…"></textarea>
       <div class="modal-status" id="productModalStatus"></div>
     </div>
@@ -743,19 +743,19 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-body">
       <div class="modal-hint">Copy the prompt below, then click <strong>Open ChatGPT</strong>. Generate the image, right-click → <em>Save As</em> → save directly to the path shown, then click <strong>Save Path to Notion</strong>.</div>
-      <label class="lm-label" style="margin-top:14px;">Image Prompt <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit before copying</span></label>
+      <label class="lm-label" style="margin-top:14px;">Image Prompt <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit before copying</span></label>
       <textarea class="modal-ta" id="imagePromptTa" rows="6" style="resize:vertical;font-size:12px;line-height:1.5;"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;">
         <button class="modal-btn save" style="flex:1;" onclick="copyImagePromptAndOpen()">Copy Prompt &amp; Open ChatGPT</button>
       </div>
-      <label class="lm-label" style="margin-top:14px;">Save image here <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— right-click → Save As in ChatGPT</span></label>
+      <label class="lm-label" style="margin-top:14px;">Save image here <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— right-click → Save As in ChatGPT</span></label>
       <div style="display:flex;gap:8px;align-items:center;">
         <input class="modal-ta" id="imageSavePath" type="text" style="height:32px;padding:5px 10px;font-size:11px;font-family:monospace;flex:1;" readonly />
         <button class="modal-btn cancel" style="flex:0 0 auto;padding:0 10px;" onclick="copyImageSavePath()">Copy</button>
       </div>
-      <label class="lm-label" style="margin-top:14px;">Saved path <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit if you saved elsewhere</span></label>
+      <label class="lm-label" style="margin-top:14px;">Saved path <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit if you saved elsewhere</span></label>
       <input class="modal-ta" id="imageActualPath" type="text" style="height:32px;padding:5px 10px;font-size:11px;font-family:monospace;" placeholder="C:\Users\18318\dash\images\..." />
-      <label class="lm-label" style="margin-top:14px;">Image Style DNA <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— style spec from ChatGPT for this image</span></label>
+      <label class="lm-label" style="margin-top:14px;">Image Style DNA <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— style spec from ChatGPT for this image</span></label>
       <textarea class="modal-ta" id="imageStyleDna" rows="4" placeholder="Paste image style DNA from ChatGPT..." style="font-size:11px;line-height:1.5;resize:vertical;"></textarea>
       <div class="modal-status" id="imageModalStatus"></div>
     </div>
@@ -794,12 +794,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-body">
       <div class="modal-hint">Both optional — give the render skill a concrete visual to match instead of letting it invent one. Saved to this Asset record, then baked into the copied prompt.</div>
-      <label class="lm-label" style="margin-top:14px;">Sample Image <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— presenter photo, style/mood reference, or background</span></label>
+      <label class="lm-label" style="margin-top:14px;">Sample Image <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— presenter photo, style/mood reference, or background</span></label>
       <input class="modal-ta" id="vgImageInput" type="file" accept="image/*" style="height:auto;padding:8px 10px;" />
       <div id="vgImagePreviewWrap" style="display:none;margin-top:8px;">
         <img id="vgImagePreview" style="max-width:100%;max-height:180px;border-radius:6px;border:1px solid #333;" />
       </div>
-      <label class="lm-label" style="margin-top:14px;">Design Guidelines <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— palette, tone, do/don't notes</span></label>
+      <label class="lm-label" style="margin-top:14px;">Design Guidelines <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— palette, tone, do/don't notes</span></label>
       <textarea class="modal-ta" id="vgDesignNotes" rows="4" placeholder="e.g. stick to the campaign's parchment/ink/brown palette; keep the presenter's expression calm, not hype-reel energy; avoid stock-photo look..." style="font-size:12px;line-height:1.5;resize:vertical;"></textarea>
       <div class="modal-status" id="vgStatus"></div>
     </div>
@@ -822,18 +822,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <label class="lm-label" style="margin-top:14px;">Voiceover Script</label>
       <textarea class="modal-ta" id="renderScriptTa" rows="7" style="resize:vertical;font-size:12px;line-height:1.5;font-family:monospace;"></textarea>
       <div style="margin-top:10px;">
-        <label class="lm-label">Voice ID <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— ElevenLabs voice ID</span></label>
+        <label class="lm-label">Voice ID <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— ElevenLabs voice ID</span></label>
         <input class="modal-ta" id="renderVoiceId" type="text" placeholder="pNInz6obpgDQGcFmaJgB" style="height:32px;padding:5px 10px;font-size:12px;font-family:monospace;" autocomplete="off" />
       </div>
       <div style="margin-top:10px;">
-        <label class="lm-label">Caption Style Spec <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— JSON from ChatGPT</span></label>
+        <label class="lm-label">Caption Style Spec <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— JSON from ChatGPT</span></label>
         <textarea class="modal-ta" id="renderCaptionStyle" rows="3" placeholder='{"presetName":"Zen Documentary","fontSize":78,"highlightColor":"#9CC7A3",...}' style="font-size:11px;font-family:monospace;resize:vertical;"></textarea>
       </div>
       <div style="margin-top:10px;">
-        <label class="lm-label">Voice Settings <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— ElevenLabs params + optional masterVoicePrompt for script generation</span></label>
+        <label class="lm-label">Voice Settings <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— ElevenLabs params + optional masterVoicePrompt for script generation</span></label>
         <textarea class="modal-ta" id="renderVoiceSettings" rows="2" placeholder='{"stability":70,"similarity":90,"styleExaggeration":15,"speed":0.92,"masterVoicePrompt":"Warm, grounded naturalist..."}' style="font-size:11px;font-family:monospace;resize:vertical;"></textarea>
       </div>
-      <div id="renderCmdStatus" style="font-size:11px;color:#888;margin-top:8px;min-height:16px;word-break:break-all;"></div>
+      <div id="renderCmdStatus" style="font-size:11px;color:#fff;margin-top:8px;min-height:16px;word-break:break-all;"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeRenderModal()">Close</button>
@@ -877,11 +877,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <label class="lm-label">Product</label>
         <select class="modal-ta" id="gsProductSelect" style="height:32px;padding:5px 10px;font-size:12px;width:100%;"></select>
       </div>
-      <label class="lm-label" style="margin-top:10px;">Title <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to auto-name it "{Product} Growth Strategy — {date}"</span></label>
+      <label class="lm-label" style="margin-top:10px;">Title <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to auto-name it "{Product} Growth Strategy — {date}"</span></label>
       <input class="modal-ta" id="gsTitleInput" type="text" placeholder="e.g. Q3 TikTok Push" style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
-      <label class="lm-label" style="margin-top:10px;">Platform Focus <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to let the strategy recommend the best platform(s) itself</span></label>
+      <label class="lm-label" style="margin-top:10px;">Platform Focus <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to let the strategy recommend the best platform(s) itself</span></label>
       <input class="modal-ta" id="gsPlatformInput" type="text" placeholder="e.g. TikTok, LinkedIn..." style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
-      <label class="lm-label" style="margin-top:10px;">Guidance <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; steers how this strategy is generated (angle, tone, constraints). Left blank, any standing research guidelines still apply.</span></label>
+      <label class="lm-label" style="margin-top:10px;">Guidance <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; steers how this strategy is generated (angle, tone, constraints). Left blank, any standing research guidelines still apply.</span></label>
       <textarea class="modal-ta" id="gsGuidanceInput" rows="3" style="width:100%;margin-top:4px;resize:vertical;" placeholder="e.g. focus on beginner-friendly angles, avoid discount-driven hooks..."></textarea>
       <div class="modal-status" id="gsStatus" style="white-space:pre-wrap;"></div>
     </div>
@@ -900,8 +900,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeViewStrategyModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
-      <div id="vsMeta" style="font-size:11px;color:#888;margin-bottom:10px;"></div>
-      <div id="vsBody" style="font-size:12px;line-height:1.6;white-space:pre-wrap;color:#ccc;"></div>
+      <div id="vsMeta" style="font-size:11px;color:#fff;margin-bottom:10px;"></div>
+      <div id="vsBody" style="font-size:12px;line-height:1.6;white-space:pre-wrap;color:#fff;"></div>
     </div>
     <div class="modal-foot">
       <a id="vsNotionLink" href="#" target="_blank" rel="noopener" class="modal-btn cancel" style="text-decoration:none;">↗ Notion</a>
@@ -919,7 +919,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeAssetBodyModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
-      <div id="abBody" style="font-size:12px;line-height:1.6;white-space:pre-wrap;color:#ccc;"></div>
+      <div id="abBody" style="font-size:12px;line-height:1.6;white-space:pre-wrap;color:#fff;"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" id="abCopyBtn" onclick="copyAssetScript(ASSET_BODY_MODAL_ID, this)">📋 Copy</button>
@@ -980,14 +980,14 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="modal-hint" id="vbAssetLabel"></div>
 
       <div style="margin-top:12px;">
-        <label class="lm-label">Global Design Spec <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— which reusable branding record populates Design Globals below</span></label>
+        <label class="lm-label">Global Design Spec <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— which reusable branding record populates Design Globals below</span></label>
         <select id="vb-design-spec" class="modal-ta" style="margin-top:4px;width:100%;">
           <option value="">Campaign default</option>
         </select>
       </div>
 
       <div id="vb-strategy-wrap" style="display:none;margin-top:12px;">
-        <label class="lm-label">Growth Strategy Context <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; the strategic/growth purpose ChatGPT should design toward, not a new instruction</span></label>
+        <label class="lm-label">Growth Strategy Context <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; the strategic/growth purpose ChatGPT should design toward, not a new instruction</span></label>
         <select id="vb-strategy" class="modal-ta" style="margin-top:4px;width:100%;">
           <option value="">No strategy</option>
         </select>
@@ -995,7 +995,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 
       <div id="vbLockWrap" style="margin-top:14px;"></div>
 
-      <label class="lm-label" style="margin-top:14px;">Guidelines for ChatGPT <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; treated as IMMUTABLE, binding for this asset only</span></label>
+      <label class="lm-label" style="margin-top:14px;">Guidelines for ChatGPT <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; treated as IMMUTABLE, binding for this asset only</span></label>
       <textarea class="modal-ta" id="vbGuidelines" rows="5" placeholder="Anything ChatGPT must follow for this specific asset..." style="font-size:11px;font-family:monospace;line-height:1.5;resize:vertical;margin-top:4px;"></textarea>
 
       <div class="modal-status" id="vbStatus" style="white-space:pre-wrap;"></div>
@@ -1016,16 +1016,16 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-body">
       <div class="modal-hint">Reads the Visual Production Brief, Production Assembly Package, and Assembly Manifest already uploaded on this asset's row (📦 Render Package) — no upload here. Add anything below to override or extend what's in those documents; leave it blank to use them as-is.</div>
-      <label class="lm-label" style="margin-top:12px;">Override / Additional Guidelines <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
+      <label class="lm-label" style="margin-top:12px;">Override / Additional Guidelines <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
       <textarea class="modal-ta" id="assembleOverrideText" rows="6" placeholder="Anything that overrides or adds to the uploaded documents..." style="font-size:11px;font-family:monospace;line-height:1.5;resize:vertical;margin-top:4px;"></textarea>
-      <label class="lm-label" style="margin-top:12px;">Publishing Date <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
+      <label class="lm-label" style="margin-top:12px;">Publishing Date <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
       <input class="modal-ta" id="assemblePublishDate" type="text" placeholder="YYYY-MM-DD" style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
       <div class="modal-status" id="assembleStatus" style="white-space:pre-wrap;"></div>
       <div id="assembleSlideUploadWrap" style="display:none;margin-top:18px;padding-top:16px;border-top:1px solid #262626;">
-        <label class="lm-label">Or upload finished slide PNGs from ChatGPT <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— skips this Worker's own CSS render entirely, since ChatGPT can design richer graphics than CSS/SVG ever will</span></label>
+        <label class="lm-label">Or upload finished slide PNGs from ChatGPT <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— skips this Worker's own CSS render entirely, since ChatGPT can design richer graphics than CSS/SVG ever will</span></label>
         <div class="modal-hint" style="margin-top:4px;">Select all slide images at once. Order is auto-detected from the number in each filename (e.g. slide-1.png, slide-2.png…) — upload order doesn't matter.</div>
-        <input type="file" id="assembleSlideFiles" accept="image/png,image/jpeg" multiple style="margin-top:8px;font-size:11px;color:#ccc;" />
-        <div id="assembleSlideOrderPreview" style="margin-top:8px;font-size:11px;color:#888;line-height:1.6;"></div>
+        <input type="file" id="assembleSlideFiles" accept="image/png,image/jpeg" multiple style="margin-top:8px;font-size:11px;color:#fff;" />
+        <div id="assembleSlideOrderPreview" style="margin-top:8px;font-size:11px;color:#fff;line-height:1.6;"></div>
         <button class="modal-btn save" id="assembleSlideUploadBtn" onclick="submitSlideUpload()" style="margin-top:10px;" disabled>Upload Slides &amp; Assemble</button>
       </div>
     </div>
@@ -1046,9 +1046,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-body">
       <div class="modal-hint">Scrapes TikTok + YouTube for trending content around these keywords, then uses Claude to generate 5 script ideas. Each idea is added to the SM Posts box as a Draft.</div>
-      <label class="lm-label" for="smResearchKws" style="margin-top:14px;">Keywords <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— one per line, or comma-separated</span></label>
+      <label class="lm-label" for="smResearchKws" style="margin-top:14px;">Keywords <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— one per line, or comma-separated</span></label>
       <textarea class="modal-ta" id="smResearchKws" rows="5" placeholder="keyword 1&#10;keyword 2&#10;keyword 3" style="resize:vertical;"></textarea>
-      <div id="smPromptStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
+      <div id="smPromptStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeSmPromptModal()">Close</button>
@@ -1065,9 +1065,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-body">
       <div class="modal-hint" id="fieldResearchHint"></div>
-      <label class="lm-label" for="fieldResearchPrompt" style="margin-top:14px;">Prompt <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit before running</span></label>
+      <label class="lm-label" for="fieldResearchPrompt" style="margin-top:14px;">Prompt <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— edit before running</span></label>
       <textarea class="modal-ta" id="fieldResearchPrompt" rows="8" style="resize:vertical;min-height:160px!important;"></textarea>
-      <div id="fieldResearchStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
+      <div id="fieldResearchStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeFieldResearchModal()">Close</button>
@@ -1094,26 +1094,26 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeCreateTitleFromSlotModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
-      <label class="lm-label">Product <span style="color:#777;font-weight:normal;">— optional</span></label>
+      <label class="lm-label">Product <span style="color:#fff;font-weight:normal;">— optional</span></label>
       <select class="modal-ta" id="ctsProduct" onchange="ctsOnProductChange()" style="margin-bottom:10px;">
         <option value="">— none —</option>
       </select>
 
-      <label class="lm-label">Strategy Slot <span style="color:#777;font-weight:normal;">— optional; a planned angle from this product's Growth Strategy</span></label>
+      <label class="lm-label">Strategy Slot <span style="color:#fff;font-weight:normal;">— optional; a planned angle from this product's Growth Strategy</span></label>
       <select class="modal-ta" id="ctsSlot" onchange="ctsOnSlotChange()" disabled style="margin-bottom:8px;">
         <option value="">— none —</option>
       </select>
       <div class="modal-hint" id="ctsSlotContext" style="display:none;margin-bottom:10px;"></div>
 
-      <label class="lm-label">Strategy <span style="color:#777;font-weight:normal;">— optional; locked to the picked Slot's strategy, or pick one directly for a one-off title (e.g. a "tool guide") still grouped under an overall strategy</span></label>
+      <label class="lm-label">Strategy <span style="color:#fff;font-weight:normal;">— optional; locked to the picked Slot's strategy, or pick one directly for a one-off title (e.g. a "tool guide") still grouped under an overall strategy</span></label>
       <select class="modal-ta" id="ctsStrategy" disabled style="margin-bottom:10px;">
         <option value="">— none —</option>
       </select>
 
-      <label class="lm-label">Guidance <span style="color:#777;font-weight:normal;">— optional; steers how the strategy is applied for this specific title/pillar content. Left blank, the strategy alone drives it.</span></label>
+      <label class="lm-label">Guidance <span style="color:#fff;font-weight:normal;">— optional; steers how the strategy is applied for this specific title/pillar content. Left blank, the strategy alone drives it.</span></label>
       <textarea class="modal-ta" id="ctsGuidance" rows="3" placeholder="Any specific angle, tone, or instruction for this title…" style="resize:vertical;"></textarea>
 
-      <div id="ctsStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;"></div>
+      <div id="ctsStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeCreateTitleFromSlotModal()">Cancel</button>
@@ -1137,7 +1137,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <label class="lm-label">Idea (title) <span style="color:var(--danger,#e05);">*</span></label>
       <input class="modal-ta" id="gaTitleInput" type="text" autocomplete="off" style="margin-bottom:10px;" />
 
-      <label class="lm-label">Method <span style="color:var(--danger,#e05);">*</span> <span style="color:#777;font-weight:normal;">— pick a live method; determines the asset type and generation path automatically</span></label>
+      <label class="lm-label">Method <span style="color:var(--danger,#e05);">*</span> <span style="color:#fff;font-weight:normal;">— pick a live method; determines the asset type and generation path automatically</span></label>
       <div style="position:relative;margin-bottom:10px;">
         <input class="modal-ta" id="gaMethodInput" type="text" placeholder="Search methods…" autocomplete="off"
                oninput="gaFilter('method')" onfocus="gaFilter('method')"
@@ -1161,21 +1161,21 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
            other changes. -->
 
       <div id="gaAvatarPresenterWrap" style="display:none;margin-bottom:10px;">
-        <label class="lm-label">Presenter avatar <span id="gaAvatarPresenterLabel" style="color:#777;font-weight:normal;">— checking for a saved campaign presenter…</span></label>
+        <label class="lm-label">Presenter avatar <span id="gaAvatarPresenterLabel" style="color:#fff;font-weight:normal;">— checking for a saved campaign presenter…</span></label>
         <input class="modal-ta" id="gaAvatarPresenterInput" type="text" placeholder="e.g. a HeyGen avatar_id, or a reference image URL" autocomplete="off" />
       </div>
 
       <div id="gaJobAssetWrap" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #3a3350;background:rgba(159,122,234,.06);border-radius:4px;">
         <div style="font-size:11px;color:#b794f4;margin-bottom:8px;">Generate searches real postings (job boards for Resume, Upwork for Upwork Proposal) using the Product's Keywords below, writes a tailored asset for the top 5 matches, each with the posting link attached. Pick/create the Product above first — real career history is global, not per-product: manage it in the main dashboard's <strong>TD tab → 🧠 Personal Research</strong> section before generating.</div>
-        <label class="lm-label">Career Avatar <span style="color:#777;font-weight:normal;">— optional; aligns the resume/proposal's emphasis with a specific professional persona (e.g. Construction Manager) instead of your whole career. Manage avatars in the TD tab too.</span></label>
+        <label class="lm-label">Career Avatar <span style="color:#fff;font-weight:normal;">— optional; aligns the resume/proposal's emphasis with a specific professional persona (e.g. Construction Manager) instead of your whole career. Manage avatars in the TD tab too.</span></label>
         <select class="modal-ta" id="gaAvatarInput">
           <option value="">— use full work history (no avatar) —</option>
         </select>
-        <label class="lm-label" style="margin-top:8px;">Source URL <span style="color:#777;font-weight:normal;">— optional; a specific job posting/org page to write for instead of searching. Overrides the job board/Upwork search entirely — the page is fetched and used as the single target posting.</span></label>
+        <label class="lm-label" style="margin-top:8px;">Source URL <span style="color:#fff;font-weight:normal;">— optional; a specific job posting/org page to write for instead of searching. Overrides the job board/Upwork search entirely — the page is fetched and used as the single target posting.</span></label>
         <input class="modal-ta" id="gaSourceInput" type="text" placeholder="e.g. https://example.org/careers/webmaster" autocomplete="off" />
       </div>
 
-      <label class="lm-label">Platform <span style="color:#777;font-weight:normal;">— from the Platforms DB; what this asset is packaged for (optional)</span></label>
+      <label class="lm-label">Platform <span style="color:#fff;font-weight:normal;">— from the Platforms DB; what this asset is packaged for (optional)</span></label>
       <select id="gaPlatformInput" class="modal-ta" style="margin-bottom:10px;">
         <option value="">— none —</option>
       </select>
@@ -1188,18 +1188,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
            Research Instructions, the injected Research Guidelines field —
            see RG_MODAL_IDS below) was removed per operator instruction; this
            one field is the only override surface left. -->
-      <label class="lm-label">Override / notes <span style="color:#777;font-weight:normal;">— optional; free-text direction that overrides the defaults, e.g. structure/format changes, tone, or a specific angle for this asset.</span></label>
+      <label class="lm-label">Override / notes <span style="color:#fff;font-weight:normal;">— optional; free-text direction that overrides the defaults, e.g. structure/format changes, tone, or a specific angle for this asset.</span></label>
       <textarea class="modal-ta" id="gaDesignRefNotesInput" rows="4" placeholder="e.g. use a 5-slide listicle instead of the 7-slide default; lean into the campaign's editorial palette; keep hooks punchier than usual..." style="font-size:12px;line-height:1.5;resize:vertical;margin-bottom:10px;"></textarea>
 
       <div id="gaContextModeWrap" style="display:none;margin-bottom:10px;">
         <label class="lm-label">Research scope</label>
-        <div style="display:flex;gap:14px;margin-top:4px;font-size:12px;color:#ccc;">
+        <div style="display:flex;gap:14px;margin-top:4px;font-size:12px;color:#fff;">
           <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="gaContext" value="isolate" checked> Isolate — title only</label>
           <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="gaContext" value="blend"> Blend — add campaign + product</label>
         </div>
       </div>
 
-      <div id="gaStatus" style="font-size:12px;color:#888;min-height:16px;"></div>
+      <div id="gaStatus" style="font-size:12px;color:#fff;min-height:16px;"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeGenAssetsModal()">Cancel</button>
@@ -1327,7 +1327,7 @@ function rgInject(modalEl) {
   const wrap = document.createElement('div');
   wrap.className = 'rg-field';
   wrap.style.cssText = 'margin:10px 0 2px;';
-  wrap.innerHTML = '<label class="lm-label" style="display:block;">Research guidelines <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;">(optional — routing recommendations for Claude; remembered on this device, sent with every run)</span></label>' +
+  wrap.innerHTML = '<label class="lm-label" style="display:block;">Research guidelines <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;">(optional — routing recommendations for Claude; remembered on this device, sent with every run)</span></label>' +
     '<textarea class="modal-ta rg-ta" rows="2" placeholder="e.g. prioritize niche forums + Reddit; US buyers only; avoid hustle-culture framing; always cite live sources…" style="resize:vertical;margin-top:4px;"></textarea>';
   const body = modalEl.querySelector('.modal-body');
   if (body) body.appendChild(wrap);
@@ -1582,7 +1582,7 @@ async function loadResearch() {
     if (!r) {
       document.getElementById('r-name').textContent = 'No research record — add one in Notion to populate this page.';
       const newsEl = document.getElementById('r-news');
-      if (newsEl) newsEl.innerHTML = '<p style="color:#5f5f5f;font-style:italic;">No data yet.</p>';
+      if (newsEl) newsEl.innerHTML = '<p style="color:#fff;font-style:italic;">No data yet.</p>';
       const kwEl = document.getElementById('r-keywords');
       if (kwEl) kwEl.innerHTML = '<span class="empty">—</span>';
       return;
@@ -1710,8 +1710,8 @@ async function loadTitles() {
       // by the row's hierarchy (nested under a Development title row, or
       // under a Publish Assets group header); what differentiates several
       // assets under the same title is which method produced each one.
-      ar.innerHTML = `<span style="font-size:9px;color:#666;flex-shrink:0;">↳</span>`
-        + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bbb;">${esc(a.type || a.title)}</span>`
+      ar.innerHTML = `<span style="font-size:9px;color:#fff;flex-shrink:0;">↳</span>`
+        + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;">${esc(a.type || a.title)}</span>`
         + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
         + (a.canvaLink ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyCanvaPortPrompt(this)" title="Copy a ready-to-paste prompt for porting this asset's table content into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the table." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
         + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" rel="noopener" title="Open this asset's Notion page" style="flex-shrink:0;">↗</a>`
@@ -1733,11 +1733,11 @@ async function loadTitles() {
       container.innerHTML = '';
       const flat = titles.flatMap(t => (t.assets || [])
         .filter(a => PUBLISH_GATE.includes(a.status))
-        .map(a => ({ asset: a, titleId: t.id, titleName: t.title, productId: t.productId })));
+        .map(a => ({ asset: a, titleId: t.id, titleName: t.title, productId: t.productId, methodId: t.methodId, methodTemplateLink: t.methodTemplateLink })));
       if (!flat.length) { container.innerHTML = '<div class="empty">None.</div>'; return; }
       const order = [], byTitle = {};
       flat.forEach(f => {
-        if (!byTitle[f.titleId]) { byTitle[f.titleId] = { name: f.titleName, productId: f.productId, items: [] }; order.push(f.titleId); }
+        if (!byTitle[f.titleId]) { byTitle[f.titleId] = { name: f.titleName, productId: f.productId, methodId: f.methodId, methodTemplateLink: f.methodTemplateLink, items: [] }; order.push(f.titleId); }
         byTitle[f.titleId].items.push(f.asset);
       });
       order.forEach(titleId => {
@@ -1747,8 +1747,11 @@ async function loadTitles() {
         // Same 🧩 Generate Assets entry point as a Development title row —
         // an operator finding a title here (already publishing) still
         // needs to spin up more assets from it: a different method, or
-        // another pass at the same method.
-        hdr.innerHTML = `<span style="flex:1;font-size:12px;color:#c9c9c9;font-weight:600;">${esc(group.name)}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${titleId}')" title="Generate more assets from this title — a different method, or another pass at the same one">🧩</button><a class="title-link" href="https://www.notion.so/${titleId}" target="_blank">↗</a><span style="font-size:10px;color:#666;">${group.items.length}</span>`;
+        // another pass at the same method. ✏️ Edit Strategy lives here too
+        // (not just on the Development title row) since this is where an
+        // operator actually works with published assets.
+        const nameEsc = esc(group.name).replace(/'/g, "\\'");
+        hdr.innerHTML = `<span style="flex:1;font-size:12px;color:#fff;font-weight:600;">${esc(group.name)}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${titleId}')" title="Generate more assets from this title — a different method, or another pass at the same one">🧩</button><button class="title-status-btn" onclick="openEditStrategyModal('${titleId}','${nameEsc}','${group.methodId||''}','${group.productId||''}','${(group.methodTemplateLink||'').replace(/'/g,"\\'")}')" title="Edit the title and its strategy content (Pillar Content), then regenerate">✏️</button><a class="title-link" href="https://www.notion.so/${titleId}" target="_blank">↗</a><span style="font-size:10px;color:#fff;">${group.items.length}</span>`;
         container.appendChild(hdr);
         group.items.forEach(a => container.appendChild(renderAssetRow(a, titleId, group.productId)));
       });
@@ -1806,9 +1809,9 @@ async function loadTitles() {
         const isOpen = !!titleGroupsOpen[stateKey];
         const gHdr = document.createElement('div');
         gHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;user-select:none;';
-        const gArrow = document.createElement('span'); gArrow.textContent = isOpen ? '▾' : '▶'; gArrow.style.cssText = 'font-size:8px;color:#555;flex-shrink:0;';
-        const gLabel = document.createElement('span'); gLabel.style.cssText = 'flex:1;font-size:11px;color:#888;'; gLabel.textContent = gk;
-        const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:#555;'; gCount.textContent = gTitles.length;
+        const gArrow = document.createElement('span'); gArrow.textContent = isOpen ? '▾' : '▶'; gArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
+        const gLabel = document.createElement('span'); gLabel.style.cssText = 'flex:1;font-size:11px;color:#fff;'; gLabel.textContent = gk;
+        const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:#fff;'; gCount.textContent = gTitles.length;
         gHdr.appendChild(gArrow); gHdr.appendChild(gLabel); gHdr.appendChild(gCount);
         const gBody = document.createElement('div'); gBody.style.display = isOpen ? 'block' : 'none';
         gTitles.forEach(t => gBody.appendChild(makeTitleRow(t, section)));
@@ -1834,7 +1837,7 @@ async function loadTitles() {
         pH.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 14px;background:rgba(139,92,246,.08);border-left:2px solid rgba(139,92,246,.4);border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;user-select:none;';
         const pA = document.createElement('span'); pA.textContent = isOpen ? '▾' : '▶'; pA.style.cssText = 'font-size:8px;color:#7c5cbf;flex-shrink:0;';
         const pL = document.createElement('span'); pL.style.cssText = 'flex:1;font-size:11px;color:#a78bfa;font-weight:600;letter-spacing:.3px;'; pL.textContent = pk;
-        const pC = document.createElement('span'); pC.style.cssText = 'font-size:10px;color:#555;'; pC.textContent = pTitles.length;
+        const pC = document.createElement('span'); pC.style.cssText = 'font-size:10px;color:#fff;'; pC.textContent = pTitles.length;
         pH.appendChild(pA); pH.appendChild(pL); pH.appendChild(pC);
         const pB = document.createElement('div'); pB.style.display = isOpen ? 'block' : 'none';
         renderGroupingLevel(pTitles, pB, section);
@@ -1859,9 +1862,9 @@ async function loadTitles() {
         const isOpen = !!titleGroupsOpen[stateKey];
         const mHdr = document.createElement('div');
         mHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px;background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.07);cursor:pointer;user-select:none;';
-        const mArrow = document.createElement('span'); mArrow.textContent = isOpen ? '▾' : '▶'; mArrow.style.cssText = 'font-size:8px;color:#666;flex-shrink:0;';
-        const mLabel = document.createElement('span'); mLabel.style.cssText = 'flex:1;font-size:12px;color:#aaa;'; mLabel.textContent = methName;
-        const mCount = document.createElement('span'); mCount.style.cssText = 'font-size:10px;color:#555;'; mCount.textContent = mTitles.length;
+        const mArrow = document.createElement('span'); mArrow.textContent = isOpen ? '▾' : '▶'; mArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
+        const mLabel = document.createElement('span'); mLabel.style.cssText = 'flex:1;font-size:12px;color:#fff;'; mLabel.textContent = methName;
+        const mCount = document.createElement('span'); mCount.style.cssText = 'font-size:10px;color:#fff;'; mCount.textContent = mTitles.length;
         mHdr.appendChild(mArrow); mHdr.appendChild(mLabel); mHdr.appendChild(mCount);
         const mBody = document.createElement('div'); mBody.style.display = isOpen ? 'block' : 'none';
         renderPhaseLevel(mTitles, mBody, section);
@@ -1924,9 +1927,9 @@ async function loadTitles() {
         const isOpen = !!titleGroupsOpen[stateKey];
         const pHdr = document.createElement('div');
         pHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);cursor:pointer;user-select:none;';
-        const pArrow = document.createElement('span'); pArrow.textContent = isOpen ? '▾' : '▶'; pArrow.style.cssText = 'font-size:8px;color:#777;flex-shrink:0;';
-        const pLabel = document.createElement('span'); pLabel.style.cssText = 'flex:1;font-size:12px;color:#c9c9c9;font-weight:600;'; pLabel.textContent = prodName;
-        const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:#666;'; pCount.textContent = pTitles.length;
+        const pArrow = document.createElement('span'); pArrow.textContent = isOpen ? '▾' : '▶'; pArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
+        const pLabel = document.createElement('span'); pLabel.style.cssText = 'flex:1;font-size:12px;color:#fff;font-weight:600;'; pLabel.textContent = prodName;
+        const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:#fff;'; pCount.textContent = pTitles.length;
         pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
         const pBody = document.createElement('div'); pBody.style.display = isOpen ? 'block' : 'none';
         renderMethodLevel(pTitles, pBody, section);
@@ -2898,13 +2901,13 @@ function makeProductRow(p) {
   const isActive = p.status === 'Active';
   row.className = 'product-row ' + (isActive ? 'is-active' : 'is-development');
   row.dataset.productId = p.id;
-  const psStyle = 'font-size:10px;color:#555;text-decoration:none;flex-shrink:0;padding:1px 4px;border:1px solid #5f5f5f;border-radius:3px;line-height:1.6;';
+  const psStyle = 'font-size:10px;color:#fff;text-decoration:none;flex-shrink:0;padding:1px 4px;border:1px solid #5f5f5f;border-radius:3px;line-height:1.6;';
   // Type badge = the product's FORMAT (PDF/Email/Quiz/Coaching/Membership/
   // etc.) — shown here; Marketing Phase (funnel role) is used for sort order
   // only and is written into the attached method's methodology text instead
   // of being its own visible tag.
   const typeBadge = p.type
-    ? `<span title="Type" style="font-size:9px;color:#888;border:1px solid #5f5f5f;border-radius:3px;padding:1px 5px;flex-shrink:0;white-space:nowrap;">${p.type}</span>`
+    ? `<span title="Type" style="font-size:9px;color:#fff;border:1px solid #5f5f5f;border-radius:3px;padding:1px 5px;flex-shrink:0;white-space:nowrap;">${p.type}</span>`
     : '';
   // Product Stack badge — a manually-assigned grouping label (e.g. "Coaching
   // Suite"), purely organizational. Styled distinctly from Type (accent
@@ -2923,7 +2926,7 @@ function makeProductRow(p) {
   const stratColor = p.strategyStatus === 'Current' ? '#68d391' : (p.strategyStatus === 'Stale' ? '#f0b429' : '#555');
   const researchLink = `<button class="td-add-btn-inline" onclick="openStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Product Research" style="${psStyle};background:none;cursor:pointer;color:${stratColor};">research</button>`;
   const growthPlanBtn = `<button class="td-add-btn-inline" onclick="openGrowthStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Generate Growth Strategy — recommends title groupings, methods, and platforms for this product" style="${psStyle};background:none;cursor:pointer;">🚀</button>`;
-  const growthPlanDropdown = `<select onmousedown="populateStrategyDropdown(this,'${p.id}')" onchange="onStrategyDropdownChange(this)" title="View Growth Strategies for this product" style="font-size:9px;background:#141414;color:#888;border:1px solid #5f5f5f;border-radius:3px;padding:1px 2px;max-width:56px;flex-shrink:0;"><option value="">plans</option></select>`;
+  const growthPlanDropdown = `<select onmousedown="populateStrategyDropdown(this,'${p.id}')" onchange="onStrategyDropdownChange(this)" title="View Growth Strategies for this product" style="font-size:9px;background:#141414;color:#fff;border:1px solid #5f5f5f;border-radius:3px;padding:1px 2px;max-width:56px;flex-shrink:0;"><option value="">plans</option></select>`;
   row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}${stackBadge}<button class="td-add-btn-inline" onclick="openProductMethodsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Review methods for this product">⚙</button>${growthPlanBtn}${growthPlanDropdown}${researchLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
 }
@@ -2962,7 +2965,7 @@ function renderProducts() {
     const members = groups[tag].slice().sort((a, b) => rankMarketingPhase(a.marketingPhase) - rankMarketingPhase(b.marketingPhase));
     const header = document.createElement('div');
     header.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#e8ff47;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;';
-    header.innerHTML = `<span style="display:inline-block;width:8px;transform:rotate(${collapsed ? '-90deg' : '0deg'});transition:transform .12s;">▾</span>🧬 ${tag} <span style="color:#666;font-weight:400;text-transform:none;letter-spacing:0;">(${members.length})</span>`;
+    header.innerHTML = `<span style="display:inline-block;width:8px;transform:rotate(${collapsed ? '-90deg' : '0deg'});transition:transform .12s;">▾</span>🧬 ${tag} <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;">(${members.length})</span>`;
     header.onclick = () => toggleEcosystemGroup(tag);
     wrap.appendChild(header);
     if (!collapsed) {
@@ -3332,7 +3335,7 @@ function renderLogins() {
     const stCls  = LS_CLASS[l.status] || 'ls-planning';
     const sub = [l.usr, l.accountUrl].filter(Boolean).join(' · ');
     div.innerHTML =
-      (cat ? `<span class="login-cat ${catCls}">${cat}</span>` : '<span class="login-cat" style="opacity:.3;border:1px solid #333;color:#555;">—</span>') +
+      (cat ? `<span class="login-cat ${catCls}">${cat}</span>` : '<span class="login-cat" style="opacity:.3;border:1px solid #333;color:#fff;">—</span>') +
       `<div class="login-meta">
         <div class="login-name">${l.name}</div>
         ${sub ? `<div class="login-sub">${sub}</div>` : ''}
@@ -3686,16 +3689,16 @@ async function generateLeAssets() {
 
 function renderLeFiles() {
   const el = document.getElementById('le-files-list');
-  if (!LE_FILES.length) { el.innerHTML = '<div style="font-size:11px;color:#555;">No files yet.</div>'; return; }
+  if (!LE_FILES.length) { el.innerHTML = '<div style="font-size:11px;color:#fff;">No files yet.</div>'; return; }
   el.innerHTML = '';
   LE_FILES.forEach(f => {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.06);';
-    row.innerHTML = `<a href="${esc(f.url)}" target="_blank" style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;">⬇ ${esc(f.name)}</a>`;
+    row.innerHTML = `<a href="${esc(f.url)}" target="_blank" style="flex:1;font-size:12px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;">⬇ ${esc(f.name)}</a>`;
     const rm = document.createElement('button');
     rm.type = 'button';
     rm.textContent = '✕';
-    rm.style.cssText = 'background:none;border:none;color:#555;cursor:pointer;font-size:12px;';
+    rm.style.cssText = 'background:none;border:none;color:#fff;cursor:pointer;font-size:12px;';
     rm.onclick = () => removeLeFile(f.name);
     row.appendChild(rm);
     el.appendChild(row);
@@ -3785,16 +3788,16 @@ async function loadLeAssets(loginId) {
   try {
     const data = await w('getLoginAssets', { loginId });
     const assets = data.assets || [];
-    if (!assets.length) { el.innerHTML = '<div style="font-size:11px;color:#555;">No assets linked yet.</div>'; return; }
+    if (!assets.length) { el.innerHTML = '<div style="font-size:11px;color:#fff;">No assets linked yet.</div>'; return; }
     el.innerHTML = '';
     assets.forEach(a => {
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.06);';
       row.innerHTML =
-        `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${esc(a.platform || a.type || '—')}</span>` +
-        `<span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title)}</span>` +
-        `<span style="font-size:10px;color:#555;flex-shrink:0;">${esc(a.status || '')}</span>` +
-        `<a href="https://www.notion.so/${a.id}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">↗</a>`;
+        `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#fff;flex-shrink:0;">${esc(a.platform || a.type || '—')}</span>` +
+        `<span style="flex:1;font-size:12px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title)}</span>` +
+        `<span style="font-size:10px;color:#fff;flex-shrink:0;">${esc(a.status || '')}</span>` +
+        `<a href="https://www.notion.so/${a.id}" target="_blank" style="font-size:11px;color:#fff;text-decoration:none;flex-shrink:0;">↗</a>`;
       el.appendChild(row);
     });
   } catch(e) {
@@ -4072,9 +4075,9 @@ async function loadDeliverables() {
       const group = byProduct[pid];
       const hdr = document.createElement('div');
       hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;user-select:none;';
-      const arrow = document.createElement('span'); arrow.textContent = '▶'; arrow.style.cssText = 'font-size:8px;color:#555;flex-shrink:0;';
-      const label = document.createElement('span'); label.style.cssText = 'flex:1;font-size:12px;color:#aaa;font-weight:600;'; label.textContent = group.name;
-      const count = document.createElement('span'); count.style.cssText = 'font-size:10px;color:#555;'; count.textContent = group.items.length;
+      const arrow = document.createElement('span'); arrow.textContent = '▶'; arrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
+      const label = document.createElement('span'); label.style.cssText = 'flex:1;font-size:12px;color:#fff;font-weight:600;'; label.textContent = group.name;
+      const count = document.createElement('span'); count.style.cssText = 'font-size:10px;color:#fff;'; count.textContent = group.items.length;
       hdr.appendChild(arrow); hdr.appendChild(label); hdr.appendChild(count);
       const body = document.createElement('div'); body.style.display = 'none';
       group.items.forEach(d => {
@@ -4082,7 +4085,7 @@ async function loadDeliverables() {
         row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid rgba(255,255,255,.04);';
         const linkHref = d.isFile ? d.url : `https://www.notion.so/${d.id}`;
         const linkLabel = d.isFile ? '⬇' : '↗';
-        row.innerHTML = `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${d.type||'—'}</span><span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.name}</span>${d.status ? `<span style="font-size:10px;color:${statusColor[d.status]||'#555'};flex-shrink:0;">${d.status}</span>` : ''}<a href="${linkHref}" target="_blank" style="font-size:11px;color:#555;text-decoration:none;flex-shrink:0;">${linkLabel}</a>`;
+        row.innerHTML = `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#fff;flex-shrink:0;">${d.type||'—'}</span><span style="flex:1;font-size:12px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.name}</span>${d.status ? `<span style="font-size:10px;color:${statusColor[d.status]||'#555'};flex-shrink:0;">${d.status}</span>` : ''}<a href="${linkHref}" target="_blank" style="font-size:11px;color:#fff;text-decoration:none;flex-shrink:0;">${linkLabel}</a>`;
         body.appendChild(row);
       });
       hdr.onclick = () => { const o = body.style.display !== 'none'; body.style.display = o ? 'none' : 'block'; arrow.textContent = o ? '▶' : '▾'; };
@@ -4110,7 +4113,7 @@ function renderSmFields() {
     const id = sfId(f);
     return `<div style="border-bottom:1px solid #161616;padding:8px 0;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span style="flex:1;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#666;">${esc(f)}</span>
+        <span style="flex:1;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#fff;">${esc(f)}</span>
         <button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" id="${id}-btn" onclick="genSmField('${f}')">${val ? '↻' : 'Generate'}</button>
         <button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" onclick="saveSmField('${f}')">Save</button>
       </div>
@@ -4324,7 +4327,7 @@ async function approveSmPost(id) {
     row.style.opacity = '0.4';
     row.style.pointerEvents = 'none';
     const actionsEl = row.querySelector('.smp-actions');
-    if (actionsEl) actionsEl.innerHTML = '<span style="font-size:11px;color:#888;">Writing script…</span>';
+    if (actionsEl) actionsEl.innerHTML = '<span style="font-size:11px;color:#fff;">Writing script…</span>';
   }
   try {
     await w('approveSmPost', { id, campaignId: CAMPAIGN_ID });
@@ -5042,12 +5045,12 @@ async function gaRefreshStrategyLink() {
   const el = document.getElementById('gaStrategyLink');
   if (!el) return;
   if (!GA_PRODUCT_ID) { el.innerHTML = ''; return; }
-  el.innerHTML = '<span style="font-size:11px;color:#666;">Loading strategy…</span>';
+  el.innerHTML = '<span style="font-size:11px;color:#fff;">Loading strategy…</span>';
   try {
     const r = await w('getProductStrategy', { productId: GA_PRODUCT_ID });
     el.innerHTML = r.strategy
       ? `<a href="${r.strategy.url}" target="_blank" rel="noopener" class="notion-link" style="font-size:11px;">↗ View Product Strategy${r.strategy.status ? ' (' + esc(r.strategy.status) + ')' : ''}</a>`
-      : '<span style="font-size:11px;color:#666;">No Strategy doc on file for this product yet.</span>';
+      : '<span style="font-size:11px;color:#fff;">No Strategy doc on file for this product yet.</span>';
   } catch(e) { el.innerHTML = ''; }
 }
 function gaFilter(kind) {
@@ -5061,7 +5064,7 @@ function gaFilter(kind) {
   const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
   matches.forEach(x => {
     const div = document.createElement('div');
-    div.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#c9c9c9;border-bottom:1px solid #222;';
+    div.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#fff;border-bottom:1px solid #222;';
     div.onmouseenter = () => div.style.background = '#333';
     div.onmouseleave = () => div.style.background = '';
     div.textContent = x.name;
@@ -5191,9 +5194,9 @@ function gaRenderExisting(titleId) {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid #333;border-radius:4px;margin-bottom:4px;';
     row.innerHTML =
-      `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#888;flex-shrink:0;">${esc(a.type || '—')}</span>` +
-      `<span style="flex:1;font-size:12px;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title)}</span>` +
-      `<span style="font-size:10px;color:#666;flex-shrink:0;">${esc(a.status || '')}</span>` +
+      `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.06);color:#fff;flex-shrink:0;">${esc(a.type || '—')}</span>` +
+      `<span style="flex:1;font-size:12px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title)}</span>` +
+      `<span style="font-size:10px;color:#fff;flex-shrink:0;">${esc(a.status || '')}</span>` +
       (a.gradeScore != null ? `<span title="${esc(a.gradeNotes || '')}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;flex-shrink:0;background:${a.gradeStatus==='Needs Revision'?'rgba(252,129,129,.12)':'rgba(104,211,145,.12)'};color:${a.gradeStatus==='Needs Revision'?'#fc8181':'#68d391'};">${a.gradeStatus==='Needs Revision'?'⚠':'✓'} ${a.gradeScore}/10</span>` : '');
     if (GA_CAROUSEL_ASSET_TYPE_RE.test(a.type || '')) {
       const buildBtn = document.createElement('button');
@@ -5211,7 +5214,7 @@ function gaRenderExisting(titleId) {
     const link = document.createElement('a');
     link.href = 'https://www.notion.so/' + a.id;
     link.target = '_blank';
-    link.style.cssText = 'font-size:11px;color:#555;text-decoration:none;flex-shrink:0;';
+    link.style.cssText = 'font-size:11px;color:#fff;text-decoration:none;flex-shrink:0;';
     link.textContent = '↗';
     row.appendChild(link);
     list.appendChild(row);
@@ -5420,9 +5423,9 @@ function openVisualBriefModal(btn) {
   const lockWrap = document.getElementById('vbLockWrap');
   const fields = VB_LOCK_FIELDS[VB_ASSET_TYPE] || [];
   lockWrap.innerHTML = fields.length
-    ? '<label class="lm-label">Lock as Immutable <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— for this asset only, hold ChatGPT to the default value shown in the draft spec instead of leaving it open to change</span></label>'
+    ? '<label class="lm-label">Lock as Immutable <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— for this asset only, hold ChatGPT to the default value shown in the draft spec instead of leaving it open to change</span></label>'
       + '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;">'
-      + fields.map(([key, label]) => `<label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" class="vb-lock-cb" value="${key}"> ${esc(label)}</label>`).join('')
+      + fields.map(([key, label]) => `<label style="font-size:11px;color:#fff;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" class="vb-lock-cb" value="${key}"> ${esc(label)}</label>`).join('')
       + '</div>'
     : '';
 
@@ -5570,22 +5573,22 @@ function renderCampaignDesignSystem(r) {
   document.getElementById('cdsSharedWrap').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
       <div style="border:1px solid #333;border-radius:6px;padding:10px;">
-        <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;">Color Palette${s.colorPalette ? ` — v${esc(s.colorPalette.version)}` : ''}</div>
+        <div style="font-size:10px;color:#fff;text-transform:uppercase;letter-spacing:.04em;">Color Palette${s.colorPalette ? ` — v${esc(s.colorPalette.version)}` : ''}</div>
         ${s.colorPalette
-          ? `<div style="margin-top:6px;font-size:11px;">${swatch(s.colorPalette.background)}bg ${esc(s.colorPalette.background)}<br>${swatch(s.colorPalette.ink)}ink ${esc(s.colorPalette.ink)}<br>${swatch(s.colorPalette.accent)}accent ${esc(s.colorPalette.accent)}</div>${s.colorPalette.promotedFrom ? `<div style="font-size:10px;color:#666;margin-top:4px;">Last promoted: ${esc(s.colorPalette.promotedFrom)}</div>` : ''}`
-          : '<div style="font-size:11px;color:#666;margin-top:6px;">Not created yet — generates on first Visual Brief.</div>'}
+          ? `<div style="margin-top:6px;font-size:11px;">${swatch(s.colorPalette.background)}bg ${esc(s.colorPalette.background)}<br>${swatch(s.colorPalette.ink)}ink ${esc(s.colorPalette.ink)}<br>${swatch(s.colorPalette.accent)}accent ${esc(s.colorPalette.accent)}</div>${s.colorPalette.promotedFrom ? `<div style="font-size:10px;color:#fff;margin-top:4px;">Last promoted: ${esc(s.colorPalette.promotedFrom)}</div>` : ''}`
+          : '<div style="font-size:11px;color:#fff;margin-top:6px;">Not created yet — generates on first Visual Brief.</div>'}
       </div>
       <div style="border:1px solid #333;border-radius:6px;padding:10px;">
-        <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;">Typography${s.typography ? ` — v${esc(s.typography.version)}` : ''}</div>
+        <div style="font-size:10px;color:#fff;text-transform:uppercase;letter-spacing:.04em;">Typography${s.typography ? ` — v${esc(s.typography.version)}` : ''}</div>
         ${s.typography
-          ? `<div style="margin-top:6px;font-size:11px;">Headline: ${esc(s.typography.headlineFont)}<br>Body: ${esc(s.typography.bodyFont)}</div>${s.typography.promotedFrom ? `<div style="font-size:10px;color:#666;margin-top:4px;">Last promoted: ${esc(s.typography.promotedFrom)}</div>` : ''}`
-          : '<div style="font-size:11px;color:#666;margin-top:6px;">Not created yet.</div>'}
+          ? `<div style="margin-top:6px;font-size:11px;">Headline: ${esc(s.typography.headlineFont)}<br>Body: ${esc(s.typography.bodyFont)}</div>${s.typography.promotedFrom ? `<div style="font-size:10px;color:#fff;margin-top:4px;">Last promoted: ${esc(s.typography.promotedFrom)}</div>` : ''}`
+          : '<div style="font-size:11px;color:#fff;margin-top:6px;">Not created yet.</div>'}
       </div>
       <div style="border:1px solid #333;border-radius:6px;padding:10px;">
-        <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;">Visual Style${s.visualStyle ? ` — v${esc(s.visualStyle.version)}` : ''}</div>
+        <div style="font-size:10px;color:#fff;text-transform:uppercase;letter-spacing:.04em;">Visual Style${s.visualStyle ? ` — v${esc(s.visualStyle.version)}` : ''}</div>
         ${s.visualStyle
-          ? `<div style="margin-top:6px;font-size:11px;">Icon: ${esc(s.visualStyle.iconStyle)}<br>Illustration: ${esc(s.visualStyle.illustrationStyle)}<br>Diagram: ${esc(s.visualStyle.diagramStyle)}</div>${s.visualStyle.promotedFrom ? `<div style="font-size:10px;color:#666;margin-top:4px;">Last promoted: ${esc(s.visualStyle.promotedFrom)}</div>` : ''}`
-          : '<div style="font-size:11px;color:#666;margin-top:6px;">Not created yet.</div>'}
+          ? `<div style="margin-top:6px;font-size:11px;">Icon: ${esc(s.visualStyle.iconStyle)}<br>Illustration: ${esc(s.visualStyle.illustrationStyle)}<br>Diagram: ${esc(s.visualStyle.diagramStyle)}</div>${s.visualStyle.promotedFrom ? `<div style="font-size:10px;color:#fff;margin-top:4px;">Last promoted: ${esc(s.visualStyle.promotedFrom)}</div>` : ''}`
+          : '<div style="font-size:11px;color:#fff;margin-top:6px;">Not created yet.</div>'}
       </div>
     </div>`;
 
@@ -5593,11 +5596,11 @@ function renderCampaignDesignSystem(r) {
   document.getElementById('cdsAssetsWrap').innerHTML = assets.length
     ? assets.map((a, idx) => `
       <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;">
-        <span style="width:60px;flex-shrink:0;color:#888;font-size:10px;text-transform:uppercase;">${esc(a.assetType)}</span>
-        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc;">${esc(a.name)}</span>
+        <span style="width:60px;flex-shrink:0;color:#fff;font-size:10px;text-transform:uppercase;">${esc(a.assetType)}</span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;">${esc(a.name)}</span>
         ${a.promoted ? `<span style="font-size:10px;color:#68d391;flex-shrink:0;">✓ Promoted</span>` : `<button class="modal-btn save" style="font-size:10px;padding:3px 9px;flex-shrink:0;" id="cdsPromoteBtn${idx}" onclick="promoteAssetDesign(${idx})">Promote to Campaign Default</button>`}
       </div>`).join('')
-    : '<div style="font-size:12px;color:#666;padding:8px;">No carousel/text-video assets with a resolved design yet in this campaign.</div>';
+    : '<div style="font-size:12px;color:#fff;padding:8px;">No carousel/text-video assets with a resolved design yet in this campaign.</div>';
 }
 async function promoteAssetDesign(idx) {
   const a = (CDS_DATA?.assets || [])[idx];
@@ -5808,25 +5811,25 @@ function renderStrategiesPanel(strategies) {
           : `<span style="font-size:9px;color:#e8ff47;flex-shrink:0;">○ open</span>`;
         const createBtn = `<button onclick="openCreateTitleFromSlotModal({slotId:'${slot.id}',strategyId:'${s.id}'})" title="Create a title + script from this slot" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">+ title</button>`;
         return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
-          + `<span style="flex:1;min-width:0;color:#c9c9c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(slot.name)} — ${esc((slot.angle || '').slice(0, 80))}</span>`
+          + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(slot.name)} — ${esc((slot.angle || '').slice(0, 80))}</span>`
           + badge
           + createBtn
           + `</div>`;
       }).join('');
       return `<div style="margin:8px 0;">`
-        + `<div style="font-size:11px;font-weight:700;color:#888;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleStrategyCollapse('${gBodyId}', this.querySelector('.gs-arrow'))">`
-        + `<span style="display:flex;align-items:center;gap:6px;min-width:0;"><span class="gs-arrow" style="font-size:8px;color:#555;flex-shrink:0;">▶</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span></span>`
-        + `<span style="color:#555;flex-shrink:0;">${g.filledCount}/${g.totalCount} filled</span>`
+        + `<div style="font-size:11px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleStrategyCollapse('${gBodyId}', this.querySelector('.gs-arrow'))">`
+        + `<span style="display:flex;align-items:center;gap:6px;min-width:0;"><span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;">▶</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span></span>`
+        + `<span style="color:#fff;flex-shrink:0;">${g.filledCount}/${g.totalCount} filled</span>`
         + `</div>`
         + `<div id="${gBodyId}" style="display:none;margin-top:4px;">${slotsHtml}</div>`
         + `</div>`;
     }).join('');
     return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #222;">`
       + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">`
-      + `<span class="gs-arrow" style="font-size:8px;color:#555;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stratBodyId}', this)">▶</span>`
+      + `<span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stratBodyId}', this)">▶</span>`
       + `<span style="font-size:13px;font-weight:700;color:#fff;cursor:pointer;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
-      + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#888;">${esc(s.status)}</span>`
-      + (s.productName ? `<span style="font-size:10px;color:#666;">${esc(s.productName)}</span>` : '')
+      + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
+      + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
       + `</div>`
       + `<div id="${stratBodyId}" style="display:none;">`
       + (groupingsHtml || '<div class="empty" style="font-size:11px;">No slots recorded for this strategy.</div>')
@@ -5884,7 +5887,7 @@ function ctsUpdateSlotContext() {
   const ctxEl = document.getElementById('ctsSlotContext');
   if (!found) { ctxEl.style.display = 'none'; ctxEl.innerHTML = ''; return; }
   ctxEl.style.display = 'block';
-  ctxEl.innerHTML = `<strong>${esc(found.strategyName)}</strong> → ${esc(found.groupingName)}: ${esc(found.slot.name)}<br><span style="color:#888;">${esc(found.slot.angle || '')}</span>`;
+  ctxEl.innerHTML = `<strong>${esc(found.strategyName)}</strong> → ${esc(found.groupingName)}: ${esc(found.slot.name)}<br><span style="color:#fff;">${esc(found.slot.angle || '')}</span>`;
 }
 // forceStrategyId: when a Slot is picked, its parent strategy is the only
 // valid choice — populate then lock the select to it. With no Slot, the
@@ -6528,7 +6531,7 @@ function renderKeywordPills(kwStr) {
   const addBtn = document.createElement('span');
   addBtn.textContent = '+';
   addBtn.title = 'Add keyword';
-  addBtn.style.cssText = 'font-size:12px;cursor:pointer;color:#777;padding:2px 7px;border:1px dashed #333;opacity:.7;';
+  addBtn.style.cssText = 'font-size:12px;cursor:pointer;color:#fff;padding:2px 7px;border:1px dashed #333;opacity:.7;';
   addBtn.onmouseover = () => addBtn.style.opacity = '1';
   addBtn.onmouseout  = () => addBtn.style.opacity = '.7';
   addBtn.onclick = () => {
@@ -6575,7 +6578,7 @@ async function runRegenKeywords() {
     <div class="bc-subtitle" id="bc-subtitle"></div>
     <div class="bc-subtitle" id="bc-spec-note" style="color:#f6ad55"></div>
     <div id="bc-spec-picker-wrap" style="display:none">
-      <div class="ds-subtitle" style="margin:0">Design spec <span style="color:#555">— pick one, or ✎ to tweak & save a new copy</span></div>
+      <div class="ds-subtitle" style="margin:0">Design spec <span style="color:#fff">— pick one, or ✎ to tweak & save a new copy</span></div>
       <div class="bc-spec-picker" id="bc-spec-picker"></div>
     </div>
     <div class="bc-status" id="bc-status">Loading…</div>
@@ -6607,7 +6610,7 @@ async function runRegenKeywords() {
         <option value="__campaign__">Campaign default</option>
       </select>
     </div>
-    <div id="ds-current" style="font-size:12px;color:#999"></div>
+    <div id="ds-current" style="font-size:12px;color:#fff"></div>
 
     <div id="ds-list" class="ds-list"></div>
     <button class="secondary" style="align-self:flex-start" onclick="dsShowCreateForm()">+ New Design Spec</button>
@@ -6623,16 +6626,16 @@ async function runRegenKeywords() {
         <div class="ds-field"><label>Headline Font</label><input type="text" id="ds-headline-font" placeholder="Playfair Display" oninput="dsPreview()"></div>
         <div class="ds-field"><label>Body Font</label><input type="text" id="ds-body-font" placeholder="EB Garamond" oninput="dsPreview()"></div>
       </div>
-      <div class="ds-field"><label>Aesthetic Description <span style="text-transform:none;color:#555">— e.g. "editorial minimal, no photography, no faces, no loud colors"</span></label><textarea id="ds-notes"></textarea></div>
+      <div class="ds-field"><label>Aesthetic Description <span style="text-transform:none;color:#fff">— e.g. "editorial minimal, no photography, no faces, no loud colors"</span></label><textarea id="ds-notes"></textarea></div>
       <div class="ds-field">
-        <label>Merge a photo / drawing's style <span style="text-transform:none;color:#555">— jpg/png; AI pulls its palette + mood into the colors, fonts &amp; notes above (review, then Save)</span></label>
-        <input type="file" id="ds-style-img" accept="image/png,image/jpeg,image/webp" onchange="dsMergePhotoStyle(event)" style="font-size:11px;color:#aaa">
+        <label>Merge a photo / drawing's style <span style="text-transform:none;color:#fff">— jpg/png; AI pulls its palette + mood into the colors, fonts &amp; notes above (review, then Save)</span></label>
+        <input type="file" id="ds-style-img" accept="image/png,image/jpeg,image/webp" onchange="dsMergePhotoStyle(event)" style="font-size:11px;color:#fff">
         <div id="ds-style-status" style="font-size:11px;min-height:14px"></div>
       </div>
-      <div class="ds-field"><label>Canva Link <span style="text-transform:none;color:#555">— paste after you build the real tile in Canva (I can't create Canva designs from here)</span></label><input type="text" id="ds-canva-link" placeholder="https://canva.com/design/..."></div>
+      <div class="ds-field"><label>Canva Link <span style="text-transform:none;color:#fff">— paste after you build the real tile in Canva (I can't create Canva designs from here)</span></label><input type="text" id="ds-canva-link" placeholder="https://canva.com/design/..."></div>
       <div style="display:flex;gap:14px;align-items:flex-start">
         <canvas id="ds-preview-canvas" width="1080" height="1350" style="width:120px;height:150px;border-radius:4px;border:1px solid #333;flex-shrink:0"></canvas>
-        <div style="font-size:11px;color:#666;padding-top:4px">Live preview of one representative tile — this is what the 🎨 Build button will match. Use "Open Canva" to build the real thing there, then paste its link above.</div>
+        <div style="font-size:11px;color:#fff;padding-top:4px">Live preview of one representative tile — this is what the 🎨 Build button will match. Use "Open Canva" to build the real thing there, then paste its link above.</div>
       </div>
       <div class="ds-actions">
         <button class="secondary" onclick="window.open('https://www.canva.com/create/instagram-posts/','_blank')">Open Canva ↗</button>
@@ -6653,14 +6656,14 @@ async function runRegenKeywords() {
     <button class="modal-close" onclick="closeFileUploadModal()">✕</button>
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
       <div>
-        <div style="font-size:11px;color:#888;margin-bottom:4px;">Product</div>
-        <select id="fum-product-select" onchange="fumCheckReady()" style="width:100%;background:#5f5f5f;border:1px solid #333;color:#c9c9c9;padding:6px 8px;border-radius:4px;font-size:13px;">
+        <div style="font-size:11px;color:#fff;margin-bottom:4px;">Product</div>
+        <select id="fum-product-select" onchange="fumCheckReady()" style="width:100%;background:#5f5f5f;border:1px solid #333;color:#fff;padding:6px 8px;border-radius:4px;font-size:13px;">
           <option value="">— choose product —</option>
         </select>
       </div>
       <div>
-        <div style="font-size:11px;color:#888;margin-bottom:4px;">File</div>
-        <input type="file" id="fum-file" onchange="fumCheckReady()" accept="image/*,application/pdf,.zip,.png,.jpg,.jpeg,.gif,.webp" style="width:100%;font-size:12px;color:#c9c9c9;">
+        <div style="font-size:11px;color:#fff;margin-bottom:4px;">File</div>
+        <input type="file" id="fum-file" onchange="fumCheckReady()" accept="image/*,application/pdf,.zip,.png,.jpg,.jpeg,.gif,.webp" style="width:100%;font-size:12px;color:#fff;">
       </div>
       <div id="fum-status" style="font-size:12px;min-height:16px;"></div>
     </div>
@@ -6674,9 +6677,9 @@ async function runRegenKeywords() {
   <div class="modal" style="max-width:600px;padding:20px;max-height:85vh;overflow-y:auto;">
     <div class="modal-title" id="sm-modal-title">Product Research</div>
     <button class="modal-close" onclick="closeStrategyModal()">✕</button>
-    <div style="font-size:11px;color:#666;margin:6px 0 12px;">Fixed positioning — true regardless of which platform/method this product is marketed through. This is the product's official research record; every asset/pillar generation for this product reads from here.</div>
+    <div style="font-size:11px;color:#fff;margin:6px 0 12px;">Fixed positioning — true regardless of which platform/method this product is marketed through. This is the product's official research record; every asset/pillar generation for this product reads from here.</div>
     <div style="margin-bottom:12px;">
-      <label class="lm-label">Additional Guidance <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; layered on top of Campaign Research when generating or re-running fields, not a replacement for it</span></label>
+      <label class="lm-label">Additional Guidance <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; layered on top of Campaign Research when generating or re-running fields, not a replacement for it</span></label>
       <textarea id="sm-guidance" class="modal-ta" rows="2" style="width:100%;margin-top:6px;font-size:12px;resize:vertical;min-height:44px!important;padding:6px 8px;" placeholder="e.g. lean into the DIY-to-hire transition angle, avoid enterprise language"></textarea>
       <button class="td-add-btn-inline" id="sm-run-all-btn" style="font-size:11px;padding:4px 10px;margin-top:6px;" onclick="regenerateAllSmFields()">Run All Research</button>
     </div>
@@ -6691,7 +6694,7 @@ async function runRegenKeywords() {
   <div class="modal" style="max-width:500px;padding:20px;">
     <div class="modal-title">Sources</div>
     <button class="modal-close" onclick="closeSourcesModal()">✕</button>
-    <div id="sources-query" style="font-size:11px;color:#888;margin:8px 0 12px;"></div>
+    <div id="sources-query" style="font-size:11px;color:#fff;margin:8px 0 12px;"></div>
     <div id="sources-list" style="display:flex;flex-direction:column;gap:8px;"></div>
     <div class="modal-actions" style="margin-top:16px;">
       <button class="modal-btn cancel" onclick="closeSourcesModal()">Close</button>
@@ -6711,7 +6714,7 @@ async function openSourcesModal(query) {
     const data = await w('getSourceLinks', { query, keywords: kw });
     if (data.error) throw new Error(data.error);
     const sources = data.sources || [];
-    if (!sources.length) { el.innerHTML = '<div style="font-size:12px;color:#888;">No sources found.</div>'; return; }
+    if (!sources.length) { el.innerHTML = '<div style="font-size:12px;color:#fff;">No sources found.</div>'; return; }
     el.innerHTML = sources.map(s => `<a href="${s.url}" target="_blank" rel="noopener" style="display:block;font-size:12px;color:#a78bfa;text-decoration:none;line-height:1.4;word-break:break-all;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${s.title}</a>`).join('');
   } catch(e) {
     el.innerHTML = `<div style="font-size:12px;color:#f87171;">${e.message}</div>`;
@@ -6732,7 +6735,7 @@ async function openSourcesModal(query) {
       <input class="modal-ta" id="ecoTitleInput" type="text" style="height:36px;padding:7px 10px;" />
       <label class="lm-label" for="ecoDescInput" style="margin-top:10px;">Description</label>
       <textarea class="modal-ta" id="ecoDescInput" rows="4" style="resize:vertical;min-height:90px!important;"></textarea>
-      <div id="ecoStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:18px;white-space:pre-line;"></div>
+      <div id="ecoStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;white-space:pre-line;"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeEcosystemModal()">Cancel</button>
@@ -6807,7 +6810,7 @@ async function runEcosystemBuild() {
       <div class="modal-hint">Suggested and currently-attached methods for this product. Remove any you don't want, search to add more, or type a new one — nothing is saved until you click Add Methods. Strategy and title generation live on the product's own site.</div>
       <label class="lm-label" for="pmTitleInput" style="margin-top:12px;">Title</label>
       <input class="modal-ta" id="pmTitleInput" type="text" placeholder="Product title…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" />
-      <label class="lm-label" for="pmDescInput" style="margin-top:8px;">Description <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(grounds method suggestion — edit then re-suggest)</span></label>
+      <label class="lm-label" for="pmDescInput" style="margin-top:8px;">Description <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(grounds method suggestion — edit then re-suggest)</span></label>
       <textarea class="modal-ta" id="pmDescInput" rows="3" style="resize:vertical;min-height:56px!important;margin-top:4px;" placeholder="What is this product, briefly…"></textarea>
       <div style="display:flex;justify-content:flex-end;margin-top:6px;">
         <button class="td-add-btn-inline" onclick="updateProductAndResuggest()" id="pmResuggestBtn" style="font-size:11px;padding:3px 9px;">↻ Update &amp; Re-suggest Methods</button>
@@ -6823,7 +6826,7 @@ async function runEcosystemBuild() {
         <input class="modal-ta" id="pmNewInput" type="text" placeholder="New method name…" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" />
         <button class="td-add-btn-inline" id="pmNewAddBtn" onclick="addPmNewByName()" style="padding:0 10px;">+</button>
       </div>
-      <div id="pmStatus" style="font-size:12px;color:#888;margin-top:10px;min-height:16px;"></div>
+      <div id="pmStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:16px;"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeProductMethodsModal()">Cancel</button>
@@ -6842,10 +6845,10 @@ let PM_STAGED = [];
 
 function pmChildRow(child, parentIdx) {
   if (!child) return '';
-  const label = child.kind === 'existing' ? child.name : `${child.name} <em style="color:#888;font-style:normal;">(new)</em>`;
+  const label = child.kind === 'existing' ? child.name : `${child.name} <em style="color:#fff;font-style:normal;">(new)</em>`;
   return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px 5px 22px;border:1px solid #5f5f5f;border-top:none;border-radius:0 0 3px 3px;background:#161616;">
-    <span style="font-size:10px;color:#666;">↳ traffic</span>
-    <span style="flex:1;font-size:12px;color:#ccc;">${label}</span>
+    <span style="font-size:10px;color:#fff;">↳ traffic</span>
+    <span style="flex:1;font-size:12px;color:#fff;">${label}</span>
     <button class="td-del" onclick="removePmTrafficChild(${parentIdx})" title="Remove">✕</button>
   </div>`;
 }
@@ -6853,12 +6856,12 @@ function renderPmList() {
   const el = document.getElementById('pmList');
   if (!PM_STAGED.length) { el.innerHTML = '<div class="empty">No methods staged — search below or add a new one.</div>'; return; }
   el.innerHTML = PM_STAGED.map((m, i) => {
-    const label = m.kind === 'existing' ? m.name : `${m.name} <em style="color:#888;font-style:normal;">(new${m.researched ? ', researched' : ''})</em>`;
+    const label = m.kind === 'existing' ? m.name : `${m.name} <em style="color:#fff;font-style:normal;">(new${m.researched ? ', researched' : ''})</em>`;
     const badge = m.suggested ? '<span style="font-size:9px;color:#e8ff47;border:1px solid #3a3a2a;border-radius:3px;padding:1px 5px;margin-left:6px;">suggested</span>' : '';
     const radius = m.trafficChild ? '3px 3px 0 0' : '3px';
     return `<div>
       <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #5f5f5f;border-radius:${radius};">
-        <span style="flex:1;font-size:13px;color:#ddd;">${label}${badge}</span>
+        <span style="flex:1;font-size:13px;color:#fff;">${label}${badge}</span>
         <button class="td-del" onclick="removePmStaged(${i})" title="Remove">✕</button>
       </div>
       ${pmChildRow(m.trafficChild, i)}
