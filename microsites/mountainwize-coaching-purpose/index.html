@@ -454,6 +454,52 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- SET STRATEGY MODAL (per Development title row) -->
+<div class="modal-overlay" id="titleStrategyModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Set Strategy</div>
+      <button class="modal-close" onclick="closeTitleStrategyModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="titleStrategyModalHint"></div>
+      <select class="modal-ta" id="titleStrategySelect" style="margin-top:8px;">
+        <option value="">— none —</option>
+      </select>
+      <div class="modal-status" id="titleStrategyModalStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeTitleStrategyModal()">Cancel</button>
+      <button class="modal-btn save" id="titleStrategySaveBtn" onclick="applyTitleStrategyChange()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT STRATEGY MODAL (✏️ on a title row) — edit title + strategy content
+     (Pillar Content), then regenerate. Design template link is read-only,
+     resolved from the title's Method. -->
+<div class="modal-overlay" id="editStrategyModal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div class="modal-title">Edit Strategy</div>
+      <button class="modal-close" onclick="closeEditStrategyModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label" for="esTitleInput">Title</label>
+      <input class="modal-ta" id="esTitleInput" type="text" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" />
+      <label class="lm-label" for="esTemplateLink" style="margin-top:10px;">Design Template</label>
+      <div style="margin-top:4px;"><a id="esTemplateLink" href="#" target="_blank" rel="noopener" style="font-size:12px;color:#68d391;">—</a></div>
+      <label class="lm-label" for="esPillarInput" style="margin-top:10px;">Strategy Content <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(the title's Pillar Content — rewrite or edit it, then Regenerate feeds your edit back into the strategy engine as guidance for a fresh AI pass)</span></label>
+      <textarea class="modal-ta" id="esPillarInput" rows="14" style="resize:vertical;min-height:220px!important;margin-top:4px;line-height:1.5;"></textarea>
+      <div class="modal-status" id="esStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeEditStrategyModal()">Cancel</button>
+      <button class="modal-btn save" id="esRegenBtn" onclick="regenerateStrategyFromModal()">🔄 Regenerate</button>
+    </div>
+  </div>
+</div>
+
 <!-- LOGIN ADD MODAL -->
 <div class="modal-overlay" id="loginModal">
   <div class="modal">
@@ -611,6 +657,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div style="position:relative;margin-bottom:4px;" id="product-modal-type-wrap">
         <input class="modal-ta" id="product-modal-type" type="text" placeholder="Search existing types or add new…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" oninput="filterTypeDd()" onfocus="filterTypeDd()" />
         <div id="product-modal-type-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
+      </div>
+      <label class="lm-label" for="product-modal-stack" style="margin-top:8px;">Product Stack <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(optional — a grouping of related products, e.g. "Coaching Suite")</span></label>
+      <div style="position:relative;margin-bottom:4px;" id="product-modal-stack-wrap">
+        <input class="modal-ta" id="product-modal-stack" type="text" placeholder="Search existing stacks or add new…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" oninput="filterStackDd()" onfocus="filterStackDd()" />
+        <div id="product-modal-stack-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
       </div>
       <label class="lm-label" for="product-modal-desc" style="margin-top:8px;">Description <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(optional — grounds the marketing funnel research)</span></label>
       <textarea class="modal-ta" id="product-modal-desc" rows="3" style="resize:vertical;min-height:60px!important;margin-top:4px;" placeholder="What is this product, briefly…"></textarea>
@@ -878,6 +929,46 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- PUBLISH ASSETS MODAL (the 📋 Publish button on an asset row) — every
+     publish-ready copy field (design link, hashtags, platform link/CTA,
+     caption) in one place, each editable with its own copy-to-clipboard
+     button, saved together. -->
+<div class="modal-overlay" id="publishAssetModal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div class="modal-title" id="pubAssetTitle">Publish</div>
+      <button class="modal-close" onclick="closePublishAssetModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <label class="lm-label" for="pubDesignLink">Design Link</label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <input class="modal-ta" id="pubDesignLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…" />
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubDesignLink', this)">📋</button>
+      </div>
+      <label class="lm-label" for="pubPlatformLink" style="margin-top:10px;">Platform Link / CTA</label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <input class="modal-ta" id="pubPlatformLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…" />
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubPlatformLink', this)">📋</button>
+      </div>
+      <label class="lm-label" for="pubHashtags" style="margin-top:10px;">Hashtags</label>
+      <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
+        <textarea class="modal-ta" id="pubHashtags" rows="2" style="resize:vertical;min-height:44px!important;flex:1;line-height:1.5;" placeholder="#…"></textarea>
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubHashtags', this)">📋</button>
+      </div>
+      <label class="lm-label" for="pubCaption" style="margin-top:10px;">Caption</label>
+      <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
+        <textarea class="modal-ta" id="pubCaption" rows="6" style="resize:vertical;min-height:120px!important;flex:1;line-height:1.5;"></textarea>
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubCaption', this)">📋</button>
+      </div>
+      <div class="modal-status" id="pubAssetStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closePublishAssetModal()">Cancel</button>
+      <button class="modal-btn save" id="pubAssetSaveBtn" onclick="savePublishAssetFields()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- VISUAL BRIEF SETUP MODAL (the 🎨 Visual Brief button on a carousel/text-video asset row) -->
 <div class="modal-overlay" id="visualBriefModal">
   <div class="modal" style="max-width:640px;">
@@ -1013,6 +1104,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <option value="">— none —</option>
       </select>
       <div class="modal-hint" id="ctsSlotContext" style="display:none;margin-bottom:10px;"></div>
+
+      <label class="lm-label">Strategy <span style="color:#777;font-weight:normal;">— optional; locked to the picked Slot's strategy, or pick one directly for a one-off title (e.g. a "tool guide") still grouped under an overall strategy</span></label>
+      <select class="modal-ta" id="ctsStrategy" disabled style="margin-bottom:10px;">
+        <option value="">— none —</option>
+      </select>
 
       <label class="lm-label">Guidance <span style="color:#777;font-weight:normal;">— optional; steers how the strategy is applied for this specific title/pillar content. Left blank, the strategy alone drives it.</span></label>
       <textarea class="modal-ta" id="ctsGuidance" rows="3" placeholder="Any specific angle, tone, or instruction for this title…" style="resize:vertical;"></textarea>
@@ -1600,6 +1696,8 @@ async function loadTitles() {
     // title rows) can render the exact same asset row, not a duplicate.
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
+      // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
+      PUB_ASSET_CACHE[a.id] = { designLink: a.designLink || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', linkOrCta: a.linkOrCta || '' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -1617,6 +1715,7 @@ async function loadTitles() {
         + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
         + (a.canvaLink ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyCanvaPortPrompt(this)" title="Copy a ready-to-paste prompt for porting this asset's table content into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the table." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
         + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" rel="noopener" title="Open this asset's Notion page" style="flex-shrink:0;">↗</a>`
+        + `<button class="td-publish-fields" data-assetid="${a.id}" data-title="${esc(a.title)}" onclick="openPublishAssetModal(this)" title="Open every publish-ready field for this asset — design link, hashtags, platform link, caption — in one place: edit and copy each to your clipboard." style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Publish</button>`
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" data-productid="${productId || ''}" onclick="openVisualBriefModal(this)" title="Set up and assemble the Visual Production Source Document (Editing Authority tiers/Asset Metadata/Production Method/Audience/Research/Content Foundation/Growth Strategy Context/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Opens a setup modal first: pick a Growth Strategy for context, lock specific normally-MUTABLE design fields to IMMUTABLE for this asset, and write operator guidelines. Text Video assets are told to declare Simple vs. Custom Remotion Build (custom builds get a mandatory voice-first render sequence) and to keep the Asset ID attached through every revision. Also drafts every field of the structured Design Specification via Claude, tagged Immutable/Constrained/Mutable/Derived-at-production so ChatGPT knows exactly what it can and can't change — Text Video into 🎬 Text Video Specs / 🎞️ Text Video Scenes, Carousel into 🎠 Carousel Specifications / 🃏 Slide Specifications (plus the shared Color Palette/Typography/Visual Style/Grid/Layout/Diagram/Platform Preset databases, reused across the whole campaign)." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'renderPackage')" title="Upload RENDER_PACKAGE.yaml — the single file ChatGPT now returns (visualBrief + assemblyInstructions + assemblyManifest sections) — split automatically and saved to this asset's Visual Production Brief / Production Assembly Package / Assembly Manifest properties, no modal needed." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">📦 Render Package</button>` : '')
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for any asset type with a registered renderer (carousel today), RE-RENDERS from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
@@ -1660,7 +1759,7 @@ async function loadTitles() {
       GA_TITLE_ASSETS_CACHE[t.id] = t.assets || [];
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><button class="title-status-btn" onclick="openEditStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.methodId||''}','${t.productId||''}','${(t.methodTemplateLink||'').replace(/'/g,"\\'")}')" title="Edit the title and its strategy content (Pillar Content), then regenerate">✏️</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       // Publish/Published assets never show here — they belong exclusively
       // to the Publish Assets section (renderPublishedAssets above). Only
       // still-drafting assets render under a Development title row.
@@ -1770,6 +1869,41 @@ async function loadTitles() {
         container.appendChild(mHdr); container.appendChild(mBody);
       });
     }
+    // Outermost Development-list grouping level, above Product/Method/Phase/
+    // Grouping — buckets by the title's linked Growth Strategy (t.strategyId/
+    // t.strategyName from getTitles). Same collapse/expand + single-bucket-
+    // skip pattern as every level below it (renderTitlesNested's Product
+    // level, renderMethodLevel, renderPhaseLevel, renderGroupingLevel).
+    function renderStrategyLevel(arr, el, section) {
+      el.innerHTML = '';
+      if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
+      const hasStrategy = arr.some(t => t.strategyId && t.strategyId !== '__none__');
+      if (!hasStrategy) { renderTitlesNested(arr, el, section); return; }
+      const stratOrder = [], byStrat = {};
+      arr.forEach(t => {
+        const sk = (t.strategyId || '__none__') + '||' + (t.strategyName || 'No Strategy');
+        if (!byStrat[sk]) { byStrat[sk] = []; stratOrder.push(sk); }
+        byStrat[sk].push(t);
+      });
+      stratOrder.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
+      stratOrder.forEach(sk => {
+        const sTitles = byStrat[sk];
+        const stratName = sk.split('||')[1];
+        if (stratOrder.length === 1) { renderTitlesNested(sTitles, el, section); return; }
+        const stateKey = section + '|strat|' + sk;
+        const isOpen = !!titleGroupsOpen[stateKey];
+        const sHdr = document.createElement('div');
+        sHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:7px 10px;background:rgba(139,92,246,.12);border-bottom:1px solid rgba(139,92,246,.2);cursor:pointer;user-select:none;';
+        const sArrow = document.createElement('span'); sArrow.textContent = isOpen ? '▾' : '▶'; sArrow.style.cssText = 'font-size:8px;color:#a78bfa;flex-shrink:0;';
+        const sLabel = document.createElement('span'); sLabel.style.cssText = 'flex:1;font-size:12px;color:#c4b5fd;font-weight:700;'; sLabel.textContent = '🚀 ' + stratName;
+        const sCount = document.createElement('span'); sCount.style.cssText = 'font-size:10px;color:#7c5cbf;'; sCount.textContent = sTitles.length;
+        sHdr.appendChild(sArrow); sHdr.appendChild(sLabel); sHdr.appendChild(sCount);
+        const sBody = document.createElement('div'); sBody.style.display = isOpen ? 'block' : 'none';
+        renderTitlesNested(sTitles, sBody, section);
+        sHdr.onclick = () => { const o = sBody.style.display !== 'none'; sBody.style.display = o ? 'none' : 'block'; sArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+        el.appendChild(sHdr); el.appendChild(sBody);
+      });
+    }
     function renderTitlesNested(arr, el, section) {
       el.innerHTML = '';
       if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
@@ -1800,7 +1934,7 @@ async function loadTitles() {
         el.appendChild(pHdr); el.appendChild(pBody);
       });
     }
-    renderTitlesNested(dev, devEl, 'dev');
+    renderStrategyLevel(dev, devEl, 'dev');
     renderPublishedAssets(pub, pubEl);
   } catch(e) {
     devEl.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
@@ -2772,6 +2906,12 @@ function makeProductRow(p) {
   const typeBadge = p.type
     ? `<span title="Type" style="font-size:9px;color:#888;border:1px solid #5f5f5f;border-radius:3px;padding:1px 5px;flex-shrink:0;white-space:nowrap;">${p.type}</span>`
     : '';
+  // Product Stack badge — a manually-assigned grouping label (e.g. "Coaching
+  // Suite"), purely organizational. Styled distinctly from Type (accent
+  // color) since it's a different axis, not a variant of it.
+  const stackBadge = p.stack
+    ? `<span title="Product Stack" style="font-size:9px;color:#a78bfa;border:1px solid #5f4a8f;border-radius:3px;padding:1px 5px;flex-shrink:0;white-space:nowrap;">${p.stack}</span>`
+    : '';
   // Product Research link — opens the Product Research modal (all of a
   // product's Strategy fields: Pain Points/Benefits/Proof Points/etc., with
   // per-field or run-all research generation and an operator guidance box).
@@ -2784,7 +2924,7 @@ function makeProductRow(p) {
   const researchLink = `<button class="td-add-btn-inline" onclick="openStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Product Research" style="${psStyle};background:none;cursor:pointer;color:${stratColor};">research</button>`;
   const growthPlanBtn = `<button class="td-add-btn-inline" onclick="openGrowthStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Generate Growth Strategy — recommends title groupings, methods, and platforms for this product" style="${psStyle};background:none;cursor:pointer;">🚀</button>`;
   const growthPlanDropdown = `<select onmousedown="populateStrategyDropdown(this,'${p.id}')" onchange="onStrategyDropdownChange(this)" title="View Growth Strategies for this product" style="font-size:9px;background:#141414;color:#888;border:1px solid #5f5f5f;border-radius:3px;padding:1px 2px;max-width:56px;flex-shrink:0;"><option value="">plans</option></select>`;
-  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}<button class="td-add-btn-inline" onclick="openProductMethodsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Review methods for this product">⚙</button>${growthPlanBtn}${growthPlanDropdown}${researchLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}${stackBadge}<button class="td-add-btn-inline" onclick="openProductMethodsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Review methods for this product">⚙</button>${growthPlanBtn}${growthPlanDropdown}${researchLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
 }
 
@@ -2891,9 +3031,11 @@ let PRODUCT_MODAL_JUST_CREATED = false;
 function openProductModal() {
   document.getElementById('product-modal-input').value = '';
   document.getElementById('product-modal-type').value = '';
+  document.getElementById('product-modal-stack').value = '';
   document.getElementById('product-modal-desc').value = '';
   document.getElementById('product-modal-dd').style.display = 'none';
   document.getElementById('product-modal-type-dd').style.display = 'none';
+  document.getElementById('product-modal-stack-dd').style.display = 'none';
   document.getElementById('productModalStatus').textContent = '';
   document.getElementById('productModalStatus').className = 'modal-status';
   document.getElementById('productModalSave').disabled = false;
@@ -2904,6 +3046,7 @@ function openProductModal() {
   document.getElementById('productModal').classList.add('open');
   setTimeout(() => document.getElementById('product-modal-input').focus(), 100);
   loadProductTypes();
+  loadProductStacks();
 }
 
 function closeProductModal() {
@@ -2945,7 +3088,8 @@ function filterProductDd() {
       if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Creating…'; }
       try {
         const typeVal = (document.getElementById('product-modal-type')?.value || '').trim();
-        const res = await w('createProduct', { title: query, type: typeVal || undefined });
+        const stackVal = (document.getElementById('product-modal-stack')?.value || '').trim();
+        const res = await w('createProduct', { title: query, type: typeVal || undefined, stack: stackVal || undefined });
         ALL_PRODUCTS.push({ id: res.id, name: query });
         productModalSelectedId = res.id;
         PRODUCT_MODAL_JUST_CREATED = true;
@@ -2972,7 +3116,52 @@ document.addEventListener('click', e => {
     const tdd = document.getElementById('product-modal-type-dd');
     if (tdd) tdd.style.display = 'none';
   }
+  if (!e.target.closest('#product-modal-stack-wrap')) {
+    const sdd = document.getElementById('product-modal-stack-dd');
+    if (sdd) sdd.style.display = 'none';
+  }
 });
+
+// ── Product Stack dropdown (search existing stacks or add a new one) ────
+// Same search-existing-or-create-new pattern as the Type dropdown below,
+// but purely a grouping label — no "will research a methodology" side
+// effect, so there's no analogous IS_NEW flag to track.
+let ALL_PRODUCT_STACKS = [];
+function filterStackDd() {
+  const query  = (document.getElementById('product-modal-stack').value || '').trim();
+  const queryL = query.toLowerCase();
+  const dd = document.getElementById('product-modal-stack-dd');
+  dd.innerHTML = '';
+
+  const matches = ALL_PRODUCT_STACKS.filter(s => !query || s.toLowerCase().includes(queryL)).slice(0, 12);
+  matches.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-item';
+    div.textContent = s;
+    div.onmousedown = () => {
+      document.getElementById('product-modal-stack').value = s;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+
+  const exact = ALL_PRODUCT_STACKS.some(s => s.toLowerCase() === queryL);
+  if (query && !exact) {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-create';
+    div.textContent = '+ New stack "' + query + '"';
+    div.onmousedown = () => { dd.style.display = 'none'; };
+    dd.appendChild(div);
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+async function loadProductStacks() {
+  try {
+    const data = await w('getProductStacks', {});
+    ALL_PRODUCT_STACKS = data.stacks || [];
+  } catch(e) { ALL_PRODUCT_STACKS = []; }
+}
 
 // ── Type dropdown (search existing Types or add a new one) ──────────────
 let ALL_PRODUCT_TYPES = [];
@@ -3023,6 +3212,7 @@ async function addProductFromModal() {
   const name = document.getElementById('product-modal-input').value.trim();
   if (!name) return;
   const typeVal = (document.getElementById('product-modal-type')?.value || '').trim();
+  const stackVal = (document.getElementById('product-modal-stack')?.value || '').trim();
   const descVal = (document.getElementById('product-modal-desc')?.value || '').trim();
   const btn    = document.getElementById('productModalSave');
   const status = document.getElementById('productModalStatus');
@@ -3032,20 +3222,24 @@ async function addProductFromModal() {
   try {
     let productId = productModalSelectedId;
     if (!productId) {
-      const res = await w('createProduct', { title: name, type: typeVal || undefined, description: descVal || undefined });
+      const res = await w('createProduct', { title: name, type: typeVal || undefined, stack: stackVal || undefined, description: descVal || undefined });
       productId = res.id;
       ALL_PRODUCTS.push({ id: productId, name });
       PRODUCT_MODAL_JUST_CREATED = true;
     }
-    // Explicitly (re)save Type here, not just at creation — the name
-    // dropdown's "+ Create" can fire before this field is filled in, which
-    // would otherwise leave Type permanently blank on the created product.
+    // Explicitly (re)save Type/Stack here, not just at creation — the name
+    // dropdown's "+ Create" can fire before these fields are filled in,
+    // which would otherwise leave them permanently blank on the created
+    // product.
     if (PRODUCT_MODAL_JUST_CREATED && typeVal) {
       try { await w('setProductType', { productId, type: typeVal }); } catch(e) { /* non-fatal — ecosystem research still runs */ }
     }
+    if (PRODUCT_MODAL_JUST_CREATED && stackVal) {
+      try { await w('setProductStack', { productId, stack: stackVal }); } catch(e) { /* non-fatal — purely organizational */ }
+    }
     await w('addCampaignProduct', { campaignId: CAMPAIGN_ID, productId });
     if (!PRODUCT_ITEMS.some(p => p.id === productId)) {
-      PRODUCT_ITEMS.push({ id: productId, name, type: typeVal || null });
+      PRODUCT_ITEMS.push({ id: productId, name, type: typeVal || null, stack: stackVal || null });
     }
     renderProducts();
     // A freshly-created (typed) product runs the SAME funnel-ecosystem
@@ -3682,6 +3876,124 @@ function closeStatusModal() {
 document.getElementById('statusModal').addEventListener('click', function(e) {
   if (e.target === this) closeStatusModal();
 });
+
+// ── Set Strategy modal (per Development title row) ──────────────────────
+// Edit-time counterpart to the Generate Title modal's Strategy picker
+// (ctsPopulateStrategies) — lets the operator set/change/clear which Growth
+// Strategy an EXISTING title is linked to. Falls back to a campaign-wide
+// strategy list when the title has no product (listGrowthStrategies now
+// accepts either productId or campaignId).
+let tsModalTitleId = null;
+function openTitleStrategyModal(id, title, currentStrategyId, productId) {
+  tsModalTitleId = id;
+  document.getElementById('titleStrategyModalHint').textContent = title;
+  document.getElementById('titleStrategyModalStatus').textContent = '';
+  document.getElementById('titleStrategyModalStatus').className = 'modal-status';
+  const sel = document.getElementById('titleStrategySelect');
+  sel.innerHTML = '<option value="">— none —</option>';
+  sel.disabled = true;
+  document.getElementById('titleStrategyModal').classList.add('open');
+  const query = (productId && productId !== '__none__') ? { productId } : { campaignId: CAMPAIGN_ID };
+  w('listGrowthStrategies', query).then(r => {
+    const strategies = r.strategies || [];
+    sel.innerHTML = '<option value="">— none —</option>' + strategies.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    sel.value = (currentStrategyId && currentStrategyId !== '__none__') ? currentStrategyId : '';
+    sel.disabled = false;
+  }).catch(() => { sel.disabled = false; });
+}
+function closeTitleStrategyModal() {
+  document.getElementById('titleStrategyModal').classList.remove('open');
+  tsModalTitleId = null;
+}
+document.getElementById('titleStrategyModal').addEventListener('click', function(e) {
+  if (e.target === this) closeTitleStrategyModal();
+});
+async function applyTitleStrategyChange() {
+  const status = document.getElementById('titleStrategyModalStatus');
+  const btn = document.getElementById('titleStrategySaveBtn');
+  const growthStrategyId = document.getElementById('titleStrategySelect').value || undefined;
+  btn.disabled = true;
+  status.textContent = 'Saving…';
+  status.className = 'modal-status';
+  try {
+    await w('updateTitleStrategy', { titleId: tsModalTitleId, growthStrategyId });
+    status.textContent = 'Updated ✓';
+    status.className = 'modal-status ok';
+    setTimeout(async () => { closeTitleStrategyModal(); await loadTitles(); }, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+  }
+}
+
+// ── Edit Strategy modal (✏️ on a title row) ─────────────────────────────
+// Title + Design Template (read-only, from the title's Method) + the
+// title's Pillar Content — editable and regenerable. "Regenerate" sends the
+// operator's edited text back into writePillarContent as guidance (a real
+// AI rewrite pass grounded in the same Research/Product/Strategy context
+// pillar creation always uses), not a verbatim save.
+let esModalTitleId = null, esModalMethodId = '__none__', esModalProductId = '__none__';
+async function openEditStrategyModal(id, title, methodId, productId, templateLink) {
+  esModalTitleId = id;
+  esModalMethodId = methodId || '__none__';
+  esModalProductId = productId || '__none__';
+  document.getElementById('esTitleInput').value = title;
+  const linkEl = document.getElementById('esTemplateLink');
+  if (templateLink) { linkEl.textContent = 'Open in Canva ↗'; linkEl.href = templateLink; }
+  else { linkEl.textContent = 'No template set on this method'; linkEl.removeAttribute('href'); }
+  const pillarEl = document.getElementById('esPillarInput');
+  pillarEl.value = 'Loading…';
+  pillarEl.disabled = true;
+  const status = document.getElementById('esStatus');
+  status.textContent = '';
+  status.className = 'modal-status';
+  document.getElementById('editStrategyModal').classList.add('open');
+  try {
+    const r = await w('getPillarContent', { titleId: id });
+    pillarEl.value = r.text || '';
+  } catch(e) {
+    pillarEl.value = '';
+    status.textContent = 'Could not load current strategy content — you can still write fresh guidance below.';
+    status.className = 'modal-status err';
+  } finally {
+    pillarEl.disabled = false;
+  }
+}
+function closeEditStrategyModal() {
+  document.getElementById('editStrategyModal').classList.remove('open');
+  esModalTitleId = null;
+}
+document.getElementById('editStrategyModal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditStrategyModal();
+});
+async function regenerateStrategyFromModal() {
+  const btn = document.getElementById('esRegenBtn');
+  const status = document.getElementById('esStatus');
+  const newTitle = document.getElementById('esTitleInput').value.trim();
+  const guidance = document.getElementById('esPillarInput').value.trim();
+  if (!newTitle) { status.textContent = 'Title cannot be empty'; status.className = 'modal-status err'; return; }
+  btn.disabled = true;
+  status.textContent = 'Regenerating… this calls Claude and can take a moment.';
+  status.className = 'modal-status';
+  try {
+    await w('regeneratePillarContent', {
+      titleId: esModalTitleId,
+      titleText: newTitle,
+      campaignId: CAMPAIGN_ID,
+      productId: esModalProductId,
+      methodId: esModalMethodId,
+      guidance,
+    });
+    status.textContent = 'Regenerated ✓';
+    status.className = 'modal-status ok';
+    setTimeout(async () => { closeEditStrategyModal(); await loadTitles(); }, 800);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+  }
+}
 
 async function applyStatusChange(titleId, newStage) {
   const status = document.getElementById('statusModalStatus');
@@ -4512,6 +4824,9 @@ let GA_TITLE_ASSETS_CACHE = {};
 // asset.id -> its Body property (the plain voiceover script text), populated
 // the same way — lets the 📋 Copy Script button copy instantly, no round-trip.
 let ASSET_SCRIPT_CACHE = {};
+// asset.id -> { designLink, hashtags, postCaption, linkOrCta }, populated the
+// same way — lets the 📋 Publish modal open instantly, no round-trip.
+let PUB_ASSET_CACHE = {};
 const GA_CAROUSEL_METHOD_RE = /carousel/i;
 const GA_CAROUSEL_ASSET_TYPE_RE = /drawing post/i;
 
@@ -4997,6 +5312,68 @@ async function copyAssetScript(assetId, btn) {
     setTimeout(() => { btn.textContent = orig; }, 1400);
   } catch(e) {
     alert(text);
+  }
+}
+
+// ── Publish Assets modal (📋 Publish on an asset row) ────────────────────
+// Every publish-ready copy field for one asset — design link, hashtags,
+// platform link/CTA, caption — in one place: prefilled from PUB_ASSET_CACHE
+// (populated by renderAssetRow, no round-trip needed to open), each
+// editable with its own copy-to-clipboard button, saved together.
+let pubAssetId = null;
+function openPublishAssetModal(btn) {
+  const assetId = btn.dataset.assetid;
+  pubAssetId = assetId;
+  const data = PUB_ASSET_CACHE[assetId] || {};
+  document.getElementById('pubAssetTitle').textContent = btn.dataset.title || 'Publish';
+  document.getElementById('pubDesignLink').value = data.designLink || '';
+  document.getElementById('pubPlatformLink').value = data.linkOrCta || '';
+  document.getElementById('pubHashtags').value = data.hashtags || '';
+  document.getElementById('pubCaption').value = data.postCaption || '';
+  const status = document.getElementById('pubAssetStatus');
+  status.textContent = '';
+  status.className = 'modal-status';
+  document.getElementById('publishAssetModal').classList.add('open');
+}
+function closePublishAssetModal() {
+  document.getElementById('publishAssetModal').classList.remove('open');
+  pubAssetId = null;
+}
+document.getElementById('publishAssetModal').addEventListener('click', function(e) {
+  if (e.target === this) closePublishAssetModal();
+});
+async function copyPublishField(fieldId, btn) {
+  const text = document.getElementById(fieldId).value;
+  if (!text) { alert('Nothing to copy — this field is empty.'); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    const orig = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(() => { btn.textContent = orig; }, 1400);
+  } catch(e) { alert(text); }
+}
+async function savePublishAssetFields() {
+  const btn = document.getElementById('pubAssetSaveBtn');
+  const status = document.getElementById('pubAssetStatus');
+  const fields = {
+    designLink: document.getElementById('pubDesignLink').value.trim(),
+    linkOrCta: document.getElementById('pubPlatformLink').value.trim(),
+    hashtags: document.getElementById('pubHashtags').value.trim(),
+    postCaption: document.getElementById('pubCaption').value.trim(),
+  };
+  btn.disabled = true;
+  status.textContent = 'Saving…';
+  status.className = 'modal-status';
+  try {
+    await w('updatePublishFields', { assetId: pubAssetId, ...fields });
+    PUB_ASSET_CACHE[pubAssetId] = fields; // keep in sync so reopening without a reload shows the saved values
+    status.textContent = 'Saved ✓';
+    status.className = 'modal-status ok';
+    setTimeout(() => { status.textContent = ''; status.className = 'modal-status'; btn.disabled = false; }, 1200);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
   }
 }
 
@@ -5509,12 +5886,37 @@ function ctsUpdateSlotContext() {
   ctxEl.style.display = 'block';
   ctxEl.innerHTML = `<strong>${esc(found.strategyName)}</strong> → ${esc(found.groupingName)}: ${esc(found.slot.name)}<br><span style="color:#888;">${esc(found.slot.angle || '')}</span>`;
 }
+// forceStrategyId: when a Slot is picked, its parent strategy is the only
+// valid choice — populate then lock the select to it. With no Slot, the
+// select is freely pickable so a one-off title (no slot) can still be
+// attributed to an overall Growth Strategy.
+async function ctsPopulateStrategies(productId, forceStrategyId) {
+  const sel = document.getElementById('ctsStrategy');
+  if (!productId) { sel.innerHTML = '<option value="">— none —</option>'; sel.disabled = true; sel.value = ''; return; }
+  sel.disabled = false;
+  try {
+    const r = await w('listGrowthStrategies', { productId });
+    const strategies = r.strategies || [];
+    sel.innerHTML = '<option value="">— none —</option>' + strategies.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  } catch(e) {
+    sel.innerHTML = '<option value="">— none —</option>';
+  }
+  if (forceStrategyId) { sel.value = forceStrategyId; sel.disabled = true; }
+  else { sel.value = ''; }
+}
+function ctsSyncStrategyForSlot() {
+  const slotId = document.getElementById('ctsSlot').value;
+  const productId = document.getElementById('ctsProduct').value;
+  const found = ctsFindSlot(slotId);
+  ctsPopulateStrategies(productId, found ? found.strategyId : null);
+}
 function ctsOnProductChange() {
   ctsPopulateSlots(document.getElementById('ctsProduct').value, null);
   ctsOnSlotChange();
 }
 function ctsOnSlotChange() {
   ctsUpdateSlotContext();
+  ctsSyncStrategyForSlot();
 }
 
 // opts: {} (fresh, from "+ Add title") | {slotId, strategyId} (from
@@ -5538,6 +5940,7 @@ function openCreateTitleFromSlotModal(opts) {
   ctsPopulateProducts(presetProductId);
   ctsPopulateSlots(presetProductId, presetSlotId);
   ctsUpdateSlotContext();
+  ctsSyncStrategyForSlot();
 
   document.getElementById('ctsGuidance').value = '';
   document.getElementById('ctsStatus').textContent = '';
@@ -5556,13 +5959,14 @@ async function submitCreateTitleFromSlot() {
   const status = document.getElementById('ctsStatus');
   const slotId = document.getElementById('ctsSlot').value || undefined;
   const productId = document.getElementById('ctsProduct').value || undefined;
+  const growthStrategyId = document.getElementById('ctsStrategy').value || undefined;
   const guidance = document.getElementById('ctsGuidance').value.trim();
   const btn = document.getElementById('ctsGoBtn');
   btn.disabled = true; btn.textContent = 'Generating…';
   status.style.color = '#888';
   status.textContent = 'Writing title and pillar content…';
   try {
-    const data = await w('generateTitleFromSlot', { slotId, productId, guidance: guidance || undefined, campaignId: CAMPAIGN_ID });
+    const data = await w('generateTitleFromSlot', { slotId, productId, growthStrategyId, guidance: guidance || undefined, campaignId: CAMPAIGN_ID });
     if (data.error) throw new Error(data.error);
     status.textContent = `✓ Created "${data.title}"`;
     status.style.color = '#68d391';

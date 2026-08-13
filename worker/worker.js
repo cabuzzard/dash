@@ -6483,16 +6483,23 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const sIds = [...new Set(titleList.map(t => t.strategyId).filter(x => x !== '__none__'))];
         const dashify = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const fetchName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?" }; } catch(e) { return { id, name: "?" }; } };
+        // Methods also carry a Template URL (the Canva design template used
+        // to produce this method's assets) — grabbed in the same page fetch
+        // as the name so the Edit Strategy modal can show a clickable link
+        // with no extra round-trip.
+        const fetchMethodInfo = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?", template: p.properties?.Template?.url || "" }; } catch(e) { return { id, name: "?", template: "" }; } };
         // Growth Strategy's title property is "Strategy Name", not "Name" —
         // needs its own fetch helper.
         const fetchStrategyName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "?" }; } catch(e) { return { id, name: "?" }; } };
-        const [prodPages, methPages, stratPages] = await Promise.all([Promise.all(pIds.map(fetchName)), Promise.all(mIds.map(fetchName)), Promise.all(sIds.map(fetchStrategyName))]);
+        const [prodPages, methPages, stratPages] = await Promise.all([Promise.all(pIds.map(fetchName)), Promise.all(mIds.map(fetchMethodInfo)), Promise.all(sIds.map(fetchStrategyName))]);
         const pNames = Object.fromEntries(prodPages.map(p => [p.id, p.name]));
         const mNames = Object.fromEntries(methPages.map(p => [p.id, p.name]));
+        const mTemplates = Object.fromEntries(methPages.map(p => [p.id, p.template]));
         const sNames = Object.fromEntries(stratPages.map(p => [p.id, p.name]));
         titleList.forEach(t => {
           t.productName  = t.productId === '__none__' ? 'No Product' : (pNames[t.productId] || '?');
           t.methodName   = t.methodId  === '__none__' ? 'No Method'  : (mNames[t.methodId]  || '?');
+          t.methodTemplateLink = t.methodId === '__none__' ? '' : (mTemplates[t.methodId] || '');
           t.strategyName = t.strategyId === '__none__' ? 'No Strategy' : (sNames[t.strategyId] || '?');
           const parts = (t._rawGrouping || '').split(' > ');
           t.phase    = parts.length > 1 ? parts[0].trim() : '';
@@ -6533,6 +6540,13 @@ Return ONLY a JSON array — no other text, no markdown fences:
                 gradeStatus: p["Status"]?.select?.name || "",
                 gradeNotes: p["Grade Notes"]?.rich_text?.map(x => x.plain_text).join("") || "",
                 body: p["Body"]?.rich_text?.map(x => x.plain_text).join("") || "",
+                // Publish-ready copy fields — the Publish modal's four
+                // fields (renderAssetRow's 📋 Publish button), prefetched
+                // here alongside everything else so opening that modal
+                // needs no extra round-trip.
+                hashtags: p["Hashtags"]?.rich_text?.map(x => x.plain_text).join("") || "",
+                postCaption: p["Post Caption"]?.rich_text?.map(x => x.plain_text).join("") || "",
+                linkOrCta: p["Link or CTA"]?.url || "",
               };
             } catch(e) { return null; }
           }))).filter(Boolean);
@@ -11294,7 +11308,82 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         return json({ success: true });
       }
 
-      // â"€â"€ MICROSITE: getCampaignLogins â"€â"€
+      // ── getPillarContent ──
+      // Returns a title's current Pillar Content section as plain text —
+      // backs the Edit Strategy modal's textarea prefill (openEditStrategyModal
+      // in the microsite template).
+      if (body.action === "getPillarContent") {
+        const { titleId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const text = await extractPillarContent(hdr, dash(titleId)).catch(() => "");
+        return json({ text });
+      }
+
+      // ── regeneratePillarContent ──
+      // The Edit Strategy modal's "Regenerate" action: optionally renames
+      // the title, then re-runs writePillarContent with the operator's
+      // hand-edited text as guidance — an AI rewrite pass grounded in the
+      // same Research/Product/Strategy context pillar creation always uses,
+      // but steered heavily by what the operator just wrote.
+      // writePillarContent's own clearExistingPillarSection call replaces
+      // the existing Pillar Content section rather than appending a second
+      // one, so this is a true in-place regenerate, not an append.
+      if (body.action === "regeneratePillarContent") {
+        const { titleId, titleText, campaignId, productId, methodId, guidance } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        if (titleText) {
+          const renameResp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+            method: "PATCH",
+            headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { Title: { title: [{ text: { content: titleText } }] } } }),
+          });
+          if (!renameResp.ok) { const err = await renameResp.json().catch(() => ({})); return json({ error: err.message || "Title rename failed" }, renameResp.status); }
+        }
+        let result;
+        try {
+          result = await writePillarContent(hdr, env, {
+            titleId,
+            titleText: titleText || undefined,
+            campaignId: campaignId && campaignId !== '__none__' ? campaignId : undefined,
+            productId: productId && productId !== '__none__' ? productId : undefined,
+            methodId: methodId && methodId !== '__none__' ? methodId : undefined,
+            guidance,
+          });
+        } catch (e) { return json({ error: e.message || "Regeneration failed" }, 500); }
+        if (result?.skipped) return json({ success: true, skipped: true, reason: result.reason });
+        return json({ success: true, wordCount: result?.wordCount });
+      }
+
+      // ── updatePublishFields ──
+      // Saves edits made in the Publish modal (design link, hashtags,
+      // platform link/CTA, caption) straight back onto the Asset record —
+      // the fields an operator actually copies out when publishing,
+      // editable and saveable in one place instead of hunting through Notion.
+      if (body.action === "updatePublishFields") {
+        const { assetId, designLink, hashtags, linkOrCta, postCaption } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
+        const props = {};
+        if (designLink !== undefined) props["Design Link"] = { url: designLink || null };
+        if (linkOrCta !== undefined) props["Link or CTA"] = { url: linkOrCta || null };
+        if (hashtags !== undefined) props["Hashtags"] = { rich_text: hashtags ? chunkRT(hashtags) : [] };
+        if (postCaption !== undefined) props["Post Caption"] = { rich_text: postCaption ? chunkRT(postCaption) : [] };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: props }),
+        });
+        const result2 = await resp.json();
+        if (!resp.ok) return json({ error: result2.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── MICROSITE: getCampaignLogins ──
       if (body.action === "getCampaignLogins") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);

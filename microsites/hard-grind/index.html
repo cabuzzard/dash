@@ -475,6 +475,31 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- EDIT STRATEGY MODAL (✏️ on a title row) — edit title + strategy content
+     (Pillar Content), then regenerate. Design template link is read-only,
+     resolved from the title's Method. -->
+<div class="modal-overlay" id="editStrategyModal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div class="modal-title">Edit Strategy</div>
+      <button class="modal-close" onclick="closeEditStrategyModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label" for="esTitleInput">Title</label>
+      <input class="modal-ta" id="esTitleInput" type="text" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" />
+      <label class="lm-label" for="esTemplateLink" style="margin-top:10px;">Design Template</label>
+      <div style="margin-top:4px;"><a id="esTemplateLink" href="#" target="_blank" rel="noopener" style="font-size:12px;color:#68d391;">—</a></div>
+      <label class="lm-label" for="esPillarInput" style="margin-top:10px;">Strategy Content <span style="font-weight:400;color:#666;text-transform:none;letter-spacing:0;">(the title's Pillar Content — rewrite or edit it, then Regenerate feeds your edit back into the strategy engine as guidance for a fresh AI pass)</span></label>
+      <textarea class="modal-ta" id="esPillarInput" rows="14" style="resize:vertical;min-height:220px!important;margin-top:4px;line-height:1.5;"></textarea>
+      <div class="modal-status" id="esStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeEditStrategyModal()">Cancel</button>
+      <button class="modal-btn save" id="esRegenBtn" onclick="regenerateStrategyFromModal()">🔄 Regenerate</button>
+    </div>
+  </div>
+</div>
+
 <!-- LOGIN ADD MODAL -->
 <div class="modal-overlay" id="loginModal">
   <div class="modal">
@@ -900,6 +925,46 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-btn cancel" id="abCopyBtn" onclick="copyAssetScript(ASSET_BODY_MODAL_ID, this)">📋 Copy</button>
       <a id="abNotionLink" href="#" target="_blank" rel="noopener" class="modal-btn cancel" style="text-decoration:none;">↗ Notion</a>
       <button class="modal-btn cancel" onclick="closeAssetBodyModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- PUBLISH ASSETS MODAL (the 📋 Publish button on an asset row) — every
+     publish-ready copy field (design link, hashtags, platform link/CTA,
+     caption) in one place, each editable with its own copy-to-clipboard
+     button, saved together. -->
+<div class="modal-overlay" id="publishAssetModal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div class="modal-title" id="pubAssetTitle">Publish</div>
+      <button class="modal-close" onclick="closePublishAssetModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <label class="lm-label" for="pubDesignLink">Design Link</label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <input class="modal-ta" id="pubDesignLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…" />
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubDesignLink', this)">📋</button>
+      </div>
+      <label class="lm-label" for="pubPlatformLink" style="margin-top:10px;">Platform Link / CTA</label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <input class="modal-ta" id="pubPlatformLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…" />
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubPlatformLink', this)">📋</button>
+      </div>
+      <label class="lm-label" for="pubHashtags" style="margin-top:10px;">Hashtags</label>
+      <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
+        <textarea class="modal-ta" id="pubHashtags" rows="2" style="resize:vertical;min-height:44px!important;flex:1;line-height:1.5;" placeholder="#…"></textarea>
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubHashtags', this)">📋</button>
+      </div>
+      <label class="lm-label" for="pubCaption" style="margin-top:10px;">Caption</label>
+      <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
+        <textarea class="modal-ta" id="pubCaption" rows="6" style="resize:vertical;min-height:120px!important;flex:1;line-height:1.5;"></textarea>
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubCaption', this)">📋</button>
+      </div>
+      <div class="modal-status" id="pubAssetStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closePublishAssetModal()">Cancel</button>
+      <button class="modal-btn save" id="pubAssetSaveBtn" onclick="savePublishAssetFields()">Save</button>
     </div>
   </div>
 </div>
@@ -1631,6 +1696,8 @@ async function loadTitles() {
     // title rows) can render the exact same asset row, not a duplicate.
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
+      // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
+      PUB_ASSET_CACHE[a.id] = { designLink: a.designLink || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', linkOrCta: a.linkOrCta || '' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -1648,6 +1715,7 @@ async function loadTitles() {
         + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
         + (a.canvaLink ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyCanvaPortPrompt(this)" title="Copy a ready-to-paste prompt for porting this asset's table content into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the table." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
         + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" rel="noopener" title="Open this asset's Notion page" style="flex-shrink:0;">↗</a>`
+        + `<button class="td-publish-fields" data-assetid="${a.id}" data-title="${esc(a.title)}" onclick="openPublishAssetModal(this)" title="Open every publish-ready field for this asset — design link, hashtags, platform link, caption — in one place: edit and copy each to your clipboard." style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Publish</button>`
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" data-productid="${productId || ''}" onclick="openVisualBriefModal(this)" title="Set up and assemble the Visual Production Source Document (Editing Authority tiers/Asset Metadata/Production Method/Audience/Research/Content Foundation/Growth Strategy Context/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Opens a setup modal first: pick a Growth Strategy for context, lock specific normally-MUTABLE design fields to IMMUTABLE for this asset, and write operator guidelines. Text Video assets are told to declare Simple vs. Custom Remotion Build (custom builds get a mandatory voice-first render sequence) and to keep the Asset ID attached through every revision. Also drafts every field of the structured Design Specification via Claude, tagged Immutable/Constrained/Mutable/Derived-at-production so ChatGPT knows exactly what it can and can't change — Text Video into 🎬 Text Video Specs / 🎞️ Text Video Scenes, Carousel into 🎠 Carousel Specifications / 🃏 Slide Specifications (plus the shared Color Palette/Typography/Visual Style/Grid/Layout/Diagram/Platform Preset databases, reused across the whole campaign)." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'renderPackage')" title="Upload RENDER_PACKAGE.yaml — the single file ChatGPT now returns (visualBrief + assemblyInstructions + assemblyManifest sections) — split automatically and saved to this asset's Visual Production Brief / Production Assembly Package / Assembly Manifest properties, no modal needed." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">📦 Render Package</button>` : '')
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for any asset type with a registered renderer (carousel today), RE-RENDERS from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
@@ -1691,7 +1759,7 @@ async function loadTitles() {
       GA_TITLE_ASSETS_CACHE[t.id] = t.assets || [];
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><button class="title-status-btn" onclick="openEditStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.methodId||''}','${t.productId||''}','${(t.methodTemplateLink||'').replace(/'/g,"\\'")}')" title="Edit the title and its strategy content (Pillar Content), then regenerate">✏️</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       // Publish/Published assets never show here — they belong exclusively
       // to the Publish Assets section (renderPublishedAssets above). Only
       // still-drafting assets render under a Development title row.
@@ -3859,6 +3927,74 @@ async function applyTitleStrategyChange() {
   }
 }
 
+// ── Edit Strategy modal (✏️ on a title row) ─────────────────────────────
+// Title + Design Template (read-only, from the title's Method) + the
+// title's Pillar Content — editable and regenerable. "Regenerate" sends the
+// operator's edited text back into writePillarContent as guidance (a real
+// AI rewrite pass grounded in the same Research/Product/Strategy context
+// pillar creation always uses), not a verbatim save.
+let esModalTitleId = null, esModalMethodId = '__none__', esModalProductId = '__none__';
+async function openEditStrategyModal(id, title, methodId, productId, templateLink) {
+  esModalTitleId = id;
+  esModalMethodId = methodId || '__none__';
+  esModalProductId = productId || '__none__';
+  document.getElementById('esTitleInput').value = title;
+  const linkEl = document.getElementById('esTemplateLink');
+  if (templateLink) { linkEl.textContent = 'Open in Canva ↗'; linkEl.href = templateLink; }
+  else { linkEl.textContent = 'No template set on this method'; linkEl.removeAttribute('href'); }
+  const pillarEl = document.getElementById('esPillarInput');
+  pillarEl.value = 'Loading…';
+  pillarEl.disabled = true;
+  const status = document.getElementById('esStatus');
+  status.textContent = '';
+  status.className = 'modal-status';
+  document.getElementById('editStrategyModal').classList.add('open');
+  try {
+    const r = await w('getPillarContent', { titleId: id });
+    pillarEl.value = r.text || '';
+  } catch(e) {
+    pillarEl.value = '';
+    status.textContent = 'Could not load current strategy content — you can still write fresh guidance below.';
+    status.className = 'modal-status err';
+  } finally {
+    pillarEl.disabled = false;
+  }
+}
+function closeEditStrategyModal() {
+  document.getElementById('editStrategyModal').classList.remove('open');
+  esModalTitleId = null;
+}
+document.getElementById('editStrategyModal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditStrategyModal();
+});
+async function regenerateStrategyFromModal() {
+  const btn = document.getElementById('esRegenBtn');
+  const status = document.getElementById('esStatus');
+  const newTitle = document.getElementById('esTitleInput').value.trim();
+  const guidance = document.getElementById('esPillarInput').value.trim();
+  if (!newTitle) { status.textContent = 'Title cannot be empty'; status.className = 'modal-status err'; return; }
+  btn.disabled = true;
+  status.textContent = 'Regenerating… this calls Claude and can take a moment.';
+  status.className = 'modal-status';
+  try {
+    await w('regeneratePillarContent', {
+      titleId: esModalTitleId,
+      titleText: newTitle,
+      campaignId: CAMPAIGN_ID,
+      productId: esModalProductId,
+      methodId: esModalMethodId,
+      guidance,
+    });
+    status.textContent = 'Regenerated ✓';
+    status.className = 'modal-status ok';
+    setTimeout(async () => { closeEditStrategyModal(); await loadTitles(); }, 800);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+  }
+}
+
 async function applyStatusChange(titleId, newStage) {
   const status = document.getElementById('statusModalStatus');
   document.querySelectorAll('.status-opt-btn').forEach(b => b.disabled = true);
@@ -4688,6 +4824,9 @@ let GA_TITLE_ASSETS_CACHE = {};
 // asset.id -> its Body property (the plain voiceover script text), populated
 // the same way — lets the 📋 Copy Script button copy instantly, no round-trip.
 let ASSET_SCRIPT_CACHE = {};
+// asset.id -> { designLink, hashtags, postCaption, linkOrCta }, populated the
+// same way — lets the 📋 Publish modal open instantly, no round-trip.
+let PUB_ASSET_CACHE = {};
 const GA_CAROUSEL_METHOD_RE = /carousel/i;
 const GA_CAROUSEL_ASSET_TYPE_RE = /drawing post/i;
 
@@ -5173,6 +5312,68 @@ async function copyAssetScript(assetId, btn) {
     setTimeout(() => { btn.textContent = orig; }, 1400);
   } catch(e) {
     alert(text);
+  }
+}
+
+// ── Publish Assets modal (📋 Publish on an asset row) ────────────────────
+// Every publish-ready copy field for one asset — design link, hashtags,
+// platform link/CTA, caption — in one place: prefilled from PUB_ASSET_CACHE
+// (populated by renderAssetRow, no round-trip needed to open), each
+// editable with its own copy-to-clipboard button, saved together.
+let pubAssetId = null;
+function openPublishAssetModal(btn) {
+  const assetId = btn.dataset.assetid;
+  pubAssetId = assetId;
+  const data = PUB_ASSET_CACHE[assetId] || {};
+  document.getElementById('pubAssetTitle').textContent = btn.dataset.title || 'Publish';
+  document.getElementById('pubDesignLink').value = data.designLink || '';
+  document.getElementById('pubPlatformLink').value = data.linkOrCta || '';
+  document.getElementById('pubHashtags').value = data.hashtags || '';
+  document.getElementById('pubCaption').value = data.postCaption || '';
+  const status = document.getElementById('pubAssetStatus');
+  status.textContent = '';
+  status.className = 'modal-status';
+  document.getElementById('publishAssetModal').classList.add('open');
+}
+function closePublishAssetModal() {
+  document.getElementById('publishAssetModal').classList.remove('open');
+  pubAssetId = null;
+}
+document.getElementById('publishAssetModal').addEventListener('click', function(e) {
+  if (e.target === this) closePublishAssetModal();
+});
+async function copyPublishField(fieldId, btn) {
+  const text = document.getElementById(fieldId).value;
+  if (!text) { alert('Nothing to copy — this field is empty.'); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    const orig = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(() => { btn.textContent = orig; }, 1400);
+  } catch(e) { alert(text); }
+}
+async function savePublishAssetFields() {
+  const btn = document.getElementById('pubAssetSaveBtn');
+  const status = document.getElementById('pubAssetStatus');
+  const fields = {
+    designLink: document.getElementById('pubDesignLink').value.trim(),
+    linkOrCta: document.getElementById('pubPlatformLink').value.trim(),
+    hashtags: document.getElementById('pubHashtags').value.trim(),
+    postCaption: document.getElementById('pubCaption').value.trim(),
+  };
+  btn.disabled = true;
+  status.textContent = 'Saving…';
+  status.className = 'modal-status';
+  try {
+    await w('updatePublishFields', { assetId: pubAssetId, ...fields });
+    PUB_ASSET_CACHE[pubAssetId] = fields; // keep in sync so reopening without a reload shows the saved values
+    status.textContent = 'Saved ✓';
+    status.className = 'modal-status ok';
+    setTimeout(() => { status.textContent = ''; status.className = 'modal-status'; btn.disabled = false; }, 1200);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
   }
 }
 
