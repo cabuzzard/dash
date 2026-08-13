@@ -929,10 +929,10 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- PUBLISH ASSETS MODAL (the 📋 Publish button on an asset row) — every
-     publish-ready copy field (design link, hashtags, platform link/CTA,
-     caption) in one place, each editable with its own copy-to-clipboard
-     button, saved together. -->
+<!-- PUBLISH ASSETS MODAL (the 📋 Publish button on an asset row) — the
+     fields an operator actually needs when publishing one specific asset
+     (title, Canva link, hashtags, caption), each editable with its own
+     copy-to-clipboard button, saved together back onto the Asset record. -->
 <div class="modal-overlay" id="publishAssetModal">
   <div class="modal" style="max-width:640px;">
     <div class="modal-head">
@@ -940,15 +940,15 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closePublishAssetModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
-      <label class="lm-label" for="pubDesignLink">Design Link</label>
+      <label class="lm-label" for="pubTitle">Title</label>
       <div style="display:flex;gap:6px;margin-top:4px;">
-        <input class="modal-ta" id="pubDesignLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…" />
-        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubDesignLink', this)">📋</button>
+        <input class="modal-ta" id="pubTitle" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" />
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubTitle', this)">📋</button>
       </div>
-      <label class="lm-label" for="pubPlatformLink" style="margin-top:10px;">Platform Link / CTA</label>
+      <label class="lm-label" for="pubCanvaLink" style="margin-top:10px;">Canva Link</label>
       <div style="display:flex;gap:6px;margin-top:4px;">
-        <input class="modal-ta" id="pubPlatformLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…" />
-        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubPlatformLink', this)">📋</button>
+        <input class="modal-ta" id="pubCanvaLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…" />
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubCanvaLink', this)">📋</button>
       </div>
       <label class="lm-label" for="pubHashtags" style="margin-top:10px;">Hashtags</label>
       <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
@@ -1694,10 +1694,10 @@ async function loadTitles() {
     // Hoisted out of makeTitleRow so the restructured Publish/Assets section
     // (renderPublishedAssets below — assets grouped by source title, not
     // title rows) can render the exact same asset row, not a duplicate.
-    function renderAssetRow(a, titleId, productId) {
+    function renderAssetRow(a, titleId, productId, methodId, methodTemplateLink, titleName) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
-      PUB_ASSET_CACHE[a.id] = { designLink: a.designLink || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', linkOrCta: a.linkOrCta || '' };
+      PUB_ASSET_CACHE[a.id] = { title: a.title || '', canvaLink: a.canvaLink || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -1714,6 +1714,7 @@ async function loadTitles() {
         + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;">${esc(a.type || a.title)}</span>`
         + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
         + (a.canvaLink ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyCanvaPortPrompt(this)" title="Copy a ready-to-paste prompt for porting this asset's table content into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the table." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
+        + `<button class="title-status-btn" onclick="openEditStrategyModal('${titleId}','${(titleName||a.title||'').replace(/'/g,"\\'")}','${methodId||''}','${productId||''}','${(methodTemplateLink||'').replace(/'/g,"\\'")}')" title="Edit this asset's source title and strategy content (Pillar Content), then regenerate">✏️</button>`
         + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" rel="noopener" title="Open this asset's Notion page" style="flex-shrink:0;">↗</a>`
         + `<button class="td-publish-fields" data-assetid="${a.id}" data-title="${esc(a.title)}" onclick="openPublishAssetModal(this)" title="Open every publish-ready field for this asset — design link, hashtags, platform link, caption — in one place: edit and copy each to your clipboard." style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Publish</button>`
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" data-productid="${productId || ''}" onclick="openVisualBriefModal(this)" title="Set up and assemble the Visual Production Source Document (Editing Authority tiers/Asset Metadata/Production Method/Audience/Research/Content Foundation/Growth Strategy Context/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Opens a setup modal first: pick a Growth Strategy for context, lock specific normally-MUTABLE design fields to IMMUTABLE for this asset, and write operator guidelines. Text Video assets are told to declare Simple vs. Custom Remotion Build (custom builds get a mandatory voice-first render sequence) and to keep the Asset ID attached through every revision. Also drafts every field of the structured Design Specification via Claude, tagged Immutable/Constrained/Mutable/Derived-at-production so ChatGPT knows exactly what it can and can't change — Text Video into 🎬 Text Video Specs / 🎞️ Text Video Scenes, Carousel into 🎠 Carousel Specifications / 🃏 Slide Specifications (plus the shared Color Palette/Typography/Visual Style/Grid/Layout/Diagram/Platform Preset databases, reused across the whole campaign)." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
@@ -1747,13 +1748,13 @@ async function loadTitles() {
         // Same 🧩 Generate Assets entry point as a Development title row —
         // an operator finding a title here (already publishing) still
         // needs to spin up more assets from it: a different method, or
-        // another pass at the same method. ✏️ Edit Strategy lives here too
-        // (not just on the Development title row) since this is where an
-        // operator actually works with published assets.
-        const nameEsc = esc(group.name).replace(/'/g, "\\'");
-        hdr.innerHTML = `<span style="flex:1;font-size:12px;color:#fff;font-weight:600;">${esc(group.name)}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${titleId}')" title="Generate more assets from this title — a different method, or another pass at the same one">🧩</button><button class="title-status-btn" onclick="openEditStrategyModal('${titleId}','${nameEsc}','${group.methodId||''}','${group.productId||''}','${(group.methodTemplateLink||'').replace(/'/g,"\\'")}')" title="Edit the title and its strategy content (Pillar Content), then regenerate">✏️</button><a class="title-link" href="https://www.notion.so/${titleId}" target="_blank">↗</a><span style="font-size:10px;color:#fff;">${group.items.length}</span>`;
+        // another pass at the same method. ✏️ Edit Strategy lives on each
+        // individual asset row below (renderAssetRow), not here — per
+        // operator instruction this is about the generated assets, not the
+        // title grouping header.
+        hdr.innerHTML = `<span style="flex:1;font-size:12px;color:#fff;font-weight:600;">${esc(group.name)}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${titleId}')" title="Generate more assets from this title — a different method, or another pass at the same one">🧩</button><a class="title-link" href="https://www.notion.so/${titleId}" target="_blank">↗</a><span style="font-size:10px;color:#fff;">${group.items.length}</span>`;
         container.appendChild(hdr);
-        group.items.forEach(a => container.appendChild(renderAssetRow(a, titleId, group.productId)));
+        group.items.forEach(a => container.appendChild(renderAssetRow(a, titleId, group.productId, group.methodId, group.methodTemplateLink, group.name)));
       });
     }
     function makeTitleRow(t, section) {
@@ -1773,7 +1774,7 @@ async function loadTitles() {
       // section now; the Publish section is renderPublishedAssets above).
       const wrap = document.createElement('div');
       wrap.appendChild(div);
-      draftAssets.forEach(a => wrap.appendChild(renderAssetRow(a, t.id, t.productId)));
+      draftAssets.forEach(a => wrap.appendChild(renderAssetRow(a, t.id, t.productId, t.methodId, t.methodTemplateLink, t.title)));
       // assets still carrying the placeholder Canva search link → offer the
       // Claude handoff that generates the real designs and saves links back
       const pendingDesigns = draftAssets.filter(a => /canva\.com\/templates\/\?query/i.test(a.designLink || ''));
@@ -5329,8 +5330,8 @@ function openPublishAssetModal(btn) {
   pubAssetId = assetId;
   const data = PUB_ASSET_CACHE[assetId] || {};
   document.getElementById('pubAssetTitle').textContent = btn.dataset.title || 'Publish';
-  document.getElementById('pubDesignLink').value = data.designLink || '';
-  document.getElementById('pubPlatformLink').value = data.linkOrCta || '';
+  document.getElementById('pubTitle').value = data.title || '';
+  document.getElementById('pubCanvaLink').value = data.canvaLink || '';
   document.getElementById('pubHashtags').value = data.hashtags || '';
   document.getElementById('pubCaption').value = data.postCaption || '';
   const status = document.getElementById('pubAssetStatus');
@@ -5359,8 +5360,8 @@ async function savePublishAssetFields() {
   const btn = document.getElementById('pubAssetSaveBtn');
   const status = document.getElementById('pubAssetStatus');
   const fields = {
-    designLink: document.getElementById('pubDesignLink').value.trim(),
-    linkOrCta: document.getElementById('pubPlatformLink').value.trim(),
+    title: document.getElementById('pubTitle').value.trim(),
+    canvaLink: document.getElementById('pubCanvaLink').value.trim(),
     hashtags: document.getElementById('pubHashtags').value.trim(),
     postCaption: document.getElementById('pubCaption').value.trim(),
   };
