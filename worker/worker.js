@@ -11351,18 +11351,21 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       }
 
       // ── updatePublishFields ──
-      // Saves edits made in the Publish modal (title, Canva link, hashtags,
+      // Saves edits made in the Publish modal (title, design link, hashtags,
       // caption) straight back onto the Asset record — the fields an
       // operator actually copies out when publishing, editable and
-      // saveable in one place instead of hunting through Notion.
+      // saveable in one place instead of hunting through Notion. Design
+      // Link (not Canva Link) deliberately — Design Link is the actual
+      // populated/finished copy an operator publishes; Canva Link is the
+      // source template, not something you'd hand someone to publish.
       if (body.action === "updatePublishFields") {
-        const { assetId, title, canvaLink, hashtags, postCaption } = body;
+        const { assetId, title, designLink, hashtags, postCaption } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
         const props = {};
         if (title !== undefined && title !== "") props["Asset Title"] = { title: [{ text: { content: title } }] };
-        if (canvaLink !== undefined) props["Canva Link"] = { url: canvaLink || null };
+        if (designLink !== undefined) props["Design Link"] = { url: designLink || null };
         if (hashtags !== undefined) props["Hashtags"] = { rich_text: hashtags ? chunkRT(hashtags) : [] };
         if (postCaption !== undefined) props["Post Caption"] = { rich_text: postCaption ? chunkRT(postCaption) : [] };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {

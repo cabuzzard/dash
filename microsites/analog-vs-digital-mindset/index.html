@@ -935,10 +935,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <input class="modal-ta" id="pubTitle" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" />
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubTitle', this)">📋</button>
       </div>
-      <label class="lm-label" for="pubCanvaLink" style="margin-top:10px;">Canva Link</label>
+      <label class="lm-label" for="pubDesignLink" style="margin-top:10px;">Design Link <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(the finished, populated design — not the source Canva template)</span></label>
       <div style="display:flex;gap:6px;margin-top:4px;">
-        <input class="modal-ta" id="pubCanvaLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…" />
-        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubCanvaLink', this)">📋</button>
+        <input class="modal-ta" id="pubDesignLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…" />
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="openPublishFieldLink('pubDesignLink')" title="Open in a new tab">↗</button>
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubDesignLink', this)">📋</button>
       </div>
       <label class="lm-label" for="pubHashtags" style="margin-top:10px;">Hashtags</label>
       <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
@@ -1687,7 +1688,7 @@ async function loadTitles() {
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
-      PUB_ASSET_CACHE[a.id] = { title: a.title || '', canvaLink: a.canvaLink || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '' };
+      PUB_ASSET_CACHE[a.id] = { title: a.title || '', designLink: a.designLink || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -5249,7 +5250,7 @@ function openPublishAssetModal(btn) {
   const data = PUB_ASSET_CACHE[assetId] || {};
   document.getElementById('pubAssetTitle').textContent = btn.dataset.title || 'Publish';
   document.getElementById('pubTitle').value = data.title || '';
-  document.getElementById('pubCanvaLink').value = data.canvaLink || '';
+  document.getElementById('pubDesignLink').value = data.designLink || '';
   document.getElementById('pubHashtags').value = data.hashtags || '';
   document.getElementById('pubCaption').value = data.postCaption || '';
   const status = document.getElementById('pubAssetStatus');
@@ -5274,12 +5275,17 @@ async function copyPublishField(fieldId, btn) {
     setTimeout(() => { btn.textContent = orig; }, 1400);
   } catch(e) { alert(text); }
 }
+function openPublishFieldLink(fieldId) {
+  const url = document.getElementById(fieldId).value.trim();
+  if (!url) { alert('Nothing to open — this field is empty.'); return; }
+  window.open(url, '_blank', 'noopener');
+}
 async function savePublishAssetFields() {
   const btn = document.getElementById('pubAssetSaveBtn');
   const status = document.getElementById('pubAssetStatus');
   const fields = {
     title: document.getElementById('pubTitle').value.trim(),
-    canvaLink: document.getElementById('pubCanvaLink').value.trim(),
+    designLink: document.getElementById('pubDesignLink').value.trim(),
     hashtags: document.getElementById('pubHashtags').value.trim(),
     postCaption: document.getElementById('pubCaption').value.trim(),
   };
