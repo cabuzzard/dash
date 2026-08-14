@@ -4968,6 +4968,26 @@ function gaSetSel(kind, id, name) {
   if (kind === 'method') { GA_METHOD_ID = id;  GA_METHOD_NAME = name; }
   else                   { GA_PRODUCT_ID = id; GA_PRODUCT_NAME = name; }
 }
+// Resolves whatever's currently in the method field to a real method id
+// without creating anything — used only to fire the auto-attach below, so a
+// miss (typo, or a name gaMatchSkill matched loosely) just silently skips
+// attaching rather than ever blocking the asset generation it rides along
+// with.
+function gaResolveMethodIdForAttach(typedName) {
+  const val = (typedName || '').trim();
+  if (!val) return null;
+  if (GA_METHOD_ID && GA_METHOD_NAME && GA_METHOD_NAME.toLowerCase() === val.toLowerCase()) return GA_METHOD_ID;
+  const match = (AT_METHODS || []).find(m => m.name.toLowerCase() === val.toLowerCase());
+  return match ? match.id : null;
+}
+// "Pulled to the campaign through asset creation" — per operator direction,
+// there's no separate manual add-method step anymore; using a method here
+// IS what attaches it. Fire-and-forget: never blocks or fails the asset
+// generation this rides along with.
+function gaAutoAttachMethod(methodId) {
+  if (!methodId) return;
+  w('attachMethodToCampaign', { campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, methodId }).catch(() => {});
+}
 // Fetches the product's Strategy doc (if any) and shows a link to it, purely
 // for the operator to reference — never merged into asset generation, per
 // the earlier explicit "don't blend product strategy into assets" call.
@@ -5632,7 +5652,12 @@ async function submitGrowthStrategy() {
       strategyTitle: strategyTitle || undefined,
       researchGuidelines: guidance || undefined,
     });
-    statusEl.textContent = `Created — ${r.groupingCount} grouping${r.groupingCount === 1 ? '' : 's'} ✓`;
+    const am = r.attachedMethods || [];
+    const newCount = am.filter(m => m.isNew).length;
+    const methodsNote = am.length
+      ? ` — ${am.length} method${am.length === 1 ? '' : 's'} attached${newCount ? ` (${newCount} newly created)` : ''}`
+      : '';
+    statusEl.textContent = `Created — ${r.groupingCount} grouping${r.groupingCount === 1 ? '' : 's'}${methodsNote} ✓`;
     delete GS_STRATEGY_CACHE[productId]; // force the dropdown to refetch next open
     loadCampaignStrategies();
     setTimeout(closeGrowthStrategyModal, 1000);
@@ -6325,6 +6350,7 @@ async function submitGenAssets() {
         avatarId: isJobAsset ? (document.getElementById('gaAvatarInput')?.value || undefined) : undefined,
       });
       if (r.error) throw new Error(r.error);
+      gaAutoAttachMethod(gaResolveMethodIdForAttach(document.getElementById('gaMethodInput').value));
       if (isAvatarScript) {
         // Surface whichever presenter actually got used — if it was
         // Claude's own research-grounded proposal (not something typed
@@ -6415,6 +6441,7 @@ async function submitGenAssets() {
       platformId: document.getElementById('gaPlatformInput')?.value || undefined,
       platformName: document.getElementById('gaPlatformInput')?.value ? document.getElementById('gaPlatformInput').selectedOptions[0].textContent : undefined,
     });
+    gaAutoAttachMethod(method.id);
     if (r.sectionCount != null) {
       status.textContent = `✓ Wrote the full post (${r.sectionCount} sections${r.contextMode === 'blend' ? ', blended with campaign + product context' : ''}) and published it.`;
       status.style.color = '#68d391';

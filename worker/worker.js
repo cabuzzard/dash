@@ -3362,14 +3362,15 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
 
       if (body.action === "searchMethods") {
         const { query } = body;
-        // Only Status = "Live" methods are offered for picking/attaching —
-        // this is THE single search action behind the Add Methods modal AND
-        // the Generate Assets modal's method field, so filtering here hides
-        // Development methods from every picker across every microsite and
-        // productsite in one place. Methods already attached to a product/
-        // campaign are untouched — this only narrows what's offered as NEW.
+        // The full catalog, every status — this is THE single search action
+        // behind the Add Methods modal AND the Generate Titles/Generate
+        // Assets method fields, so every method is available to pick at the
+        // point of use everywhere in one place. Previously filtered to
+        // Status = "Live" only; per operator direction, methods shouldn't
+        // need a separate manual "promote to Live" step before they're
+        // usable — using one IS how it gets attached (see addProductMethod/
+        // attachMethodToCampaign call sites).
         const rows = await notionQuery(METHODS_DB, {
-          filter: { property: "Status", select: { equals: "Live" } },
           sorts: [{ property: "Name", direction: "ascending" }],
         });
         const methods = rows.map(m => ({
@@ -6124,6 +6125,41 @@ Return ONLY a JSON array — no other text, no markdown fences:
         return json({ success: true });
       }
 
+      // ── attachMethodToCampaign ──
+      // The "pulled to the campaign through asset creation" half of the
+      // simplified methods model (the other half is generateGrowthStrategy,
+      // below) — per operator direction, there's no separate manual "add
+      // this method" step anymore. Using a method to generate a title/asset
+      // (any method, any status — see searchMethods) is itself what attaches
+      // it, directly to the Campaign's own Methods relation. No Product is
+      // required or touched here: most Generate Assets paths have no
+      // resolved Product at all (see gaResolve's product-field removal
+      // notes client-side), and a method used straight from the picker
+      // should still count as "in use on this campaign" either way.
+      // Idempotent — a no-op if already attached. Best-effort by design:
+      // callers should never fail an asset generation over this.
+      if (body.action === "attachMethodToCampaign") {
+        const { campaignId, methodId } = body;
+        if (!campaignId || !methodId) return json({ error: "campaignId and methodId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, { headers: hdr });
+        const campPage = await campResp.json();
+        if (!campPage.properties) return json({ error: campPage.message || "Campaign not found" }, 404);
+        const existing = (campPage.properties?.["Methods"]?.relation || []).map(r => ({ id: r.id }));
+        const alreadyLinked = existing.some(r => r.id.replace(/-/g,"") === methodId.replace(/-/g,""));
+        if (!alreadyLinked) {
+          existing.push({ id: dashId(methodId) });
+          const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Methods": { relation: existing } } }),
+          });
+          const result = await patchResp.json();
+          if (!patchResp.ok) return json({ error: result.message || "Update failed" }, patchResp.status);
+        }
+        return json({ success: true, alreadyLinked });
+      }
+
       if (body.action === "updateProductStatus") {
         const { productId, status } = body;
         if (!productId || !status) return json({ error: "productId and status required" }, 400);
@@ -6895,14 +6931,22 @@ No other text. No markdown fences.`;
         const researchBlock = ['Keywords', 'Statement', 'Unique Opportunity', 'Key Message', 'Pain Points']
           .map(f => { const v = rt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
 
-        // Ground method recommendations in methods that actually exist for
-        // this product — otherwise the recommendation names a method the
-        // operator can't actually click "Generate Titles" on.
-        const methodIds = (pp.Methods?.relation || []).map(r => r.id);
-        const methodPages = methodIds.length
-          ? await Promise.all(methodIds.map(id => fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdr }).then(r => r.json()).catch(() => null)))
-          : [];
-        const methodNames = methodPages.filter(Boolean).map(m => (m.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean);
+        // Ground method recommendations in the FULL method catalog, not just
+        // this product's already-attached ones — per operator direction,
+        // methods are "pulled to the campaign" by strategy generation
+        // itself (attach existing / create new below), not by a prior
+        // manual add step, so the model needs to see everything that
+        // already exists to reuse it instead of proposing a duplicate.
+        const allMethodRows = await notionQuery(METHODS_DB, {});
+        const allMethods = allMethodRows.map(m => ({
+          id: m.id.replace(/-/g,""),
+          name: (m.properties?.Name?.title || []).map(t => t.plain_text).join(""),
+          platform: m.properties?.Platform?.select?.name || "",
+          category: (m.properties?.Category?.multi_select || []).map(c => c.name).join(", "),
+        })).filter(m => m.name);
+        const methodCatalogBlock = allMethods.length
+          ? allMethods.map(m => `- ${m.name}${m.platform ? ` (${m.platform})` : ''}${m.category ? ` [${m.category}]` : ''}`).join('\n')
+          : '(none exist yet — every recommendation will be a new method)';
 
         const platformInstruction = (platformOverride || '').trim()
           ? `PLATFORM FOCUS (required): every grouping must target "${platformOverride.trim()}" specifically — do not recommend any other platform.`
@@ -6923,17 +6967,20 @@ CAMPAIGN: ${campaignName}
 CAMPAIGN RESEARCH:
 ${researchBlock || 'Not provided.'}
 
-AVAILABLE METHODS FOR THIS PRODUCT (recommend from this list by exact name — never invent a method name that isn't here):
-${methodNames.length ? methodNames.join(', ') : 'None configured for this product yet — name the method concept you\'d want built, the operator will need to create it first.'}
+EXISTING METHOD CATALOG (every method that exists anywhere in this system, any product — prefer recommending one of these BY EXACT NAME when it genuinely fits a grouping's platform and content type, even if it isn't attached to this product yet; attaching it is handled automatically):
+${methodCatalogBlock}
+
+If a grouping's platform genuinely has no suitable existing method above, you may propose a brand-new one instead — it will be created and attached automatically. Only do this when reusing an existing method would be a real mismatch (wrong platform/format), not because a new one is marginally more specific.
 
 Return ONLY this JSON object, no other text, no markdown fences:
 {
   "summary": "2-4 sentences: the overall growth angle and why it fits this positioning",
   "recommendedPlatforms": ["...", "..."],
   "groupings": [
-    { "name": "...", "rationale": "...", "titles": ["...", "...", "..."], "recommendedMethod": "...", "recommendedPlatform": "..." }
+    { "name": "...", "rationale": "...", "titles": ["...", "...", "..."], "recommendedMethod": "...", "recommendedPlatform": "...", "newMethod": false, "newMethodCategory": "Content|Outreach|Research|SEO|Ecommerce|Video" }
   ]
-}`;
+}
+"recommendedMethod" is either an exact name from the catalog above, or (only when "newMethod" is true) the name of the new method to create. "newMethodCategory" is only needed when "newMethod" is true.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -6953,6 +7000,55 @@ Return ONLY this JSON object, no other text, no markdown fences:
         }
         const groupings = Array.isArray(plan.groupings) ? plan.groupings : [];
         const recommendedPlatforms = Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : [];
+
+        // Resolve every grouping's recommended method against the full
+        // catalog fetched above, attach it to this Product (+ propagate to
+        // every Campaign the Product belongs to) if not already attached,
+        // or create it fresh when the model proposed a genuinely new one —
+        // "pulled to the campaign through strategy development," per
+        // operator direction: no separate manual attach step. Best-effort
+        // per grouping so one bad recommendation never fails the whole
+        // strategy, which has already been generated successfully above.
+        const catalogByName = new Map(allMethods.map(m => [m.name.toLowerCase(), m]));
+        const attachedProductMethodIds = new Set((pp.Methods?.relation || []).map(r => r.id.replace(/-/g,"")));
+        const attachedMethods = [];
+        for (const g of groupings) {
+          const wantName = String(g.recommendedMethod || '').trim();
+          if (!wantName) continue;
+          try {
+            let method = catalogByName.get(wantName.toLowerCase());
+            let isNew = false;
+            if (!method && g.newMethod) {
+              const createProps = { Name: { title: [{ type: "text", text: { content: wantName.slice(0, 200) } }] }, "Status": { select: { name: "Development" } } };
+              if (g.recommendedPlatform) createProps["Platform"] = { select: { name: String(g.recommendedPlatform).slice(0, 100) } };
+              if (g.newMethodCategory) createProps["Category"] = { multi_select: [{ name: String(g.newMethodCategory).slice(0, 100) }] };
+              createProps["Notes"] = { rich_text: [{ type: "text", text: { content: `Proposed by Growth Strategy generation for "${productName}" — ${String(g.rationale || '').slice(0, 1800)}` } }] };
+              const createResp = await fetch("https://api.notion.com/v1/pages", {
+                method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ parent: { database_id: METHODS_DB }, properties: createProps }),
+              });
+              const created = await createResp.json();
+              if (created.id) {
+                method = { id: created.id.replace(/-/g,""), name: wantName, platform: g.recommendedPlatform || "", category: g.newMethodCategory || "" };
+                catalogByName.set(wantName.toLowerCase(), method);
+                isNew = true;
+              }
+            }
+            if (!method) continue; // named something outside the catalog without flagging it as new — skip rather than guess
+            if (!attachedProductMethodIds.has(method.id)) {
+              attachedProductMethodIds.add(method.id);
+              const existingRel = (pp.Methods?.relation || []).map(r => ({ id: r.id }));
+              existingRel.push({ id: dash(method.id) });
+              pp.Methods = { relation: existingRel }; // keep the local copy in sync across loop iterations
+              await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { Methods: { relation: existingRel } } }),
+              });
+              await propagateMethodToCampaigns(productId, method.id);
+              attachedMethods.push({ id: method.id, name: method.name, isNew });
+            }
+          } catch (e) { /* best-effort — the strategy itself already succeeded */ }
+        }
 
         const dateLabel = new Date(campPage.last_edited_time || Date.now()).toISOString().slice(0, 10);
         const strategyName = ((strategyTitle || '').trim() || `${productName} Growth Strategy — ${dateLabel}`).slice(0, 200);
@@ -7029,7 +7125,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         }));
         const slotsCreated = slotResults.filter(r => r && r.id).length;
 
-        return json({ success: true, id: strategyId, url: createResp.url, groupingCount: groupings.length, slotsCreated });
+        return json({ success: true, id: strategyId, url: createResp.url, groupingCount: groupings.length, slotsCreated, attachedMethods });
       }
 
       // ── listGrowthStrategies ──
