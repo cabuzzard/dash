@@ -4629,6 +4629,40 @@ Return ONLY a JSON array — no other text, no markdown fences:
         return json({ success: true });
       }
 
+      // ── getAttachedProductMethods ──
+      // READ-ONLY, fast path for the Methods modal: just the product's own
+      // Name/Description and its currently-attached Methods, resolved to
+      // names — one page fetch + parallel relation resolves, no Methods DB
+      // scan and no Claude call. Split out of suggestProductMethod (which
+      // does both a full Methods DB query AND up to three sequential Claude
+      // calls — the main suggestion, an optional traffic-plan suggestion,
+      // and an optional web-search research escalation) so the modal can
+      // render the already-attached list immediately instead of blocking
+      // the whole thing behind however long the AI suggestion takes.
+      // suggestProductMethod still runs after, in the background, purely
+      // for the suggestion itself.
+      if (body.action === "getAttachedProductMethods") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+        if (productPage.object === "error" || !productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
+        const pp = productPage.properties || {};
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const productDescription = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+        const attachedIds = (pp.Methods?.relation || []).map(r => r.id.replace(/-/g,""));
+        const alreadyAttached = attachedIds.length
+          ? await Promise.all(attachedIds.map(async id => {
+              try {
+                const r = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json());
+                return { id, name: (r.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled" };
+              } catch(e) { return { id, name: "?" }; }
+            }))
+          : [];
+        return json({ productName, productDescription, alreadyAttached });
+      }
+
       // ── suggestProductMethod ──
       // READ-ONLY — no Notion writes. For one product, checks the FULL
       // existing Methods DB and asks Claude to pick the best fit; if nothing
@@ -19824,17 +19858,36 @@ Write a complete Upwork proposal as plain text: open by directly addressing what
           campaignId, productKeywords: titleName, productPositionText: titleName,
           researchInstructions,
         });
-        const searchTerms = jobSearchCtx.searchTerms;
+        // buildJobSearchContext joins each source's noise-stripped words back
+        // into ONE compound phrase (e.g. a title like "The Ultimate Carousel
+        // Content Guide" becomes the single query "ultimate carousel content
+        // guide"). Upwork's own search treats a multi-word query far more
+        // restrictively than a single strong keyword — confirmed by hand:
+        // searching "carousel" alone on upwork.com returns plenty of live
+        // listings, but the compound phrase this action used to send (and
+        // then require verbatim, as a substring, in the ranking filter below)
+        // returned none. So on top of those compound phrases, also search
+        // each individual significant word on its own.
+        const individualWords = Array.from(new Set(
+          stripJobSearchNoise(titleName)
+            .concat(stripJobSearchNoise(jobSearchCtx.campaignKeywords || ''))
+            .concat(stripJobSearchNoise(researchInstructions || ''))
+        ));
+        const searchTerms = Array.from(new Set([...jobSearchCtx.searchTerms, ...individualWords])).slice(0, 8);
         if (!searchTerms.length) return json({ error: "No campaign Keywords, title text, or override text to search with." }, 400);
 
         const rawPostings = await searchUpworkFor(env, searchTerms);
-        const lowerTerms = searchTerms.map(t => t.toLowerCase());
+        // Score by individual-word overlap, not by requiring a whole
+        // (possibly multi-word) search term to appear verbatim — the same
+        // strictness problem as the query itself, and just as likely to zero
+        // out real, relevant results returned by the broader query above.
+        const lowerWords = Array.from(new Set(searchTerms.flatMap(t => t.toLowerCase().split(/\s+/)).filter(w => w.length >= 2)));
         const seen = new Set();
         const ranked = rawPostings
           .filter(p => p.url && !seen.has(p.url) && (seen.add(p.url), true))
           .map(p => {
             const hay = `${p.title} ${p.tags || ''} ${p.description || ''}`.toLowerCase();
-            const score = lowerTerms.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
+            const score = lowerWords.reduce((n, w) => n + (hay.includes(w) ? 1 : 0), 0);
             return { ...p, score };
           })
           .filter(p => p.score > 0)
