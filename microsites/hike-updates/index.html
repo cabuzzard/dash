@@ -6890,24 +6890,53 @@ async function openProductMethodsModal(productId, productName) {
   document.getElementById('pmNewInput').value = '';
   document.getElementById('pmSearchDd').style.display = 'none';
   document.getElementById('pmStatus').textContent = '';
-  document.getElementById('pmCommitBtn').disabled = true;
+  document.getElementById('pmCommitBtn').disabled = false;
   document.getElementById('pmCommitBtn').textContent = 'Add Methods';
-  document.getElementById('pmList').innerHTML = '<div class="loading"><div class="spinner"></div>Suggesting…</div>';
+  document.getElementById('pmList').innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   document.getElementById('productMethodsModal').classList.add('open');
   setPmStagingLocked(true);
+
+  // Fast path first: just the product's title/description + currently-
+  // attached methods (one page fetch, no Methods DB scan, no Claude call) —
+  // renders and unlocks the modal right away. The AI suggestion (which can
+  // involve up to three sequential Claude calls, including a web-search
+  // research escalation) runs after, in the background, so it no longer
+  // blocks the whole modal from being usable.
   try {
-    const data = await w('suggestProductMethod', { productId });
-    if (myToken !== PM_OPEN_TOKEN) return; // superseded by a newer open/re-suggest — don't clobber its result
+    const data = await w('getAttachedProductMethods', { productId });
+    if (myToken !== PM_OPEN_TOKEN) return;
     if (data.error) throw new Error(data.error);
-    // Title/description come straight from Notion (via suggestProductMethod,
-    // which already fetches the product page) — pre-fill so they can be
-    // edited and re-suggested against without a separate round trip. For
-    // ecosystem/idea-derived products these already reflect the source idea.
     if (data.productName) { PM_PRODUCT_NAME = data.productName; document.getElementById('pmTitleInput').value = data.productName; document.getElementById('pmTitle').textContent = 'Methods — ' + data.productName; }
     document.getElementById('pmDescInput').value = data.productDescription || '';
     const already = data.alreadyAttached || [];
     PM_ORIGINAL_IDS = new Set(already.map(a => a.id));
     PM_STAGED = already.map(a => ({ kind: 'existing', id: a.id, name: a.name }));
+    renderPmList();
+  } catch(e) {
+    if (myToken !== PM_OPEN_TOKEN) return;
+    document.getElementById('pmList').innerHTML = `<div style="font-size:12px;color:#e05;">${e.message}</div>`;
+    setPmStagingLocked(false);
+    return;
+  }
+  setPmStagingLocked(false);
+  document.getElementById('pmStatus').textContent = 'Suggesting a method…';
+  document.getElementById('pmStatus').style.color = '';
+
+  try {
+    const data = await w('suggestProductMethod', { productId });
+    if (myToken !== PM_OPEN_TOKEN) return; // superseded by a newer open/re-suggest — don't clobber its result
+    if (data.error) throw new Error(data.error);
+    // Reconcile the attached list in case it changed since the fast fetch
+    // above (unlikely in the few hundred ms between the two calls, but
+    // free to guard) — additive only, so anything already removed from
+    // PM_STAGED while this was loading stays removed.
+    const already = data.alreadyAttached || [];
+    already.forEach(a => {
+      if (!PM_ORIGINAL_IDS.has(a.id)) {
+        PM_ORIGINAL_IDS.add(a.id);
+        PM_STAGED.push({ kind: 'existing', id: a.id, name: a.name });
+      }
+    });
     const sug = data.suggestion;
     if (sug) {
       // A destination method (a page, a booking form) assumes traffic already
@@ -6927,11 +6956,11 @@ async function openProductMethodsModal(productId, productName) {
       }
     }
     renderPmList();
+    document.getElementById('pmStatus').textContent = '';
   } catch(e) {
     if (myToken !== PM_OPEN_TOKEN) return;
-    document.getElementById('pmList').innerHTML = `<div style="font-size:12px;color:#e05;">${e.message}</div>`;
-  } finally {
-    if (myToken === PM_OPEN_TOKEN) { setPmStagingLocked(false); document.getElementById('pmCommitBtn').disabled = false; }
+    document.getElementById('pmStatus').textContent = 'Suggestion unavailable: ' + e.message;
+    document.getElementById('pmStatus').style.color = '#fc8181';
   }
 }
 function closeProductMethodsModal() {

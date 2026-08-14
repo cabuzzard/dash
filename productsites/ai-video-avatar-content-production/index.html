@@ -131,6 +131,25 @@
     <div class="content">
       <div id="strategyPanel"><div class="loading"><div class="spinner"></div>Loading…</div></div>
       <div id="strategyStatus" style="font-size:12px;color:#fff;margin-top:8px;min-height:16px;"></div>
+      <!-- Generate Titles for ANY live method, not just ones attached to
+           this product — generateMethodTitles (and the carousel/Upwork
+           live-research variants) only ever needed campaignId + methodId,
+           never a product/method attachment check; that was purely a
+           client-side gate from this panel only rendering PRODUCT_METHODS
+           rows. Attaching via the Add Methods "+" above is still how a
+           method shows up permanently in this list, but it's no longer a
+           prerequisite for generating titles from it once. -->
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid #333;">
+        <label class="lm-label" style="font-size:10px;">Or generate titles for any method (no need to attach it first)</label>
+        <div style="position:relative;margin-top:4px;">
+          <input class="modal-ta" id="psAdhocMethodInput" type="text" placeholder="Search methods…" autocomplete="off"
+                 oninput="psAdhocFilter()" onfocus="psAdhocFilter()"
+                 onblur="setTimeout(()=>{const d=document.getElementById('psAdhocMethodDD'); if(d) d.style.display='none';},180)"
+                 style="height:30px;padding:5px 10px;width:100%;box-sizing:border-box;" />
+          <div id="psAdhocMethodDD" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;background:#141414;border:1px solid #444;border-top:none;max-height:180px;overflow-y:auto;"></div>
+        </div>
+        <div id="psAdhocRow"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -694,6 +713,7 @@ async function loadProduct() {
     loadProductStrategy(); // background — fetches the product-level Strategy fields
     renderStrategyPanel(); // fast render (no controls yet) — refreshStrategyPanel below fills them in
     refreshStrategyPanel(); // background — fetches per-method details/strategy status
+    atEnsureLists(); // background — warms AT_METHODS so the "any method" Generate Titles search has data by the time it's used
 
   } catch(e) {
     document.getElementById('r-name').textContent = 'Error: ' + e.message;
@@ -824,6 +844,49 @@ function psContextSelect(methodId, methodName) {
   <select id="psRowKeyword-${methodId}" class="td-add-btn-inline" style="font-size:10px;padding:2px 4px;max-width:180px;" title="Seed keyword — optional, sharpens the angle">
     <option value="">Loading keywords…</option>
   </select>`;
+}
+
+// ── Generate Titles for any method, not just attached ones ─────────────
+// Search box below the attached-methods list — picks from the full live
+// Methods DB (AT_METHODS, same cache the Add Methods search box and
+// Generate Assets modal use) and renders one row identical in shape to an
+// attached-method row (name + Generate Titles + context/keyword selects),
+// wired to the exact same genPsTitles/psContextSelect/psLoadKeywordOptions
+// functions. No attach step, no Notion write — generateMethodTitles (and
+// the carousel/Upwork live-research variants genPsTitles routes to) only
+// ever needed campaignId + methodId to run.
+let PS_ADHOC_ID = null, PS_ADHOC_NAME = '';
+function psAdhocFilter() {
+  const inp = document.getElementById('psAdhocMethodInput');
+  const dd = document.getElementById('psAdhocMethodDD');
+  const q = inp.value.trim(), qL = q.toLowerCase();
+  if (q !== PS_ADHOC_NAME) { PS_ADHOC_ID = null; PS_ADHOC_NAME = ''; document.getElementById('psAdhocRow').innerHTML = ''; }
+  dd.innerHTML = '';
+  const list = (typeof AT_METHODS !== 'undefined' && AT_METHODS.length) ? AT_METHODS : [];
+  const matches = list.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 12);
+  matches.forEach(x => {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#fff;border-bottom:1px solid #222;';
+    div.onmouseenter = () => div.style.background = '#333';
+    div.onmouseleave = () => div.style.background = '';
+    div.textContent = x.name;
+    div.onmousedown = () => psAdhocSelect(x.id, x.name);
+    dd.appendChild(div);
+  });
+  dd.style.display = matches.length ? 'block' : 'none';
+}
+function psAdhocSelect(id, name) {
+  PS_ADHOC_ID = id; PS_ADHOC_NAME = name;
+  document.getElementById('psAdhocMethodInput').value = name;
+  document.getElementById('psAdhocMethodDD').style.display = 'none';
+  document.getElementById('psAdhocRow').innerHTML = `<div style="border:1px solid #5f5f5f;border-radius:3px;margin-top:8px;">
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;flex-wrap:wrap;">
+      <a href="https://www.notion.so/${id}" target="_blank" rel="noopener" class="notion-link" style="flex:1;font-size:13px;">${esc(name)}</a>
+      ${psRowBtn('Generate Titles', `genPsTitles('${id}',false,null)`, 'psRowTitles-' + id)}${psContextSelect(id, name)}
+    </div>
+  </div>`;
+  const bespoke = /carousel/i.test(name) || (/upwork/i.test(name) && /title|market|trend/i.test(name));
+  if (!bespoke) psLoadKeywordOptions(id);
 }
 // Methods currently in hand-edit mode for their Strategy text — toggled by
 // the ✎ Edit / Cancel button, read by renderStrategyPanel to swap the
@@ -956,8 +1019,12 @@ async function refreshStrategyPanel() {
 // isDestination/parentMethodId are accepted for call-site compatibility but
 // no longer change behavior.
 async function genPsTitles(methodId, isDestination, parentMethodId) {
-  const m = PRODUCT_METHODS.find(x => x.id === methodId);
-  const name = m ? m.name : 'method';
+  // Attached methods resolve from PRODUCT_METHODS; a method picked via the
+  // "any method" search below isn't in that list, so fall back to
+  // AT_METHODS (the full live-methods cache) for its display name.
+  const m = PRODUCT_METHODS.find(x => x.id === methodId)
+    || (typeof AT_METHODS !== 'undefined' ? AT_METHODS.find(x => x.id === methodId) : null);
+  const name = m ? m.name : PS_ADHOC_NAME || 'method';
   const btn = document.getElementById('psRowTitles-' + methodId);
   const status = document.getElementById('strategyStatus');
   if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
@@ -2017,18 +2084,41 @@ async function openProductMethodsModal(productId, productName) {
   document.getElementById('pmNewInput').value = '';
   document.getElementById('pmSearchDd').style.display = 'none';
   document.getElementById('pmStatus').textContent = '';
-  document.getElementById('pmCommitBtn').disabled = true;
+  document.getElementById('pmCommitBtn').disabled = false;
   document.getElementById('pmCommitBtn').textContent = 'Add Methods';
-  document.getElementById('pmList').innerHTML = '<div class="loading"><div class="spinner"></div>Suggesting…</div>';
   document.getElementById('productMethodsModal').classList.add('open');
-  setPmStagingLocked(true);
+
+  // Render instantly from PRODUCT_METHODS (loadProduct's already-fetched,
+  // page-level cache — zero round trip) so the modal opens usable right
+  // away: remove/search/add-new all work immediately. Only the AI
+  // suggestion — the slow part, a Claude call plus a full Methods DB scan —
+  // loads in the background afterward, same "seed from cache, always
+  // refetch" pattern as atEnsureLists. Attaching/removing never needed the
+  // suggestion at all; it was just blocking on it unnecessarily.
+  setPmStagingLocked(false);
+  if (PRODUCT_METHODS.length) {
+    PM_ORIGINAL_IDS = new Set(PRODUCT_METHODS.map(m => m.id));
+    PM_STAGED = PRODUCT_METHODS.map(m => ({ kind: 'existing', id: m.id, name: m.name }));
+  }
+  renderPmList();
+  document.getElementById('pmStatus').textContent = 'Suggesting a method…';
+  document.getElementById('pmStatus').style.color = '';
+
   try {
     const data = await w('suggestProductMethod', { productId });
     if (myToken !== PM_OPEN_TOKEN) return;
     if (data.error) throw new Error(data.error);
+    // Reconcile against the freshly-fetched attached list in case it
+    // changed since page load (e.g. another tab) — additively only, so
+    // anything the operator already removed from PM_STAGED while this was
+    // loading stays removed (it's still in PM_ORIGINAL_IDS either way).
     const already = data.alreadyAttached || [];
-    PM_ORIGINAL_IDS = new Set(already.map(a => a.id));
-    PM_STAGED = already.map(a => ({ kind: 'existing', id: a.id, name: a.name }));
+    already.forEach(a => {
+      if (!PM_ORIGINAL_IDS.has(a.id)) {
+        PM_ORIGINAL_IDS.add(a.id);
+        PM_STAGED.push({ kind: 'existing', id: a.id, name: a.name });
+      }
+    });
     const sug = data.suggestion;
     if (sug) {
       const ts = sug.trafficSuggestion;
@@ -2045,11 +2135,11 @@ async function openProductMethodsModal(productId, productName) {
       }
     }
     renderPmList();
+    document.getElementById('pmStatus').textContent = '';
   } catch(e) {
     if (myToken !== PM_OPEN_TOKEN) return;
-    document.getElementById('pmList').innerHTML = `<div style="font-size:12px;color:#e05;">${esc(e.message)}</div>`;
-  } finally {
-    if (myToken === PM_OPEN_TOKEN) { setPmStagingLocked(false); document.getElementById('pmCommitBtn').disabled = false; }
+    document.getElementById('pmStatus').textContent = 'Suggestion unavailable: ' + e.message;
+    document.getElementById('pmStatus').style.color = '#fc8181';
   }
 }
 function closeProductMethodsModal() {
