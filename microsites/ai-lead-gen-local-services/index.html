@@ -921,8 +921,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 
 <!-- PUBLISH ASSETS MODAL (the 📋 Publish button on an asset row) — the
      fields an operator actually needs when publishing one specific asset
-     (title, Canva link, hashtags, caption), each editable with its own
-     copy-to-clipboard button, saved together back onto the Asset record. -->
+     (status, title, Canva link, hashtags, caption), each editable (status
+     via a Publish/Published dropdown, the rest with their own
+     copy-to-clipboard button), saved together back onto the Asset record. -->
 <div class="modal-overlay" id="publishAssetModal">
   <div class="modal" style="max-width:640px;">
     <div class="modal-head">
@@ -930,7 +931,14 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closePublishAssetModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
-      <label class="lm-label" for="pubTitle">Title</label>
+      <label class="lm-label" for="pubStatus">Status</label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <select class="modal-ta" id="pubStatus" style="height:32px;padding:0 8px;flex:1;background:#1e1e1e;color:#fff;border:1px solid #333;">
+          <option value="Publish">Publish</option>
+          <option value="Published">Published</option>
+        </select>
+      </div>
+      <label class="lm-label" for="pubTitle" style="margin-top:10px;">Title</label>
       <div style="display:flex;gap:6px;margin-top:4px;">
         <input class="modal-ta" id="pubTitle" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" />
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubTitle', this)">📋</button>
@@ -1688,7 +1696,7 @@ async function loadTitles() {
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
-      PUB_ASSET_CACHE[a.id] = { title: a.title || '', designLink: a.designLink || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '' };
+      PUB_ASSET_CACHE[a.id] = { title: a.title || '', designLink: a.designLink || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -4787,6 +4795,8 @@ const GA_SKILL_METHODS = [
     hint: 'Full production skill available — models outlier YouTube videos into an original long-form script, ready to produce.' },
   { test: /\bresume\b/i,             workerAction: 'generateJobAsset', assetType: 'resume', label: 'Resume',
     hint: 'Searches the active remote job boards (RemoteOK, Remotive, We Work Remotely, Himalayas, Dynamite Jobs, LinkedIn) using this Product\'s Keywords + any Research Instructions below, ranks by relevance, and writes a tailored resume + cover letter for the top 5 matches — 5 new assets under this title, each with its posting link attached. Needs Work History set on the Product first (📋 button below). Running again pulls a fresh batch and adds another 5.' },
+  { test: /upwork search/i,          workerAction: 'generateUpworkSearchAsset', label: 'Upwork Search',
+    hint: 'Searches live Upwork listings (via Apify) using this title\'s text + the campaign\'s Keywords + any override text below, ranks by relevance, and saves the top 5 matches as one new asset under this title — a lead sheet with each listing\'s link, budget, and tags. No Product or Work History needed. Running again adds a fresh asset with a new top-5 batch.' },
   { test: /upwork/i,                 workerAction: 'generateJobAsset', assetType: 'upwork proposal', label: 'Upwork Proposal',
     hint: 'Searches live Upwork listings (via Apify) using this Product\'s Keywords + any Research Instructions below, ranks by relevance, and writes a tailored proposal letter for the top 5 matches — 5 new assets under this title, each with its listing link attached. Needs Work History set on the Product first (📋 button below). Running again pulls a fresh batch and adds another 5.' },
 ];
@@ -5239,16 +5249,19 @@ async function copyAssetScript(assetId, btn) {
 }
 
 // ── Publish Assets modal (📋 Publish on an asset row) ────────────────────
-// Every publish-ready copy field for one asset — design link, hashtags,
+// Every publish-ready field for one asset — status, design link, hashtags,
 // platform link/CTA, caption — in one place: prefilled from PUB_ASSET_CACHE
-// (populated by renderAssetRow, no round-trip needed to open), each
-// editable with its own copy-to-clipboard button, saved together.
+// (populated by renderAssetRow, no round-trip needed to open). Status is a
+// Publish/Published dropdown (same "Asset Status" select Notion field the
+// main dashboard's status badge cycles); the rest are text fields each with
+// their own copy-to-clipboard button. All saved together.
 let pubAssetId = null;
 function openPublishAssetModal(btn) {
   const assetId = btn.dataset.assetid;
   pubAssetId = assetId;
   const data = PUB_ASSET_CACHE[assetId] || {};
   document.getElementById('pubAssetTitle').textContent = btn.dataset.title || 'Publish';
+  document.getElementById('pubStatus').value = data.status || 'Publish';
   document.getElementById('pubTitle').value = data.title || '';
   document.getElementById('pubDesignLink').value = data.designLink || '';
   document.getElementById('pubHashtags').value = data.hashtags || '';
@@ -5284,6 +5297,7 @@ async function savePublishAssetFields() {
   const btn = document.getElementById('pubAssetSaveBtn');
   const status = document.getElementById('pubAssetStatus');
   const fields = {
+    status: document.getElementById('pubStatus').value,
     title: document.getElementById('pubTitle').value.trim(),
     designLink: document.getElementById('pubDesignLink').value.trim(),
     hashtags: document.getElementById('pubHashtags').value.trim(),
@@ -6259,12 +6273,15 @@ async function submitGenAssets() {
     const isTextVideoScript = skillMatch.workerAction === 'generateTextVideoScript';
     const isExplainerScript = skillMatch.workerAction === 'generateExplainerScript';
     const isJobAsset = skillMatch.workerAction === 'generateJobAsset';
+    const isUpworkSearch = skillMatch.workerAction === 'generateUpworkSearchAsset';
     const isScriptOnly = isAvatarScript || isTextVideoScript || isExplainerScript;
-    btn.textContent = isScriptOnly || isJobAsset ? 'Writing…' : 'Rendering…';
+    btn.textContent = isScriptOnly || isJobAsset ? 'Writing…' : isUpworkSearch ? 'Searching…' : 'Rendering…';
     status.textContent = isTextVideoScript
       ? 'Writing 5 distinct scripts (different hooks) and saving each as its own asset. Video rendering is a separate step per script, after this.'
       : isJobAsset
       ? `Writing the ${skillMatch.assetType} from this title's posting + the Product's Keywords/Work History.`
+      : isUpworkSearch
+      ? 'Searching Upwork for the top 5 matching listings using this title + campaign Keywords + override text…'
       : isScriptOnly
       ? 'Writing the script and saving it to this title. Video rendering is a separate step, after this.'
       : 'Writing slide script (if needed) and rendering slides, one at a time — can take a couple of minutes if Cloudflare rate-limits the render calls. Leave this open.';
@@ -6347,6 +6364,15 @@ async function submitGenAssets() {
           : `✓ Found ${r.created} matching posting${r.created === 1 ? '' : 's'} and wrote a tailored ${skillMatch.assetType}${r.created === 1 ? '' : ' for each'} — ${r.created} new asset${r.created === 1 ? '' : 's'} under this title.${r.failures ? ` (${r.failures.length} failed — see console.)` : ''}`;
         status.style.color = r.needsWorkHistory ? '#f0b429' : (r.created ? '#68d391' : '#f0b429');
         if (r.failures) console.warn('generateJobAsset failures:', r.failures);
+        btn.textContent = 'Done';
+        await loadTitles();
+        if (r.created) setTimeout(closeGenAssetsModal, 3500);
+        else { btn.disabled = false; btn.textContent = 'Generate'; }
+      } else if (isUpworkSearch) {
+        status.textContent = !r.created
+          ? (r.note || `No live Upwork listings matched right now — try broadening the campaign Keywords or the override text.`)
+          : `✓ Found ${r.listingsFound} matching listing${r.listingsFound === 1 ? '' : 's'} and saved the top ${Math.min(r.listingsFound, 5)} to a new "upwork search" asset under this title.`;
+        status.style.color = r.created ? '#68d391' : '#f0b429';
         btn.textContent = 'Done';
         await loadTitles();
         if (r.created) setTimeout(closeGenAssetsModal, 3500);

@@ -11352,14 +11352,18 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
 
       // ── updatePublishFields ──
       // Saves edits made in the Publish modal (title, design link, hashtags,
-      // caption) straight back onto the Asset record — the fields an
+      // caption, status) straight back onto the Asset record — the fields an
       // operator actually copies out when publishing, editable and
       // saveable in one place instead of hunting through Notion. Design
       // Link (not Canva Link) deliberately — Design Link is the actual
       // populated/finished copy an operator publishes; Canva Link is the
       // source template, not something you'd hand someone to publish.
+      // Status is included so an operator can flip Publish → Published
+      // right here once the copied fields have actually gone out, instead
+      // of leaving the modal to use the main dashboard's status badge —
+      // same "Asset Status" select property, same allowed values.
       if (body.action === "updatePublishFields") {
-        const { assetId, title, designLink, hashtags, postCaption } = body;
+        const { assetId, title, designLink, hashtags, postCaption, status } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
@@ -11368,6 +11372,11 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         if (designLink !== undefined) props["Design Link"] = { url: designLink || null };
         if (hashtags !== undefined) props["Hashtags"] = { rich_text: hashtags ? chunkRT(hashtags) : [] };
         if (postCaption !== undefined) props["Post Caption"] = { rich_text: postCaption ? chunkRT(postCaption) : [] };
+        if (status !== undefined && status !== "") {
+          const validStatus = ["Publish", "Published"];
+          if (!validStatus.includes(status)) return json({ error: "Invalid status: " + status }, 400);
+          props["Asset Status"] = { select: { name: status } };
+        }
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -19790,6 +19799,86 @@ Write a complete Upwork proposal as plain text: open by directly addressing what
         }
 
         return json({ success: true, created, assets, failures: failures.length ? failures : undefined, needsWorkHistory: false, searchTerms });
+      }
+
+      // ── generateUpworkSearchAsset ──
+      // "Upwork Search" method — given an existing Title, searches live
+      // Upwork listings using the title text + campaign Keywords + the
+      // modal's override text (buildJobSearchContext, same merge helper
+      // researchJobListingTitles/generateJobAsset use), ranks by keyword
+      // overlap, and saves the top 5 as ONE Asset under that title. Unlike
+      // generateJobAsset (writes a tailored resume/proposal per posting),
+      // this writes nothing but the raw ranked list — a lead sheet to work
+      // from, not a finished deliverable per listing.
+      if (body.action === "generateUpworkSearchAsset") {
+        const { titleId, campaignId, researchInstructions } = body;
+        if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const titleName = titlePage.properties.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
+
+        const jobSearchCtx = await buildJobSearchContext(hdr, {
+          campaignId, productKeywords: titleName, productPositionText: titleName,
+          researchInstructions,
+        });
+        const searchTerms = jobSearchCtx.searchTerms;
+        if (!searchTerms.length) return json({ error: "No campaign Keywords, title text, or override text to search with." }, 400);
+
+        const rawPostings = await searchUpworkFor(env, searchTerms);
+        const lowerTerms = searchTerms.map(t => t.toLowerCase());
+        const seen = new Set();
+        const ranked = rawPostings
+          .filter(p => p.url && !seen.has(p.url) && (seen.add(p.url), true))
+          .map(p => {
+            const hay = `${p.title} ${p.tags || ''} ${p.description || ''}`.toLowerCase();
+            const score = lowerTerms.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
+            return { ...p, score };
+          })
+          .filter(p => p.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 5);
+
+        if (!ranked.length) {
+          return json({ success: true, created: 0, listingsFound: 0, searchTerms, note: `No live Upwork listings matched "${searchTerms.join(', ')}" — try broadening the campaign Keywords or the override text.` });
+        }
+
+        const summaryLine = `${ranked.length} live Upwork listing${ranked.length === 1 ? '' : 's'} matching: ${searchTerms.join(', ')}`.slice(0, 1990);
+        const assetProps = {
+          "Asset Title":  { title: [{ text: { content: `Upwork Search — ${titleName}`.slice(0, 200) } }] },
+          "Asset Status": { select: { name: "Publish" } },
+          "Asset Type":   { select: { name: "upwork search" } },
+          "Body":         { rich_text: [{ text: { content: summaryLine } }] },
+          "Content Strategy": { relation: [{ id: dashId(titleId) }] },
+          "Campaign":     { relation: [{ id: dashId(campaignId) }] },
+        };
+        const assetResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+        });
+        const assetResult = await assetResp.json();
+        if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create Upwork Search asset" }, 502);
+        const assetId = assetResult.id.replace(/-/g, "");
+
+        const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: opts.url ? { url: opts.url } : null }, annotations: { bold: !!opts.bold, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const heading = text => ({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(text) } });
+        const bullet = (text, opts = {}) => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text, opts) } });
+        const children = [heading("Top Upwork Listings")];
+        ranked.forEach(p => {
+          const meta = [p.budget, p.hourly, p.tags].filter(Boolean).join(' · ');
+          children.push(bullet(`${p.title}${meta ? ` — ${meta}` : ''} ↗`.slice(0, 1990), { url: p.url, bold: true }));
+          if (p.description) children.push(bullet(p.description.slice(0, 500)));
+        });
+        children.push(heading("Search Terms Used"));
+        children.push(bullet(searchTerms.join(', ').slice(0, 1990)));
+        await fetch(`https://api.notion.com/v1/blocks/${dashId(assetId)}/children`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ children }),
+        }).catch(() => {});
+
+        return json({ success: true, created: 1, id: assetId, listingsFound: ranked.length, searchTerms });
       }
 
       if (body.action === "assembleAsset") return await runAssembleAsset(body, env);
