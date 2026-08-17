@@ -1659,6 +1659,15 @@ async function saveNotes() {
 
 const SC = { Development:'ts-write', Writing:'ts-write', Review:'ts-review', Approved:'ts-appr', Publish:'ts-pub', Published:'ts-done', Done:'ts-done', Explode:'ts-explode' };
 
+// The 📋 Publish button's color/label track Asset Status so the button
+// itself is never the thing lying about state: green "Publish" while still
+// Publish, purple "Published" once it actually is — same status dropdown/
+// modal either way, this only changes how it looks at rest. Top-level (not
+// scoped inside loadTitles/renderAssetRow) since savePublishAssetFields
+// also needs it to refresh a row's button live after a save.
+const PUBLISH_BTN_STYLE = status => `font-size:10px;padding:1px 7px;border:1px solid ${status === 'Published' ? '#9f7aea' : '#68d391'};background:transparent;color:${status === 'Published' ? '#9f7aea' : '#68d391'};border-radius:9px;cursor:pointer;flex-shrink:0;`;
+const PUBLISH_BTN_LABEL = status => status === 'Published' ? '📋 Published' : '📋 Publish';
+
 // Collapsed/expanded state of the Product/Method/Phase/Grouping headers in
 // the Development + Publish title lists, persisted per-campaign so it
 // survives page reloads and the re-render every loadTitles() does (title
@@ -1714,7 +1723,7 @@ async function loadTitles() {
         + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
         + (a.canvaLink ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyCanvaPortPrompt(this)" title="Copy a ready-to-paste prompt for porting this asset's table content into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the table." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
         + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" rel="noopener" title="Open this asset's Notion page" style="flex-shrink:0;">↗</a>`
-        + `<button class="td-publish-fields" data-assetid="${a.id}" data-title="${esc(a.title)}" onclick="openPublishAssetModal(this)" title="Open every publish-ready field for this asset — design link, hashtags, platform link, caption — in one place: edit and copy each to your clipboard." style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Publish</button>`
+        + `<button class="td-publish-fields" data-assetid="${a.id}" data-title="${esc(a.title)}" onclick="openPublishAssetModal(this)" title="Open every publish-ready field for this asset — design link, hashtags, platform link, caption — in one place: edit and copy each to your clipboard." style="${PUBLISH_BTN_STYLE(a.status)}">${PUBLISH_BTN_LABEL(a.status)}</button>`
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" data-productid="${productId || ''}" onclick="openVisualBriefModal(this)" title="Set up and assemble the Visual Production Source Document (Editing Authority tiers/Asset Metadata/Production Method/Audience/Research/Content Foundation/Growth Strategy Context/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Opens a setup modal first: pick a Growth Strategy for context, lock specific normally-MUTABLE design fields to IMMUTABLE for this asset, and write operator guidelines. Text Video assets are told to declare Simple vs. Custom Remotion Build (custom builds get a mandatory voice-first render sequence) and to keep the Asset ID attached through every revision. Also drafts every field of the structured Design Specification via Claude, tagged Immutable/Constrained/Mutable/Derived-at-production so ChatGPT knows exactly what it can and can't change — Text Video into 🎬 Text Video Specs / 🎞️ Text Video Scenes, Carousel into 🎠 Carousel Specifications / 🃏 Slide Specifications (plus the shared Color Palette/Typography/Visual Style/Grid/Layout/Diagram/Platform Preset databases, reused across the whole campaign)." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-upload-package" data-assetid="${a.id}" onclick="triggerAssetDocUpload(this,'renderPackage')" title="Upload RENDER_PACKAGE.yaml — the single file ChatGPT now returns (visualBrief + assemblyInstructions + assemblyManifest sections) — split automatically and saved to this asset's Visual Production Brief / Production Assembly Package / Assembly Manifest properties, no modal needed." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">📦 Render Package</button>` : '')
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for any asset type with a registered renderer (carousel today), RE-RENDERS from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
@@ -5329,6 +5338,13 @@ async function savePublishAssetFields() {
   try {
     await w('updatePublishFields', { assetId: pubAssetId, ...fields });
     PUB_ASSET_CACHE[pubAssetId] = fields; // keep in sync so reopening without a reload shows the saved values
+    // Update the row's own button live — otherwise it keeps showing the
+    // green "Publish" it was rendered with even after status flips to
+    // Published, which is exactly the stale-looking-state bug this fixes.
+    document.querySelectorAll(`.td-publish-fields[data-assetid="${pubAssetId}"]`).forEach(btn => {
+      btn.setAttribute('style', PUBLISH_BTN_STYLE(fields.status));
+      btn.textContent = PUBLISH_BTN_LABEL(fields.status);
+    });
     status.textContent = 'Saved ✓';
     status.className = 'modal-status ok';
     setTimeout(() => { status.textContent = ''; status.className = 'modal-status'; btn.disabled = false; }, 1200);
