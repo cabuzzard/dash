@@ -984,6 +984,22 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <button class="modal-btn cancel" onclick="document.getElementById('pubDesignFileInput').click()">📤 Upload Design File</button>
         <span class="modal-status" id="pubDesignFileStatus" style="margin:0;"></span>
       </div>
+      <label class="lm-label" for="pubProductLink" style="margin-top:10px;">Product Link <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(the live Etsy listing once Printify's sync completes — falls back to the Printify editor link right after publish)</span></label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <input class="modal-ta" id="pubProductLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="No Printify product created yet" />
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="openPublishFieldLink('pubProductLink')" title="Open in a new tab">↗</button>
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubProductLink', this)">📋</button>
+      </div>
+      <div id="pubPrintifyWrap" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid #3a4a2f;background:rgba(126,211,33,.06);border-radius:4px;">
+        <label class="lm-label">Create/update Printify product <span style="color:#fff;font-weight:normal;">— Bella+Canvas 3001, Printify Choice. Needs a Design File uploaded above first.</span></label>
+        <div id="pubTshirtColorGrid" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;max-height:100px;overflow-y:auto;padding:6px;border:1px solid #333;border-radius:4px;background:#141414;">
+          <span style="font-size:11px;color:#fff;">Loading colors…</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+          <button class="modal-btn save" onclick="createPubPrintifyProduct()">🖨️ Create Printify Product &amp; Publish to Etsy</button>
+          <span class="modal-status" id="pubPrintifyStatus" style="margin:0;"></span>
+        </div>
+      </div>
       <label class="lm-label" for="pubThumbnail" style="margin-top:10px;">Thumbnail</label>
       <div style="display:flex;gap:6px;margin-top:4px;align-items:center;">
         <img id="pubThumbnailPreview" src="" alt="" style="display:none;width:44px;height:44px;object-fit:cover;border-radius:4px;border:1px solid #333;flex-shrink:0;" />
@@ -1953,7 +1969,7 @@ async function loadTitles() {
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
-      PUB_ASSET_CACHE[a.id] = { title: a.title || '', designLink: a.designLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish' };
+      PUB_ASSET_CACHE[a.id] = { title: a.title || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -5561,9 +5577,16 @@ function openPublishAssetModal(btn) {
   document.getElementById('pubDesignLink').value = data.designLink || '';
   document.getElementById('pubDesignFile').value = data.finalMediaFile || '';
   document.getElementById('pubDesignFileStatus').textContent = '';
+  document.getElementById('pubProductLink').value = data.productLink || '';
+  const printifyWrap = document.getElementById('pubPrintifyWrap');
+  printifyWrap.style.display = data.type === 't shirt' ? 'block' : 'none';
+  document.getElementById('pubPrintifyStatus').textContent = '';
+  if (data.type === 't shirt') pubLoadTshirtColors();
   document.getElementById('pubThumbnail').value = data.thumbnail || '';
   renderPubThumbnailPreview(data.thumbnail || '');
   document.getElementById('pubThumbnailStatus').textContent = '';
+  const handoffEl = document.getElementById('pubCanvaHandoff');
+  handoffEl.style.display = 'none'; handoffEl.innerHTML = '';
   document.getElementById('pubHashtags').value = data.hashtags || '';
   document.getElementById('pubCaption').value = data.postCaption || '';
   const status = document.getElementById('pubAssetStatus');
@@ -5617,6 +5640,83 @@ async function uploadPubThumbnail() {
     statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
   } finally {
     document.getElementById('pubThumbnailFile').value = '';
+  }
+}
+// Re-renders just the LinkedIn Article banner (retryLinkedInBanner,
+// worker.js) — for a LinkedIn Post asset whose auto-generated banner is
+// missing or failed. Doesn't regenerate the article itself (that has no
+// existing-asset dedup — running it again would create a duplicate).
+// Rebuilds headline/subhead from the asset's own Title/Body rather than
+// the AI-drafted banner copy, which isn't persisted anywhere after the
+// original generation call.
+async function retryPubLinkedInBanner() {
+  if (!pubAssetId) return;
+  const statusEl = document.getElementById('pubThumbnailStatus');
+  const handoffEl = document.getElementById('pubCanvaHandoff');
+  handoffEl.style.display = 'none'; handoffEl.innerHTML = '';
+  statusEl.className = 'modal-status'; statusEl.textContent = 'Rendering banner…';
+  try {
+    const data = await w('retryLinkedInBanner', { assetId: pubAssetId });
+    if (data.error) throw new Error(data.error);
+    document.getElementById('pubThumbnail').value = data.thumbnailUrl;
+    renderPubThumbnailPreview(data.thumbnailUrl);
+    if (PUB_ASSET_CACHE[pubAssetId]) PUB_ASSET_CACHE[pubAssetId].thumbnail = data.thumbnailUrl;
+    statusEl.className = 'modal-status ok'; statusEl.textContent = 'Banner rendered ✓';
+    if (data.canvaPromptUrl) {
+      handoffEl.style.display = 'block';
+      handoffEl.innerHTML = `<a href="${esc(data.canvaPromptUrl)}" target="_blank" rel="noopener" style="font-size:11px;color:#a78bfa;">🎨 Finish this banner as an editable Canva design →</a>`;
+    }
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'modal-status'; }, 2000);
+  } catch(e) {
+    statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+// Same live Printify catalog colors as the Generate Assets modal's t-shirt
+// color picker (GA_TSHIRT_COLORS_CACHE, shared) — lets the operator (re)run
+// createPrintifyTshirtProduct on an existing t-shirt asset straight from
+// the Publish modal, without redoing the copy-generation step.
+function pubLoadTshirtColors() {
+  const grid = document.getElementById('pubTshirtColorGrid');
+  if (!grid) return;
+  const render = colors => {
+    grid.innerHTML = '';
+    if (!colors.length) { grid.innerHTML = '<span style="font-size:11px;color:#f87171;">No colors available — check PRINTIFY_API_TOKEN.</span>'; return; }
+    colors.forEach(c => {
+      const label = document.createElement('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:#fff;cursor:pointer;padding:2px 6px;border:1px solid #333;border-radius:10px;';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = c; cb.className = 'pub-tshirt-color';
+      cb.checked = GA_TSHIRT_DEFAULT_COLORS.includes(c);
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(c));
+      grid.appendChild(label);
+    });
+  };
+  if (GA_TSHIRT_COLORS_CACHE) { render(GA_TSHIRT_COLORS_CACHE); return; }
+  w('getPrintifyShirtOptions', {}).then(r => {
+    GA_TSHIRT_COLORS_CACHE = r.colors || [];
+    render(GA_TSHIRT_COLORS_CACHE);
+  }).catch(e => { grid.innerHTML = `<span style="font-size:11px;color:#f87171;">Failed to load colors: ${e.message}</span>`; });
+}
+async function createPubPrintifyProduct() {
+  if (!pubAssetId) return;
+  const statusEl = document.getElementById('pubPrintifyStatus');
+  const colors = [...document.querySelectorAll('.pub-tshirt-color:checked')].map(cb => cb.value);
+  if (!colors.length) { statusEl.className = 'modal-status err'; statusEl.textContent = 'Pick at least one color.'; return; }
+  if (!document.getElementById('pubDesignFile').value.trim()) { statusEl.className = 'modal-status err'; statusEl.textContent = 'Upload a Design File above first.'; return; }
+  statusEl.className = 'modal-status'; statusEl.textContent = 'Creating Printify product and publishing to Etsy…';
+  try {
+    const r = await w('createPrintifyTshirtProduct', { assetId: pubAssetId, colors });
+    if (r.error) throw new Error(r.error);
+    document.getElementById('pubDesignLink').value = r.editUrl;
+    document.getElementById('pubProductLink').value = r.productLink;
+    document.getElementById('pubStatus').value = 'Published';
+    if (PUB_ASSET_CACHE[pubAssetId]) Object.assign(PUB_ASSET_CACHE[pubAssetId], { designLink: r.editUrl, productLink: r.productLink, status: 'Published' });
+    statusEl.className = 'modal-status ok';
+    statusEl.textContent = r.isLive ? `✓ Published — ${r.variantCount} variants, live on Etsy.` : `✓ Published — ${r.variantCount} variants. Etsy sync pending; Product Link points to Printify for now, check back shortly.`;
+  } catch(e) {
+    statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
   }
 }
 // Uploads the picked file straight to GitHub Pages hosting and points the
@@ -5679,6 +5779,7 @@ async function savePublishAssetFields() {
     status: document.getElementById('pubStatus').value,
     title: document.getElementById('pubTitle').value.trim(),
     designLink: document.getElementById('pubDesignLink').value.trim(),
+    productLink: document.getElementById('pubProductLink').value.trim(),
     hashtags: document.getElementById('pubHashtags').value.trim(),
     postCaption: document.getElementById('pubCaption').value.trim(),
   };
@@ -5687,7 +5788,10 @@ async function savePublishAssetFields() {
   status.className = 'modal-status';
   try {
     await w('updatePublishFields', { assetId: pubAssetId, ...fields });
-    PUB_ASSET_CACHE[pubAssetId] = fields; // keep in sync so reopening without a reload shows the saved values
+    // Merge, don't replace — the cache also carries type/thumbnail/
+    // finalMediaFile etc. that this save doesn't touch but reopening the
+    // modal (and the t-shirt Printify section's type check) still needs.
+    Object.assign(PUB_ASSET_CACHE[pubAssetId] || (PUB_ASSET_CACHE[pubAssetId] = {}), fields);
     // Update the row's own button live — otherwise it keeps showing the
     // green "Publish" it was rendered with even after status flips to
     // Published, which is exactly the stale-looking-state bug this fixes.
@@ -6885,24 +6989,34 @@ async function submitGenAssets() {
             if (dr.error) {
               designNote = ` Design upload failed: ${dr.error}`;
             } else {
-              const colors = [...document.querySelectorAll('.ga-tshirt-color:checked')].map(cb => cb.value);
-              if (!colors.length) {
-                designNote = ' Design file attached (Final Media File) — pick at least one color above and use the 📋 Publish button to create the Printify product.';
-              } else {
-                status.textContent = copyNote + ' Design attached — creating Printify product and publishing to Etsy…';
-                const pr = await w('createPrintifyTshirtProduct', { assetId: r.assetId, colors });
-                designNote = pr.error
-                  ? ` Design attached, but Printify product creation failed: ${pr.error}`
-                  : ` Printify product created (${pr.variantCount} variants) and published to Etsy — ${pr.editUrl}`;
-              }
+              // Falls back to the default color set if the checklist
+              // hasn't finished its async catalog fetch yet (upload+Generate
+              // clicked fast right after picking the T Shirt method) —
+              // previously this silently skipped Printify creation entirely
+              // with no product ever made and only a footnote in a status
+              // line that vanishes when the modal auto-closes 3s later.
+              // Automation should never go quiet like that; a sane default
+              // beats skipping.
+              let colors = [...document.querySelectorAll('.ga-tshirt-color:checked')].map(cb => cb.value);
+              if (!colors.length) colors = GA_TSHIRT_DEFAULT_COLORS.slice();
+              status.textContent = copyNote + ' Design attached — creating Printify product and publishing to Etsy…';
+              const pr = await w('createPrintifyTshirtProduct', { assetId: r.assetId, colors });
+              designNote = pr.error
+                ? ` Design attached, but Printify product creation failed: ${pr.error}`
+                : ` Printify product created (${pr.variantCount} variants) and published to Etsy — ${pr.editUrl}`;
             }
           } catch (e) { designNote = ` Design upload failed: ${e.message}`; }
         }
         status.textContent = copyNote + designNote;
-        status.style.color = '#68d391';
+        const designFailed = /failed/i.test(designNote);
+        status.style.color = designFailed ? '#fc8181' : '#68d391';
         btn.textContent = 'Done';
         await loadTitles();
-        setTimeout(closeGenAssetsModal, 3000);
+        // Never auto-close over an unread failure — the whole point of
+        // surfacing designNote is defeated if the modal vanishes before
+        // the operator can see it (exactly how the color-race bug above
+        // went unnoticed the first time).
+        if (!designFailed) setTimeout(closeGenAssetsModal, 3000);
       } else {
         status.textContent = `✓ Rendered ${r.slideCount} slides — preview: ${r.previewUrl}`;
         status.style.color = '#68d391';

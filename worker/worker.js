@@ -562,6 +562,25 @@ async function extractBlocksTextRecursive(hdr, blockId, depth = 0) {
   return parts.filter(Boolean).join("\n");
 }
 
+// Same deployPath resolution generateCarouselPreview/publishCarouselSlides
+// already do inline — factored out here so every call site shares one copy.
+// Module scope (not nested inside any single action's if-block): function
+// declarations nested in a block are only reliably callable from within
+// that same block, so a helper meant to be shared across many different
+// action handlers has to live at the top level, not inside whichever one
+// happened to define it first.
+async function resolveDeployPath(campaignId, hdr, dash) {
+  let deployPath = 'campaign';
+  if (campaignId) {
+    const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+    const liveUrl = campPage?.properties?.["live site"]?.url || campPage?.properties?.["microsite"]?.url || "";
+    const deployMatch = liveUrl.match(/\/web\/([^\/?#]+)/) || liveUrl.match(/\/microsites\/([^\/?#]+)/);
+    const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+    deployPath = deployMatch ? deployMatch[1] : (slugify(campPage?.properties?.Name?.title?.map(t=>t.plain_text).join("")) || 'campaign');
+  }
+  return deployPath;
+}
+
 // ── renderLinkedInBannerCore ──
 // Renders a 1280x720 LinkedIn article banner from three short copy
 // fields (headline/accentLine/subhead) via Cloudflare Browser
@@ -6864,6 +6883,10 @@ Return ONLY a JSON array — no other text, no markdown fences:
                 // PNG/SVG), or a rendered video's output; same property
                 // video assets already set alongside Design Link.
                 finalMediaFile: p["Final Media File"]?.url || "",
+                // The live product/listing link (Printify createPrintifyTshirtProduct
+                // sets this — the actual Etsy listing URL once sync completes,
+                // falling back to the Printify editor URL until then).
+                productLink: p["Product Link"]?.url || "",
               };
             } catch(e) { return null; }
           }))).filter(Boolean);
@@ -8019,21 +8042,6 @@ Return ONLY this JSON, no other text, no markdown fences:
         });
         if (!putResp.ok) { const r = await putResp.json(); throw new Error(`GitHub commit failed (HTTP ${putResp.status}): ${r.message || 'unknown'}`); }
         return `https://cabuzzard.github.io/dash/${path}`;
-      }
-
-      // Same deployPath resolution generateCarouselPreview/publishCarouselSlides
-      // already do inline — factored out for the new call sites below so it
-      // isn't triplicated. Doesn't touch the existing inline copies.
-      async function resolveDeployPath(campaignId, hdr, dash) {
-        let deployPath = 'campaign';
-        if (campaignId) {
-          const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
-          const liveUrl = campPage?.properties?.["live site"]?.url || campPage?.properties?.["microsite"]?.url || "";
-          const deployMatch = liveUrl.match(/\/web\/([^\/?#]+)/) || liveUrl.match(/\/microsites\/([^\/?#]+)/);
-          const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
-          deployPath = deployMatch ? deployMatch[1] : (slugify(campPage?.properties?.Name?.title?.map(t=>t.plain_text).join("")) || 'campaign');
-        }
-        return deployPath;
       }
 
       function guessImageMediaType(filename) {
@@ -12235,13 +12243,17 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       // of leaving the modal to use the main dashboard's status badge —
       // same "Asset Status" select property, same allowed values.
       if (body.action === "updatePublishFields") {
-        const { assetId, title, designLink, hashtags, postCaption, status } = body;
+        const { assetId, title, designLink, productLink, hashtags, postCaption, status } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
         const props = {};
         if (title !== undefined && title !== "") props["Asset Title"] = { title: [{ text: { content: title } }] };
         if (designLink !== undefined) props["Design Link"] = { url: designLink || null };
+        if (productLink !== undefined) {
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Product Link": { type: "url" } });
+          props["Product Link"] = { url: productLink || null };
+        }
         if (hashtags !== undefined) props["Hashtags"] = { rich_text: hashtags ? chunkRT(hashtags) : [] };
         if (postCaption !== undefined) props["Post Caption"] = { rich_text: postCaption ? chunkRT(postCaption) : [] };
         if (status !== undefined && status !== "") {
@@ -12447,15 +12459,23 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         // passes these straight through to the Etsy listing on publish.
         const tags = hashtagsRaw.split(/[\s,]+/).map(h => h.replace(/^#/, '').trim()).filter(Boolean).filter(t => t.length <= 20).slice(0, 13);
 
-        const campaignPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
-        const campaignName = campaignPage.properties?.Name?.title?.map(t => t.plain_text).join("") || "";
-        if (!campaignName) return json({ error: "Could not read this asset's Campaign name" }, 502);
+        // Matched by deploy-path slug, not raw campaign Name — the
+        // Campaign's Name often carries a subtitle (e.g. "Creative Flow
+        // Guitar — Weekly Sessions") that would never equal a Printify
+        // store title exactly. resolveDeployPath already gives the same
+        // canonical slug every other part of this system uses to identify
+        // a campaign, so the Printify store just needs to slugify to that
+        // same value (e.g. store "Creative Flow Guitar" → "creative-flow-
+        // guitar", matching deploy path "creative-flow-guitar").
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+        if (!deployPath || deployPath === 'campaign') return json({ error: "Could not resolve this campaign's deploy path (no live site/microsite URL set) — can't match it to a Printify store" }, 502);
 
         const shopsResp = await fetch("https://api.printify.com/v1/shops.json", { headers: pfHdr });
         const shops = await shopsResp.json();
         if (!shopsResp.ok) return json({ error: shops.message || "Printify shop lookup failed" }, shopsResp.status);
-        const shop = (shops || []).find(s => String(s.title).trim().toLowerCase() === campaignName.trim().toLowerCase());
-        if (!shop) return json({ error: `No Printify store named "${campaignName}" — create one and connect it to Etsy first (Printify → Add a new store → Connect to Etsy), matching the campaign's name exactly.` }, 400);
+        const shop = (shops || []).find(s => slugify(s.title) === deployPath);
+        if (!shop) return json({ error: `No Printify store slugifies to "${deployPath}" (this campaign's deploy path) — create one and connect it to Etsy first (Printify → Add a new store → Connect to Etsy), naming it after the campaign.` }, 400);
 
         // ── Upload the design (by URL — Printify fetches it itself, no
         // need to re-transfer bytes this Worker already hosts) ──
@@ -12492,6 +12512,17 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         });
         const product = await createResp.json();
         if (!createResp.ok || !product.id) return json({ error: product.message || "Printify product creation failed" }, createResp.status || 502);
+        const editUrlForFailure = `https://printify.com/app/editor/${product.id}`;
+        // From here on a product genuinely exists in Printify even if a
+        // later step fails — always leave Design Link pointing at it so a
+        // failure never looks identical to "nothing happened at all"
+        // (the exact silent-failure shape that caused this whole
+        // investigation: two real assets with an uploaded design and zero
+        // trace of ever attempting Printify).
+        const markDesignLinkBestEffort = () => fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Design Link": { url: editUrlForFailure } } }),
+        }).catch(() => {});
 
         // ── Reprice: cost + fixed markup, only for the variants we enabled ──
         const repriced = variantIds.map(id => {
@@ -12501,7 +12532,11 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         const priceResp = await fetch(`https://api.printify.com/v1/shops/${shop.id}/products/${product.id}.json`, {
           method: "PUT", headers: pfHdr, body: JSON.stringify({ variants: repriced }),
         });
-        if (!priceResp.ok) { const r = await priceResp.json().catch(() => ({})); return json({ error: r.message || "Product created but repricing failed — fix pricing in Printify before publishing", productId: product.id, editUrl: `https://printify.com/app/editor/${product.id}` }, 502); }
+        if (!priceResp.ok) {
+          const r = await priceResp.json().catch(() => ({}));
+          await markDesignLinkBestEffort();
+          return json({ error: r.message || "Product created but repricing failed — fix pricing in Printify before publishing", productId: product.id, editUrl: editUrlForFailure }, 502);
+        }
 
         // ── Publish — pushes the listing to Etsy since the store is
         // already connected as an Etsy sales channel ──
@@ -12509,12 +12544,31 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
           method: "POST", headers: pfHdr,
           body: JSON.stringify({ title: true, description: true, images: true, variants: true, tags: true }),
         });
-        if (!publishResp.ok) { const r = await publishResp.json().catch(() => ({})); return json({ error: r.message || "Product priced but publish to Etsy failed — publish manually from Printify", productId: product.id, editUrl: `https://printify.com/app/editor/${product.id}` }, 502); }
+        if (!publishResp.ok) {
+          const r = await publishResp.json().catch(() => ({}));
+          await markDesignLinkBestEffort();
+          return json({ error: r.message || "Product priced but publish to Etsy failed — publish manually from Printify", productId: product.id, editUrl: editUrlForFailure }, 502);
+        }
 
         const editUrl = `https://printify.com/app/editor/${product.id}`;
+        // Etsy sync happens on Printify's side after publish returns, so
+        // the live listing URL isn't guaranteed yet — one immediate
+        // re-check (best-effort, not polled/retried) picks it up when
+        // sync was fast; otherwise Product Link falls back to the
+        // Printify editor, which itself shows live sync status and the
+        // Etsy link once ready.
+        let productLink = editUrl;
+        let isLive = false;
+        try {
+          const recheck = await fetch(`https://api.printify.com/v1/shops/${shop.id}/products/${product.id}.json`, { headers: pfHdr }).then(r => r.json());
+          if (recheck?.external?.handle) { productLink = recheck.external.handle; isLive = true; }
+        } catch (e) {}
+
+        await ensureAssetsDbProperties(hdr, { "Product Link": { type: "url" } });
         const thumbnail = product.images?.[0]?.src || '';
         const notionProps = {
           "Design Link": { url: editUrl },
+          "Product Link": { url: productLink },
           "Asset Status": { select: { name: "Published" } },
         };
         if (thumbnail) notionProps["Thumbnail"] = { url: thumbnail };
@@ -12522,7 +12576,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: notionProps }),
         }).catch(() => {});
 
-        return json({ success: true, productId: product.id, editUrl, shopId: shop.id, variantCount: variantIds.length });
+        return json({ success: true, productId: product.id, editUrl, productLink, isLive, shopId: shop.id, variantCount: variantIds.length });
       }
 
       // ── MICROSITE: getCampaignLogins ──
