@@ -991,11 +991,13 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="openPublishFieldLink('pubThumbnail')" title="Open in a new tab">↗</button>
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubThumbnail', this)">📋</button>
       </div>
-      <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
+      <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap;">
         <input type="file" id="pubThumbnailFile" accept="image/*" style="display:none;" onchange="uploadPubThumbnail()" />
         <button class="modal-btn cancel" onclick="document.getElementById('pubThumbnailFile').click()">📤 Upload Image</button>
+        <button class="modal-btn cancel" onclick="retryPubLinkedInBanner()" title="Re-renders the LinkedIn Article banner (headline from Title, subhead from the hook) — for LinkedIn Post assets whose auto-generated banner is missing or failed.">🔁 Retry Banner (LinkedIn)</button>
         <span class="modal-status" id="pubThumbnailStatus" style="margin:0;"></span>
       </div>
+      <div id="pubCanvaHandoff" style="display:none;margin-top:4px;"></div>
       <label class="lm-label" for="pubHashtags" style="margin-top:10px;">Hashtags</label>
       <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
         <textarea class="modal-ta" id="pubHashtags" rows="2" style="resize:vertical;min-height:44px!important;flex:1;line-height:1.5;" placeholder="#…"></textarea>
@@ -1006,7 +1008,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <textarea class="modal-ta" id="pubCaption" rows="6" style="resize:vertical;min-height:120px!important;flex:1;line-height:1.5;"></textarea>
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubCaption', this)">📋</button>
       </div>
-      <label class="lm-label" for="pubPostBody" style="margin-top:10px;">Post Body <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(the written post text, from this asset's Body property — blank if this asset has none)</span></label>
+      <label class="lm-label" for="pubPostBody" style="margin-top:10px;">Post Body <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(the full written post/article, from this asset's page content — blank if this asset has none)</span></label>
       <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
         <textarea class="modal-ta" id="pubPostBody" rows="6" readonly style="resize:vertical;min-height:120px!important;flex:1;line-height:1.5;opacity:.8;"></textarea>
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubPostBody', this)">📋</button>
@@ -1297,8 +1299,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       </div>
 
       <div id="gaTshirtDesignWrap" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #3a4a2f;background:rgba(126,211,33,.06);border-radius:4px;">
-        <label class="lm-label">Print-ready design <span style="color:#fff;font-weight:normal;">— optional here; attach now or later via the 📋 Publish button on the asset row. PNG/JPG/SVG/PDF.</span></label>
+        <label class="lm-label">Print-ready design <span style="color:#fff;font-weight:normal;">— PNG/JPG (SVG/PDF also accepted but won't preview). Upload here to auto-create the Printify product + Etsy listing once Generate finishes; leave blank to just write the copy and attach the design later via the 📋 Publish button.</span></label>
         <input class="modal-ta" id="gaTshirtDesignFile" type="file" accept="image/png,image/jpeg,image/svg+xml,application/pdf" style="height:auto;padding:8px 10px;" />
+        <label class="lm-label" style="margin-top:10px;">Shirt colors <span style="color:#fff;font-weight:normal;">— Bella+Canvas 3001, Printify Choice fulfillment. Sizes S–2XL included for every color picked. Only used if a design is uploaded above.</span></label>
+        <div id="gaTshirtColorGrid" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;max-height:120px;overflow-y:auto;padding:6px;border:1px solid #333;border-radius:4px;background:#141414;">
+          <span style="font-size:11px;color:#fff;">Loading colors…</span>
+        </div>
       </div>
 
       <label class="lm-label">Platform <span style="color:#fff;font-weight:normal;">— from the Platforms DB; what this asset is packaged for (optional)</span></label>
@@ -5057,6 +5063,7 @@ function gaUpdateSkillHint() {
     if (tshirtWrap) tshirtWrap.style.display = isTshirt ? 'block' : 'none';
     if (isAvatar) gaLoadCampaignPresenter();
     if (isJobAsset) gaLoadCareerAvatars();
+    if (isTshirt) gaLoadTshirtColors();
     return;
   }
   if (typeWrap) typeWrap.style.display = 'none';
@@ -5155,6 +5162,36 @@ function gaLoadCareerAvatars() {
     });
     if ([...sel.options].some(o => o.value === current)) sel.value = current;
   }).catch(() => {});
+}
+
+// T Shirt colors are fixed to one blueprint/provider (see
+// TSHIRT_BLUEPRINT_ID/TSHIRT_PRINT_PROVIDER_ID in worker.js), so the live
+// catalog list never changes within a session — fetched once and cached,
+// same pattern as GA_PRESENTER_CACHE above.
+let GA_TSHIRT_COLORS_CACHE = null;
+const GA_TSHIRT_DEFAULT_COLORS = ['Black', 'White', 'Navy', 'Athletic Heather', 'Maroon'];
+function gaLoadTshirtColors() {
+  const grid = document.getElementById('gaTshirtColorGrid');
+  if (!grid) return;
+  const render = colors => {
+    grid.innerHTML = '';
+    if (!colors.length) { grid.innerHTML = '<span style="font-size:11px;color:#f87171;">No colors available — check PRINTIFY_API_TOKEN.</span>'; return; }
+    colors.forEach(c => {
+      const label = document.createElement('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:#fff;cursor:pointer;padding:2px 6px;border:1px solid #333;border-radius:10px;';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = c; cb.className = 'ga-tshirt-color';
+      cb.checked = GA_TSHIRT_DEFAULT_COLORS.includes(c);
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(c));
+      grid.appendChild(label);
+    });
+  };
+  if (GA_TSHIRT_COLORS_CACHE) { render(GA_TSHIRT_COLORS_CACHE); return; }
+  w('getPrintifyShirtOptions', {}).then(r => {
+    GA_TSHIRT_COLORS_CACHE = r.colors || [];
+    render(GA_TSHIRT_COLORS_CACHE);
+  }).catch(e => { grid.innerHTML = `<span style="font-size:11px;color:#f87171;">Failed to load colors: ${e.message}</span>`; });
 }
 
 let GA_PRODUCT_ID = null, GA_PRODUCT_NAME = '';
@@ -5508,9 +5545,15 @@ async function copyAssetScript(assetId, btn) {
 // main dashboard's status badge cycles); the rest are text fields each with
 // their own copy-to-clipboard button. All saved together.
 let pubAssetId = null;
+// Bumped on every open — the full-article fetch below is async and can
+// resolve after the operator has already closed this modal or opened a
+// DIFFERENT asset's; without this guard a slow/late response would land
+// in the wrong (or now-hidden) textarea. Same pattern as LOAD_TITLES_TOKEN.
+let PUB_OPEN_TOKEN = 0;
 function openPublishAssetModal(btn) {
   const assetId = btn.dataset.assetid;
   pubAssetId = assetId;
+  const myToken = ++PUB_OPEN_TOKEN;
   const data = PUB_ASSET_CACHE[assetId] || {};
   document.getElementById('pubAssetTitle').textContent = btn.dataset.title || 'Publish';
   document.getElementById('pubStatus').value = data.status || 'Publish';
@@ -5523,11 +5566,24 @@ function openPublishAssetModal(btn) {
   document.getElementById('pubThumbnailStatus').textContent = '';
   document.getElementById('pubHashtags').value = data.hashtags || '';
   document.getElementById('pubCaption').value = data.postCaption || '';
-  document.getElementById('pubPostBody').value = ASSET_SCRIPT_CACHE[assetId] || '';
   const status = document.getElementById('pubAssetStatus');
   status.textContent = '';
   status.className = 'modal-status';
   document.getElementById('publishAssetModal').classList.add('open');
+
+  // Post Body: the asset's Body PROPERTY is only ever a short preview (a
+  // truncated hook, for LinkedIn Post — or blank for most other types); the
+  // real finished long-form content (the full LinkedIn Article, or any
+  // other asset type's page-body deliverable) lives in the page's own
+  // blocks. Show the cached preview instantly, then replace it with the
+  // full text once the fresh fetch lands — better than blank while loading,
+  // and still correct if the fetch is slow.
+  document.getElementById('pubPostBody').value = ASSET_SCRIPT_CACHE[assetId] || 'Loading full post…';
+  w('getAssetFullText', { assetId }).then(d => {
+    if (myToken !== PUB_OPEN_TOKEN) return; // superseded — modal closed or a different asset opened since
+    if (d.text) document.getElementById('pubPostBody').value = d.text;
+    else if (!ASSET_SCRIPT_CACHE[assetId]) document.getElementById('pubPostBody').value = '';
+  }).catch(() => { if (myToken === PUB_OPEN_TOKEN && !ASSET_SCRIPT_CACHE[assetId]) document.getElementById('pubPostBody').value = ''; });
 }
 function renderPubThumbnailPreview(url) {
   const img = document.getElementById('pubThumbnailPreview');
@@ -6825,8 +6881,21 @@ async function submitGenAssets() {
           try {
             const reader = new FileReader();
             const b64 = await new Promise((res, rej) => { reader.onload = e => res(e.target.result.split(',')[1]); reader.onerror = rej; reader.readAsDataURL(designFile); });
-            const dr = await w('saveAssetDesignRef', { assetId: r.assetId, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, imageBase64: b64, imageFilename: designFile.name });
-            designNote = dr.error ? ` Design upload failed: ${dr.error}` : ' Design file attached.';
+            const dr = await w('uploadAssetDesignFile', { assetId: r.assetId, fileName: designFile.name, contentType: designFile.type || 'application/octet-stream', fileData: b64 });
+            if (dr.error) {
+              designNote = ` Design upload failed: ${dr.error}`;
+            } else {
+              const colors = [...document.querySelectorAll('.ga-tshirt-color:checked')].map(cb => cb.value);
+              if (!colors.length) {
+                designNote = ' Design file attached (Final Media File) — pick at least one color above and use the 📋 Publish button to create the Printify product.';
+              } else {
+                status.textContent = copyNote + ' Design attached — creating Printify product and publishing to Etsy…';
+                const pr = await w('createPrintifyTshirtProduct', { assetId: r.assetId, colors });
+                designNote = pr.error
+                  ? ` Design attached, but Printify product creation failed: ${pr.error}`
+                  : ` Printify product created (${pr.variantCount} variants) and published to Etsy — ${pr.editUrl}`;
+              }
+            }
           } catch (e) { designNote = ` Design upload failed: ${e.message}`; }
         }
         status.textContent = copyNote + designNote;

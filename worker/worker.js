@@ -562,6 +562,133 @@ async function extractBlocksTextRecursive(hdr, blockId, depth = 0) {
   return parts.filter(Boolean).join("\n");
 }
 
+// ── renderLinkedInBannerCore ──
+// Renders a 1280x720 LinkedIn article banner from three short copy
+// fields (headline/accentLine/subhead) via Cloudflare Browser
+// Rendering — the same screenshot-a-real-HTML-page mechanism
+// renderCarouselFromManifestCore uses for carousel slides, just one
+// fixed layout instead of four. Colors/fonts are fixed to match the
+// "LinkedIn Article Banner Template" built in Canva (white bg, #222
+// ink, #7ed321 accent, bold sans headline / serif body) — a
+// standalone visual system for this one asset type, not derived
+// per-campaign the way carousel's Design Spec is. Hosts the PNG on
+// GitHub Pages (same repo-commit pattern every other renderer here
+// uses) and writes it onto the asset's Thumbnail property. Design
+// Link is deliberately NOT set here to that PNG — per operator
+// request it should hold the actual editable Canva design made for
+// this asset, not the flattened image, and this Worker has no
+// Canva API credentials to create that design itself. Instead this
+// also hosts a companion canva-source.html (same
+// data-document-role="page" HTML-import convention
+// renderCarouselFromManifestCore/publishCarouselSlides already use
+// for their own "Send to Canva" links) and returns a
+// claude.ai/new handoff prompt — the caller folds that into the
+// generation response so the dashboard can open it, and one click
+// of Send in that chat (Canva MCP import-design-from-url + Notion
+// MCP update) finishes the loop by writing the real Canva edit URL
+// into Design Link. This mirrors the carousel method's existing
+// procedure, just via Design Link instead of a separate Canva Link
+// property (LinkedIn banners have no separate finished-media
+// folder the way carousel's Design Link does).
+// Module scope (not nested inside generateTitleAssets) so both the
+// original generation path and retryLinkedInBanner can call it.
+const LINKEDIN_BANNER_STYLE = { bg: '#ffffff', ink: '#222222', accent: '#7ed321', headlineFont: 'Poppins', bodyFont: 'Lora' };
+async function renderLinkedInBannerCore({ assetId, headline, accentLine, subhead, campaignId, assetTitle, hdr, dash, CF_ACCOUNT_ID, CF_API_TOKEN, GT }) {
+  const { bg, ink, accent, headlineFont, bodyFont } = LINKEDIN_BANNER_STYLE;
+  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+  const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  const basePath = `web/${deployPath}/banners`;
+  const slug = slugify(assetTitle) || assetId;
+  const pngPath = `${basePath}/${slug}.png`;
+  const sourcePath = `${basePath}/${slug}-canva-source.html`;
+
+  const bannerCss = `
+  * { margin:0; padding:0; box-sizing:border-box; }
+  .banner { width:1280px; height:720px; background:${bg}; position:relative; overflow:hidden; font-family:'${bodyFont}',serif; }
+  .dots { position:absolute; width:90px; height:100px; background-image:radial-gradient(${accent}55 1.5px, transparent 1.5px); background-size:10px 10px; opacity:.6; }
+  .dots.tr { top:0; right:0; } .dots.bl { bottom:0; left:0; }
+  .divider { position:absolute; top:-5%; left:780px; width:2px; height:110%; background:${ink}; opacity:.35; transform:skewX(-8deg); }
+  .col { position:absolute; left:80px; top:170px; width:620px; }
+  h1 { font-family:'${headlineFont}',sans-serif; font-weight:700; font-size:46px; line-height:0.98; letter-spacing:-0.01em; color:${ink}; white-space:pre-line; }
+  .accent { font-family:'${headlineFont}',sans-serif; font-weight:700; font-size:46px; line-height:0.98; letter-spacing:-0.01em; color:${accent}; margin-top:18px; }
+  p { font-size:17px; line-height:1.4; color:${ink}; opacity:.85; margin-top:28px; max-width:480px; }
+`;
+  const bannerBody = `
+  <div class="dots tr"></div>
+  <div class="dots bl"></div>
+  <div class="divider"></div>
+  <div class="col">
+    <h1>${esc(headline)}</h1>
+    <div class="accent">${esc(accentLine)}</div>
+    <p>${esc(subhead)}</p>
+  </div>`;
+  const fontsLink = `<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(headlineFont)}:wght@700&family=${encodeURIComponent(bodyFont)}:ital,wght@0,400;1,400&display=swap" rel="stylesheet">`;
+  const html = `<!doctype html><html><head><meta charset="utf-8">
+${fontsLink}
+<style>${bannerCss}</style></head><body class="banner">${bannerBody}
+</body></html>`;
+
+  const sleep = ms => new Promise(res => setTimeout(res, ms));
+  let pngBuffer = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ html, viewport: { width: 1280, height: 720, deviceScaleFactor: 1 }, gotoOptions: { waitUntil: "domcontentloaded", timeout: 15000 }, screenshotOptions: { type: "png" } }),
+    });
+    if (resp.status === 429) { const retryAfter = parseInt(resp.headers.get("Retry-After") || "11", 10); await sleep((retryAfter + 1) * 1000); continue; }
+    if (resp.status === 422 && attempt < 3) { await sleep(3000); continue; }
+    if (!resp.ok) { const t = await resp.text(); throw new Error(`Browser Rendering failed (HTTP ${resp.status}): ${t.slice(0, 300)}`); }
+    pngBuffer = await resp.arrayBuffer();
+    break;
+  }
+  if (!pngBuffer) throw new Error("Browser Rendering stayed rate-limited/timed out after retries.");
+
+  const toB64Bin = buf => { const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+  const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+  const REPO = "cabuzzard/dash", BRANCH = "main";
+  const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+  const putFile = async (path, b64, message) => {
+    let sha = null;
+    const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+    if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
+    const putBody = { message, content: b64, branch: BRANCH };
+    if (sha) putBody.sha = sha;
+    const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+      method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+    });
+    if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); throw new Error(`GitHub commit failed for ${path}: ${r.message || putResp.status}`); }
+  };
+  await putFile(pngPath, toB64Bin(pngBuffer), `LinkedIn banner: ${assetTitle}`);
+
+  // Canva-importable single-page source — same data-document-role
+  // convention as the carousel method's canva-source.html, so
+  // Canva's HTML importer decomposes it into one real editable
+  // page instead of a flattened screenshot.
+  const canvaSourceHtml = `<!doctype html><html><head><meta charset="utf-8">
+${fontsLink}
+<style>${bannerCss}
+body { width:auto; height:auto; overflow:visible; }
+</style></head><body>
+  <div data-document-role="page" data-label="Banner" class="banner">${bannerBody}
+  </div>
+</body></html>`;
+  await putFile(sourcePath, toB64Text(canvaSourceHtml), `LinkedIn banner: ${assetTitle} — Canva source`);
+
+  const thumbnailUrl = `https://cabuzzard.github.io/dash/${pngPath}`;
+  const canvaSourceUrl = `https://cabuzzard.github.io/dash/${sourcePath}`;
+  const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+    method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: { "Thumbnail": { url: thumbnailUrl } } }),
+  });
+  if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); throw new Error(r.message || "Banner rendered but failed to save Thumbnail"); }
+
+  const canvaPromptText = `Import this LinkedIn banner design into Canva using the Canva MCP import-design-from-url tool: ${canvaSourceUrl} — name it "${assetTitle} — LinkedIn Banner". Then find the Notion Asset page (id ${assetId}, in the Assets DB e91bdb6e770b4d298e9f62166a0fd5de) and set its "Design Link" property to the resulting Canva edit URL. Report the Canva edit link back to me.`;
+  const canvaPromptUrl = `https://claude.ai/new?q=${encodeURIComponent(canvaPromptText)}`;
+  return { thumbnailUrl, canvaSourceUrl, canvaPromptUrl };
+}
+
 // Reads just the "Pillar Content" heading_3 section of a title's own page
 // body — mirrors generateCarouselPreview's parseSlides() section-scanning
 // approach (a title's page can carry several distinct heading_3 sections —
@@ -8532,130 +8659,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return json({ success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode });
         }
 
-        // ── renderLinkedInBannerCore ──
-        // Renders a 1280x720 LinkedIn article banner from three short copy
-        // fields (headline/accentLine/subhead) via Cloudflare Browser
-        // Rendering — the same screenshot-a-real-HTML-page mechanism
-        // renderCarouselFromManifestCore uses for carousel slides, just one
-        // fixed layout instead of four. Colors/fonts are fixed to match the
-        // "LinkedIn Article Banner Template" built in Canva (white bg, #222
-        // ink, #7ed321 accent, bold sans headline / serif body) — a
-        // standalone visual system for this one asset type, not derived
-        // per-campaign the way carousel's Design Spec is. Hosts the PNG on
-        // GitHub Pages (same repo-commit pattern every other renderer here
-        // uses) and writes it onto the asset's Thumbnail property. Design
-        // Link is deliberately NOT set here to that PNG — per operator
-        // request it should hold the actual editable Canva design made for
-        // this asset, not the flattened image, and this Worker has no
-        // Canva API credentials to create that design itself. Instead this
-        // also hosts a companion canva-source.html (same
-        // data-document-role="page" HTML-import convention
-        // renderCarouselFromManifestCore/publishCarouselSlides already use
-        // for their own "Send to Canva" links) and returns a
-        // claude.ai/new handoff prompt — the caller folds that into the
-        // generation response so the dashboard can open it, and one click
-        // of Send in that chat (Canva MCP import-design-from-url + Notion
-        // MCP update) finishes the loop by writing the real Canva edit URL
-        // into Design Link. This mirrors the carousel method's existing
-        // procedure, just via Design Link instead of a separate Canva Link
-        // property (LinkedIn banners have no separate finished-media
-        // folder the way carousel's Design Link does).
-        const LINKEDIN_BANNER_STYLE = { bg: '#ffffff', ink: '#222222', accent: '#7ed321', headlineFont: 'Poppins', bodyFont: 'Lora' };
-        async function renderLinkedInBannerCore({ assetId, headline, accentLine, subhead, campaignId, assetTitle, hdr, dash, CF_ACCOUNT_ID, CF_API_TOKEN, GT }) {
-          const { bg, ink, accent, headlineFont, bodyFont } = LINKEDIN_BANNER_STYLE;
-          const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-          const deployPath = await resolveDeployPath(campaignId, hdr, dash);
-          const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
-          const basePath = `web/${deployPath}/banners`;
-          const slug = slugify(assetTitle) || assetId;
-          const pngPath = `${basePath}/${slug}.png`;
-          const sourcePath = `${basePath}/${slug}-canva-source.html`;
-
-          const bannerCss = `
-  * { margin:0; padding:0; box-sizing:border-box; }
-  .banner { width:1280px; height:720px; background:${bg}; position:relative; overflow:hidden; font-family:'${bodyFont}',serif; }
-  .dots { position:absolute; width:90px; height:100px; background-image:radial-gradient(${accent}55 1.5px, transparent 1.5px); background-size:10px 10px; opacity:.6; }
-  .dots.tr { top:0; right:0; } .dots.bl { bottom:0; left:0; }
-  .divider { position:absolute; top:-5%; left:780px; width:2px; height:110%; background:${ink}; opacity:.35; transform:skewX(-8deg); }
-  .col { position:absolute; left:80px; top:170px; width:620px; }
-  h1 { font-family:'${headlineFont}',sans-serif; font-weight:700; font-size:46px; line-height:0.98; letter-spacing:-0.01em; color:${ink}; white-space:pre-line; }
-  .accent { font-family:'${headlineFont}',sans-serif; font-weight:700; font-size:46px; line-height:0.98; letter-spacing:-0.01em; color:${accent}; margin-top:18px; }
-  p { font-size:17px; line-height:1.4; color:${ink}; opacity:.85; margin-top:28px; max-width:480px; }
-`;
-          const bannerBody = `
-  <div class="dots tr"></div>
-  <div class="dots bl"></div>
-  <div class="divider"></div>
-  <div class="col">
-    <h1>${esc(headline)}</h1>
-    <div class="accent">${esc(accentLine)}</div>
-    <p>${esc(subhead)}</p>
-  </div>`;
-          const fontsLink = `<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(headlineFont)}:wght@700&family=${encodeURIComponent(bodyFont)}:ital,wght@0,400;1,400&display=swap" rel="stylesheet">`;
-          const html = `<!doctype html><html><head><meta charset="utf-8">
-${fontsLink}
-<style>${bannerCss}</style></head><body class="banner">${bannerBody}
-</body></html>`;
-
-          const sleep = ms => new Promise(res => setTimeout(res, ms));
-          let pngBuffer = null;
-          for (let attempt = 0; attempt < 4; attempt++) {
-            const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ html, viewport: { width: 1280, height: 720, deviceScaleFactor: 1 }, gotoOptions: { waitUntil: "domcontentloaded", timeout: 15000 }, screenshotOptions: { type: "png" } }),
-            });
-            if (resp.status === 429) { const retryAfter = parseInt(resp.headers.get("Retry-After") || "11", 10); await sleep((retryAfter + 1) * 1000); continue; }
-            if (resp.status === 422 && attempt < 3) { await sleep(3000); continue; }
-            if (!resp.ok) { const t = await resp.text(); throw new Error(`Browser Rendering failed (HTTP ${resp.status}): ${t.slice(0, 300)}`); }
-            pngBuffer = await resp.arrayBuffer();
-            break;
-          }
-          if (!pngBuffer) throw new Error("Browser Rendering stayed rate-limited/timed out after retries.");
-
-          const toB64Bin = buf => { const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
-          const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
-          const REPO = "cabuzzard/dash", BRANCH = "main";
-          const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
-          const putFile = async (path, b64, message) => {
-            let sha = null;
-            const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
-            if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
-            const putBody = { message, content: b64, branch: BRANCH };
-            if (sha) putBody.sha = sha;
-            const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-              method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
-            });
-            if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); throw new Error(`GitHub commit failed for ${path}: ${r.message || putResp.status}`); }
-          };
-          await putFile(pngPath, toB64Bin(pngBuffer), `LinkedIn banner: ${assetTitle}`);
-
-          // Canva-importable single-page source — same data-document-role
-          // convention as the carousel method's canva-source.html, so
-          // Canva's HTML importer decomposes it into one real editable
-          // page instead of a flattened screenshot.
-          const canvaSourceHtml = `<!doctype html><html><head><meta charset="utf-8">
-${fontsLink}
-<style>${bannerCss}
-body { width:auto; height:auto; overflow:visible; }
-</style></head><body>
-  <div data-document-role="page" data-label="Banner" class="banner">${bannerBody}
-  </div>
-</body></html>`;
-          await putFile(sourcePath, toB64Text(canvaSourceHtml), `LinkedIn banner: ${assetTitle} — Canva source`);
-
-          const thumbnailUrl = `https://cabuzzard.github.io/dash/${pngPath}`;
-          const canvaSourceUrl = `https://cabuzzard.github.io/dash/${sourcePath}`;
-          const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Thumbnail": { url: thumbnailUrl } } }),
-          });
-          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); throw new Error(r.message || "Banner rendered but failed to save Thumbnail"); }
-
-          const canvaPromptText = `Import this LinkedIn banner design into Canva using the Canva MCP import-design-from-url tool: ${canvaSourceUrl} — name it "${assetTitle} — LinkedIn Banner". Then find the Notion Asset page (id ${assetId}, in the Assets DB e91bdb6e770b4d298e9f62166a0fd5de) and set its "Design Link" property to the resulting Canva edit URL. Report the Canva edit link back to me.`;
-          const canvaPromptUrl = `https://claude.ai/new?q=${encodeURIComponent(canvaPromptText)}`;
-          return { thumbnailUrl, canvaSourceUrl, canvaPromptUrl };
-        }
+        // renderLinkedInBannerCore moved to module scope (near
+        // extractBlocksTextRecursive) so retryLinkedInBanner can call it
+        // too, not just this generation path.
 
         // ── LinkedIn Post asset type: reshapes the title's own pillar
         // content into ONE finished, publish-ready LinkedIn Article — not N
@@ -8790,7 +8796,13 @@ Produce all of this by calling the submit_article tool — do not include any of
             });
             bannerThumbnailUrl = bannerResult.thumbnailUrl;
             canvaPromptUrl = bannerResult.canvaPromptUrl;
-          } catch (e) { bannerError = e.message; }
+          } catch (e) {
+            bannerError = e.message;
+            await fetch(`https://api.notion.com/v1/pages/${dsDash(assetId)}`, {
+              method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "Grade Notes": { rich_text: [{ type: "text", text: { content: `Banner render failed: ${bannerError}`.slice(0, 1990) } }] } } }),
+            }).catch(() => {});
+          }
 
           return json({ success: true, created: 1, assets: [{ id: assetId, title: headline }], sectionCount: sections.length, bannerThumbnailUrl, canvaPromptUrl: canvaPromptUrl || undefined, bannerError: bannerError || undefined });
         }
@@ -12357,6 +12369,160 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save Final Media File property" }, 500); }
 
         return json({ success: true, fileUrl });
+      }
+
+      // ── Printify integration (T Shirt method) ──
+      // Fixed defaults, not per-generation choices: blueprint 12 (Bella+Canvas
+      // 3001, Unisex Jersey Short Sleeve Tee — the standard POD default) and
+      // print provider 99 (Printify Choice, Printify's own auto-optimized
+      // fulfillment picker). Operator picks colors per design; sizes are
+      // always the same standard run. Pricing is a fixed markup over
+      // Printify's own per-variant cost (read back from the create-product
+      // response, not guessed) — operator-confirmed default, easy to change
+      // here if the margin needs adjusting later.
+      const TSHIRT_BLUEPRINT_ID = 12;
+      const TSHIRT_PRINT_PROVIDER_ID = 99;
+      const TSHIRT_SIZES = ['S', 'M', 'L', 'XL', '2XL'];
+      const TSHIRT_MARKUP_CENTS = 1200; // $12 over Printify's cost, per variant
+
+      // ── getPrintifyShirtOptions ──
+      // Populates the Generate Assets modal's color checklist for the T
+      // Shirt method — live from Printify's catalog (not hand-maintained)
+      // so it never drifts from what's actually orderable for the fixed
+      // blueprint/provider above.
+      if (body.action === "getPrintifyShirtOptions") {
+        const PF = (env.PRINTIFY_API_TOKEN || '').trim();
+        if (!PF) return json({ error: "PRINTIFY_API_TOKEN not configured — run: wrangler secret put PRINTIFY_API_TOKEN" }, 400);
+        const resp = await fetch(`https://api.printify.com/v1/catalog/blueprints/${TSHIRT_BLUEPRINT_ID}/print_providers/${TSHIRT_PRINT_PROVIDER_ID}/variants.json`, {
+          headers: { "Authorization": `Bearer ${PF}` },
+        });
+        const data = await resp.json();
+        if (!resp.ok) return json({ error: data.message || "Printify catalog lookup failed" }, resp.status);
+        const bySize = new Set(TSHIRT_SIZES);
+        const colors = [...new Set((data.variants || []).filter(v => bySize.has(v.options?.size)).map(v => v.options?.color).filter(Boolean))];
+        return json({ colors, sizes: TSHIRT_SIZES, blueprintId: TSHIRT_BLUEPRINT_ID });
+      }
+
+      // ── createPrintifyTshirtProduct ──
+      // The automated Phase 3 of the T Shirt method (see the "t shirt"
+      // Method's own Notion page) — everything that used to be a manual
+      // "pick a blueprint, place the design, set price, publish" trip into
+      // Printify. Runs right after generateTshirtAsset + the design file
+      // upload, from the same Generate Assets modal submission.
+      //
+      // Two-phase pricing (create, then reprice) because Printify's catalog
+      // API doesn't expose per-variant cost ahead of time — it's only
+      // returned on the created product itself, so a placeholder price is
+      // submitted first and immediately corrected from the real cost before
+      // ever publishing anywhere.
+      //
+      // Shop resolution is name-matched (this campaign's Printify store is
+      // titled after the campaign, same convention the operator set up by
+      // hand for "Creative Flow Guitar") rather than a stored ID — no new
+      // Notion schema needed, and it fails clearly if no matching store
+      // exists yet instead of silently picking the wrong one.
+      if (body.action === "createPrintifyTshirtProduct") {
+        const { assetId, colors } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        if (!Array.isArray(colors) || !colors.length) return json({ error: "At least one color required" }, 400);
+        const PF = (env.PRINTIFY_API_TOKEN || '').trim();
+        if (!PF) return json({ error: "PRINTIFY_API_TOKEN not configured — run: wrangler secret put PRINTIFY_API_TOKEN" }, 400);
+        const pfHdr = { "Authorization": `Bearer ${PF}`, "Content-Type": "application/json" };
+
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const p = assetPage.properties;
+        const assetTitle = p["Asset Title"]?.title?.map(t => t.plain_text).join("") || "T-Shirt Design";
+        const description = p["Description"]?.rich_text?.map(t => t.plain_text).join("") || "";
+        const hashtagsRaw = p["Hashtags"]?.rich_text?.map(t => t.plain_text).join("") || "";
+        const designUrl = p["Final Media File"]?.url || "";
+        const campaignId = p["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        if (!designUrl) return json({ error: "No design file on this asset yet — upload the print-ready PNG/JPG via the 📤 Design File button first (Generate Assets modal or Publish modal)." }, 400);
+        if (!campaignId) return json({ error: "Asset has no Campaign relation — can't resolve which Printify store to use" }, 400);
+
+        // Etsy's own tag rules (max 13 tags, 20 chars each) — Printify
+        // passes these straight through to the Etsy listing on publish.
+        const tags = hashtagsRaw.split(/[\s,]+/).map(h => h.replace(/^#/, '').trim()).filter(Boolean).filter(t => t.length <= 20).slice(0, 13);
+
+        const campaignPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+        const campaignName = campaignPage.properties?.Name?.title?.map(t => t.plain_text).join("") || "";
+        if (!campaignName) return json({ error: "Could not read this asset's Campaign name" }, 502);
+
+        const shopsResp = await fetch("https://api.printify.com/v1/shops.json", { headers: pfHdr });
+        const shops = await shopsResp.json();
+        if (!shopsResp.ok) return json({ error: shops.message || "Printify shop lookup failed" }, shopsResp.status);
+        const shop = (shops || []).find(s => String(s.title).trim().toLowerCase() === campaignName.trim().toLowerCase());
+        if (!shop) return json({ error: `No Printify store named "${campaignName}" — create one and connect it to Etsy first (Printify → Add a new store → Connect to Etsy), matching the campaign's name exactly.` }, 400);
+
+        // ── Upload the design (by URL — Printify fetches it itself, no
+        // need to re-transfer bytes this Worker already hosts) ──
+        const uploadResp = await fetch("https://api.printify.com/v1/uploads/images.json", {
+          method: "POST", headers: pfHdr,
+          body: JSON.stringify({ file_name: assetTitle.slice(0, 60) + '.png', url: designUrl }),
+        });
+        const uploaded = await uploadResp.json();
+        if (!uploadResp.ok || !uploaded.id) return json({ error: uploaded.message || "Printify image upload failed" }, uploadResp.status || 502);
+
+        // ── Resolve variant IDs for the requested colors × standard sizes ──
+        const variantsResp = await fetch(`https://api.printify.com/v1/catalog/blueprints/${TSHIRT_BLUEPRINT_ID}/print_providers/${TSHIRT_PRINT_PROVIDER_ID}/variants.json`, { headers: pfHdr });
+        const variantsData = await variantsResp.json();
+        if (!variantsResp.ok) return json({ error: variantsData.message || "Printify variant lookup failed" }, variantsResp.status);
+        const wantedColors = new Set(colors);
+        const wantedSizes = new Set(TSHIRT_SIZES);
+        const matched = (variantsData.variants || []).filter(v => wantedColors.has(v.options?.color) && wantedSizes.has(v.options?.size));
+        if (!matched.length) return json({ error: "None of the selected colors/sizes are available for this blueprint" }, 400);
+        const variantIds = matched.map(v => v.id);
+
+        // ── Create the product (placeholder price — corrected below from
+        // the real cost this response returns) ──
+        const createResp = await fetch(`https://api.printify.com/v1/shops/${shop.id}/products.json`, {
+          method: "POST", headers: pfHdr,
+          body: JSON.stringify({
+            title: assetTitle.slice(0, 255),
+            description: description || assetTitle,
+            blueprint_id: TSHIRT_BLUEPRINT_ID,
+            print_provider_id: TSHIRT_PRINT_PROVIDER_ID,
+            tags,
+            variants: variantIds.map(id => ({ id, price: 1999, is_enabled: true })),
+            print_areas: [{ variant_ids: variantIds, placeholders: [{ position: "front", images: [{ id: uploaded.id, x: 0.5, y: 0.5, scale: 1, angle: 0 }] }] }],
+          }),
+        });
+        const product = await createResp.json();
+        if (!createResp.ok || !product.id) return json({ error: product.message || "Printify product creation failed" }, createResp.status || 502);
+
+        // ── Reprice: cost + fixed markup, only for the variants we enabled ──
+        const repriced = variantIds.map(id => {
+          const v = (product.variants || []).find(x => x.id === id);
+          return { id, price: (v?.cost || 0) + TSHIRT_MARKUP_CENTS, is_enabled: true };
+        });
+        const priceResp = await fetch(`https://api.printify.com/v1/shops/${shop.id}/products/${product.id}.json`, {
+          method: "PUT", headers: pfHdr, body: JSON.stringify({ variants: repriced }),
+        });
+        if (!priceResp.ok) { const r = await priceResp.json().catch(() => ({})); return json({ error: r.message || "Product created but repricing failed — fix pricing in Printify before publishing", productId: product.id, editUrl: `https://printify.com/app/editor/${product.id}` }, 502); }
+
+        // ── Publish — pushes the listing to Etsy since the store is
+        // already connected as an Etsy sales channel ──
+        const publishResp = await fetch(`https://api.printify.com/v1/shops/${shop.id}/products/${product.id}/publish.json`, {
+          method: "POST", headers: pfHdr,
+          body: JSON.stringify({ title: true, description: true, images: true, variants: true, tags: true }),
+        });
+        if (!publishResp.ok) { const r = await publishResp.json().catch(() => ({})); return json({ error: r.message || "Product priced but publish to Etsy failed — publish manually from Printify", productId: product.id, editUrl: `https://printify.com/app/editor/${product.id}` }, 502); }
+
+        const editUrl = `https://printify.com/app/editor/${product.id}`;
+        const thumbnail = product.images?.[0]?.src || '';
+        const notionProps = {
+          "Design Link": { url: editUrl },
+          "Asset Status": { select: { name: "Published" } },
+        };
+        if (thumbnail) notionProps["Thumbnail"] = { url: thumbnail };
+        await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: notionProps }),
+        }).catch(() => {});
+
+        return json({ success: true, productId: product.id, editUrl, shopId: shop.id, variantCount: variantIds.length });
       }
 
       // ── MICROSITE: getCampaignLogins ──
@@ -21120,6 +21286,88 @@ Return ONLY this JSON object, no other text, no markdown fences:
         });
 
         return json({ success: true, titleId, assetId, alreadyScripted });
+      }
+
+      // ── getAssetFullText ──
+      // Publish modal's "copy full formatted post" — the asset's Body
+      // PROPERTY only ever holds a short preview (e.g. LinkedIn Post's
+      // hook, truncated to 2000 chars); the actual finished long-form
+      // content (a full LinkedIn Article, or any other asset type's
+      // written-to-the-page-body deliverable) lives in the asset's own
+      // page blocks. Reuses extractBlocksTextRecursive — the same helper
+      // every method-grounded generation path already reads from — so
+      // headings come back as "## Heading" and paragraphs as plain lines,
+      // reconstructing the full article rather than just its hook.
+      if (body.action === "getAssetFullText") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const text = await extractBlocksTextRecursive(hdr, dash(assetId)).catch(() => "");
+        return json({ text });
+      }
+
+      // ── retryLinkedInBanner ──
+      // Re-renders just the LinkedIn Article banner for an existing asset,
+      // without regenerating the article itself (the original generation
+      // block has no existing-asset dedup — running it again would create a
+      // second, duplicate article). Reads headline from the asset's own
+      // Asset Title and subhead from its Body property (the hook) since
+      // the AI-drafted bannerHeadline/bannerAccent/bannerSubhead aren't
+      // persisted anywhere after the original generation call — good
+      // enough for a retry, not a perfect reproduction of the original
+      // banner copy. Any render error is persisted to Grade Notes
+      // (otherwise unused here — this asset type skips the grading gate
+      // entirely) so it's visible on the Notion page even without
+      // reopening the Publish modal; canvaPromptUrl is only ever returned
+      // fresh in the response, never stored (Canva Link already means
+      // something else on other asset types — see below).
+      if (body.action === "retryLinkedInBanner") {
+        const { assetId, campaignId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const ap = assetPage.properties;
+        const headline = (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("") || "LinkedIn Article";
+        const hook = (ap["Body"]?.rich_text || []).map(t => t.plain_text).join("");
+        const resolvedCampaignId = campaignId || (ap["Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+
+        const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
+        const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return json({ error: "CF_ACCOUNT_ID / CF_API_TOKEN not configured" }, 500);
+        if (!GT) return json({ error: "GITHUB_TOKEN not configured" }, 500);
+
+        try {
+          const result = await renderLinkedInBannerCore({
+            assetId, headline, accentLine: '', subhead: hook.slice(0, 200),
+            campaignId: resolvedCampaignId, assetTitle: headline, hdr, dash,
+            CF_ACCOUNT_ID, CF_API_TOKEN, GT,
+          });
+          // Clear any previous failure note now that a render succeeded —
+          // canvaPromptUrl itself isn't persisted (Canva Link is already
+          // used for something unrelated on other asset types — carousel's
+          // "Copy Canva prompt" button keys off any non-empty Canva Link
+          // regardless of asset type, so writing a claude.ai prompt URL
+          // there would make that button show up here with the wrong
+          // behavior). It's returned fresh in this response instead, same
+          // as the original generation call — the Publish modal shows it
+          // right after each Retry Banner click rather than reading it
+          // back from a stored property.
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Grade Notes": { rich_text: [] } } }),
+          }).catch(() => {});
+          return json({ success: true, ...result });
+        } catch (e) {
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Grade Notes": { rich_text: [{ type: "text", text: { content: `Banner render failed: ${e.message}`.slice(0, 1990) } }] } } }),
+          }).catch(() => {});
+          return json({ error: e.message }, 500);
+        }
       }
 
       // ── generateTshirtAsset ──
