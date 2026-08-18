@@ -2540,6 +2540,32 @@
   </div>
 </div>
 
+<!-- Add Creator Modal (Links tab): appends this saved post's creator/
+     account onto a campaign's digest list (Research "Influencer
+     Intelligence" field — what getChannelTopicsDigest reads from). The
+     campaign must already exist (needs a Research record) — no create-new
+     here, unlike the Link → Title modal's pickers. -->
+<div class="modal-overlay" id="addCreatorModal" style="display:none;" onclick="if(event.target===this)closeAddCreatorModal()">
+  <div class="modal" style="width:420px;max-width:95vw;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div class="modal-title" style="margin:0;font-size:14px;">Add Creator</div>
+      <span onclick="closeAddCreatorModal()" style="cursor:pointer;color:var(--text3);font-size:18px;">✕</span>
+    </div>
+    <div id="acCreatorPreview" style="font-size:13px;color:var(--text);margin-bottom:14px;line-height:1.5;"></div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Campaign</label>
+      <input class="modal-input" id="acCampaignInput" type="text" placeholder="Search campaigns…" autocomplete="off"
+        oninput="acFilterCampaign()" onfocus="acFilterCampaign()" onblur="setTimeout(()=>{document.getElementById('acCampaignDD').style.display='none'},180)" />
+      <div id="acCampaignDD" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeAddCreatorModal()">Cancel</button>
+      <button class="btn btn-primary" id="acSaveBtn" onclick="submitAddCreator()">Add</button>
+    </div>
+    <div id="acStatus" style="font-size:12px;color:var(--text3);margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- Analyze Modal (Links tab): cross-references a saved post's full
      transcript against Methods/Strategy/Research across every campaign.
      Read-only suggestions with a per-suggestion manual Apply — modeled on
@@ -3708,6 +3734,9 @@ function renderLinks() {
       : '';
     const deleteBtn = '<button onclick="deleteLinkRow(\'' + p.id + '\')" title="Delete" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0 0 0 8px;flex-shrink:0;color:var(--text3);">🗑</button>';
     const titleBtn = '<button onclick="openLinkTitleModal(\'' + p.id + '\')" title="Create a Content Strategy title from this post" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">✚ title</button>';
+    const creatorBtn = p.account
+      ? '<button onclick="openAddCreatorModal(\'' + p.id + '\')" title="Add @' + esc(p.account) + ' to a campaign\'s digest list" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">➕ creator</button>'
+      : '';
     const platformBadge = '<span style="font-size:10px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:10px;flex-shrink:0;' + linksPlatformStyle(p.platform) + '">' + esc(p.platform || 'Unknown') + '</span>';
     return '' +
       '<div id="linkRow_' + p.id + '" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface);">' +
@@ -3721,6 +3750,7 @@ function renderLinks() {
             (p.url ? '<a href="' + esc(p.url.trim()) + '" target="_blank" title="Open original post" style="margin-left:10px;color:var(--text2);text-decoration:none;font-size:11px;white-space:nowrap;">🔗 Original</a>' : '') +
             (p.notionUrl ? '<a href="' + esc(p.notionUrl) + '" target="_blank" title="Open in Notion" style="margin-left:8px;color:var(--text3);text-decoration:none;font-size:12px;">↗</a>' : '') +
             titleBtn +
+            creatorBtn +
             runBtn +
             analyzeBtn +
             deleteBtn +
@@ -3958,6 +3988,75 @@ async function submitLinkTitle() {
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     btn.disabled = false; btn.textContent = 'Create';
+  }
+}
+
+// ── ADD CREATOR MODAL (Links tab) ────────────────────────────────────
+// Reuses LT_LISTS.campaign/ltEnsureLists (already populated by the
+// Link → Title modal's campaign picker) — same catalog, but this picker
+// only ever resolves to an EXISTING campaign (no create-new-on-save),
+// since the target is that campaign's Research record, which a
+// brand-new campaign wouldn't have yet.
+let AC_POST_ID = null;
+let AC_CAMPAIGN_SEL = null; // {id,name} while input text still matches
+
+function openAddCreatorModal(postId) {
+  const p = LINKS_POSTS.find(x => x.id === postId) || {};
+  if (!p.account) { showToast('This saved post has no creator/account to add', 'error'); return; }
+  AC_POST_ID = postId;
+  AC_CAMPAIGN_SEL = null;
+  document.getElementById('acCreatorPreview').innerHTML =
+    '<strong>@' + esc(p.account) + '</strong>' + (p.platform ? ' <span style="color:var(--text3);">· ' + esc(p.platform) + '</span>' : '');
+  document.getElementById('acCampaignInput').value = '';
+  document.getElementById('acStatus').textContent = '';
+  const btn = document.getElementById('acSaveBtn');
+  btn.disabled = false; btn.textContent = 'Add';
+  document.getElementById('addCreatorModal').style.display = 'flex';
+  ltEnsureLists(); // fire-and-forget — same campaign catalog as Link → Title
+  setTimeout(() => document.getElementById('acCampaignInput').focus(), 120);
+}
+function closeAddCreatorModal() { document.getElementById('addCreatorModal').style.display = 'none'; }
+
+function acFilterCampaign() {
+  const inp = document.getElementById('acCampaignInput');
+  const dd  = document.getElementById('acCampaignDD');
+  const q = inp.value.trim(), qL = q.toLowerCase();
+  if (AC_CAMPAIGN_SEL && q !== AC_CAMPAIGN_SEL.name) AC_CAMPAIGN_SEL = null;
+  dd.innerHTML = '';
+  const matches = LT_LISTS.campaign.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 10);
+  matches.forEach(x => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = x.name;
+    div.onmousedown = () => { AC_CAMPAIGN_SEL = { id: x.id, name: x.name }; inp.value = x.name; dd.style.display = 'none'; };
+    dd.appendChild(div);
+  });
+  dd.style.display = matches.length ? 'block' : 'none';
+}
+
+async function submitAddCreator() {
+  const status = document.getElementById('acStatus');
+  const val = document.getElementById('acCampaignInput').value.trim();
+  if (!val) { status.textContent = 'Pick a campaign first.'; return; }
+  const campaign = (AC_CAMPAIGN_SEL && AC_CAMPAIGN_SEL.name === val)
+    ? AC_CAMPAIGN_SEL
+    : LT_LISTS.campaign.find(x => x.name.toLowerCase() === val.toLowerCase());
+  if (!campaign) { status.textContent = 'No campaign matches "' + val + '" — pick one from the list.'; return; }
+  const p = LINKS_POSTS.find(x => x.id === AC_POST_ID) || {};
+  const btn = document.getElementById('acSaveBtn');
+  btn.disabled = true; btn.textContent = 'Adding…'; status.textContent = '';
+  try {
+    const r = await call('addCreatorToDigest', {
+      campaignId: campaign.id,
+      account: p.account,
+      platform: p.platform || undefined,
+      url: p.url || undefined,
+    });
+    closeAddCreatorModal();
+    showToast(r.alreadyPresent ? 'Already on that digest list ✓' : 'Added to digest list ✓', 'success');
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Add';
   }
 }
 
