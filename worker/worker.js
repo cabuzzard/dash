@@ -9969,6 +9969,8 @@ Return ONLY a JSON object with these exact keys:
             etsyProducts:      rt(null, "Etsy Products"),
             youtubeOutliers:   rt(null, "YouTube Outliers"),
             seedChannels:      rt(null, "Seed Channels"),
+            influencerIntelligence: rt(null, "Influencer Intelligence"),
+            trendRoundUp:      rt(null, "Trend Round-Up"),
             keyMessage:        rt(null, "Key Message"),
             webPageUrl:        url(null, "Web Page URL"),
             statement:         rt(null, "Statement"),
@@ -10983,6 +10985,168 @@ Rules:
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "YouTube Outliers": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+        }).catch(() => {});
+        return json({ success: true, text: result });
+      }
+
+      // ── getTopYoutubeChannels ──
+      // Clean ranked list of top YOUTUBE CHANNELS (not individual videos) for
+      // the campaign's keywords — the account-level counterpart to
+      // getSeedChannels (that one's for the Video Copy method, video-level).
+      // Same "search videos, count which channels keep showing up" approach
+      // as getSeedChannels (see its comment — a direct type=channel search
+      // returns noise). Saved to the Research "Influencer Intelligence"
+      // field; each line carries a canonical /channel/UC... URL so
+      // getChannelTopicsDigest below can parse channel IDs back out of the
+      // saved text — no separate hidden field needed for that handoff.
+      if (body.action === "getTopYoutubeChannels") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const { researchId, kwOverride } = body;
+        if (!researchId) return json({ error: "researchId required" }, 400);
+        const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const YT_KEY = (env.YOUTUBE_API_KEY || "").trim();
+        if (!YT_KEY) return json({ error: "YOUTUBE_API_KEY secret not set on worker" }, 500);
+
+        let keywords = (kwOverride || "").trim();
+        if (!keywords) {
+          try {
+            const rr = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+            }).then(r => r.json());
+            keywords = rr.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+          } catch {}
+        }
+        if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
+
+        const terms = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 6);
+        const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n/1e3) + "k" : String(n);
+
+        // Search videos per keyword, tally which channels keep appearing —
+        // channel-level relevance signal, not just one lucky video.
+        const chanHits = new Map(); // channelId -> hit count
+        await Promise.all(terms.map(async term => {
+          try {
+            const r = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=15&q=${encodeURIComponent(term)}&key=${YT_KEY}`);
+            if (!r.ok) return;
+            const d = await r.json();
+            (d.items || []).forEach(i => {
+              const cid = i.snippet?.channelId;
+              if (!cid) return;
+              chanHits.set(cid, (chanHits.get(cid) || 0) + 1);
+            });
+          } catch {}
+        }));
+        if (!chanHits.size) return json({ error: "No channels found for these keywords" }, 404);
+
+        const topChanIds = [...chanHits.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 50);
+        const cr = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${topChanIds.join(",")}&key=${YT_KEY}`);
+        const cd = await cr.json();
+        if (!cr.ok) return json({ error: cd.error?.message || "YouTube channels lookup failed" }, 502);
+
+        // Same "modelable" band getSeedChannels uses for Video Copy — excludes
+        // tiny nobody channels and channels too big to be a realistic peer.
+        const MIN_SUBS = 5_000, MAX_SUBS = 3_000_000;
+        const channels = (cd.items || [])
+          .filter(c => !c.statistics?.hiddenSubscriberCount)
+          .map(c => ({
+            id: c.id,
+            title: (c.snippet?.title || "").trim(),
+            subs: parseInt(c.statistics?.subscriberCount || 0),
+            videoCount: parseInt(c.statistics?.videoCount || 0),
+            hits: chanHits.get(c.id) || 0,
+            url: `https://youtube.com/channel/${c.id}`,
+          }))
+          .filter(c => c.subs >= MIN_SUBS && c.subs <= MAX_SUBS)
+          .sort((a, b) => b.hits - a.hits || b.subs - a.subs)
+          .slice(0, 20);
+        if (!channels.length) return json({ error: "No channels in the 5K–3M subscriber range found for these keywords — try broader/different keywords" }, 404);
+
+        const text = channels.map(c =>
+          `${c.title}: ${fmt(c.subs)} subs · ${c.videoCount} videos${c.hits > 1 ? ` · in ${c.hits}/${terms.length} keyword searches` : ""} — ${c.url}`
+        ).join("\n");
+
+        await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Influencer Intelligence": { rich_text: [{ type: "text", text: { content: text.slice(0, 2000) } }] } } }),
+        }).catch(() => {});
+        return json({ success: true, text, channels });
+      }
+
+      // ── getChannelTopicsDigest ──
+      // Reads the channel list saved by getTopYoutubeChannels (parses channel
+      // IDs back out of the /channel/UC... URLs), pulls each channel's most
+      // recent uploads, and has Claude synthesize what these SPECIFIC accounts
+      // are posting about right now into a scannable "new topics" digest —
+      // the account-level counterpart to getYouTubeOutliers (which is
+      // keyword-level, one-off outlier videos, not tied to a saved channel
+      // list). Saved to the Research "Trend Round-Up" field. On-demand only,
+      // no recurring schedule — the operator clicks it when they want a
+      // fresh read, per operator instruction.
+      if (body.action === "getChannelTopicsDigest") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const { researchId } = body;
+        if (!researchId) return json({ error: "researchId required" }, 400);
+        const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const YT_KEY = (env.YOUTUBE_API_KEY || "").trim();
+        if (!YT_KEY) return json({ error: "YOUTUBE_API_KEY secret not set on worker" }, 500);
+
+        const rr = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+        }).then(r => r.json());
+        const influencerText = rr.properties?.["Influencer Intelligence"]?.rich_text?.map(t => t.plain_text).join("") || "";
+        const channelIds = [...influencerText.matchAll(/youtube\.com\/channel\/(UC[\w-]+)/g)].map(m => m[1]);
+        const uniqueIds = [...new Set(channelIds)].slice(0, 12);
+        if (!uniqueIds.length) return json({ error: "No top channels yet — run 'Top Channels' first to build the list this digest reads from" }, 400);
+
+        // Latest uploads per channel — search.list(channelId, order=date)
+        // rather than resolving each channel's uploads-playlist ID first: one
+        // extra call per channel, but channel count here is small (<=12) so
+        // the quota difference doesn't matter and this skips a round-trip.
+        const perChannel = await Promise.all(uniqueIds.map(async cid => {
+          try {
+            const r = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${cid}&type=video&order=date&maxResults=5&key=${YT_KEY}`);
+            if (!r.ok) return null;
+            const d = await r.json();
+            const items = d.items || [];
+            if (!items.length) return null;
+            return {
+              channel: items[0].snippet?.channelTitle || cid,
+              videos: items.map(i => ({ title: i.snippet?.title || "", publishedAt: i.snippet?.publishedAt || "" })),
+            };
+          } catch { return null; }
+        }));
+        const withUploads = perChannel.filter(Boolean);
+        if (!withUploads.length) return json({ error: "Couldn't fetch recent uploads for any saved channel — try refreshing the channel list" }, 502);
+
+        const raw = withUploads.map(c => `${c.channel}:\n${c.videos.map(v => `- ${v.title}`).join("\n")}`).join("\n\n");
+
+        const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 1200,
+            system: `You are a content strategist scanning the recent uploads of this niche's top YouTube channels to spot what topics are trending RIGHT NOW.
+
+FORMAT — one line per distinct topic/angle you notice (group similar video titles across channels into one topic line, don't just restate every title):
+TOPIC (max 8 words): one-sentence read on why it's coming up now / what angle channels are taking — which channel(s), in parens
+
+Rules:
+- 6-10 topic lines total, ranked by how many channels/videos are covering it (most-covered first)
+- No bullets, no numbering, no markdown, no preamble
+- Output only the formatted lines, nothing else`,
+            messages: [{ role: "user", content: `Recent uploads from this niche's top channels:\n\n${raw}` }]
+          })
+        });
+        const claudeData = await claudeResp.json();
+        if (!claudeResp.ok) return json({ error: claudeData.error?.message || "Claude error", type: claudeData.error?.type, status: claudeResp.status }, 502);
+        const result = (claudeData.content?.[0]?.text || "").trim();
+
+        await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Trend Round-Up": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
         }).catch(() => {});
         return json({ success: true, text: result });
       }

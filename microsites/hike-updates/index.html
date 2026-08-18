@@ -358,8 +358,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 
 </div>
 <div class="tab-page" id="tab-research">
-<!-- SEC 4: three col — SM trends / seed channels / news feed -->
-<div class="three-col">
+<!-- SEC 4: four col — SM trends / seed channels / top channels + digest / news feed -->
+<div class="four-col">
   <div class="col">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <span>SM Trends</span>
@@ -382,6 +382,23 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </h2>
     <div class="content">
       <div id="r-seed"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
+      <span>Top Channels <span style="font-size:10px;color:var(--text3,#999);font-weight:400">who to watch</span></span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input id="topChanKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:80px;outline:none">
+        <button id="topChanBtn" onclick="runTopYoutubeChannels()" title="Find the top YouTube channels for this campaign's keywords" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ channels</button>
+        <button id="topicsDigestBtn" onclick="runChannelTopicsDigest()" title="Pull each saved channel's latest uploads and summarize what topics they're covering right now — run 'channels' first" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">📰 digest</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="r-topchannels"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#333);">
+        <div style="font-size:10px;color:var(--text3,#999);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">New Topics Digest</div>
+        <div id="r-topicsdigest"></div>
+      </div>
     </div>
   </div>
   <div class="col">
@@ -1523,6 +1540,79 @@ async function runSeedChannels() {
   }
 }
 
+// Top YouTube channels for the campaign keywords ("who to watch" — Influencer
+// Intelligence field) and, once that list exists, a digest of what topics
+// those specific channels are covering right now (Trend Round-Up field).
+// Same "Title: meta — url" line format as renderSeedChannels, reused here.
+function renderTopChannels(text) {
+  const el = document.getElementById('r-topchannels');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No channels yet — press ⟳ channels to find the top YouTube accounts for the campaign keywords (or type keywords above to override).</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const urlMatch = line.match(/(https?:\/\/\S+)\s*$/);
+    const url = urlMatch ? urlMatch[1] : '';
+    const label = url ? line.slice(0, line.lastIndexOf('—')).trim() : line.trim();
+    const colonIdx = label.indexOf(':');
+    const name = colonIdx === -1 ? label : label.slice(0, colonIdx).trim();
+    const meta = colonIdx === -1 ? '' : label.slice(colonIdx + 1).trim();
+    const inner = `<span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${meta}</span>`;
+    return url
+      ? `<div class="sm-trend-row"><a href="${url}" target="_blank" rel="noopener" style="display:flex;gap:6px;align-items:baseline;flex:1;min-width:0;text-decoration:none;color:inherit">${inner} <span style="font-size:9px;color:#4488ff">↗</span></a></div>`
+      : `<div class="sm-trend-row">${inner}</div>`;
+  }).join('');
+}
+async function runTopYoutubeChannels() {
+  const btn = document.getElementById('topChanBtn');
+  const el  = document.getElementById('r-topchannels');
+  const kwOverride = (document.getElementById('topChanKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Finding top channels…</div>';
+  try {
+    const data = await w('getTopYoutubeChannels', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderTopChannels(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ channels'; }
+  }
+}
+function renderTopicsDigest(text) {
+  const el = document.getElementById('r-topicsdigest');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No digest yet — build the channel list above, then press 📰 digest.</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return `<div class="sm-trend-row"><span class="sm-trend-body">${line}</span></div>`;
+    const topic = line.slice(0, colonIdx).trim();
+    const desc  = line.slice(colonIdx + 1).trim();
+    return `<div class="sm-trend-row"><span class="sm-trend-niche">${topic}</span><span class="sm-trend-body">${desc}</span></div>`;
+  }).join('');
+}
+async function runChannelTopicsDigest() {
+  const btn = document.getElementById('topicsDigestBtn');
+  const el  = document.getElementById('r-topicsdigest');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Reading recent uploads…</div>';
+  try {
+    const data = await w('getChannelTopicsDigest', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderTopicsDigest(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Digest failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📰 digest'; }
+  }
+}
+
 function renderTikTokShop(text) {
   const el = document.getElementById('r-ttshop');
   if (!el) return;
@@ -1636,6 +1726,10 @@ async function loadResearch() {
 
     // SEC 3 — Seed Channels field (Video Copy method)
     renderSeedChannels(r.seedChannels || '');
+
+    // SEC 4 — Top Channels (Influencer Intelligence) + its topics digest (Trend Round-Up)
+    renderTopChannels(r.influencerIntelligence || '');
+    renderTopicsDigest(r.trendRoundUp || '');
 
     // News Feed — condense via Claude
     const newsEl = document.getElementById('r-news');
