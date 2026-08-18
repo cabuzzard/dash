@@ -8543,8 +8543,23 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // standalone visual system for this one asset type, not derived
         // per-campaign the way carousel's Design Spec is. Hosts the PNG on
         // GitHub Pages (same repo-commit pattern every other renderer here
-        // uses) and writes the resulting URL onto the asset's Design
-        // Link/Thumbnail properties — both visible in the Publish modal.
+        // uses) and writes it onto the asset's Thumbnail property. Design
+        // Link is deliberately NOT set here to that PNG — per operator
+        // request it should hold the actual editable Canva design made for
+        // this asset, not the flattened image, and this Worker has no
+        // Canva API credentials to create that design itself. Instead this
+        // also hosts a companion canva-source.html (same
+        // data-document-role="page" HTML-import convention
+        // renderCarouselFromManifestCore/publishCarouselSlides already use
+        // for their own "Send to Canva" links) and returns a
+        // claude.ai/new handoff prompt — the caller folds that into the
+        // generation response so the dashboard can open it, and one click
+        // of Send in that chat (Canva MCP import-design-from-url + Notion
+        // MCP update) finishes the loop by writing the real Canva edit URL
+        // into Design Link. This mirrors the carousel method's existing
+        // procedure, just via Design Link instead of a separate Canva Link
+        // property (LinkedIn banners have no separate finished-media
+        // folder the way carousel's Design Link does).
         const LINKEDIN_BANNER_STYLE = { bg: '#ffffff', ink: '#222222', accent: '#7ed321', headlineFont: 'Poppins', bodyFont: 'Lora' };
         async function renderLinkedInBannerCore({ assetId, headline, accentLine, subhead, campaignId, assetTitle, hdr, dash, CF_ACCOUNT_ID, CF_API_TOKEN, GT }) {
           const { bg, ink, accent, headlineFont, bodyFont } = LINKEDIN_BANNER_STYLE;
@@ -8552,13 +8567,13 @@ Return ONLY this JSON object, no other text, no markdown fences:
           const deployPath = await resolveDeployPath(campaignId, hdr, dash);
           const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
           const basePath = `web/${deployPath}/banners`;
-          const path = `${basePath}/${slugify(assetTitle) || assetId}.png`;
+          const slug = slugify(assetTitle) || assetId;
+          const pngPath = `${basePath}/${slug}.png`;
+          const sourcePath = `${basePath}/${slug}-canva-source.html`;
 
-          const html = `<!doctype html><html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(headlineFont)}:wght@700&family=${encodeURIComponent(bodyFont)}:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
-<style>
+          const bannerCss = `
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { width:1280px; height:720px; background:${bg}; position:relative; overflow:hidden; font-family:'${bodyFont}',serif; }
+  .banner { width:1280px; height:720px; background:${bg}; position:relative; overflow:hidden; font-family:'${bodyFont}',serif; }
   .dots { position:absolute; width:90px; height:100px; background-image:radial-gradient(${accent}55 1.5px, transparent 1.5px); background-size:10px 10px; opacity:.6; }
   .dots.tr { top:0; right:0; } .dots.bl { bottom:0; left:0; }
   .divider { position:absolute; top:-5%; left:780px; width:2px; height:110%; background:${ink}; opacity:.35; transform:skewX(-8deg); }
@@ -8566,7 +8581,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
   h1 { font-family:'${headlineFont}',sans-serif; font-weight:700; font-size:46px; line-height:0.98; letter-spacing:-0.01em; color:${ink}; white-space:pre-line; }
   .accent { font-family:'${headlineFont}',sans-serif; font-weight:700; font-size:46px; line-height:0.98; letter-spacing:-0.01em; color:${accent}; margin-top:18px; }
   p { font-size:17px; line-height:1.4; color:${ink}; opacity:.85; margin-top:28px; max-width:480px; }
-</style></head><body>
+`;
+          const bannerBody = `
   <div class="dots tr"></div>
   <div class="dots bl"></div>
   <div class="divider"></div>
@@ -8574,7 +8590,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
     <h1>${esc(headline)}</h1>
     <div class="accent">${esc(accentLine)}</div>
     <p>${esc(subhead)}</p>
-  </div>
+  </div>`;
+          const fontsLink = `<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(headlineFont)}:wght@700&family=${encodeURIComponent(bodyFont)}:ital,wght@0,400;1,400&display=swap" rel="stylesheet">`;
+          const html = `<!doctype html><html><head><meta charset="utf-8">
+${fontsLink}
+<style>${bannerCss}</style></head><body class="banner">${bannerBody}
 </body></html>`;
 
           const sleep = ms => new Promise(res => setTimeout(res, ms));
@@ -8594,25 +8614,47 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (!pngBuffer) throw new Error("Browser Rendering stayed rate-limited/timed out after retries.");
 
           const toB64Bin = buf => { const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+          const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
           const REPO = "cabuzzard/dash", BRANCH = "main";
           const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
-          let sha = null;
-          const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
-          if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
-          const putBody = { message: `LinkedIn banner: ${assetTitle}`, content: toB64Bin(pngBuffer), branch: BRANCH };
-          if (sha) putBody.sha = sha;
-          const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-            method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
-          });
-          if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); throw new Error(`GitHub commit failed: ${r.message || putResp.status}`); }
+          const putFile = async (path, b64, message) => {
+            let sha = null;
+            const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+            if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
+            const putBody = { message, content: b64, branch: BRANCH };
+            if (sha) putBody.sha = sha;
+            const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+              method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+            });
+            if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); throw new Error(`GitHub commit failed for ${path}: ${r.message || putResp.status}`); }
+          };
+          await putFile(pngPath, toB64Bin(pngBuffer), `LinkedIn banner: ${assetTitle}`);
 
-          const designLink = `https://cabuzzard.github.io/dash/${path}`;
+          // Canva-importable single-page source — same data-document-role
+          // convention as the carousel method's canva-source.html, so
+          // Canva's HTML importer decomposes it into one real editable
+          // page instead of a flattened screenshot.
+          const canvaSourceHtml = `<!doctype html><html><head><meta charset="utf-8">
+${fontsLink}
+<style>${bannerCss}
+body { width:auto; height:auto; overflow:visible; }
+</style></head><body>
+  <div data-document-role="page" data-label="Banner" class="banner">${bannerBody}
+  </div>
+</body></html>`;
+          await putFile(sourcePath, toB64Text(canvaSourceHtml), `LinkedIn banner: ${assetTitle} — Canva source`);
+
+          const thumbnailUrl = `https://cabuzzard.github.io/dash/${pngPath}`;
+          const canvaSourceUrl = `https://cabuzzard.github.io/dash/${sourcePath}`;
           const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
             method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Design Link": { url: designLink }, "Thumbnail": { url: designLink } } }),
+            body: JSON.stringify({ properties: { "Thumbnail": { url: thumbnailUrl } } }),
           });
-          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); throw new Error(r.message || "Banner rendered but failed to save Design Link"); }
-          return designLink;
+          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); throw new Error(r.message || "Banner rendered but failed to save Thumbnail"); }
+
+          const canvaPromptText = `Import this LinkedIn banner design into Canva using the Canva MCP import-design-from-url tool: ${canvaSourceUrl} — name it "${assetTitle} — LinkedIn Banner". Then find the Notion Asset page (id ${assetId}, in the Assets DB e91bdb6e770b4d298e9f62166a0fd5de) and set its "Design Link" property to the resulting Canva edit URL. Report the Canva edit link back to me.`;
+          const canvaPromptUrl = `https://claude.ai/new?q=${encodeURIComponent(canvaPromptText)}`;
+          return { thumbnailUrl, canvaSourceUrl, canvaPromptUrl };
         }
 
         // ── LinkedIn Post asset type: reshapes the title's own pillar
@@ -8723,16 +8765,22 @@ Produce all of this by calling the submit_article tool — do not include any of
           // ── Auto-generate the matching banner ──
           // Best-effort: the article is the actual deliverable, so a render
           // failure (e.g. Browser Rendering rate-limited, GITHUB_TOKEN not
-          // set) never fails asset creation — it just leaves Design Link
+          // set) never fails asset creation — it just leaves Thumbnail
           // blank and surfaces bannerError for the operator to see.
-          let bannerDesignLink = '', bannerError = '';
+          // Thumbnail gets the rendered PNG directly (set inside
+          // renderLinkedInBannerCore); Design Link needs a real Canva
+          // design, which this Worker can't create itself — canvaPromptUrl
+          // carries the one-click claude.ai handoff that finishes that
+          // part (Canva MCP import + Notion MCP write-back), same pattern
+          // as the carousel method's "Send to Canva" link.
+          let bannerThumbnailUrl = '', canvaPromptUrl = '', bannerError = '';
           try {
             const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
             const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
             const GT = (env.GITHUB_TOKEN || '').trim();
             if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error("CF_ACCOUNT_ID / CF_API_TOKEN not configured");
             if (!GT) throw new Error("GITHUB_TOKEN not configured");
-            bannerDesignLink = await renderLinkedInBannerCore({
+            const bannerResult = await renderLinkedInBannerCore({
               assetId,
               headline: String(article.bannerHeadline || headline).slice(0, 120),
               accentLine: String(article.bannerAccent || '').slice(0, 80),
@@ -8740,9 +8788,11 @@ Produce all of this by calling the submit_article tool — do not include any of
               campaignId, assetTitle: headline, hdr: dsHdr, dash: dsDash,
               CF_ACCOUNT_ID, CF_API_TOKEN, GT,
             });
+            bannerThumbnailUrl = bannerResult.thumbnailUrl;
+            canvaPromptUrl = bannerResult.canvaPromptUrl;
           } catch (e) { bannerError = e.message; }
 
-          return json({ success: true, created: 1, assets: [{ id: assetId, title: headline }], sectionCount: sections.length, bannerDesignLink, bannerError: bannerError || undefined });
+          return json({ success: true, created: 1, assets: [{ id: assetId, title: headline }], sectionCount: sections.length, bannerThumbnailUrl, canvaPromptUrl: canvaPromptUrl || undefined, bannerError: bannerError || undefined });
         }
 
         // ── "Template CSV Export"-style table asset: ONE finished Page |

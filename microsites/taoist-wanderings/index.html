@@ -973,6 +973,17 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="openPublishFieldLink('pubDesignLink')" title="Open in a new tab">↗</button>
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubDesignLink', this)">📋</button>
       </div>
+      <label class="lm-label" for="pubDesignFile" style="margin-top:10px;">Design File <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(the print-ready file — PDF, PNG, or SVG — handed to Printify; stored on Final Media File)</span></label>
+      <div style="display:flex;gap:6px;margin-top:4px;align-items:center;">
+        <input class="modal-ta" id="pubDesignFile" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="No design file uploaded yet" readonly />
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="openPublishFieldLink('pubDesignFile')" title="Open in a new tab">↗</button>
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubDesignFile', this)">📋</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
+        <input type="file" id="pubDesignFileInput" accept=".pdf,.png,.svg,image/png,image/svg+xml,application/pdf" style="display:none;" onchange="uploadPubDesignFile()" />
+        <button class="modal-btn cancel" onclick="document.getElementById('pubDesignFileInput').click()">📤 Upload Design File</button>
+        <span class="modal-status" id="pubDesignFileStatus" style="margin:0;"></span>
+      </div>
       <label class="lm-label" for="pubThumbnail" style="margin-top:10px;">Thumbnail</label>
       <div style="display:flex;gap:6px;margin-top:4px;align-items:center;">
         <img id="pubThumbnailPreview" src="" alt="" style="display:none;width:44px;height:44px;object-fit:cover;border-radius:4px;border:1px solid #333;flex-shrink:0;" />
@@ -1931,7 +1942,7 @@ async function loadTitles() {
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
-      PUB_ASSET_CACHE[a.id] = { title: a.title || '', designLink: a.designLink || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish' };
+      PUB_ASSET_CACHE[a.id] = { title: a.title || '', designLink: a.designLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -5002,6 +5013,8 @@ const GA_SKILL_METHODS = [
     hint: 'Writes a presenter-to-camera script for this title and sets it to Publish — entirely in-dashboard, same as Carousel. The actual video render (HeyGen + Hyperframes) still needs a Claude Code chat; once the script is ready, use the 🎬 button on the asset row below.' },
   { test: /explainer video/i,       workerAction: 'generateExplainerScript', label: 'Explainer Video',
     hint: 'Writes a narrated, no-avatar explainer script (voiceover + visual metaphor + beat notes) for this title and sets it to Publish — entirely in-dashboard, same as Carousel. The actual video render (Hyperframes /faceless-explainer + ElevenLabs) still needs a Claude Code chat; once the script is ready, use the 🎬 button on the asset row below.' },
+  { test: /t[\s-]?shirt/i,          workerAction: 'generateTshirtAsset', label: 'T Shirt',
+    hint: 'Writes the Etsy listing title/description/alt text plus a social caption + hashtags for one t-shirt design concept, and sets it to Publish — entirely in-dashboard, same as Carousel. The actual print-ready design file (PNG/SVG/PDF) still needs to be attached by hand: use the 📋 Publish button on the asset row below to upload it, then publish through Printify (which pushes to Etsy once connected) and flip status to Published.' },
   { test: /video copy/i,            skill: 'make-video-copy',     label: 'Video Copy — Growth',
     hint: 'Full production skill available — models outlier YouTube videos into an original long-form script, ready to produce.' },
   { test: /\bresume\b/i,             workerAction: 'generateJobAsset', assetType: 'resume', label: 'Resume',
@@ -5495,6 +5508,8 @@ function openPublishAssetModal(btn) {
   document.getElementById('pubStatus').value = data.status || 'Publish';
   document.getElementById('pubTitle').value = data.title || '';
   document.getElementById('pubDesignLink').value = data.designLink || '';
+  document.getElementById('pubDesignFile').value = data.finalMediaFile || '';
+  document.getElementById('pubDesignFileStatus').textContent = '';
   document.getElementById('pubThumbnail').value = data.thumbnail || '';
   renderPubThumbnailPreview(data.thumbnail || '');
   document.getElementById('pubThumbnailStatus').textContent = '';
@@ -5538,6 +5553,37 @@ async function uploadPubThumbnail() {
     statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
   } finally {
     document.getElementById('pubThumbnailFile').value = '';
+  }
+}
+// Uploads the picked file straight to GitHub Pages hosting and points the
+// Asset's Final Media File property at it (uploadAssetDesignFile,
+// worker.js) — same commit-and-link mechanism as uploadPubThumbnail just
+// above, targeting the finished-deliverable property instead of the
+// preview-thumbnail one. This is the t-shirt method's design upload (PDF/
+// PNG/SVG print file), but works for any asset type's finished file.
+async function uploadPubDesignFile() {
+  const file = document.getElementById('pubDesignFileInput').files[0];
+  if (!file || !pubAssetId) return;
+  const statusEl = document.getElementById('pubDesignFileStatus');
+  if (file.size > 25 * 1024 * 1024) {
+    statusEl.className = 'modal-status err'; statusEl.textContent = 'File too large (max 25MB).';
+    document.getElementById('pubDesignFileInput').value = '';
+    return;
+  }
+  statusEl.className = 'modal-status'; statusEl.textContent = 'Uploading…';
+  try {
+    const reader = new FileReader();
+    const b64 = await new Promise((res, rej) => { reader.onload = e => res(e.target.result.split(',')[1]); reader.onerror = rej; reader.readAsDataURL(file); });
+    const data = await w('uploadAssetDesignFile', { assetId: pubAssetId, fileName: file.name, contentType: file.type || 'application/octet-stream', fileData: b64 });
+    if (data.error) throw new Error(data.error);
+    document.getElementById('pubDesignFile').value = data.fileUrl;
+    if (PUB_ASSET_CACHE[pubAssetId]) PUB_ASSET_CACHE[pubAssetId].finalMediaFile = data.fileUrl;
+    statusEl.className = 'modal-status ok'; statusEl.textContent = 'Uploaded ✓';
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'modal-status'; }, 1500);
+  } catch(e) {
+    statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
+  } finally {
+    document.getElementById('pubDesignFileInput').value = '';
   }
 }
 function closePublishAssetModal() {
@@ -6653,14 +6699,17 @@ async function submitGenAssets() {
     const isExplainerScript = skillMatch.workerAction === 'generateExplainerScript';
     const isJobAsset = skillMatch.workerAction === 'generateJobAsset';
     const isUpworkSearch = skillMatch.workerAction === 'generateUpworkSearchAsset';
+    const isTshirt = skillMatch.workerAction === 'generateTshirtAsset';
     const isScriptOnly = isAvatarScript || isTextVideoScript || isExplainerScript;
-    btn.textContent = isScriptOnly || isJobAsset ? 'Writing…' : isUpworkSearch ? 'Searching…' : 'Rendering…';
+    btn.textContent = isScriptOnly || isJobAsset || isTshirt ? 'Writing…' : isUpworkSearch ? 'Searching…' : 'Rendering…';
     status.textContent = isTextVideoScript
       ? 'Writing 5 distinct scripts (different hooks) and saving each as its own asset. Video rendering is a separate step per script, after this.'
       : isJobAsset
       ? `Writing the ${skillMatch.assetType} from this title's posting + the Product's Keywords/Work History.`
       : isUpworkSearch
       ? 'Searching Upwork for the top 5 matching listings using this title + campaign Keywords + override text…'
+      : isTshirt
+      ? 'Writing the Etsy listing title/description/alt text plus a social caption + hashtags for this design…'
       : isScriptOnly
       ? 'Writing the script and saving it to this title. Video rendering is a separate step, after this.'
       : 'Writing slide script (if needed) and rendering slides, one at a time — can take a couple of minutes if Cloudflare rate-limits the render calls. Leave this open.';
@@ -6695,7 +6744,7 @@ async function submitGenAssets() {
       }
       const r = await w(skillMatch.workerAction, {
         titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, carouselType, presenter,
-        designNotes: overrideText,
+        designNotes: overrideText, overrideText,
         description: overrideText, seedKeywords: overrideText, researchInstructions: overrideText,
         platformId, platformName,
         assetType: isJobAsset ? skillMatch.assetType : undefined,
@@ -6757,6 +6806,14 @@ async function submitGenAssets() {
         await loadTitles();
         if (r.created) setTimeout(closeGenAssetsModal, 3500);
         else { btn.disabled = false; btn.textContent = 'Generate'; }
+      } else if (isTshirt) {
+        status.textContent = r.alreadyExisted
+          ? '✓ Listing copy already existed — refreshed it and confirmed the title status.'
+          : '✓ Etsy/social copy written and set to Publish — use the 📋 Publish button on the asset row below to upload the print-ready design file (PNG/SVG/PDF), then publish through Printify.';
+        status.style.color = '#68d391';
+        btn.textContent = 'Done';
+        await loadTitles();
+        setTimeout(closeGenAssetsModal, 3000);
       } else {
         status.textContent = `✓ Rendered ${r.slideCount} slides — preview: ${r.previewUrl}`;
         status.style.color = '#68d391';
@@ -6797,8 +6854,18 @@ async function submitGenAssets() {
     });
     gaAutoAttachMethod(method.id);
     if (r.sectionCount != null) {
-      status.textContent = `✓ Wrote the full post (${r.sectionCount} sections${r.contextMode === 'blend' ? ', blended with campaign + product context' : ''}) and published it.`;
+      const bannerNote = r.canvaPromptUrl
+        ? ' Thumbnail rendered — opening a Claude tab to finish the Canva design for Design Link, hit Send there.'
+        : (r.bannerError ? ` Banner render failed (${r.bannerError}) — Thumbnail/Design Link left blank.` : '');
+      status.textContent = `✓ Wrote the full post (${r.sectionCount} sections${r.contextMode === 'blend' ? ', blended with campaign + product context' : ''}) and published it.${bannerNote}`;
       status.style.color = '#68d391';
+      // Finishes the loop this Worker can't: creating a real Canva design
+      // needs Canva API credentials it doesn't have, so this hands off to
+      // a fresh claude.ai chat (Canva MCP import-design-from-url + Notion
+      // MCP write-back) — one click of Send there sets Design Link. Same
+      // "Send to Canva" pattern the carousel method already uses, just
+      // auto-opened instead of requiring a separate gallery-page visit.
+      if (r.canvaPromptUrl) window.open(r.canvaPromptUrl, '_blank');
     } else {
       const revised = r.revisionCount || 0;
       status.textContent = `✓ Created ${r.created} asset option${r.created === 1 ? '' : 's'}${r.failed ? ` (${r.failed} failed)` : ''} — ${r.passedCount || 0} passed grading${revised ? `, ${revised} flagged Needs Revision after retries` : ''}.`;
