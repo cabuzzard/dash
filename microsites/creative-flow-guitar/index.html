@@ -940,9 +940,14 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 
 <!-- PUBLISH ASSETS MODAL (the 📋 Publish button on an asset row) — the
      fields an operator actually needs when publishing one specific asset
-     (status, title, Canva link, hashtags, caption), each editable (status
-     via a Publish/Published dropdown, the rest with their own
-     copy-to-clipboard button), saved together back onto the Asset record. -->
+     (status, title, Canva link, hashtags, caption, thumbnail), each
+     editable (status via a Publish/Published dropdown, the text fields
+     with their own copy-to-clipboard button, thumbnail via direct image
+     upload), saved together back onto the Asset record. Post Body is
+     read-only — it mirrors whatever's on the asset's own Body property
+     (the written-post deliverable for asset types like LinkedIn/X posts),
+     shown here purely so the operator doesn't have to leave this modal to
+     copy it; blank when the asset has no Body text. -->
 <div class="modal-overlay" id="publishAssetModal">
   <div class="modal" style="max-width:640px;">
     <div class="modal-head">
@@ -968,6 +973,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="openPublishFieldLink('pubDesignLink')" title="Open in a new tab">↗</button>
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubDesignLink', this)">📋</button>
       </div>
+      <label class="lm-label" for="pubThumbnail" style="margin-top:10px;">Thumbnail</label>
+      <div style="display:flex;gap:6px;margin-top:4px;align-items:center;">
+        <img id="pubThumbnailPreview" src="" alt="" style="display:none;width:44px;height:44px;object-fit:cover;border-radius:4px;border:1px solid #333;flex-shrink:0;" />
+        <input class="modal-ta" id="pubThumbnail" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="No thumbnail uploaded yet" readonly />
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="openPublishFieldLink('pubThumbnail')" title="Open in a new tab">↗</button>
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubThumbnail', this)">📋</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
+        <input type="file" id="pubThumbnailFile" accept="image/*" style="display:none;" onchange="uploadPubThumbnail()" />
+        <button class="modal-btn cancel" onclick="document.getElementById('pubThumbnailFile').click()">📤 Upload Image</button>
+        <span class="modal-status" id="pubThumbnailStatus" style="margin:0;"></span>
+      </div>
       <label class="lm-label" for="pubHashtags" style="margin-top:10px;">Hashtags</label>
       <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
         <textarea class="modal-ta" id="pubHashtags" rows="2" style="resize:vertical;min-height:44px!important;flex:1;line-height:1.5;" placeholder="#…"></textarea>
@@ -977,6 +994,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
         <textarea class="modal-ta" id="pubCaption" rows="6" style="resize:vertical;min-height:120px!important;flex:1;line-height:1.5;"></textarea>
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubCaption', this)">📋</button>
+      </div>
+      <label class="lm-label" for="pubPostBody" style="margin-top:10px;">Post Body <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(the written post text, from this asset's Body property — blank if this asset has none)</span></label>
+      <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
+        <textarea class="modal-ta" id="pubPostBody" rows="6" readonly style="resize:vertical;min-height:120px!important;flex:1;line-height:1.5;opacity:.8;"></textarea>
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubPostBody', this)">📋</button>
       </div>
       <div class="modal-status" id="pubAssetStatus"></div>
     </div>
@@ -1870,11 +1892,23 @@ let titleGroupsOpen = {};
 try { titleGroupsOpen = JSON.parse(localStorage.getItem(TITLE_COLLAPSE_KEY) || '{}'); } catch(e) {}
 function saveTitleGroupsOpen() { try { localStorage.setItem(TITLE_COLLAPSE_KEY, JSON.stringify(titleGroupsOpen)); } catch(e) {} }
 
+// Bumped on every call — loadTitles() is called from well over a dozen
+// places (deletes, status changes, asset generation, publish field saves,
+// ...), any two of which can overlap. Notion round-trip time isn't
+// guaranteed to preserve call order, so without this guard an OLDER call's
+// response can resolve AFTER a newer one and silently overwrite the DOM
+// with a stale snapshot — visibly "resurrecting" titles/assets a more
+// recent call had already correctly removed (a title just deleted, an
+// asset whose status just changed away from Publish). Same fix shape as
+// PM_OPEN_TOKEN on the Methods modal above.
+let LOAD_TITLES_TOKEN = 0;
 async function loadTitles() {
+  const myToken = ++LOAD_TITLES_TOKEN;
   const devEl = document.getElementById('devTitles');
   const pubEl = document.getElementById('pubTitles');
   try {
     const data = await w('getTitles', { stages: ['Planning','Development','Writing','Review','Approved','Publish','Published','Explode','Done'], campaignId: CAMPAIGN_ID });
+    if (myToken !== LOAD_TITLES_TOKEN) return; // a newer loadTitles() call has since started — this response is stale, discard it
     const titles = data.titles || [];
     // Planning sorts first — it's the pre-development stub stage (quick-add
     // title + operator notes, no pillar content yet, per operator request).
@@ -1897,7 +1931,7 @@ async function loadTitles() {
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
-      PUB_ASSET_CACHE[a.id] = { title: a.title || '', designLink: a.designLink || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish' };
+      PUB_ASSET_CACHE[a.id] = { title: a.title || '', designLink: a.designLink || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -2112,6 +2146,7 @@ async function loadTitles() {
     renderTitlesNested(dev, devEl, 'dev');
     renderPublishedAssets(pub, pubEl);
   } catch(e) {
+    if (myToken !== LOAD_TITLES_TOKEN) return; // superseded — don't show a stale error over a newer render
     devEl.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
     pubEl.innerHTML = '<div class="empty">—</div>';
   }
@@ -5460,12 +5495,50 @@ function openPublishAssetModal(btn) {
   document.getElementById('pubStatus').value = data.status || 'Publish';
   document.getElementById('pubTitle').value = data.title || '';
   document.getElementById('pubDesignLink').value = data.designLink || '';
+  document.getElementById('pubThumbnail').value = data.thumbnail || '';
+  renderPubThumbnailPreview(data.thumbnail || '');
+  document.getElementById('pubThumbnailStatus').textContent = '';
   document.getElementById('pubHashtags').value = data.hashtags || '';
   document.getElementById('pubCaption').value = data.postCaption || '';
+  document.getElementById('pubPostBody').value = ASSET_SCRIPT_CACHE[assetId] || '';
   const status = document.getElementById('pubAssetStatus');
   status.textContent = '';
   status.className = 'modal-status';
   document.getElementById('publishAssetModal').classList.add('open');
+}
+function renderPubThumbnailPreview(url) {
+  const img = document.getElementById('pubThumbnailPreview');
+  if (url) { img.src = url; img.style.display = ''; } else { img.src = ''; img.style.display = 'none'; }
+}
+// Uploads the picked file straight to GitHub Pages hosting and points the
+// Asset's Thumbnail property at it (uploadAssetThumbnail, worker.js) — same
+// commit-and-link pattern uploadCarouselSlides uses for slide images, just
+// a single arbitrary image instead of a numbered slide set.
+async function uploadPubThumbnail() {
+  const file = document.getElementById('pubThumbnailFile').files[0];
+  if (!file || !pubAssetId) return;
+  const statusEl = document.getElementById('pubThumbnailStatus');
+  if (file.size > 8 * 1024 * 1024) {
+    statusEl.className = 'modal-status err'; statusEl.textContent = 'Image too large (max 8MB).';
+    document.getElementById('pubThumbnailFile').value = '';
+    return;
+  }
+  statusEl.className = 'modal-status'; statusEl.textContent = 'Uploading…';
+  try {
+    const reader = new FileReader();
+    const b64 = await new Promise((res, rej) => { reader.onload = e => res(e.target.result.split(',')[1]); reader.onerror = rej; reader.readAsDataURL(file); });
+    const data = await w('uploadAssetThumbnail', { assetId: pubAssetId, fileName: file.name, contentType: file.type || 'image/png', fileData: b64 });
+    if (data.error) throw new Error(data.error);
+    document.getElementById('pubThumbnail').value = data.thumbnailUrl;
+    renderPubThumbnailPreview(data.thumbnailUrl);
+    if (PUB_ASSET_CACHE[pubAssetId]) PUB_ASSET_CACHE[pubAssetId].thumbnail = data.thumbnailUrl;
+    statusEl.className = 'modal-status ok'; statusEl.textContent = 'Uploaded ✓';
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'modal-status'; }, 1500);
+  } catch(e) {
+    statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
+  } finally {
+    document.getElementById('pubThumbnailFile').value = '';
+  }
 }
 function closePublishAssetModal() {
   document.getElementById('publishAssetModal').classList.remove('open');

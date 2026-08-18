@@ -6726,12 +6726,13 @@ Return ONLY a JSON array — no other text, no markdown fences:
                 gradeStatus: p["Status"]?.select?.name || "",
                 gradeNotes: p["Grade Notes"]?.rich_text?.map(x => x.plain_text).join("") || "",
                 body: p["Body"]?.rich_text?.map(x => x.plain_text).join("") || "",
-                // Publish-ready copy fields — the Publish modal's four
-                // fields (renderAssetRow's 📋 Publish button), prefetched
-                // here alongside everything else so opening that modal
-                // needs no extra round-trip.
+                // Publish-ready copy fields — the Publish modal's fields
+                // (renderAssetRow's 📋 Publish button), prefetched here
+                // alongside everything else so opening that modal needs no
+                // extra round-trip.
                 hashtags: p["Hashtags"]?.rich_text?.map(x => x.plain_text).join("") || "",
                 postCaption: p["Post Caption"]?.rich_text?.map(x => x.plain_text).join("") || "",
+                thumbnail: p["Thumbnail"]?.url || "",
               };
             } catch(e) { return null; }
           }))).filter(Boolean);
@@ -12080,6 +12081,62 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         const result2 = await resp.json();
         if (!resp.ok) return json({ error: result2.message || "Update failed" }, resp.status);
         return json({ success: true });
+      }
+
+      // ── uploadAssetThumbnail ──
+      // The Publish modal's thumbnail upload area. Assets DB "Thumbnail" is
+      // a plain url property (not a Notion file property), so this hosts
+      // the picked image on GitHub Pages — same commit-and-link pattern
+      // uploadCarouselSlides uses for slide images, just one arbitrary
+      // image at a fixed per-asset path instead of a numbered slide set —
+      // and points Thumbnail at the committed file. Re-uploading overwrites
+      // in place (same path, sha looked up first) rather than accumulating
+      // stale files.
+      if (body.action === "uploadAssetThumbnail") {
+        const { assetId, fileName, contentType, fileData } = body;
+        if (!assetId || !fileData) return json({ error: "assetId and fileData required" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const assetTitle = assetPage.properties["Asset Title"]?.title?.map(t => t.plain_text).join("") || "asset";
+        const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const extFromType = (String(contentType || '').split('/')[1] || '').toLowerCase().replace('jpeg', 'jpg');
+        const extFromName = (String(fileName || '').match(/\.([a-zA-Z0-9]+)$/) || [, ''])[1].toLowerCase();
+        const ext = extFromType || extFromName || 'png';
+        const basePath = `web/${deployPath}/thumbnails`;
+        const path = `${basePath}/${slugify(assetTitle) || assetId}.${ext}`;
+
+        const b64 = String(fileData).split(',').pop();
+        if (!b64) return json({ error: "No image data" }, 400);
+
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        let sha = null;
+        const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+        if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
+
+        const putBody = { message: `Thumbnail upload: ${assetTitle}`, content: b64, branch: BRANCH };
+        if (sha) putBody.sha = sha;
+        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+        });
+        if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || putResp.status}` }, 500); }
+
+        const thumbnailUrl = `https://cabuzzard.github.io/dash/${path}`;
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Thumbnail": { url: thumbnailUrl } } }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save Thumbnail property" }, 500); }
+
+        return json({ success: true, thumbnailUrl });
       }
 
       // ── MICROSITE: getCampaignLogins ──
