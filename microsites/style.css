@@ -122,6 +122,7 @@ h2 {
 .ts-pub     { color: #e8ff47; border-color: rgba(232,255,71,.3);  background: rgba(232,255,71,.05); }
 .ts-done    { color: #44ff88; border-color: rgba(68,255,136,.3);  background: rgba(68,255,136,.05); }
 .ts-explode { color: #cc88ff; border-color: rgba(204,136,255,.3); background: rgba(204,136,255,.05); }
+.ts-planning { color: #888888; border-color: rgba(255,255,255,.15); background: rgba(255,255,255,.03); }
 .title-name  { font-size: 13px; color: #fff; flex: 1; }
 .title-group { font-size: 10px; color: #fff; flex-shrink: 0; }
 .title-link  { font-size: 9px; color: #fff; text-decoration: none; border: 1px solid #5f5f5f; padding: 1px 5px; flex-shrink: 0; }

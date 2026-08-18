@@ -2852,7 +2852,7 @@ export default {
         // downstream research flows read back via buildTitleSeedContext.
         // productId used to be silently ignored here — product sites were
         // creating titles with no product relation at all.
-        const { title, campaignId, productId: productIdParam, methodId, status, grouping, description, seedKeywords, researchInstructions, slotId } = body;
+        const { title, campaignId, productId: productIdParam, methodId, status, grouping, description, seedKeywords, researchInstructions, slotId, skipPillar } = body;
         if (!title) return json({ error: "title required" }, 400);
         const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
@@ -2905,13 +2905,63 @@ export default {
         // Pillar content should exist on a title the moment it's created —
         // Generate Assets reshapes this, it doesn't compose from scratch.
         // Best-effort: must not fail title creation, which already saved.
+        // skipPillar (the quick-add "Planning" flow, per operator request):
+        // the operator writes their own notes and runs writeTitlePillar
+        // later, on purpose — don't burn an AI call before they're ready.
         let pillarWarning;
-        await writePillarContent(hdr, env, {
-          titleId: newTitleId, titleText: title, campaignId, productId, methodId,
-          guidance: [description, researchInstructions].filter(Boolean).join(" — ") || undefined,
-        }).catch(e => { pillarWarning = e.message; });
+        if (!skipPillar) {
+          await writePillarContent(hdr, env, {
+            titleId: newTitleId, titleText: title, campaignId, productId, methodId,
+            guidance: [description, researchInstructions].filter(Boolean).join(" — ") || undefined,
+          }).catch(e => { pillarWarning = e.message; });
+        }
 
         return json({ success: true, id: newTitleId, pillarWarning });
+      }
+
+      // ── writeTitlePillar ──
+      // Manual, on-demand counterpart to createDevTitle's automatic pillar
+      // write — for a title created via the quick-add "Planning" flow
+      // (skipPillar: true above), the operator runs this later, once, when
+      // they're actually ready to turn their own notes into real pillar
+      // content. Reads titleText/campaign/product/method straight off the
+      // title's own Notion properties, so the caller only needs a titleId.
+      // On success, a title still sitting at "Planning" moves to
+      // "Development" — the whole point of Planning was "not real content
+      // yet"; once pillar content exists, that's no longer true. A title
+      // already past Planning (e.g. re-running this for a refresh) keeps its
+      // current status untouched.
+      if (body.action === "writeTitlePillar") {
+        const { titleId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const page = await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+        if (!page?.properties) return json({ error: "Could not load that title" }, 404);
+        const p = page.properties;
+        const titleText = p.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
+        const currentStatus = p.Status?.select?.name || "";
+        const campaignId = (p.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || undefined;
+        const productId  = (p.product?.relation  || [])[0]?.id?.replace(/-/g,"") || undefined;
+        const methodId   = (p.method?.relation   || [])[0]?.id?.replace(/-/g,"") || undefined;
+        const notes = p.Notes?.rich_text?.map(t => t.plain_text).join("") || "";
+
+        const result = await writePillarContent(hdr, env, {
+          titleId, titleText, campaignId, productId, methodId,
+          guidance: notes || undefined,
+        }).catch(e => ({ error: e.message }));
+        if (result?.error) return json({ error: result.error }, 502);
+        if (result?.skipped) return json({ error: result.reason || "Skipped — no grounding available yet for this title" }, 400);
+
+        let newStatus = currentStatus;
+        if (currentStatus === "Planning") {
+          newStatus = "Development";
+          await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Status": { select: { name: "Development" } } } }),
+          }).catch(() => {});
+        }
+        return json({ success: true, wordCount: result?.wordCount, newStatus });
       }
 
       if (body.action === "renameTodoItem") {
