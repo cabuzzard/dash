@@ -390,14 +390,16 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <input id="topChanKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:80px;outline:none">
         <button id="topChanBtn" onclick="runTopYoutubeChannels()" title="Find the top YouTube channels for this campaign's keywords" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ channels</button>
-        <button id="topicsDigestBtn" onclick="runChannelTopicsDigest()" title="Compare current blog/site coverage against the saved channels' recent uploads and surface topics that are underrepresented on YouTube — run 'channels' first" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">📰 digest</button>
+        <button id="topicsDigestBtn" onclick="runChannelTopicsDigest()" title="Build a digest of what's established in this niche right now, plus suggested topics that are underserved on YouTube — run 'channels' first" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">📰 digest</button>
       </span>
     </h2>
     <div class="content">
       <div id="r-topchannels"><div class="loading"><div class="spinner"></div>Loading…</div></div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#333);">
-        <div style="font-size:10px;color:var(--text3,#999);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Suggested YouTube Topics <span style="text-transform:none;font-weight:400;">— underrepresented vs. blogs</span></div>
-        <div id="r-topicsdigest"></div>
+        <div style="font-size:10px;color:var(--text3,#999);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Digest <span style="text-transform:none;font-weight:400;">— what's established now</span></div>
+        <div id="r-digest"></div>
+        <div style="font-size:10px;color:var(--text3,#999);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin:10px 0 4px;">Suggestions <span style="text-transform:none;font-weight:400;">— underserved on YouTube</span></div>
+        <div id="r-suggestions"></div>
       </div>
     </div>
   </div>
@@ -1581,13 +1583,11 @@ async function runTopYoutubeChannels() {
     if (btn) { btn.disabled = false; btn.textContent = '⟳ channels'; }
   }
 }
-function renderTopicsDigest(text) {
-  const el = document.getElementById('r-topicsdigest');
+// Renders one section (Digest or Suggestions) into its own list.
+function renderTopicsList(elId, text, emptyMsg) {
+  const el = document.getElementById(elId);
   if (!el) return;
-  if (!text || !text.trim()) {
-    el.innerHTML = '<span class="empty">No digest yet — build the channel list above, then press 📰 digest to find topics blogs/sites are covering that YouTube isn\'t.</span>';
-    return;
-  }
+  if (!text || !text.trim()) { el.innerHTML = `<span class="empty">${emptyMsg}</span>`; return; }
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
@@ -1597,21 +1597,43 @@ function renderTopicsDigest(text) {
     return `<div class="sm-trend-row"><span class="sm-trend-niche">${topic}</span><span class="sm-trend-body">${desc}</span></div>`;
   }).join('');
 }
+// Splits the raw saved text ("DIGEST\n...\n\nSUGGESTIONS\n...") back into its
+// two sections — used both right after a fresh run and when reloading the
+// saved Trend Round-Up field, so there's one parsing path for both.
+function splitDigestSections(raw) {
+  const text = (raw || '').trim();
+  if (!text) return { digest: '', suggestions: '' };
+  const m = text.match(/^SUGGESTIONS\s*$/im);
+  if (!m) return { digest: text.replace(/^DIGEST\s*$/im, '').trim(), suggestions: '' };
+  const idx = text.search(/^SUGGESTIONS\s*$/im);
+  return {
+    digest: text.slice(0, idx).replace(/^DIGEST\s*$/im, '').trim(),
+    suggestions: text.slice(idx).replace(/^SUGGESTIONS\s*$/im, '').trim(),
+  };
+}
+function renderTopicsDigest(rawText, presplit) {
+  const { digest, suggestions } = presplit || splitDigestSections(rawText);
+  renderTopicsList('r-digest', digest, 'No digest yet — build the channel list above, then press 📰 digest.');
+  renderTopicsList('r-suggestions', suggestions, 'No suggestions yet — run 📰 digest to find underserved topics.');
+}
 async function runChannelTopicsDigest() {
   const btn = document.getElementById('topicsDigestBtn');
-  const el  = document.getElementById('r-topicsdigest');
+  const digestEl = document.getElementById('r-digest');
+  const suggEl = document.getElementById('r-suggestions');
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
-  el.innerHTML = '<div class="loading"><div class="spinner"></div>Comparing blogs/sites vs. YouTube coverage…</div>';
+  const loadingHtml = '<div class="loading"><div class="spinner"></div>Working…</div>';
+  if (digestEl) digestEl.innerHTML = loadingHtml;
+  if (suggEl) suggEl.innerHTML = '';
   try {
     const data = await w('getChannelTopicsDigest', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, campaignId: CAMPAIGN_ID });
-    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
-    renderTopicsDigest(data.text || '');
+    if (data.error) { if (digestEl) digestEl.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderTopicsDigest(null, { digest: data.digest || '', suggestions: data.suggestions || '' });
     // Each digest run also writes its own dated title under Development
     // (Grouping: "Digest") — refresh that list so it shows up immediately
     // instead of only appearing after the next unrelated reload.
     if (data.digestTitleId && typeof loadTitles === 'function') loadTitles();
   } catch(e) {
-    el.innerHTML = '<span class="empty" style="color:#c0392b">Digest failed — try again.</span>';
+    if (digestEl) digestEl.innerHTML = '<span class="empty" style="color:#c0392b">Digest failed — try again.</span>';
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '📰 digest'; }
   }

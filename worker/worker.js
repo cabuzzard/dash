@@ -11074,18 +11074,20 @@ Rules:
       }
 
       // ── getChannelTopicsDigest ──
-      // Content-gap analysis, not just a trend recap: reads the channel list
-      // saved by getTopYoutubeChannels (parses channel IDs back out of the
-      // /channel/UC... URLs) to see what's ALREADY covered on YouTube, web-
-      // searches current blog/site/forum coverage of the same niche to see
-      // what's being talked about more broadly, then has Claude surface
-      // topics that are well-covered off-YouTube but thin or missing on
-      // YouTube — i.e. suggested video topics because the demand signal
-      // exists but the on-platform supply doesn't yet. The account-level
-      // counterpart to getYouTubeOutliers (keyword-level, one-off outlier
-      // videos, not a gap comparison). Saved to the Research "Trend Round-Up"
-      // field. On-demand only, no recurring schedule — the operator clicks it
-      // when they want a fresh read, per operator instruction.
+      // Produces TWO things, per operator instruction: (1) a DIGEST — what's
+      // established/happening in this niche right now — and (2) SUGGESTIONS
+      // — underserved ideas/niches, specifically ones thin or missing on
+      // YouTube. Reads the channel list saved by getTopYoutubeChannels
+      // (parses channel IDs back out of the /channel/UC... URLs) for what's
+      // ALREADY on YouTube, and best-effort web-searches current blog/site/
+      // forum coverage of the same niche for the broader demand signal — if
+      // that search comes back empty, this does NOT fail: it just falls back
+      // to YouTube-only grounding for both sections instead of erroring, per
+      // operator instruction. The account-level counterpart to
+      // getYouTubeOutliers (keyword-level, one-off outlier videos, no digest/
+      // suggestions split). Digest → Research "Trend Round-Up" field.
+      // On-demand only, no recurring schedule — the operator clicks it when
+      // they want a fresh read.
       if (body.action === "getChannelTopicsDigest") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         const { researchId, campaignId, kwOverride } = body;
@@ -11125,9 +11127,10 @@ Rules:
           } catch { return null; }
         }));
 
-        // Blog/site/forum coverage of the same niche — the off-YouTube demand
-        // signal this digest compares YouTube supply against. Same web_search
-        // tool pattern as getSourceLinks elsewhere in this file.
+        // Blog/site/forum coverage of the same niche, best-effort — the
+        // off-YouTube demand signal used to sharpen SUGGESTIONS. Same
+        // web_search tool pattern as getSourceLinks elsewhere in this file.
+        // Failure/empty here is expected and handled, not an error condition.
         const blogSearchP = (async () => {
           if (!searchTerm) return "";
           try {
@@ -11150,34 +11153,47 @@ Rules:
         const [perChannel, blogText] = await Promise.all([perChannelP, blogSearchP]);
         const withUploads = perChannel.filter(Boolean);
         if (!withUploads.length) return json({ error: "Couldn't fetch recent uploads for any saved channel — try refreshing the channel list" }, 502);
-        if (!blogText.trim()) return json({ error: "Blog/site search came back empty — try again, or add keywords to the Research record" }, 502);
+        const haveBlogData = !!blogText.trim();
 
         const ytRaw = withUploads.map(c => `${c.channel}:\n${c.videos.map(v => `- ${v.title}`).join("\n")}`).join("\n\n");
+        const userContent = haveBlogData
+          ? `YOUTUBE — already covered by this niche's top tracked channels:\n${ytRaw}\n\nBLOGS/SITES — current topics in the same niche:\n${blogText}`
+          : `YOUTUBE — already covered by this niche's top tracked channels:\n${ytRaw}\n\n(No blog/site data available this run — base both sections on the YouTube list alone.)`;
 
         const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
           body: JSON.stringify({
             model: "claude-haiku-4-5-20251001",
-            max_tokens: 1200,
-            system: `You are doing a YouTube content-gap analysis for this niche. You're given two inputs: (1) recent uploads from this niche's top-tracked YouTube channels — what's ALREADY covered on YouTube — and (2) current blog/site/forum topics in the same niche — where the broader demand signal is.
+            max_tokens: 1600,
+            system: `You are a content strategist producing a niche intelligence digest. You get recent uploads from this niche's top-tracked YouTube channels, and — when available — current blog/site/forum topics in the same niche. Sometimes only the YouTube data is available; work with whatever you're given.
 
-Your job: surface topics that are well-covered in the BLOG/SITE list but thin or MISSING from the YOUTUBE list. These are suggested video topics — audience interest clearly exists (it's being written about), but YouTube supply from the tracked channels doesn't match it yet.
+Produce exactly two sections, in this exact structure (the two section words on their own line, nothing else on those lines):
 
-FORMAT — one line per suggested topic:
-TOPIC (max 8 words): why it's a gap — what's driving it in blogs/sites, confirming it's thin/absent on YouTube — (source hint in parens)
+DIGEST
+5-8 lines: what's established/happening in this niche right now — the actual current news/topics, drawn from whichever inputs you have.
+
+SUGGESTIONS
+5-8 lines: underserved ideas/sub-niches — topics with real audience interest that are thin or missing on YouTube specifically. If blog/site data is available, base this on what's covered there but not (or barely) on YouTube. If only YouTube data is available, infer gaps from what IS covered: specific angles, formats, or adjacent sub-topics the tracked channels haven't explored yet.
+
+Line format for both sections: LABEL (max 8 words): one-sentence detail — (source hint in parens, e.g. a channel name or "blogs")
 
 Rules:
-- 6-10 suggested topics, ranked by how strong the gap looks (most underrepresented on YouTube first)
-- Skip anything the tracked YouTube channels are already covering well
-- No bullets, no numbering, no markdown, no preamble
-- Output only the formatted lines, nothing else`,
-            messages: [{ role: "user", content: `YOUTUBE — already covered by this niche's top tracked channels:\n${ytRaw}\n\nBLOGS/SITES — current topics in the same niche:\n${blogText}` }]
+- No bullets, no numbering, no markdown, no preamble, no text before "DIGEST" or between the two sections other than the lines themselves
+- Output only: DIGEST, its lines, a blank line, SUGGESTIONS, its lines — nothing else`,
+            messages: [{ role: "user", content: userContent }]
           })
         });
         const claudeData = await claudeResp.json();
         if (!claudeResp.ok) return json({ error: claudeData.error?.message || "Claude error", type: claudeData.error?.type, status: claudeResp.status }, 502);
         const result = (claudeData.content?.[0]?.text || "").trim();
+
+        // Split the two sections back out — used for the Notion save (digest
+        // only, matching the field name) and returned separately too so the
+        // client doesn't have to re-parse.
+        const splitIdx = result.search(/^SUGGESTIONS\s*$/im);
+        const digestText = (splitIdx === -1 ? result : result.slice(0, splitIdx)).replace(/^DIGEST\s*$/im, '').trim();
+        const suggestionsText = splitIdx === -1 ? '' : result.slice(splitIdx).replace(/^SUGGESTIONS\s*$/im, '').trim();
 
         await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
           method: "PATCH",
@@ -11196,7 +11212,7 @@ Rules:
         try {
           const dateLabel = new Date().toISOString().slice(0, 10);
           const titleProps = {
-            Title: { title: [{ type: "text", text: { content: `Suggested YouTube Topics — ${dateLabel}` } }] },
+            Title: { title: [{ type: "text", text: { content: `Niche Digest — ${dateLabel}` } }] },
             Status: { select: { name: "Development" } },
             Grouping: { rich_text: [{ type: "text", text: { content: "Digest" } }] },
           };
@@ -11209,8 +11225,14 @@ Rules:
           const createData = await createResp.json();
           if (createResp.ok) {
             digestTitleId = createData.id.replace(/-/g, "");
+            const heading3 = t => ({ object: "block", type: "heading_3", heading_3: { rich_text: [{ type: "text", text: { content: t } }] } });
             const para = t => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: t.slice(0, 1990) } }] } });
-            const children = [para(`Topics well-covered on blogs/sites but underrepresented on this niche's tracked YouTube channels, as of ${dateLabel}.`), ...result.split("\n").filter(Boolean).map(para)];
+            const children = [
+              heading3("Digest"),
+              ...digestText.split("\n").filter(Boolean).map(para),
+              heading3("Suggestions"),
+              ...(suggestionsText ? suggestionsText.split("\n").filter(Boolean).map(para) : [para("(none generated this run)")]),
+            ];
             await fetch(`https://api.notion.com/v1/blocks/${dashId(digestTitleId)}/children`, {
               method: "PATCH",
               headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -11219,7 +11241,7 @@ Rules:
           }
         } catch (e) { /* best-effort, see comment above */ }
 
-        return json({ success: true, text: result, digestTitleId });
+        return json({ success: true, text: result, digest: digestText, suggestions: suggestionsText, digestTitleId });
       }
 
       // Î"Ã¶Ã‡Î"Ã¶Ã‡ CAMPAIGN ADMIN: updateCampaignKeywords Î"Ã¶Ã‡Î"Ã¶Ã‡
