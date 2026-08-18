@@ -587,7 +587,27 @@ async function extractPillarContent(hdr, titleId) {
       if (text) lines.push(text);
     }
   }
-  return lines.join("\n\n");
+  if (lines.length) return lines.join("\n\n");
+
+  // Fallback for legacy titles: a full essay written directly on the page
+  // body, with no "Pillar Content" heading_3 wrapper at all (predates that
+  // convention). Rather than treating this as "no pillar content" — which
+  // is factually wrong, real written material is sitting right there —
+  // read the whole body as the pillar source, keeping its own headings
+  // inline as section markers so structure isn't lost.
+  const fallback = [];
+  for (const b of blocks) {
+    if (b.type === "heading_1" || b.type === "heading_2" || b.type === "heading_3") {
+      const text = (b[b.type]?.rich_text || []).map(t => t.plain_text).join("");
+      if (text) fallback.push(text);
+      continue;
+    }
+    if (b.type === "paragraph" || b.type === "bulleted_list_item" || b.type === "numbered_list_item") {
+      const text = (b[b.type]?.rich_text || []).map(t => t.plain_text).join("");
+      if (text) fallback.push(text);
+    }
+  }
+  return fallback.join("\n\n");
 }
 
 // Composes a full-length pillar piece for a title — grounded in Campaign
@@ -6652,7 +6672,16 @@ Return ONLY a JSON array — no other text, no markdown fences:
         await Promise.all(titleList.map(async t => {
           try {
             const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dashify(t.id)}/children?page_size=100`, { headers: titlesHdr }).then(r => r.json());
-            t.hasPillar = (blocksResp.results || []).some(b => b.type === "heading_3" && (b.heading_3?.rich_text || []).map(x => x.plain_text).join("").trim().toLowerCase() === "pillar content");
+            const blocks = blocksResp.results || [];
+            // Matches extractPillarContent's own two recognition paths: an
+            // explicit "Pillar Content" heading_3 section, OR (legacy
+            // titles) any real written paragraph/list content on the page
+            // body at all — a page that's just properties and no body text
+            // genuinely has no pillar content yet.
+            t.hasPillar = blocks.some(b =>
+              (b.type === "heading_3" && (b.heading_3?.rich_text || []).map(x => x.plain_text).join("").trim().toLowerCase() === "pillar content") ||
+              ((b.type === "paragraph" || b.type === "bulleted_list_item" || b.type === "numbered_list_item") && (b[b.type]?.rich_text || []).map(x => x.plain_text).join("").trim().length > 0)
+            );
           } catch (e) { t.hasPillar = false; }
         }));
         await Promise.all(titleList.map(async t => {
