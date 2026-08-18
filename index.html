@@ -2541,10 +2541,10 @@
 </div>
 
 <!-- Add Creator Modal (Links tab): appends this saved post's creator/
-     account onto a campaign's digest list (Research "Influencer
-     Intelligence" field — what getChannelTopicsDigest reads from). The
-     campaign must already exist (needs a Research record) — no create-new
-     here, unlike the Link → Title modal's pickers. -->
+     account onto one or more campaigns' digest lists (Research
+     "Influencer Intelligence" field — what getChannelTopicsDigest reads
+     from). Campaigns must already exist (need a Research record) — no
+     create-new here, unlike the Link → Title modal's pickers. -->
 <div class="modal-overlay" id="addCreatorModal" style="display:none;" onclick="if(event.target===this)closeAddCreatorModal()">
   <div class="modal" style="width:420px;max-width:95vw;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
@@ -2553,7 +2553,8 @@
     </div>
     <div id="acCreatorPreview" style="font-size:13px;color:var(--text);margin-bottom:14px;line-height:1.5;"></div>
     <div class="modal-field" style="position:relative;">
-      <label class="modal-label">Campaign</label>
+      <label class="modal-label">Campaigns <span style="color:var(--text3);font-weight:400;">(select one or more)</span></label>
+      <div id="acCampaignChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0;"></div>
       <input class="modal-input" id="acCampaignInput" type="text" placeholder="Search campaigns…" autocomplete="off"
         oninput="acFilterCampaign()" onfocus="acFilterCampaign()" onblur="setTimeout(()=>{document.getElementById('acCampaignDD').style.display='none'},180)" />
       <div id="acCampaignDD" class="camp-dropdown" style="display:none;"></div>
@@ -3994,20 +3995,22 @@ async function submitLinkTitle() {
 // ── ADD CREATOR MODAL (Links tab) ────────────────────────────────────
 // Reuses LT_LISTS.campaign/ltEnsureLists (already populated by the
 // Link → Title modal's campaign picker) — same catalog, but this picker
-// only ever resolves to an EXISTING campaign (no create-new-on-save),
-// since the target is that campaign's Research record, which a
-// brand-new campaign wouldn't have yet.
+// only ever resolves to EXISTING campaigns (no create-new-on-save),
+// since the target is each campaign's Research record, which a
+// brand-new campaign wouldn't have yet. Multi-select: picked campaigns
+// render as removable chips, search input stays free for picking more.
 let AC_POST_ID = null;
-let AC_CAMPAIGN_SEL = null; // {id,name} while input text still matches
+let AC_CAMPAIGNS_SELECTED = []; // [{id,name}, ...]
 
 function openAddCreatorModal(postId) {
   const p = LINKS_POSTS.find(x => x.id === postId) || {};
   if (!p.account) { showToast('This saved post has no creator/account to add', 'error'); return; }
   AC_POST_ID = postId;
-  AC_CAMPAIGN_SEL = null;
+  AC_CAMPAIGNS_SELECTED = [];
   document.getElementById('acCreatorPreview').innerHTML =
     '<strong>@' + esc(p.account) + '</strong>' + (p.platform ? ' <span style="color:var(--text3);">· ' + esc(p.platform) + '</span>' : '');
   document.getElementById('acCampaignInput').value = '';
+  renderAcChips();
   document.getElementById('acStatus').textContent = '';
   const btn = document.getElementById('acSaveBtn');
   btn.disabled = false; btn.textContent = 'Add';
@@ -4017,18 +4020,39 @@ function openAddCreatorModal(postId) {
 }
 function closeAddCreatorModal() { document.getElementById('addCreatorModal').style.display = 'none'; }
 
+function renderAcChips() {
+  const wrap = document.getElementById('acCampaignChips');
+  wrap.innerHTML = AC_CAMPAIGNS_SELECTED.map((c, i) =>
+    '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 8px;border-radius:12px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);">' +
+      esc(c.name) +
+      '<span onclick="acRemoveCampaign(' + i + ')" style="cursor:pointer;color:var(--text3);font-weight:700;">✕</span>' +
+    '</span>'
+  ).join('');
+}
+function acRemoveCampaign(idx) {
+  AC_CAMPAIGNS_SELECTED.splice(idx, 1);
+  renderAcChips();
+}
+function acAddCampaign(c) {
+  if (!AC_CAMPAIGNS_SELECTED.some(x => x.id === c.id)) AC_CAMPAIGNS_SELECTED.push(c);
+  document.getElementById('acCampaignInput').value = '';
+  document.getElementById('acCampaignDD').style.display = 'none';
+  renderAcChips();
+  document.getElementById('acCampaignInput').focus();
+}
+
 function acFilterCampaign() {
   const inp = document.getElementById('acCampaignInput');
   const dd  = document.getElementById('acCampaignDD');
   const q = inp.value.trim(), qL = q.toLowerCase();
-  if (AC_CAMPAIGN_SEL && q !== AC_CAMPAIGN_SEL.name) AC_CAMPAIGN_SEL = null;
   dd.innerHTML = '';
-  const matches = LT_LISTS.campaign.filter(x => !q || x.name.toLowerCase().includes(qL)).slice(0, 10);
+  const selectedIds = new Set(AC_CAMPAIGNS_SELECTED.map(c => c.id));
+  const matches = LT_LISTS.campaign.filter(x => !selectedIds.has(x.id) && (!q || x.name.toLowerCase().includes(qL))).slice(0, 10);
   matches.forEach(x => {
     const div = document.createElement('div');
     div.className = 'camp-option';
     div.textContent = x.name;
-    div.onmousedown = () => { AC_CAMPAIGN_SEL = { id: x.id, name: x.name }; inp.value = x.name; dd.style.display = 'none'; };
+    div.onmousedown = () => acAddCampaign({ id: x.id, name: x.name });
     dd.appendChild(div);
   });
   dd.style.display = matches.length ? 'block' : 'none';
@@ -4036,24 +4060,26 @@ function acFilterCampaign() {
 
 async function submitAddCreator() {
   const status = document.getElementById('acStatus');
-  const val = document.getElementById('acCampaignInput').value.trim();
-  if (!val) { status.textContent = 'Pick a campaign first.'; return; }
-  const campaign = (AC_CAMPAIGN_SEL && AC_CAMPAIGN_SEL.name === val)
-    ? AC_CAMPAIGN_SEL
-    : LT_LISTS.campaign.find(x => x.name.toLowerCase() === val.toLowerCase());
-  if (!campaign) { status.textContent = 'No campaign matches "' + val + '" — pick one from the list.'; return; }
+  if (!AC_CAMPAIGNS_SELECTED.length) { status.textContent = 'Pick at least one campaign.'; return; }
   const p = LINKS_POSTS.find(x => x.id === AC_POST_ID) || {};
   const btn = document.getElementById('acSaveBtn');
   btn.disabled = true; btn.textContent = 'Adding…'; status.textContent = '';
   try {
     const r = await call('addCreatorToDigest', {
-      campaignId: campaign.id,
+      campaignIds: AC_CAMPAIGNS_SELECTED.map(c => c.id),
       account: p.account,
       platform: p.platform || undefined,
       url: p.url || undefined,
     });
     closeAddCreatorModal();
-    showToast(r.alreadyPresent ? 'Already on that digest list ✓' : 'Added to digest list ✓', 'success');
+    const results = r.results || [];
+    const added   = results.filter(x => x.success && !x.alreadyPresent).length;
+    const already = results.filter(x => x.success && x.alreadyPresent).length;
+    const failed  = results.filter(x => !x.success);
+    let msg = added ? ('Added to ' + added + ' campaign' + (added === 1 ? '' : 's') + ' ✓') : '';
+    if (already) msg += (msg ? ', ' : '') + already + ' already on the list';
+    if (failed.length) msg += (msg ? ' — ' : '') + failed.length + ' failed (' + failed.map(f => f.error).join('; ') + ')';
+    showToast(msg || 'Done', failed.length ? 'error' : 'success');
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     btn.disabled = false; btn.textContent = 'Add';

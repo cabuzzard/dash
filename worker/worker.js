@@ -11479,33 +11479,27 @@ Rules:
       // ── addCreatorToDigest ──
       // "Add Creator" modal on a Links-tab saved-post row: takes the
       // creator behind that saved link (its account/handle) and appends
-      // them onto the picked campaign's digest list — the Research
-      // "Influencer Intelligence" field getChannelTopicsDigest reads
-      // channel IDs back out of (see that action's own comment above).
-      // A YouTube link gets resolved to a real channel (subs/video count,
-      // canonical /channel/UC... URL) so it actually participates in the
-      // next digest run, same as an entry getTopYoutubeChannels would have
+      // them onto one or more picked campaigns' digest lists — the
+      // Research "Influencer Intelligence" field getChannelTopicsDigest
+      // reads channel IDs back out of (see that action's own comment
+      // above). A YouTube link gets resolved to a real channel (subs/video
+      // count, canonical /channel/UC... URL) ONCE, then reused across every
+      // picked campaign, so it actually participates in the next digest
+      // run on each — same as an entry getTopYoutubeChannels would have
       // produced. Non-YouTube platforms (TikTok, Instagram, etc.) still get
       // appended as a plain reference line — visible on the list for
       // manual reference, just not parseable by the YouTube-specific
       // digest pipeline (there's no channel-ID concept to resolve there).
       if (body.action === "addCreatorToDigest") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { campaignId, account, platform, url } = body;
-        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const { campaignId, campaignIds, account, platform, url } = body;
+        const ids = Array.isArray(campaignIds) && campaignIds.length ? campaignIds : (campaignId ? [campaignId] : []);
+        if (!ids.length) return json({ error: "At least one campaign required" }, 400);
         if (!account) return json({ error: "No creator/account on this saved post to add" }, 400);
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-
-        const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
-          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dashId(campaignId) } } }),
-        }).then(r => r.json()).catch(() => ({ results: [] }));
-        const researchPage = (researchRows.results || [])[0];
-        if (!researchPage) return json({ error: "No Research record found for this campaign" }, 404);
-        const researchId = researchPage.id.replace(/-/g, "");
-
         const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n/1e3) + "k" : String(n);
+
         let line = null;
         const isYouTube = /youtube/i.test(platform || "") || /youtube\.com|youtu\.be/i.test(url || "");
         if (isYouTube && url) {
@@ -11531,17 +11525,31 @@ Rules:
         }
         if (!line) line = `${account}${platform ? ` (${platform})` : ''}${url ? ` — ${url}` : ''}`;
 
-        const existing = researchPage.properties?.["Influencer Intelligence"]?.rich_text?.map(t => t.plain_text).join("") || "";
-        const alreadyPresent = existing.toLowerCase().includes(String(account).toLowerCase());
-        if (!alreadyPresent) {
-          const updated = (existing ? existing + "\n" : "") + line;
-          const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Influencer Intelligence": { rich_text: [{ type: "text", text: { content: updated.slice(0, 2000) } }] } } }),
-          });
-          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save to Research" }, 502); }
-        }
-        return json({ success: true, line, alreadyPresent });
+        const results = await Promise.all(ids.map(async cid => {
+          try {
+            const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dashId(cid) } } }),
+            }).then(r => r.json()).catch(() => ({ results: [] }));
+            const researchPage = (researchRows.results || [])[0];
+            if (!researchPage) return { campaignId: cid, success: false, error: "No Research record found for this campaign" };
+            const researchId = researchPage.id.replace(/-/g, "");
+
+            const existing = researchPage.properties?.["Influencer Intelligence"]?.rich_text?.map(t => t.plain_text).join("") || "";
+            const alreadyPresent = existing.toLowerCase().includes(String(account).toLowerCase());
+            if (!alreadyPresent) {
+              const updated = (existing ? existing + "\n" : "") + line;
+              const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { "Influencer Intelligence": { rich_text: [{ type: "text", text: { content: updated.slice(0, 2000) } }] } } }),
+              });
+              if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return { campaignId: cid, success: false, error: r.message || "Failed to save to Research" }; }
+            }
+            return { campaignId: cid, success: true, alreadyPresent };
+          } catch (e) { return { campaignId: cid, success: false, error: e.message }; }
+        }));
+
+        return json({ success: true, line, results });
       }
 
       // Î"Ã¶Ã‡Î"Ã¶Ã‡ CAMPAIGN ADMIN: updateCampaignKeywords Î"Ã¶Ã‡Î"Ã¶Ã‡
