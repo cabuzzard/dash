@@ -1296,6 +1296,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <input class="modal-ta" id="gaSourceInput" type="text" placeholder="e.g. https://example.org/careers/webmaster" autocomplete="off" />
       </div>
 
+      <div id="gaTshirtDesignWrap" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #3a4a2f;background:rgba(126,211,33,.06);border-radius:4px;">
+        <label class="lm-label">Print-ready design <span style="color:#fff;font-weight:normal;">— optional here; attach now or later via the 📋 Publish button on the asset row. PNG/JPG/SVG/PDF.</span></label>
+        <input class="modal-ta" id="gaTshirtDesignFile" type="file" accept="image/png,image/jpeg,image/svg+xml,application/pdf" style="height:auto;padding:8px 10px;" />
+      </div>
+
       <label class="lm-label">Platform <span style="color:#fff;font-weight:normal;">— from the Platforms DB; what this asset is packaged for (optional)</span></label>
       <select id="gaPlatformInput" class="modal-ta" style="margin-bottom:10px;">
         <option value="">— none —</option>
@@ -5033,11 +5038,13 @@ function gaUpdateSkillHint() {
   const typeWrap = document.getElementById('gaCarouselTypeWrap');
   const avatarWrap = document.getElementById('gaAvatarPresenterWrap');
   const jobWrap = document.getElementById('gaJobAssetWrap');
+  const tshirtWrap = document.getElementById('gaTshirtDesignWrap');
   const match = gaMatchSkill(GA_METHOD_NAME);
   const isCarousel = match?.workerAction === 'generateCarouselPreview';
   const isAvatar = match?.workerAction === 'generateAvatarScript';
   const isJobAsset = match?.workerAction === 'generateJobAsset';
-  if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; if (avatarWrap) avatarWrap.style.display = 'none'; if (jobWrap) jobWrap.style.display = 'none'; return; }
+  const isTshirt = match?.workerAction === 'generateTshirtAsset';
+  if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; if (avatarWrap) avatarWrap.style.display = 'none'; if (jobWrap) jobWrap.style.display = 'none'; if (tshirtWrap) tshirtWrap.style.display = 'none'; return; }
   hint.style.display = 'flex';
   document.getElementById('gaSkillHintText').textContent = match.hint;
   const btn = document.getElementById('gaSkillHintBtn');
@@ -5047,6 +5054,7 @@ function gaUpdateSkillHint() {
     if (typeWrap) typeWrap.style.display = isCarousel ? 'block' : 'none';
     if (avatarWrap) avatarWrap.style.display = isAvatar ? 'block' : 'none';
     if (jobWrap) jobWrap.style.display = isJobAsset ? 'block' : 'none';
+    if (tshirtWrap) tshirtWrap.style.display = isTshirt ? 'block' : 'none';
     if (isAvatar) gaLoadCampaignPresenter();
     if (isJobAsset) gaLoadCareerAvatars();
     return;
@@ -5287,7 +5295,7 @@ async function openGenAssetsModal(titleId) {
   GA_TITLE_ID = titleId; GA_CAMPAIGN_ID = null;
   GA_METHOD_ID = null; GA_METHOD_NAME = '';
   GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
-  ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput'].forEach(id => {
+  ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput','gaTshirtDesignFile'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
@@ -6807,9 +6815,21 @@ async function submitGenAssets() {
         if (r.created) setTimeout(closeGenAssetsModal, 3500);
         else { btn.disabled = false; btn.textContent = 'Generate'; }
       } else if (isTshirt) {
-        status.textContent = r.alreadyExisted
+        const copyNote = r.alreadyExisted
           ? '✓ Listing copy already existed — refreshed it and confirmed the title status.'
-          : '✓ Etsy/social copy written and set to Publish — use the 📋 Publish button on the asset row below to upload the print-ready design file (PNG/SVG/PDF), then publish through Printify.';
+          : '✓ Etsy/social copy written and set to Publish.';
+        const designFile = document.getElementById('gaTshirtDesignFile')?.files?.[0];
+        let designNote = ' Attach the print-ready design (PNG/SVG/PDF) via the 📋 Publish button on the asset row below, then publish through Printify.';
+        if (designFile && r.assetId) {
+          status.textContent = copyNote + ' Uploading design…';
+          try {
+            const reader = new FileReader();
+            const b64 = await new Promise((res, rej) => { reader.onload = e => res(e.target.result.split(',')[1]); reader.onerror = rej; reader.readAsDataURL(designFile); });
+            const dr = await w('saveAssetDesignRef', { assetId: r.assetId, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, imageBase64: b64, imageFilename: designFile.name });
+            designNote = dr.error ? ` Design upload failed: ${dr.error}` : ' Design file attached.';
+          } catch (e) { designNote = ` Design upload failed: ${e.message}`; }
+        }
+        status.textContent = copyNote + designNote;
         status.style.color = '#68d391';
         btn.textContent = 'Done';
         await loadTitles();
