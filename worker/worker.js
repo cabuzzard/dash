@@ -8527,6 +8527,109 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return json({ success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode });
         }
 
+        // ── LinkedIn Post asset type: reshapes the title's own pillar
+        // content into ONE finished, publish-ready LinkedIn Article — not N
+        // options. Framework (length, headline/hook/structure/voice/CTA
+        // conventions) comes from the attached "LinkedIn Post" Method's own
+        // page body, read the same way every other method-grounded path
+        // reads it — nothing LinkedIn-specific is hardcoded here. No hard
+        // gate on pillarContent (per operator: barriers to generation come
+        // out — work from whatever's on the title, even just its name, if
+        // there's genuinely nothing else yet).
+        if (/linkedin post/i.test(assetType)) {
+          const hasMethod = methodId && methodId !== "__none__";
+          const [pillarContent, methodFrameworkText] = await Promise.all([
+            extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
+            hasMethod ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
+          ]);
+
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are reshaping source material into ONE finished, publish-ready LinkedIn Article (LinkedIn's long-form "Write article" format, not a short feed post).
+
+TITLE: ${title}
+${methodFrameworkText ? `FRAMEWORK — follow these conventions for length, headline, hook, structure, voice, and CTA:\n${methodFrameworkText.slice(0, 3000)}\n` : ''}
+${pillarContent ? `SOURCE MATERIAL (this title's own already-written pillar content — reshape THIS into the article; don't invent new facts beyond what's here):\n${pillarContent}\n` : `NO WRITTEN SOURCE MATERIAL YET on this title beyond its name — work from the TITLE and the framework above to produce something real and specific, not generic filler.\n`}${(description || '').trim() ? `\nOPERATOR OVERRIDE (follow this): ${description.trim()}\n` : ''}
+Produce all of this by calling the submit_article tool — do not include any of it as plain text.`;
+
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }],
+              tools: [{
+                name: "submit_article",
+                description: "Submit the finished LinkedIn Article.",
+                input_schema: {
+                  type: "object",
+                  properties: {
+                    headline: { type: "string", description: "Clear, outcome-led headline — states the payoff directly, not a teaser." },
+                    hook: { type: "string", description: "Opening 1-3 sentences. Must stand alone in the feed preview before \"…see more\"." },
+                    sections: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: { heading: { type: "string" }, body: { type: "string" } },
+                        required: ["heading", "body"],
+                      },
+                      description: "One entry per H2 section, in a logical scannable order. As many as the material genuinely supports — not a fixed count.",
+                    },
+                    cta: { type: "string", description: "One direct call to action using an action verb (comment/save/message) — never a vague \"thoughts?\"." },
+                  },
+                  required: ["headline", "hook", "sections", "cta"],
+                },
+              }],
+              tool_choice: { type: "tool", name: "submit_article" },
+            }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+          const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_article");
+          if (!toolUse || !toolUse.input) return json({ error: "Claude did not return an article — try again" }, 502);
+          const article = toolUse.input;
+          const sections = (Array.isArray(article.sections) ? article.sections : []).filter(s => s && s.heading);
+          if (!sections.length) return json({ error: "No sections generated — try again" }, 502);
+
+          const headline = String(article.headline || title).slice(0, 200);
+          const assetProps = {
+            "Asset Title":  { title: [{ type: "text", text: { content: headline } }] },
+            "Asset Status": { select: { name: "Publish" } },
+            "Asset Type":   { select: { name: String(assetType).slice(0, 100) } },
+            "Body":         { rich_text: [{ type: "text", text: { content: String(article.hook || "").slice(0, 2000) } }] },
+            "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+          };
+          if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
+          if (platformId) assetProps["Platform"] = { relation: [{ id: dsDash(platformId) }] };
+          if (loginId) assetProps["Login"] = { relation: [{ id: dsDash(loginId) }] };
+          const assetResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+          });
+          const assetResult = await assetResp.json();
+          if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create LinkedIn Post asset" }, 502);
+          const assetId = assetResult.id.replace(/-/g, "");
+
+          // Full article into the asset's own page body — Body property
+          // above is a truncated hook preview only.
+          const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+          const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
+          const para = (text, opts) => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text, opts) } });
+          const children = [];
+          if (article.hook) children.push(para(article.hook));
+          sections.forEach(s => { children.push(heading2(s.heading)); if (s.body) children.push(para(s.body)); });
+          if (article.cta) children.push(para(article.cta, { bold: true }));
+          if (children.length) {
+            const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dsDash(assetId)}/children`, {
+              method: "PATCH",
+              headers: { ...dsHdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ children }),
+            });
+            if (!blocksResp.ok) { const r = await blocksResp.json(); return json({ error: r.message || "Asset created but failed to write article body" }, 502); }
+          }
+
+          return json({ success: true, created: 1, assets: [{ id: assetId, title: headline }], sectionCount: sections.length });
+        }
+
         // ── "Template CSV Export"-style table asset: ONE finished Page |
         // Field | Content table, not N visual concept options. The generic
         // concept-options path below has a hardcoded JSON schema built
