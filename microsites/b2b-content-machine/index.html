@@ -1159,6 +1159,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <label class="lm-label">Title <span style="color:var(--danger,#e05);">*</span></label>
       <input class="modal-ta" id="qaTitleInput" type="text" autocomplete="off" placeholder="Working title…" style="margin-bottom:10px;" />
 
+      <label class="lm-label">Product <span style="color:#fff;font-weight:normal;">— optional; groups this title in the Development Titles list</span></label>
+      <select class="modal-ta" id="qaProductInput" style="margin-bottom:10px;"></select>
+
       <label class="lm-label">Notes <span style="color:#fff;font-weight:normal;">— optional; whatever you want to remember about this idea. Fed in as guidance when you later run Write Pillar.</span></label>
       <textarea class="modal-ta" id="qaNotesInput" rows="4" placeholder="Angle, source, why this matters…" style="resize:vertical;"></textarea>
 
@@ -2031,41 +2034,11 @@ async function loadTitles() {
         container.appendChild(mHdr); container.appendChild(mBody);
       });
     }
-    // Outermost Development-list grouping level, above Product/Method/Phase/
-    // Grouping — buckets by the title's linked Growth Strategy (t.strategyId/
-    // t.strategyName from getTitles). Same collapse/expand + single-bucket-
-    // skip pattern as every level below it (renderTitlesNested's Product
-    // level, renderMethodLevel, renderPhaseLevel, renderGroupingLevel).
-    function renderStrategyLevel(arr, el, section) {
-      el.innerHTML = '';
-      if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
-      const hasStrategy = arr.some(t => t.strategyId && t.strategyId !== '__none__');
-      if (!hasStrategy) { renderTitlesNested(arr, el, section); return; }
-      const stratOrder = [], byStrat = {};
-      arr.forEach(t => {
-        const sk = (t.strategyId || '__none__') + '||' + (t.strategyName || 'No Strategy');
-        if (!byStrat[sk]) { byStrat[sk] = []; stratOrder.push(sk); }
-        byStrat[sk].push(t);
-      });
-      stratOrder.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
-      stratOrder.forEach(sk => {
-        const sTitles = byStrat[sk];
-        const stratName = sk.split('||')[1];
-        if (stratOrder.length === 1) { renderTitlesNested(sTitles, el, section); return; }
-        const stateKey = section + '|strat|' + sk;
-        const isOpen = !!titleGroupsOpen[stateKey];
-        const sHdr = document.createElement('div');
-        sHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:7px 10px;background:rgba(139,92,246,.12);border-bottom:1px solid rgba(139,92,246,.2);cursor:pointer;user-select:none;';
-        const sArrow = document.createElement('span'); sArrow.textContent = isOpen ? '▾' : '▶'; sArrow.style.cssText = 'font-size:8px;color:#a78bfa;flex-shrink:0;';
-        const sLabel = document.createElement('span'); sLabel.style.cssText = 'flex:1;font-size:12px;color:#c4b5fd;font-weight:700;'; sLabel.textContent = '🚀 ' + stratName;
-        const sCount = document.createElement('span'); sCount.style.cssText = 'font-size:10px;color:#7c5cbf;'; sCount.textContent = sTitles.length;
-        sHdr.appendChild(sArrow); sHdr.appendChild(sLabel); sHdr.appendChild(sCount);
-        const sBody = document.createElement('div'); sBody.style.display = isOpen ? 'block' : 'none';
-        renderTitlesNested(sTitles, sBody, section);
-        sHdr.onclick = () => { const o = sBody.style.display !== 'none'; sBody.style.display = o ? 'none' : 'block'; sArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
-        el.appendChild(sHdr); el.appendChild(sBody);
-      });
-    }
+    // Outermost Development-list grouping level — buckets by Product first
+    // (per operator request: Strategy-first was confusing, and titles should
+    // group the way they're actually added, by product). Same collapse/
+    // expand + single-bucket-skip pattern as the levels below it
+    // (renderMethodLevel, renderPhaseLevel, renderGroupingLevel).
     function renderTitlesNested(arr, el, section) {
       el.innerHTML = '';
       if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
@@ -2096,7 +2069,7 @@ async function loadTitles() {
         el.appendChild(pHdr); el.appendChild(pBody);
       });
     }
-    renderStrategyLevel(dev, devEl, 'dev');
+    renderTitlesNested(dev, devEl, 'dev');
     renderPublishedAssets(pub, pubEl);
   } catch(e) {
     devEl.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
@@ -6159,6 +6132,9 @@ async function submitCreateTitleFromSlot() {
 // Pillar content gets written later, on purpose, via writeTitlePillarRow.
 function openQuickAddModal() {
   document.getElementById('qaTitleInput').value = '';
+  const sel = document.getElementById('qaProductInput');
+  sel.innerHTML = '<option value="">— none —</option>' + (PRODUCT_ITEMS || []).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  sel.value = '';
   document.getElementById('qaNotesInput').value = '';
   document.getElementById('qaStatus').textContent = '';
   const btn = document.getElementById('qaGoBtn');
@@ -6175,6 +6151,7 @@ document.getElementById('quickAddModal').addEventListener('click', function(e) {
 async function submitQuickAddTitle() {
   const status = document.getElementById('qaStatus');
   const title = document.getElementById('qaTitleInput').value.trim();
+  const productId = document.getElementById('qaProductInput').value || undefined;
   const notes = document.getElementById('qaNotesInput').value.trim();
   if (!title) { status.textContent = 'Title is required.'; status.style.color = '#fc8181'; return; }
   const btn = document.getElementById('qaGoBtn');
@@ -6182,7 +6159,7 @@ async function submitQuickAddTitle() {
   status.style.color = '#888';
   status.textContent = 'Saving…';
   try {
-    const data = await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, status: 'Planning', skipPillar: true, researchInstructions: notes || undefined });
+    const data = await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, productId, status: 'Planning', skipPillar: true, researchInstructions: notes || undefined });
     if (data.error) throw new Error(data.error);
     status.textContent = `✓ Added "${title}"`;
     status.style.color = '#68d391';
