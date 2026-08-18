@@ -390,13 +390,13 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <input id="topChanKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:80px;outline:none">
         <button id="topChanBtn" onclick="runTopYoutubeChannels()" title="Find the top YouTube channels for this campaign's keywords" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ channels</button>
-        <button id="topicsDigestBtn" onclick="runChannelTopicsDigest()" title="Pull each saved channel's latest uploads and summarize what topics they're covering right now — run 'channels' first" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">📰 digest</button>
+        <button id="topicsDigestBtn" onclick="runChannelTopicsDigest()" title="Compare current blog/site coverage against the saved channels' recent uploads and surface topics that are underrepresented on YouTube — run 'channels' first" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">📰 digest</button>
       </span>
     </h2>
     <div class="content">
       <div id="r-topchannels"><div class="loading"><div class="spinner"></div>Loading…</div></div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#333);">
-        <div style="font-size:10px;color:var(--text3,#999);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">New Topics Digest</div>
+        <div style="font-size:10px;color:var(--text3,#999);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Suggested YouTube Topics <span style="text-transform:none;font-weight:400;">— underrepresented vs. blogs</span></div>
         <div id="r-topicsdigest"></div>
       </div>
     </div>
@@ -1585,7 +1585,7 @@ function renderTopicsDigest(text) {
   const el = document.getElementById('r-topicsdigest');
   if (!el) return;
   if (!text || !text.trim()) {
-    el.innerHTML = '<span class="empty">No digest yet — build the channel list above, then press 📰 digest.</span>';
+    el.innerHTML = '<span class="empty">No digest yet — build the channel list above, then press 📰 digest to find topics blogs/sites are covering that YouTube isn\'t.</span>';
     return;
   }
   const lines = text.trim().split('\n').filter(l => l.trim());
@@ -1601,7 +1601,7 @@ async function runChannelTopicsDigest() {
   const btn = document.getElementById('topicsDigestBtn');
   const el  = document.getElementById('r-topicsdigest');
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
-  el.innerHTML = '<div class="loading"><div class="spinner"></div>Reading recent uploads…</div>';
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Comparing blogs/sites vs. YouTube coverage…</div>';
   try {
     const data = await w('getChannelTopicsDigest', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, campaignId: CAMPAIGN_ID });
     if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }

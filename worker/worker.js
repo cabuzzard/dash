@@ -11074,18 +11074,21 @@ Rules:
       }
 
       // ── getChannelTopicsDigest ──
-      // Reads the channel list saved by getTopYoutubeChannels (parses channel
-      // IDs back out of the /channel/UC... URLs), pulls each channel's most
-      // recent uploads, and has Claude synthesize what these SPECIFIC accounts
-      // are posting about right now into a scannable "new topics" digest —
-      // the account-level counterpart to getYouTubeOutliers (which is
-      // keyword-level, one-off outlier videos, not tied to a saved channel
-      // list). Saved to the Research "Trend Round-Up" field. On-demand only,
-      // no recurring schedule — the operator clicks it when they want a
-      // fresh read, per operator instruction.
+      // Content-gap analysis, not just a trend recap: reads the channel list
+      // saved by getTopYoutubeChannels (parses channel IDs back out of the
+      // /channel/UC... URLs) to see what's ALREADY covered on YouTube, web-
+      // searches current blog/site/forum coverage of the same niche to see
+      // what's being talked about more broadly, then has Claude surface
+      // topics that are well-covered off-YouTube but thin or missing on
+      // YouTube — i.e. suggested video topics because the demand signal
+      // exists but the on-platform supply doesn't yet. The account-level
+      // counterpart to getYouTubeOutliers (keyword-level, one-off outlier
+      // videos, not a gap comparison). Saved to the Research "Trend Round-Up"
+      // field. On-demand only, no recurring schedule — the operator clicks it
+      // when they want a fresh read, per operator instruction.
       if (body.action === "getChannelTopicsDigest") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { researchId, campaignId } = body;
+        const { researchId, campaignId, kwOverride } = body;
         if (!researchId) return json({ error: "researchId required" }, 400);
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const YT_KEY = (env.YOUTUBE_API_KEY || "").trim();
@@ -11099,11 +11102,16 @@ Rules:
         const uniqueIds = [...new Set(channelIds)].slice(0, 12);
         if (!uniqueIds.length) return json({ error: "No top channels yet — run 'Top Channels' first to build the list this digest reads from" }, 400);
 
+        let keywords = (kwOverride || "").trim();
+        if (!keywords) keywords = rr.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        const searchTerm = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3).join(" ");
+
         // Latest uploads per channel — search.list(channelId, order=date)
         // rather than resolving each channel's uploads-playlist ID first: one
         // extra call per channel, but channel count here is small (<=12) so
         // the quota difference doesn't matter and this skips a round-trip.
-        const perChannel = await Promise.all(uniqueIds.map(async cid => {
+        // Run alongside the blog/site web search below — independent inputs.
+        const perChannelP = Promise.all(uniqueIds.map(async cid => {
           try {
             const r = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${cid}&type=video&order=date&maxResults=5&key=${YT_KEY}`);
             if (!r.ok) return null;
@@ -11116,10 +11124,35 @@ Rules:
             };
           } catch { return null; }
         }));
+
+        // Blog/site/forum coverage of the same niche — the off-YouTube demand
+        // signal this digest compares YouTube supply against. Same web_search
+        // tool pattern as getSourceLinks elsewhere in this file.
+        const blogSearchP = (async () => {
+          if (!searchTerm) return "";
+          try {
+            const r = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01", "anthropic-beta": "web-search-2025-03-05" },
+              body: JSON.stringify({
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 1200,
+                tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
+                messages: [{ role: "user", content: `Find 12-15 real, CURRENT blog posts, articles, Reddit/forum threads, or news pieces (NOT YouTube videos) about: "${searchTerm}". For each, one line: TITLE — one-line topic summary — SOURCE (site/publication name).` }],
+              }),
+            });
+            const d = await r.json();
+            if (!r.ok) return "";
+            return (d.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+          } catch { return ""; }
+        })();
+
+        const [perChannel, blogText] = await Promise.all([perChannelP, blogSearchP]);
         const withUploads = perChannel.filter(Boolean);
         if (!withUploads.length) return json({ error: "Couldn't fetch recent uploads for any saved channel — try refreshing the channel list" }, 502);
+        if (!blogText.trim()) return json({ error: "Blog/site search came back empty — try again, or add keywords to the Research record" }, 502);
 
-        const raw = withUploads.map(c => `${c.channel}:\n${c.videos.map(v => `- ${v.title}`).join("\n")}`).join("\n\n");
+        const ytRaw = withUploads.map(c => `${c.channel}:\n${c.videos.map(v => `- ${v.title}`).join("\n")}`).join("\n\n");
 
         const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -11127,16 +11160,19 @@ Rules:
           body: JSON.stringify({
             model: "claude-haiku-4-5-20251001",
             max_tokens: 1200,
-            system: `You are a content strategist scanning the recent uploads of this niche's top YouTube channels to spot what topics are trending RIGHT NOW.
+            system: `You are doing a YouTube content-gap analysis for this niche. You're given two inputs: (1) recent uploads from this niche's top-tracked YouTube channels — what's ALREADY covered on YouTube — and (2) current blog/site/forum topics in the same niche — where the broader demand signal is.
 
-FORMAT — one line per distinct topic/angle you notice (group similar video titles across channels into one topic line, don't just restate every title):
-TOPIC (max 8 words): one-sentence read on why it's coming up now / what angle channels are taking — which channel(s), in parens
+Your job: surface topics that are well-covered in the BLOG/SITE list but thin or MISSING from the YOUTUBE list. These are suggested video topics — audience interest clearly exists (it's being written about), but YouTube supply from the tracked channels doesn't match it yet.
+
+FORMAT — one line per suggested topic:
+TOPIC (max 8 words): why it's a gap — what's driving it in blogs/sites, confirming it's thin/absent on YouTube — (source hint in parens)
 
 Rules:
-- 6-10 topic lines total, ranked by how many channels/videos are covering it (most-covered first)
+- 6-10 suggested topics, ranked by how strong the gap looks (most underrepresented on YouTube first)
+- Skip anything the tracked YouTube channels are already covering well
 - No bullets, no numbering, no markdown, no preamble
 - Output only the formatted lines, nothing else`,
-            messages: [{ role: "user", content: `Recent uploads from this niche's top channels:\n\n${raw}` }]
+            messages: [{ role: "user", content: `YOUTUBE — already covered by this niche's top tracked channels:\n${ytRaw}\n\nBLOGS/SITES — current topics in the same niche:\n${blogText}` }]
           })
         });
         const claudeData = await claudeResp.json();
@@ -11160,7 +11196,7 @@ Rules:
         try {
           const dateLabel = new Date().toISOString().slice(0, 10);
           const titleProps = {
-            Title: { title: [{ type: "text", text: { content: `YouTube Topics Digest — ${dateLabel}` } }] },
+            Title: { title: [{ type: "text", text: { content: `Suggested YouTube Topics — ${dateLabel}` } }] },
             Status: { select: { name: "Development" } },
             Grouping: { rich_text: [{ type: "text", text: { content: "Digest" } }] },
           };
@@ -11174,7 +11210,7 @@ Rules:
           if (createResp.ok) {
             digestTitleId = createData.id.replace(/-/g, "");
             const para = t => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: t.slice(0, 1990) } }] } });
-            const children = [para(`New topics from this niche's top YouTube channels, as of ${dateLabel}.`), ...result.split("\n").filter(Boolean).map(para)];
+            const children = [para(`Topics well-covered on blogs/sites but underrepresented on this niche's tracked YouTube channels, as of ${dateLabel}.`), ...result.split("\n").filter(Boolean).map(para)];
             await fetch(`https://api.notion.com/v1/blocks/${dashId(digestTitleId)}/children`, {
               method: "PATCH",
               headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
