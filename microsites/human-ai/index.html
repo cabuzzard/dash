@@ -987,6 +987,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <label class="lm-label" for="pubProductLink" style="margin-top:10px;">Product Link <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(the live Etsy listing once Printify's sync completes — falls back to the Printify editor link right after publish)</span></label>
       <div style="display:flex;gap:6px;margin-top:4px;">
         <input class="modal-ta" id="pubProductLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="No Printify product created yet" />
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="refreshPubProductLink()" title="Re-check Printify for the live Etsy listing URL — sync can take a few minutes after publish">🔄</button>
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="openPublishFieldLink('pubProductLink')" title="Open in a new tab">↗</button>
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubProductLink', this)">📋</button>
       </div>
@@ -1010,10 +1011,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap;">
         <input type="file" id="pubThumbnailFile" accept="image/*" style="display:none;" onchange="uploadPubThumbnail()" />
         <button class="modal-btn cancel" onclick="document.getElementById('pubThumbnailFile').click()">📤 Upload Image</button>
-        <button class="modal-btn cancel" onclick="retryPubLinkedInBanner()" title="Re-renders the LinkedIn Article banner (headline from Title, subhead from the hook) — for LinkedIn Post assets whose auto-generated banner is missing or failed.">🔁 Retry Banner (LinkedIn)</button>
         <span class="modal-status" id="pubThumbnailStatus" style="margin:0;"></span>
       </div>
-      <div id="pubCanvaHandoff" style="display:none;margin-top:4px;"></div>
       <label class="lm-label" for="pubHashtags" style="margin-top:10px;">Hashtags</label>
       <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
         <textarea class="modal-ta" id="pubHashtags" rows="2" style="resize:vertical;min-height:44px!important;flex:1;line-height:1.5;" placeholder="#…"></textarea>
@@ -1985,7 +1984,8 @@ async function loadTitles() {
       ar.innerHTML = `<span style="font-size:9px;color:#fff;flex-shrink:0;">↳</span>`
         + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;">${esc(a.type || a.title)}</span>`
         + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
-        + (a.canvaLink ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyCanvaPortPrompt(this)" title="Copy a ready-to-paste prompt for porting this asset's table content into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the table." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
+        + (a.canvaLink && !/linkedin post/i.test(a.type || '') ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyCanvaPortPrompt(this)" title="Copy a ready-to-paste prompt for porting this asset's table content into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the table." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
+        + (a.canvaLink && /linkedin post/i.test(a.type || '') ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyLinkedInBannerPrompt(this)" title="Copy a ready-to-paste prompt for porting this article's banner copy into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the article." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
         + `<a class="title-link" href="https://www.notion.so/${a.id}" target="_blank" rel="noopener" title="Open this asset's Notion page" style="flex-shrink:0;">↗</a>`
         + `<button class="td-publish-fields" data-assetid="${a.id}" data-title="${esc(a.title)}" onclick="openPublishAssetModal(this)" title="Open every publish-ready field for this asset — design link, hashtags, platform link, caption — in one place: edit and copy each to your clipboard." style="${PUBLISH_BTN_STYLE(a.status)}">${PUBLISH_BTN_LABEL(a.status)}</button>`
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-visual-brief" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" data-productid="${productId || ''}" onclick="openVisualBriefModal(this)" title="Set up and assemble the Visual Production Source Document (Editing Authority tiers/Asset Metadata/Production Method/Audience/Research/Content Foundation/Growth Strategy Context/Final Written Asset/Asset Spec/Production Spec/Design Globals/Visual Library References/Visual Continuity/Brand Intent/Known Constraints) from this asset's final text + specs, then copy it to your clipboard to paste into ChatGPT. Opens a setup modal first: pick a Growth Strategy for context, lock specific normally-MUTABLE design fields to IMMUTABLE for this asset, and write operator guidelines. Text Video assets are told to declare Simple vs. Custom Remotion Build (custom builds get a mandatory voice-first render sequence) and to keep the Asset ID attached through every revision. Also drafts every field of the structured Design Specification via Claude, tagged Immutable/Constrained/Mutable/Derived-at-production so ChatGPT knows exactly what it can and can't change — Text Video into 🎬 Text Video Specs / 🎞️ Text Video Scenes, Carousel into 🎠 Carousel Specifications / 🃏 Slide Specifications (plus the shared Color Palette/Typography/Visual Style/Grid/Layout/Diagram/Platform Preset databases, reused across the whole campaign)." style="font-size:10px;padding:1px 7px;border:1px solid #9f7aea;background:transparent;color:#9f7aea;border-radius:9px;cursor:pointer;flex-shrink:0;">🎨 Visual Brief</button>` : '')
@@ -5536,6 +5536,40 @@ async function copyCanvaPortPrompt(btn) {
   }
 }
 
+// Same porting pattern as buildCanvaPortPrompt above, for the LinkedIn Post
+// method's banner instead of a table-formatted carousel/csv asset — three
+// short fields (headline/accent/subhead), not a multi-page table. Canva
+// Link is set at generation time from the Method's own linked template
+// (generateTitleAssets' /linkedin post/i branch, worker.js); the drafted
+// banner copy is stashed on the asset's Design Notes property as
+// "BANNER:: headline | accent | subhead" for the chat to read back.
+function buildLinkedInBannerPortPrompt(assetId, titleId, canvaLink) {
+  return `Port this LinkedIn Article's banner copy into its linked Canva template.\n\n`
+    + `Asset page: https://www.notion.so/${assetId}\n`
+    + `Title page: https://www.notion.so/${titleId}\n`
+    + `Canva template: ${canvaLink}\n\n`
+    + `Process:\n`
+    + `1. Read the Asset page in Notion. Its "Design Notes" property holds a line formatted "BANNER:: <headline> | <accent> | <subhead>" — that's the pre-drafted banner copy (headline is 1-2 short lines, accent is a short phrase, subhead is one supporting sentence). If Design Notes is missing or doesn't have that line, derive the three yourself from the Asset Title (headline) and the article's own opening/hook (subhead), picking one short accent phrase from the article.\n`
+    + `2. Read the Canva template via the Canva MCP (read-design) to see its Headline/Accent/Subhead text fields, their positions, and size constraints.\n`
+    + `3. Use copy-design to duplicate the template into a new design — NEVER edit the original template directly.\n`
+    + `4. Rename the copy (update_title) to the Asset page's own "Asset Title" property value.\n`
+    + `5. Populate the copy's Headline/Accent/Subhead fields via edit-design with the banner copy from step 1. Verify the thumbnail after editing; if a field overflows its box, shorten/reformat the text rather than letting it run over.\n`
+    + `6. Commit the transaction once it looks right.\n`
+    + `7. Save the resulting copy's URL back onto the Asset's "Design Link" property in Notion — this is what publishes it: the dashboard's Publish Assets section reads Design Link to build that asset row's "↗ View" link, so this step is what actually makes the finished design show up there, not an optional bookkeeping step.`;
+}
+async function copyLinkedInBannerPrompt(btn) {
+  const { assetid: assetId, titleid: titleId, canvalink: canvaLink } = btn.dataset;
+  const prompt = buildLinkedInBannerPortPrompt(assetId, titleId, canvaLink);
+  try {
+    await navigator.clipboard.writeText(prompt);
+    const orig = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    setTimeout(() => { btn.textContent = orig; }, 1400);
+  } catch(e) {
+    alert(prompt);
+  }
+}
+
 // Plain clipboard copy of a text-video asset's voiceover script — no chat
 // handoff, no Notion round-trip, just the words. ASSET_SCRIPT_CACHE is
 // populated by makeTitleRow() from the same getTitles() call that renders
@@ -5585,8 +5619,6 @@ function openPublishAssetModal(btn) {
   document.getElementById('pubThumbnail').value = data.thumbnail || '';
   renderPubThumbnailPreview(data.thumbnail || '');
   document.getElementById('pubThumbnailStatus').textContent = '';
-  const handoffEl = document.getElementById('pubCanvaHandoff');
-  handoffEl.style.display = 'none'; handoffEl.innerHTML = '';
   document.getElementById('pubHashtags').value = data.hashtags || '';
   document.getElementById('pubCaption').value = data.postCaption || '';
   const status = document.getElementById('pubAssetStatus');
@@ -5642,36 +5674,6 @@ async function uploadPubThumbnail() {
     document.getElementById('pubThumbnailFile').value = '';
   }
 }
-// Re-renders just the LinkedIn Article banner (retryLinkedInBanner,
-// worker.js) — for a LinkedIn Post asset whose auto-generated banner is
-// missing or failed. Doesn't regenerate the article itself (that has no
-// existing-asset dedup — running it again would create a duplicate).
-// Rebuilds headline/subhead from the asset's own Title/Body rather than
-// the AI-drafted banner copy, which isn't persisted anywhere after the
-// original generation call.
-async function retryPubLinkedInBanner() {
-  if (!pubAssetId) return;
-  const statusEl = document.getElementById('pubThumbnailStatus');
-  const handoffEl = document.getElementById('pubCanvaHandoff');
-  handoffEl.style.display = 'none'; handoffEl.innerHTML = '';
-  statusEl.className = 'modal-status'; statusEl.textContent = 'Rendering banner…';
-  try {
-    const data = await w('retryLinkedInBanner', { assetId: pubAssetId });
-    if (data.error) throw new Error(data.error);
-    document.getElementById('pubThumbnail').value = data.thumbnailUrl;
-    renderPubThumbnailPreview(data.thumbnailUrl);
-    if (PUB_ASSET_CACHE[pubAssetId]) PUB_ASSET_CACHE[pubAssetId].thumbnail = data.thumbnailUrl;
-    statusEl.className = 'modal-status ok'; statusEl.textContent = 'Banner rendered ✓';
-    if (data.canvaPromptUrl) {
-      handoffEl.style.display = 'block';
-      handoffEl.innerHTML = `<a href="${esc(data.canvaPromptUrl)}" target="_blank" rel="noopener" style="font-size:11px;color:#a78bfa;">🎨 Finish this banner as an editable Canva design →</a>`;
-    }
-    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'modal-status'; }, 2000);
-  } catch(e) {
-    statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
-  }
-}
-
 // Same live Printify catalog colors as the Generate Assets modal's t-shirt
 // color picker (GA_TSHIRT_COLORS_CACHE, shared) — lets the operator (re)run
 // createPrintifyTshirtProduct on an existing t-shirt asset straight from
@@ -5715,6 +5717,26 @@ async function createPubPrintifyProduct() {
     if (PUB_ASSET_CACHE[pubAssetId]) Object.assign(PUB_ASSET_CACHE[pubAssetId], { designLink: r.editUrl, productLink: r.productLink, status: 'Published' });
     statusEl.className = 'modal-status ok';
     statusEl.textContent = r.isLive ? `✓ Published — ${r.variantCount} variants, live on Etsy.` : `✓ Published — ${r.variantCount} variants. Etsy sync pending; Product Link points to Printify for now, check back shortly.`;
+  } catch(e) {
+    statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+// Etsy sync happens on Printify's side sometime after publish — confirmed
+// in practice to take longer than the few seconds createPrintifyTshirtProduct
+// itself waits, so this on-demand re-check (refreshPrintifyProductLink)
+// is the reliable way to pick up the real Etsy listing URL once it's
+// ready, rather than leaving Product Link stuck on the Printify editor link.
+async function refreshPubProductLink() {
+  if (!pubAssetId) return;
+  const statusEl = document.getElementById('pubPrintifyStatus');
+  statusEl.className = 'modal-status'; statusEl.textContent = 'Checking Printify for the live Etsy link…';
+  try {
+    const r = await w('refreshPrintifyProductLink', { assetId: pubAssetId });
+    if (r.error) throw new Error(r.error);
+    document.getElementById('pubProductLink').value = r.productLink;
+    if (PUB_ASSET_CACHE[pubAssetId]) PUB_ASSET_CACHE[pubAssetId].productLink = r.productLink;
+    statusEl.className = 'modal-status ok';
+    statusEl.textContent = r.isLive ? '✓ Live on Etsy — Product Link updated.' : 'Etsy sync still pending — try again in a minute.';
   } catch(e) {
     statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
   }

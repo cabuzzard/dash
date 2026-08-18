@@ -581,133 +581,6 @@ async function resolveDeployPath(campaignId, hdr, dash) {
   return deployPath;
 }
 
-// ── renderLinkedInBannerCore ──
-// Renders a 1280x720 LinkedIn article banner from three short copy
-// fields (headline/accentLine/subhead) via Cloudflare Browser
-// Rendering — the same screenshot-a-real-HTML-page mechanism
-// renderCarouselFromManifestCore uses for carousel slides, just one
-// fixed layout instead of four. Colors/fonts are fixed to match the
-// "LinkedIn Article Banner Template" built in Canva (white bg, #222
-// ink, #7ed321 accent, bold sans headline / serif body) — a
-// standalone visual system for this one asset type, not derived
-// per-campaign the way carousel's Design Spec is. Hosts the PNG on
-// GitHub Pages (same repo-commit pattern every other renderer here
-// uses) and writes it onto the asset's Thumbnail property. Design
-// Link is deliberately NOT set here to that PNG — per operator
-// request it should hold the actual editable Canva design made for
-// this asset, not the flattened image, and this Worker has no
-// Canva API credentials to create that design itself. Instead this
-// also hosts a companion canva-source.html (same
-// data-document-role="page" HTML-import convention
-// renderCarouselFromManifestCore/publishCarouselSlides already use
-// for their own "Send to Canva" links) and returns a
-// claude.ai/new handoff prompt — the caller folds that into the
-// generation response so the dashboard can open it, and one click
-// of Send in that chat (Canva MCP import-design-from-url + Notion
-// MCP update) finishes the loop by writing the real Canva edit URL
-// into Design Link. This mirrors the carousel method's existing
-// procedure, just via Design Link instead of a separate Canva Link
-// property (LinkedIn banners have no separate finished-media
-// folder the way carousel's Design Link does).
-// Module scope (not nested inside generateTitleAssets) so both the
-// original generation path and retryLinkedInBanner can call it.
-const LINKEDIN_BANNER_STYLE = { bg: '#ffffff', ink: '#222222', accent: '#7ed321', headlineFont: 'Poppins', bodyFont: 'Lora' };
-async function renderLinkedInBannerCore({ assetId, headline, accentLine, subhead, campaignId, assetTitle, hdr, dash, CF_ACCOUNT_ID, CF_API_TOKEN, GT }) {
-  const { bg, ink, accent, headlineFont, bodyFont } = LINKEDIN_BANNER_STYLE;
-  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const deployPath = await resolveDeployPath(campaignId, hdr, dash);
-  const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
-  const basePath = `web/${deployPath}/banners`;
-  const slug = slugify(assetTitle) || assetId;
-  const pngPath = `${basePath}/${slug}.png`;
-  const sourcePath = `${basePath}/${slug}-canva-source.html`;
-
-  const bannerCss = `
-  * { margin:0; padding:0; box-sizing:border-box; }
-  .banner { width:1280px; height:720px; background:${bg}; position:relative; overflow:hidden; font-family:'${bodyFont}',serif; }
-  .dots { position:absolute; width:90px; height:100px; background-image:radial-gradient(${accent}55 1.5px, transparent 1.5px); background-size:10px 10px; opacity:.6; }
-  .dots.tr { top:0; right:0; } .dots.bl { bottom:0; left:0; }
-  .divider { position:absolute; top:-5%; left:780px; width:2px; height:110%; background:${ink}; opacity:.35; transform:skewX(-8deg); }
-  .col { position:absolute; left:80px; top:170px; width:620px; }
-  h1 { font-family:'${headlineFont}',sans-serif; font-weight:700; font-size:46px; line-height:0.98; letter-spacing:-0.01em; color:${ink}; white-space:pre-line; }
-  .accent { font-family:'${headlineFont}',sans-serif; font-weight:700; font-size:46px; line-height:0.98; letter-spacing:-0.01em; color:${accent}; margin-top:18px; }
-  p { font-size:17px; line-height:1.4; color:${ink}; opacity:.85; margin-top:28px; max-width:480px; }
-`;
-  const bannerBody = `
-  <div class="dots tr"></div>
-  <div class="dots bl"></div>
-  <div class="divider"></div>
-  <div class="col">
-    <h1>${esc(headline)}</h1>
-    <div class="accent">${esc(accentLine)}</div>
-    <p>${esc(subhead)}</p>
-  </div>`;
-  const fontsLink = `<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(headlineFont)}:wght@700&family=${encodeURIComponent(bodyFont)}:ital,wght@0,400;1,400&display=swap" rel="stylesheet">`;
-  const html = `<!doctype html><html><head><meta charset="utf-8">
-${fontsLink}
-<style>${bannerCss}</style></head><body class="banner">${bannerBody}
-</body></html>`;
-
-  const sleep = ms => new Promise(res => setTimeout(res, ms));
-  let pngBuffer = null;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ html, viewport: { width: 1280, height: 720, deviceScaleFactor: 1 }, gotoOptions: { waitUntil: "domcontentloaded", timeout: 15000 }, screenshotOptions: { type: "png" } }),
-    });
-    if (resp.status === 429) { const retryAfter = parseInt(resp.headers.get("Retry-After") || "11", 10); await sleep((retryAfter + 1) * 1000); continue; }
-    if (resp.status === 422 && attempt < 3) { await sleep(3000); continue; }
-    if (!resp.ok) { const t = await resp.text(); throw new Error(`Browser Rendering failed (HTTP ${resp.status}): ${t.slice(0, 300)}`); }
-    pngBuffer = await resp.arrayBuffer();
-    break;
-  }
-  if (!pngBuffer) throw new Error("Browser Rendering stayed rate-limited/timed out after retries.");
-
-  const toB64Bin = buf => { const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
-  const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
-  const REPO = "cabuzzard/dash", BRANCH = "main";
-  const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
-  const putFile = async (path, b64, message) => {
-    let sha = null;
-    const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
-    if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
-    const putBody = { message, content: b64, branch: BRANCH };
-    if (sha) putBody.sha = sha;
-    const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-      method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
-    });
-    if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); throw new Error(`GitHub commit failed for ${path}: ${r.message || putResp.status}`); }
-  };
-  await putFile(pngPath, toB64Bin(pngBuffer), `LinkedIn banner: ${assetTitle}`);
-
-  // Canva-importable single-page source — same data-document-role
-  // convention as the carousel method's canva-source.html, so
-  // Canva's HTML importer decomposes it into one real editable
-  // page instead of a flattened screenshot.
-  const canvaSourceHtml = `<!doctype html><html><head><meta charset="utf-8">
-${fontsLink}
-<style>${bannerCss}
-body { width:auto; height:auto; overflow:visible; }
-</style></head><body>
-  <div data-document-role="page" data-label="Banner" class="banner">${bannerBody}
-  </div>
-</body></html>`;
-  await putFile(sourcePath, toB64Text(canvaSourceHtml), `LinkedIn banner: ${assetTitle} — Canva source`);
-
-  const thumbnailUrl = `https://cabuzzard.github.io/dash/${pngPath}`;
-  const canvaSourceUrl = `https://cabuzzard.github.io/dash/${sourcePath}`;
-  const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
-    method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-    body: JSON.stringify({ properties: { "Thumbnail": { url: thumbnailUrl } } }),
-  });
-  if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); throw new Error(r.message || "Banner rendered but failed to save Thumbnail"); }
-
-  const canvaPromptText = `Import this LinkedIn banner design into Canva using the Canva MCP import-design-from-url tool: ${canvaSourceUrl} — name it "${assetTitle} — LinkedIn Banner". Then find the Notion Asset page (id ${assetId}, in the Assets DB e91bdb6e770b4d298e9f62166a0fd5de) and set its "Design Link" property to the resulting Canva edit URL. Report the Canva edit link back to me.`;
-  const canvaPromptUrl = `https://claude.ai/new?q=${encodeURIComponent(canvaPromptText)}`;
-  return { thumbnailUrl, canvaSourceUrl, canvaPromptUrl };
-}
-
 // Reads just the "Pillar Content" heading_3 section of a title's own page
 // body — mirrors generateCarouselPreview's parseSlides() section-scanning
 // approach (a title's page can carry several distinct heading_3 sections —
@@ -8667,10 +8540,6 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return json({ success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode });
         }
 
-        // renderLinkedInBannerCore moved to module scope (near
-        // extractBlocksTextRecursive) so retryLinkedInBanner can call it
-        // too, not just this generation path.
-
         // ── LinkedIn Post asset type: reshapes the title's own pillar
         // content into ONE finished, publish-ready LinkedIn Article — not N
         // options. Framework (length, headline/hook/structure/voice/CTA
@@ -8679,15 +8548,27 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // reads it — nothing LinkedIn-specific is hardcoded here. No hard
         // gate on pillarContent (per operator: barriers to generation come
         // out — work from whatever's on the title, even just its name, if
-        // there's genuinely nothing else yet). Every generation also
-        // renders and attaches a matching banner — see renderLinkedInBannerCore
-        // above and the call after asset creation below.
+        // there's genuinely nothing else yet). Banner porting follows the
+        // exact carousel/template-csv pattern — not a server-side render
+        // (an earlier Cloudflare-Browser-Rendering attempt at this was
+        // dropped: it can approximate the template but never actually IS
+        // the template, and the dashboard's "Copy Canva prompt" button
+        // already does this reliably for other methods). This just sets
+        // Canva Link to the Method's own linked template and stashes the
+        // banner copy on Design Notes for that prompt to read.
         if (/linkedin post/i.test(assetType)) {
           const hasMethod = methodId && methodId !== "__none__";
-          const [pillarContent, methodFrameworkText] = await Promise.all([
+          const [pillarContent, methodFrameworkText, methodPage] = await Promise.all([
             extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
             hasMethod ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
+            hasMethod ? fetch(`https://api.notion.com/v1/pages/${dsDash(methodId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
           ]);
+          // Same "Template" property the /template csv/i method uses — the
+          // Method's own linked Canva template (LinkedIn Article Banner
+          // Template, DAHSqDE94wE), copied onto every asset this method
+          // produces so the porting prompt below (and the asset row's own
+          // Copy Canva prompt button) has it ready without a lookup.
+          const canvaTemplateLink = methodPage?.properties?.["Template"]?.url || "";
 
           const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are reshaping source material into ONE finished, publish-ready LinkedIn Article (LinkedIn's long-form "Write article" format, not a short feed post).
 
@@ -8738,13 +8619,21 @@ Produce all of this by calling the submit_article tool — do not include any of
           if (!sections.length) return json({ error: "No sections generated — try again" }, 502);
 
           const headline = String(article.headline || title).slice(0, 200);
+          // Banner copy (bannerHeadline/bannerAccent/bannerSubhead) is the
+          // porting prompt's job to place into the Canva template below —
+          // stashed on Design Notes (rich_text, otherwise unused for this
+          // asset type) as a pipe-delimited line so the prompt-builder can
+          // read it back without a second Claude call.
+          const bannerCopyLine = `BANNER:: ${String(article.bannerHeadline || headline).slice(0, 120).replace(/\n/g, ' / ')} | ${String(article.bannerAccent || '').slice(0, 80)} | ${String(article.bannerSubhead || article.hook || '').slice(0, 200)}`;
           const assetProps = {
             "Asset Title":  { title: [{ type: "text", text: { content: headline } }] },
             "Asset Status": { select: { name: "Publish" } },
             "Asset Type":   { select: { name: String(assetType).slice(0, 100) } },
             "Body":         { rich_text: [{ type: "text", text: { content: String(article.hook || "").slice(0, 2000) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+            "Design Notes": { rich_text: [{ type: "text", text: { content: bannerCopyLine } }] },
           };
+          if (canvaTemplateLink) assetProps["Canva Link"] = { url: canvaTemplateLink };
           if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
           if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
           if (platformId) assetProps["Platform"] = { relation: [{ id: dsDash(platformId) }] };
@@ -8776,43 +8665,15 @@ Produce all of this by calling the submit_article tool — do not include any of
             if (!blocksResp.ok) { const r = await blocksResp.json(); return json({ error: r.message || "Asset created but failed to write article body" }, 502); }
           }
 
-          // ── Auto-generate the matching banner ──
-          // Best-effort: the article is the actual deliverable, so a render
-          // failure (e.g. Browser Rendering rate-limited, GITHUB_TOKEN not
-          // set) never fails asset creation — it just leaves Thumbnail
-          // blank and surfaces bannerError for the operator to see.
-          // Thumbnail gets the rendered PNG directly (set inside
-          // renderLinkedInBannerCore); Design Link needs a real Canva
-          // design, which this Worker can't create itself — canvaPromptUrl
-          // carries the one-click claude.ai handoff that finishes that
-          // part (Canva MCP import + Notion MCP write-back), same pattern
-          // as the carousel method's "Send to Canva" link.
-          let bannerThumbnailUrl = '', canvaPromptUrl = '', bannerError = '';
-          try {
-            const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
-            const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
-            const GT = (env.GITHUB_TOKEN || '').trim();
-            if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error("CF_ACCOUNT_ID / CF_API_TOKEN not configured");
-            if (!GT) throw new Error("GITHUB_TOKEN not configured");
-            const bannerResult = await renderLinkedInBannerCore({
-              assetId,
-              headline: String(article.bannerHeadline || headline).slice(0, 120),
-              accentLine: String(article.bannerAccent || '').slice(0, 80),
-              subhead: String(article.bannerSubhead || article.hook || '').slice(0, 200),
-              campaignId, assetTitle: headline, hdr: dsHdr, dash: dsDash,
-              CF_ACCOUNT_ID, CF_API_TOKEN, GT,
-            });
-            bannerThumbnailUrl = bannerResult.thumbnailUrl;
-            canvaPromptUrl = bannerResult.canvaPromptUrl;
-          } catch (e) {
-            bannerError = e.message;
-            await fetch(`https://api.notion.com/v1/pages/${dsDash(assetId)}`, {
-              method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
-              body: JSON.stringify({ properties: { "Grade Notes": { rich_text: [{ type: "text", text: { content: `Banner render failed: ${bannerError}`.slice(0, 1990) } }] } } }),
-            }).catch(() => {});
-          }
-
-          return json({ success: true, created: 1, assets: [{ id: assetId, title: headline }], sectionCount: sections.length, bannerThumbnailUrl, canvaPromptUrl: canvaPromptUrl || undefined, bannerError: bannerError || undefined });
+          // No server-side render here — same reasoning as the carousel/
+          // template-csv methods: a real Canva design needs the Canva MCP,
+          // which only runs in a live chat, never from this Worker. The
+          // asset's Canva Link (set above from the Method's Template) is
+          // what the dashboard's own "Copy Canva prompt" button reads to
+          // build that chat handoff — porting the banner copy stashed in
+          // Design Notes into the template and writing the result back to
+          // Design Link, exactly like every other templated method's asset.
+          return json({ success: true, created: 1, assets: [{ id: assetId, title: headline }], sectionCount: sections.length });
         }
 
         // ── "Template CSV Export"-style table asset: ONE finished Page |
@@ -12556,13 +12417,21 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         // re-check (best-effort, not polled/retried) picks it up when
         // sync was fast; otherwise Product Link falls back to the
         // Printify editor, which itself shows live sync status and the
-        // Etsy link once ready.
+        // Etsy link once ready. A few short-spaced retries catch a fast
+        // sync; real-world syncs have taken longer than this window too
+        // (confirmed: not live seconds after publish, live minutes later)
+        // — that's what the separate refreshPrintifyProductLink action +
+        // the Publish modal's "🔄 Check Etsy Link" button are for.
         let productLink = editUrl;
         let isLive = false;
-        try {
-          const recheck = await fetch(`https://api.printify.com/v1/shops/${shop.id}/products/${product.id}.json`, { headers: pfHdr }).then(r => r.json());
-          if (recheck?.external?.handle) { productLink = recheck.external.handle; isLive = true; }
-        } catch (e) {}
+        const sleep = ms => new Promise(res => setTimeout(res, ms));
+        for (let attempt = 0; attempt < 3 && !isLive; attempt++) {
+          if (attempt > 0) await sleep(4000);
+          try {
+            const recheck = await fetch(`https://api.printify.com/v1/shops/${shop.id}/products/${product.id}.json`, { headers: pfHdr }).then(r => r.json());
+            if (recheck?.external?.handle) { productLink = recheck.external.handle; isLive = true; }
+          } catch (e) {}
+        }
 
         await ensureAssetsDbProperties(hdr, { "Product Link": { type: "url" } });
         const thumbnail = product.images?.[0]?.src || '';
@@ -12577,6 +12446,52 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         }).catch(() => {});
 
         return json({ success: true, productId: product.id, editUrl, productLink, isLive, shopId: shop.id, variantCount: variantIds.length });
+      }
+
+      // ── refreshPrintifyProductLink ──
+      // On-demand re-check for the Etsy sync createPrintifyTshirtProduct's
+      // own retries might have missed — Publish modal's "🔄 Check Etsy
+      // Link" button. Reads the product id straight out of Design Link
+      // (always the Printify editor URL, set the moment a product exists)
+      // rather than needing it passed in.
+      if (body.action === "refreshPrintifyProductLink") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const PF = (env.PRINTIFY_API_TOKEN || '').trim();
+        if (!PF) return json({ error: "PRINTIFY_API_TOKEN not configured" }, 400);
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const designLink = assetPage.properties["Design Link"]?.url || "";
+        const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        const productIdMatch = designLink.match(/\/editor\/([a-zA-Z0-9]+)/);
+        if (!productIdMatch) return json({ error: "No Printify product on this asset yet — create one first" }, 400);
+        if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
+
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+        const shopsResp = await fetch("https://api.printify.com/v1/shops.json", { headers: { "Authorization": `Bearer ${PF}` } });
+        const shops = await shopsResp.json();
+        if (!shopsResp.ok) return json({ error: shops.message || "Printify shop lookup failed" }, shopsResp.status);
+        const shop = (shops || []).find(s => slugify(s.title) === deployPath);
+        if (!shop) return json({ error: `No Printify store slugifies to "${deployPath}"` }, 400);
+
+        const productResp = await fetch(`https://api.printify.com/v1/shops/${shop.id}/products/${productIdMatch[1]}.json`, { headers: { "Authorization": `Bearer ${PF}` } });
+        const product = await productResp.json();
+        if (!productResp.ok) return json({ error: product.message || "Printify product lookup failed" }, productResp.status);
+
+        const isLive = !!product.external?.handle;
+        const productLink = isLive ? product.external.handle : (assetPage.properties["Product Link"]?.url || `https://printify.com/app/editor/${productIdMatch[1]}`);
+        if (isLive) {
+          await ensureAssetsDbProperties(hdr, { "Product Link": { type: "url" } });
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Product Link": { url: productLink } } }),
+          }).catch(() => {});
+        }
+        return json({ success: true, productLink, isLive });
       }
 
       // ── MICROSITE: getCampaignLogins ──
@@ -21359,69 +21274,6 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const text = await extractBlocksTextRecursive(hdr, dash(assetId)).catch(() => "");
         return json({ text });
-      }
-
-      // ── retryLinkedInBanner ──
-      // Re-renders just the LinkedIn Article banner for an existing asset,
-      // without regenerating the article itself (the original generation
-      // block has no existing-asset dedup — running it again would create a
-      // second, duplicate article). Reads headline from the asset's own
-      // Asset Title and subhead from its Body property (the hook) since
-      // the AI-drafted bannerHeadline/bannerAccent/bannerSubhead aren't
-      // persisted anywhere after the original generation call — good
-      // enough for a retry, not a perfect reproduction of the original
-      // banner copy. Any render error is persisted to Grade Notes
-      // (otherwise unused here — this asset type skips the grading gate
-      // entirely) so it's visible on the Notion page even without
-      // reopening the Publish modal; canvaPromptUrl is only ever returned
-      // fresh in the response, never stored (Canva Link already means
-      // something else on other asset types — see below).
-      if (body.action === "retryLinkedInBanner") {
-        const { assetId, campaignId } = body;
-        if (!assetId) return json({ error: "assetId required" }, 400);
-        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
-        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
-        const ap = assetPage.properties;
-        const headline = (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("") || "LinkedIn Article";
-        const hook = (ap["Body"]?.rich_text || []).map(t => t.plain_text).join("");
-        const resolvedCampaignId = campaignId || (ap["Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || null;
-
-        const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
-        const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
-        const GT = (env.GITHUB_TOKEN || '').trim();
-        if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return json({ error: "CF_ACCOUNT_ID / CF_API_TOKEN not configured" }, 500);
-        if (!GT) return json({ error: "GITHUB_TOKEN not configured" }, 500);
-
-        try {
-          const result = await renderLinkedInBannerCore({
-            assetId, headline, accentLine: '', subhead: hook.slice(0, 200),
-            campaignId: resolvedCampaignId, assetTitle: headline, hdr, dash,
-            CF_ACCOUNT_ID, CF_API_TOKEN, GT,
-          });
-          // Clear any previous failure note now that a render succeeded —
-          // canvaPromptUrl itself isn't persisted (Canva Link is already
-          // used for something unrelated on other asset types — carousel's
-          // "Copy Canva prompt" button keys off any non-empty Canva Link
-          // regardless of asset type, so writing a claude.ai prompt URL
-          // there would make that button show up here with the wrong
-          // behavior). It's returned fresh in this response instead, same
-          // as the original generation call — the Publish modal shows it
-          // right after each Retry Banner click rather than reading it
-          // back from a stored property.
-          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Grade Notes": { rich_text: [] } } }),
-          }).catch(() => {});
-          return json({ success: true, ...result });
-        } catch (e) {
-          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Grade Notes": { rich_text: [{ type: "text", text: { content: `Banner render failed: ${e.message}`.slice(0, 1990) } }] } } }),
-          }).catch(() => {});
-          return json({ error: e.message }, 500);
-        }
       }
 
       // ── generateTshirtAsset ──
