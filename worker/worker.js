@@ -639,13 +639,19 @@ async function clearExistingPillarSection(hdr, titleId) {
     }
   } catch (e) { /* best-effort — worst case the new section appends after a stale one */ }
 }
-async function writePillarContent(hdr, env, { titleId, titleText, campaignId, productId, methodId, guidance, extraContext }) {
+async function writePillarContent(hdr, env, { titleId, titleText, campaignId, productId, methodId, guidance, styleGuidance, useGrounding = true, extraContext }) {
   if (!env.ANTHROPIC_API_KEY) return { skipped: true, reason: "no ANTHROPIC_API_KEY" };
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const rt = (props, key) => (props?.[key]?.rich_text || []).map(t => t.plain_text).join("");
   const parts = [];
 
-  if (campaignId) {
+  // useGrounding: false (the Write Pillar modal's "fresh research" option)
+  // skips Campaign Research/Product/Strategy entirely — the piece is
+  // written from titleText + guidance alone, not blended with whatever the
+  // campaign/product records already say. Default true preserves every
+  // other call site's existing behavior (createDevTitle's auto-write, the
+  // modal's "use existing research" option).
+  if (useGrounding && campaignId) {
     try {
       const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
         method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
@@ -667,7 +673,7 @@ async function writePillarContent(hdr, env, { titleId, titleText, campaignId, pr
   }
 
   const hasProduct = productId && productId !== "__none__";
-  if (hasProduct) {
+  if (useGrounding && hasProduct) {
     try {
       const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
       if (prodPage?.properties) {
@@ -714,6 +720,7 @@ async function writePillarContent(hdr, env, { titleId, titleText, campaignId, pr
 
   if (extraContext) parts.push(String(extraContext).slice(0, 4000));
   if (guidance) parts.push(`OPERATOR GUIDANCE (follow this): ${guidance}`);
+  if (styleGuidance) parts.push(`WRITING STYLE (match this tone/voice/structure): ${styleGuidance}`);
 
   const groundingBlock = parts.join("\n\n");
   if (!groundingBlock.trim()) return { skipped: true, reason: "no grounding available yet for this title" };
@@ -2932,7 +2939,7 @@ export default {
       // already past Planning (e.g. re-running this for a refresh) keeps its
       // current status untouched.
       if (body.action === "writeTitlePillar") {
-        const { titleId } = body;
+        const { titleId, useGrounding, researchOverride, styleGuidance } = body;
         if (!titleId) return json({ error: "titleId required" }, 400);
         const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
@@ -2946,9 +2953,17 @@ export default {
         const methodId   = (p.method?.relation   || [])[0]?.id?.replace(/-/g,"") || undefined;
         const notes = p.Notes?.rich_text?.map(t => t.plain_text).join("") || "";
 
+        // researchOverride comes from the Write Pillar modal's prompt box —
+        // it wins over the title's saved Notes so the operator can type a
+        // fresh angle each time instead of always reusing whatever was
+        // jotted at Quick Add time. Notes is still the fallback so a bare
+        // { titleId } call (no modal) keeps working exactly as before.
+        const grounded = useGrounding !== false;
         const result = await writePillarContent(hdr, env, {
           titleId, titleText, campaignId, productId, methodId,
-          guidance: notes || undefined,
+          guidance: researchOverride || notes || undefined,
+          styleGuidance: styleGuidance || undefined,
+          useGrounding: grounded,
         }).catch(e => ({ error: e.message }));
         if (result?.error) return json({ error: result.error }, 502);
         if (result?.skipped) return json({ error: result.reason || "Skipped — no grounding available yet for this title" }, 400);

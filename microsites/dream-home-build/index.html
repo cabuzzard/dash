@@ -1174,6 +1174,42 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- WRITE PILLAR MODAL — opened by the 📝 button on a Planning-status title
+     row (see makeTitleRow). Replaces the old one-click writeTitlePillarRow:
+     the operator picks whether to ground the piece in the campaign's
+     existing Research/Product/Strategy or write it fresh from a typed
+     prompt alone, plus an optional style/tone note. On success the title
+     moves Planning → Development with real pillar content written. -->
+<div class="modal-overlay" id="writePillarModal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <div class="modal-title">Write Pillar Post</div>
+      <button class="modal-close" onclick="closeWritePillarModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="wpTitleDisplay" style="font-size:13px;color:#fff;font-weight:600;margin-bottom:12px;"></div>
+
+      <label class="lm-label">Research Source</label>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;font-size:12px;color:#fff;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="wpMode" value="grounded" checked> Use existing Campaign Research + Strategy for this product</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="wpMode" value="fresh"> Fresh research — write from my prompt only, ignore campaign/strategy data</label>
+      </div>
+
+      <label class="lm-label">Research Prompt <span style="color:#fff;font-weight:normal;">— what this piece should actually say; required for Fresh research, optional add-on otherwise</span></label>
+      <textarea class="modal-ta" id="wpResearchInput" rows="4" placeholder="Angle, facts, sources, specific claims to include…" style="resize:vertical;"></textarea>
+
+      <label class="lm-label" style="margin-top:10px;">Writing Style <span style="color:#fff;font-weight:normal;">— optional; tone, voice, structure</span></label>
+      <textarea class="modal-ta" id="wpStyleInput" rows="3" placeholder="e.g. conversational and first-person, punchy short sentences, expert-authoritative…" style="resize:vertical;"></textarea>
+
+      <div id="wpStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeWritePillarModal()">Cancel</button>
+      <button class="modal-btn save" id="wpGoBtn" onclick="submitWritePillar()">Write Pillar</button>
+    </div>
+  </div>
+</div>
+
 <!-- GENERATE ASSETS MODAL — same shape as the Add Idea modal, prefilled from
      an existing title; on Generate it creates N real Asset records linked to
      the title (they render as rows under the publish title). -->
@@ -1923,7 +1959,7 @@ async function loadTitles() {
       GA_TITLE_ASSETS_CACHE[t.id] = t.assets || [];
       const div = document.createElement('div');
       div.className = 'title-row';
-      const pillarBtn = t.stage === 'Planning' ? `<button class="title-status-btn" onclick="writeTitlePillarRow('${t.id}', this)" title="Write pillar content now — moves this title from Planning into Development">📝</button>` : '';
+      const pillarBtn = t.stage === 'Planning' ? `<button class="title-status-btn" onclick="openWritePillarModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Write pillar content — moves this title from Planning into Development">📝</button>` : '';
       div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span>${pillarBtn}<button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       // Publish/Published assets never show here — they belong exclusively
       // to the Publish Assets section (renderPublishedAssets above). Only
@@ -6172,16 +6208,56 @@ async function submitQuickAddTitle() {
     btn.disabled = false; btn.textContent = 'Add';
   }
 }
-async function writeTitlePillarRow(titleId, btn) {
-  const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = '…';
+let WP_TITLE_ID = null;
+function openWritePillarModal(titleId, titleName) {
+  WP_TITLE_ID = titleId;
+  document.getElementById('wpTitleDisplay').textContent = titleName || '';
+  document.getElementById('wpResearchInput').value = '';
+  document.getElementById('wpStyleInput').value = '';
+  document.getElementById('wpStatus').textContent = '';
+  document.querySelector('input[name="wpMode"][value="grounded"]').checked = true;
+  const btn = document.getElementById('wpGoBtn');
+  btn.disabled = false; btn.textContent = 'Write Pillar';
+  document.getElementById('writePillarModal').classList.add('open');
+}
+function closeWritePillarModal() {
+  document.getElementById('writePillarModal').classList.remove('open');
+  WP_TITLE_ID = null;
+}
+document.getElementById('writePillarModal').addEventListener('click', function(e) {
+  if (e.target === this) closeWritePillarModal();
+});
+async function submitWritePillar() {
+  const status = document.getElementById('wpStatus');
+  const mode = document.querySelector('input[name="wpMode"]:checked').value;
+  const research = document.getElementById('wpResearchInput').value.trim();
+  const style = document.getElementById('wpStyleInput').value.trim();
+  if (mode === 'fresh' && !research) {
+    status.textContent = 'Fresh research needs a prompt — what should this piece be about?';
+    status.style.color = '#fc8181';
+    return;
+  }
+  const btn = document.getElementById('wpGoBtn');
+  btn.disabled = true; btn.textContent = 'Writing…';
+  status.style.color = '#888';
+  status.textContent = 'Researching and writing the pillar post…';
   try {
-    const data = await w('writeTitlePillar', { titleId });
+    const data = await w('writeTitlePillar', {
+      titleId: WP_TITLE_ID,
+      useGrounding: mode === 'grounded',
+      researchOverride: research || undefined,
+      styleGuidance: style || undefined,
+    });
     if (data.error) throw new Error(data.error);
+    status.textContent = `✓ Pillar written (${data.wordCount || '?'} words) — now ${data.newStatus}`;
+    status.style.color = '#68d391';
+    btn.textContent = 'Done';
     if (typeof loadTitles === 'function') loadTitles();
+    setTimeout(closeWritePillarModal, 1200);
   } catch(e) {
-    alert('Error writing pillar content: ' + e.message);
-    btn.disabled = false; btn.textContent = orig;
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Write Pillar';
   }
 }
 
