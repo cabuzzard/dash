@@ -6640,6 +6640,21 @@ Return ONLY a JSON array — no other text, no markdown fences:
         // both the title row and the Generate Assets modal's "existing
         // assets" panel need to see them. Titles with no assetIds cost
         // nothing extra either way.
+        // hasPillar: whether this title's page body already carries a
+        // "Pillar Content" section — lets the frontend show the 📝 Write
+        // Pillar action on ANY title missing it, not just ones still at
+        // "Planning" status. Needed because a title can reach Development
+        // with no pillar content two ways that don't go through
+        // writeTitlePillar: a manual Planning→Development status change
+        // (openStatusModal bypasses pillar-writing entirely), or a legacy
+        // title from before this feature existed.
+        const titlesHdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await Promise.all(titleList.map(async t => {
+          try {
+            const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dashify(t.id)}/children?page_size=100`, { headers: titlesHdr }).then(r => r.json());
+            t.hasPillar = (blocksResp.results || []).some(b => b.type === "heading_3" && (b.heading_3?.rich_text || []).map(x => x.plain_text).join("").trim().toLowerCase() === "pillar content");
+          } catch (e) { t.hasPillar = false; }
+        }));
         await Promise.all(titleList.map(async t => {
           if (!t.assetIds.length) { t.assets = []; return; }
           t.assets = (await Promise.all(t.assetIds.map(async aid => {

@@ -1959,7 +1959,11 @@ async function loadTitles() {
       GA_TITLE_ASSETS_CACHE[t.id] = t.assets || [];
       const div = document.createElement('div');
       div.className = 'title-row';
-      const pillarBtn = t.stage === 'Planning' ? `<button class="title-status-btn" onclick="openWritePillarModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Write pillar content — moves this title from Planning into Development">📝</button>` : '';
+      // Shown on ANY title missing pillar content, not just Planning-stage
+      // ones — a manual Planning→Development status change (⇄ button)
+      // bypasses writeTitlePillar entirely, so a Development title can end
+      // up here too with no way to write it short of this button.
+      const pillarBtn = !t.hasPillar ? `<button class="title-status-btn" onclick="openWritePillarModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="${t.stage === 'Planning' ? 'Write pillar content — moves this title from Planning into Development' : 'Write pillar content — this title has none yet'}">📝</button>` : '';
       div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span>${pillarBtn}<button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       // Publish/Published assets never show here — they belong exclusively
       // to the Publish Assets section (renderPublishedAssets above). Only
