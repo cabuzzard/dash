@@ -1603,9 +1603,13 @@ async function runChannelTopicsDigest() {
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Reading recent uploads…</div>';
   try {
-    const data = await w('getChannelTopicsDigest', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID });
+    const data = await w('getChannelTopicsDigest', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, campaignId: CAMPAIGN_ID });
     if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
     renderTopicsDigest(data.text || '');
+    // Each digest run also writes its own dated title under Development
+    // (Grouping: "Digest") — refresh that list so it shows up immediately
+    // instead of only appearing after the next unrelated reload.
+    if (data.digestTitleId && typeof loadTitles === 'function') loadTitles();
   } catch(e) {
     el.innerHTML = '<span class="empty" style="color:#c0392b">Digest failed — try again.</span>';
   } finally {

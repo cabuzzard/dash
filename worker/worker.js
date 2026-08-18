@@ -11085,7 +11085,7 @@ Rules:
       // fresh read, per operator instruction.
       if (body.action === "getChannelTopicsDigest") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { researchId } = body;
+        const { researchId, campaignId } = body;
         if (!researchId) return json({ error: "researchId required" }, 400);
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const YT_KEY = (env.YOUTUBE_API_KEY || "").trim();
@@ -11148,7 +11148,42 @@ Rules:
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "Trend Round-Up": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
         }).catch(() => {});
-        return json({ success: true, text: result });
+
+        // Also write this run as its own Development title, Grouping="Digest"
+        // — every digest run gets its own dated title instead of overwriting
+        // a single field, and they all cluster under one "Digest" bucket in
+        // the Development list (same Grouping mechanism every other title
+        // section uses). No product/method attached — a digest isn't tied to
+        // one. Best-effort: the Trend Round-Up save above already succeeded,
+        // so a failure here shouldn't surface as an overall action error.
+        let digestTitleId;
+        try {
+          const dateLabel = new Date().toISOString().slice(0, 10);
+          const titleProps = {
+            Title: { title: [{ type: "text", text: { content: `YouTube Topics Digest — ${dateLabel}` } }] },
+            Status: { select: { name: "Development" } },
+            Grouping: { rich_text: [{ type: "text", text: { content: "Digest" } }] },
+          };
+          if (campaignId) titleProps["Campaign"] = { relation: [{ id: dashId(campaignId) }] };
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
+          });
+          const createData = await createResp.json();
+          if (createResp.ok) {
+            digestTitleId = createData.id.replace(/-/g, "");
+            const para = t => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: t.slice(0, 1990) } }] } });
+            const children = [para(`New topics from this niche's top YouTube channels, as of ${dateLabel}.`), ...result.split("\n").filter(Boolean).map(para)];
+            await fetch(`https://api.notion.com/v1/blocks/${dashId(digestTitleId)}/children`, {
+              method: "PATCH",
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+              body: JSON.stringify({ children }),
+            }).catch(() => {});
+          }
+        } catch (e) { /* best-effort, see comment above */ }
+
+        return json({ success: true, text: result, digestTitleId });
       }
 
       // Î"Ã¶Ã‡Î"Ã¶Ã‡ CAMPAIGN ADMIN: updateCampaignKeywords Î"Ã¶Ã‡Î"Ã¶Ã‡
