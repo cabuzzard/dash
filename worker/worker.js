@@ -6668,8 +6668,22 @@ Return ONLY a JSON array — no other text, no markdown fences:
         // writeTitlePillar: a manual Planning→Development status change
         // (openStatusModal bypasses pillar-writing entirely), or a legacy
         // title from before this feature existed.
+        // Only computed for dev-family-stage titles: t.hasPillar is read
+        // exclusively by makeTitleRow, which only ever renders rows from
+        // the Development section (Planning/Development/Writing/Review/
+        // Approved/Explode) — never Publish/Published/Done. Fetching it for
+        // every title regardless of stage was a real bug, not just waste:
+        // it doubled this action's Notion subrequests (one extra blocks
+        // fetch per title, on top of the per-asset fetches below), and on a
+        // campaign with dozens of titles that's enough to blow past
+        // Cloudflare's per-request subrequest cap — silently dropping
+        // whichever fetches land past the limit, including, once, the
+        // asset-fetch for a title whose newly-generated asset then failed
+        // to appear anywhere in the UI despite existing correctly in Notion.
+        const DEV_FAMILY_STAGES = new Set(["Planning", "Development", "Writing", "Review", "Approved", "Explode"]);
         const titlesHdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         await Promise.all(titleList.map(async t => {
+          if (!DEV_FAMILY_STAGES.has(t.stage)) return;
           try {
             const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dashify(t.id)}/children?page_size=100`, { headers: titlesHdr }).then(r => r.json());
             const blocks = blocksResp.results || [];
@@ -8551,7 +8565,15 @@ Return ONLY this JSON object, no other text, no markdown fences:
               return (benefits || proofPoints || painPoints) ? { benefits, proofPoints, painPoints } : null;
             }).catch(() => null) : Promise.resolve(null),
           ]);
-          if (!pillarContent) return json({ error: "This title has no pillar content yet — Generate Assets reshapes existing content, it doesn't compose from scratch. Pillar content writes automatically on title creation; wait for it to finish, then try again." }, 400);
+          // No hard gate on pillarContent (per operator: "remove any
+          // barriers to asset generation — if there's anything written in
+          // the Development title, just build the asset off of what's
+          // there"). extractPillarContent already falls back to the whole
+          // page body when there's no "Pillar Content" heading, so this is
+          // empty only when the title's page is genuinely blank — in that
+          // case, fall through and let the prompt lean on the title name,
+          // method framework, operator override, and strategy fields
+          // instead of refusing to generate.
           // Tracked on the Method itself (per operator: "the template can be
           // tracked to the specific method") — the Methods DB already had an
           // unused "Template" url property from an earlier iteration of this
@@ -8569,9 +8591,7 @@ ${strategyFields.benefits ? `Benefits:\n${strategyFields.benefits}\n` : ''}${str
 
 TITLE: ${title}
 ${platformName ? `PLATFORM: ${platformName} — write the caption and hashtags in this platform's native conventions (length, tone, hashtag count/style, line breaks). A LinkedIn caption reads nothing like a TikTok caption.\n` : ''}${methodFrameworkText ? `METHOD FRAMEWORK (if this defines specific page/field names or a page count, follow them exactly — otherwise use your judgment):\n${methodFrameworkText.slice(0, 2000)}\n` : ''}
-PILLAR CONTENT (background/context only — do not lift sentences from this essay for the table's feature/benefit fields; it's here so you understand the full argument, not so you can paraphrase it):
-${pillarContent}
-${strategyBlock}${(description || '').trim() ? `\nOPERATOR OVERRIDE (follow this): ${description.trim()}\n` : ''}
+${pillarContent ? `PILLAR CONTENT (background/context only — do not lift sentences from this essay for the table's feature/benefit fields; it's here so you understand the full argument, not so you can paraphrase it):\n${pillarContent}\n` : `NO WRITTEN SOURCE MATERIAL YET on this title beyond its name — work from the TITLE, the method framework, and the researched benefits/proof points below (plus the operator override, if any) to produce something real and specific, not generic filler.\n`}${strategyBlock}${(description || '').trim() ? `\nOPERATOR OVERRIDE (follow this): ${description.trim()}\n` : ''}
 Produce one row per distinct field on each page/slide (e.g. Headline, Body, Badge, Payoff) — real, specific, ready-to-port content, never placeholders.
 
 Writing style for the table (this is the part that's gone wrong before — read carefully): write plainly and concretely, the way the RESEARCHED BENEFITS & PROOF POINTS above are already written. A benefit statement should read like a direct, confident claim a founder would say to a customer's face — not a caption trying to be clever. No metaphor, no wordplay, no compressed ad-copy phrasing, no invented cleverness layered on top of what the research already says plainly. If a researched bullet fits a field, use it close to verbatim rather than reinterpreting it.
