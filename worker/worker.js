@@ -6733,6 +6733,10 @@ Return ONLY a JSON array — no other text, no markdown fences:
                 hashtags: p["Hashtags"]?.rich_text?.map(x => x.plain_text).join("") || "",
                 postCaption: p["Post Caption"]?.rich_text?.map(x => x.plain_text).join("") || "",
                 thumbnail: p["Thumbnail"]?.url || "",
+                // The finished deliverable file — t-shirt print file (PDF/
+                // PNG/SVG), or a rendered video's output; same property
+                // video assets already set alongside Design Link.
+                finalMediaFile: p["Final Media File"]?.url || "",
               };
             } catch(e) { return null; }
           }))).filter(Boolean);
@@ -8528,6 +8532,89 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return json({ success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode });
         }
 
+        // ── renderLinkedInBannerCore ──
+        // Renders a 1280x720 LinkedIn article banner from three short copy
+        // fields (headline/accentLine/subhead) via Cloudflare Browser
+        // Rendering — the same screenshot-a-real-HTML-page mechanism
+        // renderCarouselFromManifestCore uses for carousel slides, just one
+        // fixed layout instead of four. Colors/fonts are fixed to match the
+        // "LinkedIn Article Banner Template" built in Canva (white bg, #222
+        // ink, #7ed321 accent, bold sans headline / serif body) — a
+        // standalone visual system for this one asset type, not derived
+        // per-campaign the way carousel's Design Spec is. Hosts the PNG on
+        // GitHub Pages (same repo-commit pattern every other renderer here
+        // uses) and writes the resulting URL onto the asset's Design
+        // Link/Thumbnail properties — both visible in the Publish modal.
+        const LINKEDIN_BANNER_STYLE = { bg: '#ffffff', ink: '#222222', accent: '#7ed321', headlineFont: 'Poppins', bodyFont: 'Lora' };
+        async function renderLinkedInBannerCore({ assetId, headline, accentLine, subhead, campaignId, assetTitle, hdr, dash, CF_ACCOUNT_ID, CF_API_TOKEN, GT }) {
+          const { bg, ink, accent, headlineFont, bodyFont } = LINKEDIN_BANNER_STYLE;
+          const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+          const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+          const basePath = `web/${deployPath}/banners`;
+          const path = `${basePath}/${slugify(assetTitle) || assetId}.png`;
+
+          const html = `<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(headlineFont)}:wght@700&family=${encodeURIComponent(bodyFont)}:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { width:1280px; height:720px; background:${bg}; position:relative; overflow:hidden; font-family:'${bodyFont}',serif; }
+  .dots { position:absolute; width:90px; height:100px; background-image:radial-gradient(${accent}55 1.5px, transparent 1.5px); background-size:10px 10px; opacity:.6; }
+  .dots.tr { top:0; right:0; } .dots.bl { bottom:0; left:0; }
+  .divider { position:absolute; top:-5%; left:780px; width:2px; height:110%; background:${ink}; opacity:.35; transform:skewX(-8deg); }
+  .col { position:absolute; left:80px; top:170px; width:620px; }
+  h1 { font-family:'${headlineFont}',sans-serif; font-weight:700; font-size:46px; line-height:0.98; letter-spacing:-0.01em; color:${ink}; white-space:pre-line; }
+  .accent { font-family:'${headlineFont}',sans-serif; font-weight:700; font-size:46px; line-height:0.98; letter-spacing:-0.01em; color:${accent}; margin-top:18px; }
+  p { font-size:17px; line-height:1.4; color:${ink}; opacity:.85; margin-top:28px; max-width:480px; }
+</style></head><body>
+  <div class="dots tr"></div>
+  <div class="dots bl"></div>
+  <div class="divider"></div>
+  <div class="col">
+    <h1>${esc(headline)}</h1>
+    <div class="accent">${esc(accentLine)}</div>
+    <p>${esc(subhead)}</p>
+  </div>
+</body></html>`;
+
+          const sleep = ms => new Promise(res => setTimeout(res, ms));
+          let pngBuffer = null;
+          for (let attempt = 0; attempt < 4; attempt++) {
+            const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ html, viewport: { width: 1280, height: 720, deviceScaleFactor: 1 }, gotoOptions: { waitUntil: "domcontentloaded", timeout: 15000 }, screenshotOptions: { type: "png" } }),
+            });
+            if (resp.status === 429) { const retryAfter = parseInt(resp.headers.get("Retry-After") || "11", 10); await sleep((retryAfter + 1) * 1000); continue; }
+            if (resp.status === 422 && attempt < 3) { await sleep(3000); continue; }
+            if (!resp.ok) { const t = await resp.text(); throw new Error(`Browser Rendering failed (HTTP ${resp.status}): ${t.slice(0, 300)}`); }
+            pngBuffer = await resp.arrayBuffer();
+            break;
+          }
+          if (!pngBuffer) throw new Error("Browser Rendering stayed rate-limited/timed out after retries.");
+
+          const toB64Bin = buf => { const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+          const REPO = "cabuzzard/dash", BRANCH = "main";
+          const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+          let sha = null;
+          const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+          if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
+          const putBody = { message: `LinkedIn banner: ${assetTitle}`, content: toB64Bin(pngBuffer), branch: BRANCH };
+          if (sha) putBody.sha = sha;
+          const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+            method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+          });
+          if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); throw new Error(`GitHub commit failed: ${r.message || putResp.status}`); }
+
+          const designLink = `https://cabuzzard.github.io/dash/${path}`;
+          const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Design Link": { url: designLink }, "Thumbnail": { url: designLink } } }),
+          });
+          if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); throw new Error(r.message || "Banner rendered but failed to save Design Link"); }
+          return designLink;
+        }
+
         // ── LinkedIn Post asset type: reshapes the title's own pillar
         // content into ONE finished, publish-ready LinkedIn Article — not N
         // options. Framework (length, headline/hook/structure/voice/CTA
@@ -8536,7 +8623,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // reads it — nothing LinkedIn-specific is hardcoded here. No hard
         // gate on pillarContent (per operator: barriers to generation come
         // out — work from whatever's on the title, even just its name, if
-        // there's genuinely nothing else yet).
+        // there's genuinely nothing else yet). Every generation also
+        // renders and attaches a matching banner — see renderLinkedInBannerCore
+        // above and the call after asset creation below.
         if (/linkedin post/i.test(assetType)) {
           const hasMethod = methodId && methodId !== "__none__";
           const [pillarContent, methodFrameworkText] = await Promise.all([
@@ -8564,6 +8653,9 @@ Produce all of this by calling the submit_article tool — do not include any of
                   properties: {
                     headline: { type: "string", description: "Clear, outcome-led headline — states the payoff directly, not a teaser." },
                     hook: { type: "string", description: "Opening 1-3 sentences. Must stand alone in the feed preview before \"…see more\"." },
+                    bannerHeadline: { type: "string", description: "The banner image's main headline — plain text, use \\n for exactly two short lines and no more. Punchy and concrete, adapted/shortened from the article headline if that's too long to read at a glance on a 1280x720 image." },
+                    bannerAccent: { type: "string", description: "One short accent phrase (2-5 words), no period — the payoff word/phrase, rendered in the banner's accent color right under bannerHeadline." },
+                    bannerSubhead: { type: "string", description: "One short supporting sentence for the banner, under ~110 characters — a compressed version of the hook, not a repeat of bannerHeadline/bannerAccent." },
                     sections: {
                       type: "array",
                       items: {
@@ -8575,7 +8667,7 @@ Produce all of this by calling the submit_article tool — do not include any of
                     },
                     cta: { type: "string", description: "One direct call to action using an action verb (comment/save/message) — never a vague \"thoughts?\"." },
                   },
-                  required: ["headline", "hook", "sections", "cta"],
+                  required: ["headline", "hook", "bannerHeadline", "bannerAccent", "bannerSubhead", "sections", "cta"],
                 },
               }],
               tool_choice: { type: "tool", name: "submit_article" },
@@ -8628,7 +8720,29 @@ Produce all of this by calling the submit_article tool — do not include any of
             if (!blocksResp.ok) { const r = await blocksResp.json(); return json({ error: r.message || "Asset created but failed to write article body" }, 502); }
           }
 
-          return json({ success: true, created: 1, assets: [{ id: assetId, title: headline }], sectionCount: sections.length });
+          // ── Auto-generate the matching banner ──
+          // Best-effort: the article is the actual deliverable, so a render
+          // failure (e.g. Browser Rendering rate-limited, GITHUB_TOKEN not
+          // set) never fails asset creation — it just leaves Design Link
+          // blank and surfaces bannerError for the operator to see.
+          let bannerDesignLink = '', bannerError = '';
+          try {
+            const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || '').trim();
+            const CF_API_TOKEN = (env.CF_API_TOKEN || '').trim();
+            const GT = (env.GITHUB_TOKEN || '').trim();
+            if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error("CF_ACCOUNT_ID / CF_API_TOKEN not configured");
+            if (!GT) throw new Error("GITHUB_TOKEN not configured");
+            bannerDesignLink = await renderLinkedInBannerCore({
+              assetId,
+              headline: String(article.bannerHeadline || headline).slice(0, 120),
+              accentLine: String(article.bannerAccent || '').slice(0, 80),
+              subhead: String(article.bannerSubhead || article.hook || '').slice(0, 200),
+              campaignId, assetTitle: headline, hdr: dsHdr, dash: dsDash,
+              CF_ACCOUNT_ID, CF_API_TOKEN, GT,
+            });
+          } catch (e) { bannerError = e.message; }
+
+          return json({ success: true, created: 1, assets: [{ id: assetId, title: headline }], sectionCount: sections.length, bannerDesignLink, bannerError: bannerError || undefined });
         }
 
         // ── "Template CSV Export"-style table asset: ONE finished Page |
@@ -12137,6 +12251,62 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save Thumbnail property" }, 500); }
 
         return json({ success: true, thumbnailUrl });
+      }
+
+      // ── uploadAssetDesignFile ──
+      // The t-shirt method's design upload (📤 button in the Publish
+      // modal) — same GitHub-commit-and-host mechanism as
+      // uploadAssetThumbnail just above, but for the actual finished
+      // deliverable file (PDF/PNG/SVG print file, or any other asset type's
+      // finished media) rather than a preview thumbnail: writes to the
+      // existing "Final Media File" property, which video assets already
+      // use for exactly this purpose (the rendered/finished output, set
+      // alongside Design Link) — not a new property.
+      if (body.action === "uploadAssetDesignFile") {
+        const { assetId, fileName, contentType, fileData } = body;
+        if (!assetId || !fileData) return json({ error: "assetId and fileData required" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const assetTitle = assetPage.properties["Asset Title"]?.title?.map(t => t.plain_text).join("") || "asset";
+        const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const extFromType = (String(contentType || '').split('/')[1] || '').toLowerCase().replace('jpeg', 'jpg').replace('svg+xml', 'svg');
+        const extFromName = (String(fileName || '').match(/\.([a-zA-Z0-9]+)$/) || [, ''])[1].toLowerCase();
+        const ext = extFromType || extFromName || 'png';
+        const basePath = `web/${deployPath}/designs`;
+        const path = `${basePath}/${slugify(assetTitle) || assetId}.${ext}`;
+
+        const b64 = String(fileData).split(',').pop();
+        if (!b64) return json({ error: "No file data" }, 400);
+
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        let sha = null;
+        const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+        if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
+
+        const putBody = { message: `Design file upload: ${assetTitle}`, content: b64, branch: BRANCH };
+        if (sha) putBody.sha = sha;
+        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+        });
+        if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || putResp.status}` }, 500); }
+
+        const fileUrl = `https://cabuzzard.github.io/dash/${path}`;
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Final Media File": { url: fileUrl } } }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save Final Media File property" }, 500); }
+
+        return json({ success: true, fileUrl });
       }
 
       // ── MICROSITE: getCampaignLogins ──
@@ -20900,6 +21070,124 @@ Return ONLY this JSON object, no other text, no markdown fences:
         });
 
         return json({ success: true, titleId, assetId, alreadyScripted });
+      }
+
+      // ── generateTshirtAsset ──
+      // "T Shirt" method — writes the Etsy/Printify-facing copy for one
+      // t-shirt design concept (listing title, description, alt text,
+      // social hashtags + caption) straight to a new Asset record, same
+      // "worker-native, one-shot, goes straight to Publish" pattern as
+      // Explainer/Avatar Video — not the generic N-options-plus-grading
+      // path, since there's no "viral hook framework" to grade a product
+      // listing against. Claude never produces the actual print file — a
+      // human/AI image tool makes that separately; the operator attaches it
+      // afterward via the Publish modal's Design File upload (reuses
+      // uploadAssetImage/the Images property, same mechanism as the
+      // general Files button, just surfaced where this asset's other
+      // publish-ready fields already live). Idempotent per title, same
+      // existing-asset-check pattern as Explainer Video.
+      if (body.action === "generateTshirtAsset") {
+        const { titleId, campaignId, productId, platformName, platformId, loginId, overrideText } = body;
+        if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const titleName = (titlePage.properties.Title?.title || []).map(t => t.plain_text).join("") || "T Shirt Design";
+        const resolvedProductId = (productId && productId !== "__none__" && productId !== campaignId)
+          ? productId
+          : (titlePage.properties.product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+
+        // Keyed off an existing "t shirt" Asset for this title, not just any
+        // asset — a title run through a different method first shouldn't be
+        // misdetected as already having t-shirt copy (same reasoning as the
+        // Explainer/Avatar/Text Video dedup checks).
+        const priorAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Content Strategy", relation: { contains: dash(titleId) } },
+            { property: "Asset Type", select: { equals: "t shirt" } },
+          ] } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const existingAsset = (priorAssetQuery.results || []).find(a => !a.archived);
+
+        const [strategyBlock, pillarContent] = await Promise.all([
+          fetchStrategyForGrading(hdr, dash(campaignId), resolvedProductId ? dash(resolvedProductId) : null, !!resolvedProductId),
+          extractPillarContent(hdr, dash(titleId)).catch(() => ""),
+        ]);
+
+        const prompt = `You are writing the publish-ready copy for one t-shirt design, sold as a physical print-on-demand product (fulfilled via Printify, listed on Etsy). You are NOT designing the artwork — a human or AI image tool produces the actual print file separately, uploaded after this. Your job is the words that sell it.
+
+TITLE (the design concept): ${titleName}
+${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}${pillarContent ? `SOURCE CONTENT (the idea this design should visually express):\n${pillarContent.slice(0, 3000)}\n` : ''}${overrideText ? `OPERATOR NOTES (follow these exactly): ${overrideText}\n` : ''}
+
+Write:
+- "etsyTitle": an Etsy-SEO-friendly product title — front-load the real search terms a buyer would type (style, audience, occasion, keyword phrase), under 140 characters, no ALL CAPS, no emoji.
+- "etsyDescription": a 3-4 short paragraph Etsy listing description — what the design says/shows, who it's for, why it's a good gift or good to wear, then a plain specs line (e.g. unisex tee, DTG print, true to size) since exact garment/material varies by whichever Printify blueprint gets chosen at publish time.
+- "altText": one plain sentence describing what's printed on the shirt (accessibility + Etsy image SEO), under 125 characters.
+- "hashtags": 8-15 social hashtags (Instagram-style, # prefixed) for a post announcing the design — mix broad (#tshirtdesign) with niche/audience-specific ones.
+- "postCaption": a short social caption (2-4 sentences) announcing the new design and pointing people to the Etsy listing, ending on a clear CTA.
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "etsyTitle": "...", "etsyDescription": "...", "altText": "...", "hashtags": ["...", "..."], "postCaption": "..." }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let parsed;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+          if (start === -1 || end === -1) throw new Error("No JSON object found");
+          parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        } catch(e) { return json({ error: "Failed to parse t-shirt copy JSON: " + e.message }, 500); }
+        if (!parsed.etsyTitle) return json({ error: "Generation returned no title — try again" }, 500);
+
+        const hashtagsLine = (Array.isArray(parsed.hashtags) && parsed.hashtags.length) ? parsed.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ') : '';
+        const assetProps = {
+          "Asset Title":  { title: [{ type: "text", text: { content: String(parsed.etsyTitle).slice(0, 200) } }] },
+          "Description":  { rich_text: [{ type: "text", text: { content: String(parsed.etsyDescription || '').slice(0, 1990) } }] },
+          "Alt Text":     { rich_text: [{ type: "text", text: { content: String(parsed.altText || '').slice(0, 500) } }] },
+          "Hashtags":     { rich_text: [{ type: "text", text: { content: hashtagsLine.slice(0, 1990) } }] },
+          "Post Caption": { rich_text: [{ type: "text", text: { content: String(parsed.postCaption || '').slice(0, 1990) } }] },
+          "Asset Status": { select: { name: "Publish" } },
+        };
+        if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
+        if (platformId) assetProps["Platform"] = { relation: [{ id: dash(platformId) }] };
+        if (loginId) assetProps["Login"] = { relation: [{ id: dash(loginId) }] };
+
+        let assetId;
+        if (existingAsset) {
+          assetId = existingAsset.id.replace(/-/g, "");
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: assetProps }),
+          });
+        } else {
+          assetProps["Asset Type"] = { select: { name: "t shirt" } };
+          assetProps["Content Strategy"] = { relation: [{ id: dash(titleId) }] };
+          assetProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Asset create failed" }, createResp.status || 500);
+          assetId = created.id.replace(/-/g, "");
+        }
+
+        await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+        });
+
+        return json({ success: true, titleId, assetId, alreadyExisted: !!existingAsset });
       }
 
       // ── saveAssetDesignRef ──
