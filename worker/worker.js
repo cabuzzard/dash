@@ -7022,12 +7022,30 @@ Return ONLY a JSON array — no other text, no markdown fences:
         // Growth Strategy's title property is "Strategy Name", not "Name" —
         // needs its own fetch helper.
         const fetchStrategyName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "?" }; } catch(e) { return { id, name: "?" }; } };
-        const [prodPages, methPages, stratPages] = await Promise.all([Promise.all(pIds.map(fetchName)), Promise.all(mIds.map(fetchName)), Promise.all(sIds.map(fetchStrategyName))]);
+        // Products also carry a Product Stack (the same Campaign -> Product
+        // Stack -> Product grouping used on the Development tab and the
+        // microsite's own Products section) — fetched alongside the name
+        // rather than via fetchName so the microsite's Development list can
+        // group by it too.
+        const fetchProduct = async id => {
+          try {
+            const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
+            const p = await r.json();
+            return {
+              id,
+              name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?",
+              stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim() || null,
+            };
+          } catch(e) { return { id, name: "?", stack: null }; }
+        };
+        const [prodPages, methPages, stratPages] = await Promise.all([Promise.all(pIds.map(fetchProduct)), Promise.all(mIds.map(fetchName)), Promise.all(sIds.map(fetchStrategyName))]);
         const pNames = Object.fromEntries(prodPages.map(p => [p.id, p.name]));
+        const pStacks = Object.fromEntries(prodPages.map(p => [p.id, p.stack]));
         const mNames = Object.fromEntries(methPages.map(p => [p.id, p.name]));
         const sNames = Object.fromEntries(stratPages.map(p => [p.id, p.name]));
         titleList.forEach(t => {
           t.productName  = t.productId === '__none__' ? 'No Product' : (pNames[t.productId] || '?');
+          t.productStack = t.productId === '__none__' ? null : (pStacks[t.productId] || null); // null = No Stack
           t.methodName   = t.methodId  === '__none__' ? 'No Method'  : (mNames[t.methodId]  || '?');
           t.strategyName = t.strategyId === '__none__' ? 'No Strategy' : (sNames[t.strategyId] || '?');
           const parts = (t._rawGrouping || '').split(' > ');
