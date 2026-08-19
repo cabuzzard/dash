@@ -4490,6 +4490,47 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         }
       }
 
+      // ── getRecentTitles ──
+      // Development tab's "Last 30 Development Titles" widget — the 30
+      // most recently CREATED Content Strategy titles across every
+      // campaign (not assets), for rapidly logging title ideas before
+      // assets exist for them yet. A single capped, sorted fetch (not the
+      // auto-paginating notionQuery helper) since Content Strategy has
+      // 600+ rows total and only the newest 30 are ever needed here.
+      if (body.action === "getRecentTitles") {
+        try {
+          const [titleResp, campRows] = await Promise.all([
+            fetch(`https://api.notion.com/v1/databases/${CONTENT_STRATEGY_DB}/query`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+              body: JSON.stringify({ page_size: 30, sorts: [{ timestamp: "created_time", direction: "descending" }] }),
+            }).then(r => r.json()),
+            notionQuery(CAMPAIGNS_DB, {}),
+          ]);
+          const campMap = {};
+          campRows.forEach(c => {
+            campMap[c.id.replace(/-/g,"")] = { name: c.properties.Name?.title?.map(t=>t.plain_text).join("") || "", microsite: c.properties["microsite"]?.url || null };
+          });
+          const titles = (titleResp.results || []).map(pg => {
+            const p = pg.properties || {};
+            const campId = (p.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || "";
+            const camp = campMap[campId] || { name: "", microsite: null };
+            return {
+              id: pg.id.replace(/-/g,""),
+              title: p.Title?.title?.map(t=>t.plain_text).join("") || "Untitled",
+              status: p.Status?.select?.name || "",
+              campaignId: campId,
+              campaignName: camp.name,
+              campaignMicrosite: camp.microsite,
+              createdTime: pg.created_time || "",
+            };
+          });
+          return json({ titles });
+        } catch(e) {
+          return json({ error: e.message, titles: [] });
+        }
+      }
+
       if (body.action === "searchLogins") {
         const { query } = body;
         const rows = await notionQuery(LOGINS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });

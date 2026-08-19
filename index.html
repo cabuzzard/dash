@@ -646,6 +646,13 @@
       </div>
       <div id="last30List" style="display:none;"></div>
     </div>
+    <div id="last30TitlesSection" style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border2);cursor:pointer;user-select:none;" onclick="toggleLast30TitlesSection()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Last 30 Development Titles</span>
+        <span id="last30TitlesToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="last30TitlesList" style="display:none;"></div>
+    </div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border2);cursor:pointer;user-select:none;" onclick="toggleDevTitlesSection()">
       <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Development Titles</span>
       <span id="devTitlesToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
@@ -2919,7 +2926,7 @@ function resetLoadFlags() {
   ovLoaded = false; prodLoaded = false; prodTdLoaded = false; devLoaded = false;
   tdTabLoaded = false; linksLoaded = false; toolsLoaded = false; stackLoaded = false;
   knLoaded = false; domTabLoaded = false; smAccsLoaded = false; emailsLoaded = false;
-  careerLoaded = false; siteTdsLoaded = false; tradesLoaded = false; last30Loaded = false;
+  careerLoaded = false; siteTdsLoaded = false; tradesLoaded = false; last30Loaded = false; last30TitlesLoaded = false;
 }
 function lockApp() {
   SESSION_TOKEN = null;
@@ -8044,6 +8051,9 @@ async function submitTitle() {
     devLoaded = true;
     if (devTitlesCollapsed) { devTitlesCollapsed = false; document.getElementById('devContent').style.display = ''; document.getElementById('devTitlesToggleIcon').textContent = '▾'; }
     loadDev();
+    last30TitlesLoaded = true;
+    if (last30TitlesCollapsed) { last30TitlesCollapsed = false; document.getElementById('last30TitlesList').style.display = ''; document.getElementById('last30TitlesToggleIcon').textContent = '▾'; }
+    loadLast30Titles();
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Create';
@@ -8313,6 +8323,9 @@ async function submitQuickTitle() {
     showToast('Title created ✓', 'success');
     quickTitleCampaign.devTitles = (quickTitleCampaign.devTitles || 0) + 1;
     renderTable();
+    last30TitlesLoaded = true;
+    if (last30TitlesCollapsed) { last30TitlesCollapsed = false; document.getElementById('last30TitlesList').style.display = ''; document.getElementById('last30TitlesToggleIcon').textContent = '▾'; }
+    loadLast30Titles();
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Create';
@@ -10051,6 +10064,94 @@ function renderLast30Table() {
       '</div>' +
       '<div style="width:24px;flex-shrink:0;padding:6px 4px;">' +
         (a.campaignMicrosite ? '<a href="' + esc(a.campaignMicrosite) + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+  el.innerHTML = '<div style="overflow-x:auto;">' + hdrRow + rowsHtml + '</div>';
+}
+
+// ── LAST 30 DEVELOPMENT TITLES ───────────────────────────────────────
+// Same default-collapsed, table-style, lazy-load-on-expand widget as Last
+// 30 Published, but titles rather than assets (getRecentTitles — the 30
+// most recently CREATED Content Strategy titles across every campaign,
+// not assets) — for rapidly logging title ideas before any asset exists
+// for them, with a record of what's queued up. No Method column: titles
+// don't carry one meaningfully (see Development Titles list above). Default
+// sort is Date (created) descending — "last created" first.
+let last30TitlesCollapsed = true;
+let last30TitlesLoaded = false;
+let _last30Titles = [];
+let _last30TitlesSort = { col: 'date', dir: -1 };
+function toggleLast30TitlesSection() {
+  last30TitlesCollapsed = !last30TitlesCollapsed;
+  const list = document.getElementById('last30TitlesList');
+  const icon = document.getElementById('last30TitlesToggleIcon');
+  if (list) list.style.display = last30TitlesCollapsed ? 'none' : '';
+  if (icon) icon.textContent = last30TitlesCollapsed ? '▸' : '▾';
+  if (!last30TitlesCollapsed && !last30TitlesLoaded) {
+    last30TitlesLoaded = true;
+    loadLast30Titles();
+  }
+}
+async function loadLast30Titles() {
+  const el = document.getElementById('last30TitlesList');
+  if (!el) return;
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getRecentTitles');
+    _last30Titles = data.titles || [];
+    renderLast30TitlesTable();
+  } catch(e) {
+    el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
+  }
+}
+function sortLast30TitlesBy(col) {
+  if (_last30TitlesSort.col === col) {
+    _last30TitlesSort.dir *= -1;
+  } else {
+    _last30TitlesSort.col = col;
+    _last30TitlesSort.dir = col === 'date' ? -1 : 1;
+  }
+  renderLast30TitlesTable();
+}
+function renderLast30TitlesTable() {
+  const el = document.getElementById('last30TitlesList');
+  if (!el) return;
+  if (!_last30Titles.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No titles yet.</div>'; return; }
+
+  const sorted = [..._last30Titles].sort((a, b) => {
+    let av, bv;
+    if (_last30TitlesSort.col === 'date')          { av = a.createdTime || ''; bv = b.createdTime || ''; }
+    else if (_last30TitlesSort.col === 'campaign') { av = (a.campaignName || '').toLowerCase(); bv = (b.campaignName || '').toLowerCase(); }
+    else                                           { av = (a.title || '').toLowerCase(); bv = (b.title || '').toLowerCase(); }
+    return av < bv ? -_last30TitlesSort.dir : av > bv ? _last30TitlesSort.dir : 0;
+  });
+
+  const colHdr = (key, label, flex) => {
+    const active = _last30TitlesSort.col === key;
+    const arrow  = active ? (_last30TitlesSort.dir === 1 ? ' ↑' : ' ↓') : '';
+    return '<div onclick="sortLast30TitlesBy(\'' + key + '\')" style="flex:' + flex + ';min-width:0;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + (active ? 'var(--accent)' : 'var(--text3)') + ';cursor:pointer;user-select:none;padding:7px 8px;">' + label + arrow + '</div>';
+  };
+  const hdrRow = '<div style="display:flex;align-items:center;border-bottom:2px solid var(--border2);margin-bottom:2px;">' +
+    colHdr('title',    'Title',    '3') +
+    colHdr('campaign', 'Campaign', '1') +
+    colHdr('date',     'Date',     '0 0 70px') +
+    '<div style="width:24px;flex-shrink:0;"></div>' +
+  '</div>';
+  const rowsHtml = sorted.map(t => {
+    const date = t.createdTime ? new Date(t.createdTime).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
+    return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:32px;">' +
+      '<div style="flex:3;min-width:0;padding:6px 8px;overflow:hidden;">' +
+        '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(t.title || 'Untitled') + '</span>' +
+      '</div>' +
+      '<div style="flex:1;min-width:0;padding:6px 8px;overflow:hidden;">' +
+        '<span style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(t.campaignName || '—') + '</span>' +
+      '</div>' +
+      '<div style="flex:0 0 70px;min-width:0;padding:6px 8px;">' +
+        '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
+      '</div>' +
+      '<div style="width:24px;flex-shrink:0;padding:6px 4px;">' +
+        (t.campaignMicrosite ? '<a href="' + esc(t.campaignMicrosite) + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' : '') +
       '</div>' +
     '</div>';
   }).join('');
