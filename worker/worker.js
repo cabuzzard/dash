@@ -21945,7 +21945,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // publish-ready fields already live). Idempotent per title, same
       // existing-asset-check pattern as Explainer Video.
       if (body.action === "generateTshirtAsset") {
-        const { titleId, campaignId, productId, platformName, platformId, loginId, overrideText } = body;
+        const { titleId, campaignId, productId, platformName, platformId, loginId, overrideText, trendContext } = body;
         if (!titleId || !campaignId) return json({ error: "titleId and campaignId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
 
@@ -21977,10 +21977,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
           extractPillarContent(hdr, dash(titleId)).catch(() => ""),
         ]);
 
-        const prompt = `You are writing the publish-ready copy for one t-shirt design, sold as a physical print-on-demand product (fulfilled via Printify, listed on Etsy). You are NOT designing the artwork — a human or AI image tool produces the actual print file separately, uploaded after this. Your job is the words that sell it.
+        const prompt = `You are writing the publish-ready copy for one t-shirt design, sold as a physical print-on-demand product (fulfilled via Printify, listed on Etsy). You are NOT designing the artwork yourself — that happens via a DALL-E prompt (below) pasted into ChatGPT. Your job is the words that sell it, plus that prompt.
 
 TITLE (the design concept): ${titleName}
-${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}${pillarContent ? `SOURCE CONTENT (the idea this design should visually express):\n${pillarContent.slice(0, 3000)}\n` : ''}${overrideText ? `OPERATOR NOTES (follow these exactly): ${overrideText}\n` : ''}
+${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}${pillarContent ? `SOURCE CONTENT (the idea this design should visually express):\n${pillarContent.slice(0, 3000)}\n` : ''}${overrideText ? `OPERATOR NOTES (follow these exactly): ${overrideText}\n` : ''}${trendContext ? `LIVE ETSY TREND RESEARCH (what's actually selling right now for this kind of shirt — ground both the listing copy and the DALL-E prompt in this, don't ignore it):\n${trendContext}\n` : ''}
 
 Write:
 - "etsyTitle": an Etsy-SEO-friendly product title — front-load the real search terms a buyer would type (style, audience, occasion, keyword phrase), under 140 characters, no ALL CAPS, no emoji.
@@ -21988,9 +21988,17 @@ Write:
 - "altText": one plain sentence describing what's printed on the shirt (accessibility + Etsy image SEO), under 125 characters.
 - "hashtags": 8-15 social hashtags (Instagram-style, # prefixed) for a post announcing the design — mix broad (#tshirtdesign) with niche/audience-specific ones.
 - "postCaption": a short social caption (2-4 sentences) announcing the new design and pointing people to the Etsy listing, ending on a clear CTA.
+- "dallePrompt": a thorough, self-contained image-generation prompt, written as if handed directly to ChatGPT to render via DALL-E — someone should be able to paste ONLY this text into a fresh ChatGPT chat and get a print-ready t-shirt graphic back with no follow-up questions needed. Cover, explicitly:
+  - The exact text/phrase to render on the shirt (verbatim, if the design is text-driven) or the exact visual subject (if it's an illustration/icon design) — never vague ("something related to X").
+  - Composition and placement: centered chest-print layout, single focal element, generous negative space/margin on all sides so it isolates cleanly for printing.
+  - Art style: pick ONE concrete, specific style (e.g. bold vintage screen-print, minimalist single-line illustration, retro distressed badge/emblem, hand-lettered script) — grounded in whatever the trend research above shows is actually working for this niche right now, not a generic default.
+  - Color palette: name the actual colors (2-4 max, print-friendly, high contrast against a plain shirt), informed by the trend research's price/style pattern if present.
+  - Typography treatment if text is involved: font character (e.g. "bold condensed sans," "hand-drawn script"), never a literal font name DALL-E can't guarantee.
+  - Technical print requirements: transparent or plain white background, vector-flat/clean edges (no photographic gradients or drop shadows that won't print well), high contrast, no small illegible details, square or vertical crop suitable for a 12"x16" chest print area.
+  - End with one explicit closing instruction: "Output a single centered graphic on a plain white or transparent background, ready to isolate and print — no mockup, no shirt, no model."
 
 Return ONLY this JSON object, no other text, no markdown fences:
-{ "etsyTitle": "...", "etsyDescription": "...", "altText": "...", "hashtags": ["...", "..."], "postCaption": "..." }`;
+{ "etsyTitle": "...", "etsyDescription": "...", "altText": "...", "hashtags": ["...", "..."], "postCaption": "...", "dallePrompt": "..." }`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -22045,7 +22053,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
         });
 
-        return json({ success: true, titleId, assetId, alreadyExisted: !!existingAsset });
+        return json({ success: true, titleId, assetId, alreadyExisted: !!existingAsset, dallePrompt: parsed.dallePrompt || "" });
       }
 
       // ── saveAssetDesignRef ──
