@@ -2010,9 +2010,17 @@ async function loadTitles() {
     const titles = data.titles || [];
     // Planning sorts first — it's the pre-development stub stage (quick-add
     // title + operator notes, no pillar content yet, per operator request).
-    const DEV_ORDER = { Planning:-1, Explode:0, Approved:1, Review:2, Writing:3, Development:4 };
+    // 'Publish' is included here too (per operator instruction) because some
+    // generation paths (e.g. T Shirt) still force a title's Status to
+    // "Publish" on completion — without this, that title's row (and its
+    // 🧩/⇄/🔗 buttons) would silently vanish from Development the moment
+    // generation finished, since only its ASSETS would then show, grouped
+    // under Publish Assets, with no way to interact with the title itself.
+    // 'Published' stays excluded — that's the fully-confirmed-live state,
+    // not something still being worked on here.
+    const DEV_ORDER = { Planning:-1, Explode:0, Approved:1, Review:2, Writing:3, Development:4, Publish:5 };
     const dev = titles
-      .filter(t => ['Planning','Development','Writing','Review','Approved','Explode'].includes(t.stage))
+      .filter(t => ['Planning','Development','Writing','Review','Approved','Explode','Publish'].includes(t.stage))
       .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
     // Publish/Assets section is no longer title-stage-gated — a title
     // leaving Development doesn't affect whether its assets show here (see
