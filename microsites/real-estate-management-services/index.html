@@ -1985,33 +1985,94 @@ async function loadTitles() {
         + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
       return ar;
     }
-    // Renders the Publish/Assets section: PUBLISHED ASSETS grouped by their
-    // source title's name — not title rows. Per operator instruction, a
-    // title leaving Development is unrelated to whether its assets should
-    // show here; this reads every title's assets regardless of the title's
-    // own stage/section and gates purely on each asset's own status.
+    // Renders the Publish/Assets section: PUBLISHED ASSETS grouped Product
+    // Stack -> Product -> source title (never title rows themselves — a
+    // title stays in Development regardless of how many of its assets have
+    // published). Per operator instruction, a title leaving Development is
+    // unrelated to whether its assets should show here; this reads every
+    // title's assets regardless of the title's own stage/section and gates
+    // purely on each asset's own status. Same Campaign -> Product Stack ->
+    // Product convention as the Development list above and the microsite's
+    // own Products section — "No Stack" always sorts last.
     function renderPublishedAssets(titles, container) {
       container.innerHTML = '';
       const flat = titles.flatMap(t => (t.assets || [])
         .filter(a => PUBLISH_GATE.includes(a.status))
-        .map(a => ({ asset: a, titleId: t.id, titleName: t.title, productId: t.productId })));
+        .map(a => ({ asset: a, titleId: t.id, titleName: t.title, productId: t.productId, productName: t.productName, productStack: t.productStack })));
       if (!flat.length) { container.innerHTML = '<div class="empty">None.</div>'; return; }
-      const order = [], byTitle = {};
+      const titleOrder = [], byTitleId = {};
       flat.forEach(f => {
-        if (!byTitle[f.titleId]) { byTitle[f.titleId] = { name: f.titleName, productId: f.productId, items: [] }; order.push(f.titleId); }
-        byTitle[f.titleId].items.push(f.asset);
+        if (!byTitleId[f.titleId]) { byTitleId[f.titleId] = { name: f.titleName, productId: f.productId, productName: f.productName, productStack: f.productStack, items: [] }; titleOrder.push(f.titleId); }
+        byTitleId[f.titleId].items.push(f.asset);
       });
-      order.forEach(titleId => {
-        const group = byTitle[titleId];
-        const hdr = document.createElement('div');
-        hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);';
-        // Same 🧩 Generate Assets entry point as a Development title row —
-        // an operator finding a title here (already publishing) still
-        // needs to spin up more assets from it: a different method, or
-        // another pass at the same method.
-        hdr.innerHTML = `<span style="flex:1;font-size:12px;color:#fff;font-weight:600;">${esc(group.name)}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${titleId}')" title="Generate more assets from this title — a different method, or another pass at the same one">🧩</button><a class="title-link" href="https://www.notion.so/${titleId}" target="_blank">↗</a><span style="font-size:10px;color:#fff;">${group.items.length}</span>`;
-        container.appendChild(hdr);
-        group.items.forEach(a => container.appendChild(renderAssetRow(a, titleId, group.productId)));
+      function renderTitleGroup(titleIds, body) {
+        titleIds.forEach(titleId => {
+          const group = byTitleId[titleId];
+          const hdr = document.createElement('div');
+          hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);';
+          // Same 🧩 Generate Assets entry point as a Development title row —
+          // an operator finding a title here (already publishing) still
+          // needs to spin up more assets from it: a different method, or
+          // another pass at the same method.
+          hdr.innerHTML = `<span style="flex:1;font-size:12px;color:#fff;font-weight:600;">${esc(group.name)}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${titleId}')" title="Generate more assets from this title — a different method, or another pass at the same one">🧩</button><a class="title-link" href="https://www.notion.so/${titleId}" target="_blank">↗</a><span style="font-size:10px;color:#fff;">${group.items.length}</span>`;
+          body.appendChild(hdr);
+          group.items.forEach(a => body.appendChild(renderAssetRow(a, titleId, group.productId)));
+        });
+      }
+      function renderProductGroup(titleIds, body) {
+        const hasProd = titleIds.some(tid => byTitleId[tid].productId && byTitleId[tid].productId !== '__none__');
+        if (!hasProd) { renderTitleGroup(titleIds, body); return; }
+        const prodOrder = [], byProd = {};
+        titleIds.forEach(tid => {
+          const g = byTitleId[tid];
+          const pk = (g.productId || '__none__') + '||' + (g.productName || 'No Product');
+          if (!byProd[pk]) { byProd[pk] = []; prodOrder.push(pk); }
+          byProd[pk].push(tid);
+        });
+        prodOrder.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
+        if (prodOrder.length === 1) { renderTitleGroup(titleIds, body); return; }
+        prodOrder.forEach(pk => {
+          const tids = byProd[pk];
+          const prodName = pk.split('||')[1];
+          const stateKey = 'pub|prod|' + pk;
+          const isOpen = !!titleGroupsOpen[stateKey];
+          const pHdr = document.createElement('div');
+          pHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px 6px 20px;background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;user-select:none;';
+          const pArrow = document.createElement('span'); pArrow.textContent = isOpen ? '▾' : '▶'; pArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
+          const pLabel = document.createElement('span'); pLabel.style.cssText = 'flex:1;font-size:12px;color:#fff;font-weight:600;'; pLabel.textContent = prodName;
+          const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:#fff;'; pCount.textContent = tids.reduce((n, tid) => n + byTitleId[tid].items.length, 0);
+          pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
+          const pBody = document.createElement('div'); pBody.style.display = isOpen ? 'block' : 'none';
+          renderTitleGroup(tids, pBody);
+          pHdr.onclick = () => { const o = pBody.style.display !== 'none'; pBody.style.display = o ? 'none' : 'block'; pArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+          body.appendChild(pHdr); body.appendChild(pBody);
+        });
+      }
+      const hasStack = titleOrder.some(tid => byTitleId[tid].productStack);
+      if (!hasStack) { renderProductGroup(titleOrder, container); return; }
+      const stackOrder = [], byStack = {};
+      titleOrder.forEach(tid => {
+        const sk = byTitleId[tid].productStack || NO_STACK_KEY;
+        if (!byStack[sk]) { byStack[sk] = []; stackOrder.push(sk); }
+        byStack[sk].push(tid);
+      });
+      stackOrder.sort((a, b) => { if (a === NO_STACK_KEY) return 1; if (b === NO_STACK_KEY) return -1; return a.localeCompare(b); });
+      if (stackOrder.length === 1) { renderProductGroup(titleOrder, container); return; }
+      stackOrder.forEach(sk => {
+        const tids = byStack[sk];
+        const stackName = sk === NO_STACK_KEY ? 'No Stack' : sk;
+        const stateKey = 'pub|stack|' + sk;
+        const isOpen = !!titleGroupsOpen[stateKey];
+        const sHdr = document.createElement('div');
+        sHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:7px 10px;background:rgba(167,139,250,.1);border-bottom:1px solid rgba(167,139,250,.2);cursor:pointer;user-select:none;';
+        const sArrow = document.createElement('span'); sArrow.textContent = isOpen ? '▾' : '▶'; sArrow.style.cssText = 'font-size:8px;color:#a78bfa;flex-shrink:0;';
+        const sLabel = document.createElement('span'); sLabel.style.cssText = 'flex:1;font-size:12px;color:#a78bfa;font-weight:700;'; sLabel.textContent = stackName;
+        const sCount = document.createElement('span'); sCount.style.cssText = 'font-size:10px;color:#fff;'; sCount.textContent = tids.reduce((n, tid) => n + byTitleId[tid].items.length, 0);
+        sHdr.appendChild(sArrow); sHdr.appendChild(sLabel); sHdr.appendChild(sCount);
+        const sBody = document.createElement('div'); sBody.style.display = isOpen ? 'block' : 'none';
+        renderProductGroup(tids, sBody);
+        sHdr.onclick = () => { const o = sBody.style.display !== 'none'; sBody.style.display = o ? 'none' : 'block'; sArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+        container.appendChild(sHdr); container.appendChild(sBody);
       });
     }
     function makeTitleRow(t, section) {
