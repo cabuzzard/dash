@@ -639,6 +639,13 @@
 
   <div class="tab-panel" id="tabDevelopment">
     <a class="add-link" onclick="openTitleModal()">+ Add title</a>
+    <div id="last30Section" style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;cursor:pointer;user-select:none;" onclick="toggleLast30Section()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Last 30 Published</span>
+        <span id="last30ToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="last30List" style="display:none;"></div>
+    </div>
     <div id="devContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
@@ -2908,7 +2915,7 @@ function resetLoadFlags() {
   ovLoaded = false; prodLoaded = false; prodTdLoaded = false; devLoaded = false;
   tdTabLoaded = false; linksLoaded = false; toolsLoaded = false; stackLoaded = false;
   knLoaded = false; domTabLoaded = false; smAccsLoaded = false; emailsLoaded = false;
-  careerLoaded = false; siteTdsLoaded = false; tradesLoaded = false;
+  careerLoaded = false; siteTdsLoaded = false; tradesLoaded = false; last30Loaded = false;
 }
 function lockApp() {
   SESSION_TOKEN = null;
@@ -9919,6 +9926,63 @@ async function dsGenerate() {
     dsStatus2.style.color = '#ff4444'; dsStatus2.textContent = 'Error: ' + e.message;
   } finally {
     btn.disabled = false; btn.textContent = 'Generate Titles';
+  }
+}
+
+// ── LAST 30 PUBLISHED ────────────────────────────────────────────────
+// Development tab, default-collapsed quick-glance widget — the last 30
+// published assets across every campaign (reuses getPublishedAssets, same
+// action the fuller Publishing-tab table calls; already sorted descending
+// by last_edited_time, so this just takes the first 30). Each row: asset
+// name, its source title, the campaign it belongs to, and a link to that
+// campaign's microsite.
+let last30Collapsed = true;
+let last30Loaded = false;
+function toggleLast30Section() {
+  last30Collapsed = !last30Collapsed;
+  const list = document.getElementById('last30List');
+  const icon = document.getElementById('last30ToggleIcon');
+  if (list) list.style.display = last30Collapsed ? 'none' : '';
+  if (icon) icon.textContent = last30Collapsed ? '▸' : '▾';
+  if (!last30Collapsed && !last30Loaded) {
+    last30Loaded = true;
+    loadLast30Published();
+  }
+}
+async function loadLast30Published() {
+  const el = document.getElementById('last30List');
+  if (!el) return;
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getPublishedAssets');
+    const assets = (data.assets || []).slice(0, 30); // already sorted descending by last_edited_time
+    if (!assets.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No published assets yet.</div>'; return; }
+    el.innerHTML = '';
+    assets.forEach(a => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border2);';
+      const info = document.createElement('div');
+      info.style.cssText = 'flex:1;min-width:0;';
+      const nameEl = document.createElement('div');
+      nameEl.style.cssText = 'font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      nameEl.textContent = a.title || 'Untitled';
+      const subEl = document.createElement('div');
+      subEl.style.cssText = 'font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px;';
+      subEl.textContent = [a.titleName, a.campaignName].filter(Boolean).join(' · ');
+      info.appendChild(nameEl); info.appendChild(subEl);
+      row.appendChild(info);
+      if (a.campaignMicrosite) {
+        const link = document.createElement('a');
+        link.href = a.campaignMicrosite;
+        link.target = '_blank';
+        link.textContent = '↗';
+        link.style.cssText = 'font-size:12px;color:var(--text3);text-decoration:none;flex-shrink:0;';
+        row.appendChild(link);
+      }
+      el.appendChild(row);
+    });
+  } catch(e) {
+    el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
   }
 }
 

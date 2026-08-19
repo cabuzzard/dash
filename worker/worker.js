@@ -4319,12 +4319,33 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           });
           const campMap = {};
           campRows.forEach(c => {
-            campMap[c.id.replace(/-/g,"")] = c.properties.Name?.title?.map(t=>t.plain_text).join("") || "";
+            campMap[c.id.replace(/-/g,"")] = { name: c.properties.Name?.title?.map(t=>t.plain_text).join("") || "", microsite: c.properties["microsite"]?.url || null };
           });
+          // Source Content Strategy title name — used by the Development
+          // tab's "Last 30 Published" widget (asset name + its title +
+          // campaign, not shown on the fuller Publishing-tab table). Fetched
+          // per-ID, deduped, rather than pulling the whole Content Strategy
+          // DB just for a name lookup on a bounded set of published assets.
+          const titleIdSet = new Set();
+          assetRows.forEach(pg => {
+            const tid = (pg.properties?.["Content Strategy"]?.relation || [])[0]?.id;
+            if (tid) titleIdSet.add(tid.replace(/-/g,""));
+          });
+          const dashify = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+          const titlePages = await Promise.all([...titleIdSet].map(async id => {
+            try {
+              const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
+              const p = await r.json();
+              return { id, name: (p.properties?.Title?.title || []).map(t => t.plain_text).join("") || "" };
+            } catch(e) { return { id, name: "" }; }
+          }));
+          const titleMap = Object.fromEntries(titlePages.map(t => [t.id, t.name]));
           const assets = assetRows.map(pg => {
             const p = pg.properties || {};
             const loginId  = (p["Login"]?.relation || [])[0]?.id?.replace(/-/g,"") || "";
             const campId   = (p["Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || "";
+            const titleId  = (p["Content Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"") || "";
+            const camp = campMap[campId] || { name: "", microsite: null };
             return {
               id: pg.id.replace(/-/g,""),
               title: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
@@ -4333,7 +4354,9 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
               status: p["Asset Status"]?.select?.name || "",
               loginId, campaignId: campId,
               loginName: loginMap[loginId] || "",
-              campaignName: campMap[campId] || "",
+              campaignName: camp.name,
+              campaignMicrosite: camp.microsite,
+              titleId, titleName: titleMap[titleId] || "",
               lastEdited: pg.last_edited_time || "",
             };
           });
