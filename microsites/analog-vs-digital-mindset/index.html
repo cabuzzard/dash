@@ -685,6 +685,30 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- TREND SCAN MODAL — 📈 on a Development title row. Scans live Etsy search
+     data (via the worker's scanTitleTrends action) for this title's own
+     keywords/research, then offers two follow-ups: rewrite this title's
+     angle, or generate a new related title through the real "t shirt"
+     Method (generateMethodTitles -> saveMethodTitles, same pipeline the
+     product-level Generate Titles modal uses). Read-only until the operator
+     explicitly picks one of those two actions. -->
+<div class="modal-overlay" id="trendScanModal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div class="modal-title" id="trendScanTitle">Trend Scan</div>
+      <button class="modal-close" onclick="closeTrendScanModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="trendScanBody">
+        <div class="loading"><div class="spinner"></div>Scanning live Etsy search data…</div>
+      </div>
+    </div>
+    <div class="modal-foot" id="trendScanFoot" style="display:none;">
+      <button class="modal-btn cancel" onclick="closeTrendScanModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- METHOD ADD MODAL -->
 <div class="modal-overlay" id="methodModal">
   <div class="modal">
@@ -2085,7 +2109,7 @@ async function loadTitles() {
       // (behind 🧩 Generate Assets) writes the pillar itself, on first run,
       // if this title doesn't have one yet, and promotes Planning →
       // Development the same way the old 📝 Write Pillar button used to.
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc. Writes this title's pillar content first if it doesn't have any yet.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc. Writes this title's pillar content first if it doesn't have any yet.">🧩</button><button class="title-status-btn" onclick="openTrendScanModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Scan live Etsy search data for this title's keywords/research — see whether it (or a t-shirt spin of it) would actually sell right now">📈</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       // Publish/Published assets never show here — they belong exclusively
       // to the Publish Assets section (renderPublishedAssets above). Only
       // still-drafting assets render under a Development title row.
@@ -3542,6 +3566,135 @@ async function saveStackEdit() {
     status.textContent = 'Error: ' + e.message;
     status.className = 'modal-status err';
     btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── TREND SCAN MODAL ──────────────────────────────────────────────────────
+// 📈 on a Development title row. Calls the worker's scanTitleTrends action
+// (live Etsy search data, judged against this title's own keywords/
+// research), then offers two follow-ups: rewrite this title's angle
+// (renameContentTitle), or generate a new related title through the real
+// "t shirt" Method (generateMethodTitles -> saveMethodTitles — the same
+// pipeline the product-level Generate Titles modal uses, just pre-seeded
+// from the scan instead of typed by hand).
+let TREND_SCAN_DATA = null;
+function openTrendScanModal(titleId, titleName) {
+  document.getElementById('trendScanTitle').textContent = 'Trend Scan — ' + titleName;
+  document.getElementById('trendScanBody').innerHTML = '<div class="loading"><div class="spinner"></div>Scanning live Etsy search data…</div>';
+  document.getElementById('trendScanFoot').style.display = 'none';
+  document.getElementById('trendScanModal').classList.add('open');
+  runTrendScan(titleId, titleName);
+}
+function closeTrendScanModal() {
+  document.getElementById('trendScanModal').classList.remove('open');
+  TREND_SCAN_DATA = null;
+}
+document.getElementById('trendScanModal').addEventListener('click', function(e) {
+  if (e.target === this) closeTrendScanModal();
+});
+async function runTrendScan(titleId, titleName) {
+  const body = document.getElementById('trendScanBody');
+  try {
+    const data = await w('scanTitleTrends', { titleId });
+    TREND_SCAN_DATA = { ...data, titleId, titleName };
+    renderTrendScanResults();
+  } catch(e) {
+    body.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`;
+    document.getElementById('trendScanFoot').style.display = 'flex';
+  }
+}
+function renderTrendScanResults() {
+  const d = TREND_SCAN_DATA;
+  const body = document.getElementById('trendScanBody');
+  const s = d.synthesis || {};
+  const verdictColor = s.verdict === 'strong_match' ? '#68d391' : (s.verdict === 'needs_rewrite' ? '#f0b429' : '#ff8080');
+  const verdictLabel = s.verdict === 'strong_match' ? 'Strong match — sells as-is' : (s.verdict === 'needs_rewrite' ? 'Needs a rewrite' : 'Weak fit for a t-shirt');
+  const tagsHtml = (s.topTags || []).map(t => `<span style="font-size:10px;color:#a78bfa;border:1px solid #5f4a8f;border-radius:3px;padding:2px 7px;">${esc(t)}</span>`).join('');
+  const methodWarning = d.tshirtMethodMissing ? `<div style="font-size:11px;color:#f0b429;margin-top:6px;">No "t shirt" Method found on this campaign — attach it first (Add Methods) to generate a related title.</div>` : '';
+  body.innerHTML = `
+    <div style="font-size:11px;color:#fff;margin-bottom:10px;">Scanned: ${(d.queries || []).map(q => `"${esc(q)}"`).join(', ')}</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:${verdictColor};border:1px solid ${verdictColor};border-radius:20px;padding:3px 10px;">${verdictLabel}</span>
+    </div>
+    <p style="font-size:13px;color:#fff;line-height:1.5;margin:0 0 10px;">${esc(s.trendSummary || 'No summary available.')}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px;">${tagsHtml}</div>
+
+    <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:14px;margin-bottom:16px;">
+      <label class="lm-label" for="trend-rewrite-input">Rewrite this title's angle</label>
+      <textarea class="modal-ta" id="trend-rewrite-input" rows="2" style="resize:vertical;min-height:40px!important;margin-top:4px;">${esc(s.suggestedRewrite || '')}</textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+        <button class="modal-btn save" id="trendRewriteBtn" onclick="saveTrendRewrite()" ${s.suggestedRewrite ? '' : 'disabled'}>✏️ Rewrite Title</button>
+      </div>
+      <div class="modal-status" id="trendRewriteStatus"></div>
+    </div>
+
+    <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:14px;">
+      <label class="lm-label">Generate a new related title (t shirt method)</label>
+      <p style="font-size:13px;color:#fff;line-height:1.5;margin:6px 0 8px;">${esc(s.suggestedNewAngle || 'No distinct new angle suggested.')}</p>
+      ${methodWarning}
+      <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+        <button class="modal-btn save" id="trendGenerateBtn" onclick="generateTrendRelatedTitle()" ${(s.suggestedNewAngle && !d.tshirtMethodMissing) ? '' : 'disabled'}>✨ Generate &amp; Save Title</button>
+      </div>
+      <div class="modal-status" id="trendGenerateStatus"></div>
+    </div>
+  `;
+  document.getElementById('trendScanFoot').style.display = 'flex';
+}
+async function saveTrendRewrite() {
+  const d = TREND_SCAN_DATA;
+  if (!d) return;
+  const newTitle = (document.getElementById('trend-rewrite-input').value || '').trim();
+  if (!newTitle) return;
+  const btn = document.getElementById('trendRewriteBtn');
+  const status = document.getElementById('trendRewriteStatus');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await w('renameContentTitle', { titleId: d.titleId, title: newTitle });
+    status.textContent = 'Saved ✓';
+    status.className = 'modal-status ok';
+    btn.textContent = '✏️ Rewrite Title';
+    loadTitles();
+    setTimeout(closeTrendScanModal, 500);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false; btn.textContent = '✏️ Rewrite Title';
+  }
+}
+async function generateTrendRelatedTitle() {
+  const d = TREND_SCAN_DATA;
+  if (!d || !d.tshirtMethodId) return;
+  const s = d.synthesis || {};
+  const btn = document.getElementById('trendGenerateBtn');
+  const status = document.getElementById('trendGenerateStatus');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  try {
+    const gen = await w('generateMethodTitles', {
+      campaignId: CAMPAIGN_ID,
+      methodId: d.tshirtMethodId,
+      productId: d.productId || '__none__',
+      parentTitleId: d.titleId,
+      parentTitle: d.titleName,
+      seedKeyword: s.suggestedNewAngle || (s.topTags || [])[0] || '',
+      strategyGuidance: s.trendSummary || '',
+    });
+    if (gen.error) throw new Error(gen.error);
+    if (!gen.titles || !gen.titles.length) throw new Error('No titles generated');
+    const saved = await w('saveMethodTitles', {
+      titles: gen.titles,
+      campaignId: CAMPAIGN_ID,
+      methodId: d.tshirtMethodId,
+      productId: d.productId || '__none__',
+    });
+    status.textContent = `Saved ${saved.created || gen.titles.length} title${(saved.created || gen.titles.length) === 1 ? '' : 's'} ✓`;
+    status.className = 'modal-status ok';
+    btn.textContent = '✨ Generate & Save Title';
+    loadTitles();
+    setTimeout(closeTrendScanModal, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false; btn.textContent = '✨ Generate & Save Title';
   }
 }
 

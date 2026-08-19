@@ -8004,6 +8004,131 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ created, titles: saved });
       }
 
+      // ── scanTitleTrends ──
+      // Takes an existing title (with whatever keywords/research are already
+      // attached to it, its Product, and its Campaign) and checks live Etsy
+      // search data to judge whether it — or a t-shirt spin of it — would
+      // actually sell right now. Read-only: never writes anything. The two
+      // follow-up actions an operator picks from the results are the
+      // existing, already-battle-tested generateMethodTitles/saveMethodTitles
+      // pair (targeted at the real "t shirt" Method) and the new
+      // renameContentTitle below — this action only informs that choice.
+      if (body.action === "scanTitleTrends") {
+        const { titleId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const AT = (env.APIFY_TOKEN || "").trim();
+        if (!AT) return json({ error: "APIFY_TOKEN not configured — trend scanning needs it." }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const tp = titlePage.properties;
+        const titleName = (tp.Title?.title || []).map(t => t.plain_text).join("") || "Untitled";
+        const productRel = (tp.product?.relation || [])[0]?.id || null;
+        const campaignRel = (tp.Campaign?.relation || [])[0]?.id || null;
+        const productId = productRel ? productRel.replace(/-/g,"") : null;
+        const campaignId = campaignRel ? campaignRel.replace(/-/g,"") : null;
+
+        const seed = await buildTitleSeedContext(hdr, titleId);
+
+        const [productPage, researchQ, methodsQ] = await Promise.all([
+          productId ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          campaignId ? fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: campaignId } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })) : Promise.resolve({ results: [] }),
+          notionQuery(METHODS_DB, { filter: { property: "Name", title: { equals: "t shirt" } } }).catch(() => []),
+        ]);
+        const productKeywords = productPage?.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        const campaignKeywords = (researchQ.results || [])[0]?.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        const tshirtMethodId = methodsQ?.[0]?.id ? methodsQ[0].id.replace(/-/g,"") : null;
+
+        const groundingText = [
+          `TITLE: ${titleName}`,
+          seed.text,
+          productKeywords && `PRODUCT KEYWORDS: ${productKeywords}`,
+          campaignKeywords && `CAMPAIGN RESEARCH KEYWORDS: ${campaignKeywords}`,
+        ].filter(Boolean).join("\n");
+
+        // Step 1 — turn the title's own grounding into real Etsy search phrases
+        const qResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 300,
+            messages: [{ role: "user", content: `Given this content title and its research/keywords, propose 3-5 short Etsy search phrases (2-5 words each, how a real shopper would actually type them) that a t-shirt version of this idea would compete under. Return ONLY a JSON array of strings, no other text.\n\n${groundingText}` }],
+          }),
+        });
+        const qData = await qResp.json();
+        let queries = [];
+        try {
+          const raw = qData.content?.[0]?.text || "[]";
+          queries = JSON.parse(raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1));
+        } catch(e) { queries = [titleName]; }
+        queries = (Array.isArray(queries) ? queries : [titleName]).slice(0, 5);
+
+        // Step 2 — scrape each query's live Etsy search results
+        const scanResults = await Promise.all(queries.map(async q => {
+          try {
+            const items = await callApifyActor(AT, "devcake~etsy-search-scraper", { searchQueries: [q], maxListings: 30, enrichWithDetails: false }, 60);
+            return { query: q, listings: items };
+          } catch(e) { return { query: q, error: e.message }; }
+        }));
+
+        // Step 3 — synthesize: what's actually working, and does this title fit it
+        const listingsBlock = scanResults.map(r => {
+          if (r.error) return `QUERY: "${r.query}" — scan failed (${r.error})`;
+          const top = [...(r.listings || [])]
+            .sort((a, b) => ((b.favorites || 0) + (b.views || 0)) - ((a.favorites || 0) + (a.views || 0)))
+            .slice(0, 8);
+          if (!top.length) return `QUERY: "${r.query}" — no listings returned`;
+          return `QUERY: "${r.query}"\n` + top.map(l => `- "${l.title}" | price ${l.price ?? "?"} | favorites ${l.favorites ?? 0} | views ${l.views ?? 0} | tags: ${(l.tags || []).join(", ")}`).join("\n");
+        }).join("\n\n");
+
+        const synthResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 800,
+            messages: [{ role: "user", content: `You're researching whether this content title would work as a t-shirt design, using live Etsy search data (favorites+views are the closest public proxy for demand — Etsy exposes no real per-listing sales count).\n\nTITLE: ${titleName}\n${seed.text}\n\nLIVE ETSY SEARCH RESULTS (top listings by favorites+views per query):\n${listingsBlock}\n\nReturn ONLY JSON, no other text: {"trendSummary": "2-4 sentence synthesis of what's actually working across these results — shared theme/hook/sentiment, tag pattern, price band, and whether this title's own angle matches it", "topTags": ["...", "..."], "verdict": "strong_match|needs_rewrite|weak_fit", "suggestedRewrite": "a rewritten version of this title's angle that would compete better on Etsy right now, or empty string if the original angle already fits well", "suggestedNewAngle": "one distinct new related title idea suggested by the trend data, separate from a rewrite of this one"}` }],
+          }),
+        });
+        const synthData = await synthResp.json();
+        let synthesis;
+        try {
+          const raw = synthData.content?.[0]?.text || "{}";
+          synthesis = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+        } catch(e) {
+          synthesis = { trendSummary: "Could not synthesize scan results.", topTags: [], verdict: "weak_fit", suggestedRewrite: "", suggestedNewAngle: "" };
+        }
+
+        return json({
+          titleName, queries, synthesis,
+          campaignId, productId,
+          tshirtMethodId,
+          tshirtMethodMissing: !tshirtMethodId,
+        });
+      }
+
+      // ── renameContentTitle ──
+      // Simple rename of a Content Strategy title's own Title property —
+      // used by the Trend Scan modal's "Rewrite This Title" action, but
+      // generic enough for any other direct-rename need on a title row.
+      if (body.action === "renameContentTitle") {
+        const { titleId, title } = body;
+        if (!titleId || !title?.trim()) return json({ error: "titleId and title required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Title: { title: [{ type: "text", text: { content: title.trim() } }] } } }),
+        });
+        if (!resp.ok) { const e = await resp.json(); return json({ error: e.message || "Rename failed" }, resp.status); }
+        return json({ success: true });
+      }
+
       // ── generateTitleSlides ──
       // Follow-up step for a slideFormat title from saveMethodTitles: one small,
       // fast AI call per title that writes its full carousel script into the
