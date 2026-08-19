@@ -7216,6 +7216,11 @@ Return ONLY a JSON array — no other text, no markdown fences:
                 craigslistListing: p["Craigslist Listing"]?.rich_text?.map(x => x.plain_text).join("") || "",
                 fbMarketplaceListing: p["FB Marketplace Listing"]?.rich_text?.map(x => x.plain_text).join("") || "",
                 listingPhotos: (p["Listing Photos"]?.files || []).map(f => f.external?.url || f.file?.url).filter(Boolean),
+                // T shirt method — the print-ready DALL-E prompt written
+                // alongside the Etsy copy at generation time (generateTshirtAsset),
+                // persisted here so it's still available in the Publish modal
+                // later, not just in that one API response.
+                dallePrompt: p["DALL-E Prompt"]?.rich_text?.map(x => x.plain_text).join("") || "",
               };
             } catch(e) { return null; }
           }))).filter(Boolean);
@@ -8180,6 +8185,101 @@ Return ONLY this JSON object, no other text, no markdown fences:
           tshirtMethodId,
           tshirtMethodMissing: !tshirtMethodId,
         });
+      }
+
+      // ── generateTrendTitleOptions ──
+      // "✨ Generate Options" in the Trend Scan modal. Proposes 2-3 DISTINCT
+      // new t-shirt design-concept titles (candidates only, nothing written
+      // yet) related to the scanned title but genuinely different angles —
+      // NOT a run through generateMethodTitles, deliberately: that action
+      // generates one title per Phase/Grouping in a method's own framework,
+      // and the real "t shirt" Method's 3 phases (Design Concept / Etsy &
+      // Social Copy / Design Production & Publish) are PROCESS steps, not
+      // content categories — running the generic multiplier against it would
+      // produce titles literally named after those phases, which is wrong.
+      // This is a narrow, purpose-built generator instead; it still reuses
+      // the real writePillarContent primitive at save time (below), not a
+      // parallel pillar-writing implementation.
+      if (body.action === "generateTrendTitleOptions") {
+        const { titleId, trendContext, seedAngle } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        const titleName = (titlePage.properties?.Title?.title || []).map(t => t.plain_text).join("") || "Untitled";
+
+        const qResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 700,
+            messages: [{ role: "user", content: `Given this existing t-shirt title and live Etsy trend research, propose 2-3 DISTINCT new t-shirt design concept titles — related but each a genuinely different phrase/hook/angle (not a rewrite of the same one three ways), each something a shopper would actually want printed on a shirt. For each, write a one-sentence rationale referencing the real trend data.\n\nEXISTING TITLE: ${titleName}\n${seedAngle ? `SUGGESTED ANGLE: ${seedAngle}\n` : ''}${trendContext ? `LIVE ETSY TREND RESEARCH:\n${trendContext}\n` : ''}\nReturn ONLY a JSON array, no other text: [{"title": "...", "rationale": "..."}, ...]` }],
+          }),
+        });
+        const qData = await qResp.json();
+        if (!qResp.ok) return json({ error: qData.error?.message || "Claude API error" }, 500);
+        let candidates;
+        try {
+          const raw = qData.content?.[0]?.text || "[]";
+          candidates = JSON.parse(raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1));
+          if (!Array.isArray(candidates)) throw new Error("Not an array");
+        } catch(e) { return json({ error: "Failed to parse candidates: " + e.message }, 500); }
+
+        return json({ candidates });
+      }
+
+      // ── saveTrendTitleIdea ──
+      // Saves ONE chosen candidate from generateTrendTitleOptions as a real
+      // Development-stage title, with Etsy-appropriate pillar content —
+      // NOT an asset (per operator instruction: this step is idea capture;
+      // a t-shirt Asset gets made from the new title afterward, same as any
+      // other title). Campaign/Product affiliation is deliberately derived
+      // from the ORIGINAL title's own relations, server-side — never trusted
+      // from the client — so the new idea always inherits the exact same
+      // Campaign -> Product Stack -> Product placement as the title it spun
+      // off from. Pillar content is written via the real writePillarContent
+      // primitive (same one every other title-creation site uses), with the
+      // trend research passed as extraContext so it's genuinely folded into
+      // the piece — not a second, parallel pillar-writer.
+      if (body.action === "saveTrendTitleIdea") {
+        const { originalTitleId, tshirtMethodId, title, trendContext } = body;
+        if (!originalTitleId || !title?.trim()) return json({ error: "originalTitleId and title required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const origPage = await fetch(`https://api.notion.com/v1/pages/${dash(originalTitleId)}`, { headers: hdr }).then(r => r.json());
+        if (!origPage.properties) return json({ error: origPage.message || "Original title not found" }, 404);
+        const op = origPage.properties;
+        const campaignRel = (op.Campaign?.relation || [])[0]?.id || null;
+        const productRel = (op.product?.relation || [])[0]?.id || null;
+        const campaignId = campaignRel ? campaignRel.replace(/-/g,"") : null;
+        const productId = productRel ? productRel.replace(/-/g,"") : null;
+        if (!campaignId) return json({ error: "Original title has no Campaign relation — can't determine affiliation" }, 400);
+
+        const props = {
+          Title:  { title: [{ type: "text", text: { content: title.trim().slice(0, 200) } }] },
+          Status: { select: { name: "Development" } },
+          Campaign: { relation: [{ id: dash(campaignId) }] },
+        };
+        if (productId) props["product"] = { relation: [{ id: dash(productId) }] };
+        if (tshirtMethodId) props["method"] = { relation: [{ id: dash(tshirtMethodId) }] };
+
+        const createResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props }),
+        });
+        const created = await createResp.json();
+        if (!createResp.ok || !created.id) return json({ error: created.message || "Title create failed" }, createResp.status || 500);
+        const newTitleId = created.id.replace(/-/g, "");
+
+        const pillarResult = await writePillarContent(hdr, env, {
+          titleId: newTitleId, titleText: title.trim(), campaignId, productId: productId || undefined, methodId: tshirtMethodId || undefined,
+          extraContext: trendContext || undefined,
+          guidance: "This pillar is the concept brief for an Etsy print-on-demand t-shirt design — cover the core phrase/hook itself, why it matches current live demand (reference the trend research directly), who it's for/what occasion, and a suggested visual/tone direction for the artwork. Not a generic marketing pillar.",
+        }).catch(e => ({ error: e.message }));
+
+        return json({ success: true, titleId: newTitleId, title: title.trim(), campaignId, productId, pillarWritten: !pillarResult?.error && !pillarResult?.skipped });
       }
 
       // ── renameContentTitle ──
@@ -22086,6 +22186,12 @@ Return ONLY this JSON object, no other text, no markdown fences:
         } catch(e) { return json({ error: "Failed to parse t-shirt copy JSON: " + e.message }, 500); }
         if (!parsed.etsyTitle) return json({ error: "Generation returned no title — try again" }, 500);
 
+        // DALL-E Prompt lives on the Asset itself (not just the API response)
+        // so it's still there when the operator opens the Publish modal later
+        // — the same "write once, read from the durable record" pattern
+        // ensureAssetsDbProperties/ASSEMBLE_PROPS already use elsewhere.
+        await ensureAssetsDbProperties(hdr, { "DALL-E Prompt": { type: "rich_text" } });
+
         const hashtagsLine = (Array.isArray(parsed.hashtags) && parsed.hashtags.length) ? parsed.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ') : '';
         const assetProps = {
           "Asset Title":  { title: [{ type: "text", text: { content: String(parsed.etsyTitle).slice(0, 200) } }] },
@@ -22093,6 +22199,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           "Alt Text":     { rich_text: [{ type: "text", text: { content: String(parsed.altText || '').slice(0, 500) } }] },
           "Hashtags":     { rich_text: [{ type: "text", text: { content: hashtagsLine.slice(0, 1990) } }] },
           "Post Caption": { rich_text: [{ type: "text", text: { content: String(parsed.postCaption || '').slice(0, 1990) } }] },
+          "DALL-E Prompt":{ rich_text: [{ type: "text", text: { content: String(parsed.dallePrompt || '').slice(0, 1990) } }] },
           "Asset Status": { select: { name: "Publish" } },
         };
         if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
@@ -22132,7 +22239,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           body: JSON.stringify({ properties: titlePatchProps }),
         });
 
-        return json({ success: true, titleId, assetId, alreadyExisted: !!existingAsset, dallePrompt: parsed.dallePrompt || "", titleRewritten, newTitle: titleRewritten ? newConceptTitle : null });
+        return json({ success: true, titleId, assetId, alreadyExisted: !!existingAsset, titleRewritten, newTitle: titleRewritten ? newConceptTitle : null });
       }
 
       // ── generateListingAsset ──

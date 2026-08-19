@@ -685,13 +685,15 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- TREND SCAN MODAL — 📈 on a Development title row. Scans live Etsy search
-     data (via the worker's scanTitleTrends action) for this title's own
-     keywords/research, then offers two follow-ups: rewrite this title's
-     angle, or generate a new related title through the real "t shirt"
-     Method (generateMethodTitles -> saveMethodTitles, same pipeline the
-     product-level Generate Titles modal uses). Read-only until the operator
-     explicitly picks one of those two actions. -->
+<!-- TREND SCAN MODAL — 📈 on a Development title row, the trend-aware entry
+     point into the real "t shirt" Method (same Method/Asset Type as every
+     other entry point — nothing new added to either dropdown). Scans live
+     Etsy search data for this title's own keywords/research, then offers
+     two follow-ups: generate a t-shirt Asset from THIS title (embellishing
+     its concept if the trend data points to a sharper angle), or spin off
+     new Development-stage title ideas with Etsy-grounded pillar content,
+     ready for the same Asset step later. Read-only until the operator picks
+     one of those two actions. -->
 <div class="modal-overlay" id="trendScanModal">
   <div class="modal" style="max-width:640px;">
     <div class="modal-head">
@@ -1072,6 +1074,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
           <button class="modal-btn save" onclick="createPubPrintifyProduct()">🖨️ Create Printify Product &amp; Publish to Etsy</button>
           <button class="modal-btn cancel" onclick="updatePubPrintifyProduct()" title="Pushes this asset's current Title/Description/Hashtags and Design File onto the EXISTING Printify product (same colors/sizes already set) and re-publishes to Etsy — for editing a listing that's already live, not creating a new one.">🔄 Push Update to Printify</button>
           <span class="modal-status" id="pubPrintifyStatus" style="margin:0;"></span>
+        </div>
+        <label class="lm-label" for="pubDallePrompt" style="margin-top:10px;">DALL-E Prompt <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(paste into ChatGPT to render the artwork, then upload the result as the Design File above)</span></label>
+        <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
+          <textarea class="modal-ta" id="pubDallePrompt" rows="6" readonly style="resize:vertical;min-height:110px!important;flex:1;line-height:1.5;opacity:.85;font-size:11px;"></textarea>
+          <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubDallePrompt', this)">📋</button>
         </div>
       </div>
       <label class="lm-label" for="pubThumbnail" style="margin-top:10px;">Thumbnail</label>
@@ -2007,7 +2014,7 @@ async function loadTitles() {
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
-      PUB_ASSET_CACHE[a.id] = { title: a.title || '', platformTitle: a.platformTitle || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish', etsyTags: a.etsyTags || '', craigslistListing: a.craigslistListing || '', fbMarketplaceListing: a.fbMarketplaceListing || '', listingPhotos: a.listingPhotos || [] };
+      PUB_ASSET_CACHE[a.id] = { title: a.title || '', platformTitle: a.platformTitle || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish', etsyTags: a.etsyTags || '', craigslistListing: a.craigslistListing || '', fbMarketplaceListing: a.fbMarketplaceListing || '', listingPhotos: a.listingPhotos || [], dallePrompt: a.dallePrompt || '' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -3598,14 +3605,20 @@ async function saveStackEdit() {
 // ── TREND SCAN MODAL ──────────────────────────────────────────────────────
 // 📈 on a Development title row. Calls the worker's scanTitleTrends action
 // (live Etsy search data, judged against this title's own keywords/
-// research), then offers two follow-ups: generate a t-shirt Asset for THIS
-// title, trend-grounded, via the real "t shirt" Method's own asset
-// generator (generateTshirtAsset — same one 🧩 Generate Assets calls; the
-// title's existing pillar content is never touched), or generate a new
-// related TITLE through that same Method (generateMethodTitles ->
-// saveMethodTitles — the same pipeline the product-level Generate Titles
-// modal uses, just pre-seeded
-// from the scan instead of typed by hand).
+// research), then offers two follow-ups:
+// - Generate Asset: generateTshirtAsset for THIS title, trend-grounded —
+//   the real "t shirt" Method's own asset generator, same one 🧩 Generate
+//   Assets calls (same Asset Type, no duplicate). Pillar content is never
+//   touched; the title's own concept may get embellished if the trend data
+//   points to a sharper angle.
+// - Generate Options: generateTrendTitleOptions -> saveTrendTitleIdea, a
+//   narrow purpose-built pair (NOT generateMethodTitles/saveMethodTitles —
+//   that action multiplies one title per Method-framework Phase/Grouping,
+//   and the real "t shirt" Method's phases are process steps, not content
+//   categories). Produces new Development-stage titles with Etsy-grounded
+//   pillar content (via the real writePillarContent primitive) — no asset
+//   yet; Generate Asset above is the follow-up step for each. Campaign/
+//   Product affiliation is always inherited from the scanned title.
 let TREND_SCAN_DATA = null;
 function openTrendScanModal(titleId, titleName) {
   document.getElementById('trendScanTitle').textContent = 'Trend Scan — ' + titleName;
@@ -3697,20 +3710,17 @@ async function generateTrendAsset() {
     if (res.error) throw new Error(res.error);
     status.textContent = res.alreadyExisted ? 'Updated existing t-shirt asset ✓' : 'Asset created ✓';
     status.className = 'modal-status ok';
-    const promptId = 'trend-dalle-prompt';
     const rewriteNote = res.titleRewritten
       ? `<div style="font-size:12px;color:#a78bfa;margin-top:8px;">Title embellished to match the trend: <strong>${esc(res.newTitle)}</strong></div>`
       : '';
+    // DALL-E prompt lives on the asset itself now (Publish modal, 🖨️
+    // Printify section) — not shown here, so it's read from one durable
+    // place instead of two.
     resultBox.innerHTML = `
       <div style="margin-top:10px;">
-        <a class="title-link" href="https://www.notion.so/${res.assetId}" target="_blank" style="font-size:12px;">↗ Open asset in Notion</a>
+        <a class="title-link" href="https://www.notion.so/${res.assetId}" target="_blank" style="font-size:12px;">↗ Open asset in Notion — DALL-E prompt is in its Publish modal</a>
       </div>
       ${rewriteNote}
-      <label class="lm-label" style="margin-top:10px;">DALL-E prompt (paste into ChatGPT)</label>
-      <textarea class="modal-ta" id="${promptId}" rows="6" readonly style="resize:vertical;min-height:100px!important;margin-top:4px;font-size:11px;">${esc(res.dallePrompt || '')}</textarea>
-      <div style="display:flex;justify-content:flex-end;margin-top:6px;">
-        <button class="modal-btn save" onclick="copyTrendDallePrompt(this)">📋 Copy Prompt</button>
-      </div>
     `;
     if (res.titleRewritten) document.getElementById('trendScanTitle').textContent = 'Trend Scan — ' + res.newTitle;
     loadTitles();
@@ -3721,36 +3731,23 @@ async function generateTrendAsset() {
     btn.disabled = false; btn.textContent = '🖨️ Generate Asset';
   }
 }
-function copyTrendDallePrompt(btn) {
-  const ta = document.getElementById('trend-dalle-prompt');
-  if (!ta || !ta.value) return;
-  navigator.clipboard.writeText(ta.value).then(() => {
-    const orig = btn.textContent;
-    btn.textContent = 'Copied ✓';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
-  });
-}
 let TREND_GEN_CANDIDATES = [];
 async function generateTrendOptions() {
   const d = TREND_SCAN_DATA;
-  if (!d || !d.tshirtMethodId) return;
+  if (!d) return;
   const s = d.synthesis || {};
   const btn = document.getElementById('trendGenerateBtn');
   const status = document.getElementById('trendGenerateStatus');
   btn.disabled = true; btn.textContent = 'Generating…';
   try {
-    const gen = await w('generateMethodTitles', {
-      campaignId: CAMPAIGN_ID,
-      methodId: d.tshirtMethodId,
-      productId: d.productId || '__none__',
-      parentTitleId: d.titleId,
-      parentTitle: d.titleName,
-      seedKeyword: s.suggestedNewAngle || (s.topTags || [])[0] || '',
-      strategyGuidance: s.trendSummary || '',
+    const gen = await w('generateTrendTitleOptions', {
+      titleId: d.titleId,
+      trendContext: trendScanContextText(),
+      seedAngle: s.suggestedNewAngle || (s.topTags || [])[0] || '',
     });
     if (gen.error) throw new Error(gen.error);
-    if (!gen.titles || !gen.titles.length) throw new Error('No titles generated');
-    TREND_GEN_CANDIDATES = gen.titles;
+    if (!gen.candidates || !gen.candidates.length) throw new Error('No candidates generated');
+    TREND_GEN_CANDIDATES = gen.candidates;
     status.textContent = '';
     status.className = 'modal-status';
     renderTrendGenReview();
@@ -3764,17 +3761,18 @@ async function generateTrendOptions() {
 function renderTrendGenReview() {
   const box = document.getElementById('trendGenerateReview');
   if (!TREND_GEN_CANDIDATES.length) { box.innerHTML = ''; return; }
-  const rows = TREND_GEN_CANDIDATES.map((t, i) => `
+  const rows = TREND_GEN_CANDIDATES.map((c, i) => `
     <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);">
-      <input type="checkbox" id="trend-cand-check-${i}" checked style="margin-top:4px;flex-shrink:0;" />
+      <input type="checkbox" id="trend-cand-check-${i}" ${i === 0 ? 'checked' : ''} style="margin-top:4px;flex-shrink:0;" />
       <div style="flex:1;min-width:0;">
-        <input type="text" id="trend-cand-title-${i}" value="${esc(t.title || '')}" class="modal-ta" style="height:28px;padding:4px 8px;font-size:12px;margin:0;" />
-        <div style="font-size:10px;color:#fff;margin-top:2px;">${esc(t.phase || '')}${t.phase && t.grouping ? ' — ' : ''}${esc(t.grouping || '')}</div>
+        <input type="text" id="trend-cand-title-${i}" value="${esc(c.title || '')}" class="modal-ta" style="height:28px;padding:4px 8px;font-size:12px;margin:0;" />
+        <div style="font-size:10px;color:#fff;margin-top:2px;">${esc(c.rationale || '')}</div>
       </div>
     </div>
   `).join('');
   box.innerHTML = `
     <div style="margin-top:10px;">${rows}</div>
+    <div style="font-size:10px;color:#fff;margin-top:4px;">Saved as new Development titles with Etsy-appropriate pillar content (not assets) — same Campaign/Product as the scanned title. Generate an asset from each afterward.</div>
     <div style="display:flex;justify-content:flex-end;margin-top:10px;">
       <button class="modal-btn save" id="trendSaveSelectedBtn" onclick="saveTrendSelectedTitles()">Save Selected</button>
     </div>
@@ -3784,22 +3782,22 @@ async function saveTrendSelectedTitles() {
   const d = TREND_SCAN_DATA;
   if (!d) return;
   const selected = TREND_GEN_CANDIDATES
-    .map((t, i) => ({ t, i }))
+    .map((c, i) => ({ c, i }))
     .filter(({ i }) => document.getElementById(`trend-cand-check-${i}`)?.checked)
-    .map(({ t, i }) => ({ ...t, title: (document.getElementById(`trend-cand-title-${i}`)?.value || t.title).trim() }))
-    .filter(t => t.title);
+    .map(({ i }) => (document.getElementById(`trend-cand-title-${i}`)?.value || '').trim())
+    .filter(Boolean);
   if (!selected.length) return;
   const btn = document.getElementById('trendSaveSelectedBtn');
   const status = document.getElementById('trendGenerateStatus');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const saved = await w('saveMethodTitles', {
-      titles: selected,
-      campaignId: CAMPAIGN_ID,
-      methodId: d.tshirtMethodId,
-      productId: d.productId || '__none__',
-    });
-    status.textContent = `Saved ${saved.created || selected.length} title${(saved.created || selected.length) === 1 ? '' : 's'} ✓`;
+    const trendContext = trendScanContextText();
+    let created = 0;
+    for (const title of selected) {
+      const res = await w('saveTrendTitleIdea', { originalTitleId: d.titleId, tshirtMethodId: d.tshirtMethodId || '', title, trendContext });
+      if (!res.error) created++;
+    }
+    status.textContent = `Saved ${created} title${created === 1 ? '' : 's'} ✓`;
     status.className = 'modal-status ok';
     document.getElementById('trendGenerateReview').innerHTML = '';
     TREND_GEN_CANDIDATES = [];
@@ -5955,7 +5953,7 @@ function openPublishAssetModal(btn) {
   const printifyWrap = document.getElementById('pubPrintifyWrap');
   printifyWrap.style.display = data.type === 't shirt' ? 'block' : 'none';
   document.getElementById('pubPrintifyStatus').textContent = '';
-  if (data.type === 't shirt') pubLoadTshirtColors();
+  if (data.type === 't shirt') { pubLoadTshirtColors(); document.getElementById('pubDallePrompt').value = data.dallePrompt || ''; }
   document.getElementById('pubThumbnail').value = data.thumbnail || '';
   renderPubThumbnailPreview(data.thumbnail || '');
   document.getElementById('pubThumbnailStatus').textContent = '';
