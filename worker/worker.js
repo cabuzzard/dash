@@ -3110,9 +3110,16 @@ export default {
           const status = props.Status?.select?.name || "";
           const title  = props.Title?.title?.map(x => x.plain_text).join("") || "Untitled";
           const id     = t.id.replace(/-/g,"");
-          const campRel = props.Campaign?.relation || [];
-          const campId  = campRel.length ? campRel[0].id.replace(/-/g,"") : "__none__";
-          const camp    = campById[campId] || { name: "?", site: "Other" };
+          // Any campaign relation that doesn't resolve against campById —
+          // no relation set, OR pointing at a campaign excluded above
+          // (Status="Delete") — collapses into the SAME single "__none__"
+          // bucket rather than keying by the real (deleted) campaign id.
+          // Keying by the real id was the bug: 89 Delete-status campaigns
+          // each produced their own splinter "?" row instead of one.
+          const campRel   = props.Campaign?.relation || [];
+          const rawCampId = campRel.length ? campRel[0].id.replace(/-/g,"") : "__none__";
+          const campId    = campById[rawCampId] ? rawCampId : "__none__";
+          const camp      = campById[campId] || { name: "?", site: "Other" };
 
           if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", microsite: camp.microsite || null, status: camp.status || "", notes: camp.notes || "", titles: [] };
           const rawGrouping = props.Grouping?.rich_text?.map(x => x.plain_text).join("") || "";
