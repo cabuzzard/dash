@@ -3190,57 +3190,66 @@ function renderProducts() {
   const el = document.getElementById('product-list');
   el.innerHTML = '';
   if (!PRODUCT_ITEMS.length) { el.innerHTML = '<div class="empty">No products yet.</div>'; return; }
+  // Product Stack is the universal grouping (Campaign → Product Stack →
+  // Product, same convention as the Development tab) — every product buckets
+  // by p.stack first, "No Stack" always last regardless of its own contents.
   // Products spawned together by the 🧬 ecosystem pipeline share an
-  // "ecosystem" tag (the seed idea's title) — group and label them so the
-  // funnel is visible instead of a flat undifferentiated list. Within a
-  // group, order by Marketing Phase (core/umbrella offer first) and show
-  // each product's Type (format) as a badge. Products with no ecosystem tag
-  // but a manually-assigned Product Stack are grouped by that stack name
-  // instead. Products with neither render exactly as before, ungrouped, in
-  // their original order.
-  const groups = {};
+  // "ecosystem" tag (the seed idea's title); that's a second, nested axis —
+  // within a stack bucket, ecosystem siblings still group and label together
+  // (ordered by Marketing Phase, core/umbrella offer first) so the funnel
+  // stays visible, but it never overrides which stack a product lives under.
+  const NO_STACK = ' __no_stack__'; // sorts first by localeCompare; special-cased to render last instead
   const stackGroups = {};
-  const ungrouped = [];
   PRODUCT_ITEMS.forEach(p => {
-    if (p.ecosystem) { (groups[p.ecosystem] = groups[p.ecosystem] || []).push(p); }
-    else if (p.stack) { (stackGroups[p.stack] = stackGroups[p.stack] || []).push(p); }
-    else ungrouped.push(p);
+    const key = p.stack || NO_STACK;
+    (stackGroups[key] = stackGroups[key] || []).push(p);
   });
-  Object.keys(groups).forEach(tag => {
-    const collapsed = COLLAPSED_ECOSYSTEMS.has(tag);
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'border-left:2px solid #e8ff47;padding-left:8px;margin-bottom:10px;';
-    const members = groups[tag].slice().sort((a, b) => rankMarketingPhase(a.marketingPhase) - rankMarketingPhase(b.marketingPhase));
-    const header = document.createElement('div');
-    header.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#e8ff47;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;';
-    header.innerHTML = `<span style="display:inline-block;width:8px;transform:rotate(${collapsed ? '-90deg' : '0deg'});transition:transform .12s;">▾</span>🧬 ${tag} <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;">(${members.length})</span>`;
-    header.onclick = () => toggleEcosystemGroup(tag);
-    wrap.appendChild(header);
-    if (!collapsed) {
-      const body = document.createElement('div');
-      members.forEach(p => body.appendChild(makeProductRow(p)));
-      wrap.appendChild(body);
-    }
-    el.appendChild(wrap);
+  const renderMembers = (members, body) => {
+    const ecoGroups = {};
+    const rest = [];
+    members.forEach(p => { if (p.ecosystem) { (ecoGroups[p.ecosystem] = ecoGroups[p.ecosystem] || []).push(p); } else rest.push(p); });
+    Object.keys(ecoGroups).forEach(tag => {
+      const collapsed = COLLAPSED_ECOSYSTEMS.has(tag);
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'border-left:2px solid #e8ff47;padding-left:8px;margin-bottom:10px;';
+      const ecoMembers = ecoGroups[tag].slice().sort((a, b) => rankMarketingPhase(a.marketingPhase) - rankMarketingPhase(b.marketingPhase));
+      const header = document.createElement('div');
+      header.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#e8ff47;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;';
+      header.innerHTML = `<span style="display:inline-block;width:8px;transform:rotate(${collapsed ? '-90deg' : '0deg'});transition:transform .12s;">▾</span>🧬 ${tag} <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;">(${ecoMembers.length})</span>`;
+      header.onclick = () => toggleEcosystemGroup(tag);
+      wrap.appendChild(header);
+      if (!collapsed) {
+        const inner = document.createElement('div');
+        ecoMembers.forEach(p => inner.appendChild(makeProductRow(p)));
+        wrap.appendChild(inner);
+      }
+      body.appendChild(wrap);
+    });
+    rest.forEach(p => body.appendChild(makeProductRow(p)));
+  };
+  const stackKeys = Object.keys(stackGroups).sort((a, b) => {
+    if (a === NO_STACK) return 1;
+    if (b === NO_STACK) return -1;
+    return a.localeCompare(b);
   });
-  Object.keys(stackGroups).sort((a, b) => a.localeCompare(b)).forEach(stack => {
+  stackKeys.forEach(stack => {
     const collapsed = COLLAPSED_STACKS.has(stack);
     const wrap = document.createElement('div');
     wrap.style.cssText = 'border-left:2px solid #a78bfa;padding-left:8px;margin-bottom:10px;';
     const members = stackGroups[stack];
+    const label = stack === NO_STACK ? 'No Stack' : stack;
     const header = document.createElement('div');
     header.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#a78bfa;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;';
-    header.innerHTML = `<span style="display:inline-block;width:8px;transform:rotate(${collapsed ? '-90deg' : '0deg'});transition:transform .12s;">▾</span>${stack} <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;">(${members.length})</span>`;
+    header.innerHTML = `<span style="display:inline-block;width:8px;transform:rotate(${collapsed ? '-90deg' : '0deg'});transition:transform .12s;">▾</span>${label} <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;">(${members.length})</span>`;
     header.onclick = () => toggleStackGroup(stack);
     wrap.appendChild(header);
     if (!collapsed) {
       const body = document.createElement('div');
-      members.forEach(p => body.appendChild(makeProductRow(p)));
+      renderMembers(members, body);
       wrap.appendChild(body);
     }
     el.appendChild(wrap);
   });
-  ungrouped.forEach(p => el.appendChild(makeProductRow(p)));
 }
 
 // Deploy a product site for this product (commits productsites/{slug}/ via the
