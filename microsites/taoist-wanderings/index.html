@@ -1368,6 +1368,21 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         </div>
       </div>
 
+      <!-- Which shop/brand this pushes to — required for methods that
+           publish to one specific store (T Shirt via Printify, Listing).
+           A Login is the operator-set, explicit answer to "which shop" —
+           the store itself is resolved from THIS login (its Printify Store
+           ID, or eventually its Etsy shop connection for Listing), never
+           guessed from the campaign's name. Without this, every method
+           that publishes somewhere specific is secretly hardcoded to
+           whichever one shop happened to be connected when it was built. -->
+      <div id="gaLoginWrap" style="display:none;margin-bottom:10px;">
+        <label class="lm-label">Shop / Brand Login <span style="color:var(--danger,#e05);">*</span> <span style="color:#fff;font-weight:normal;">— which specific shop this asset publishes to. Don't see it? Add a new Login (Platform: Etsy) from the main Hermes dashboard first, with its Printify Store ID filled in if this is a T Shirt.</span></label>
+        <select class="modal-ta" id="gaLoginInput">
+          <option value="">— pick a login —</option>
+        </select>
+      </div>
+
       <label class="lm-label">Platform <span style="color:#fff;font-weight:normal;">— from the Platforms DB; what this asset is packaged for (optional)</span></label>
       <select id="gaPlatformInput" class="modal-ta" style="margin-bottom:10px;">
         <option value="">— none —</option>
@@ -5325,12 +5340,15 @@ function gaUpdateSkillHint() {
   const avatarWrap = document.getElementById('gaAvatarPresenterWrap');
   const jobWrap = document.getElementById('gaJobAssetWrap');
   const tshirtWrap = document.getElementById('gaTshirtDesignWrap');
+  const loginWrap = document.getElementById('gaLoginWrap');
   const match = gaMatchSkill(GA_METHOD_NAME);
   const isCarousel = match?.workerAction === 'generateCarouselPreview';
   const isAvatar = match?.workerAction === 'generateAvatarScript';
   const isJobAsset = match?.workerAction === 'generateJobAsset';
   const isTshirt = match?.workerAction === 'generateTshirtAsset';
-  if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; if (avatarWrap) avatarWrap.style.display = 'none'; if (jobWrap) jobWrap.style.display = 'none'; if (tshirtWrap) tshirtWrap.style.display = 'none'; return; }
+  const isListing = match?.workerAction === 'generateListingAsset';
+  const needsLogin = isTshirt || isListing;
+  if (!match) { hint.style.display = 'none'; if (typeWrap) typeWrap.style.display = 'none'; if (avatarWrap) avatarWrap.style.display = 'none'; if (jobWrap) jobWrap.style.display = 'none'; if (tshirtWrap) tshirtWrap.style.display = 'none'; if (loginWrap) loginWrap.style.display = 'none'; return; }
   hint.style.display = 'flex';
   document.getElementById('gaSkillHintText').textContent = match.hint;
   const btn = document.getElementById('gaSkillHintBtn');
@@ -5341,13 +5359,16 @@ function gaUpdateSkillHint() {
     if (avatarWrap) avatarWrap.style.display = isAvatar ? 'block' : 'none';
     if (jobWrap) jobWrap.style.display = isJobAsset ? 'block' : 'none';
     if (tshirtWrap) tshirtWrap.style.display = isTshirt ? 'block' : 'none';
+    if (loginWrap) loginWrap.style.display = needsLogin ? 'block' : 'none';
     if (isAvatar) gaLoadCampaignPresenter();
     if (isJobAsset) gaLoadCareerAvatars();
     if (isTshirt) gaLoadTshirtColors();
+    if (needsLogin) gaLoadLogins();
     return;
   }
   if (typeWrap) typeWrap.style.display = 'none';
   if (avatarWrap) avatarWrap.style.display = 'none';
+  if (loginWrap) loginWrap.style.display = 'none';
 
   // Chat-only skill (no in-Worker renderer): build a fully self-contained
   // handoff prompt server-side (buildSkillHandoffPrompt — resolves the
@@ -5472,6 +5493,34 @@ function gaLoadTshirtColors() {
     GA_TSHIRT_COLORS_CACHE = r.colors || [];
     render(GA_TSHIRT_COLORS_CACHE);
   }).catch(e => { grid.innerHTML = `<span style="font-size:11px;color:#f87171;">Failed to load colors: ${e.message}</span>`; });
+}
+
+// Logins — "which shop/brand this asset publishes to." All logins are
+// shown, not filtered to a Platform, so the picker still works before a
+// Login's Platform relation has been set; the operator identifies the
+// right one by name/username instead. Cached for the life of the page
+// (logins don't change mid-session) — reopening the modal re-renders from
+// cache instantly, a hard refresh re-fetches.
+let GA_LOGINS_CACHE = null;
+function gaLoadLogins() {
+  const sel = document.getElementById('gaLoginInput');
+  if (!sel) return;
+  const render = logins => {
+    const prevVal = sel.value;
+    sel.innerHTML = '<option value="">— pick a login —</option>';
+    logins.forEach(l => {
+      const opt = document.createElement('option');
+      opt.value = l.id;
+      opt.textContent = l.name + (l.category ? ` (${l.category})` : '') + (l.usr ? ` — @${l.usr}` : '');
+      sel.appendChild(opt);
+    });
+    if (prevVal && logins.some(l => l.id === prevVal)) sel.value = prevVal;
+  };
+  if (GA_LOGINS_CACHE) { render(GA_LOGINS_CACHE); return; }
+  w('getLogins', {}).then(r => {
+    GA_LOGINS_CACHE = r.logins || [];
+    render(GA_LOGINS_CACHE);
+  }).catch(e => { sel.innerHTML = `<option value="">Failed to load: ${e.message}</option>`; });
 }
 
 let GA_PRODUCT_ID = null, GA_PRODUCT_NAME = '';
@@ -5612,7 +5661,7 @@ async function openGenAssetsModal(titleId) {
   GA_TITLE_ID = titleId; GA_CAMPAIGN_ID = null;
   GA_METHOD_ID = null; GA_METHOD_NAME = '';
   GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
-  ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput','gaTshirtDesignFile'].forEach(id => {
+  ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput','gaTshirtDesignFile','gaLoginInput'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
@@ -7308,11 +7357,22 @@ async function submitGenAssets() {
           ? `Reading the source URL and writing the ${skillMatch.assetType} for it…`
           : `Searching ${skillMatch.assetType === 'resume' ? 'job boards' : 'Upwork'} for the top matches…`;
       }
+      // T Shirt / Listing both publish to one specific shop — the Login
+      // picked above IS that answer (its Printify Store ID, or eventually
+      // its Etsy connection for Listing). Block rather than silently fall
+      // back to guessing from the campaign name.
+      const loginId = document.getElementById('gaLoginInput')?.value || undefined;
+      if ((isTshirt || isListing) && !loginId) {
+        status.textContent = 'Pick a Shop / Brand Login above first — this method publishes to one specific shop.';
+        status.style.color = '#fc8181';
+        btn.disabled = false; btn.textContent = 'Generate';
+        return;
+      }
       const r = await w(skillMatch.workerAction, {
         titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, carouselType, presenter,
         designNotes: overrideText, overrideText,
         description: overrideText, seedKeywords: overrideText, researchInstructions: overrideText,
-        platformId, platformName,
+        platformId, platformName, loginId,
         assetType: isJobAsset ? skillMatch.assetType : undefined,
         productId: isJobAsset ? jobProductId : undefined,
         source: sourceUrl,

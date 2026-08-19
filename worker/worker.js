@@ -13008,23 +13008,48 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         // passes these straight through to the Etsy listing on publish.
         const tags = hashtagsRaw.split(/[\s,]+/).map(h => h.replace(/^#/, '').trim()).filter(Boolean).filter(t => t.length <= 20).slice(0, 13);
 
-        // Matched by deploy-path slug, not raw campaign Name — the
-        // Campaign's Name often carries a subtitle (e.g. "Creative Flow
-        // Guitar — Weekly Sessions") that would never equal a Printify
-        // store title exactly. resolveDeployPath already gives the same
-        // canonical slug every other part of this system uses to identify
-        // a campaign, so the Printify store just needs to slugify to that
-        // same value (e.g. store "Creative Flow Guitar" → "creative-flow-
-        // guitar", matching deploy path "creative-flow-guitar").
-        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
-        if (!deployPath || deployPath === 'campaign') return json({ error: "Could not resolve this campaign's deploy path (no live site/microsite URL set) — can't match it to a Printify store" }, 502);
+        // Which Printify store (= which Etsy shop) this asset publishes to —
+        // resolved from the asset's own Login relation FIRST (a Login's
+        // "Printify Store ID" is an explicit, operator-set choice: pick the
+        // login at asset-generation time, same login carries which shop it
+        // is), and only falls back to the old deploy-path-slug guess for
+        // assets/campaigns that predate the Login picker. This is what
+        // makes "T Shirt"/"Listing" genuinely reusable across campaigns
+        // instead of secretly hardcoded to one shop by naming convention.
+        let shop = null;
+        const loginId = p["Login"]?.relation?.[0]?.id?.replace(/-/g, "") || null;
+        if (loginId) {
+          const loginPage = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          const explicitStoreId = (loginPage?.properties?.["Printify Store ID"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          if (explicitStoreId) {
+            const shopsResp = await fetch("https://api.printify.com/v1/shops.json", { headers: pfHdr });
+            const shops = await shopsResp.json();
+            if (!shopsResp.ok) return json({ error: shops.message || "Printify shop lookup failed" }, shopsResp.status);
+            shop = (shops || []).find(s => String(s.id) === explicitStoreId);
+            if (!shop) return json({ error: `This asset's Login specifies Printify Store ID "${explicitStoreId}", but no Printify store with that id exists — check the Login record's Printify Store ID field.` }, 400);
+          }
+        }
+        if (!shop) {
+          // Matched by deploy-path slug, not raw campaign Name — the
+          // Campaign's Name often carries a subtitle (e.g. "Creative Flow
+          // Guitar — Weekly Sessions") that would never equal a Printify
+          // store title exactly. resolveDeployPath already gives the same
+          // canonical slug every other part of this system uses to identify
+          // a campaign, so the Printify store just needs to slugify to that
+          // same value (e.g. store "Creative Flow Guitar" → "creative-flow-
+          // guitar", matching deploy path "creative-flow-guitar"). Legacy
+          // path — a t-shirt asset with no Login set yet still works this
+          // way, unchanged.
+          const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+          const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+          if (!deployPath || deployPath === 'campaign') return json({ error: "Could not resolve this campaign's deploy path (no live site/microsite URL set) — can't match it to a Printify store. Pick a Login for this asset instead (Publish modal) so the store is resolved explicitly." }, 502);
 
-        const shopsResp = await fetch("https://api.printify.com/v1/shops.json", { headers: pfHdr });
-        const shops = await shopsResp.json();
-        if (!shopsResp.ok) return json({ error: shops.message || "Printify shop lookup failed" }, shopsResp.status);
-        const shop = (shops || []).find(s => slugify(s.title) === deployPath);
-        if (!shop) return json({ error: `No Printify store slugifies to "${deployPath}" (this campaign's deploy path) — create one and connect it to Etsy first (Printify → Add a new store → Connect to Etsy), naming it after the campaign.` }, 400);
+          const shopsResp = await fetch("https://api.printify.com/v1/shops.json", { headers: pfHdr });
+          const shops = await shopsResp.json();
+          if (!shopsResp.ok) return json({ error: shops.message || "Printify shop lookup failed" }, shopsResp.status);
+          shop = (shops || []).find(s => slugify(s.title) === deployPath);
+          if (!shop) return json({ error: `No Printify store slugifies to "${deployPath}" (this campaign's deploy path), and this asset has no Login with a Printify Store ID set either. Pick a Login for this asset (Publish modal), or create a Printify store named after the campaign and connect it to Etsy.` }, 400);
+        }
 
         // ── Upload the design (by URL — Printify fetches it itself, no
         // need to re-transfer bytes this Worker already hosts) ──
@@ -13221,13 +13246,29 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
 
         const tags = hashtagsRaw.split(/[\s,]+/).map(h => h.replace(/^#/, '').trim()).filter(Boolean).filter(t => t.length <= 20).slice(0, 13);
 
-        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
-        const shopsResp = await fetch("https://api.printify.com/v1/shops.json", { headers: pfHdr });
-        const shops = await shopsResp.json();
-        if (!shopsResp.ok) return json({ error: shops.message || "Printify shop lookup failed" }, shopsResp.status);
-        const shop = (shops || []).find(s => slugify(s.title) === deployPath);
-        if (!shop) return json({ error: `No Printify store slugifies to "${deployPath}"` }, 400);
+        // Same Login-first, slug-fallback resolution as createPrintifyTshirtProduct.
+        let shop = null;
+        const loginId = p["Login"]?.relation?.[0]?.id?.replace(/-/g, "") || null;
+        if (loginId) {
+          const loginPage = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          const explicitStoreId = (loginPage?.properties?.["Printify Store ID"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          if (explicitStoreId) {
+            const shopsResp = await fetch("https://api.printify.com/v1/shops.json", { headers: pfHdr });
+            const shops = await shopsResp.json();
+            if (!shopsResp.ok) return json({ error: shops.message || "Printify shop lookup failed" }, shopsResp.status);
+            shop = (shops || []).find(s => String(s.id) === explicitStoreId);
+            if (!shop) return json({ error: `This asset's Login specifies Printify Store ID "${explicitStoreId}", but no Printify store with that id exists.` }, 400);
+          }
+        }
+        if (!shop) {
+          const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+          const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+          const shopsResp = await fetch("https://api.printify.com/v1/shops.json", { headers: pfHdr });
+          const shops = await shopsResp.json();
+          if (!shopsResp.ok) return json({ error: shops.message || "Printify shop lookup failed" }, shopsResp.status);
+          shop = (shops || []).find(s => slugify(s.title) === deployPath);
+          if (!shop) return json({ error: `No Printify store slugifies to "${deployPath}", and this asset has no Login with a Printify Store ID set either.` }, 400);
+        }
 
         const existingResp = await fetch(`https://api.printify.com/v1/shops/${shop.id}/products/${productId}.json`, { headers: pfHdr });
         const existing = await existingResp.json();
@@ -13424,6 +13465,11 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
             smAccountIds: (p["SM Account"]?.relation || []).map(r=>r.id.replace(/-/g,"")),
             smAccountId:  p["SM Account ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             loginType:   (p.type?.multi_select || []).map(s=>s.name),
+            // Explicit push target for methods that publish to a specific
+            // store (T Shirt via Printify today; a future direct-Etsy push
+            // for Listing) — set once per Login, resolved at publish time
+            // instead of guessed from a campaign-name/store-title match.
+            printifyStoreId: p["Printify Store ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             picture:     (p.Picture?.files || []).map(f => ({ name: f.name, url: f.file?.url || f.external?.url || "" })),
             bannerImage: (p["Banner Image"]?.files || []).map(f => ({ name: f.name, url: f.file?.url || f.external?.url || "" })),
             files:       (p.Files?.files || []).map(f => ({ name: f.name, url: f.file?.url || f.external?.url || "" })),
@@ -13474,7 +13520,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       }
 
       if (body.action === "createLoginFull") {
-        const { name, campaignId, platformId, category, status, usr, accountUrl, smAccountIds, smAccountId } = body;
+        const { name, campaignId, platformId, category, status, usr, accountUrl, smAccountIds, smAccountId, printifyStoreId } = body;
         if (!name) return json({ error: "name required" }, 400);
         const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const props = {
@@ -13488,6 +13534,18 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         if (platformId)  props.Platform          = { relation: [{ id: dash(platformId) }] };
         if (smAccountIds && smAccountIds.length) props["SM Account"] = { relation: smAccountIds.map(id => ({ id: dash(id) })) };
         if (smAccountId) props["SM Account ID"]  = { rich_text: [{ type:"text", text:{ content: smAccountId } }] };
+        if (printifyStoreId) {
+          try {
+            const dbResp = await fetch(`https://api.notion.com/v1/databases/${LOGINS_DB}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+            if (!dbResp.properties?.["Printify Store ID"]) {
+              await fetch(`https://api.notion.com/v1/databases/${LOGINS_DB}`, {
+                method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { "Printify Store ID": { rich_text: {} } } }),
+              });
+            }
+          } catch (e) { /* best-effort */ }
+          props["Printify Store ID"] = { rich_text: [{ type:"text", text:{ content: String(printifyStoreId) } }] };
+        }
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
@@ -13504,6 +13562,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
           platformIds:  platformId ? [platformId] : [],
           smAccountIds: smAccountIds || [],
           smAccountId:  smAccountId || "",
+          printifyStoreId: printifyStoreId || "",
           loginType: [],
         }});
       }
@@ -13521,7 +13580,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       }
 
       if (body.action === "updateLoginFull") {
-        const { loginId, name, category, status, usr, accountUrl, headline, bio, title, profilePic, banner, loginType, platformId, smAccountIds, smAccountId } = body;
+        const { loginId, name, category, status, usr, accountUrl, headline, bio, title, profilePic, banner, loginType, platformId, smAccountIds, smAccountId, printifyStoreId } = body;
         if (!loginId) return json({ error: "loginId required" }, 400);
         const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const props = {};
@@ -13539,6 +13598,18 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         if (platformId !== undefined) props.Platform = platformId ? { relation: [{ id: dash(platformId) }] } : { relation: [] };
         if (smAccountIds !== undefined) props["SM Account"] = { relation: (smAccountIds || []).map(id => ({ id: dash(id) })) };
         if (smAccountId  !== undefined) props["SM Account ID"] = { rich_text: smAccountId ? [{ type:"text", text:{ content: smAccountId } }] : [] };
+        if (printifyStoreId) {
+          try {
+            const dbResp = await fetch(`https://api.notion.com/v1/databases/${LOGINS_DB}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+            if (!dbResp.properties?.["Printify Store ID"]) {
+              await fetch(`https://api.notion.com/v1/databases/${LOGINS_DB}`, {
+                method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { "Printify Store ID": { rich_text: {} } } }),
+              });
+            }
+          } catch (e) { /* best-effort */ }
+        }
+        if (printifyStoreId !== undefined) props["Printify Store ID"] = { rich_text: printifyStoreId ? [{ type:"text", text:{ content: String(printifyStoreId) } }] : [] };
 
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, {
           method: "PATCH",
