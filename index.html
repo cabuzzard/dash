@@ -646,8 +646,11 @@
       </div>
       <div id="last30List" style="display:none;"></div>
     </div>
-    <div style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);padding:6px 0;border-top:1px solid var(--border2);">Development Titles</div>
-    <div id="devContent">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border2);cursor:pointer;user-select:none;" onclick="toggleDevTitlesSection()">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Development Titles</span>
+      <span id="devTitlesToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
+    </div>
+    <div id="devContent" style="display:none;">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
   </div>
@@ -2962,6 +2965,19 @@ async function call(action, extra = {}) {
 let prodLoaded = false;
 let devLoaded  = false;
 let tdTabLoaded = false;
+// Development Titles — default-collapsed, same lazy-load-on-expand pattern
+// as Last 30 Published / Site TDs. devLoaded still tracks whether data has
+// been fetched (jumpToDev below still checks it); this just decouples the
+// FETCH from opening the Development tab — it now only fires on expand.
+let devTitlesCollapsed = true;
+function toggleDevTitlesSection() {
+  devTitlesCollapsed = !devTitlesCollapsed;
+  const content = document.getElementById('devContent');
+  const icon = document.getElementById('devTitlesToggleIcon');
+  if (content) content.style.display = devTitlesCollapsed ? 'none' : '';
+  if (icon) icon.textContent = devTitlesCollapsed ? '▸' : '▾';
+  if (!devTitlesCollapsed && !devLoaded) { devLoaded = true; loadDev(); }
+}
 let linksLoaded = false;
 let toolsLoaded = false;
 let stackLoaded = false;
@@ -3696,6 +3712,10 @@ function jumpToDev(campId) {
   const devTab = document.querySelector('.tab[onclick*="development"]');
   if (devTab) devTab.classList.add('active');
   document.getElementById('tabDevelopment').classList.add('active');
+  // Development Titles is default-collapsed — a deep-link jump needs it
+  // visibly expanded, or the target row sits in a display:none container
+  // and scrollIntoView is a no-op.
+  if (devTitlesCollapsed) { devTitlesCollapsed = false; document.getElementById('devContent').style.display = ''; document.getElementById('devTitlesToggleIcon').textContent = '▾'; }
 
   const doJump = () => {
     setTimeout(() => {
@@ -3728,7 +3748,9 @@ function jumpToDev(campId) {
 // instead of sitting on a stale error until you click away and back.
 function loadTabContent(name) {
   if (name === 'products'    && !prodLoaded)      { prodLoaded      = true; loadProducts(); }
-  if (name === 'development' && !devLoaded)       { devLoaded       = true; loadDev(); }
+  // 'development' deliberately NOT auto-loaded here — Development Titles is
+  // now default-collapsed, same as Last 30 Published; it fetches only on
+  // expand (toggleDevTitlesSection) or via jumpToDev's deep-link jump.
   if (name === 'td'          && !tdTabLoaded)     { tdTabLoaded     = true; loadTdTab(); }
   if (name === 'platforms') { loadPlatformMatrix(); if (!smAccsLoaded) loadSmAccounts(); if (!emailsLoaded) loadEmails(); }
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
@@ -8019,7 +8041,8 @@ async function submitTitle() {
     await call('createDevTitle', { title, campaignId, status });
     closeTitleModal();
     showToast('Title created ✓', 'success');
-    devLoaded = false;
+    devLoaded = true;
+    if (devTitlesCollapsed) { devTitlesCollapsed = false; document.getElementById('devContent').style.display = ''; document.getElementById('devTitlesToggleIcon').textContent = '▾'; }
     loadDev();
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
