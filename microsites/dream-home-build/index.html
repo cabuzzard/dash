@@ -1013,6 +1013,32 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <input class="modal-ta" id="pubPlatformTitle" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="No platform title for this asset type" />
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubPlatformTitle', this)">📋</button>
       </div>
+      <div id="pubListingWrap" style="display:none;">
+        <label class="lm-label" style="margin-top:10px;">Listing Photos <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(real product photos, multiple — this listing can't go to Published without at least one. Run through Canva Pro's Background Remover first if you want a clean background; that's a manual step, not done here.)</span></label>
+        <div id="pubListingPhotosGrid" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;padding:6px;border:1px solid #333;border-radius:4px;background:#141414;min-height:44px;align-items:center;">
+          <span style="font-size:11px;color:#fff;">No photos yet.</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap;">
+          <input type="file" id="pubListingPhotosInput" accept="image/*" multiple style="display:none;" onchange="uploadPubListingPhotos()" />
+          <button class="modal-btn cancel" onclick="document.getElementById('pubListingPhotosInput').click()">📤 Upload Photos</button>
+          <span class="modal-status" id="pubListingPhotosStatus" style="margin:0;"></span>
+        </div>
+        <label class="lm-label" for="pubEtsyTags" style="margin-top:10px;">Etsy Tags <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(comma-separated, up to 13 — paste into Etsy's own Tags field, no # symbols)</span></label>
+        <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
+          <textarea class="modal-ta" id="pubEtsyTags" rows="2" style="resize:vertical;min-height:44px!important;flex:1;line-height:1.5;"></textarea>
+          <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubEtsyTags', this)">📋</button>
+        </div>
+        <label class="lm-label" for="pubCraigslist" style="margin-top:10px;">Craigslist Listing <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(compressed from the Etsy title/description above, not written independently)</span></label>
+        <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
+          <textarea class="modal-ta" id="pubCraigslist" rows="5" style="resize:vertical;min-height:100px!important;flex:1;line-height:1.5;"></textarea>
+          <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubCraigslist', this)">📋</button>
+        </div>
+        <label class="lm-label" for="pubFbMarketplace" style="margin-top:10px;">Facebook Marketplace Listing <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(compressed from the Etsy title/description above, not written independently)</span></label>
+        <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
+          <textarea class="modal-ta" id="pubFbMarketplace" rows="5" style="resize:vertical;min-height:100px!important;flex:1;line-height:1.5;"></textarea>
+          <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubFbMarketplace', this)">📋</button>
+        </div>
+      </div>
       <label class="lm-label" for="pubDesignLink" style="margin-top:10px;">Design Link <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(the finished, populated design — not the source Canva template)</span></label>
       <div style="display:flex;gap:6px;margin-top:4px;">
         <input class="modal-ta" id="pubDesignLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…" />
@@ -1981,7 +2007,7 @@ async function loadTitles() {
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
-      PUB_ASSET_CACHE[a.id] = { title: a.title || '', platformTitle: a.platformTitle || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish' };
+      PUB_ASSET_CACHE[a.id] = { title: a.title || '', platformTitle: a.platformTitle || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish', etsyTags: a.etsyTags || '', craigslistListing: a.craigslistListing || '', fbMarketplaceListing: a.fbMarketplaceListing || '', listingPhotos: a.listingPhotos || [] };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -3572,10 +3598,13 @@ async function saveStackEdit() {
 // ── TREND SCAN MODAL ──────────────────────────────────────────────────────
 // 📈 on a Development title row. Calls the worker's scanTitleTrends action
 // (live Etsy search data, judged against this title's own keywords/
-// research), then offers two follow-ups: rewrite this title's angle
-// (renameContentTitle), or generate a new related title through the real
-// "t shirt" Method (generateMethodTitles -> saveMethodTitles — the same
-// pipeline the product-level Generate Titles modal uses, just pre-seeded
+// research), then offers two follow-ups: generate a t-shirt Asset for THIS
+// title, trend-grounded, via the real "t shirt" Method's own asset
+// generator (generateTshirtAsset — same one 🧩 Generate Assets calls; the
+// title's existing pillar content is never touched), or generate a new
+// related TITLE through that same Method (generateMethodTitles ->
+// saveMethodTitles — the same pipeline the product-level Generate Titles
+// modal uses, just pre-seeded
 // from the scan instead of typed by hand).
 let TREND_SCAN_DATA = null;
 function openTrendScanModal(titleId, titleName) {
@@ -3620,12 +3649,14 @@ function renderTrendScanResults() {
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px;">${tagsHtml}</div>
 
     <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:14px;margin-bottom:16px;">
-      <label class="lm-label" for="trend-rewrite-input">Rewrite this title's angle</label>
-      <textarea class="modal-ta" id="trend-rewrite-input" rows="2" style="resize:vertical;min-height:40px!important;margin-top:4px;">${esc(s.suggestedRewrite || '')}</textarea>
+      <label class="lm-label">Generate Asset</label>
+      <p style="font-size:12px;color:#fff;line-height:1.5;margin:6px 0 8px;">Writes this title's Etsy listing copy through the real "t shirt" Method (same as 🧩 Generate Assets), grounded in this scan's trend findings — plus a ready-to-paste DALL-E prompt for the artwork itself. The title's pillar content is left untouched.</p>
+      ${methodWarning}
       <div style="display:flex;justify-content:flex-end;margin-top:6px;">
-        <button class="modal-btn save" id="trendRewriteBtn" onclick="saveTrendRewrite()" ${s.suggestedRewrite ? '' : 'disabled'}>✏️ Rewrite Title</button>
+        <button class="modal-btn save" id="trendAssetBtn" onclick="generateTrendAsset()" ${d.tshirtMethodMissing ? 'disabled' : ''}>🖨️ Generate Asset</button>
       </div>
-      <div class="modal-status" id="trendRewriteStatus"></div>
+      <div class="modal-status" id="trendAssetStatus"></div>
+      <div id="trendAssetResult"></div>
     </div>
 
     <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:14px;">
@@ -3641,26 +3672,58 @@ function renderTrendScanResults() {
   `;
   document.getElementById('trendScanFoot').style.display = 'flex';
 }
-async function saveTrendRewrite() {
+function trendScanContextText() {
+  const d = TREND_SCAN_DATA;
+  const s = (d && d.synthesis) || {};
+  const parts = [];
+  if (s.trendSummary) parts.push(s.trendSummary);
+  if ((s.topTags || []).length) parts.push('Top recurring tags: ' + s.topTags.join(', '));
+  return parts.join('\n');
+}
+async function generateTrendAsset() {
   const d = TREND_SCAN_DATA;
   if (!d) return;
-  const newTitle = (document.getElementById('trend-rewrite-input').value || '').trim();
-  if (!newTitle) return;
-  const btn = document.getElementById('trendRewriteBtn');
-  const status = document.getElementById('trendRewriteStatus');
-  btn.disabled = true; btn.textContent = 'Saving…';
+  const btn = document.getElementById('trendAssetBtn');
+  const status = document.getElementById('trendAssetStatus');
+  const resultBox = document.getElementById('trendAssetResult');
+  btn.disabled = true; btn.textContent = 'Generating…';
   try {
-    await w('renameContentTitle', { titleId: d.titleId, title: newTitle });
-    status.textContent = 'Saved ✓';
+    const res = await w('generateTshirtAsset', {
+      titleId: d.titleId,
+      campaignId: CAMPAIGN_ID,
+      productId: d.productId || '__none__',
+      trendContext: trendScanContextText(),
+    });
+    if (res.error) throw new Error(res.error);
+    status.textContent = res.alreadyExisted ? 'Updated existing t-shirt asset ✓' : 'Asset created ✓';
     status.className = 'modal-status ok';
-    btn.textContent = '✏️ Rewrite Title';
+    const promptId = 'trend-dalle-prompt';
+    resultBox.innerHTML = `
+      <div style="margin-top:10px;">
+        <a class="title-link" href="https://www.notion.so/${res.assetId}" target="_blank" style="font-size:12px;">↗ Open asset in Notion</a>
+      </div>
+      <label class="lm-label" style="margin-top:10px;">DALL-E prompt (paste into ChatGPT)</label>
+      <textarea class="modal-ta" id="${promptId}" rows="6" readonly style="resize:vertical;min-height:100px!important;margin-top:4px;font-size:11px;">${esc(res.dallePrompt || '')}</textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+        <button class="modal-btn save" onclick="copyTrendDallePrompt(this)">📋 Copy Prompt</button>
+      </div>
+    `;
     loadTitles();
-    setTimeout(closeTrendScanModal, 500);
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.className = 'modal-status err';
-    btn.disabled = false; btn.textContent = '✏️ Rewrite Title';
+  } finally {
+    btn.disabled = false; btn.textContent = '🖨️ Generate Asset';
   }
+}
+function copyTrendDallePrompt(btn) {
+  const ta = document.getElementById('trend-dalle-prompt');
+  if (!ta || !ta.value) return;
+  navigator.clipboard.writeText(ta.value).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  });
 }
 let TREND_GEN_CANDIDATES = [];
 async function generateTrendOptions() {
@@ -5302,6 +5365,8 @@ const GA_SKILL_METHODS = [
     hint: 'Writes a narrated, no-avatar explainer script (voiceover + visual metaphor + beat notes) for this title and sets it to Publish — entirely in-dashboard, same as Carousel. The actual video render (Hyperframes /faceless-explainer + ElevenLabs) still needs a Claude Code chat; once the script is ready, use the 🎬 button on the asset row below.' },
   { test: /t[\s-]?shirt/i,          workerAction: 'generateTshirtAsset', label: 'T Shirt',
     hint: 'Writes the Etsy listing title/description/alt text plus a social caption + hashtags for one t-shirt design concept, and sets it to Publish — entirely in-dashboard, same as Carousel. The actual print-ready design file (PNG/SVG/PDF) still needs to be attached by hand: use the 📋 Publish button on the asset row below to upload it, then publish through Printify (which pushes to Etsy once connected) and flip status to Published.' },
+  { test: /listing/i,               workerAction: 'generateListingAsset', label: 'Listing',
+    hint: 'Sells a real physical item (not print-on-demand). Writes the full Etsy listing first (title/description/tags) as the canonical version, then derives shorter Craigslist and Facebook Marketplace postings from it — never three independent versions. Saved to Development, not Publish: use the 📋 Publish button on the asset row below to upload real product photos (multiple — run them through Canva Pro\'s Background Remover first if you want a clean background, that\'s a manual step, not automated here), review the copy, then flip status to Published. Once Published, a repost reminder appears in TD every 7 days until you archive the listing.' },
   { test: /video copy/i,            skill: 'make-video-copy',     label: 'Video Copy — Growth',
     hint: 'Full production skill available — models outlier YouTube videos into an original long-form script, ready to produce.' },
   { test: /\bresume\b/i,             workerAction: 'generateJobAsset', assetType: 'resume', label: 'Resume',
@@ -5873,6 +5938,15 @@ function openPublishAssetModal(btn) {
   document.getElementById('pubDesignFile').value = data.finalMediaFile || '';
   document.getElementById('pubDesignFileStatus').textContent = '';
   document.getElementById('pubProductLink').value = data.productLink || '';
+  const listingWrap = document.getElementById('pubListingWrap');
+  listingWrap.style.display = data.type === 'listing' ? 'block' : 'none';
+  if (data.type === 'listing') {
+    document.getElementById('pubEtsyTags').value = data.etsyTags || '';
+    document.getElementById('pubCraigslist').value = data.craigslistListing || '';
+    document.getElementById('pubFbMarketplace').value = data.fbMarketplaceListing || '';
+    document.getElementById('pubListingPhotosStatus').textContent = '';
+    renderPubListingPhotos(data.listingPhotos || []);
+  }
   const printifyWrap = document.getElementById('pubPrintifyWrap');
   printifyWrap.style.display = data.type === 't shirt' ? 'block' : 'none';
   document.getElementById('pubPrintifyStatus').textContent = '';
@@ -6055,6 +6129,68 @@ async function uploadPubDesignFile() {
     document.getElementById('pubDesignFileInput').value = '';
   }
 }
+// Listing method — multi-photo gallery. Unlike every other upload in this
+// modal (thumbnail/design file: single file, overwrite on reupload), photos
+// ACCUMULATE — each call to uploadListingPhoto appends one more to the
+// asset's "Listing Photos" property, so uploading again adds more photos
+// rather than replacing what's there.
+function renderPubListingPhotos(urls) {
+  const grid = document.getElementById('pubListingPhotosGrid');
+  if (!urls || !urls.length) { grid.innerHTML = '<span style="font-size:11px;color:#fff;">No photos yet.</span>'; return; }
+  grid.innerHTML = urls.map(u => `
+    <div style="position:relative;width:64px;height:64px;flex-shrink:0;">
+      <img src="${esc(u)}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:4px;border:1px solid #333;" />
+      <button onclick="removePubListingPhoto('${esc(u).replace(/'/g, "\\'")}')" title="Remove" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#c0392b;color:#fff;border:none;cursor:pointer;font-size:11px;line-height:1;padding:0;">✕</button>
+    </div>
+  `).join('');
+}
+async function uploadPubListingPhotos() {
+  const files = [...(document.getElementById('pubListingPhotosInput').files || [])];
+  if (!files.length || !pubAssetId) return;
+  const statusEl = document.getElementById('pubListingPhotosStatus');
+  const oversized = files.find(f => f.size > 15 * 1024 * 1024);
+  if (oversized) {
+    statusEl.className = 'modal-status err'; statusEl.textContent = `"${oversized.name}" is too large (max 15MB).`;
+    document.getElementById('pubListingPhotosInput').value = '';
+    return;
+  }
+  let photos = (PUB_ASSET_CACHE[pubAssetId]?.listingPhotos || []).slice();
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    statusEl.className = 'modal-status'; statusEl.textContent = `Uploading ${i + 1} / ${files.length}…`;
+    try {
+      const reader = new FileReader();
+      const b64 = await new Promise((res, rej) => { reader.onload = e => res(e.target.result.split(',')[1]); reader.onerror = rej; reader.readAsDataURL(file); });
+      const data = await w('uploadListingPhoto', { assetId: pubAssetId, fileName: file.name, contentType: file.type || 'application/octet-stream', fileData: b64 });
+      if (data.error) throw new Error(data.error);
+      photos = data.photos || photos;
+      renderPubListingPhotos(photos);
+    } catch(e) {
+      statusEl.className = 'modal-status err'; statusEl.textContent = `Error on "${file.name}": ${e.message}`;
+      document.getElementById('pubListingPhotosInput').value = '';
+      if (PUB_ASSET_CACHE[pubAssetId]) PUB_ASSET_CACHE[pubAssetId].listingPhotos = photos;
+      return;
+    }
+  }
+  if (PUB_ASSET_CACHE[pubAssetId]) PUB_ASSET_CACHE[pubAssetId].listingPhotos = photos;
+  statusEl.className = 'modal-status ok'; statusEl.textContent = `Uploaded ✓ (${photos.length} photo${photos.length === 1 ? '' : 's'} total)`;
+  document.getElementById('pubListingPhotosInput').value = '';
+  setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'modal-status'; }, 2000);
+}
+async function removePubListingPhoto(url) {
+  if (!pubAssetId) return;
+  const statusEl = document.getElementById('pubListingPhotosStatus');
+  statusEl.className = 'modal-status'; statusEl.textContent = 'Removing…';
+  try {
+    const data = await w('removeListingPhoto', { assetId: pubAssetId, photoUrl: url });
+    if (data.error) throw new Error(data.error);
+    if (PUB_ASSET_CACHE[pubAssetId]) PUB_ASSET_CACHE[pubAssetId].listingPhotos = data.photos || [];
+    renderPubListingPhotos(data.photos || []);
+    statusEl.textContent = '';
+  } catch(e) {
+    statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
 function closePublishAssetModal() {
   document.getElementById('publishAssetModal').classList.remove('open');
   pubAssetId = null;
@@ -6152,6 +6288,9 @@ async function savePublishAssetFields() {
     productLink: document.getElementById('pubProductLink').value.trim(),
     hashtags: document.getElementById('pubHashtags').value.trim(),
     postCaption: document.getElementById('pubCaption').value.trim(),
+    etsyTags: document.getElementById('pubEtsyTags').value.trim(),
+    craigslistListing: document.getElementById('pubCraigslist').value.trim(),
+    fbMarketplaceListing: document.getElementById('pubFbMarketplace').value.trim(),
   };
   btn.disabled = true;
   status.textContent = 'Saving…';
@@ -7185,8 +7324,9 @@ async function submitGenAssets() {
     const isJobAsset = skillMatch.workerAction === 'generateJobAsset';
     const isUpworkSearch = skillMatch.workerAction === 'generateUpworkSearchAsset';
     const isTshirt = skillMatch.workerAction === 'generateTshirtAsset';
+    const isListing = skillMatch.workerAction === 'generateListingAsset';
     const isScriptOnly = isAvatarScript || isTextVideoScript || isExplainerScript;
-    btn.textContent = isScriptOnly || isJobAsset || isTshirt ? 'Writing…' : isUpworkSearch ? 'Searching…' : 'Rendering…';
+    btn.textContent = isScriptOnly || isJobAsset || isTshirt || isListing ? 'Writing…' : isUpworkSearch ? 'Searching…' : 'Rendering…';
     status.textContent = isTextVideoScript
       ? 'Writing 5 distinct scripts (different hooks) and saving each as its own asset. Video rendering is a separate step per script, after this.'
       : isJobAsset
@@ -7195,6 +7335,8 @@ async function submitGenAssets() {
       ? 'Searching Upwork for the top 5 matching listings using this title + campaign Keywords + override text…'
       : isTshirt
       ? 'Writing the Etsy listing title/description/alt text plus a social caption + hashtags for this design…'
+      : isListing
+      ? 'Writing the Etsy listing first, then deriving shorter Craigslist and Facebook Marketplace postings from it…'
       : isScriptOnly
       ? 'Writing the script and saving it to this title. Video rendering is a separate step, after this.'
       : 'Writing slide script (if needed) and rendering slides, one at a time — can take a couple of minutes if Cloudflare rate-limits the render calls. Leave this open.';
@@ -7334,6 +7476,14 @@ async function submitGenAssets() {
         // the operator can see it (exactly how the color-race bug above
         // went unnoticed the first time).
         if (!designFailed) setTimeout(closeGenAssetsModal, 3000);
+      } else if (isListing) {
+        status.textContent = r.alreadyExisted
+          ? '✓ Listing copy already existed — refreshed it and confirmed the title status.'
+          : '✓ Etsy listing written, Craigslist and FB Marketplace versions derived from it. Saved to Development — use the 📋 Publish button on the asset row below to upload real photos and review the copy before publishing.';
+        status.style.color = '#68d391';
+        btn.textContent = 'Done';
+        await loadTitles();
+        setTimeout(closeGenAssetsModal, 3500);
       } else {
         status.textContent = `✓ Rendered ${r.slideCount} slides — preview: ${r.previewUrl}`;
         status.style.color = '#68d391';
