@@ -9345,9 +9345,20 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           // this asset type's original behavior) uses only the title's own
           // pillar/outline, no campaign/product fetch at all.
           const contextMode = body.contextMode === "blend" ? "blend" : "isolate";
-          const [pillarContent, existingOutline, blendBlock] = await Promise.all([
+          // Read the attached Method's own page body for grounding, same as
+          // every other method-grounded asset-writing branch (LinkedIn Post,
+          // etc.) does — this was the actual gap: the SEO Post method's
+          // Framework section only ever governed the title-planning phase
+          // (generateMethodTitles' own /seo post/i special-case), never the
+          // article-writing step below. Whatever SEO-writing methodology
+          // lives on that Method page (E-E-A-T practices, tone, structure
+          // conventions, whatever gets written there over time) now actually
+          // reaches the article, instead of silently having no effect.
+          const hasMethod = methodId && methodId !== "__none__";
+          const [pillarContent, existingOutline, methodFrameworkText, blendBlock] = await Promise.all([
             extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
             extractBlocksTextRecursive(dsHdr, dsDash(titleId)).catch(() => ""),
+            hasMethod ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
             contextMode === "blend" ? (async () => {
               const [researchRaw, prodPage] = await Promise.all([
                 campaignId ? fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
@@ -9382,7 +9393,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO content editor. Your job is to FORMAT the pillar piece below into a complete, publish-ready blog post — this is a structuring and polishing pass, not a rewrite from scratch. The pillar already contains the real substance, claims, and examples; preserve them. Do not invent new claims, statistics, or examples that aren't already in the source, and do not water the ideas down into generic filler.
 
 TITLE: ${title}
-${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${platformName ? `PUBLISHING TO: ${platformName} — write for that platform's norms if it isn't a standard blog destination.\n` : ""}${blendBlock}${pillarContent ? `PILLAR CONTENT (the source material — format THIS into the blog post below, don't write a different piece):\n${pillarContent.slice(0, 12000)}\n` : `NO PILLAR CONTENT FOUND — this title has no Pillar Content section yet, so write the post from the title/description/keywords/instructions above instead.\n`}${existingOutline && existingOutline !== pillarContent ? `PRE-PLANNED OUTLINE ON THIS TITLE (if it already defines subheads, use those headings verbatim as the article's structure — otherwise choose headings that naturally divide the pillar content above):\n${existingOutline.slice(0, 2000)}\n` : ""}
+${methodFrameworkText ? `METHOD FRAMEWORK — follow any writing-quality/structure/voice conventions defined here on top of the requirements below:\n${methodFrameworkText.slice(0, 3000)}\n` : ""}${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${platformName ? `PUBLISHING TO: ${platformName} — write for that platform's norms if it isn't a standard blog destination.\n` : ""}${blendBlock}${pillarContent ? `PILLAR CONTENT (the source material — format THIS into the blog post below, don't write a different piece):\n${pillarContent.slice(0, 12000)}\n` : `NO PILLAR CONTENT FOUND — this title has no Pillar Content section yet, so write the post from the title/description/keywords/instructions above instead.\n`}${existingOutline && existingOutline !== pillarContent ? `PRE-PLANNED OUTLINE ON THIS TITLE (if it already defines subheads, use those headings verbatim as the article's structure — otherwise choose headings that naturally divide the pillar content above):\n${existingOutline.slice(0, 2000)}\n` : ""}
 Requirements:
 - Structure the post under EXACTLY 3 subheads (H2-level sections), each one a natural division of the pillar content above — not 3 arbitrary new angles on the topic.
 - Reorganize, tighten, and polish for blog readability (clear paragraphs, no rambling), but stay faithful to the pillar's own substance and voice. If the pillar's material doesn't fully fill out a section, elaborate consistent with what's already there rather than padding with generic filler.
