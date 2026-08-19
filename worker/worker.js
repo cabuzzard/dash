@@ -4491,19 +4491,19 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       }
 
       // ── getRecentTitles ──
-      // Development tab's "Last 30 Development Titles" widget — the 30
+      // Development tab's "Last 50 Development Titles" widget — the 50
       // most recently CREATED Content Strategy titles across every
       // campaign (not assets), for rapidly logging title ideas before
       // assets exist for them yet. A single capped, sorted fetch (not the
       // auto-paginating notionQuery helper) since Content Strategy has
-      // 600+ rows total and only the newest 30 are ever needed here.
+      // 600+ rows total and only the newest 50 are ever needed here.
       if (body.action === "getRecentTitles") {
         try {
           const [titleResp, campRows] = await Promise.all([
             fetch(`https://api.notion.com/v1/databases/${CONTENT_STRATEGY_DB}/query`, {
               method: "POST",
               headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-              body: JSON.stringify({ page_size: 30, sorts: [{ timestamp: "created_time", direction: "descending" }] }),
+              body: JSON.stringify({ page_size: 50, sorts: [{ timestamp: "created_time", direction: "descending" }] }),
             }).then(r => r.json()),
             notionQuery(CAMPAIGNS_DB, {}),
           ]);
@@ -4528,6 +4528,57 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           return json({ titles });
         } catch(e) {
           return json({ error: e.message, titles: [] });
+        }
+      }
+
+      // ── getTitleNote / saveTitleNote ──
+      // Editable, persistent note per Development title — stored as a real
+      // Main TD DB record related to the title via TD's own "Content"
+      // relation (a two-way relation to Content Strategy — writing it here
+      // is enough, Notion syncs the reverse side on the title page itself),
+      // per operator instruction: use the TD database, not a new Content
+      // Strategy property. Search-or-create, one TD per title: the note
+      // text IS that TD's own Title property (same "Title = the task/note
+      // text" convention every other TD-creation action in this file uses).
+      if (body.action === "getTitleNote") {
+        const { titleId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        try {
+          const rows = await notionQuery(MAIN_TD_DB, { filter: { property: "Content", relation: { contains: dashId(titleId) } } });
+          const td = rows[0];
+          const note = td ? (td.properties?.Title?.title || []).map(t => t.plain_text).join("") : "";
+          return json({ note, tdId: td ? td.id.replace(/-/g,"") : null });
+        } catch(e) {
+          return json({ error: e.message, note: "" });
+        }
+      }
+      if (body.action === "saveTitleNote") {
+        const { titleId, note } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        try {
+          const rows = await notionQuery(MAIN_TD_DB, { filter: { property: "Content", relation: { contains: dashId(titleId) } } });
+          const existing = rows[0];
+          const titleProp = { Title: { title: [{ type: "text", text: { content: String(note || "").slice(0, 1990) } }] } };
+          if (existing) {
+            await fetch(`https://api.notion.com/v1/pages/${existing.id}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: titleProp }),
+            });
+            return json({ success: true, tdId: existing.id.replace(/-/g,"") });
+          }
+          if (!String(note || "").trim()) return json({ success: true, tdId: null }); // nothing to save, no TD to create
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: MAIN_TD_DB }, properties: { ...titleProp, Content: { relation: [{ id: dashId(titleId) }] } } }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Note save failed" }, createResp.status || 500);
+          return json({ success: true, tdId: created.id.replace(/-/g,"") });
+        } catch(e) {
+          return json({ error: e.message }, 500);
         }
       }
 

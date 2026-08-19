@@ -553,6 +553,27 @@
   </div>
 </div>
 
+<!-- TITLE NOTE MODAL — Last 50 Development Titles widget's 📝 button.
+     Persistent note per title, stored as a real Main TD DB record related
+     to the title via TD's own "Content" relation (search-or-create, one
+     TD per title) — not a new Content Strategy property. -->
+<div class="modal-overlay" id="titleNoteModal" style="display:none;" onclick="if(event.target===this)closeTitleNoteModal()">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div class="modal-title" id="titleNoteModalTitle">Note</div>
+      <button class="modal-close" onclick="closeTitleNoteModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <textarea id="titleNoteTa" style="width:100%;min-height:140px;background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:inherit;font-size:13px;line-height:1.6;padding:10px 12px;resize:vertical;outline:none;box-sizing:border-box;" placeholder="Note for this title…"></textarea>
+      <div id="titleNoteStatus" style="font-size:11px;min-height:16px;margin-top:6px;color:var(--text3);"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeTitleNoteModal()">Cancel</button>
+      <button class="modal-btn save" id="titleNoteSaveBtn" onclick="saveTitleNoteModal()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- PIN -->
 <div class="pin-screen" id="pinScreen">
   <div class="pin-logo">Hermes7</div>
@@ -648,7 +669,7 @@
     </div>
     <div id="last30TitlesSection" style="margin-bottom:14px;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border2);cursor:pointer;user-select:none;" onclick="toggleLast30TitlesSection()">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Last 30 Development Titles</span>
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Last 50 Development Titles</span>
         <span id="last30TitlesToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
       </div>
       <div id="last30TitlesList" style="display:none;"></div>
@@ -10137,6 +10158,7 @@ function renderLast30TitlesTable() {
     colHdr('campaign', 'Campaign', '1') +
     colHdr('date',     'Date',     '0 0 70px') +
     '<div style="width:24px;flex-shrink:0;"></div>' +
+    '<div style="width:24px;flex-shrink:0;"></div>' +
   '</div>';
   const rowsHtml = sorted.map(t => {
     const date = t.createdTime ? new Date(t.createdTime).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
@@ -10151,11 +10173,58 @@ function renderLast30TitlesTable() {
         '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
       '</div>' +
       '<div style="width:24px;flex-shrink:0;padding:6px 4px;">' +
+        '<button onclick="openTitleNoteModal(\'' + t.id + '\',\'' + esc(t.title || 'Untitled').replace(/'/g,"\\'") + '\')" title="Note" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:0;font-family:inherit;">📝</button>' +
+      '</div>' +
+      '<div style="width:24px;flex-shrink:0;padding:6px 4px;">' +
         (t.campaignMicrosite ? '<a href="' + esc(t.campaignMicrosite) + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' : '') +
       '</div>' +
     '</div>';
   }).join('');
   el.innerHTML = '<div style="overflow-x:auto;">' + hdrRow + rowsHtml + '</div>';
+}
+
+// ── TITLE NOTE MODAL ─────────────────────────────────────────────────
+// 📝 button on a Last 50 Development Titles row. Persistent, editable note
+// stored as a real Main TD record related to the title (getTitleNote/
+// saveTitleNote, worker.js) — search-or-create, one TD per title.
+let titleNoteActiveId = '';
+async function openTitleNoteModal(titleId, titleName) {
+  titleNoteActiveId = titleId;
+  document.getElementById('titleNoteModalTitle').textContent = 'Note — ' + titleName;
+  document.getElementById('titleNoteTa').value = '';
+  document.getElementById('titleNoteStatus').textContent = 'Loading…';
+  document.getElementById('titleNoteSaveBtn').disabled = true;
+  document.getElementById('titleNoteModal').style.display = 'flex';
+  try {
+    const data = await call('getTitleNote', { titleId });
+    document.getElementById('titleNoteTa').value = data.note || '';
+    document.getElementById('titleNoteStatus').textContent = '';
+    document.getElementById('titleNoteSaveBtn').disabled = false;
+    setTimeout(() => document.getElementById('titleNoteTa').focus(), 80);
+  } catch(e) {
+    document.getElementById('titleNoteStatus').textContent = 'Failed to load: ' + e.message;
+  }
+}
+function closeTitleNoteModal() {
+  document.getElementById('titleNoteModal').style.display = 'none';
+  titleNoteActiveId = '';
+}
+async function saveTitleNoteModal() {
+  if (!titleNoteActiveId) return;
+  const note = document.getElementById('titleNoteTa').value;
+  const btn = document.getElementById('titleNoteSaveBtn');
+  const status = document.getElementById('titleNoteStatus');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await call('saveTitleNote', { titleId: titleNoteActiveId, note });
+    status.textContent = 'Saved ✓';
+    status.style.color = 'var(--text3)';
+    setTimeout(closeTitleNoteModal, 500);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save';
+  }
 }
 
 // ── SITE TDs ─────────────────────────────────────────────────────────
