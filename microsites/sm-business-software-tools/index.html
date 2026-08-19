@@ -3650,7 +3650,7 @@ function renderTrendScanResults() {
 
     <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:14px;margin-bottom:16px;">
       <label class="lm-label">Generate Asset</label>
-      <p style="font-size:12px;color:#fff;line-height:1.5;margin:6px 0 8px;">Writes this title's Etsy listing copy through the real "t shirt" Method (same as 🧩 Generate Assets), grounded in this scan's trend findings — plus a ready-to-paste DALL-E prompt for the artwork itself. The title's pillar content is left untouched.</p>
+      <p style="font-size:12px;color:#fff;line-height:1.5;margin:6px 0 8px;">Writes this title's Etsy listing copy through the real "t shirt" Method (same one 🧩 Generate Assets calls — same Asset Type, no duplicate created), grounded in this scan's trend findings, plus a ready-to-paste DALL-E prompt for the artwork. Going through this scan may also embellish the design concept's own title if the trend research points to a sharper angle (pillar content is always left untouched); using 🧩 Generate Assets directly elsewhere never touches the title.</p>
       ${methodWarning}
       <div style="display:flex;justify-content:flex-end;margin-top:6px;">
         <button class="modal-btn save" id="trendAssetBtn" onclick="generateTrendAsset()" ${d.tshirtMethodMissing ? 'disabled' : ''}>🖨️ Generate Asset</button>
@@ -3698,16 +3698,21 @@ async function generateTrendAsset() {
     status.textContent = res.alreadyExisted ? 'Updated existing t-shirt asset ✓' : 'Asset created ✓';
     status.className = 'modal-status ok';
     const promptId = 'trend-dalle-prompt';
+    const rewriteNote = res.titleRewritten
+      ? `<div style="font-size:12px;color:#a78bfa;margin-top:8px;">Title embellished to match the trend: <strong>${esc(res.newTitle)}</strong></div>`
+      : '';
     resultBox.innerHTML = `
       <div style="margin-top:10px;">
         <a class="title-link" href="https://www.notion.so/${res.assetId}" target="_blank" style="font-size:12px;">↗ Open asset in Notion</a>
       </div>
+      ${rewriteNote}
       <label class="lm-label" style="margin-top:10px;">DALL-E prompt (paste into ChatGPT)</label>
       <textarea class="modal-ta" id="${promptId}" rows="6" readonly style="resize:vertical;min-height:100px!important;margin-top:4px;font-size:11px;">${esc(res.dallePrompt || '')}</textarea>
       <div style="display:flex;justify-content:flex-end;margin-top:6px;">
         <button class="modal-btn save" onclick="copyTrendDallePrompt(this)">📋 Copy Prompt</button>
       </div>
     `;
+    if (res.titleRewritten) document.getElementById('trendScanTitle').textContent = 'Trend Scan — ' + res.newTitle;
     loadTitles();
   } catch(e) {
     status.textContent = 'Error: ' + e.message;

@@ -22050,7 +22050,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const prompt = `You are writing the publish-ready copy for one t-shirt design, sold as a physical print-on-demand product (fulfilled via Printify, listed on Etsy). You are NOT designing the artwork yourself — that happens via a DALL-E prompt (below) pasted into ChatGPT. Your job is the words that sell it, plus that prompt.
 
 TITLE (the design concept): ${titleName}
-${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}${pillarContent ? `SOURCE CONTENT (the idea this design should visually express):\n${pillarContent.slice(0, 3000)}\n` : ''}${overrideText ? `OPERATOR NOTES (follow these exactly): ${overrideText}\n` : ''}${trendContext ? `LIVE ETSY TREND RESEARCH (what's actually selling right now for this kind of shirt — ground both the listing copy and the DALL-E prompt in this, don't ignore it):\n${trendContext}\n` : ''}
+${strategyBlock ? `CAMPAIGN/PRODUCT CONTEXT:\n${strategyBlock}\n` : ''}${pillarContent ? `SOURCE CONTENT (the idea this design should visually express):\n${pillarContent.slice(0, 3000)}\n` : ''}${overrideText ? `OPERATOR NOTES (follow these exactly): ${overrideText}\n` : ''}${trendContext ? `LIVE ETSY TREND RESEARCH (what's actually selling right now for this kind of shirt — ground the listing copy, the DALL-E prompt, AND the concept rewrite below in this, don't ignore it):\n${trendContext}\n` : ''}
 
 Write:
 - "etsyTitle": an Etsy-SEO-friendly product title — front-load the real search terms a buyer would type (style, audience, occasion, keyword phrase), under 140 characters, no ALL CAPS, no emoji.
@@ -22066,9 +22066,9 @@ Write:
   - Typography treatment if text is involved: font character (e.g. "bold condensed sans," "hand-drawn script"), never a literal font name DALL-E can't guarantee.
   - Technical print requirements: transparent or plain white background, vector-flat/clean edges (no photographic gradients or drop shadows that won't print well), high contrast, no small illegible details, square or vertical crop suitable for a 12"x16" chest print area.
   - End with one explicit closing instruction: "Output a single centered graphic on a plain white or transparent background, ready to isolate and print — no mockup, no shirt, no model."
-
+${trendContext ? `- "conceptTitle": this design CONCEPT's own name, rewritten to be sharper and validated against the live trend research above — not just SEO copy, the actual creative concept (the phrase/joke/hook/visual idea a shopper would remember). If the original title (${titleName}) already nails what's trending, return it unchanged; only change it where the trend research genuinely points to a better angle, phrasing, or hook. This becomes the title's new name.\n` : ''}
 Return ONLY this JSON object, no other text, no markdown fences:
-{ "etsyTitle": "...", "etsyDescription": "...", "altText": "...", "hashtags": ["...", "..."], "postCaption": "...", "dallePrompt": "..." }`;
+{ "etsyTitle": "...", "etsyDescription": "...", "altText": "...", "hashtags": ["...", "..."], "postCaption": "...", "dallePrompt": "..."${trendContext ? ', "conceptTitle": "..."' : ''} }`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -22118,12 +22118,21 @@ Return ONLY this JSON object, no other text, no markdown fences:
           assetId = created.id.replace(/-/g, "");
         }
 
+        // Trend-scan entry point only (trendContext set): the concept itself
+        // gets embellished/rewritten against live demand, not just SEO copy
+        // bolted onto an unchanged title — going through the plain Generate
+        // Assets modal elsewhere (no trendContext) never touches the title.
+        // Pillar content is deliberately left untouched either way.
+        const newConceptTitle = trendContext ? String(parsed.conceptTitle || "").trim() : "";
+        const titleRewritten = !!newConceptTitle && newConceptTitle !== titleName;
+        const titlePatchProps = { "Status": { select: { name: "Publish" } } };
+        if (titleRewritten) titlePatchProps["Title"] = { title: [{ type: "text", text: { content: newConceptTitle.slice(0, 200) } }] };
         await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+          body: JSON.stringify({ properties: titlePatchProps }),
         });
 
-        return json({ success: true, titleId, assetId, alreadyExisted: !!existingAsset, dallePrompt: parsed.dallePrompt || "" });
+        return json({ success: true, titleId, assetId, alreadyExisted: !!existingAsset, dallePrompt: parsed.dallePrompt || "", titleRewritten, newTitle: titleRewritten ? newConceptTitle : null });
       }
 
       // ── generateListingAsset ──
