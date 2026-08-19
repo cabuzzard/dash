@@ -7887,33 +7887,37 @@ function renderDev() {
         });
       };
 
-      // ── Product level ────────────────────────────────────────────────
-      const hasProd = camp.titles.some(t => t.productId && t.productId !== '__none__');
-      if (!hasProd) {
-        renderMethodLevel(camp.titles, titlesEl);
-      } else {
-        const prodOrder = [], byProd = {};
-        camp.titles.forEach(t => {
-          const pk = (t.productId || '__none__') + '||' + (t.productName || 'No Product');
-          if (!byProd[pk]) { byProd[pk] = { name: t.productName || 'No Product', titles: [] }; prodOrder.push(pk); }
-          byProd[pk].titles.push(t);
-        });
-        prodOrder.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
-        prodOrder.forEach(pk => {
-          const prod = byProd[pk];
-          if (prodOrder.length === 1 && pk.startsWith('__none__')) { renderMethodLevel(prod.titles, titlesEl); return; }
+      // ── Product Stack level, then Product level ────────────────────────
+      // Pre-grouped and pre-sorted server-side (getDevTitles) — most
+      // recently published stack first, "No Stack" always last regardless
+      // of recency; same ordering one level down for products within a
+      // stack. Both levels default collapsed, same as the campaign row.
+      const stacks = camp.stacks || [];
+      stacks.forEach(stack => {
+        const sHdr = document.createElement('div');
+        sHdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--surface2);border-left:1px solid var(--border2);border-right:1px solid var(--border2);border-bottom:1px solid var(--border2);cursor:pointer;user-select:none;';
+        const sArrow = document.createElement('span'); sArrow.textContent = '▶'; sArrow.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;';
+        const sLabel = document.createElement('span'); sLabel.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--text2);flex:1;'; sLabel.textContent = stack.name;
+        const stackTitleCount = stack.products.reduce((n, p) => n + p.titles.length, 0);
+        const sCount = document.createElement('span'); sCount.style.cssText = 'font-size:10px;color:var(--text3);'; sCount.textContent = stackTitleCount;
+        sHdr.appendChild(sArrow); sHdr.appendChild(sLabel); sHdr.appendChild(sCount);
+        const sBody = document.createElement('div'); sBody.style.display = 'none';
+        sHdr.onclick = () => { const o = sBody.style.display !== 'none'; sBody.style.display = o ? 'none' : 'block'; sArrow.textContent = o ? '▶' : '▾'; };
+        titlesEl.appendChild(sHdr); titlesEl.appendChild(sBody);
+
+        stack.products.forEach(prod => {
           const pHdr = document.createElement('div');
-          pHdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--surface2);border-left:1px solid var(--border2);border-right:1px solid var(--border2);border-bottom:1px solid var(--border2);cursor:pointer;user-select:none;';
+          pHdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 12px 6px 22px;background:var(--surface);border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);cursor:pointer;user-select:none;';
           const pArrow = document.createElement('span'); pArrow.textContent = '▶'; pArrow.style.cssText = 'font-size:9px;color:var(--text3);flex-shrink:0;';
-          const pLabel = document.createElement('span'); pLabel.style.cssText = 'font-size:11px;font-weight:700;color:var(--text2);flex:1;'; pLabel.textContent = prod.name;
+          const pLabel = document.createElement('span'); pLabel.style.cssText = 'font-size:11px;font-weight:600;color:var(--text2);flex:1;'; pLabel.textContent = prod.name;
           const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:var(--text3);'; pCount.textContent = prod.titles.length;
           pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
           const pBody = document.createElement('div'); pBody.style.display = 'none';
           renderMethodLevel(prod.titles, pBody);
           pHdr.onclick = () => { const o = pBody.style.display !== 'none'; pBody.style.display = o ? 'none' : 'block'; pArrow.textContent = o ? '▶' : '▾'; };
-          titlesEl.appendChild(pHdr); titlesEl.appendChild(pBody);
+          sBody.appendChild(pHdr); sBody.appendChild(pBody);
         });
-      }
+      });
 
       campRow.onclick = () => {
         const open = titlesEl.style.display !== 'none';

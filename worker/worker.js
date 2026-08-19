@@ -2878,13 +2878,16 @@ export default {
           notionQuery(CAMPAIGNS_DB, {
             filter: { property: "Status", select: { does_not_equal: "Delete" } },
           }),
-          notionQuery(PRODUCTS_DB, {
-            filter: { property: "Status", select: { equals: "Active" } },
-          }),
+          // ALL products, not just Active — a title can be attached to a
+          // Product of any status, and the Campaign → Product Stack →
+          // Product grouping below needs every one of them resolvable, not
+          // just the ones counted by activeProdCount further down.
+          notionQuery(PRODUCTS_DB, {}),
           // Same "what's actually published" convention getPublishedAssets
           // already uses — titles themselves rarely reach Status=Published
-          // (assets do, far more often), so campaign recency is measured by
-          // asset publish activity, not title status.
+          // (assets do, far more often), so recency at every level (Title/
+          // Product/Stack/Campaign) is measured by asset publish activity,
+          // not title status.
           notionQuery(ASSETS_DB, {
             filter: { or: [
               { property: "Asset Status", select: { equals: "Publish" } },
@@ -2931,23 +2934,45 @@ export default {
         const activeProdCount = {};
         const campaignIds = new Set(Object.keys(campById));
         productRows.forEach(p => {
+          if (p.properties?.Status?.select?.name !== "Active") return;
           (p.properties["Campaigns"]?.relation || []).forEach(r => {
             const id = r.id.replace(/-/g,"");
             if (campaignIds.has(id)) activeProdCount[id] = (activeProdCount[id] || 0) + 1;
           });
         });
 
+        // Product Stack lookup — built directly from the full productRows
+        // fetch above (every product referenced by any title is guaranteed
+        // present now that productRows is unfiltered), so the per-ID
+        // fetchPgName re-fetch below is only still needed for Methods.
+        const productById = {};
+        productRows.forEach(p => {
+          productById[p.id.replace(/-/g,"")] = {
+            name: p.properties?.Name?.title?.map(t => t.plain_text).join("") || "?",
+            stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim() || null,
+          };
+        });
+
         // Tracks each campaign's most recent published-asset activity so the
         // campaign list can rise the most currently-active campaigns to the
         // top, even though this view is showing Development-stage titles.
         const campLastPublished = {};
+        // Per-title recency, resolved via each published asset's own
+        // "Content Strategy" relation (asset → source title) — the base
+        // signal the Product/Stack/Campaign rollups below all derive from.
+        const titleLastPublished = {};
         publishedAssetRows.forEach(a => {
-          const campRel = a.properties?.Campaign?.relation || [];
-          if (!campRel.length) return;
-          const campId = campRel[0].id.replace(/-/g,"");
           const publishedAt = a.last_edited_time || null;
-          if (publishedAt && (!campLastPublished[campId] || publishedAt > campLastPublished[campId])) {
-            campLastPublished[campId] = publishedAt;
+          if (!publishedAt) return;
+          const campRel = a.properties?.Campaign?.relation || [];
+          if (campRel.length) {
+            const campId = campRel[0].id.replace(/-/g,"");
+            if (!campLastPublished[campId] || publishedAt > campLastPublished[campId]) campLastPublished[campId] = publishedAt;
+          }
+          const titleRel = a.properties?.["Content Strategy"]?.relation || [];
+          if (titleRel.length) {
+            const titleId = titleRel[0].id.replace(/-/g,"");
+            if (!titleLastPublished[titleId] || publishedAt > titleLastPublished[titleId]) titleLastPublished[titleId] = publishedAt;
           }
         });
 
@@ -2978,11 +3003,12 @@ export default {
           if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", microsite: camp.microsite || null, status: camp.status || "", notes: camp.notes || "", titles: [] };
         });
 
-        // Resolve product and method names
-        const prodIdSet = new Set(), methIdSet = new Set();
+        // Resolve method names (products no longer need a per-ID re-fetch —
+        // productById above already covers every product referenced, since
+        // productRows is now unfiltered).
+        const methIdSet = new Set();
         Object.values(campTitles).forEach(c => c.titles.forEach(t => {
-          if (t.productId !== '__none__') prodIdSet.add(t.productId);
-          if (t.methodId  !== '__none__') methIdSet.add(t.methodId);
+          if (t.methodId !== '__none__') methIdSet.add(t.methodId);
         }));
         const dashify = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const fetchPgName = async id => {
@@ -2992,16 +3018,57 @@ export default {
             return { id, name: (p.properties?.Name?.title || p.properties?.title?.title || []).map(x => x.plain_text).join("") || "?" };
           } catch(e) { return { id, name: "?" }; }
         };
-        const [prodPages2, methPages2] = await Promise.all([
-          Promise.all([...prodIdSet].map(fetchPgName)),
-          Promise.all([...methIdSet].map(fetchPgName)),
-        ]);
-        const pNames = Object.fromEntries(prodPages2.map(p => [p.id, p.name]));
+        const methPages2 = await Promise.all([...methIdSet].map(fetchPgName));
         const mNames = Object.fromEntries(methPages2.map(p => [p.id, p.name]));
         Object.values(campTitles).forEach(c => c.titles.forEach(t => {
-          t.productName = t.productId === '__none__' ? 'No Product' : (pNames[t.productId] || '?');
+          const prod = t.productId !== '__none__' ? productById[t.productId] : null;
+          t.productName = prod ? prod.name : 'No Product';
+          t.productStack = prod ? prod.stack : null; // null = No Stack, distinct from having no Product at all
           t.methodName  = t.methodId  === '__none__' ? 'No Method'  : (mNames[t.methodId]  || '?');
+          t.lastPublishedAt = titleLastPublished[t.id] || null;
         }));
+
+        // Campaign → Product Stack → Product tree, most-recent-first at
+        // every level. "No Stack" (products with no Product Stack value,
+        // plus titles with no Product at all) always sorts last regardless
+        // of its own recency — it's the overflow bucket, not a competitor.
+        const NO_STACK_KEY = "__no_stack__";
+        const buildStackTree = titles => {
+          const stackOrder = [], byStack = {};
+          titles.forEach(t => {
+            const stackKey = t.productId === '__none__' ? NO_STACK_KEY : (t.productStack || NO_STACK_KEY);
+            if (!byStack[stackKey]) { byStack[stackKey] = { key: stackKey, name: stackKey === NO_STACK_KEY ? "No Stack" : stackKey, products: {}, productOrder: [] }; stackOrder.push(stackKey); }
+            const stack = byStack[stackKey];
+            const prodKey = t.productId;
+            if (!stack.products[prodKey]) { stack.products[prodKey] = { id: prodKey, name: t.productName, titles: [] }; stack.productOrder.push(prodKey); }
+            stack.products[prodKey].titles.push(t);
+          });
+          const stacks = stackOrder.map(stackKey => {
+            const stack = byStack[stackKey];
+            const products = stack.productOrder.map(prodKey => {
+              const p = stack.products[prodKey];
+              const lastPublishedAt = p.titles.reduce((max, t) => (t.lastPublishedAt && (!max || t.lastPublishedAt > max)) ? t.lastPublishedAt : max, null);
+              return { id: p.id, name: p.name, titles: p.titles, lastPublishedAt };
+            });
+            products.sort((a, b) => {
+              if (a.lastPublishedAt && b.lastPublishedAt) return a.lastPublishedAt < b.lastPublishedAt ? 1 : -1;
+              if (a.lastPublishedAt && !b.lastPublishedAt) return -1;
+              if (!a.lastPublishedAt && b.lastPublishedAt) return 1;
+              return b.titles.length - a.titles.length;
+            });
+            const lastPublishedAt = products.reduce((max, p) => (p.lastPublishedAt && (!max || p.lastPublishedAt > max)) ? p.lastPublishedAt : max, null);
+            return { key: stack.key, name: stack.name, products, lastPublishedAt };
+          });
+          stacks.sort((a, b) => {
+            if (a.key === NO_STACK_KEY) return 1;
+            if (b.key === NO_STACK_KEY) return -1;
+            if (a.lastPublishedAt && b.lastPublishedAt) return a.lastPublishedAt < b.lastPublishedAt ? 1 : -1;
+            if (a.lastPublishedAt && !b.lastPublishedAt) return -1;
+            if (!a.lastPublishedAt && b.lastPublishedAt) return 1;
+            return 0;
+          });
+          return stacks;
+        };
 
         const campaigns = Object.entries(campTitles).map(([campId, camp]) => {
           const devCount  = camp.titles.filter(t => t.status === "Development").length;
@@ -3009,7 +3076,8 @@ export default {
           const prodCount = activeProdCount[campId] || 0;
           const STATUS_RANK = { "Development": 0, "Publish": 1 };
           camp.titles.sort((a, b) => (STATUS_RANK[a.status] ?? 2) - (STATUS_RANK[b.status] ?? 2));
-          return { campId, name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", microsite: camp.microsite || null, status: camp.status || "", notes: camp.notes || "", titles: camp.titles, devCount, pubCount, prodCount, lastPublishedAt: campLastPublished[campId] || null };
+          const stacks = buildStackTree(camp.titles);
+          return { campId, name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", microsite: camp.microsite || null, status: camp.status || "", notes: camp.notes || "", titles: camp.titles, stacks, devCount, pubCount, prodCount, lastPublishedAt: campLastPublished[campId] || null };
         });
 
         // Most-recently-published campaigns rise to the top first — the
