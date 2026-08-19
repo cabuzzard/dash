@@ -606,6 +606,130 @@ async function resolveDeployPath(campaignId, hdr, dash) {
   return deployPath;
 }
 
+// Publishes a finished SEO Post article as a real static page on the
+// campaign's own live GitHub Pages site (web/{deployPath}/blog/) — creates
+// the blog section itself the first time a campaign publishes one, appends
+// to it every time after. `posts.json` is the durable list this
+// reads-modifies-writes on every call; `index.html` is fully re-rendered
+// from it each time rather than parsed/patched, so there's never any
+// brittle HTML-diffing involved. Styled from the campaign's own Design Spec
+// (passed in already-resolved by the caller, since the dsFromPage/
+// DESIGN_SPEC_DEFAULTS helpers live inside the request-dispatcher scope,
+// not module scope) rather than trying to replicate each bespoke live
+// site's exact header/nav — a clean, on-brand blog, not a pixel-matched
+// skin. Best-effort by contract: callers should catch this and treat a
+// failure as non-fatal — the Notion asset itself is always the source of
+// truth, this is just publishing a copy of it.
+async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion }) {
+  const GT = (env.GITHUB_TOKEN || '').trim();
+  if (!GT) return { published: false, error: "GITHUB_TOKEN not set — asset saved, but not pushed to the live site" };
+
+  const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+  if (!deployPath || deployPath === 'campaign') return { published: false, error: "Could not resolve this campaign's live site — set a live site/microsite URL on the Campaign record first" };
+
+  let campName = 'Blog';
+  try {
+    const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+    campName = (campPage?.properties?.Name?.title || []).map(t => t.plain_text).join('') || campName;
+  } catch (e) { /* best-effort */ }
+
+  const s = { bg: '#F7F1E6', ink: '#2B2620', accent: '#8A6D4B', headlineFont: 'Playfair Display', bodyFont: 'EB Garamond',
+    ...Object.fromEntries(Object.entries(spec || {}).filter(([k, v]) => k !== 'id' && k !== 'name' && v)) };
+
+  const slugify = str => String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70);
+  const displayTitle = String(seoTitle || workingTitle || 'Untitled Post');
+  const slug = slugify(displayTitle) || 'post';
+
+  const REPO = 'cabuzzard/dash', BRANCH = 'main';
+  const gh = { Authorization: `Bearer ${GT}`, Accept: 'application/vnd.github+json', 'User-Agent': 'dash-worker' };
+  const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+  const fromB64Text = b64 => new TextDecoder().decode(Uint8Array.from(atob(String(b64).replace(/\n/g, '')), c => c.charCodeAt(0)));
+
+  const getFile = async path => {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+    if (!r.ok) return { sha: null, text: null };
+    const j = await r.json().catch(() => null);
+    return { sha: j?.sha || null, text: j?.content ? fromB64Text(j.content) : null };
+  };
+  const putFile = async (path, text, message) => {
+    const { sha } = await getFile(path);
+    const putBody = { message, content: toB64Text(text), branch: BRANCH };
+    if (sha) putBody.sha = sha;
+    const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'PUT', headers: { ...gh, 'Content-Type': 'application/json' }, body: JSON.stringify(putBody) });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `GitHub commit failed for ${path}`); }
+  };
+
+  const basePath = `web/${deployPath}/blog`;
+  const { text: postsRaw } = await getFile(`${basePath}/posts.json`);
+  let posts = [];
+  try { posts = postsRaw ? JSON.parse(postsRaw) : []; } catch (e) { posts = []; }
+  if (!Array.isArray(posts)) posts = [];
+  const today = new Date().toISOString().slice(0, 10);
+  posts = posts.filter(p => p && p.slug !== slug);
+  posts.unshift({ slug, title: displayTitle, intro: String(intro || '').slice(0, 300), date: today });
+
+  const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const fontParam = f => encodeURIComponent(String(f || '').trim()).replace(/%20/g, '+');
+  const fontsImport = `@import url('https://fonts.googleapis.com/css2?family=${fontParam(s.headlineFont)}:wght@600;700&family=${fontParam(s.bodyFont)}:wght@400;500&display=swap');`;
+
+  const pageShell = (title, bodyHtml, { siteHref, blogHref }) => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)} — ${esc(campName)}</title>
+<style>
+${fontsImport}
+:root { --bg:${s.bg}; --ink:${s.ink}; --accent:${s.accent}; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:'${esc(s.bodyFont)}', Georgia, serif; line-height:1.7; }
+.wrap { max-width:760px; margin:0 auto; padding:48px 24px 80px; }
+header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
+header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
+header.site .back { font-size:0.85rem; color:var(--accent); }
+h1, h2 { font-family:'${esc(s.headlineFont)}', Georgia, serif; color:var(--ink); line-height:1.25; }
+h1 { font-size:2.1rem; margin:0 0 8px; }
+h2 { font-size:1.4rem; margin:40px 0 14px; color:var(--accent); }
+p { margin:0 0 18px; font-size:1.08rem; }
+.meta { color:var(--accent); font-size:0.85rem; margin-bottom:28px; }
+.postlist { list-style:none; margin:0; padding:0; }
+.postlist li { border-bottom:1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding:22px 0; }
+.postlist a { color:var(--ink); text-decoration:none; font-family:'${esc(s.headlineFont)}', Georgia, serif; font-size:1.3rem; }
+.postlist a:hover { color:var(--accent); }
+.postlist .excerpt { margin-top:6px; color:var(--ink); opacity:0.75; font-size:0.98rem; }
+footer.site { margin-top:60px; padding-top:20px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:0.85rem; opacity:0.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="site">
+  <a href="${siteHref}">${esc(campName)}</a>
+  ${blogHref ? `<a class="back" href="${blogHref}">← All posts</a>` : ''}
+</header>
+${bodyHtml}
+<footer class="site">${esc(campName)}</footer>
+</div>
+</body>
+</html>`;
+
+  const postBody = `<h1>${esc(displayTitle)}</h1>
+<div class="meta">${esc(today)}</div>
+${intro ? `<p>${esc(intro)}</p>` : ''}
+${(sections || []).map(sec => `<h2>${esc(sec.heading)}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(p => `<p>${esc(p.trim())}</p>`).join('\n')}`).join('\n')}
+${conclusion ? `<p>${esc(conclusion)}</p>` : ''}`;
+
+  const indexBody = `<h1>Blog</h1>
+<ul class="postlist">
+${posts.map(p => `<li><a href="./${esc(p.slug)}/index.html">${esc(p.title)}</a><div class="excerpt">${esc(p.intro)}</div></li>`).join('\n')}
+</ul>`;
+
+  await putFile(`${basePath}/${slug}/index.html`, pageShell(displayTitle, postBody, { siteHref: '../../index.html', blogHref: '../index.html' }), `Blog post: ${displayTitle}`);
+  await putFile(`${basePath}/index.html`, pageShell('Blog', indexBody, { siteHref: '../index.html', blogHref: null }), `Blog index: add ${displayTitle}`);
+  await putFile(`${basePath}/posts.json`, JSON.stringify(posts, null, 2), `Blog posts.json: add ${displayTitle}`);
+
+  return { published: true, liveUrl: `https://cabuzzard.github.io/dash/${basePath}/${slug}/` };
+}
+
 // Reads just the "Pillar Content" heading_3 section of a title's own page
 // body — mirrors generateCarouselPreview's parseSlides() section-scanning
 // approach (a title's page can carry several distinct heading_3 sections —
@@ -9112,6 +9236,12 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         if (!assetType) return json({ error: "assetType required — every asset must have a type" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
+        // SEO Post is the one asset type where the pillar itself needs to be
+        // written with on-page SEO/keyword practices in mind (per operator
+        // instruction) — checked once here so both the pillar-write
+        // guarantee below and the asset-generation branch further down can
+        // use it without re-testing assetType twice.
+        const isSeoPost = /seo post/i.test(assetType);
 
         // ── Guarantee: every asset reshapes REAL source material, always.
         // This replaces the old manual "📝 Write Pillar" button entirely —
@@ -9137,6 +9267,9 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
               productId: hasProduct ? productId : undefined,
               methodId: methodId && methodId !== "__none__" ? methodId : undefined,
               guidance: researchInstructions || description || undefined,
+              styleGuidance: isSeoPost
+                ? `Write this as SEO/keyword-optimized pillar content — the piece an SEO blog post gets built from with minimal rewriting, not a generic essay.${seedKeywords ? ` Primary keyword(s): ${seedKeywords} — work them in naturally in the opening paragraph and at least one other paragraph, never stuffed or repeated mechanically.` : ""} Open by directly answering the core question/topic before expanding — don't bury the point. Favor topic-sentence-led paragraphs that each cover one clear subpoint (this pillar will later be split into a handful of section headings, so give it material that divides cleanly).`
+                : undefined,
             }).catch(e => ({ error: e.message }));
             if (pillarResult && !pillarResult.error && !pillarResult.skipped) {
               const titlePage = await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null);
@@ -9151,20 +9284,28 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         } catch (e) { /* best-effort — asset generation still proceeds below */ }
 
         // ── SEO Post asset type: one full written pillar post, not N visual
-        // concept options to pick between. Reuses the title's existing
-        // 3-subhead outline (written by the SEO Post method's follow-up step)
-        // as the article's structure if present, completes it with 3 fresh
-        // subheads if not, writes the full article into the new asset's page
-        // body, and publishes BOTH the asset and the source title immediately
-        // — this asset type is finished text, not a design pick-one that
-        // waits in Development for operator review.
-        if (/seo post/i.test(assetType)) {
+        // concept options to pick between. This is a FORMATTING pass over
+        // the title's own Pillar Content — the pillar already carries the
+        // real substance (and, per operator instruction, was itself written
+        // with SEO/keyword practices in mind — see the isSeoPost
+        // styleGuidance in the pillar-write guarantee above), so the blog
+        // post should read as a polished, structured version of it, not a
+        // freshly-invented piece. Reuses the title's existing 3-subhead
+        // outline (written by the SEO Post method's follow-up step) as the
+        // article's section structure if present. Writes the full article
+        // into the new asset's page body, publishes BOTH the asset and the
+        // source title immediately (this asset type is finished text, not a
+        // design pick-one that waits in Development for operator review),
+        // and pushes it live to the campaign's own site under a "blog"
+        // section — created there the first time, appended to after.
+        if (isSeoPost) {
           // "blend" (opt-in) adds campaign + product strategy as grounding on
-          // top of the title's own description/keywords/outline. "isolate"
-          // (default — matches this asset type's original behavior) uses only
-          // the title's own fields, no campaign/product fetch at all.
+          // top of the pillar's own content. "isolate" (default — matches
+          // this asset type's original behavior) uses only the title's own
+          // pillar/outline, no campaign/product fetch at all.
           const contextMode = body.contextMode === "blend" ? "blend" : "isolate";
-          const [existingOutline, blendBlock] = await Promise.all([
+          const [pillarContent, existingOutline, blendBlock] = await Promise.all([
+            extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
             extractBlocksTextRecursive(dsHdr, dsDash(titleId)).catch(() => ""),
             contextMode === "blend" ? (async () => {
               const [researchRaw, prodPage] = await Promise.all([
@@ -9197,13 +9338,14 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
             })() : Promise.resolve(""),
           ]);
 
-          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO content writer. Write a complete, publish-ready pillar blog post for this title.
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO content editor. Your job is to FORMAT the pillar piece below into a complete, publish-ready blog post — this is a structuring and polishing pass, not a rewrite from scratch. The pillar already contains the real substance, claims, and examples; preserve them. Do not invent new claims, statistics, or examples that aren't already in the source, and do not water the ideas down into generic filler.
 
 TITLE: ${title}
-${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${platformName ? `PUBLISHING TO: ${platformName} — write for that platform's norms if it isn't a standard blog destination.\n` : ""}${blendBlock}${existingOutline ? `EXISTING NOTES/OUTLINE ON THIS TITLE (if it already defines 3 subheads, use those headings verbatim as the article's structure — otherwise write 3 new ones):\n${existingOutline.slice(0, 2000)}\n` : ""}
+${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${platformName ? `PUBLISHING TO: ${platformName} — write for that platform's norms if it isn't a standard blog destination.\n` : ""}${blendBlock}${pillarContent ? `PILLAR CONTENT (the source material — format THIS into the blog post below, don't write a different piece):\n${pillarContent.slice(0, 12000)}\n` : `NO PILLAR CONTENT FOUND — this title has no Pillar Content section yet, so write the post from the title/description/keywords/instructions above instead.\n`}${existingOutline && existingOutline !== pillarContent ? `PRE-PLANNED OUTLINE ON THIS TITLE (if it already defines subheads, use those headings verbatim as the article's structure — otherwise choose headings that naturally divide the pillar content above):\n${existingOutline.slice(0, 2000)}\n` : ""}
 Requirements:
-- Structure the post under EXACTLY 3 subheads (H2-level sections) covering the topic in a logical order.
-- Each section is substantial, specific, useful writing — roughly 400-700 words per section, not filler.
+- Structure the post under EXACTLY 3 subheads (H2-level sections), each one a natural division of the pillar content above — not 3 arbitrary new angles on the topic.
+- Reorganize, tighten, and polish for blog readability (clear paragraphs, no rambling), but stay faithful to the pillar's own substance and voice. If the pillar's material doesn't fully fill out a section, elaborate consistent with what's already there rather than padding with generic filler.
+- Each section should read as substantial, specific, useful writing — roughly 400-700 words per section.
 - Write a short 2-3 sentence intro before the first subhead, and a short concluding paragraph after the last section.
 - No meta-commentary, no "in this article we will," no headers other than the 3 subheads.
 
@@ -9284,7 +9426,42 @@ Return ONLY this JSON object, no other text, no markdown fences:
             body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
           });
 
-          return json({ success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode });
+          // Push it live to the campaign's own site under a "blog" section —
+          // created there the first time a campaign publishes one, appended
+          // to after. Best-effort: a publish failure (no GITHUB_TOKEN, no
+          // resolvable deploy path, GitHub API error) never fails the asset
+          // itself — the Notion asset and its Post Body are the source of
+          // truth either way, this just mirrors the finished post to the
+          // public site. Styled from the campaign's own Design Spec if one
+          // is attached, falling back to the shared editorial default.
+          let siteResult = { published: false };
+          try {
+            let spec = null;
+            if (campaignId) {
+              const campPage = await fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null);
+              const specId = campPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null;
+              if (specId) {
+                const specPage = await fetch(`https://api.notion.com/v1/pages/${specId}`, { headers: dsHdr }).then(r => r.json()).catch(() => null);
+                if (specPage?.properties) spec = dsFromPage(specPage);
+              }
+            }
+            siteResult = await publishSeoPostToLiveSite({
+              env, hdr: dsHdr, dash: dsDash, campaignId, spec,
+              seoTitle: post.seoTitle, workingTitle: title,
+              intro: post.intro, sections, conclusion: post.conclusion,
+            });
+            if (siteResult.published && siteResult.liveUrl) {
+              await fetch(`https://api.notion.com/v1/pages/${dsDash(assetId)}`, {
+                method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { "Content URL": { url: siteResult.liveUrl } } }),
+              }).catch(() => {});
+            }
+          } catch (e) { siteResult = { published: false, error: e.message }; }
+
+          return json({
+            success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode,
+            sitePublished: !!siteResult.published, liveUrl: siteResult.liveUrl || null, siteError: siteResult.error || null,
+          });
         }
 
         // ── LinkedIn Post asset type: reshapes the title's own pillar
