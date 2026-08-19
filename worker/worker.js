@@ -201,6 +201,23 @@ async function notionQuery(dbId, body) {
   return results;
 }
 
+// Adds a checkbox property to a database if it doesn't already have one —
+// module-level (unlike ensureAssetsDbProperties, which is nested inside the
+// fetch handler and only reachable from request-handling code) so it can
+// also be called from scheduled(), which runs with no incoming request.
+// Best-effort: a failure here just means the caller's own query filter on
+// that property will error and the whole run no-ops safely.
+async function ensureDbCheckboxProperty(hdr, dbId, propName) {
+  try {
+    const dbResp = await fetch(`https://api.notion.com/v1/databases/${dbId}`, { headers: hdr }).then(r => r.json());
+    if (dbResp.properties && dbResp.properties[propName]) return;
+    await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+      method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ properties: { [propName]: { checkbox: {} } } }),
+    });
+  } catch (e) { /* best-effort */ }
+}
+
 // Pulls the operator's real personal narrative arcs (🎭 Character Arcs,
 // global — "Personal Research" area, distinct from per-campaign market
 // Research) that are topically relevant to the given context text, so
@@ -2503,6 +2520,117 @@ async function processSavedPost(env, page) {
     });
     return { id: pageId, ok: false, error: e.message };
   }
+}
+
+// ── Knowledge Graph: link saved-post transcripts to real schema entities ──
+// Populates KNOWLEDGE_BRAIN_DB so the Hermes Knowledge tab's node graph is
+// built from the operator's ACTUAL Methods/Platforms/Tool-Stack
+// categories/Product Stacks/Keyword Clusters, not a freeform LLM-invented
+// category (which is what left it permanently empty before this existed —
+// nothing ever wrote to that DB). Unlike analyzeSavedPostForMethods below
+// (manual, per-post, suggestion-only), this runs unattended in the
+// background — daily via the cron in scheduled(), and opportunistically
+// every time getKnowledgeGraph is called (same "eager + cron backstop"
+// pattern as enrichUnprocessedSavedPosts) — so it auto-writes matches
+// directly rather than surfacing them for review.
+//
+// A saved post matching NOTHING is the normal, expected outcome for most
+// posts — the prompt says so explicitly, and a post is marked
+// "Knowledge Analyzed" regardless of whether it matched anything, so it's
+// never re-billed on a later run.
+async function runKnowledgeGraphAnalysis(env, { limit = 15 } = {}) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  if (!NOTION_TOKEN || !env.ANTHROPIC_API_KEY) return;
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+  await ensureDbCheckboxProperty(hdr, SAVED_POSTS_DB, "Knowledge Analyzed");
+  const rows = await notionQuery(SAVED_POSTS_DB, {
+    filter: { and: [
+      { property: "Status", status: { equals: "Done" } },
+      { property: "Knowledge Analyzed", checkbox: { equals: false } },
+    ] },
+    page_size: limit,
+  }).catch(() => []);
+  if (!rows.length) return;
+
+  const [methodRows, platformRows, toolRows, productRows, clusterRows] = await Promise.all([
+    notionQuery(METHODS_DB, { filter: { property: "Status", select: { equals: "Live" } } }).catch(() => []),
+    notionQuery(PLATFORMS_DB, {}).catch(() => []),
+    notionQuery(TOOLS_DB, {}).catch(() => []),
+    notionQuery(PRODUCTS_DB, {}).catch(() => []),
+    notionQuery(KEYWORD_CLUSTERS_DB, {}).catch(() => []),
+  ]);
+  const nameOf = p => p.properties?.Name?.title?.map(t => t.plain_text).join("") || "";
+  const clusterNameOf = c => c.properties?.["Cluster Name"]?.title?.map(t => t.plain_text).join("") || "";
+  const clusterIdByName = {};
+  clusterRows.forEach(c => { const n = clusterNameOf(c); if (n) clusterIdByName[n] = c.id; });
+  const candidates = {
+    method:        [...new Set(methodRows.map(nameOf).filter(Boolean))],
+    platform:      [...new Set(platformRows.map(nameOf).filter(Boolean))],
+    toolStack:     [...new Set(toolRows.map(t => t.properties?.Category?.select?.name).filter(Boolean))],
+    productStack:  [...new Set(productRows.map(p => (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("")).filter(Boolean))],
+    keywordCluster:[...new Set(Object.keys(clusterIdByName))],
+    clusterIdByName,
+  };
+
+  for (const page of rows.slice(0, limit)) {
+    try { await analyzeOneSavedPostForKnowledgeGraph(env, hdr, page, candidates); }
+    catch (e) { await patchSavedPostPage(page.id, { "Knowledge Analyzed": { checkbox: true } }).catch(() => {}); }
+  }
+}
+
+async function analyzeOneSavedPostForKnowledgeGraph(env, hdr, page, candidates) {
+  const pageId = page.id;
+  const postName = page.properties?.Name?.title?.map(t => t.plain_text).join("") || "Saved Post";
+  const postUrl = page.properties?.URL?.url || "";
+  const transcriptText = await extractBlocksTextRecursive(hdr, pageId).catch(() => "");
+  if (!transcriptText.trim()) { await patchSavedPostPage(pageId, { "Knowledge Analyzed": { checkbox: true } }); return; }
+
+  const candidateBlock = [
+    candidates.method.length         && `Methods: ${candidates.method.join(", ")}`,
+    candidates.platform.length       && `Platforms: ${candidates.platform.join(", ")}`,
+    candidates.toolStack.length      && `Tool Stack categories: ${candidates.toolStack.join(", ")}`,
+    candidates.productStack.length   && `Product Stacks: ${candidates.productStack.join(", ")}`,
+    candidates.keywordCluster.length && `Keyword Clusters: ${candidates.keywordCluster.join(", ")}`,
+  ].filter(Boolean).join("\n");
+  if (!candidateBlock.trim()) { await patchSavedPostPage(pageId, { "Knowledge Analyzed": { checkbox: true } }); return; }
+
+  const prompt = `You are scanning a saved post's transcript to see whether it genuinely relates to any of the operator's existing named schema entities below. Only match something clearly, specifically grounded in the transcript — most saved posts match NOTHING, and returning zero matches is the correct, expected answer far more often than not. Never invent a name that isn't in the candidate lists below, and never match on a vague thematic overlap alone.
+
+# Transcript
+${transcriptText.slice(0, 10000)}
+
+# Candidate entities (only match names EXACTLY as listed — never invent one)
+${candidateBlock}
+
+Respond ONLY with JSON: {"matches": [{"type": "method"|"platform"|"toolStack"|"productStack"|"keywordCluster", "name": "exact candidate name", "insight": "1-2 sentences — what specifically in this transcript relates to it"}]}`;
+
+  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }),
+  });
+  const aiData = await aiResp.json();
+  if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+  const raw = (aiData.content?.[0]?.text || "").replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+  const start = raw.indexOf("{"), end = raw.lastIndexOf("}");
+  const parsed = start === -1 || end === -1 ? { matches: [] } : JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+  const matches = Array.isArray(parsed.matches) ? parsed.matches : [];
+
+  for (const m of matches) {
+    if (!m?.type || !m?.name || !(candidates[m.type] || []).includes(m.name)) continue; // never trust an invented name
+    const props = {
+      Name: { title: [{ type: "text", text: { content: `${postName} → ${m.name}`.slice(0, 200) } }] },
+      "Knowledge Category": { select: { name: m.name } },
+      Insight: { rich_text: [{ type: "text", text: { content: String(m.insight || "").slice(0, 1990) } }] },
+    };
+    if (postUrl) props["Source URL"] = { url: postUrl };
+    await fetch("https://api.notion.com/v1/pages", {
+      method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ parent: { database_id: KNOWLEDGE_BRAIN_DB }, properties: props }),
+    }).catch(() => {});
+  }
+  await patchSavedPostPage(pageId, { "Knowledge Analyzed": { checkbox: true } });
 }
 
 // Cross-references a Saved Post's transcript against the operator's actual
@@ -20411,8 +20539,19 @@ ${assemblyManifest}`;
       // Powers the Hermes "Knowledge" tab's node graph — reads both
       // standalone Knowledge databases and returns them pre-parsed for the
       // client to render (categories/clusters/offerings), same shape the
-      // claude.ai Knowledge Atlas artifact renders from.
+      // claude.ai Knowledge Atlas artifact renders from. "category" here is
+      // the real schema entity's own name (a specific Method/Platform/Tool-
+      // Stack category/Product Stack/Keyword Cluster — see
+      // runKnowledgeGraphAnalysis), not a freeform LLM-invented label, so
+      // each one groups into its own real node below.
+      //
+      // Also opportunistically kicks off runKnowledgeGraphAnalysis in the
+      // background on every load (same "eager + daily cron backstop"
+      // pattern as enrichUnprocessedSavedPosts) — cheap when there's
+      // nothing new to analyze, so a Refresh click also picks up any
+      // recently-saved links without waiting for the next midnight cron.
       if (body.action === "getKnowledgeGraph") {
+        ctx.waitUntil(runKnowledgeGraphAnalysis(env).catch(() => {}));
         const [knowledgePages, clusterPages] = await Promise.all([
           notionQuery(KNOWLEDGE_BRAIN_DB, {}),
           notionQuery(KEYWORD_CLUSTERS_DB, {}),
@@ -21816,6 +21955,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
     }
     ctx.waitUntil(deepScan(env).catch(e => console.error('deepScan failed:', e.message)));
     ctx.waitUntil(runAutoTradeScan(env).catch(e => console.error('runAutoTradeScan failed:', e.message)));
+    ctx.waitUntil(runKnowledgeGraphAnalysis(env).catch(e => console.error('runKnowledgeGraphAnalysis failed:', e.message)));
   },
 };
 
