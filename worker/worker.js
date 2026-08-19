@@ -48,6 +48,14 @@ const RESUMES_DB         = "3751f7d3a4bb80599583c9aef8d10b05";
 const DESIGN_SPECS_DB    = "3981f7d3a4bb817c8edad15db64fa50d";
 const SAVED_POSTS_DB     = "0a037d3a9a9a4289a41f76050055c795";
 const TOOLS_DB           = "019e7132eeac48ccb77d805f99b085ea"; // campaign-agnostic global software-tools reference (Hermes "Tools" tab) — Name/Category/Description/Link/Affiliate Link/Source/Notes
+// Standalone Knowledge capture system (Hermes "Knowledge" tab) — fed by a
+// separate cloud pipeline that transcribes 🔗 Link Inbox links and extracts
+// atomic knowledge nuggets. Schema is INSPIRED by this ecosystem's real field
+// groups (Research/Strategy/Method) but neither database reads from or
+// writes to any real production Campaign/Product/Method/Strategy record —
+// fully standalone. See docs/methods-titles-assets.md for the distinction.
+const KNOWLEDGE_BRAIN_DB = "4476d83727b145de9f74f3eba17d59cf"; // Name/Insight/Excerpt/Knowledge Category/Keywords/Extracted Offering/Status/Source URL/Source Link
+const KEYWORD_CLUSTERS_DB = "cedc9c6c16b344b0bd858823809f14af"; // Cluster Name/Member Keywords/Knowledge Entries (relation)/Status/Last Updated — emergent themes computed from Knowledge Brain Keywords
 // Resume header — kept in sync by hand with the 📇 Contact Info Notion page
 // (under 🏠 Home); used to print a real contact header on generated resume
 // .docx files (generateJobAsset's docx build).
@@ -20362,6 +20370,35 @@ ${assemblyManifest}`;
           if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Update failed" }, patchResp.status); }
           return json({ success: true });
         }
+      }
+
+      // ── getKnowledgeGraph ──
+      // Powers the Hermes "Knowledge" tab's node graph — reads both
+      // standalone Knowledge databases and returns them pre-parsed for the
+      // client to render (categories/clusters/offerings), same shape the
+      // claude.ai Knowledge Atlas artifact renders from.
+      if (body.action === "getKnowledgeGraph") {
+        const [knowledgePages, clusterPages] = await Promise.all([
+          notionQuery(KNOWLEDGE_BRAIN_DB, {}),
+          notionQuery(KEYWORD_CLUSTERS_DB, {}),
+        ]);
+        const entries = knowledgePages.map(p => ({
+          id: p.id.replace(/-/g, ""),
+          name: p.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
+          category: p.properties["Knowledge Category"]?.select?.name || null,
+          keywords: (p.properties.Keywords?.multi_select || []).map(o => o.name),
+          offering: (p.properties["Extracted Offering"]?.rich_text || []).map(t => t.plain_text).join("").trim(),
+          insight: (p.properties.Insight?.rich_text || []).map(t => t.plain_text).join(""),
+          sourceUrl: p.properties["Source URL"]?.url || "",
+        }));
+        const clusters = clusterPages.map(p => ({
+          id: p.id.replace(/-/g, ""),
+          name: p.properties["Cluster Name"]?.title?.map(t => t.plain_text).join("") || "Untitled cluster",
+          memberKeywords: (p.properties["Member Keywords"]?.rich_text || []).map(t => t.plain_text).join("")
+            .split(",").map(s => s.trim()).filter(Boolean),
+          entryCount: (p.properties["Knowledge Entries"]?.relation || []).length,
+        }));
+        return json({ entries, clusters });
       }
 
       if (body.action === "deleteTool") {
