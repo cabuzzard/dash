@@ -27,6 +27,8 @@ h2 {
 .topbar-clock { font-size: 10px; color: #fff; letter-spacing: .06em; }
 .topbar-lock  { font-size: 9px; letter-spacing: .15em; text-transform: uppercase; color: #fff; cursor: pointer; }
 .topbar-lock:hover { color: #fff; }
+.topbar-refresh { font-size: 13px; color: #fff; cursor: pointer; line-height: 1; opacity: .8; }
+.topbar-refresh:hover { opacity: 1; color: #e8ff47; }
 
 /* TWO COL SECTION */
 .two-col {

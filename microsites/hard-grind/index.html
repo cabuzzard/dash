@@ -216,6 +216,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   <div class="topbar-right">
     <a href="td/" class="notion-link">TD ↗</a>
     <div class="topbar-clock" id="clock">—</div>
+    <div class="topbar-refresh" onclick="location.reload()" title="Reload page — for browsers/shortcuts with no URL bar">⟳</div>
     <div class="topbar-lock" onclick="lockApp()">Lock</div>
   </div>
 </div>
@@ -642,22 +643,14 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeProductModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="modal-hint">Search existing products or type a new name to create one</div>
-      <div style="position:relative;margin-bottom:4px;" id="product-modal-wrap">
-        <input class="modal-ta" id="product-modal-input" type="text" placeholder="Product name…" style="height:32px;padding:5px 10px;" autocomplete="off" oninput="filterProductDd()" onfocus="filterProductDd()" />
-        <div id="product-modal-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
-      </div>
-      <label class="lm-label" for="product-modal-type" style="margin-top:8px;">Type <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(format — only used when creating a new product)</span></label>
-      <div style="position:relative;margin-bottom:4px;" id="product-modal-type-wrap">
-        <input class="modal-ta" id="product-modal-type" type="text" placeholder="Search existing types or add new…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" oninput="filterTypeDd()" onfocus="filterTypeDd()" />
-        <div id="product-modal-type-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
-      </div>
+      <div class="modal-hint">Create a new product</div>
+      <input class="modal-ta" id="product-modal-input" type="text" placeholder="Product name…" style="height:32px;padding:5px 10px;" autocomplete="off" />
       <label class="lm-label" for="product-modal-stack" style="margin-top:8px;">Product Stack <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(optional — a grouping of related products, e.g. "Coaching Suite")</span></label>
       <div style="position:relative;margin-bottom:4px;" id="product-modal-stack-wrap">
         <input class="modal-ta" id="product-modal-stack" type="text" placeholder="Search existing stacks or add new…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" oninput="filterStackDd()" onfocus="filterStackDd()" />
         <div id="product-modal-stack-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
       </div>
-      <label class="lm-label" for="product-modal-desc" style="margin-top:8px;">Description <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(optional — grounds the marketing funnel research)</span></label>
+      <label class="lm-label" for="product-modal-desc" style="margin-top:8px;">Description <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(optional)</span></label>
       <textarea class="modal-ta" id="product-modal-desc" rows="3" style="resize:vertical;min-height:60px!important;margin-top:4px;" placeholder="What is this product, briefly…"></textarea>
       <div class="modal-status" id="productModalStatus"></div>
     </div>
@@ -967,6 +960,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <input class="modal-ta" id="pubTitle" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" />
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubTitle', this)">📋</button>
       </div>
+      <label class="lm-label" for="pubPlatformTitle" style="margin-top:10px;">Platform Title <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(what to actually type into the platform's own title field — a YouTube/SEO/listing title. Only auto-filled when the method calls for one; edit or add it here otherwise.)</span></label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <input class="modal-ta" id="pubPlatformTitle" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="No platform title for this asset type" />
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubPlatformTitle', this)">📋</button>
+      </div>
       <label class="lm-label" for="pubDesignLink" style="margin-top:10px;">Design Link <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(the finished, populated design — not the source Canva template)</span></label>
       <div style="display:flex;gap:6px;margin-top:4px;">
         <input class="modal-ta" id="pubDesignLink" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…" />
@@ -996,8 +994,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <div id="pubTshirtColorGrid" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;max-height:100px;overflow-y:auto;padding:6px;border:1px solid #333;border-radius:4px;background:#141414;">
           <span style="font-size:11px;color:#fff;">Loading colors…</span>
         </div>
-        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap;">
           <button class="modal-btn save" onclick="createPubPrintifyProduct()">🖨️ Create Printify Product &amp; Publish to Etsy</button>
+          <button class="modal-btn cancel" onclick="updatePubPrintifyProduct()" title="Pushes this asset's current Title/Description/Hashtags and Design File onto the EXISTING Printify product (same colors/sizes already set) and re-publishes to Etsy — for editing a listing that's already live, not creating a new one.">🔄 Push Update to Printify</button>
           <span class="modal-status" id="pubPrintifyStatus" style="margin:0;"></span>
         </div>
       </div>
@@ -1026,7 +1025,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <label class="lm-label" for="pubPostBody" style="margin-top:10px;">Post Body <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(the full written post/article, from this asset's page content — blank if this asset has none)</span></label>
       <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
         <textarea class="modal-ta" id="pubPostBody" rows="6" readonly style="resize:vertical;min-height:120px!important;flex:1;line-height:1.5;opacity:.8;"></textarea>
-        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubPostBody', this)">📋</button>
+        <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPubPostBodyRich(this)" title="Copies as real formatted rich text (headings/paragraphs/lists), not the literal #/## markdown characters — pastes correctly into LinkedIn, Notion, Google Docs, etc.">📋</button>
       </div>
       <div class="modal-status" id="pubAssetStatus"></div>
     </div>
@@ -1194,11 +1193,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
      opens this instead of the AI-driven Generate Title modal above (per
      operator instruction: the old flow was "annoying" for just jotting down
      an idea). Title + free-text notes, saved instantly at Status "Planning"
-     with NO pillar-content AI call — that's deferred to whenever the
-     operator clicks 📝 Write Pillar on the title row later (writeTitlePillar
-     action), which also promotes the title out of Planning into Development.
-     The Method-row and Strategy-Slot "+ title" entry points still open the
-     full ctsModal above; only this bare "+" changed. -->
+     with NO pillar-content AI call — that's deferred until the first time
+     🧩 Generate Assets runs on this title (generateTitleAssets writes the
+     pillar itself if none exists yet, and promotes Planning → Development
+     the same way this used to), so there's no separate manual pillar step
+     anymore. The Method-row and Strategy-Slot "+ title" entry points still
+     open the full ctsModal above; only this bare "+" changed. -->
 <div class="modal-overlay" id="quickAddModal">
   <div class="modal" style="max-width:480px;">
     <div class="modal-head">
@@ -1212,7 +1212,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <label class="lm-label">Product <span style="color:#fff;font-weight:normal;">— optional; groups this title in the Development Titles list</span></label>
       <select class="modal-ta" id="qaProductInput" style="margin-bottom:10px;"></select>
 
-      <label class="lm-label">Notes <span style="color:#fff;font-weight:normal;">— optional; whatever you want to remember about this idea. Fed in as guidance when you later run Write Pillar.</span></label>
+      <label class="lm-label">Notes <span style="color:#fff;font-weight:normal;">— optional; whatever you want to remember about this idea. Fed in as guidance when the pillar auto-writes on first 🧩 Generate Assets run.</span></label>
       <textarea class="modal-ta" id="qaNotesInput" rows="4" placeholder="Angle, source, why this matters…" style="resize:vertical;"></textarea>
 
       <div id="qaStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;"></div>
@@ -1224,41 +1224,6 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
-<!-- WRITE PILLAR MODAL — opened by the 📝 button on a Planning-status title
-     row (see makeTitleRow). Replaces the old one-click writeTitlePillarRow:
-     the operator picks whether to ground the piece in the campaign's
-     existing Research/Product/Strategy or write it fresh from a typed
-     prompt alone, plus an optional style/tone note. On success the title
-     moves Planning → Development with real pillar content written. -->
-<div class="modal-overlay" id="writePillarModal">
-  <div class="modal" style="max-width:560px;">
-    <div class="modal-head">
-      <div class="modal-title">Write Pillar Post</div>
-      <button class="modal-close" onclick="closeWritePillarModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div id="wpTitleDisplay" style="font-size:13px;color:#fff;font-weight:600;margin-bottom:12px;"></div>
-
-      <label class="lm-label">Research Source</label>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;font-size:12px;color:#fff;">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="wpMode" value="grounded" checked> Use existing Campaign Research + Strategy for this product</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="wpMode" value="fresh"> Fresh research — write from my prompt only, ignore campaign/strategy data</label>
-      </div>
-
-      <label class="lm-label">Research Prompt <span style="color:#fff;font-weight:normal;">— what this piece should actually say; required for Fresh research, optional add-on otherwise</span></label>
-      <textarea class="modal-ta" id="wpResearchInput" rows="4" placeholder="Angle, facts, sources, specific claims to include…" style="resize:vertical;"></textarea>
-
-      <label class="lm-label" style="margin-top:10px;">Writing Style <span style="color:#fff;font-weight:normal;">— optional; tone, voice, structure</span></label>
-      <textarea class="modal-ta" id="wpStyleInput" rows="3" placeholder="e.g. conversational and first-person, punchy short sentences, expert-authoritative…" style="resize:vertical;"></textarea>
-
-      <div id="wpStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="modal-btn cancel" onclick="closeWritePillarModal()">Cancel</button>
-      <button class="modal-btn save" id="wpGoBtn" onclick="submitWritePillar()">Write Pillar</button>
-    </div>
-  </div>
-</div>
 
 <!-- GENERATE ASSETS MODAL — same shape as the Add Idea modal, prefilled from
      an existing title; on Generate it creates N real Asset records linked to
@@ -1968,7 +1933,7 @@ async function loadTitles() {
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
-      PUB_ASSET_CACHE[a.id] = { title: a.title || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish' };
+      PUB_ASSET_CACHE[a.id] = { title: a.title || '', platformTitle: a.platformTitle || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -2031,12 +1996,11 @@ async function loadTitles() {
       GA_TITLE_ASSETS_CACHE[t.id] = t.assets || [];
       const div = document.createElement('div');
       div.className = 'title-row';
-      // Shown on ANY title missing pillar content, not just Planning-stage
-      // ones — a manual Planning→Development status change (⇄ button)
-      // bypasses writeTitlePillar entirely, so a Development title can end
-      // up here too with no way to write it short of this button.
-      const pillarBtn = !t.hasPillar ? `<button class="title-status-btn" onclick="openWritePillarModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="${t.stage === 'Planning' ? 'Write pillar content — moves this title from Planning into Development' : 'Write pillar content — this title has none yet'}">📝</button>` : '';
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span>${pillarBtn}<button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      // No manual pillar-write step or button anymore — generateTitleAssets
+      // (behind 🧩 Generate Assets) writes the pillar itself, on first run,
+      // if this title doesn't have one yet, and promotes Planning →
+      // Development the same way the old 📝 Write Pillar button used to.
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc. Writes this title's pillar content first if it doesn't have any yet.">🧩</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       // Publish/Published assets never show here — they belong exclusively
       // to the Publish Assets section (renderPublishedAssets above). Only
       // still-drafting assets render under a Development title row.
@@ -3176,13 +3140,19 @@ function makeProductRow(p) {
   return row;
 }
 
-// Which ecosystem groups are collapsed, keyed by tag — persists across
+// Which ecosystem/stack groups are collapsed, keyed by tag — persists across
 // re-renders within the page session (survives adds/removes elsewhere) but
 // not a page reload.
 let COLLAPSED_ECOSYSTEMS = new Set();
 function toggleEcosystemGroup(tag) {
   if (COLLAPSED_ECOSYSTEMS.has(tag)) COLLAPSED_ECOSYSTEMS.delete(tag);
   else COLLAPSED_ECOSYSTEMS.add(tag);
+  renderProducts();
+}
+let COLLAPSED_STACKS = new Set();
+function toggleStackGroup(stack) {
+  if (COLLAPSED_STACKS.has(stack)) COLLAPSED_STACKS.delete(stack);
+  else COLLAPSED_STACKS.add(stack);
   renderProducts();
 }
 
@@ -3194,13 +3164,16 @@ function renderProducts() {
   // "ecosystem" tag (the seed idea's title) — group and label them so the
   // funnel is visible instead of a flat undifferentiated list. Within a
   // group, order by Marketing Phase (core/umbrella offer first) and show
-  // each product's Type (format) as a badge. Products without a tag
-  // (everything created before this feature, or added individually) render
-  // exactly as before, ungrouped, in their original order.
+  // each product's Type (format) as a badge. Products with no ecosystem tag
+  // but a manually-assigned Product Stack are grouped by that stack name
+  // instead. Products with neither render exactly as before, ungrouped, in
+  // their original order.
   const groups = {};
+  const stackGroups = {};
   const ungrouped = [];
   PRODUCT_ITEMS.forEach(p => {
     if (p.ecosystem) { (groups[p.ecosystem] = groups[p.ecosystem] || []).push(p); }
+    else if (p.stack) { (stackGroups[p.stack] = stackGroups[p.stack] || []).push(p); }
     else ungrouped.push(p);
   });
   Object.keys(groups).forEach(tag => {
@@ -3212,6 +3185,23 @@ function renderProducts() {
     header.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#e8ff47;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;';
     header.innerHTML = `<span style="display:inline-block;width:8px;transform:rotate(${collapsed ? '-90deg' : '0deg'});transition:transform .12s;">▾</span>🧬 ${tag} <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;">(${members.length})</span>`;
     header.onclick = () => toggleEcosystemGroup(tag);
+    wrap.appendChild(header);
+    if (!collapsed) {
+      const body = document.createElement('div');
+      members.forEach(p => body.appendChild(makeProductRow(p)));
+      wrap.appendChild(body);
+    }
+    el.appendChild(wrap);
+  });
+  Object.keys(stackGroups).sort((a, b) => a.localeCompare(b)).forEach(stack => {
+    const collapsed = COLLAPSED_STACKS.has(stack);
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'border-left:2px solid #a78bfa;padding-left:8px;margin-bottom:10px;';
+    const members = stackGroups[stack];
+    const header = document.createElement('div');
+    header.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#a78bfa;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;';
+    header.innerHTML = `<span style="display:inline-block;width:8px;transform:rotate(${collapsed ? '-90deg' : '0deg'});transition:transform .12s;">▾</span>${stack} <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;">(${members.length})</span>`;
+    header.onclick = () => toggleStackGroup(stack);
     wrap.appendChild(header);
     if (!collapsed) {
       const body = document.createElement('div');
@@ -3273,97 +3263,29 @@ async function removeProduct(productId, btn) {
   }
 }
 
-let productModalSelectedId = null;
-
-let PRODUCT_MODAL_JUST_CREATED = false;
 function openProductModal() {
   document.getElementById('product-modal-input').value = '';
-  document.getElementById('product-modal-type').value = '';
   document.getElementById('product-modal-stack').value = '';
   document.getElementById('product-modal-desc').value = '';
-  document.getElementById('product-modal-dd').style.display = 'none';
-  document.getElementById('product-modal-type-dd').style.display = 'none';
   document.getElementById('product-modal-stack-dd').style.display = 'none';
   document.getElementById('productModalStatus').textContent = '';
   document.getElementById('productModalStatus').className = 'modal-status';
   document.getElementById('productModalSave').disabled = false;
   document.getElementById('productModalSave').textContent = 'Add';
-  productModalSelectedId = null;
-  PRODUCT_MODAL_JUST_CREATED = false;
-  PRODUCT_MODAL_TYPE_IS_NEW = false;
   document.getElementById('productModal').classList.add('open');
   setTimeout(() => document.getElementById('product-modal-input').focus(), 100);
-  loadProductTypes();
   loadProductStacks();
 }
 
 function closeProductModal() {
   document.getElementById('productModal').classList.remove('open');
-  productModalSelectedId = null;
 }
 
 document.getElementById('productModal').addEventListener('click', function(e) {
   if (e.target === this) closeProductModal();
 });
 
-function filterProductDd() {
-  const query  = (document.getElementById('product-modal-input').value || '').trim();
-  const queryL = query.toLowerCase();
-  const dd = document.getElementById('product-modal-dd');
-  dd.innerHTML = '';
-  productModalSelectedId = null;
-
-  const matches = ALL_PRODUCTS.filter(p =>
-    !query || p.name.toLowerCase().includes(queryL)
-  ).slice(0, 12);
-
-  matches.forEach(p => {
-    const div = document.createElement('div');
-    div.className = 'plat-dd-item';
-    div.textContent = p.name;
-    div.onmousedown = () => { productModalSelectedId = p.id; document.getElementById('product-modal-input').value = p.name; dd.style.display = 'none'; };
-    dd.appendChild(div);
-  });
-
-  const exact = ALL_PRODUCTS.some(p => p.name.toLowerCase() === queryL);
-  if (query && !exact) {
-    const div = document.createElement('div');
-    div.className = 'plat-dd-create';
-    div.textContent = '+ Create "' + query + '"';
-    div.onmousedown = async () => {
-      div.textContent = 'Creating…';
-      const saveBtn = document.getElementById('productModalSave');
-      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Creating…'; }
-      try {
-        const typeVal = (document.getElementById('product-modal-type')?.value || '').trim();
-        const stackVal = (document.getElementById('product-modal-stack')?.value || '').trim();
-        const res = await w('createProduct', { title: query, type: typeVal || undefined, stack: stackVal || undefined });
-        ALL_PRODUCTS.push({ id: res.id, name: query });
-        productModalSelectedId = res.id;
-        PRODUCT_MODAL_JUST_CREATED = true;
-        document.getElementById('product-modal-input').value = query;
-        dd.style.display = 'none';
-      } catch(e) {
-        div.textContent = 'Error: ' + e.message;
-      } finally {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Add'; }
-      }
-    };
-    dd.appendChild(div);
-  }
-
-  dd.style.display = dd.children.length ? 'block' : 'none';
-}
-
 document.addEventListener('click', e => {
-  if (!e.target.closest('#product-modal-wrap')) {
-    const dd = document.getElementById('product-modal-dd');
-    if (dd) dd.style.display = 'none';
-  }
-  if (!e.target.closest('#product-modal-type-wrap')) {
-    const tdd = document.getElementById('product-modal-type-dd');
-    if (tdd) tdd.style.display = 'none';
-  }
   if (!e.target.closest('#product-modal-stack-wrap')) {
     const sdd = document.getElementById('product-modal-stack-dd');
     if (sdd) sdd.style.display = 'none';
@@ -3411,55 +3333,9 @@ async function loadProductStacks() {
   } catch(e) { ALL_PRODUCT_STACKS = []; }
 }
 
-// ── Type dropdown (search existing Types or add a new one) ──────────────
-let ALL_PRODUCT_TYPES = [];
-let PRODUCT_MODAL_TYPE_IS_NEW = false;
-function filterTypeDd() {
-  const query  = (document.getElementById('product-modal-type').value || '').trim();
-  const queryL = query.toLowerCase();
-  const dd = document.getElementById('product-modal-type-dd');
-  dd.innerHTML = '';
-
-  const matches = ALL_PRODUCT_TYPES.filter(t => !query || t.toLowerCase().includes(queryL)).slice(0, 12);
-  matches.forEach(t => {
-    const div = document.createElement('div');
-    div.className = 'plat-dd-item';
-    div.textContent = t;
-    div.onmousedown = () => {
-      document.getElementById('product-modal-type').value = t;
-      PRODUCT_MODAL_TYPE_IS_NEW = false;
-      dd.style.display = 'none';
-    };
-    dd.appendChild(div);
-  });
-
-  const exact = ALL_PRODUCT_TYPES.some(t => t.toLowerCase() === queryL);
-  if (query && !exact) {
-    const div = document.createElement('div');
-    div.className = 'plat-dd-create';
-    div.textContent = '+ New type "' + query + '" (will research a methodology)';
-    div.onmousedown = () => {
-      PRODUCT_MODAL_TYPE_IS_NEW = true;
-      dd.style.display = 'none';
-    };
-    dd.appendChild(div);
-  } else {
-    PRODUCT_MODAL_TYPE_IS_NEW = false;
-  }
-
-  dd.style.display = dd.children.length ? 'block' : 'none';
-}
-async function loadProductTypes() {
-  try {
-    const data = await w('getProductTypes', {});
-    ALL_PRODUCT_TYPES = data.types || [];
-  } catch(e) { ALL_PRODUCT_TYPES = []; }
-}
-
 async function addProductFromModal() {
   const name = document.getElementById('product-modal-input').value.trim();
   if (!name) return;
-  const typeVal = (document.getElementById('product-modal-type')?.value || '').trim();
   const stackVal = (document.getElementById('product-modal-stack')?.value || '').trim();
   const descVal = (document.getElementById('product-modal-desc')?.value || '').trim();
   const btn    = document.getElementById('productModalSave');
@@ -3468,60 +3344,33 @@ async function addProductFromModal() {
   btn.textContent = 'Adding…';
   status.textContent = '';
   try {
-    let productId = productModalSelectedId;
-    if (!productId) {
-      const res = await w('createProduct', { title: name, type: typeVal || undefined, stack: stackVal || undefined, description: descVal || undefined });
-      productId = res.id;
-      ALL_PRODUCTS.push({ id: productId, name });
-      PRODUCT_MODAL_JUST_CREATED = true;
-    }
-    // Explicitly (re)save Type/Stack here, not just at creation — the name
-    // dropdown's "+ Create" can fire before these fields are filled in,
-    // which would otherwise leave them permanently blank on the created
-    // product.
-    if (PRODUCT_MODAL_JUST_CREATED && typeVal) {
-      try { await w('setProductType', { productId, type: typeVal }); } catch(e) { /* non-fatal — ecosystem research still runs */ }
-    }
-    if (PRODUCT_MODAL_JUST_CREATED && stackVal) {
+    const res = await w('createProduct', { title: name, stack: stackVal || undefined, description: descVal || undefined });
+    const productId = res.id;
+    ALL_PRODUCTS.push({ id: productId, name });
+    if (stackVal) {
       try { await w('setProductStack', { productId, stack: stackVal }); } catch(e) { /* non-fatal — purely organizational */ }
     }
     await w('addCampaignProduct', { campaignId: CAMPAIGN_ID, productId });
     if (!PRODUCT_ITEMS.some(p => p.id === productId)) {
-      PRODUCT_ITEMS.push({ id: productId, name, type: typeVal || null, stack: stackVal || null });
+      PRODUCT_ITEMS.push({ id: productId, name, stack: stackVal || null });
     }
     renderProducts();
-    // A freshly-created (typed) product runs the SAME funnel-ecosystem
-    // research as grabbing a 🧬 Product Idea — supporting products get
-    // created around it and grouped under it. No methods get chosen here;
-    // that's a separate, explicit step via each product's ⚙ Methods modal.
-    if (PRODUCT_MODAL_JUST_CREATED) {
-      status.textContent = 'Added ✓ — researching a marketing funnel…';
-      status.className = 'modal-status ok';
-      try {
-        const ecoData = await w('researchProductEcosystem', { ideaTitle: name, ideaDescription: descVal, campaignId: CAMPAIGN_ID, seedType: typeVal, excludeSeed: true });
-        if (ecoData.error) throw new Error(ecoData.error);
-        const ecosystem = ecoData.ecosystem || [];
-        await w('tagProductEcosystem', { productId, ecosystemTag: name });
-        PRODUCT_ITEMS = PRODUCT_ITEMS.map(p => p.id === productId ? { ...p, ecosystem: name } : p);
-        let createdCount = 0;
-        for (let i = 0; i < ecosystem.length; i++) {
-          status.textContent = `Creating supporting products ${i + 1} / ${ecosystem.length}…`;
-          const item = ecosystem[i];
-          const r = await w('createEcosystemProduct', { name: item.name, description: item.description, campaignId: CAMPAIGN_ID, ecosystemTag: name, type: item.type, marketingPhase: item.funnelStage });
-          if (!r.error) createdCount++;
-        }
-        await loadProducts();
-        status.textContent = `Added ✓ — ${createdCount} supporting product${createdCount === 1 ? '' : 's'} created. Open ⚙ Methods on each to choose how it's marketed.`;
-      } catch(e) {
-        status.textContent = 'Added ✓ — funnel research failed: ' + e.message;
-        status.className = 'modal-status err';
-      }
-      setTimeout(closeProductModal, 2600);
-    } else {
-      status.textContent = 'Added ✓';
-      status.className = 'modal-status ok';
-      setTimeout(closeProductModal, 700);
+    // Run the full Product Research field set (Customer/Pain Points/
+    // Emotions/Solution/Benefits/etc.) once, right now — grounded in
+    // whatever was typed into Description above, which doubles as this
+    // product's seed keywords for the first research pass. The 🔬 research
+    // link on the product row (openStrategyModal) stays available to re-run
+    // any individual field later; this just means a fresh product never
+    // starts with a blank Strategy record.
+    status.textContent = 'Added ✓ — researching product strategy…';
+    status.className = 'modal-status ok';
+    try {
+      await w('researchProductStrategy', { productId, campaignId: CAMPAIGN_ID });
+      status.textContent = 'Added ✓ — product strategy researched';
+    } catch(e) {
+      status.textContent = 'Added ✓ — strategy research failed: ' + e.message;
     }
+    setTimeout(closeProductModal, 1400);
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.className = 'modal-status err';
@@ -5608,6 +5457,7 @@ function openPublishAssetModal(btn) {
   document.getElementById('pubAssetTitle').textContent = btn.dataset.title || 'Publish';
   document.getElementById('pubStatus').value = data.status || 'Publish';
   document.getElementById('pubTitle').value = data.title || '';
+  document.getElementById('pubPlatformTitle').value = data.platformTitle || '';
   document.getElementById('pubDesignLink').value = data.designLink || '';
   document.getElementById('pubDesignFile').value = data.finalMediaFile || '';
   document.getElementById('pubDesignFileStatus').textContent = '';
@@ -5721,6 +5571,28 @@ async function createPubPrintifyProduct() {
     statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
   }
 }
+// Edits the EXISTING Printify product in place (updatePrintifyTshirtProduct,
+// worker.js) — pushes this asset's current Title/Description/Hashtags plus
+// a fresh copy of the Design File onto whatever colors/sizes are already
+// enabled, then re-publishes so the edit reaches the live Etsy listing.
+// Unlike createPubPrintifyProduct this never creates a second product —
+// use it once the first one's already live and you've changed the design
+// image or the copy.
+async function updatePubPrintifyProduct() {
+  if (!pubAssetId) return;
+  const statusEl = document.getElementById('pubPrintifyStatus');
+  if (!document.getElementById('pubDesignLink').value.trim()) { statusEl.className = 'modal-status err'; statusEl.textContent = 'No Printify product yet — use Create Printify Product first.'; return; }
+  statusEl.className = 'modal-status'; statusEl.textContent = 'Pushing update to Printify and re-publishing to Etsy…';
+  try {
+    const r = await w('updatePrintifyTshirtProduct', { assetId: pubAssetId });
+    if (r.error) throw new Error(r.error);
+    if (PUB_ASSET_CACHE[pubAssetId]) PUB_ASSET_CACHE[pubAssetId].designLink = r.editUrl;
+    statusEl.className = 'modal-status ok';
+    statusEl.textContent = `✓ Updated (${r.variantCount} variants) and re-published to Etsy.`;
+  } catch(e) {
+    statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
 // Etsy sync happens on Printify's side sometime after publish — confirmed
 // in practice to take longer than the few seconds createPrintifyTshirtProduct
 // itself waits, so this on-demand re-check (refreshPrintifyProductLink)
@@ -5789,6 +5661,70 @@ async function copyPublishField(fieldId, btn) {
     setTimeout(() => { btn.textContent = orig; }, 1400);
   } catch(e) { alert(text); }
 }
+// Converts Post Body's markdown-ish plain text (extractBlocksTextRecursive's
+// own output format — "# "/"## "/"### "/"#### " headings, "- " bullets,
+// everything else a paragraph) into real HTML, so copying writes actual
+// headings/paragraphs/lists to the clipboard instead of literal "##"
+// characters that a rich-text target (LinkedIn's article editor, Notion,
+// Google Docs) can't interpret as formatting on paste.
+// Headings are double-marked (<h#> wrapping <strong>) AND wrapped in a
+// »» ... «« punctuation convention: LinkedIn's article editor has real
+// Heading 1/2 block types, but its paste sanitizer only reliably keeps
+// bold/italic/lists/links from external HTML — semantic heading tags get
+// stripped on paste more often than not (a known, fairly well-documented
+// LinkedIn behavior, not something fixable by choosing different heading
+// markup). The inner <strong> is the first fallback: if the heading tag
+// survives, great, a real heading; if it's stripped, the bold still comes
+// through. The »»/«« markers are the second fallback and the actual point
+// of this convention — they're plain characters inside the text node, so
+// they survive even when both the tag AND the bold styling get stripped,
+// and they're distinctive enough (rare in real prose, easy to regex) for an
+// operator-side macro to scan the pasted LinkedIn text, find each »» ... ««
+// line, strip the markers, and apply LinkedIn's own Heading 2 toolbar
+// action to it — the one step nothing in a paste handler can do for you.
+function markdownishToHtml(text) {
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const lines = String(text || '').split('\n');
+  let html = '', listOpen = false;
+  const closeList = () => { if (listOpen) { html += '</ul>'; listOpen = false; } };
+  const heading = (tag, content) => `<${tag}><strong>»» ${esc(content)} ««</strong></${tag}>`;
+  for (const line of lines) {
+    if (!line.trim()) { closeList(); continue; }
+    let m;
+    if ((m = line.match(/^\s*#### (.+)$/)))      { closeList(); html += heading('h4', m[1]); }
+    else if ((m = line.match(/^\s*### (.+)$/)))  { closeList(); html += heading('h3', m[1]); }
+    else if ((m = line.match(/^\s*## (.+)$/)))   { closeList(); html += heading('h2', m[1]); }
+    else if ((m = line.match(/^\s*# (.+)$/)))    { closeList(); html += heading('h1', m[1]); }
+    else if ((m = line.match(/^\s*- (.+)$/)))    { if (!listOpen) { html += '<ul>'; listOpen = true; } html += `<li>${esc(m[1])}</li>`; }
+    else { closeList(); html += `<p>${esc(line.trim())}</p>`; }
+  }
+  closeList();
+  return html;
+}
+// Writes both text/plain and text/html to the clipboard (ClipboardItem) so
+// a rich-text-aware paste target renders real formatting, while a
+// plain-text-only target still gets clean readable text — falls back to
+// plain writeText on browsers/contexts without ClipboardItem support.
+async function copyPubPostBodyRich(btn) {
+  const text = document.getElementById('pubPostBody').value;
+  if (!text) { alert('Nothing to copy — this field is empty.'); return; }
+  try {
+    if (window.ClipboardItem) {
+      const html = markdownishToHtml(text);
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+        'text/html': new Blob([html], { type: 'text/html' }),
+      })]);
+    } else {
+      await navigator.clipboard.writeText(text);
+    }
+    const orig = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(() => { btn.textContent = orig; }, 1400);
+  } catch(e) {
+    try { await navigator.clipboard.writeText(text); } catch(e2) { alert(text); }
+  }
+}
 function openPublishFieldLink(fieldId) {
   const url = document.getElementById(fieldId).value.trim();
   if (!url) { alert('Nothing to open — this field is empty.'); return; }
@@ -5800,6 +5736,7 @@ async function savePublishAssetFields() {
   const fields = {
     status: document.getElementById('pubStatus').value,
     title: document.getElementById('pubTitle').value.trim(),
+    platformTitle: document.getElementById('pubPlatformTitle').value.trim(),
     designLink: document.getElementById('pubDesignLink').value.trim(),
     productLink: document.getElementById('pubProductLink').value.trim(),
     hashtags: document.getElementById('pubHashtags').value.trim(),
@@ -6521,59 +6458,6 @@ async function submitQuickAddTitle() {
     btn.disabled = false; btn.textContent = 'Add';
   }
 }
-let WP_TITLE_ID = null;
-function openWritePillarModal(titleId, titleName) {
-  WP_TITLE_ID = titleId;
-  document.getElementById('wpTitleDisplay').textContent = titleName || '';
-  document.getElementById('wpResearchInput').value = '';
-  document.getElementById('wpStyleInput').value = '';
-  document.getElementById('wpStatus').textContent = '';
-  document.querySelector('input[name="wpMode"][value="grounded"]').checked = true;
-  const btn = document.getElementById('wpGoBtn');
-  btn.disabled = false; btn.textContent = 'Write Pillar';
-  document.getElementById('writePillarModal').classList.add('open');
-}
-function closeWritePillarModal() {
-  document.getElementById('writePillarModal').classList.remove('open');
-  WP_TITLE_ID = null;
-}
-document.getElementById('writePillarModal').addEventListener('click', function(e) {
-  if (e.target === this) closeWritePillarModal();
-});
-async function submitWritePillar() {
-  const status = document.getElementById('wpStatus');
-  const mode = document.querySelector('input[name="wpMode"]:checked').value;
-  const research = document.getElementById('wpResearchInput').value.trim();
-  const style = document.getElementById('wpStyleInput').value.trim();
-  if (mode === 'fresh' && !research) {
-    status.textContent = 'Fresh research needs a prompt — what should this piece be about?';
-    status.style.color = '#fc8181';
-    return;
-  }
-  const btn = document.getElementById('wpGoBtn');
-  btn.disabled = true; btn.textContent = 'Writing…';
-  status.style.color = '#888';
-  status.textContent = 'Researching and writing the pillar post…';
-  try {
-    const data = await w('writeTitlePillar', {
-      titleId: WP_TITLE_ID,
-      useGrounding: mode === 'grounded',
-      researchOverride: research || undefined,
-      styleGuidance: style || undefined,
-    });
-    if (data.error) throw new Error(data.error);
-    status.textContent = `✓ Pillar written (${data.wordCount || '?'} words) — now ${data.newStatus}`;
-    status.style.color = '#68d391';
-    btn.textContent = 'Done';
-    if (typeof loadTitles === 'function') loadTitles();
-    setTimeout(closeWritePillarModal, 1200);
-  } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-    status.style.color = '#fc8181';
-    btn.disabled = false; btn.textContent = 'Write Pillar';
-  }
-}
-
 // (openVisualBriefModal / closeVisualBriefModal / submitVisualBrief defined
 // further down, near the old generateVisualBrief location, to keep the
 // Visual Brief Setup modal's JS together with its HTML block below.)

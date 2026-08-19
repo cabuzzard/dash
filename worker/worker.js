@@ -888,6 +888,96 @@ Return ONLY this JSON object, no other text, no markdown fences:
   } catch (e) { /* best-effort — pillar still writes from whatever grounding it already has */ }
 }
 
+// ── buildAssetPrecedenceContext ──
+// The house standard for how research grounds ANY asset generation call —
+// generateTitleAssets and any future asset-type branch should build its
+// prompt by concatenating this block, then the Method framework, then the
+// title's Pillar Content, then Platform conventions, in that fixed order:
+//   campaign research -> product research -> title keywords/overrides
+//   -> method -> pillar (unchanged by method or platform) -> platform -> asset
+// This function covers the first three layers only (method/pillar/platform
+// are fetched by the caller, since they differ per asset type). The
+// precedence rule, stated explicitly in the returned text so the model
+// itself respects it, not just the fetch order: PRODUCT research overrides
+// CAMPAIGN research on conflict, and campaign research is included only to
+// the extent it supports getting traffic to what the product research
+// describes — it never dilutes or redirects the product's own positioning.
+// Title-level keywords/overrides (this specific generation call's own
+// seedKeywords/researchInstructions/description) are the most specific
+// layer and sit last/highest-precedence of the three.
+async function buildAssetPrecedenceContext(hdr, env, { campaignId, productId, titleId, seedKeywords, researchInstructions, description }) {
+  const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const rt = (props, key) => (props?.[key]?.rich_text || []).map(t => t.plain_text).join("");
+  const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
+  const parts = [];
+
+  if (campaignId) {
+    try {
+      const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+        method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+      }).then(r => r.json()).catch(() => ({ results: [] }));
+      const rp = (researchRows.results || [])[0]?.properties;
+      if (rp) {
+        const lines = [
+          rt(rp, "Statement")          && `Statement: ${rt(rp, "Statement")}`,
+          rt(rp, "Unique Opportunity") && `Unique Opportunity: ${rt(rp, "Unique Opportunity")}`,
+          rt(rp, "Key Message")        && `Key Message: ${rt(rp, "Key Message")}`,
+          rt(rp, "Campaign Goal")      && `Campaign Goal: ${rt(rp, "Campaign Goal")}`,
+          rt(rp, "Pain Points")        && `Pain Points: ${rt(rp, "Pain Points")}`,
+          rt(rp, "Keywords")           && `Keywords: ${rt(rp, "Keywords")}`,
+        ].filter(Boolean);
+        if (lines.length) {
+          parts.push(hasProduct
+            ? `CAMPAIGN RESEARCH (lowest precedence — use this ONLY to the extent it helps get traffic to the PRODUCT RESEARCH below; where the two conflict, the product wins, and don't let campaign-level framing dilute or redirect the product's own positioning):\n${lines.join("\n")}`
+            : `CAMPAIGN RESEARCH:\n${lines.join("\n")}`);
+        }
+      }
+    } catch (e) { /* best-effort */ }
+  }
+
+  if (hasProduct) {
+    try {
+      const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+      if (prodPage?.properties) {
+        const pp = prodPage.properties;
+        const productLines = [
+          rt(pp, "Keywords")        && `Keywords: ${rt(pp, "Keywords")}`,
+          rt(pp, "Avatar")          && `Avatar: ${rt(pp, "Avatar")}`,
+          rt(pp, "Transformation")  && `Transformation: ${rt(pp, "Transformation")}`,
+          rt(pp, "Offer Structure") && `Offer Structure: ${rt(pp, "Offer Structure")}`,
+          rt(pp, "Proof Points")    && `Proof Points: ${rt(pp, "Proof Points")}`,
+          rt(pp, "Objections")      && `Objections: ${rt(pp, "Objections")}`,
+          rt(pp, "Unique Angle")    && `Unique Angle: ${rt(pp, "Unique Angle")}`,
+        ].filter(Boolean);
+        if (productLines.length) parts.push(`PRODUCT RESEARCH (overrides campaign research above on any conflict):\n${productLines.join("\n")}`);
+      }
+      // Not called here on purpose — by the time this helper runs,
+      // generateTitleAssets has already guaranteed a Pillar exists (which
+      // itself calls ensureProductStrategy), so a Strategy record already
+      // exists for any product that has ever generated a pillar. Re-running
+      // it here would just be a redundant existence check.
+      const stratRecord = await findBestStrategyRecord(hdr, productId).catch(() => null);
+      const sp = stratRecord?.properties;
+      if (sp) {
+        const stratLines = STRATEGY_FIELDS.map(f => rt(sp, f) && `${f}: ${rt(sp, f)}`).filter(Boolean);
+        if (stratLines.length) parts.push(`PRODUCT STRATEGY (positioning — overrides campaign research above on any conflict):\n${stratLines.join("\n")}`);
+      }
+    } catch (e) { /* best-effort */ }
+  }
+
+  const overrideLines = [
+    seedKeywords && `Seed Keywords: ${seedKeywords}`,
+    description && `Description: ${description}`,
+    researchInstructions && `Instructions: ${researchInstructions}`,
+  ].filter(Boolean);
+  if (overrideLines.length) {
+    parts.push(`TITLE-LEVEL KEYWORDS & OVERRIDES (most specific layer — this generation call's own instructions; wins over anything above where it's more specific):\n${overrideLines.join("\n")}`);
+  }
+
+  return parts.join("\n\n");
+}
+
 // Parses a Method's own page body into its natural Phase > Grouping
 // structure by BLOCK TYPE (heading_1/2 = phase boundary, heading_3 =
 // grouping boundary within the current phase, bullets/numbered items =
@@ -1264,8 +1354,8 @@ ${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `SEED KEYW
 DESIGN SPEC: Background ${spec.bg} · Ink ${spec.ink} · Accent ${spec.accent} · Headline font ${spec.headlineFont} · Body font ${spec.bodyFont}
 ${(siblingTitles || []).length ? `OTHER OPTIONS ALREADY IN THIS BATCH (stay distinct from these): ${siblingTitles.filter(t => t !== original.assetTitle).join(", ")}\n` : ""}
 Every concept is a ${assetType} — do not propose other formats. Must be complete enough to build immediately.
-${isDrawingPost ? `Also include "canvaQuery": a short 2-4 word Canva template search phrase.\n` : ""}
-Return ONLY this JSON, no other text: { "assetTitle": "short distinct option name", "platform": "${original.platform || "Instagram"}", "body": "full revised concept: on-image text, layout, spec usage, caption"${isDrawingPost ? ', "canvaQuery": "2-4 word Canva search phrase"' : ""} }`;
+${isDrawingPost ? `Also include "canvaQuery": a short 2-4 word Canva template search phrase.\n` : ""}${original.platformTitle ? `This concept also had a "platformTitle" (the platform's own title-entry field, separate from the caption/body): "${original.platformTitle}" — keep it unless the fix requires changing it.\n` : ""}
+Return ONLY this JSON, no other text: { "assetTitle": "short distinct option name", "platform": "${original.platform || "Instagram"}", "body": "full revised concept: on-image text, layout, spec usage, caption"${isDrawingPost ? ', "canvaQuery": "2-4 word Canva search phrase"' : ""}${original.platformTitle ? ', "platformTitle": "the platform title-entry field, revised if needed"' : ""} }`;
 
   try {
     const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1277,7 +1367,7 @@ Return ONLY this JSON, no other text: { "assetTitle": "short distinct option nam
     if (!aiResp.ok) return original;
     const raw = (aiData.content?.[0]?.text || "").replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
     const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
-    return { assetTitle: parsed.assetTitle || original.assetTitle, platform: parsed.platform || original.platform, body: parsed.body || original.body, canvaQuery: parsed.canvaQuery || original.canvaQuery };
+    return { assetTitle: parsed.assetTitle || original.assetTitle, platform: parsed.platform || original.platform, body: parsed.body || original.body, canvaQuery: parsed.canvaQuery || original.canvaQuery, platformTitle: parsed.platformTitle || original.platformTitle };
   } catch(e) { return original; }
 }
 
@@ -5280,6 +5370,27 @@ Return ONLY a JSON object, no other text, no markdown fences:
         return json({ strategy: { id: record.id.replace(/-/g,""), url: record.url, status: props.Status?.select?.name || "", fields } });
       }
 
+      // ── researchProductStrategy ──
+      // Runs the FULL Strategy field set (STRATEGY_FIELDS) in one Claude
+      // call, right when a product is created — not lazily deferred to the
+      // first pillar write. Thin wrapper around ensureProductStrategy, which
+      // already no-ops if a Strategy record exists for this product (the
+      // "resolve once, never auto-patch" rule — see resolveCampaignDesignDefaults
+      // for the same pattern elsewhere), so calling this on a product that
+      // already has one is always safe. The product's own Description
+      // property (set at creation, from the Add Product modal) is what
+      // ensureProductStrategy reads as its seed grounding — there's no
+      // separate seed-keywords param here on purpose; whatever the operator
+      // typed into Description at creation time IS the seed.
+      if (body.action === "researchProductStrategy") {
+        const { productId, campaignId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await ensureProductStrategy(hdr, env, productId, campaignId || undefined);
+        return json({ success: true });
+      }
+
       // ── getCampaignStrategies ──
       // Lists every product under a campaign with its Product Strategy
       // (positioning) status/link and any Method Briefs under it — the
@@ -6760,6 +6871,12 @@ Return ONLY a JSON array — no other text, no markdown fences:
                 // sets this — the actual Etsy listing URL once sync completes,
                 // falling back to the Printify editor URL until then).
                 productLink: p["Product Link"]?.url || "",
+                // The platform's own title-entry field (YouTube title, SEO
+                // title, LinkedIn Article headline, listing title) — only
+                // ever set when the method/platform genuinely has one;
+                // distinct from "Asset Title" (this record's own display
+                // name) above.
+                platformTitle: p["Platform Title"]?.rich_text?.map(x => x.plain_text).join("") || "",
               };
             } catch(e) { return null; }
           }))).filter(Boolean);
@@ -8409,6 +8526,43 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
 
+        // ── Guarantee: every asset reshapes REAL source material, always.
+        // This replaces the old manual "📝 Write Pillar" button entirely —
+        // there is no separate operator step for pillar creation anymore.
+        // If this title has no Pillar Content yet (quick-added at
+        // "Planning" with skipPillar, or any other gap), write it now,
+        // before any asset-type branch below runs, regardless of whether
+        // this call came from the Development section or the Publish
+        // section's "generate more assets" entry point — both call this
+        // same action against the same real titleId, so the guarantee is
+        // automatically identical either way. A title still at "Planning"
+        // moves to "Development" the same way writeTitlePillar always has,
+        // since the whole point of Planning was "not real content yet."
+        // Best-effort: a legacy title with genuinely nothing to ground a
+        // pillar in (no campaign, no product, no notes) still falls through
+        // and generates from whatever IS available — this never blocks
+        // asset generation, it only fills the gap when it can.
+        try {
+          const existingPillar = await extractPillarContent(dsHdr, dsDash(titleId)).catch(() => "");
+          if (!existingPillar) {
+            const pillarResult = await writePillarContent(dsHdr, env, {
+              titleId, titleText: title, campaignId,
+              productId: hasProduct ? productId : undefined,
+              methodId: methodId && methodId !== "__none__" ? methodId : undefined,
+              guidance: researchInstructions || description || undefined,
+            }).catch(e => ({ error: e.message }));
+            if (pillarResult && !pillarResult.error && !pillarResult.skipped) {
+              const titlePage = await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null);
+              if (titlePage?.properties?.Status?.select?.name === "Planning") {
+                await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
+                  method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+                  body: JSON.stringify({ properties: { "Status": { select: { name: "Development" } } } }),
+                }).catch(() => {});
+              }
+            }
+          }
+        } catch (e) { /* best-effort — asset generation still proceeds below */ }
+
         // ── SEO Post asset type: one full written pillar post, not N visual
         // concept options to pick between. Reuses the title's existing
         // 3-subhead outline (written by the SEO Post method's follow-up step)
@@ -8466,8 +8620,10 @@ Requirements:
 - Write a short 2-3 sentence intro before the first subhead, and a short concluding paragraph after the last section.
 - No meta-commentary, no "in this article we will," no headers other than the 3 subheads.
 
+Also write "seoTitle": the actual title-tag/headline this post should publish under — distinct from the working title above if a sharper, more search-friendly phrasing exists; SEO posts always use this field since the platform's own title entry is the whole point of the format.
+
 Return ONLY this JSON object, no other text, no markdown fences:
-{ "intro": "...", "sections": [ { "heading": "...", "body": "..." }, ... exactly 3 total ... ], "conclusion": "..." }`;
+{ "intro": "...", "sections": [ { "heading": "...", "body": "..." }, ... exactly 3 total ... ], "conclusion": "...", "seoTitle": "..." }`;
 
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
@@ -8498,6 +8654,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
             "Body":         { rich_text: [{ text: { content: String(post.intro || "").slice(0, 2000) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
           };
+          // Platform Title — the platform's own title-entry field (here, the
+          // SEO title tag), distinct from "Asset Title" above (this Notion
+          // record's own display name, still the internal working title).
+          if (post.seoTitle) assetProps["Platform Title"] = { rich_text: [{ text: { content: String(post.seoTitle).slice(0, 200) } }] };
           if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
           // Explicit Platform pick (from the real Platforms DB) wins over
           // anything guessed — this asset is "packaged for" that platform.
@@ -8632,6 +8792,10 @@ Produce all of this by calling the submit_article tool — do not include any of
             "Body":         { rich_text: [{ type: "text", text: { content: String(article.hook || "").slice(0, 2000) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
             "Design Notes": { rich_text: [{ type: "text", text: { content: bannerCopyLine } }] },
+            // Platform Title — LinkedIn's article editor has its own real
+            // headline field, distinct from "Asset Title" above (this
+            // Notion record's own display name).
+            "Platform Title": { rich_text: [{ type: "text", text: { content: headline } }] },
           };
           if (canvaTemplateLink) assetProps["Canva Link"] = { url: canvaTemplateLink };
           if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
@@ -8869,7 +9033,12 @@ Produce all of this by calling the submit_table tool — do not include any of i
           }
         } catch(e) { /* defaults are fine */ }
 
-        // method grounding (name + framework text)
+        // method grounding (name + framework text) + this title's own
+        // already-written pillar content, fetched together. Method also
+        // carries copy-writing indicators beyond raw platform format — e.g.
+        // "benefits focus" or "skills list focus" — which live in its own
+        // framework text (methodBody) same as everything else about it, not
+        // a separate field.
         let methodName = "", methodBody = "";
         if (methodId && methodId !== "__none__") {
           try {
@@ -8895,18 +9064,29 @@ Produce all of this by calling the submit_table tool — do not include any of i
         // entry point that still matches each concept).
         const isDrawingPost = /drawing/i.test(methodName);
 
+        // Precedence chain (see buildAssetPrecedenceContext): campaign
+        // research -> product research -> title keywords/overrides. Pillar
+        // content — this title's own already-written source material,
+        // unchanged by method or platform — is fetched here too, since this
+        // path (unlike SEO Post/LinkedIn Post above) never read it before.
+        const [researchContext, pillarContent] = await Promise.all([
+          buildAssetPrecedenceContext(dsHdr, env, { campaignId, productId: hasProduct ? productId : undefined, titleId, seedKeywords, researchInstructions, description }),
+          extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
+        ]);
+
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a senior content designer and copywriter. Create exactly ${count} DISTINCT asset concepts — options for the operator to choose between — for the content idea below. Every concept is a ${assetType} — do not propose other formats. Each must be complete enough to build immediately without further questions.
 
 IDEA / TITLE: ${title}
-${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `SEED KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${methodName ? `METHOD: ${methodName}${methodBody ? `\nMETHOD NOTES/FRAMEWORK (dictates the deliverable format):\n${methodBody}` : ""}\n` : ""}${platformName ? `PLATFORM (from the Platforms DB — this asset is being packaged for publishing here, every concept must fit its native format/length/conventions): ${platformName}\n` : ""}${subMethodName ? `SUB METHOD / TARGET PLATFORM: ${subMethodName} — every concept must be built for ${subMethodName} specifically (its native formats, dimensions, character limits, and audience behavior).${subMethodBody ? `\nPLATFORM FRAMEWORK NOTES:\n${subMethodBody}` : ""}\n` : ""}
+${researchContext ? `\n${researchContext}\n` : ""}${methodName ? `\nMETHOD: ${methodName}${methodBody ? `\nMETHOD NOTES/FRAMEWORK (dictates the deliverable format, tone, and any copy-writing focus — e.g. benefits-first, skills-list, etc.):\n${methodBody}` : ""}\n` : ""}${pillarContent ? `\nPILLAR CONTENT (this title's own already-written source material — reshape THIS, don't invent new facts beyond what's here and the research above):\n${pillarContent.slice(0, 3000)}\n` : ""}${platformName ? `\nPLATFORM (from the Platforms DB — this asset is being packaged for publishing here, every concept must fit its native format/length/conventions): ${platformName}\n` : ""}${subMethodName ? `\nSUB METHOD / TARGET PLATFORM: ${subMethodName} — every concept must be built for ${subMethodName} specifically (its native formats, dimensions, character limits, and audience behavior).${subMethodBody ? `\nPLATFORM FRAMEWORK NOTES:\n${subMethodBody}` : ""}\n` : ""}
 DESIGN SPEC (every concept must match this aesthetic):
 Background ${spec.bg} · Ink ${spec.ink} · Accent ${spec.accent} · Headline font ${spec.headlineFont} · Body font ${spec.bodyFont}
 ${spec.notes ? `Aesthetic: ${spec.notes}` : ""}
 
 Each concept must take a genuinely different approach to the same idea — different layout, hook, or visual metaphor, not just a color swap. The body must fully specify the deliverable: exact on-image headline/text, visual layout description, how the design spec colors/fonts are used, and the accompanying post caption.
 ${isDrawingPost ? `Each item must ALSO include "canvaQuery": a short 2-4 word Canva template search phrase matching that concept's visual style and subject (e.g. "minimal line diagram", "hand drawn infographic") — used to build a Canva starting-point link.\n` : ""}
+"assetTitle" is this concept's own short distinct option NAME (for the operator to pick between) — never touch the source title above. "platformTitle" is a SEPARATE, optional field: only include it if the target platform genuinely has its own distinct title-entry field separate from the post/caption body (e.g. a YouTube video title, a blog/SEO title, a listing title) — leave it out entirely for formats that don't (a plain Instagram/TikTok/X post, a caption-only image). Most concepts should NOT include it.
 Return ONLY a JSON array of exactly ${count} items, no markdown fences:
-[{ "assetTitle": "short distinct option name", "platform": "Instagram" | "LinkedIn" | "TikTok" | "YouTube" | "Facebook" | "X / Twitter" | "Other", "body": "full concept: on-image text, layout, spec usage, caption"${isDrawingPost ? ', "canvaQuery": "2-4 word Canva search phrase"' : ""} }]`;
+[{ "assetTitle": "short distinct option name", "platform": "Instagram" | "LinkedIn" | "TikTok" | "YouTube" | "Facebook" | "X / Twitter" | "Other", "body": "full concept: on-image text, layout, spec usage, caption", "platformTitle": "optional — only if this platform genuinely uses a separate title field"${isDrawingPost ? ', "canvaQuery": "2-4 word Canva search phrase"' : ""} }]`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -8969,6 +9149,12 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           properties["Asset Type"] = { select: { name: String(assetType).slice(0, 100) } }; // required — every asset has a type
           if (isDrawingPost && current.canvaQuery) properties["Design Link"] = { url: "https://www.canva.com/templates/?query=" + encodeURIComponent(String(current.canvaQuery).slice(0, 80)) };
           if (campaignId)  properties["Campaign"]      = { relation: [{ id: dsDash(campaignId) }] };
+          // Platform Title — the platform's own title-entry field (YouTube
+          // title, SEO title, listing title), distinct from "Asset Title"
+          // above (which is just this Notion record's own display name).
+          // Only set when the model actually produced one — most concepts
+          // won't, since most platforms don't have a separate title field.
+          if (current.platformTitle) properties["Platform Title"] = { rich_text: [{ text: { content: String(current.platformTitle).slice(0, 200) } }] };
           const resp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { ...dsHdr, "Content-Type": "application/json" },
@@ -12104,7 +12290,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       // of leaving the modal to use the main dashboard's status badge —
       // same "Asset Status" select property, same allowed values.
       if (body.action === "updatePublishFields") {
-        const { assetId, title, designLink, productLink, hashtags, postCaption, status } = body;
+        const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
@@ -12114,6 +12300,17 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         if (productLink !== undefined) {
           await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Product Link": { type: "url" } });
           props["Product Link"] = { url: productLink || null };
+        }
+        // Platform Title — the platform's own title-entry field (YouTube
+        // title, SEO title, listing title), distinct from "Asset Title"
+        // above (this record's own Notion display name). Only present at
+        // all when the method/platform that generated this asset called
+        // for one — editable here like every other publish-ready field.
+        // Same property the Assembly Review pipeline already writes
+        // (ASSEMBLE_PROPS) — reused, not a new competing field.
+        if (platformTitle !== undefined) {
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Platform Title": { type: "rich_text" } });
+          props["Platform Title"] = { rich_text: platformTitle ? chunkRT(platformTitle) : [] };
         }
         if (hashtags !== undefined) props["Hashtags"] = { rich_text: hashtags ? chunkRT(hashtags) : [] };
         if (postCaption !== undefined) props["Post Caption"] = { rich_text: postCaption ? chunkRT(postCaption) : [] };
@@ -12492,6 +12689,102 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
           }).catch(() => {});
         }
         return json({ success: true, productLink, isLive });
+      }
+
+      // ── updatePrintifyTshirtProduct ──
+      // Pushes the asset's CURRENT Notion fields (title/description/
+      // hashtags, and a fresh copy of Final Media File if the design image
+      // changed) onto the EXISTING Printify product — a real edit, not a
+      // second createPrintifyTshirtProduct (which always POSTs a brand new
+      // product and would leave the old one orphaned). Keeps whichever
+      // colors/sizes are already enabled on the product rather than asking
+      // the operator to re-pick them; that's still createPrintifyTshirtProduct's
+      // job for a first-time publish. Design Link (and therefore the
+      // Printify product id) doesn't change — same product, edited in
+      // place, then re-published so the edit actually reaches the live
+      // Etsy listing (Printify's publish endpoint is also how you push an
+      // update to an already-published listing, not just the first one).
+      if (body.action === "updatePrintifyTshirtProduct") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const PF = (env.PRINTIFY_API_TOKEN || '').trim();
+        if (!PF) return json({ error: "PRINTIFY_API_TOKEN not configured" }, 400);
+        const pfHdr = { "Authorization": `Bearer ${PF}`, "Content-Type": "application/json" };
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const p = assetPage.properties;
+        const assetTitle = p["Asset Title"]?.title?.map(t => t.plain_text).join("") || "T-Shirt Design";
+        const description = p["Description"]?.rich_text?.map(t => t.plain_text).join("") || "";
+        const hashtagsRaw = p["Hashtags"]?.rich_text?.map(t => t.plain_text).join("") || "";
+        const designUrl = p["Final Media File"]?.url || "";
+        const designLink = p["Design Link"]?.url || "";
+        const campaignId = p["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        if (!designUrl) return json({ error: "No design file on this asset — upload one via the 📤 Design File button first" }, 400);
+        const productIdMatch = designLink.match(/\/editor\/([a-zA-Z0-9]+)/);
+        if (!productIdMatch) return json({ error: "No existing Printify product on this asset — use \"Create Printify Product\" first" }, 400);
+        if (!campaignId) return json({ error: "Asset has no Campaign relation — can't resolve which Printify store to use" }, 400);
+        const productId = productIdMatch[1];
+
+        const tags = hashtagsRaw.split(/[\s,]+/).map(h => h.replace(/^#/, '').trim()).filter(Boolean).filter(t => t.length <= 20).slice(0, 13);
+
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+        const shopsResp = await fetch("https://api.printify.com/v1/shops.json", { headers: pfHdr });
+        const shops = await shopsResp.json();
+        if (!shopsResp.ok) return json({ error: shops.message || "Printify shop lookup failed" }, shopsResp.status);
+        const shop = (shops || []).find(s => slugify(s.title) === deployPath);
+        if (!shop) return json({ error: `No Printify store slugifies to "${deployPath}"` }, 400);
+
+        const existingResp = await fetch(`https://api.printify.com/v1/shops/${shop.id}/products/${productId}.json`, { headers: pfHdr });
+        const existing = await existingResp.json();
+        if (!existingResp.ok) return json({ error: existing.message || "Printify product lookup failed" }, existingResp.status);
+        const enabledVariantIds = (existing.variants || []).filter(v => v.is_enabled).map(v => v.id);
+        if (!enabledVariantIds.length) return json({ error: "Existing product has no enabled variants — check it in Printify directly" }, 400);
+
+        // Re-upload the design every time (cheap; Printify doesn't expose a
+        // "has this changed" check, and skipping the upload would mean an
+        // edited artwork file never actually reaches the print area).
+        const uploadResp = await fetch("https://api.printify.com/v1/uploads/images.json", {
+          method: "POST", headers: pfHdr,
+          body: JSON.stringify({ file_name: assetTitle.slice(0, 60) + '.png', url: designUrl }),
+        });
+        const uploaded = await uploadResp.json();
+        if (!uploadResp.ok || !uploaded.id) return json({ error: uploaded.message || "Printify image upload failed" }, uploadResp.status || 502);
+
+        const updateResp = await fetch(`https://api.printify.com/v1/shops/${shop.id}/products/${productId}.json`, {
+          method: "PUT", headers: pfHdr,
+          body: JSON.stringify({
+            title: assetTitle.slice(0, 255),
+            description: description || assetTitle,
+            tags,
+            print_areas: [{ variant_ids: enabledVariantIds, placeholders: [{ position: "front", images: [{ id: uploaded.id, x: 0.5, y: 0.5, scale: 1, angle: 0 }] }] }],
+          }),
+        });
+        const updated = await updateResp.json();
+        if (!updateResp.ok) return json({ error: updated.message || "Printify product update failed" }, updateResp.status || 502);
+
+        // Push the edit to the live Etsy listing — same endpoint the
+        // original publish used; calling it again on an already-published
+        // product is how Printify syncs subsequent edits, not just the
+        // first publish.
+        const publishResp = await fetch(`https://api.printify.com/v1/shops/${shop.id}/products/${productId}/publish.json`, {
+          method: "POST", headers: pfHdr,
+          body: JSON.stringify({ title: true, description: true, images: true, variants: true, tags: true }),
+        });
+        if (!publishResp.ok) { const r = await publishResp.json().catch(() => ({})); return json({ error: r.message || "Updated in Printify but re-publish to Etsy failed — push again from Printify directly" }, 502); }
+
+        const thumbnail = updated.images?.[0]?.src || '';
+        if (thumbnail) {
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Thumbnail": { url: thumbnail } } }),
+          }).catch(() => {});
+        }
+
+        return json({ success: true, productId, editUrl: `https://printify.com/app/editor/${productId}`, variantCount: enabledVariantIds.length });
       }
 
       // ── MICROSITE: getCampaignLogins ──
