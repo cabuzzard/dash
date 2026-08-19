@@ -2925,6 +2925,13 @@ export default {
         });
 
         const campTitles = {};
+        // Tracks each campaign's most recent Published-status title so the
+        // campaign list can rise the most currently-active campaigns to the
+        // top, even though this view is showing Development-stage titles.
+        // Same "what actually went out" convention getContentOutputStats
+        // already uses: Scheduled Date on a Published title; falls back to
+        // the page's own last_edited_time when Scheduled Date was never set.
+        const campLastPublished = {};
         titleRows.forEach(t => {
           const props  = t.properties;
           const status = props.Status?.select?.name || "";
@@ -2944,6 +2951,13 @@ export default {
             productId:  (props.product?.relation || [])[0]?.id?.replace(/-/g,"") || "__none__",
             methodId:   (props.method?.relation  || [])[0]?.id?.replace(/-/g,"") || "__none__",
           });
+
+          if (status === "Published") {
+            const publishedAt = props["Scheduled Date"]?.date?.start || t.last_edited_time || null;
+            if (publishedAt && (!campLastPublished[campId] || publishedAt > campLastPublished[campId])) {
+              campLastPublished[campId] = publishedAt;
+            }
+          }
         });
 
         // Add all campaigns — even those with no titles
@@ -2982,10 +2996,23 @@ export default {
           const prodCount = activeProdCount[campId] || 0;
           const STATUS_RANK = { "Development": 0, "Publish": 1 };
           camp.titles.sort((a, b) => (STATUS_RANK[a.status] ?? 2) - (STATUS_RANK[b.status] ?? 2));
-          return { campId, name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", titles: camp.titles, devCount, pubCount, prodCount };
+          return { campId, name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", titles: camp.titles, devCount, pubCount, prodCount, lastPublishedAt: campLastPublished[campId] || null };
         });
 
-        campaigns.sort((a, b) => b.devCount - a.devCount);
+        // Most-recently-published campaigns rise to the top first — the
+        // operator wants currently-active campaigns surfaced even while
+        // browsing their Development-stage titles. Campaigns with no
+        // Published material yet sink to the bottom, ordered by devCount
+        // (the prior sort) as a fallback among themselves.
+        campaigns.sort((a, b) => {
+          if (a.lastPublishedAt && b.lastPublishedAt) {
+            if (a.lastPublishedAt !== b.lastPublishedAt) return a.lastPublishedAt < b.lastPublishedAt ? 1 : -1;
+            return b.devCount - a.devCount;
+          }
+          if (a.lastPublishedAt && !b.lastPublishedAt) return -1;
+          if (!a.lastPublishedAt && b.lastPublishedAt) return 1;
+          return b.devCount - a.devCount;
+        });
         return json({ campaigns });
       }
 
@@ -10190,79 +10217,6 @@ Return ONLY a JSON object with these exact keys:
         }
         return json({ success: true, strategy });
       }
-
-      // ── getContentTitles ──
-      if (body.action === "getContentTitles") {
-        const { campaignId } = body;
-        const statusFilter = { or: [
-          { property: "Status", select: { equals: "Development" } },
-          { property: "Status", select: { equals: "Writing" } },
-          { property: "Status", select: { equals: "Review" } },
-          { property: "Status", select: { equals: "Approved" } },
-        ]};
-        const filter = campaignId
-          ? { and: [{ property: "Campaign", relation: { contains: campaignId } }, statusFilter] }
-          : statusFilter;
-        const results = await notionQuery(CONTENT_STRATEGY_DB, {
-          filter,
-          sorts: [{ property: "Sequence Order", direction: "ascending" }],
-        });
-        // Collect unique product + method + platform IDs
-        const productIds  = new Set();
-        const methodIds   = new Set();
-        const platformIds = new Set();
-        results.forEach(page => {
-          const props = page.properties;
-          (props.product?.relation   || []).forEach(r => productIds.add(r.id));
-          (props.method?.relation    || []).forEach(r => methodIds.add(r.id));
-          (props.Platforms?.relation || []).forEach(r => platformIds.add(r.id));
-        });
-        const fetchName = async id => {
-          try {
-            const r = await fetch(`https://api.notion.com/v1/pages/${id}`, {
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
-            });
-            const p = await r.json();
-            const name = p.properties?.Name?.title?.map(t => t.plain_text).join("")
-                      || p.properties?.Title?.title?.map(t => t.plain_text).join("")
-                      || "Unknown";
-            return { id: id.replace(/-/g,""), name };
-          } catch { return { id: id.replace(/-/g,""), name: "Unknown" }; }
-        };
-        const [prodPages, methPages, platPages] = await Promise.all([
-          Promise.all([...productIds].map(fetchName)),
-          Promise.all([...methodIds].map(fetchName)),
-          Promise.all([...platformIds].map(fetchName)),
-        ]);
-        const prodNames = {};
-        prodPages.forEach(p => prodNames[p.id] = p.name);
-        const methNames = {};
-        methPages.forEach(m => methNames[m.id] = m.name);
-        const platNames = {};
-        platPages.forEach(p => platNames[p.id] = p.name);
-        const titles = results.map(page => {
-          const props     = page.properties;
-          const productRel  = props.product?.relation   || [];
-          const methodRel   = props.method?.relation    || [];
-          const platformRel = props.Platforms?.relation || [];
-          const productId  = productRel.length ? productRel[0].id.replace(/-/g,"") : "__none__";
-          const methodId   = methodRel.length  ? methodRel[0].id.replace(/-/g,"")  : "__none__";
-          return {
-            id:          page.id.replace(/-/g,""),
-            title:       props.Title?.title?.map(t => t.plain_text).join("") || "Untitled",
-            status:      props.Status?.select?.name || "",
-            grouping:    props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "Ungrouped",
-            platform:    platformRel.map(r => platNames[r.id.replace(/-/g,"")] || "Unknown").join(", "),
-            format:      props.Format?.select?.name  || "",
-            productId,
-            productName: productRel.length ? (prodNames[productId] || "Unknown Product") : "No Product",
-            methodId,
-            methodName:  methodRel.length  ? (methNames[methodId]  || "Unknown Method")  : "No Method",
-          };
-        });
-        return json({ titles });
-      }
-
       // Î"Ã¶Ã‡Î"Ã¶Ã‡ CAMPAIGN ADMIN: getTodos Î"Ã¶Ã‡Î"Ã¶Ã‡
       if (body.action === "getTodos") {
         const results = await notionQuery(MAIN_TD_DB, {
