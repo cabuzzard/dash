@@ -661,6 +661,30 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- STACK EDIT MODAL — set/change which Product Stack an EXISTING product
+     belongs to. Reuses getProductStacks/setProductStack (already built for
+     the Add Product modal's stack field) as a standalone edit action. -->
+<div class="modal-overlay" id="stackEditModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="stackEditTitle">Product Stack</div>
+      <button class="modal-close" onclick="closeStackEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label" for="stack-edit-input">Product Stack <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(a grouping of related products, e.g. "Coaching Suite")</span></label>
+      <div style="position:relative;margin-bottom:4px;" id="stack-edit-wrap">
+        <input class="modal-ta" id="stack-edit-input" type="text" placeholder="Search existing stacks or add new…" style="height:32px;padding:5px 10px;margin-top:4px;" autocomplete="off" oninput="filterStackEditDd()" onfocus="filterStackEditDd()" />
+        <div id="stack-edit-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#222;border:1px solid #333;border-top:none;z-index:400;max-height:200px;overflow-y:auto;"></div>
+      </div>
+      <div class="modal-status" id="stackEditStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeStackEditModal()">Cancel</button>
+      <button class="modal-btn save" id="stackEditSave" onclick="saveStackEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- METHOD ADD MODAL -->
 <div class="modal-overlay" id="methodModal">
   <div class="modal">
@@ -3134,9 +3158,15 @@ function makeProductRow(p) {
   // (Current=green, Stale=yellow, Draft/none=grey).
   const stratColor = p.strategyStatus === 'Current' ? '#68d391' : (p.strategyStatus === 'Stale' ? '#f0b429' : '#555');
   const researchLink = `<button class="td-add-btn-inline" onclick="openStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Product Research" style="${psStyle};background:none;cursor:pointer;color:${stratColor};">research</button>`;
-  const growthPlanBtn = `<button class="td-add-btn-inline" onclick="openGrowthStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Generate Growth Strategy — recommends title groupings, methods, and platforms for this product" style="${psStyle};background:none;cursor:pointer;">🚀</button>`;
-  const growthPlanDropdown = `<select onmousedown="populateStrategyDropdown(this,'${p.id}')" onchange="onStrategyDropdownChange(this)" title="View Growth Strategies for this product" style="font-size:9px;background:#141414;color:#fff;border:1px solid #5f5f5f;border-radius:3px;padding:1px 2px;max-width:56px;flex-shrink:0;"><option value="">plans</option></select>`;
-  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}${stackBadge}<button class="td-add-btn-inline" onclick="openProductMethodsModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Review methods for this product">⚙</button>${growthPlanBtn}${growthPlanDropdown}${researchLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+  // Stack edit — set/change which Product Stack this product belongs to
+  // (Campaign → Product Stack → Product is the universal grouping now used
+  // across Development/Products/Publish). Methods, Growth Strategy
+  // generation, and the Growth Strategy "plans" dropdown were removed from
+  // this row per operator request (2026 — obsolete for now; Methods attach
+  // later, at title-development time, not here) — their modal functions
+  // still exist elsewhere in this file, just no longer triggered from here.
+  const stackEditBtn = `<button class="td-add-btn-inline" onclick="openStackEditModal('${p.id}','${p.name.replace(/'/g,"\\'")}','${(p.stack||'').replace(/'/g,"\\'")}')" title="Set Product Stack" style="${psStyle};background:none;cursor:pointer;color:#a78bfa;">stack</button>`;
+  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}${stackBadge}${stackEditBtn}${researchLink}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
 }
 
@@ -3331,6 +3361,85 @@ async function loadProductStacks() {
     const data = await w('getProductStacks', {});
     ALL_PRODUCT_STACKS = data.stacks || [];
   } catch(e) { ALL_PRODUCT_STACKS = []; }
+}
+
+// ── STACK EDIT MODAL — set/change an existing product's Product Stack ──
+let stackEditProductId = null;
+function openStackEditModal(productId, productName, currentStack) {
+  stackEditProductId = productId;
+  document.getElementById('stackEditTitle').textContent = productName + ' — Product Stack';
+  document.getElementById('stack-edit-input').value = currentStack || '';
+  document.getElementById('stack-edit-dd').style.display = 'none';
+  document.getElementById('stackEditStatus').textContent = '';
+  document.getElementById('stackEditStatus').className = 'modal-status';
+  document.getElementById('stackEditSave').disabled = false;
+  document.getElementById('stackEditSave').textContent = 'Save';
+  document.getElementById('stackEditModal').classList.add('open');
+  setTimeout(() => document.getElementById('stack-edit-input').focus(), 100);
+  loadProductStacks();
+}
+function closeStackEditModal() {
+  document.getElementById('stackEditModal').classList.remove('open');
+  stackEditProductId = null;
+}
+document.getElementById('stackEditModal').addEventListener('click', function(e) {
+  if (e.target === this) closeStackEditModal();
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('#stack-edit-wrap')) {
+    const dd = document.getElementById('stack-edit-dd');
+    if (dd) dd.style.display = 'none';
+  }
+});
+function filterStackEditDd() {
+  const query  = (document.getElementById('stack-edit-input').value || '').trim();
+  const queryL = query.toLowerCase();
+  const dd = document.getElementById('stack-edit-dd');
+  dd.innerHTML = '';
+
+  const matches = ALL_PRODUCT_STACKS.filter(s => !query || s.toLowerCase().includes(queryL)).slice(0, 12);
+  matches.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-item';
+    div.textContent = s;
+    div.onmousedown = () => {
+      document.getElementById('stack-edit-input').value = s;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+
+  const exact = ALL_PRODUCT_STACKS.some(s => s.toLowerCase() === queryL);
+  if (query && !exact) {
+    const div = document.createElement('div');
+    div.className = 'plat-dd-create';
+    div.textContent = '+ New stack "' + query + '"';
+    div.onmousedown = () => { dd.style.display = 'none'; };
+    dd.appendChild(div);
+  }
+
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+async function saveStackEdit() {
+  if (!stackEditProductId) return;
+  const stackVal = (document.getElementById('stack-edit-input').value || '').trim();
+  if (!stackVal) return;
+  const btn = document.getElementById('stackEditSave');
+  const status = document.getElementById('stackEditStatus');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await w('setProductStack', { productId: stackEditProductId, stack: stackVal });
+    const p = PRODUCT_ITEMS.find(x => x.id === stackEditProductId);
+    if (p) p.stack = stackVal;
+    status.textContent = 'Saved ✓';
+    status.className = 'modal-status ok';
+    renderProducts();
+    setTimeout(closeStackEditModal, 400);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false; btn.textContent = 'Save';
+  }
 }
 
 async function addProductFromModal() {
