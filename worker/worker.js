@@ -2633,6 +2633,69 @@ Respond ONLY with JSON: {"matches": [{"type": "method"|"platform"|"toolStack"|"p
   await patchSavedPostPage(pageId, { "Knowledge Analyzed": { checkbox: true } });
 }
 
+// ── runListingRepostReminders ──
+// Weekly repost nudge for the "Listing" method, per operator instruction:
+// once a listing Asset's Asset Status is "Published", a fresh TD reminder
+// should appear every 7 days, ongoing, until the item sells (the operator
+// archives it or changes its status away from Published — nothing here
+// auto-detects a sale). "Last Repost Reminder" (a new date property this
+// function creates on the Assets DB the first time it runs) is the
+// recurrence clock: no value yet, or 7+ days old, means due again. Runs
+// daily via the cron in scheduled() — the daily cadence is coarser than the
+// 7-day reminder interval on purpose, so this never fires more than once a
+// week even though it's checked every day.
+async function runListingRepostReminders(env) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  if (!NOTION_TOKEN) return;
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+  try {
+    const dbResp = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, { headers: hdr }).then(r => r.json());
+    if (!dbResp.properties?.["Last Repost Reminder"]) {
+      await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, {
+        method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ properties: { "Last Repost Reminder": { date: {} } } }),
+      });
+    }
+  } catch (e) { return; }
+
+  const rows = await notionQuery(ASSETS_DB, {
+    filter: { and: [
+      { property: "Asset Type", select: { equals: "listing" } },
+      { property: "Asset Status", select: { equals: "Published" } },
+    ] },
+  }).catch(() => []);
+  if (!rows.length) return;
+
+  const now = new Date();
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const todayStr = now.toISOString().slice(0, 10);
+
+  for (const page of rows) {
+    try {
+      if (page.archived || page.in_trash) continue;
+      const lastReminder = page.properties["Last Repost Reminder"]?.date?.start;
+      const dueAgain = !lastReminder || (now - new Date(lastReminder)) >= SEVEN_DAYS_MS;
+      if (!dueAgain) continue;
+      const assetTitle = page.properties["Asset Title"]?.title?.map(t => t.plain_text).join("") || "Listing";
+      await fetch("https://api.notion.com/v1/pages", {
+        method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          parent: { database_id: MAIN_TD_DB },
+          properties: {
+            Title: { title: [{ type: "text", text: { content: `🔁 Repost listing: ${assetTitle} (Etsy / Craigslist / FB Marketplace)`.slice(0, 200) } }] },
+            priority: { multi_select: [{ name: "listing repost" }] },
+          },
+        }),
+      }).catch(() => {});
+      await fetch(`https://api.notion.com/v1/pages/${page.id}`, {
+        method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ properties: { "Last Repost Reminder": { date: { start: todayStr } } } }),
+      }).catch(() => {});
+    } catch (e) { /* one bad row never blocks the rest */ }
+  }
+}
+
 // Cross-references a Saved Post's transcript against the operator's actual
 // Methods/Strategy/Research across every campaign — modeled on
 // generateGrowthStrategy's "recommendation, never auto-write" contract
@@ -7146,6 +7209,13 @@ Return ONLY a JSON array — no other text, no markdown fences:
                 // distinct from "Asset Title" (this record's own display
                 // name) above.
                 platformTitle: p["Platform Title"]?.rich_text?.map(x => x.plain_text).join("") || "",
+                // Listing method fields — Etsy is canonical (title/body
+                // above), these are the derived cross-posts + Etsy's own
+                // tags, plus the accumulated product photos.
+                etsyTags: p["Etsy Tags"]?.rich_text?.map(x => x.plain_text).join("") || "",
+                craigslistListing: p["Craigslist Listing"]?.rich_text?.map(x => x.plain_text).join("") || "",
+                fbMarketplaceListing: p["FB Marketplace Listing"]?.rich_text?.map(x => x.plain_text).join("") || "",
+                listingPhotos: (p["Listing Photos"]?.files || []).map(f => f.external?.url || f.file?.url).filter(Boolean),
               };
             } catch(e) { return null; }
           }))).filter(Boolean);
@@ -12611,7 +12681,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       // of leaving the modal to use the main dashboard's status badge —
       // same "Asset Status" select property, same allowed values.
       if (body.action === "updatePublishFields") {
-        const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle } = body;
+        const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
@@ -22056,6 +22126,275 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true, titleId, assetId, alreadyExisted: !!existingAsset, dallePrompt: parsed.dallePrompt || "" });
       }
 
+      // ── generateListingAsset ──
+      // The "Listing" method — sells a real physical item (not print-on-
+      // demand) across Etsy (primary), Craigslist, and Facebook
+      // Marketplace. Per operator instruction: write the FULL Etsy listing
+      // first as the canonical version, then derive the other two by
+      // adjusting LENGTH/tone down from it — never three independently
+      // brainstormed versions. Follows the same precedence chain as
+      // generateTitleAssets (campaign research -> product research ->
+      // title overrides -> method framework -> pillar -> platform) even
+      // though this is a sibling action, not a branch inside it — same
+      // auto-pillar-write guarantee too, since nothing else guarantees it
+      // for this action specifically.
+      if (body.action === "generateListingAsset") {
+        const { titleId, campaignId, productId, methodId, platformName, platformId, loginId, overrideText } = body;
+        if (!titleId || !titleId) return json({ error: "titleId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const titleName = (titlePage.properties.Title?.title || []).map(t => t.plain_text).join("") || "Listing";
+        const resolvedProductId = (productId && productId !== "__none__" && productId !== campaignId)
+          ? productId
+          : (titlePage.properties.product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+        const resolvedMethodId = (methodId && methodId !== "__none__") ? methodId : (titlePage.properties.method?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+
+        // Guarantee: this title has real pillar content before it's reshaped
+        // into a listing — same "no separate manual step" rule generateTitleAssets
+        // enforces for every other asset type.
+        try {
+          const existingPillar = await extractPillarContent(hdr, dash(titleId)).catch(() => "");
+          if (!existingPillar) {
+            const pillarResult = await writePillarContent(hdr, env, {
+              titleId, titleText: titleName, campaignId, productId: resolvedProductId || undefined, methodId: resolvedMethodId || undefined,
+              guidance: overrideText || undefined,
+            }).catch(e => ({ error: e.message }));
+            if (pillarResult && !pillarResult.error && !pillarResult.skipped) {
+              if (titlePage.properties?.Status?.select?.name === "Planning") {
+                await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+                  method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                  body: JSON.stringify({ properties: { "Status": { select: { name: "Development" } } } }),
+                }).catch(() => {});
+              }
+            }
+          }
+        } catch (e) { /* best-effort */ }
+
+        // Keyed off an existing "listing" Asset for this title, not just any
+        // asset — same dedup reasoning as generateTshirtAsset.
+        const priorAssetQuery = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { and: [
+            { property: "Content Strategy", relation: { contains: dash(titleId) } },
+            { property: "Asset Type", select: { equals: "listing" } },
+          ] } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const existingAsset = (priorAssetQuery.results || []).find(a => !a.archived);
+
+        let methodName = "", methodBody = "";
+        if (resolvedMethodId) {
+          try {
+            const mp = await fetch(`https://api.notion.com/v1/pages/${dash(resolvedMethodId)}`, { headers: hdr }).then(r => r.json());
+            methodName = (mp.properties?.Name?.title || []).map(t => t.plain_text).join("");
+            methodBody = (await extractBlocksTextRecursive(hdr, dash(resolvedMethodId))).slice(0, 2500);
+          } catch (e) {}
+        }
+
+        const [researchContext, pillarContent] = await Promise.all([
+          buildAssetPrecedenceContext(hdr, env, { campaignId, productId: resolvedProductId || undefined, titleId, description: overrideText }),
+          extractPillarContent(hdr, dash(titleId)).catch(() => ""),
+        ]);
+
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are writing the publish-ready listing copy for ONE real physical item being sold directly (not print-on-demand, not a service) — real photos will be attached separately after this. Your job is the words that sell it, across three marketplaces.
+
+ITEM / TITLE: ${titleName}
+${researchContext ? `\n${researchContext}\n` : ""}${methodName ? `\nMETHOD: ${methodName}${methodBody ? `\nMETHOD FRAMEWORK:\n${methodBody}` : ""}\n` : ""}${pillarContent ? `\nSOURCE MATERIAL (this title's own already-written content — reshape THIS into the listing, don't invent facts beyond what's here and the research above):\n${pillarContent.slice(0, 3000)}\n` : ""}
+Write in this exact order — Etsy first, as the one canonical version everything else is COMPRESSED from, never independently reimagined:
+
+1. The full ETSY listing (the primary platform):
+   - "etsyTitle": keyword-front-loaded, states what it plainly is before any styling adjectives, under 140 characters, no ALL CAPS, no emoji.
+   - "etsyDescription": 3-5 short paragraphs — what it is, condition, dimensions/materials if relevant, why someone wants it, pickup/shipping notes. This is the canonical source of every fact used below.
+   - "etsyTags": an array of up to 13 short keyword phrases, Etsy-style (no # symbols), each under 20 characters.
+
+2. Craigslist — COMPRESS the Etsy listing above, don't rewrite it from scratch: much shorter, plainer, no keyword-stuffing, no marketing language — just what it is, condition, and pickup details, in Craigslist's own blunt local-classifieds register.
+   - "craigslistTitle": short plain posting title.
+   - "craigslistDescription": a few short sentences, not paragraphs.
+
+3. Facebook Marketplace — COMPRESS the Etsy listing the same way, similar brevity to Craigslist but slightly warmer/more social in tone, matching FB Marketplace norms.
+   - "fbTitle": short posting title.
+   - "fbDescription": a few short sentences.
+
+Produce all of this by calling the submit_listing tool — do not include any of it as plain text.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: prompt }],
+            tools: [{
+              name: "submit_listing",
+              description: "Submit the finished Etsy/Craigslist/Facebook Marketplace listing copy.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  etsyTitle: { type: "string" },
+                  etsyDescription: { type: "string" },
+                  etsyTags: { type: "array", items: { type: "string" }, description: "Up to 13 short keyword phrases, no # symbols." },
+                  craigslistTitle: { type: "string" },
+                  craigslistDescription: { type: "string" },
+                  fbTitle: { type: "string" },
+                  fbDescription: { type: "string" },
+                },
+                required: ["etsyTitle", "etsyDescription", "etsyTags", "craigslistTitle", "craigslistDescription", "fbTitle", "fbDescription"],
+              },
+            }],
+            tool_choice: { type: "tool", name: "submit_listing" },
+          }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_listing");
+        if (!toolUse || !toolUse.input) return json({ error: "Claude did not return listing copy — try again" }, 502);
+        const parsed = toolUse.input;
+
+        await ensureAssetsDbProperties(hdr, {
+          "Etsy Tags":             { type: "rich_text" },
+          "Craigslist Listing":    { type: "rich_text" },
+          "FB Marketplace Listing":{ type: "rich_text" },
+        });
+
+        const tagsLine = (Array.isArray(parsed.etsyTags) ? parsed.etsyTags : []).join(", ");
+        const craigslistBlock = `Title: ${parsed.craigslistTitle || ""}\n\n${parsed.craigslistDescription || ""}`;
+        const fbBlock = `Title: ${parsed.fbTitle || ""}\n\n${parsed.fbDescription || ""}`;
+
+        const assetProps = {
+          "Asset Title":  { title: [{ type: "text", text: { content: String(parsed.etsyTitle).slice(0, 200) } }] },
+          "Description":  { rich_text: [{ type: "text", text: { content: String(parsed.etsyDescription || '').slice(0, 1990) } }] },
+          "Etsy Tags":    { rich_text: [{ type: "text", text: { content: tagsLine.slice(0, 1990) } }] },
+          "Craigslist Listing":     { rich_text: [{ type: "text", text: { content: craigslistBlock.slice(0, 1990) } }] },
+          "FB Marketplace Listing": { rich_text: [{ type: "text", text: { content: fbBlock.slice(0, 1990) } }] },
+          // Deliberately NOT "Publish" — a listing isn't postable to any
+          // marketplace without real photos attached first (Listing Photos,
+          // via uploadListingPhoto), so this stays in Development until the
+          // operator uploads photos and reviews the copy, same as any other
+          // asset that still needs manual finishing.
+          "Asset Status": { select: { name: "Development" } },
+        };
+        if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
+        if (platformId) assetProps["Platform"] = { relation: [{ id: dash(platformId) }] };
+        if (loginId) assetProps["Login"] = { relation: [{ id: dash(loginId) }] };
+
+        let assetId;
+        if (existingAsset) {
+          assetId = existingAsset.id.replace(/-/g, "");
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: assetProps }),
+          });
+        } else {
+          assetProps["Asset Type"] = { select: { name: "listing" } };
+          assetProps["Content Strategy"] = { relation: [{ id: dash(titleId) }] };
+          if (campaignId) assetProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Asset create failed" }, createResp.status || 500);
+          assetId = created.id.replace(/-/g, "");
+        }
+
+        return json({ success: true, titleId, assetId, alreadyExisted: !!existingAsset });
+      }
+
+      // ── uploadListingPhoto ──
+      // Multi-photo upload for the "Listing" method (the Publish modal's
+      // Listing Photos section) — called once per file from a client-side
+      // loop, so N photos means N calls, each APPENDING to the existing
+      // "Listing Photos" files-type property rather than overwriting it
+      // (every other image-upload action in this file is single-file/
+      // overwrite-on-reupload; this is the first one that accumulates).
+      // Same GitHub-commit-and-host mechanism as uploadAssetThumbnail.
+      // Background removal is NOT done here — that's a manual Canva Pro
+      // step the operator does before uploading, per operator instruction.
+      if (body.action === "uploadListingPhoto") {
+        const { assetId, fileName, contentType, fileData } = body;
+        if (!assetId || !fileData) return json({ error: "assetId and fileData required" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+        // "Listing Photos" needs to be a files-type property (the only type
+        // that structurally holds multiple accumulated images) — create it
+        // if it doesn't exist yet. Never touched if it already exists in
+        // any type, since changing an existing property's type isn't safe
+        // to do automatically.
+        try {
+          const dbResp = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, { headers: hdr }).then(r => r.json());
+          if (!dbResp.properties?.["Listing Photos"]) {
+            await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "Listing Photos": { files: {} } } }),
+            });
+          }
+        } catch (e) { /* best-effort */ }
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const assetTitle = assetPage.properties["Asset Title"]?.title?.map(t => t.plain_text).join("") || "listing";
+        const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+        const existingFiles = (assetPage.properties["Listing Photos"]?.files || [])
+          .map(f => ({ name: f.name, type: "external", external: { url: f.external?.url || f.file?.url } }))
+          .filter(f => f.external.url);
+
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const extFromType = (String(contentType || '').split('/')[1] || '').toLowerCase().replace('jpeg', 'jpg');
+        const extFromName = (String(fileName || '').match(/\.([a-zA-Z0-9]+)$/) || [, ''])[1].toLowerCase();
+        const ext = extFromType || extFromName || 'jpg';
+        const n = existingFiles.length + 1;
+        const path = `web/${deployPath}/listing-photos/${slugify(assetTitle) || assetId}-${n}-${Date.now()}.${ext}`;
+
+        const b64 = String(fileData).split(',').pop();
+        if (!b64) return json({ error: "No image data" }, 400);
+
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" },
+          body: JSON.stringify({ message: `Listing photo upload: ${assetTitle} (${n})`, content: b64, branch: BRANCH }),
+        });
+        if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || putResp.status}` }, 500); }
+
+        const photoUrl = `https://cabuzzard.github.io/dash/${path}`;
+        const newFiles = [...existingFiles, { name: `photo-${n}`, type: "external", external: { url: photoUrl } }];
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Listing Photos": { files: newFiles } } }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save Listing Photos property" }, 500); }
+
+        return json({ success: true, photoUrl, photos: newFiles.map(f => f.external.url) });
+      }
+
+      // ── removeListingPhoto ──
+      // Removes one photo from "Listing Photos" by URL — does not delete
+      // the hosted file (harmless orphan, same trade-off every other
+      // GitHub-hosted asset in this file already makes), just drops it from
+      // the Notion property so it stops showing in the gallery/listing.
+      if (body.action === "removeListingPhoto") {
+        const { assetId, photoUrl } = body;
+        if (!assetId || !photoUrl) return json({ error: "assetId and photoUrl required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const remaining = (assetPage.properties["Listing Photos"]?.files || [])
+          .map(f => ({ name: f.name, type: "external", external: { url: f.external?.url || f.file?.url } }))
+          .filter(f => f.external.url && f.external.url !== photoUrl);
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Listing Photos": { files: remaining } } }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to update Listing Photos" }, 500); }
+        return json({ success: true, photos: remaining.map(f => f.external.url) });
+      }
+
       // ── saveAssetDesignRef ──
       // Attaches an optional sample-image reference + free-text design
       // guidelines to a script Asset (avatar video / text video / explainer
@@ -22114,6 +22453,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
     ctx.waitUntil(deepScan(env).catch(e => console.error('deepScan failed:', e.message)));
     ctx.waitUntil(runAutoTradeScan(env).catch(e => console.error('runAutoTradeScan failed:', e.message)));
     ctx.waitUntil(runKnowledgeGraphAnalysis(env).catch(e => console.error('runKnowledgeGraphAnalysis failed:', e.message)));
+    ctx.waitUntil(runListingRepostReminders(env).catch(e => console.error('runListingRepostReminders failed:', e.message)));
   },
 };
 
