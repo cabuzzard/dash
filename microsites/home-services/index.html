@@ -7509,10 +7509,12 @@ async function submitGenAssets() {
   try {
     const method  = await gaResolve('method', status);
     const product = await gaResolve('product', status);
-    // No Worker-native route for this method (it's a Development-status
-    // method somehow attached to this title — none are reachable via the
-    // Live-only picker right now) and no Asset Type field to ask anymore;
-    // best-effort default to the method's own name.
+    // No Asset Type field to ask anymore — best-effort default to the
+    // method's own name. This is how methods with no dedicated GA_SKILL_
+    // METHODS entry still reach a worker-side dedicated branch: worker.js's
+    // generateTitleAssets dispatches on the literal assetType string (e.g.
+    // "SEO Post" routes to its own full-article/publish-to-site branch)
+    // before falling into the generic N-concepts path below.
     const assetType = GA_METHOD_NAME || 'Post';
     const overrideText = document.getElementById('gaDesignRefNotesInput')?.value.trim() || undefined;
     status.textContent = 'Generating asset concepts… (this can take a couple minutes — each concept may go through several grade-and-retry passes). Leave this tab open.';
@@ -7534,7 +7536,14 @@ async function submitGenAssets() {
       const bannerNote = r.canvaPromptUrl
         ? ' Thumbnail rendered — opening a Claude tab to finish the Canva design for Design Link, hit Send there.'
         : (r.bannerError ? ` Banner render failed (${r.bannerError}) — Thumbnail/Design Link left blank.` : '');
-      status.textContent = `✓ Wrote the full post (${r.sectionCount} sections${r.contextMode === 'blend' ? ', blended with campaign + product context' : ''}) and published it.${bannerNote}`;
+      // sitePublished/liveUrl/siteError only ever come back from the SEO
+      // Post branch (publishSeoPostToLiveSite) — every other assetType that
+      // returns sectionCount just leaves these undefined, so siteNote is a
+      // no-op for them.
+      const siteNote = r.sitePublished && r.liveUrl
+        ? ` Live at: <a href="${r.liveUrl}" target="_blank" style="color:#68d391;">${r.liveUrl}</a>`
+        : (r.siteError ? ` (Not pushed to the live site: ${r.siteError})` : '');
+      status.innerHTML = `✓ Wrote the full post (${r.sectionCount} sections${r.contextMode === 'blend' ? ', blended with campaign + product context' : ''}) and published it.${bannerNote}${siteNote}`;
       status.style.color = '#68d391';
       // Finishes the loop this Worker can't: creating a real Canva design
       // needs Canva API credentials it doesn't have, so this hands off to
@@ -7550,7 +7559,11 @@ async function submitGenAssets() {
     }
     btn.textContent = 'Done';
     await loadTitles();
-    setTimeout(closeGenAssetsModal, 2200);
+    // The live blog URL (when present) is worth reading before the modal
+    // disappears — same reasoning as the avatar-script path not auto-
+    // closing at all; here a longer delay is enough since it's one line,
+    // not a whole researched field to review.
+    setTimeout(closeGenAssetsModal, (r.sitePublished && r.liveUrl) ? 6000 : 2200);
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.style.color = '#fc8181';
