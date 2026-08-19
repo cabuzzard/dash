@@ -2016,7 +2016,7 @@ async function loadTitles() {
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
       PUB_ASSET_CACHE[a.id] = { title: a.title || '', platformTitle: a.platformTitle || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish', etsyTags: a.etsyTags || '', craigslistListing: a.craigslistListing || '', fbMarketplaceListing: a.fbMarketplaceListing || '', listingPhotos: a.listingPhotos || [], dallePrompt: a.dallePrompt || '' };
       const ar = document.createElement('div');
-      ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 28px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
+      ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 50px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
       // now (everything else — platform/status/grade badges, design/
       // Canva links, sync, render, copy-script, Notion link, delete —
@@ -2042,15 +2042,16 @@ async function loadTitles() {
         + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
       return ar;
     }
-    // Renders the Publish/Assets section: PUBLISHED ASSETS grouped Product
-    // Stack -> Product -> source title (never title rows themselves — a
-    // title stays in Development regardless of how many of its assets have
-    // published). Per operator instruction, a title leaving Development is
-    // unrelated to whether its assets should show here; this reads every
-    // title's assets regardless of the title's own stage/section and gates
-    // purely on each asset's own status. Same Campaign -> Product Stack ->
-    // Product convention as the Development list above and the microsite's
-    // own Products section — "No Stack" always sorts last.
+    // Renders the Publish/Assets section: Stack -> Product -> Title -> Type,
+    // each level indented one step deeper (10/20/30/40px), asset rows
+    // innermost at 50px. "Type" here is each asset's own Asset Type
+    // (t shirt/carousel/listing/etc.) — the closest thing an ASSET has to a
+    // method; a title stays in Development regardless of how many of its
+    // assets have published, so titles never disappear from there, and this
+    // reads every title's assets regardless of the title's own stage,
+    // gating purely on each asset's own status. Same Campaign -> Product
+    // Stack -> Product convention as the Development list above and the
+    // microsite's own Products section — "No Stack" always sorts last.
     function renderPublishedAssets(titles, container) {
       container.innerHTML = '';
       const flat = titles.flatMap(t => (t.assets || [])
@@ -2062,18 +2063,47 @@ async function loadTitles() {
         if (!byTitleId[f.titleId]) { byTitleId[f.titleId] = { name: f.titleName, productId: f.productId, productName: f.productName, productStack: f.productStack, items: [] }; titleOrder.push(f.titleId); }
         byTitleId[f.titleId].items.push(f.asset);
       });
+      // Innermost Publish level — an asset's own type (Assets DB "Asset
+      // Type", e.g. "t shirt"/"carousel"/"listing" — the closest thing this
+      // schema has to "method" at the asset level; titles have no meaningful
+      // method of their own for sorting purposes, see makeTitleRow). Same
+      // single-bucket-skip pattern as every other level.
+      function renderMethodGroup(titleId, items, body) {
+        const typeOrder = [], byType = {};
+        items.forEach(a => {
+          const tk = a.type || 'No Type';
+          if (!byType[tk]) { byType[tk] = []; typeOrder.push(tk); }
+          byType[tk].push(a);
+        });
+        if (typeOrder.length === 1) { items.forEach(a => body.appendChild(renderAssetRow(a, titleId, byTitleId[titleId].productId))); return; }
+        typeOrder.forEach(tk => {
+          const tItems = byType[tk];
+          const stateKey = 'pub|type|' + titleId + '|' + tk;
+          const isOpen = !!titleGroupsOpen[stateKey];
+          const tHdr = document.createElement('div');
+          tHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 40px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;user-select:none;';
+          const tArrow = document.createElement('span'); tArrow.textContent = isOpen ? '▾' : '▶'; tArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
+          const tLabel = document.createElement('span'); tLabel.style.cssText = 'flex:1;font-size:11px;color:#fff;'; tLabel.textContent = tk;
+          const tCount = document.createElement('span'); tCount.style.cssText = 'font-size:10px;color:#fff;'; tCount.textContent = tItems.length;
+          tHdr.appendChild(tArrow); tHdr.appendChild(tLabel); tHdr.appendChild(tCount);
+          const tBody = document.createElement('div'); tBody.style.display = isOpen ? 'block' : 'none';
+          tItems.forEach(a => tBody.appendChild(renderAssetRow(a, titleId, byTitleId[titleId].productId)));
+          tHdr.onclick = () => { const o = tBody.style.display !== 'none'; tBody.style.display = o ? 'none' : 'block'; tArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+          body.appendChild(tHdr); body.appendChild(tBody);
+        });
+      }
       function renderTitleGroup(titleIds, body) {
         titleIds.forEach(titleId => {
           const group = byTitleId[titleId];
           const hdr = document.createElement('div');
-          hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);';
+          hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px 6px 30px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);';
           // Same 🧩 Generate Assets entry point as a Development title row —
           // an operator finding a title here (already publishing) still
           // needs to spin up more assets from it: a different method, or
           // another pass at the same method.
           hdr.innerHTML = `<span style="flex:1;font-size:12px;color:#fff;font-weight:600;">${esc(group.name)}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${titleId}')" title="Generate more assets from this title — a different method, or another pass at the same one">🧩</button><a class="title-link" href="https://www.notion.so/${titleId}" target="_blank">↗</a><span style="font-size:10px;color:#fff;">${group.items.length}</span>`;
           body.appendChild(hdr);
-          group.items.forEach(a => body.appendChild(renderAssetRow(a, titleId, group.productId)));
+          renderMethodGroup(titleId, group.items, body);
         });
       }
       function renderProductGroup(titleIds, body) {
@@ -2138,126 +2168,32 @@ async function loadTitles() {
       GA_TITLE_ASSETS_CACHE[t.id] = t.assets || [];
       const div = document.createElement('div');
       div.className = 'title-row';
+      div.style.paddingLeft = '30px'; // innermost of Stack(10) -> Product(20) -> Title(30)
       // No manual pillar-write step or button anymore — generateTitleAssets
       // (behind 🧩 Generate Assets) writes the pillar itself, on first run,
       // if this title doesn't have one yet, and promotes Planning →
       // Development the same way the old 📝 Write Pillar button used to.
       div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc. Writes this title's pillar content first if it doesn't have any yet.">🧩</button><button class="title-status-btn" onclick="openTrendScanModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Scan live Etsy search data for this title's keywords/research — see whether it (or a t-shirt spin of it) would actually sell right now">📈</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
-      // Publish/Published assets never show here — they belong exclusively
-      // to the Publish Assets section (renderPublishedAssets above). Only
-      // still-drafting assets render under a Development title row.
-      const draftAssets = (t.assets || []).filter(a => !PUBLISH_GATE.includes(a.status));
-      if (!draftAssets.length) return div;
-      // render each linked asset as an indented row, with its grade badge —
-      // always flat here (this function only ever renders the Development
-      // section now; the Publish section is renderPublishedAssets above).
-      const wrap = document.createElement('div');
-      wrap.appendChild(div);
-      draftAssets.forEach(a => wrap.appendChild(renderAssetRow(a, t.id, t.productId)));
-      // assets still carrying the placeholder Canva search link → offer the
-      // Claude handoff that generates the real designs and saves links back
-      const pendingDesigns = draftAssets.filter(a => /canva\.com\/templates\/\?query/i.test(a.designLink || ''));
-      if (pendingDesigns.length) {
-        const pr = document.createElement('div');
-        pr.style.cssText = 'display:flex;align-items:center;padding:4px 10px 6px 28px;border-bottom:1px solid rgba(255,255,255,.04);';
-        const btn = document.createElement('button');
-        btn.textContent = `🤖 Create ${pendingDesigns.length} design${pendingDesigns.length === 1 ? '' : 's'} in Claude`;
-        btn.title = 'Opens a Claude chat preloaded to generate real Canva designs for the pending assets and save the links back to Notion';
-        btn.style.cssText = 'font-size:11px;padding:3px 10px;border:1px solid #444;background:transparent;color:#a78bfa;cursor:pointer;border-radius:3px;';
-        btn.onclick = () => window.open('https://claude.ai/new?q=' + encodeURIComponent(claudeDesignPrompt(t.title, pendingDesigns)), '_blank');
-        pr.appendChild(btn);
-        wrap.appendChild(pr);
-      }
-      return wrap;
+      // Assets never render under a Development title row — Method/Asset
+      // Type is an ASSET-level concept (Assets DB has no Method relation at
+      // all, only its own "Asset Type" select), not a title-level one, and
+      // Development is Stack -> Product -> Title only. Every asset for this
+      // title (draft or published) shows in the Publish section instead,
+      // nested under this same title, one level deeper by its own type.
+      return div;
     }
-    function renderGroupingLevel(titles, container, section) {
-      const groupOrder = [], byGroup = {};
-      titles.forEach(t => {
-        const gk = t.grouping || 'Ungrouped';
-        if (!byGroup[gk]) { byGroup[gk] = []; groupOrder.push(gk); }
-        byGroup[gk].push(t);
-      });
-      if (groupOrder.length === 1) {
-        // A single group is never useful to label, even when it's a real
-        // (non-"Ungrouped") value — it can't distinguish anything, so
-        // showing it as a header just repeats info already shown above.
-        titles.forEach(t => container.appendChild(makeTitleRow(t, section))); return;
-      }
-      groupOrder.forEach(gk => {
-        const gTitles = byGroup[gk];
-        const stateKey = section + '|grp|' + gk;
-        const isOpen = !!titleGroupsOpen[stateKey];
-        const gHdr = document.createElement('div');
-        gHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;user-select:none;';
-        const gArrow = document.createElement('span'); gArrow.textContent = isOpen ? '▾' : '▶'; gArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
-        const gLabel = document.createElement('span'); gLabel.style.cssText = 'flex:1;font-size:11px;color:#fff;'; gLabel.textContent = gk;
-        const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:#fff;'; gCount.textContent = gTitles.length;
-        gHdr.appendChild(gArrow); gHdr.appendChild(gLabel); gHdr.appendChild(gCount);
-        const gBody = document.createElement('div'); gBody.style.display = isOpen ? 'block' : 'none';
-        gTitles.forEach(t => gBody.appendChild(makeTitleRow(t, section)));
-        gHdr.onclick = () => { const o = gBody.style.display !== 'none'; gBody.style.display = o ? 'none' : 'block'; gArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
-        container.appendChild(gHdr); container.appendChild(gBody);
-      });
-    }
-    function renderPhaseLevel(titles, container, section) {
-      const hasPhase = titles.some(t => t.phase);
-      if (!hasPhase) { renderGroupingLevel(titles, container, section); return; }
-      const phaseOrder = [], byPhase = {};
-      titles.forEach(t => {
-        const pk = t.phase || '';
-        if (!byPhase[pk]) { byPhase[pk] = []; phaseOrder.push(pk); }
-        byPhase[pk].push(t);
-      });
-      phaseOrder.forEach(pk => {
-        const pTitles = byPhase[pk];
-        if (!pk) { renderGroupingLevel(pTitles, container, section); return; }
-        const stateKey = section + '|phase|' + pk;
-        const isOpen = !!titleGroupsOpen[stateKey];
-        const pH = document.createElement('div');
-        pH.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 14px;background:rgba(139,92,246,.08);border-left:2px solid rgba(139,92,246,.4);border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;user-select:none;';
-        const pA = document.createElement('span'); pA.textContent = isOpen ? '▾' : '▶'; pA.style.cssText = 'font-size:8px;color:#7c5cbf;flex-shrink:0;';
-        const pL = document.createElement('span'); pL.style.cssText = 'flex:1;font-size:11px;color:#a78bfa;font-weight:600;letter-spacing:.3px;'; pL.textContent = pk;
-        const pC = document.createElement('span'); pC.style.cssText = 'font-size:10px;color:#fff;'; pC.textContent = pTitles.length;
-        pH.appendChild(pA); pH.appendChild(pL); pH.appendChild(pC);
-        const pB = document.createElement('div'); pB.style.display = isOpen ? 'block' : 'none';
-        renderGroupingLevel(pTitles, pB, section);
-        pH.onclick = () => { const o = pB.style.display !== 'none'; pB.style.display = o ? 'none' : 'block'; pA.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
-        container.appendChild(pH); container.appendChild(pB);
-      });
-    }
-    function renderMethodLevel(titles, container, section) {
-      const hasMeth = titles.some(t => t.methodId && t.methodId !== '__none__');
-      if (!hasMeth) { renderPhaseLevel(titles, container, section); return; }
-      const methOrder = [], byMeth = {};
-      titles.forEach(t => {
-        const mk = (t.methodId || '__none__') + '||' + (t.methodName || 'No Method');
-        if (!byMeth[mk]) { byMeth[mk] = []; methOrder.push(mk); }
-        byMeth[mk].push(t);
-      });
-      methOrder.forEach(mk => {
-        const mTitles = byMeth[mk];
-        const methName = mk.split('||')[1];
-        if (methOrder.length === 1) { renderGroupingLevel(mTitles, container, section); return; }
-        const stateKey = section + '|meth|' + mk;
-        const isOpen = !!titleGroupsOpen[stateKey];
-        const mHdr = document.createElement('div');
-        mHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px;background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.07);cursor:pointer;user-select:none;';
-        const mArrow = document.createElement('span'); mArrow.textContent = isOpen ? '▾' : '▶'; mArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
-        const mLabel = document.createElement('span'); mLabel.style.cssText = 'flex:1;font-size:12px;color:#fff;'; mLabel.textContent = methName;
-        const mCount = document.createElement('span'); mCount.style.cssText = 'font-size:10px;color:#fff;'; mCount.textContent = mTitles.length;
-        mHdr.appendChild(mArrow); mHdr.appendChild(mLabel); mHdr.appendChild(mCount);
-        const mBody = document.createElement('div'); mBody.style.display = isOpen ? 'block' : 'none';
-        renderPhaseLevel(mTitles, mBody, section);
-        mHdr.onclick = () => { const o = mBody.style.display !== 'none'; mBody.style.display = o ? 'none' : 'block'; mArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
-        container.appendChild(mHdr); container.appendChild(mBody);
-      });
+    // Title level — the innermost Development grouping level. No Method/
+    // Phase/Grouping sub-levels here (per operator instruction: those are
+    // asset-level or legacy concepts, not title-level ones) — just a flat
+    // list of title rows within whichever Product bucket contains them.
+    function renderTitleLevel(titles, container, section) {
+      titles.forEach(t => container.appendChild(makeTitleRow(t, section)));
     }
     // Product level — nested inside the Stack level below it. Same collapse/
-    // expand + single-bucket-skip pattern as the levels below it
-    // (renderMethodLevel, renderPhaseLevel, renderGroupingLevel).
+    // expand + single-bucket-skip pattern as the Stack level above it.
     function renderProductLevel(arr, el, section) {
       const hasProd = arr.some(t => t.productId && t.productId !== '__none__');
-      if (!hasProd) { renderMethodLevel(arr, el, section); return; }
+      if (!hasProd) { renderTitleLevel(arr, el, section); return; }
       const prodOrder = [], byProd = {};
       arr.forEach(t => {
         const pk = (t.productId || '__none__') + '||' + (t.productName || 'No Product');
@@ -2268,7 +2204,7 @@ async function loadTitles() {
       prodOrder.forEach(pk => {
         const pTitles = byProd[pk];
         const prodName = pk.split('||')[1];
-        if (prodOrder.length === 1) { renderMethodLevel(pTitles, el, section); return; }
+        if (prodOrder.length === 1) { renderTitleLevel(pTitles, el, section); return; }
         const stateKey = section + '|prod|' + pk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const pHdr = document.createElement('div');
@@ -2278,7 +2214,7 @@ async function loadTitles() {
         const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:#fff;'; pCount.textContent = pTitles.length;
         pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
         const pBody = document.createElement('div'); pBody.style.display = isOpen ? 'block' : 'none';
-        renderMethodLevel(pTitles, pBody, section);
+        renderTitleLevel(pTitles, pBody, section);
         pHdr.onclick = () => { const o = pBody.style.display !== 'none'; pBody.style.display = o ? 'none' : 'block'; pArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
         el.appendChild(pHdr); el.appendChild(pBody);
       });
