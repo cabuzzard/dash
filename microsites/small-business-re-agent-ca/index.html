@@ -3633,9 +3633,10 @@ function renderTrendScanResults() {
       <p style="font-size:13px;color:#fff;line-height:1.5;margin:6px 0 8px;">${esc(s.suggestedNewAngle || 'No distinct new angle suggested.')}</p>
       ${methodWarning}
       <div style="display:flex;justify-content:flex-end;margin-top:6px;">
-        <button class="modal-btn save" id="trendGenerateBtn" onclick="generateTrendRelatedTitle()" ${(s.suggestedNewAngle && !d.tshirtMethodMissing) ? '' : 'disabled'}>✨ Generate &amp; Save Title</button>
+        <button class="modal-btn save" id="trendGenerateBtn" onclick="generateTrendOptions()" ${(s.suggestedNewAngle && !d.tshirtMethodMissing) ? '' : 'disabled'}>✨ Generate Options</button>
       </div>
       <div class="modal-status" id="trendGenerateStatus"></div>
+      <div id="trendGenerateReview"></div>
     </div>
   `;
   document.getElementById('trendScanFoot').style.display = 'flex';
@@ -3661,7 +3662,8 @@ async function saveTrendRewrite() {
     btn.disabled = false; btn.textContent = '✏️ Rewrite Title';
   }
 }
-async function generateTrendRelatedTitle() {
+let TREND_GEN_CANDIDATES = [];
+async function generateTrendOptions() {
   const d = TREND_SCAN_DATA;
   if (!d || !d.tshirtMethodId) return;
   const s = d.synthesis || {};
@@ -3680,21 +3682,65 @@ async function generateTrendRelatedTitle() {
     });
     if (gen.error) throw new Error(gen.error);
     if (!gen.titles || !gen.titles.length) throw new Error('No titles generated');
+    TREND_GEN_CANDIDATES = gen.titles;
+    status.textContent = '';
+    status.className = 'modal-status';
+    renderTrendGenReview();
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+  } finally {
+    btn.disabled = false; btn.textContent = '✨ Generate Options';
+  }
+}
+function renderTrendGenReview() {
+  const box = document.getElementById('trendGenerateReview');
+  if (!TREND_GEN_CANDIDATES.length) { box.innerHTML = ''; return; }
+  const rows = TREND_GEN_CANDIDATES.map((t, i) => `
+    <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+      <input type="checkbox" id="trend-cand-check-${i}" checked style="margin-top:4px;flex-shrink:0;" />
+      <div style="flex:1;min-width:0;">
+        <input type="text" id="trend-cand-title-${i}" value="${esc(t.title || '')}" class="modal-ta" style="height:28px;padding:4px 8px;font-size:12px;margin:0;" />
+        <div style="font-size:10px;color:#fff;margin-top:2px;">${esc(t.phase || '')}${t.phase && t.grouping ? ' — ' : ''}${esc(t.grouping || '')}</div>
+      </div>
+    </div>
+  `).join('');
+  box.innerHTML = `
+    <div style="margin-top:10px;">${rows}</div>
+    <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+      <button class="modal-btn save" id="trendSaveSelectedBtn" onclick="saveTrendSelectedTitles()">Save Selected</button>
+    </div>
+  `;
+}
+async function saveTrendSelectedTitles() {
+  const d = TREND_SCAN_DATA;
+  if (!d) return;
+  const selected = TREND_GEN_CANDIDATES
+    .map((t, i) => ({ t, i }))
+    .filter(({ i }) => document.getElementById(`trend-cand-check-${i}`)?.checked)
+    .map(({ t, i }) => ({ ...t, title: (document.getElementById(`trend-cand-title-${i}`)?.value || t.title).trim() }))
+    .filter(t => t.title);
+  if (!selected.length) return;
+  const btn = document.getElementById('trendSaveSelectedBtn');
+  const status = document.getElementById('trendGenerateStatus');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
     const saved = await w('saveMethodTitles', {
-      titles: gen.titles,
+      titles: selected,
       campaignId: CAMPAIGN_ID,
       methodId: d.tshirtMethodId,
       productId: d.productId || '__none__',
     });
-    status.textContent = `Saved ${saved.created || gen.titles.length} title${(saved.created || gen.titles.length) === 1 ? '' : 's'} ✓`;
+    status.textContent = `Saved ${saved.created || selected.length} title${(saved.created || selected.length) === 1 ? '' : 's'} ✓`;
     status.className = 'modal-status ok';
-    btn.textContent = '✨ Generate & Save Title';
+    document.getElementById('trendGenerateReview').innerHTML = '';
+    TREND_GEN_CANDIDATES = [];
     loadTitles();
     setTimeout(closeTrendScanModal, 700);
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.className = 'modal-status err';
-    btn.disabled = false; btn.textContent = '✨ Generate & Save Title';
+    btn.disabled = false; btn.textContent = 'Save Selected';
   }
 }
 
