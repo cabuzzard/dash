@@ -2874,12 +2874,22 @@ export default {
       }
 
       if (body.action === "getDevTitles") {
-        const [campRows, productRows] = await Promise.all([
+        const [campRows, productRows, publishedAssetRows] = await Promise.all([
           notionQuery(CAMPAIGNS_DB, {
             filter: { property: "Status", select: { does_not_equal: "Delete" } },
           }),
           notionQuery(PRODUCTS_DB, {
             filter: { property: "Status", select: { equals: "Active" } },
+          }),
+          // Same "what's actually published" convention getPublishedAssets
+          // already uses — titles themselves rarely reach Status=Published
+          // (assets do, far more often), so campaign recency is measured by
+          // asset publish activity, not title status.
+          notionQuery(ASSETS_DB, {
+            filter: { or: [
+              { property: "Asset Status", select: { equals: "Publish" } },
+              { property: "Asset Status", select: { equals: "Published" } },
+            ]},
           }),
         ]);
 
@@ -2924,14 +2934,21 @@ export default {
           });
         });
 
-        const campTitles = {};
-        // Tracks each campaign's most recent Published-status title so the
+        // Tracks each campaign's most recent published-asset activity so the
         // campaign list can rise the most currently-active campaigns to the
         // top, even though this view is showing Development-stage titles.
-        // Same "what actually went out" convention getContentOutputStats
-        // already uses: Scheduled Date on a Published title; falls back to
-        // the page's own last_edited_time when Scheduled Date was never set.
         const campLastPublished = {};
+        publishedAssetRows.forEach(a => {
+          const campRel = a.properties?.Campaign?.relation || [];
+          if (!campRel.length) return;
+          const campId = campRel[0].id.replace(/-/g,"");
+          const publishedAt = a.last_edited_time || null;
+          if (publishedAt && (!campLastPublished[campId] || publishedAt > campLastPublished[campId])) {
+            campLastPublished[campId] = publishedAt;
+          }
+        });
+
+        const campTitles = {};
         titleRows.forEach(t => {
           const props  = t.properties;
           const status = props.Status?.select?.name || "";
@@ -2951,13 +2968,6 @@ export default {
             productId:  (props.product?.relation || [])[0]?.id?.replace(/-/g,"") || "__none__",
             methodId:   (props.method?.relation  || [])[0]?.id?.replace(/-/g,"") || "__none__",
           });
-
-          if (status === "Published") {
-            const publishedAt = props["Scheduled Date"]?.date?.start || t.last_edited_time || null;
-            if (publishedAt && (!campLastPublished[campId] || publishedAt > campLastPublished[campId])) {
-              campLastPublished[campId] = publishedAt;
-            }
-          }
         });
 
         // Add all campaigns — even those with no titles
