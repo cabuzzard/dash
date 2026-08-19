@@ -9933,12 +9933,17 @@ async function dsGenerate() {
 // ── LAST 30 PUBLISHED ────────────────────────────────────────────────
 // Development tab, default-collapsed quick-glance widget — the last 30
 // published assets across every campaign (reuses getPublishedAssets, same
-// action the fuller Publishing-tab table calls; already sorted descending
-// by last_edited_time, so this just takes the first 30). Each row: asset
-// name, its source title, the campaign it belongs to, and a link to that
-// campaign's microsite.
+// action the fuller Publishing-tab table calls). Sortable columns, same
+// click-header convention as that table's own sortPublishedBy — default
+// sort is Date (already descending from the worker), and Date stays a
+// real column (not just displayed) so an operator can click back to it
+// after sorting by something else. "Method" here is each asset's own
+// Asset Type (a.type) — Assets DB has no separate Method relation, Asset
+// Type is the closest thing an asset has to one.
 let last30Collapsed = true;
 let last30Loaded = false;
+let _last30Assets = [];
+let _last30Sort = { col: 'date', dir: -1 };
 function toggleLast30Section() {
   last30Collapsed = !last30Collapsed;
   const list = document.getElementById('last30List');
@@ -9956,43 +9961,77 @@ async function loadLast30Published() {
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
     const data = await call('getPublishedAssets');
-    const assets = (data.assets || []).slice(0, 30); // already sorted descending by last_edited_time
-    if (!assets.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No published assets yet.</div>'; return; }
-    // Same fake-table convention as the Publishing tab's fuller
-    // getPublishedAssets table (renderPublishedTable) — flex columns,
-    // header row + data rows, info listed out to the right of the asset
-    // name rather than stacked underneath it.
-    const hdrRow = '<div style="display:flex;align-items:center;border-bottom:2px solid var(--border2);margin-bottom:2px;">' +
-      '<div style="flex:2;min-width:0;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:7px 8px;">Asset</div>' +
-      '<div style="flex:2;min-width:0;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:7px 8px;">Title</div>' +
-      '<div style="flex:1;min-width:0;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:7px 8px;">Campaign</div>' +
-      '<div style="flex:0 0 70px;min-width:0;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:7px 8px;">Date</div>' +
-      '<div style="width:24px;flex-shrink:0;"></div>' +
-    '</div>';
-    const rowsHtml = assets.map(a => {
-      const date = a.lastEdited ? new Date(a.lastEdited).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
-      return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:32px;">' +
-        '<div style="flex:2;min-width:0;padding:6px 8px;overflow:hidden;">' +
-          '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.title || 'Untitled') + '</span>' +
-        '</div>' +
-        '<div style="flex:2;min-width:0;padding:6px 8px;overflow:hidden;">' +
-          '<span style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.titleName || '—') + '</span>' +
-        '</div>' +
-        '<div style="flex:1;min-width:0;padding:6px 8px;overflow:hidden;">' +
-          '<span style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.campaignName || '—') + '</span>' +
-        '</div>' +
-        '<div style="flex:0 0 70px;min-width:0;padding:6px 8px;">' +
-          '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
-        '</div>' +
-        '<div style="width:24px;flex-shrink:0;padding:6px 4px;">' +
-          (a.campaignMicrosite ? '<a href="' + esc(a.campaignMicrosite) + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' : '') +
-        '</div>' +
-      '</div>';
-    }).join('');
-    el.innerHTML = '<div style="overflow-x:auto;">' + hdrRow + rowsHtml + '</div>';
+    _last30Assets = (data.assets || []).slice(0, 30); // already sorted descending by last_edited_time
+    renderLast30Table();
   } catch(e) {
     el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
   }
+}
+function sortLast30By(col) {
+  if (_last30Sort.col === col) {
+    _last30Sort.dir *= -1;
+  } else {
+    _last30Sort.col = col;
+    _last30Sort.dir = col === 'date' ? -1 : 1;
+  }
+  renderLast30Table();
+}
+function renderLast30Table() {
+  const el = document.getElementById('last30List');
+  if (!el) return;
+  if (!_last30Assets.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No published assets yet.</div>'; return; }
+
+  const sorted = [..._last30Assets].sort((a, b) => {
+    let av, bv;
+    if (_last30Sort.col === 'date')          { av = a.lastEdited || ''; bv = b.lastEdited || ''; }
+    else if (_last30Sort.col === 'method')   { av = (a.type || '').toLowerCase(); bv = (b.type || '').toLowerCase(); }
+    else if (_last30Sort.col === 'campaign') { av = (a.campaignName || '').toLowerCase(); bv = (b.campaignName || '').toLowerCase(); }
+    else if (_last30Sort.col === 'titleName'){ av = (a.titleName || '').toLowerCase(); bv = (b.titleName || '').toLowerCase(); }
+    else                                     { av = (a.title || '').toLowerCase(); bv = (b.title || '').toLowerCase(); }
+    return av < bv ? -_last30Sort.dir : av > bv ? _last30Sort.dir : 0;
+  });
+
+  // Same fake-table convention as the Publishing tab's fuller
+  // getPublishedAssets table (renderPublishedTable) — flex columns,
+  // clickable header row + data rows, info listed out to the right of
+  // the asset name rather than stacked underneath it.
+  const colHdr = (key, label, flex) => {
+    const active = _last30Sort.col === key;
+    const arrow  = active ? (_last30Sort.dir === 1 ? ' ↑' : ' ↓') : '';
+    return '<div onclick="sortLast30By(\'' + key + '\')" style="flex:' + flex + ';min-width:0;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + (active ? 'var(--accent)' : 'var(--text3)') + ';cursor:pointer;user-select:none;padding:7px 8px;">' + label + arrow + '</div>';
+  };
+  const hdrRow = '<div style="display:flex;align-items:center;border-bottom:2px solid var(--border2);margin-bottom:2px;">' +
+    colHdr('title',     'Asset',    '2') +
+    colHdr('titleName', 'Title',    '2') +
+    colHdr('method',    'Method',   '0 0 90px') +
+    colHdr('campaign',  'Campaign', '1') +
+    colHdr('date',      'Date',     '0 0 70px') +
+    '<div style="width:24px;flex-shrink:0;"></div>' +
+  '</div>';
+  const rowsHtml = sorted.map(a => {
+    const date = a.lastEdited ? new Date(a.lastEdited).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
+    return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:32px;">' +
+      '<div style="flex:2;min-width:0;padding:6px 8px;overflow:hidden;">' +
+        '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.title || 'Untitled') + '</span>' +
+      '</div>' +
+      '<div style="flex:2;min-width:0;padding:6px 8px;overflow:hidden;">' +
+        '<span style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.titleName || '—') + '</span>' +
+      '</div>' +
+      '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;overflow:hidden;">' +
+        (a.type ? '<span style="font-size:10px;font-weight:600;color:var(--accent);padding:1px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">' + esc(a.type) + '</span>' : '<span style="color:var(--text3);font-size:11px;">—</span>') +
+      '</div>' +
+      '<div style="flex:1;min-width:0;padding:6px 8px;overflow:hidden;">' +
+        '<span style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.campaignName || '—') + '</span>' +
+      '</div>' +
+      '<div style="flex:0 0 70px;min-width:0;padding:6px 8px;">' +
+        '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
+      '</div>' +
+      '<div style="width:24px;flex-shrink:0;padding:6px 4px;">' +
+        (a.campaignMicrosite ? '<a href="' + esc(a.campaignMicrosite) + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+  el.innerHTML = '<div style="overflow-x:auto;">' + hdrRow + rowsHtml + '</div>';
 }
 
 // ── SITE TDs ─────────────────────────────────────────────────────────
