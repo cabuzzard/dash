@@ -2921,6 +2921,9 @@ export default {
             name: c.properties.Name?.title?.map(t => t.plain_text).join("") || "",
             site: c.properties.site?.select?.name || "Other",
             parentCampaignId: (c.properties["Parent Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || "",
+            microsite: c.properties["microsite"]?.url || null,
+            status: c.properties.Status?.select?.name || "",
+            notes: (c.properties.Notes?.rich_text || []).map(t => t.plain_text).join("") || "",
           };
         });
 
@@ -2958,7 +2961,7 @@ export default {
           const campId  = campRel.length ? campRel[0].id.replace(/-/g,"") : "__none__";
           const camp    = campById[campId] || { name: "?", site: "Other" };
 
-          if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", titles: [] };
+          if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", microsite: camp.microsite || null, status: camp.status || "", notes: camp.notes || "", titles: [] };
           const rawGrouping = props.Grouping?.rich_text?.map(x => x.plain_text).join("") || "";
           const gtParts = rawGrouping.split(" > ");
           campTitles[campId].titles.push({
@@ -2972,7 +2975,7 @@ export default {
 
         // Add all campaigns — even those with no titles
         Object.entries(campById).forEach(([campId, camp]) => {
-          if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", titles: [] };
+          if (!campTitles[campId]) campTitles[campId] = { name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", microsite: camp.microsite || null, status: camp.status || "", notes: camp.notes || "", titles: [] };
         });
 
         // Resolve product and method names
@@ -3006,7 +3009,7 @@ export default {
           const prodCount = activeProdCount[campId] || 0;
           const STATUS_RANK = { "Development": 0, "Publish": 1 };
           camp.titles.sort((a, b) => (STATUS_RANK[a.status] ?? 2) - (STATUS_RANK[b.status] ?? 2));
-          return { campId, name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", titles: camp.titles, devCount, pubCount, prodCount, lastPublishedAt: campLastPublished[campId] || null };
+          return { campId, name: camp.name, site: camp.site, parentCampaignId: camp.parentCampaignId || "", microsite: camp.microsite || null, status: camp.status || "", notes: camp.notes || "", titles: camp.titles, devCount, pubCount, prodCount, lastPublishedAt: campLastPublished[campId] || null };
         });
 
         // Most-recently-published campaigns rise to the top first — the
@@ -12148,7 +12151,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       if (body.action === "updateCampaignField") {
         const { campaignId, field, value } = body;
         if (!campaignId || !field) return json({ error: "campaignId and field required" }, 400);
-        const allowed = { keyMessage: "Key Message", painPoints: "Pain Points", campaignGoal: "Campaign Goal" };
+        const allowed = { keyMessage: "Key Message", painPoints: "Pain Points", campaignGoal: "Campaign Goal", notes: "Notes" };
         const notionField = allowed[field];
         if (!notionField) return json({ error: "Unknown field: " + field }, 400);
         const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");

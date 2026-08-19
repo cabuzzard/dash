@@ -2126,6 +2126,20 @@
   </div>
 </div>
 
+<!-- Campaign TD Note Modal (Development tab campaign rows) -->
+<div class="modal-bg" id="campTdModal" onclick="if(event.target===this)closeCampTdModal()">
+  <div class="modal">
+    <div class="modal-title" id="campTdModalTitle">TD Note</div>
+    <div class="modal-field">
+      <textarea class="modal-input" id="campTdText" rows="6" placeholder="Enter a TD note for this campaign..." style="resize:vertical;line-height:1.6;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeCampTdModal()">Cancel</button>
+      <button class="btn btn-primary" id="campTdSaveBtn" onclick="saveCampTd()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Campaign Notes Modal (platform matrix) -->
 <div class="modal-bg" id="platNotesModal" onclick="if(event.target===this)closePlatNotesModal()">
   <div class="modal" style="max-width:560px;width:96vw;">
@@ -7552,10 +7566,93 @@ function renderDev() {
       campChev.textContent = '▶';
 
       campRow.appendChild(campChev);
+
+      // Highlight toggle — same meaning/action as the Overview tab's ★
+      // (Campaign Status Active/Planning); highlights this row white so
+      // currently-important campaigns stand out in the flat list.
+      const hlBtn = document.createElement('button');
+      let campActive = camp.status === 'Active';
+      hlBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:14px;flex-shrink:0;padding:0;';
+      campRow.appendChild(hlBtn);
+
       const nameSpan = document.createElement('span');
       nameSpan.style.cssText = 'font-size:12px;font-weight:600;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
       nameSpan.textContent = camp.name;
       campRow.appendChild(nameSpan);
+
+      const applyHl = () => {
+        hlBtn.textContent = campActive ? '★' : '☆';
+        hlBtn.style.color = campActive ? '#ffcc00' : 'var(--text3)';
+        hlBtn.title = campActive ? 'Set to Planning' : 'Set to Active';
+        campRow.style.background = campActive ? '#ffffff' : 'var(--surface)';
+        nameSpan.style.color = campActive ? '#000' : 'var(--text2)';
+      };
+      hlBtn.onclick = async e => {
+        e.preventDefault(); e.stopPropagation();
+        hlBtn.disabled = true;
+        const newState = !campActive;
+        const newStatus = newState ? 'Active' : 'Planning';
+        try {
+          await call('updateCampaignStatus', { campaignId: camp.campId, status: newStatus });
+          camp.status = newStatus;
+          campActive = newState;
+          applyHl();
+          showToast(newState ? 'Set to Active ✓' : 'Set to Planning ✓', 'success');
+        } catch(e2) {
+          showToast('Failed: ' + e2.message, 'error');
+        }
+        hlBtn.disabled = false;
+      };
+      applyHl();
+
+      // Microsite link — same convention as Overview's STE column: a link
+      // if one exists, else a "+site" button that deploys one in place.
+      const steWrap = document.createElement('span');
+      steWrap.style.cssText = 'flex-shrink:0;font-size:10px;';
+      const renderSteWrap = () => {
+        steWrap.innerHTML = camp.microsite
+          ? '<a href="' + esc(camp.microsite) + '" target="_blank" title="Microsite" style="color:var(--text3);text-decoration:none;" onclick="event.stopPropagation();">↗ site</a>'
+          : '';
+        if (!camp.microsite) {
+          const btn = document.createElement('button');
+          btn.textContent = '+site';
+          btn.title = 'Create microsite';
+          btn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:10px;color:var(--text3);padding:0;';
+          btn.onclick = async e => {
+            e.preventDefault(); e.stopPropagation();
+            btn.disabled = true; btn.textContent = '…';
+            try {
+              const res = await call('createMicrosite', { campaignId: camp.campId });
+              if (res.error) throw new Error(res.error);
+              camp.microsite = res.url;
+              renderSteWrap();
+              showToast(res.researchCreated ? 'Microsite + Research created ✓' : 'Microsite created ✓', 'success');
+            } catch(err) {
+              btn.disabled = false; btn.textContent = '+site';
+              showToast('Failed: ' + err.message, 'error');
+            }
+          };
+          steWrap.appendChild(btn);
+        }
+      };
+      renderSteWrap();
+      campRow.appendChild(steWrap);
+
+      // TD note — opens a text modal, same pattern as Key Message. Button
+      // fills in when a note already exists so it's visible at a glance.
+      const tdBtn = document.createElement('button');
+      const applyTdBtn = () => {
+        const hasNote = !!(camp.notes && camp.notes.trim());
+        tdBtn.textContent = 'TD';
+        tdBtn.title = hasNote ? camp.notes : 'Add TD note';
+        tdBtn.style.cssText = 'font-size:10px;font-weight:700;flex-shrink:0;padding:2px 7px;border-radius:4px;cursor:pointer;border:1px solid ' + (hasNote ? '#63b3ed' : 'var(--border2)') + ';background:' + (hasNote ? 'rgba(99,179,237,.15)' : 'transparent') + ';color:' + (hasNote ? '#63b3ed' : 'var(--text3)') + ';';
+      };
+      applyTdBtn();
+      tdBtn.onclick = e => {
+        e.preventDefault(); e.stopPropagation();
+        openCampTdModal(camp, () => applyTdBtn());
+      };
+      campRow.appendChild(tdBtn);
 
       // Fixed-width columns for counts
       const mkBadge = (val, bg, fg, icon) => {
@@ -8513,6 +8610,44 @@ async function saveKm() {
     kmCampaign.keyMessage = text;
     kmCell.textContent = text || '—';
     closeKmModal();
+    showToast('Saved ✓', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── CAMPAIGN TD NOTE MODAL (Development tab) ──────────────────────────
+let campTdCampaign = null;
+let campTdOnSave   = null;
+
+function openCampTdModal(campaign, onSave) {
+  campTdCampaign = campaign;
+  campTdOnSave   = onSave;
+  document.getElementById('campTdModalTitle').textContent = campaign.name + ' — TD Note';
+  document.getElementById('campTdText').value = campaign.notes || '';
+  document.getElementById('campTdSaveBtn').disabled = false;
+  document.getElementById('campTdSaveBtn').textContent = 'Save';
+  document.getElementById('campTdModal').classList.add('open');
+  setTimeout(() => document.getElementById('campTdText').focus(), 280);
+}
+
+function closeCampTdModal() {
+  document.getElementById('campTdModal').classList.remove('open');
+  campTdCampaign = null;
+  campTdOnSave   = null;
+}
+
+async function saveCampTd() {
+  if (!campTdCampaign) return;
+  const text = document.getElementById('campTdText').value.trim();
+  const btn  = document.getElementById('campTdSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    await call('updateCampaignField', { campaignId: campTdCampaign.campId, field: 'notes', value: text });
+    campTdCampaign.notes = text;
+    if (campTdOnSave) campTdOnSave(text);
+    closeCampTdModal();
     showToast('Saved ✓', 'success');
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
