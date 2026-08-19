@@ -2869,6 +2869,14 @@ async function checkPin() {
       session.authed = true;
       document.getElementById('pinScreen').classList.add('hidden');
       if (!ovLoaded) { ovLoaded = true; loadOverview(); }
+      // Whichever tab was on screen when the session expired (if not
+      // Overview) needs its own reload too — resetLoadFlags() already
+      // cleared its *Loaded flag when the 401 hit, so this actually
+      // refetches instead of silently no-opping and leaving the old
+      // "Session expired" error banner sitting there.
+      const activePanel = document.querySelector('.tab-panel.active');
+      const activeName = activePanel ? activePanel.id.replace(/^tab/, '') : '';
+      if (activeName && activeName !== 'Overview') loadTabContent(activeName.charAt(0).toLowerCase() + activeName.slice(1));
       call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
     } else {
       document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
@@ -2880,10 +2888,25 @@ async function checkPin() {
     setTimeout(() => { pinBuffer = ''; updateDots(); document.getElementById('pinError').textContent = ''; }, 1500);
   }
 }
+// Resets every tab's "already loaded" flag so the next time each one is
+// shown — or immediately after a fresh re-auth, see checkPin() — it fetches
+// real data instead of silently reusing whatever was on screen, including a
+// stale "Could not load: Session expired" error banner left over from
+// before the token died. Shared by the manual Lock button (lockApp, below)
+// and the 401 auto-logout in call() so both recovery paths behave
+// identically — previously only lockApp reset these, so a session expiring
+// mid-use (rather than via the Lock button) left every tab permanently
+// stuck on its last error/content until a full page refresh.
+function resetLoadFlags() {
+  ovLoaded = false; prodLoaded = false; prodTdLoaded = false; devLoaded = false;
+  tdTabLoaded = false; linksLoaded = false; toolsLoaded = false; stackLoaded = false;
+  knLoaded = false; domTabLoaded = false; smAccsLoaded = false; emailsLoaded = false;
+  contentTitlesLoaded = false; careerLoaded = false; siteTdsLoaded = false; tradesLoaded = false;
+}
 function lockApp() {
   SESSION_TOKEN = null;
   sessionStorage.removeItem('hermes_token');
-  pinBuffer = ''; session.authed = false; ovLoaded = false; prodLoaded = false; prodTdLoaded = false; devLoaded = false; tdTabLoaded = false; tradesLoaded = false;
+  pinBuffer = ''; session.authed = false; resetLoadFlags();
   updateDots();
   document.getElementById('pinScreen').classList.remove('hidden');
   document.getElementById('ovContent').innerHTML   = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
@@ -2905,10 +2928,14 @@ async function call(action, extra = {}) {
   });
   const data = await resp.json();
   if (resp.status === 401) {
-    // Session expired — force re-auth
+    // Session expired — force re-auth. Also clears every tab's "already
+    // loaded" flag (resetLoadFlags, near lockApp) so re-entering the PIN
+    // actually re-fetches whatever just failed instead of leaving this
+    // error banner stuck on screen until a manual page refresh.
     SESSION_TOKEN = null;
     sessionStorage.removeItem('hermes_token');
     session.authed = false;
+    resetLoadFlags();
     document.getElementById('pinScreen').classList.remove('hidden');
     throw new Error('Session expired — please re-enter your PIN');
   }
@@ -3678,11 +3705,13 @@ function jumpToDev(campId) {
   else { doJump(); }
 }
 
-function switchTab(name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  event.currentTarget.classList.add('active');
-  document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+// Per-tab "make sure this tab's data is loaded" dispatch — the *Loaded
+// flag conditions here are the single source of truth for what each tab
+// needs the moment it's shown. Shared by switchTab (on click) and
+// checkPin's post-re-auth recovery below, so whichever tab was on screen
+// when a session expired reloads itself the instant you're re-authenticated
+// instead of sitting on a stale error until you click away and back.
+function loadTabContent(name) {
   if (name === 'products'    && !prodLoaded)      { prodLoaded      = true; loadProducts(); }
   if (name === 'development' && !devLoaded)       { devLoaded       = true; loadDev(); }
   if (name === 'td'          && !tdTabLoaded)     { tdTabLoaded     = true; loadTdTab(); }
@@ -3698,6 +3727,13 @@ function switchTab(name) {
   } else {
     stopTradesAutoRefresh();
   }
+}
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+  loadTabContent(name);
 }
 
 let _tradesRefreshTimer = null;
