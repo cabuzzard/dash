@@ -10330,7 +10330,7 @@ function renderLast30TitlesTable() {
     const date = t.createdTime ? new Date(t.createdTime).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
     const titleNameJs = esc(t.title || 'Untitled').replace(/'/g,"\\'");
     const highlighted = !!_last30TitlesHighlighted[t.id];
-    return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:32px;' + (highlighted ? 'background:color-mix(in srgb, var(--accent) 14%, transparent);' : '') + '">' +
+    return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:32px;' + (highlighted ? 'background:color-mix(in srgb, var(--accent) 20%, transparent);' : '') + '">' +
       '<div onclick="toggleLast30TitleHighlight(\'' + t.id + '\')" title="' + (highlighted ? 'Remove highlight' : 'Highlight this row') + '" style="width:22px;flex-shrink:0;padding:6px 0;text-align:center;cursor:pointer;font-size:13px;line-height:1;color:' + (highlighted ? 'var(--accent)' : 'var(--text3)') + ';opacity:' + (highlighted ? '1' : '.4') + ';">' + (highlighted ? '★' : '☆') + '</div>' +
       '<div style="flex:3;min-width:0;padding:6px 8px;overflow:hidden;">' +
         '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(t.title || 'Untitled') + '</span>' +
