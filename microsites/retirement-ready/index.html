@@ -1396,10 +1396,13 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
            that publishes somewhere specific is secretly hardcoded to
            whichever one shop happened to be connected when it was built. -->
       <div id="gaLoginWrap" style="display:none;margin-bottom:10px;">
-        <label class="lm-label">Shop / Brand Login <span style="color:var(--danger,#e05);">*</span> <span style="color:#fff;font-weight:normal;">— which specific shop this asset publishes to. Don't see it? Add a new Login (Platform: Etsy) from the main Hermes dashboard first, with its Printify Store ID filled in if this is a T Shirt.</span></label>
-        <select class="modal-ta" id="gaLoginInput">
-          <option value="">— pick a login —</option>
-        </select>
+        <label class="lm-label">Shop / Brand Login <span style="color:var(--danger,#e05);">*</span> <span style="color:#fff;font-weight:normal;">— which specific shop this asset publishes to. Picked a Login with no 🔗 Etsy tag? Hit Connect below to link it to a real Etsy shop. Don't see the Login at all? Pick "+ Connect a new Etsy shop…". For a T Shirt, its Printify Store ID still needs setting from the main Hermes dashboard.</span></label>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <select class="modal-ta" id="gaLoginInput" onchange="gaHandleLoginSelect()" style="flex:1;">
+            <option value="">— pick a login —</option>
+          </select>
+          <button type="button" id="gaConnectEtsyBtn" onclick="gaConnectSelectedLoginToEtsy()" style="display:none;flex-shrink:0;font-size:11px;padding:0 10px;height:32px;background:#e8ff47;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:600;">🔗 Connect</button>
+        </div>
       </div>
 
       <label class="lm-label">Platform <span style="color:#fff;font-weight:normal;">— from the Platforms DB; what this asset is packaged for (optional)</span></label>
@@ -5587,9 +5590,14 @@ function gaLoadLogins() {
     logins.forEach(l => {
       const opt = document.createElement('option');
       opt.value = l.id;
-      opt.textContent = l.name + (l.category ? ` (${l.category})` : '') + (l.usr ? ` — @${l.usr}` : '');
+      const etsyTag = l.etsyShopId ? ' 🔗 Etsy' : '';
+      opt.textContent = l.name + (l.category ? ` (${l.category})` : '') + (l.usr ? ` — @${l.usr}` : '') + etsyTag;
       sel.appendChild(opt);
     });
+    const connectOpt = document.createElement('option');
+    connectOpt.value = '__connect_etsy_shop__';
+    connectOpt.textContent = '+ Connect a new Etsy shop…';
+    sel.appendChild(connectOpt);
     if (prevVal && logins.some(l => l.id === prevVal)) sel.value = prevVal;
   };
   if (GA_LOGINS_CACHE) { render(GA_LOGINS_CACHE); return; }
@@ -5598,6 +5606,46 @@ function gaLoadLogins() {
     render(GA_LOGINS_CACHE);
   }).catch(e => { sel.innerHTML = `<option value="">Failed to load: ${e.message}</option>`; });
 }
+
+// Selecting "+ Connect a new Etsy shop…" starts the OAuth flow right away
+// (nothing existing to attach to). Selecting a real Login that has no 🔗
+// Etsy tag yet shows the Connect button, which attaches to THAT Login
+// instead of creating a new one — avoids ending up with duplicate Logins
+// for the same shop (see saveLoginVaultFields / startEtsyConnect, worker.js).
+function gaHandleLoginSelect() {
+  const sel = document.getElementById('gaLoginInput');
+  const btn = document.getElementById('gaConnectEtsyBtn');
+  if (!sel || !btn) return;
+  if (sel.value === '__connect_etsy_shop__') {
+    gaStartEtsyConnect(null);
+    return;
+  }
+  const login = (GA_LOGINS_CACHE || []).find(l => l.id === sel.value);
+  btn.style.display = (login && !login.etsyShopId) ? 'inline-block' : 'none';
+}
+function gaConnectSelectedLoginToEtsy() {
+  const sel = document.getElementById('gaLoginInput');
+  if (sel && sel.value) gaStartEtsyConnect(sel.value);
+}
+async function gaStartEtsyConnect(loginId) {
+  try {
+    const data = await w('startEtsyConnect', { loginId: loginId || undefined, returnTo: window.location.href.split('?')[0] });
+    if (data.authorizeUrl) window.location.href = data.authorizeUrl;
+  } catch(e) { alert('Failed to start Etsy connect: ' + e.message); }
+}
+
+(function handleEtsyOAuthReturnMicrosite() {
+  const params = new URLSearchParams(window.location.search);
+  const connected = params.get('etsyConnected');
+  const error = params.get('etsyError');
+  if (connected) { alert('Connected Etsy shop: ' + connected); GA_LOGINS_CACHE = null; }
+  else if (error) { alert('Etsy connect failed: ' + error); }
+  if (connected || error) {
+    params.delete('etsyConnected'); params.delete('etsyError');
+    const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+    window.history.replaceState({}, '', clean);
+  }
+})();
 
 let GA_PRODUCT_ID = null, GA_PRODUCT_NAME = '';
 // Asset Type is no longer operator-picked (see gaAssetTypeForMethod) so

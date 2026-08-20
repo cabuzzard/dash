@@ -1645,6 +1645,69 @@ async function verifyToken(token, secret) {
   } catch { return false; }
 }
 
+// ── LOGIN VAULT ──────────────────────────────────────────────────────────
+// Every Login (any platform — Etsy, a plain email/password site, whatever)
+// can have an arbitrary set of secret fields attached (username, password,
+// keystring, sharedSecret, accessToken, refreshToken — no fixed shape, each
+// platform brings whatever it needs). Per operator instruction, these never
+// touch Notion in any form, not even encrypted: the encrypted blob lives in
+// the existing TRADES KV, keyed by the Login's page ID, and the Notion page
+// itself holds nothing but a non-secret reference. VAULT_KEY (a 256-bit AES
+// key) exists only as a Cloudflare Worker secret — never in Notion, never
+// in the repo, never logged.
+function base64url(bytesLike) {
+  const arr = bytesLike instanceof Uint8Array ? bytesLike : new Uint8Array(bytesLike);
+  let bin = "";
+  for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function fromBase64url(s) {
+  const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - (s.length % 4));
+  const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/") + pad);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+async function vaultCryptoKey(env) {
+  const raw = Uint8Array.from(atob((env.VAULT_KEY || "").trim()), c => c.charCodeAt(0));
+  return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+}
+async function vaultEncrypt(env, obj) {
+  const key = await vaultCryptoKey(env);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode(JSON.stringify(obj));
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
+  return base64url(iv) + "." + base64url(ciphertext);
+}
+async function vaultDecrypt(env, blob) {
+  const [ivB64, ctB64] = String(blob || "").split(".");
+  if (!ivB64 || !ctB64) return {};
+  const key = await vaultCryptoKey(env);
+  const iv = fromBase64url(ivB64);
+  const ciphertext = fromBase64url(ctB64);
+  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+  return JSON.parse(new TextDecoder().decode(plaintext));
+}
+function vaultKvKey(loginId) { return "vault:" + loginId.replace(/-/g, ""); }
+async function getLoginVaultFields(env, loginId) {
+  const blob = await env.TRADES.get(vaultKvKey(loginId));
+  if (!blob) return {};
+  try { return await vaultDecrypt(env, blob); } catch (e) { return {}; }
+}
+// Merge semantics — setting one field (e.g. a refreshed accessToken) never
+// wipes sibling fields (keystring, username, ...) already stored for this
+// Login. Pass a field's value as null/"" to remove just that field.
+async function saveLoginVaultFields(env, loginId, fields) {
+  const existing = await getLoginVaultFields(env, loginId);
+  const merged = { ...existing };
+  for (const [k, v] of Object.entries(fields || {})) {
+    if (v === null || v === "") delete merged[k]; else merged[k] = v;
+  }
+  const blob = await vaultEncrypt(env, merged);
+  await env.TRADES.put(vaultKvKey(loginId), blob);
+  return merged;
+}
+
 // ── ETSY OAUTH HELPERS ───────────────────────────────────────────────────
 // Etsy Open API v3 uses OAuth 2.0 + PKCE (RFC 7636) for the authorize/token
 // exchange, and separately requires "x-api-key: {keystring}:{sharedSecret}"
@@ -1653,12 +1716,6 @@ async function verifyToken(token, secret) {
 // TRADES KV keyed by a random `state` value for the few minutes between the
 // authorize redirect and Etsy calling back — the client never needs to
 // remember anything, it just follows the authorizeUrl it's given.
-function base64url(bytesLike) {
-  const arr = bytesLike instanceof Uint8Array ? bytesLike : new Uint8Array(bytesLike);
-  let bin = "";
-  for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
 function randomPkceVerifier() {
   return base64url(crypto.getRandomValues(new Uint8Array(64))).slice(0, 96);
 }
@@ -1667,9 +1724,10 @@ async function pkceChallenge(verifier) {
   return base64url(digest);
 }
 // Refreshes an Etsy shop's access token using its stored refresh token, and
-// writes the new tokens back to its Login record — called before any Etsy
-// API request if the stored "Etsy Token Expires" is at/past now.
-async function refreshEtsyToken(env, loginPageId, refreshToken) {
+// writes the new tokens back into that Login's vault entry (never Notion —
+// see LOGIN VAULT above) — called before any Etsy API request if the
+// vault's "etsyTokenExpires" is at/past now.
+async function refreshEtsyToken(env, loginId, refreshToken) {
   const resp = await fetch("https://api.etsy.com/v3/public/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -1682,27 +1740,22 @@ async function refreshEtsyToken(env, loginPageId, refreshToken) {
   const data = await resp.json();
   if (!resp.ok || !data.access_token) throw new Error(data.error_description || data.error || "Etsy token refresh failed");
   const expiresAt = new Date(Date.now() + (data.expires_in || 3600) * 1000).toISOString();
-  await fetch(`https://api.notion.com/v1/pages/${loginPageId}`, {
-    method: "PATCH",
-    headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-    body: JSON.stringify({ properties: {
-      "Etsy Access Token":  { rich_text: [{ type: "text", text: { content: data.access_token } }] },
-      "Etsy Refresh Token": { rich_text: [{ type: "text", text: { content: data.refresh_token || refreshToken } }] },
-      "Etsy Token Expires": { date: { start: expiresAt } },
-    }}),
+  await saveLoginVaultFields(env, loginId, {
+    etsyAccessToken:  data.access_token,
+    etsyRefreshToken: data.refresh_token || refreshToken,
+    etsyTokenExpires: expiresAt,
   });
   return data.access_token;
 }
-// Given a Login page's raw Notion properties, returns a valid access token —
-// refreshing first if the stored one is expired or about to be (60s skew).
-async function getValidEtsyAccessToken(env, loginPage) {
-  const p = loginPage.properties || {};
-  const accessToken  = p["Etsy Access Token"]?.rich_text?.map(t => t.plain_text).join("") || "";
-  const refreshToken = p["Etsy Refresh Token"]?.rich_text?.map(t => t.plain_text).join("") || "";
-  const expiresAt    = p["Etsy Token Expires"]?.date?.start ? new Date(p["Etsy Token Expires"].date.start).getTime() : 0;
-  if (!refreshToken) throw new Error("This Login has no Etsy refresh token — reconnect the shop");
-  if (accessToken && expiresAt > Date.now() + 60000) return accessToken;
-  return await refreshEtsyToken(env, loginPage.id, refreshToken);
+// Given a Login's Notion page ID, returns a valid Etsy access token —
+// refreshing first if the vault's stored one is expired or about to be
+// (60s skew). Reads/writes exclusively through the vault, never Notion.
+async function getValidEtsyAccessToken(env, loginId) {
+  const v = await getLoginVaultFields(env, loginId);
+  const expiresAt = v.etsyTokenExpires ? new Date(v.etsyTokenExpires).getTime() : 0;
+  if (!v.etsyRefreshToken) throw new Error("This Login has no Etsy refresh token in its vault — reconnect the shop");
+  if (v.etsyAccessToken && expiresAt > Date.now() + 60000) return v.etsyAccessToken;
+  return await refreshEtsyToken(env, loginId, v.etsyRefreshToken);
 }
 
 // ── PIN brute-force lockout ─────────────────────────────────────────────
@@ -3093,16 +3146,24 @@ export default {
       // writes a new Login record — then bounces back to the dashboard.
       if (url.pathname === "/etsy/callback") {
         NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
-        const dashUrl = "https://cabuzzard.github.io/dash/index.html";
-        const fail = reason => Response.redirect(dashUrl + "?etsyError=" + encodeURIComponent(reason), 302);
+        const defaultDashUrl = "https://cabuzzard.github.io/dash/index.html";
         const code = url.searchParams.get("code");
         const state = url.searchParams.get("state");
         const oauthError = url.searchParams.get("error");
-        if (oauthError) return fail(oauthError);
-        if (!code || !state) return fail("missing_code_or_state");
+        // returnTo isn't known until the state is looked up below, so early
+        // failures (bad/expired state) fall back to the root dashboard —
+        // only failures *after* a valid state lookup can honor returnTo.
+        const redirectFail = (dashUrl, reason) => {
+          const sep = dashUrl.includes("?") ? "&" : "?";
+          return Response.redirect(dashUrl + sep + "etsyError=" + encodeURIComponent(reason), 302);
+        };
+        if (oauthError) return redirectFail(defaultDashUrl, oauthError);
+        if (!code || !state) return redirectFail(defaultDashUrl, "missing_code_or_state");
         const stateData = await env.TRADES.get("etsyoauth:" + state, "json");
-        if (!stateData) return fail("state_expired_or_reused");
+        if (!stateData) return redirectFail(defaultDashUrl, "state_expired_or_reused");
         await env.TRADES.delete("etsyoauth:" + state);
+        const dashUrl = stateData.returnTo || defaultDashUrl;
+        const fail = reason => redirectFail(dashUrl, reason);
         try {
           const tokenResp = await fetch("https://api.etsy.com/v3/public/oauth/token", {
             method: "POST",
@@ -3127,24 +3188,40 @@ export default {
           const shopData = await shopsResp.json();
           if (!shopsResp.ok || !shopData.shop_id) return fail("no_shop_found_for_this_etsy_login");
           const expiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000).toISOString();
-          const createResp = await fetch("https://api.notion.com/v1/pages", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              parent: { database_id: LOGINS_DB },
-              properties: {
-                Name:                 { title: [{ type: "text", text: { content: `Etsy — ${shopData.shop_name || userId}` } }] },
-                "Etsy Shop ID":       { number: shopData.shop_id },
-                "Etsy Shop Name":     { rich_text: [{ type: "text", text: { content: shopData.shop_name || "" } }] },
-                "Etsy Access Token":  { rich_text: [{ type: "text", text: { content: tokenData.access_token } }] },
-                "Etsy Refresh Token": { rich_text: [{ type: "text", text: { content: tokenData.refresh_token } }] },
-                "Etsy Token Expires": { date: { start: expiresAt } },
-                Category:             { select: { name: "Company Page" } },
-              },
-            }),
+          // Only non-secret identifiers go on the Notion page (useful to see
+          // at a glance which shop this Login is); the actual OAuth tokens
+          // go into this Login's encrypted vault entry (KV), never Notion —
+          // see LOGIN VAULT helpers above.
+          const notionProps = {
+            "Etsy Shop ID":   { number: shopData.shop_id },
+            "Etsy Shop Name": { rich_text: [{ type: "text", text: { content: shopData.shop_name || "" } }] },
+          };
+          const dash = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+          let loginId = stateData.loginId ? stateData.loginId.replace(/-/g,"") : null;
+          const saveResp = loginId
+            ? await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, {
+                method: "PATCH",
+                headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: notionProps }),
+              })
+            : await fetch("https://api.notion.com/v1/pages", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  parent: { database_id: LOGINS_DB },
+                  properties: { Name: { title: [{ type: "text", text: { content: `Etsy — ${shopData.shop_name || userId}` } }] }, Category: { select: { name: "Company Page" } }, ...notionProps },
+                }),
+              });
+          const saveResult = await saveResp.json();
+          if (!saveResp.ok) return fail("notion_save_failed");
+          if (!loginId) loginId = saveResult.id.replace(/-/g,"");
+          await saveLoginVaultFields(env, loginId, {
+            etsyAccessToken:  tokenData.access_token,
+            etsyRefreshToken: tokenData.refresh_token,
+            etsyTokenExpires: expiresAt,
           });
-          if (!createResp.ok) return fail("notion_save_failed");
-          return Response.redirect(dashUrl + "?etsyConnected=" + encodeURIComponent(shopData.shop_name || "shop"), 302);
+          const successSep = dashUrl.includes("?") ? "&" : "?";
+          return Response.redirect(dashUrl + successSep + "etsyConnected=" + encodeURIComponent(shopData.shop_name || "shop"), 302);
         } catch (e) {
           return fail(e.message || "unexpected_error");
         }
@@ -4906,7 +4983,17 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const codeVerifier = randomPkceVerifier();
         const codeChallenge = await pkceChallenge(codeVerifier);
         const state = base64url(crypto.getRandomValues(new Uint8Array(24)));
-        await env.TRADES.put("etsyoauth:" + state, JSON.stringify({ codeVerifier }), { expirationTtl: 600 });
+        // returnTo lets any page (root dashboard, a microsite's Generate
+        // Asset modal) start this flow and land back exactly where it
+        // began — restricted to our own GitHub Pages origin so this can't
+        // be abused as an open redirect.
+        const returnTo = typeof body.returnTo === "string" && body.returnTo.startsWith("https://cabuzzard.github.io/dash/")
+          ? body.returnTo : null;
+        // loginId (optional): fill in an existing Login record the operator
+        // already has picked out, instead of always creating a fresh one —
+        // avoids ending up with a duplicate Login for the same shop.
+        const loginId = typeof body.loginId === "string" && body.loginId ? body.loginId : null;
+        await env.TRADES.put("etsyoauth:" + state, JSON.stringify({ codeVerifier, returnTo, loginId }), { expirationTtl: 600 });
         const authorizeUrl = "https://www.etsy.com/oauth/connect"
           + "?response_type=code"
           + "&client_id=" + encodeURIComponent(env.ETSY_KEYSTRING || "")
@@ -4928,6 +5015,34 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           campaignIds: (l.properties.Campaign?.relation || []).map(r => r.id.replace(/-/g,"")),
         }));
         return json({ shops });
+      }
+
+      // ── saveLoginVault / getLoginVault ──
+      // The generic encrypted credential store for any Login (see LOGIN
+      // VAULT helpers) — username/password for a plain site login,
+      // keystring/sharedSecret/accessToken/refreshToken for an OAuth'd
+      // platform like Etsy, whatever a given platform needs. Never touches
+      // Notion. getLoginVault only returns which FIELD NAMES are set, not
+      // their values, unless `reveal: true` is explicitly passed — the
+      // dashboard shows masked placeholders by default and only decrypts
+      // real values on an explicit reveal action.
+      if (body.action === "saveLoginVault") {
+        const { loginId, fields } = body;
+        if (!loginId) return json({ error: "loginId required" }, 400);
+        if (!fields || typeof fields !== "object") return json({ error: "fields required" }, 400);
+        try {
+          const merged = await saveLoginVaultFields(env, loginId, fields);
+          return json({ success: true, fieldNames: Object.keys(merged) });
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
+      if (body.action === "getLoginVault") {
+        const { loginId, reveal } = body;
+        if (!loginId) return json({ error: "loginId required" }, 400);
+        try {
+          const fields = await getLoginVaultFields(env, loginId);
+          if (reveal) return json({ fields });
+          return json({ fieldNames: Object.keys(fields) });
+        } catch (e) { return json({ error: e.message }, 500); }
       }
 
       if (body.action === "createLogin") {
@@ -14188,6 +14303,8 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
             // for Listing) — set once per Login, resolved at publish time
             // instead of guessed from a campaign-name/store-title match.
             printifyStoreId: p["Printify Store ID"]?.rich_text?.map(t=>t.plain_text).join("") || "",
+            etsyShopId:   p["Etsy Shop ID"]?.number ?? null,
+            etsyShopName: p["Etsy Shop Name"]?.rich_text?.map(t=>t.plain_text).join("") || "",
             picture:     (p.Picture?.files || []).map(f => ({ name: f.name, url: f.file?.url || f.external?.url || "" })),
             bannerImage: (p["Banner Image"]?.files || []).map(f => ({ name: f.name, url: f.file?.url || f.external?.url || "" })),
             files:       (p.Files?.files || []).map(f => ({ name: f.name, url: f.file?.url || f.external?.url || "" })),

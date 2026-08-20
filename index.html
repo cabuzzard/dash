@@ -2401,6 +2401,15 @@
       <label class="modal-label">SM Accounts</label>
       <div id="leSmAccountChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;"></div>
     </div>
+    <div class="modal-field">
+      <label class="modal-label">🔐 Vault <span style="font-size:10px;font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">— encrypted, stored outside Notion (password, API key, token, whatever this login needs). Never leaves this dashboard.</span></label>
+      <div id="leVaultFields" style="display:flex;flex-direction:column;gap:4px;margin-top:4px;"></div>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <input class="modal-input" id="leVaultNewName" type="text" placeholder="field name (e.g. password)" style="flex:1;font-size:12px;padding:6px 8px;" />
+        <input class="modal-input" id="leVaultNewValue" type="password" placeholder="value" style="flex:1;font-size:12px;padding:6px 8px;" />
+        <button class="btn btn-secondary" style="flex:0;padding:0 12px;font-size:12px;" onclick="addLoginVaultField()">+ Add</button>
+      </div>
+    </div>
     <div class="modal-actions" style="justify-content:space-between;">
       <button class="btn btn-secondary" onclick="deleteLoginCell()" style="color:var(--danger);border-color:var(--danger);">Delete</button>
       <div style="display:flex;gap:8px;">
@@ -5905,6 +5914,56 @@ function openLoginEditModal(login) {
   document.getElementById('leSaveBtn').disabled = false;
   document.getElementById('leSaveBtn').textContent = 'Save';
   document.getElementById('loginEditModal').classList.add('open');
+  loadLoginVaultFields();
+}
+
+// ── LOGIN VAULT (encrypted, never touches Notion — see worker.js) ──────
+async function loadLoginVaultFields() {
+  const el = document.getElementById('leVaultFields');
+  el.innerHTML = '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
+  try {
+    const data = await call('getLoginVault', { loginId: leLoginId });
+    renderLoginVaultFields(data.fieldNames || []);
+  } catch(e) { el.innerHTML = `<div style="font-size:11px;color:var(--danger);">Failed to load: ${e.message}</div>`; }
+}
+function renderLoginVaultFields(fieldNames) {
+  const el = document.getElementById('leVaultFields');
+  if (!fieldNames.length) { el.innerHTML = '<div style="font-size:11px;color:var(--text3);font-style:italic;">No vault fields yet.</div>'; return; }
+  el.innerHTML = fieldNames.map(name => `
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;">
+      <span style="flex:1;font-size:12px;color:var(--text2);font-family:'DM Mono',monospace;">${esc(name)}</span>
+      <span id="leVaultVal_${esc(name)}" style="font-size:12px;color:var(--text3);letter-spacing:2px;">••••••••</span>
+      <button onclick="revealLoginVaultField('${name.replace(/'/g,"\\'")}')" title="Reveal" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:2px 4px;">👁</button>
+      <button onclick="removeLoginVaultField('${name.replace(/'/g,"\\'")}')" title="Delete" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:2px 4px;">✕</button>
+    </div>
+  `).join('');
+}
+async function revealLoginVaultField(name) {
+  try {
+    const data = await call('getLoginVault', { loginId: leLoginId, reveal: true });
+    const val = (data.fields || {})[name];
+    const span = document.getElementById('leVaultVal_' + name);
+    if (span) { span.textContent = val ?? ''; span.style.letterSpacing = 'normal'; span.style.userSelect = 'all'; }
+  } catch(e) { showToast('Failed to reveal: ' + e.message, 'error'); }
+}
+async function addLoginVaultField() {
+  const nameInput = document.getElementById('leVaultNewName');
+  const valueInput = document.getElementById('leVaultNewValue');
+  const name = nameInput.value.trim();
+  const value = valueInput.value;
+  if (!name || !value) return;
+  try {
+    await call('saveLoginVault', { loginId: leLoginId, fields: { [name]: value } });
+    nameInput.value = ''; valueInput.value = '';
+    loadLoginVaultFields();
+  } catch(e) { showToast('Failed to save: ' + e.message, 'error'); }
+}
+async function removeLoginVaultField(name) {
+  if (!confirm('Remove vault field "' + name + '"?')) return;
+  try {
+    await call('saveLoginVault', { loginId: leLoginId, fields: { [name]: null } });
+    loadLoginVaultFields();
+  } catch(e) { showToast('Failed to remove: ' + e.message, 'error'); }
 }
 
 function closeLoginEditModal() {
