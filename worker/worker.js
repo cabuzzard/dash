@@ -4056,11 +4056,26 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           sorts: [{ property: "Name", direction: "ascending" }],
         });
         const methods = rows.map(m => ({
-          id:   m.id.replace(/-/g,""),
-          name: m.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
+          id:     m.id.replace(/-/g,""),
+          name:   m.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
+          status: m.properties.Status?.select?.name || "Development",
         })).filter(m => !query || m.name.toLowerCase().includes(query.toLowerCase()));
         // Same payload-guard-not-cap rationale as searchProducts.
         return json({ methods: methods.slice(0, 500) });
+      }
+
+      if (body.action === "updateMethodStatus") {
+        const { methodId, status } = body;
+        if (!methodId || !status) return json({ error: "methodId and status required" }, 400);
+        if (!["Development", "Live", "Delete"].includes(status)) return json({ error: "invalid status" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Status": { select: { name: status } } } }),
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Update failed" }, resp.status); }
+        return json({ success: true });
       }
 
       if (body.action === "updateCampaignProducts") {
