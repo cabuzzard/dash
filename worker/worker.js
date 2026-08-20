@@ -23394,6 +23394,164 @@ Produce all of this by calling the submit_listing tool — do not include any of
         return json({ success: true, photoUrl, photos: newFiles.map(f => f.external.url) });
       }
 
+      // ── getEtsyShippingProfiles ──
+      // Shipping profiles are created in Etsy's own Shop Manager, not via
+      // this API — this just lists the shop's existing ones so the operator
+      // can pick one at publish time (createDraftListing requires it for
+      // physical listings).
+      if (body.action === "getEtsyShippingProfiles") {
+        const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        let loginId = body.loginId || null;
+        if (!loginId && body.assetId) {
+          const hdr0 = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+          const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(body.assetId)}`, { headers: hdr0 }).then(r => r.json());
+          loginId = assetPage.properties?.["Login"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        }
+        if (!loginId) return json({ error: "loginId or assetId (with a Login set) required" }, 400);
+        try {
+          const loginPage = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+          }).then(r => r.json());
+          const shopId = loginPage.properties?.["Etsy Shop ID"]?.number;
+          if (!shopId) return json({ error: "This Login has no connected Etsy shop" }, 400);
+          const accessToken = await getValidEtsyAccessToken(env, loginId);
+          const resp = await fetch(`https://api.etsy.com/v3/application/shops/${shopId}/shipping-profiles`, {
+            headers: { "x-api-key": `${env.ETSY_KEYSTRING}:${env.ETSY_SHARED_SECRET}`, "Authorization": `Bearer ${accessToken}` },
+          });
+          const data = await resp.json();
+          if (!resp.ok) return json({ error: data.error || "Failed to load shipping profiles" }, resp.status);
+          return json({ profiles: (data.results || []).map(p => ({ id: p.shipping_profile_id, title: p.title })) });
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
+
+      // ── getEtsyTaxonomy ──
+      // The full seller-taxonomy tree (category picker for createDraftListing's
+      // required taxonomy_id) — public endpoint (api_key only, no OAuth), so
+      // not shop-specific. Rarely changes, so cached in TRADES KV for a day
+      // rather than fetched fresh every time the Publish modal opens.
+      if (body.action === "getEtsyTaxonomy") {
+        try {
+          const cached = await env.TRADES.get("etsy:taxonomy", "json");
+          if (cached) return json({ nodes: cached });
+          const resp = await fetch("https://api.etsy.com/v3/application/seller-taxonomy/nodes", {
+            headers: { "x-api-key": `${env.ETSY_KEYSTRING}:${env.ETSY_SHARED_SECRET}` },
+          });
+          const data = await resp.json();
+          if (!resp.ok) return json({ error: data.error || "Failed to load taxonomy" }, resp.status);
+          // Flatten the tree into a searchable flat list with a human path
+          // ("Home & Living > Kitchen & Dining > ...") instead of shipping
+          // the raw nested structure to the client.
+          const flat = [];
+          const walk = (node, pathNames) => {
+            const here = [...pathNames, node.name];
+            flat.push({ id: node.id, name: node.name, path: here.join(" > ") });
+            (node.children || []).forEach(c => walk(c, here));
+          };
+          (data.results || []).forEach(n => walk(n, []));
+          await env.TRADES.put("etsy:taxonomy", JSON.stringify(flat), { expirationTtl: 86400 });
+          return json({ nodes: flat });
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
+
+      // ── publishListingToEtsy ──
+      // The actual "make it live" step for the Listing method: creates a
+      // real draft listing on Etsy from this Asset's generated copy, pushes
+      // every uploaded Listing Photo to it, then activates it (Etsy requires
+      // an image before a draft can go active). Etsy's own required fields
+      // (price/quantity/taxonomy/who+when made/shipping profile) aren't
+      // anything the Listing method's AI generation can invent truthfully,
+      // so the operator supplies them here at publish time.
+      if (body.action === "publishListingToEtsy") {
+        const { assetId, price, quantity, taxonomyId, whoMade, whenMade, isSupply, shippingProfileId, materials } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        for (const [k, v] of Object.entries({ price, quantity, taxonomyId, whoMade, whenMade, shippingProfileId })) {
+          if (v === undefined || v === null || v === "") return json({ error: `${k} required` }, 400);
+        }
+        const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        try {
+          const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+          if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+          const p = assetPage.properties;
+          const title = p["Asset Title"]?.title?.map(t => t.plain_text).join("") || "";
+          const description = p["Description"]?.rich_text?.map(t => t.plain_text).join("") || "";
+          const tagsLine = p["Etsy Tags"]?.rich_text?.map(t => t.plain_text).join("") || "";
+          const tags = tagsLine.split(",").map(s => s.trim()).filter(Boolean).slice(0, 13);
+          const photoUrls = (p["Listing Photos"]?.files || []).map(f => f.external?.url || f.file?.url).filter(Boolean);
+          const loginId = p["Login"]?.relation?.[0]?.id?.replace(/-/g,"");
+          if (!loginId) return json({ error: "This asset has no Login set — pick one in Generate Assets first" }, 400);
+          if (!photoUrls.length) return json({ error: "No Listing Photos uploaded yet — Etsy requires at least one image to activate a listing" }, 400);
+
+          const loginPage = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, { headers: hdr }).then(r => r.json());
+          const shopId = loginPage.properties?.["Etsy Shop ID"]?.number;
+          if (!shopId) return json({ error: "This asset's Login has no connected Etsy shop" }, 400);
+          const accessToken = await getValidEtsyAccessToken(env, loginId);
+          const etsyHdr = { "x-api-key": `${env.ETSY_KEYSTRING}:${env.ETSY_SHARED_SECRET}`, "Authorization": `Bearer ${accessToken}` };
+
+          // 1) Create the draft listing.
+          const createBody = new URLSearchParams({
+            quantity: String(quantity), title, description, price: String(price),
+            who_made: whoMade, when_made: whenMade, taxonomy_id: String(taxonomyId),
+            shipping_profile_id: String(shippingProfileId),
+            is_supply: isSupply ? "true" : "false", type: "physical",
+          });
+          tags.forEach(t => createBody.append("tags", t));
+          (Array.isArray(materials) ? materials : []).forEach(m => createBody.append("materials", m));
+          const createResp = await fetch(`https://api.etsy.com/v3/application/shops/${shopId}/listings`, {
+            method: "POST", headers: { ...etsyHdr, "Content-Type": "application/x-www-form-urlencoded" }, body: createBody,
+          });
+          const listing = await createResp.json();
+          if (!createResp.ok || !listing.listing_id) return json({ error: listing.error || "Etsy listing creation failed" }, createResp.status || 502);
+          const listingId = listing.listing_id;
+
+          // 2) Push every uploaded photo (already hosted on GitHub Pages —
+          // just re-fetch the bytes and forward them as multipart/form-data,
+          // which the Workers runtime's native FormData/Blob supports directly).
+          for (let i = 0; i < photoUrls.length; i++) {
+            try {
+              const imgResp = await fetch(photoUrls[i]);
+              if (!imgResp.ok) continue;
+              const blob = await imgResp.blob();
+              const fd = new FormData();
+              fd.append("image", blob, `photo-${i + 1}.jpg`);
+              fd.append("rank", String(i + 1));
+              await fetch(`https://api.etsy.com/v3/application/shops/${shopId}/listings/${listingId}/images`, {
+                method: "POST", headers: etsyHdr, body: fd,
+              });
+            } catch (e) { /* one bad photo shouldn't sink the whole publish — activation below will fail loudly if NONE made it */ }
+          }
+
+          // 3) Activate — makes it actually live/visible on Etsy. Requires
+          // the shipping profile (set at creation) and at least one image
+          // (just uploaded above).
+          const activateResp = await fetch(`https://api.etsy.com/v3/application/shops/${shopId}/listings/${listingId}`, {
+            method: "PATCH", headers: { ...etsyHdr, "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ state: "active" }),
+          });
+          const activated = await activateResp.json();
+          const liveUrl = activated.url || listing.url || `https://www.etsy.com/listing/${listingId}`;
+          if (!activateResp.ok) {
+            // Draft exists on Etsy even if activation failed (e.g. missing
+            // shop-level return policy) — save the link either way so the
+            // operator can finish activating it manually from Etsy's own UI.
+            await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "Etsy Listing URL": { url: liveUrl } } }),
+            });
+            return json({ error: `Listing created as a draft but activation failed: ${activated.error || activateResp.status} — finish activating it from Etsy directly.`, listingUrl: liveUrl }, 502);
+          }
+
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: {
+              "Etsy Listing URL": { url: liveUrl },
+              "Asset Status": { select: { name: "Published" } },
+            }}),
+          });
+          return json({ success: true, listingId, listingUrl: liveUrl });
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
+
       // ── removeListingPhoto ──
       // Removes one photo from "Listing Photos" by URL — does not delete
       // the hosted file (harmless orphan, same trade-off every other

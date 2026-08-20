@@ -1046,6 +1046,56 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
           <textarea class="modal-ta" id="pubFbMarketplace" rows="5" style="resize:vertical;min-height:100px!important;flex:1;line-height:1.5;"></textarea>
           <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubFbMarketplace', this)">📋</button>
         </div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid #333;">
+          <label class="lm-label" style="margin-bottom:2px;">🚀 Publish to Etsy <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— Etsy requires these before a listing can go live; the AI copy above can't invent them truthfully.</span></label>
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:100px;">
+              <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Price (USD)</label>
+              <input class="modal-ta" id="etsyPrice" type="number" min="0.01" step="0.01" style="height:32px;padding:5px 8px;width:100%;" placeholder="0.00" />
+            </div>
+            <div style="flex:1;min-width:80px;">
+              <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Quantity</label>
+              <input class="modal-ta" id="etsyQuantity" type="number" min="1" step="1" value="1" style="height:32px;padding:5px 8px;width:100%;" />
+            </div>
+          </div>
+          <div style="position:relative;margin-top:8px;">
+            <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Category</label>
+            <input class="modal-ta" id="etsyCategoryInput" type="text" autocomplete="off" placeholder="Search Etsy categories…" style="height:32px;padding:5px 8px;width:100%;" oninput="etsyFilterCategory()" onfocus="etsyFilterCategory()" />
+            <input type="hidden" id="etsyCategoryId" />
+            <div id="etsyCategoryDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#1e1e1e;border:1px solid #333;border-radius:4px;z-index:50;max-height:180px;overflow-y:auto;margin-top:2px;"></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:130px;">
+              <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Who made it</label>
+              <select class="modal-ta" id="etsyWhoMade" style="height:32px;padding:0 6px;width:100%;background:#1e1e1e;color:#fff;border:1px solid #333;">
+                <option value="i_did">I did</option>
+                <option value="someone_else">Someone else</option>
+                <option value="collective">A collective</option>
+              </select>
+            </div>
+            <div style="flex:1;min-width:130px;">
+              <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">When made</label>
+              <select class="modal-ta" id="etsyWhenMade" style="height:32px;padding:0 6px;width:100%;background:#1e1e1e;color:#fff;border:1px solid #333;">
+                <option value="made_to_order">Made to order</option>
+                <option value="2020_2026">2020–2026</option>
+                <option value="2010_2019">2010–2019</option>
+                <option value="before_2007">Vintage (before 2007)</option>
+              </select>
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:#fff;cursor:pointer;">
+            <input type="checkbox" id="etsyIsSupply" /> This is a craft supply, not a finished product
+          </label>
+          <div style="margin-top:8px;">
+            <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Shipping Profile <span style="font-weight:400;">(from the connected shop — create one in Etsy's Shop Manager first if none show up)</span></label>
+            <select class="modal-ta" id="etsyShippingProfile" style="height:32px;padding:0 6px;width:100%;background:#1e1e1e;color:#fff;border:1px solid #333;">
+              <option value="">— pick a Login with a connected shop first —</option>
+            </select>
+          </div>
+          <button class="modal-btn cancel" id="etsyPublishBtn" onclick="publishListingToEtsy()" style="margin-top:10px;width:100%;background:#e8ff47;color:#000;font-weight:600;border:none;">🚀 Publish to Etsy</button>
+          <div class="modal-status" id="etsyPublishStatus" style="margin-top:4px;"></div>
+        </div>
       </div>
       <label class="lm-label" for="pubDesignLink" style="margin-top:10px;">Design Link <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(the finished, populated design — not the source Canva template)</span></label>
       <div style="display:flex;gap:6px;margin-top:4px;">
@@ -6058,6 +6108,13 @@ function openPublishAssetModal(btn) {
     document.getElementById('pubFbMarketplace').value = data.fbMarketplaceListing || '';
     document.getElementById('pubListingPhotosStatus').textContent = '';
     renderPubListingPhotos(data.listingPhotos || []);
+    document.getElementById('etsyPrice').value = '';
+    document.getElementById('etsyQuantity').value = '1';
+    document.getElementById('etsyCategoryInput').value = '';
+    document.getElementById('etsyCategoryId').value = '';
+    document.getElementById('etsyIsSupply').checked = false;
+    document.getElementById('etsyPublishStatus').textContent = '';
+    etsyLoadShippingProfiles(assetId);
   }
   const printifyWrap = document.getElementById('pubPrintifyWrap');
   printifyWrap.style.display = data.type === 't shirt' ? 'block' : 'none';
@@ -6426,6 +6483,86 @@ async function savePublishAssetFields() {
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.className = 'modal-status err';
+    btn.disabled = false;
+  }
+}
+
+// ── Publish to Etsy (real API, not just copy generation) ────────────────
+let ETSY_TAXONOMY_CACHE = null;
+async function etsyFilterCategory() {
+  const input = document.getElementById('etsyCategoryInput');
+  const dropdown = document.getElementById('etsyCategoryDropdown');
+  if (!ETSY_TAXONOMY_CACHE) {
+    dropdown.style.display = 'block';
+    dropdown.innerHTML = '<div style="padding:8px;font-size:11px;color:#fff;">Loading categories…</div>';
+    try {
+      const data = await w('getEtsyTaxonomy', {});
+      ETSY_TAXONOMY_CACHE = data.nodes || [];
+    } catch(e) { dropdown.innerHTML = `<div style="padding:8px;font-size:11px;color:#f87171;">Failed: ${e.message}</div>`; return; }
+  }
+  const q = input.value.trim().toLowerCase();
+  const matches = (q ? ETSY_TAXONOMY_CACHE.filter(n => n.path.toLowerCase().includes(q)) : ETSY_TAXONOMY_CACHE).slice(0, 40);
+  if (!matches.length) { dropdown.innerHTML = '<div style="padding:8px;font-size:11px;color:#fff;">No matches.</div>'; dropdown.style.display = 'block'; return; }
+  dropdown.innerHTML = matches.map(n => `<div style="padding:6px 8px;font-size:11px;color:#fff;cursor:pointer;border-bottom:1px solid #2a2a2a;" onmouseover="this.style.background='#2a2a2a'" onmouseout="this.style.background='none'" onclick="etsyPickCategory(${n.id}, '${n.path.replace(/'/g,"\\'")}')">${n.path}</div>`).join('');
+  dropdown.style.display = 'block';
+}
+function etsyPickCategory(id, path) {
+  document.getElementById('etsyCategoryInput').value = path;
+  document.getElementById('etsyCategoryId').value = id;
+  document.getElementById('etsyCategoryDropdown').style.display = 'none';
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#etsyCategoryInput') && !e.target.closest('#etsyCategoryDropdown')) {
+    const d = document.getElementById('etsyCategoryDropdown');
+    if (d) d.style.display = 'none';
+  }
+});
+async function etsyLoadShippingProfiles(assetId) {
+  const sel = document.getElementById('etsyShippingProfile');
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const data = await w('getEtsyShippingProfiles', { assetId });
+    if (!data.profiles || !data.profiles.length) {
+      sel.innerHTML = '<option value="">No shipping profiles found — create one in Etsy Shop Manager, or connect a shop via the Login picker above</option>';
+      return;
+    }
+    sel.innerHTML = data.profiles.map(p => `<option value="${p.id}">${esc(p.title)}</option>`).join('');
+  } catch(e) {
+    sel.innerHTML = `<option value="">${esc(e.message)}</option>`;
+  }
+}
+async function publishListingToEtsy() {
+  const btn = document.getElementById('etsyPublishBtn');
+  const status = document.getElementById('etsyPublishStatus');
+  const price = parseFloat(document.getElementById('etsyPrice').value);
+  const quantity = parseInt(document.getElementById('etsyQuantity').value, 10);
+  const taxonomyId = document.getElementById('etsyCategoryId').value;
+  const shippingProfileId = document.getElementById('etsyShippingProfile').value;
+  if (!price || price <= 0) { status.textContent = 'Enter a valid price first.'; status.className = 'modal-status err'; return; }
+  if (!quantity || quantity < 1) { status.textContent = 'Enter a valid quantity first.'; status.className = 'modal-status err'; return; }
+  if (!taxonomyId) { status.textContent = 'Pick a category first.'; status.className = 'modal-status err'; return; }
+  if (!shippingProfileId) { status.textContent = 'Pick a shipping profile first.'; status.className = 'modal-status err'; return; }
+  if (!confirm('Publish this listing live on Etsy now? This creates a real, public listing.')) return;
+  btn.disabled = true;
+  status.textContent = 'Publishing to Etsy…';
+  status.className = 'modal-status';
+  try {
+    const r = await w('publishListingToEtsy', {
+      assetId: pubAssetId, price, quantity, taxonomyId,
+      whoMade: document.getElementById('etsyWhoMade').value,
+      whenMade: document.getElementById('etsyWhenMade').value,
+      isSupply: document.getElementById('etsyIsSupply').checked,
+      shippingProfileId,
+    });
+    status.textContent = 'Live ✓ ' + r.listingUrl;
+    status.className = 'modal-status ok';
+    if (PUB_ASSET_CACHE[pubAssetId]) { PUB_ASSET_CACHE[pubAssetId].status = 'Published'; PUB_ASSET_CACHE[pubAssetId].productLink = r.listingUrl; }
+    document.getElementById('pubProductLink').value = r.listingUrl;
+    document.getElementById('pubStatus').value = 'Published';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+  } finally {
     btn.disabled = false;
   }
 }
