@@ -10144,6 +10144,7 @@ function renderLast30TitlesTable() {
     let av, bv;
     if (_last30TitlesSort.col === 'date')          { av = a.createdTime || ''; bv = b.createdTime || ''; }
     else if (_last30TitlesSort.col === 'campaign') { av = (a.campaignName || '').toLowerCase(); bv = (b.campaignName || '').toLowerCase(); }
+    else if (_last30TitlesSort.col === 'note')     { av = (a.note || '').toLowerCase(); bv = (b.note || '').toLowerCase(); }
     else                                           { av = (a.title || '').toLowerCase(); bv = (b.title || '').toLowerCase(); }
     return av < bv ? -_last30TitlesSort.dir : av > bv ? _last30TitlesSort.dir : 0;
   });
@@ -10155,25 +10156,26 @@ function renderLast30TitlesTable() {
   };
   const hdrRow = '<div style="display:flex;align-items:center;border-bottom:2px solid var(--border2);margin-bottom:2px;">' +
     colHdr('title',    'Title',    '3') +
+    colHdr('note',     'Note',     '2') +
     colHdr('campaign', 'Campaign', '1') +
     colHdr('date',     'Date',     '0 0 70px') +
-    '<div style="width:24px;flex-shrink:0;"></div>' +
     '<div style="width:24px;flex-shrink:0;"></div>' +
   '</div>';
   const rowsHtml = sorted.map(t => {
     const date = t.createdTime ? new Date(t.createdTime).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
+    const titleNameJs = esc(t.title || 'Untitled').replace(/'/g,"\\'");
     return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:32px;">' +
       '<div style="flex:3;min-width:0;padding:6px 8px;overflow:hidden;">' +
         '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(t.title || 'Untitled') + '</span>' +
+      '</div>' +
+      '<div onclick="openTitleNoteModal(\'' + t.id + '\',\'' + titleNameJs + '\')" style="flex:2;min-width:0;padding:6px 8px;overflow:hidden;cursor:pointer;" title="Click to edit note">' +
+        (t.note ? '<span style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(t.note) + '</span>' : '<span style="font-size:11px;color:var(--text3);font-style:italic;">+ add note</span>') +
       '</div>' +
       '<div style="flex:1;min-width:0;padding:6px 8px;overflow:hidden;">' +
         '<span style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(t.campaignName || '—') + '</span>' +
       '</div>' +
       '<div style="flex:0 0 70px;min-width:0;padding:6px 8px;">' +
         '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
-      '</div>' +
-      '<div style="width:24px;flex-shrink:0;padding:6px 4px;">' +
-        '<button onclick="openTitleNoteModal(\'' + t.id + '\',\'' + esc(t.title || 'Untitled').replace(/'/g,"\\'") + '\')" title="Note" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:0;font-family:inherit;">📝</button>' +
       '</div>' +
       '<div style="width:24px;flex-shrink:0;padding:6px 4px;">' +
         (t.campaignMicrosite ? '<a href="' + esc(t.campaignMicrosite) + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' : '') +
@@ -10217,6 +10219,8 @@ async function saveTitleNoteModal() {
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
     await call('saveTitleNote', { titleId: titleNoteActiveId, note });
+    const row = _last30Titles.find(t => t.id === titleNoteActiveId);
+    if (row) { row.note = note; renderLast30TitlesTable(); }
     status.textContent = 'Saved ✓';
     status.style.color = 'var(--text3)';
     setTimeout(closeTitleNoteModal, 500);

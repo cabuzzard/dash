@@ -4511,18 +4511,37 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           campRows.forEach(c => {
             campMap[c.id.replace(/-/g,"")] = { name: c.properties.Name?.title?.map(t=>t.plain_text).join("") || "", microsite: c.properties["microsite"]?.url || null };
           });
+          // Bulk-fetch this batch's notes (Main TD records related via
+          // "Content") in one query — an `or` of per-title contains
+          // conditions — rather than one lookup per row.
+          const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+          const titleIds = (titleResp.results || []).map(pg => pg.id.replace(/-/g,""));
+          const noteMap = {};
+          if (titleIds.length) {
+            try {
+              const tdRows = await notionQuery(MAIN_TD_DB, {
+                filter: { or: titleIds.map(id => ({ property: "Content", relation: { contains: dashId(id) } })) },
+              });
+              tdRows.forEach(td => {
+                const relTitleId = (td.properties?.Content?.relation || [])[0]?.id?.replace(/-/g,"");
+                if (relTitleId) noteMap[relTitleId] = (td.properties?.Title?.title || []).map(t => t.plain_text).join("");
+              });
+            } catch(e) { /* notes are supplementary — a failed lookup shouldn't break the whole list */ }
+          }
           const titles = (titleResp.results || []).map(pg => {
             const p = pg.properties || {};
+            const id = pg.id.replace(/-/g,"");
             const campId = (p.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || "";
             const camp = campMap[campId] || { name: "", microsite: null };
             return {
-              id: pg.id.replace(/-/g,""),
+              id,
               title: p.Title?.title?.map(t=>t.plain_text).join("") || "Untitled",
               status: p.Status?.select?.name || "",
               campaignId: campId,
               campaignName: camp.name,
               campaignMicrosite: camp.microsite,
               createdTime: pg.created_time || "",
+              note: noteMap[id] || "",
             };
           });
           return json({ titles });
