@@ -200,6 +200,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   <div class="pin-dots">
     <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
     <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
+    <div class="pin-dot" id="d4"></div><div class="pin-dot" id="d5"></div>
   </div>
   <div class="pin-pad">
     <button class="pin-btn" onclick="pp('1')">1</button><button class="pin-btn" onclick="pp('2')">2</button><button class="pin-btn" onclick="pp('3')">3</button>
@@ -1442,6 +1443,7 @@ const RESEARCH_ID = "3921f7d3a4bb81e792a0dbc1d14fba01"; // research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/mountainwize-coaching-purpose/";
 let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
 let pin = '';
+const PIN_LENGTH = 6;
 
 // Auto-restore session if a valid token exists from this browser session
 if (SESSION_TOKEN) {
@@ -1460,10 +1462,10 @@ function pinReset(msg, isErr) {
   setTimeout(() => { dots.forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; }, 900);
 }
 async function pp(d) {
-  if (pin.length >= 4) return;
+  if (pin.length >= PIN_LENGTH) return;
   pin += d;
   document.getElementById('d' + (pin.length-1)).classList.add('filled');
-  if (pin.length === 4) {
+  if (pin.length === PIN_LENGTH) {
     const attemptPin = pin;
     pin = ''; // free immediately so DEL/re-entry works during inflight request
     try {
