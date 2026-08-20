@@ -8937,7 +8937,15 @@ async function saveMethodBody() {
   btn.disabled = true;
   status.textContent = 'Saving…';
   try {
-    await call('updatePageBody', { pageId: methodBodyActiveId, text });
+    // Large existing bodies get cleared in batches server-side (Cloudflare
+    // caps subrequests per invocation) — keep calling until it's done, then
+    // the final call writes the new text.
+    let r = await call('updatePageBody', { pageId: methodBodyActiveId, text });
+    let rounds = 0;
+    while (r.moreToClear && rounds++ < 20) {
+      status.textContent = 'Clearing old content…';
+      r = await call('updatePageBody', { pageId: methodBodyActiveId, text });
+    }
     status.textContent = 'Saved ✓';
     setTimeout(closeMethodBodyModal, 800);
   } catch(e) {

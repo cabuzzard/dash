@@ -4005,27 +4005,56 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         if (!pageId) return json({ error: "pageId required" }, 400);
         const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const dashed = dash(pageId);
-        // Archive existing children first by fetching and deleting
+        // Clear existing children first, capped per invocation — a page with
+        // a long research doc can have 50-200+ blocks (one per paragraph
+        // under the old writer below), and deleting them all in one shot
+        // blows Cloudflare's ~50-subrequest-per-invocation cap ("Too many
+        // subrequests"). So: delete up to CLEAR_BATCH per call, and if more
+        // remain, report back without writing yet — the client re-calls this
+        // same action (same pageId+text) until moreToClear is false, at
+        // which point it's safe to write.
+        const CLEAR_BATCH = 35;
         const existing = await fetch(`https://api.notion.com/v1/blocks/${dashed}/children?page_size=100`, {
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
         }).then(r => r.json());
-        await Promise.all((existing.results || []).map(b =>
-          fetch(`https://api.notion.com/v1/blocks/${b.id}`, {
-            method: "DELETE",
-            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
-          })
-        ));
-        // Write new paragraphs (chunk by 2000 chars per block, max 100 blocks per request)
-        const paragraphs = (text || "").split(/\n\n+/).filter(p => p.trim());
-        const children = paragraphs.length
-          ? paragraphs.map(p => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: p.slice(0, 2000) } }] } }))
+        const toDelete = (existing.results || []).slice(0, CLEAR_BATCH);
+        if (toDelete.length) {
+          await Promise.all(toDelete.map(b =>
+            fetch(`https://api.notion.com/v1/blocks/${b.id}`, {
+              method: "DELETE",
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+            })
+          ));
+        }
+        const moreToClear = (existing.results || []).length > CLEAR_BATCH || !!existing.has_more;
+        if (moreToClear) return json({ success: true, moreToClear: true });
+        // Pack into as few blocks as possible — chunk the whole text by
+        // ~1900 chars, preferring a paragraph-break cut point, instead of
+        // one block per paragraph. Keeps future edits of this same page
+        // cheap (fewer blocks to delete next time) and, unlike the old
+        // per-paragraph writer, never silently truncates a long paragraph.
+        const CHUNK = 1900;
+        const raw = (text || "").trim();
+        const chunks = [];
+        let rest = raw;
+        while (rest.length) {
+          if (rest.length <= CHUNK) { chunks.push(rest); break; }
+          let cut = rest.lastIndexOf("\n\n", CHUNK);
+          if (cut < CHUNK * 0.5) cut = CHUNK; // no good paragraph break nearby — hard cut
+          chunks.push(rest.slice(0, cut).trim());
+          rest = rest.slice(cut).trim();
+        }
+        const children = chunks.length
+          ? chunks.map(c => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: c } }] } }))
           : [{ object: "block", type: "paragraph", paragraph: { rich_text: [] } }];
-        const resp = await fetch(`https://api.notion.com/v1/blocks/${dashed}/children`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ children })
-        });
-        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Update failed" }, resp.status); }
+        for (let i = 0; i < children.length; i += 90) {
+          const resp = await fetch(`https://api.notion.com/v1/blocks/${dashed}/children`, {
+            method: "PATCH",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ children: children.slice(i, i + 90) })
+          });
+          if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Update failed" }, resp.status); }
+        }
         return json({ success: true });
       }
 
