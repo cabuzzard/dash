@@ -1,7 +1,9 @@
-﻿// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET are set as Cloudflare Worker secrets (env vars).
-// They are loaded from env at the start of each request  -  never hardcoded here.
+﻿// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET, ETSY_KEYSTRING, ETSY_SHARED_SECRET
+// are set as Cloudflare Worker secrets (env vars). They are loaded from env at
+// the start of each request  -  never hardcoded here.
 let NOTION_TOKEN = ""; // set per-request from env.NOTION_TOKEN
 const NOTION_VERSION     = "2022-06-28";
+const ETSY_REDIRECT_URI  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev/etsy/callback";
 const CAMPAIGNS_DB       = "087b1163b4e64975bc7a4b686ff801de";
 const CONTENT_STRATEGY_DB = "9fa5f42f010b47e7a82032607e07d6a1";
 const PRODUCTS_DB        = "e92fcfce75fc4f54b553df0b7672ff48";
@@ -1643,6 +1645,66 @@ async function verifyToken(token, secret) {
   } catch { return false; }
 }
 
+// ── ETSY OAUTH HELPERS ───────────────────────────────────────────────────
+// Etsy Open API v3 uses OAuth 2.0 + PKCE (RFC 7636) for the authorize/token
+// exchange, and separately requires "x-api-key: {keystring}:{sharedSecret}"
+// on every authenticated resource call. The PKCE code_verifier is generated
+// here (server-side) rather than in the browser, and stashed in the existing
+// TRADES KV keyed by a random `state` value for the few minutes between the
+// authorize redirect and Etsy calling back — the client never needs to
+// remember anything, it just follows the authorizeUrl it's given.
+function base64url(bytesLike) {
+  const arr = bytesLike instanceof Uint8Array ? bytesLike : new Uint8Array(bytesLike);
+  let bin = "";
+  for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function randomPkceVerifier() {
+  return base64url(crypto.getRandomValues(new Uint8Array(64))).slice(0, 96);
+}
+async function pkceChallenge(verifier) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return base64url(digest);
+}
+// Refreshes an Etsy shop's access token using its stored refresh token, and
+// writes the new tokens back to its Login record — called before any Etsy
+// API request if the stored "Etsy Token Expires" is at/past now.
+async function refreshEtsyToken(env, loginPageId, refreshToken) {
+  const resp = await fetch("https://api.etsy.com/v3/public/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: env.ETSY_KEYSTRING || "",
+      refresh_token: refreshToken,
+    }),
+  });
+  const data = await resp.json();
+  if (!resp.ok || !data.access_token) throw new Error(data.error_description || data.error || "Etsy token refresh failed");
+  const expiresAt = new Date(Date.now() + (data.expires_in || 3600) * 1000).toISOString();
+  await fetch(`https://api.notion.com/v1/pages/${loginPageId}`, {
+    method: "PATCH",
+    headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: {
+      "Etsy Access Token":  { rich_text: [{ type: "text", text: { content: data.access_token } }] },
+      "Etsy Refresh Token": { rich_text: [{ type: "text", text: { content: data.refresh_token || refreshToken } }] },
+      "Etsy Token Expires": { date: { start: expiresAt } },
+    }}),
+  });
+  return data.access_token;
+}
+// Given a Login page's raw Notion properties, returns a valid access token —
+// refreshing first if the stored one is expired or about to be (60s skew).
+async function getValidEtsyAccessToken(env, loginPage) {
+  const p = loginPage.properties || {};
+  const accessToken  = p["Etsy Access Token"]?.rich_text?.map(t => t.plain_text).join("") || "";
+  const refreshToken = p["Etsy Refresh Token"]?.rich_text?.map(t => t.plain_text).join("") || "";
+  const expiresAt    = p["Etsy Token Expires"]?.date?.start ? new Date(p["Etsy Token Expires"].date.start).getTime() : 0;
+  if (!refreshToken) throw new Error("This Login has no Etsy refresh token — reconnect the shop");
+  if (accessToken && expiresAt > Date.now() + 60000) return accessToken;
+  return await refreshEtsyToken(env, loginPage.id, refreshToken);
+}
+
 // ── PIN brute-force lockout ─────────────────────────────────────────────
 // The 250ms per-request delay on auth/pinUpdate slows a single client but
 // does nothing against parallel requests. This adds a real per-IP lockout,
@@ -3023,6 +3085,69 @@ export default {
         });
         const testData = await testResp.json();
         return json({ http_status: testResp.status, ok: testResp.ok, response: testData });
+      }
+      // ── Etsy OAuth callback ──
+      // Etsy redirects the browser here (a plain GET, not our usual
+      // POST+action pattern) after the operator approves the connect
+      // screen. Exchanges the code for tokens, resolves the shop, and
+      // writes a new Login record — then bounces back to the dashboard.
+      if (url.pathname === "/etsy/callback") {
+        NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+        const dashUrl = "https://cabuzzard.github.io/dash/index.html";
+        const fail = reason => Response.redirect(dashUrl + "?etsyError=" + encodeURIComponent(reason), 302);
+        const code = url.searchParams.get("code");
+        const state = url.searchParams.get("state");
+        const oauthError = url.searchParams.get("error");
+        if (oauthError) return fail(oauthError);
+        if (!code || !state) return fail("missing_code_or_state");
+        const stateData = await env.TRADES.get("etsyoauth:" + state, "json");
+        if (!stateData) return fail("state_expired_or_reused");
+        await env.TRADES.delete("etsyoauth:" + state);
+        try {
+          const tokenResp = await fetch("https://api.etsy.com/v3/public/oauth/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              grant_type: "authorization_code",
+              client_id: env.ETSY_KEYSTRING || "",
+              redirect_uri: ETSY_REDIRECT_URI,
+              code,
+              code_verifier: stateData.codeVerifier,
+            }),
+          });
+          const tokenData = await tokenResp.json();
+          if (!tokenResp.ok || !tokenData.access_token) return fail(tokenData.error_description || tokenData.error || "token_exchange_failed");
+          const userId = String(tokenData.access_token).split(".")[0];
+          const shopsResp = await fetch(`https://api.etsy.com/v3/application/users/${userId}/shops`, {
+            headers: {
+              "x-api-key": `${env.ETSY_KEYSTRING}:${env.ETSY_SHARED_SECRET}`,
+              "Authorization": `Bearer ${tokenData.access_token}`,
+            },
+          });
+          const shopData = await shopsResp.json();
+          if (!shopsResp.ok || !shopData.shop_id) return fail("no_shop_found_for_this_etsy_login");
+          const expiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000).toISOString();
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parent: { database_id: LOGINS_DB },
+              properties: {
+                Name:                 { title: [{ type: "text", text: { content: `Etsy — ${shopData.shop_name || userId}` } }] },
+                "Etsy Shop ID":       { number: shopData.shop_id },
+                "Etsy Shop Name":     { rich_text: [{ type: "text", text: { content: shopData.shop_name || "" } }] },
+                "Etsy Access Token":  { rich_text: [{ type: "text", text: { content: tokenData.access_token } }] },
+                "Etsy Refresh Token": { rich_text: [{ type: "text", text: { content: tokenData.refresh_token } }] },
+                "Etsy Token Expires": { date: { start: expiresAt } },
+                Category:             { select: { name: "Company Page" } },
+              },
+            }),
+          });
+          if (!createResp.ok) return fail("notion_save_failed");
+          return Response.redirect(dashUrl + "?etsyConnected=" + encodeURIComponent(shopData.shop_name || "shop"), 302);
+        } catch (e) {
+          return fail(e.message || "unexpected_error");
+        }
       }
       return json({ status: "ok", version: "2026-06-01-01" });
     }
@@ -4772,6 +4897,37 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           name: l.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
         })).filter(l => !query || l.name.toLowerCase().includes(query.toLowerCase()));
         return json({ logins: logins.slice(0, 50) });
+      }
+
+      // ── startEtsyConnect / listEtsyShops ──
+      // Kicks off the Etsy OAuth+PKCE flow (see /etsy/callback above for the
+      // other half) and lists shops already connected via it.
+      if (body.action === "startEtsyConnect") {
+        const codeVerifier = randomPkceVerifier();
+        const codeChallenge = await pkceChallenge(codeVerifier);
+        const state = base64url(crypto.getRandomValues(new Uint8Array(24)));
+        await env.TRADES.put("etsyoauth:" + state, JSON.stringify({ codeVerifier }), { expirationTtl: 600 });
+        const authorizeUrl = "https://www.etsy.com/oauth/connect"
+          + "?response_type=code"
+          + "&client_id=" + encodeURIComponent(env.ETSY_KEYSTRING || "")
+          + "&redirect_uri=" + encodeURIComponent(ETSY_REDIRECT_URI)
+          + "&scope=" + encodeURIComponent("listings_r listings_w")
+          + "&state=" + state
+          + "&code_challenge=" + codeChallenge
+          + "&code_challenge_method=S256";
+        return json({ authorizeUrl });
+      }
+
+      if (body.action === "listEtsyShops") {
+        const rows = await notionQuery(LOGINS_DB, { filter: { property: "Etsy Shop ID", number: { is_not_empty: true } } });
+        const shops = rows.map(l => ({
+          id:       l.id.replace(/-/g,""),
+          name:     l.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
+          shopId:   l.properties["Etsy Shop ID"]?.number ?? null,
+          shopName: l.properties["Etsy Shop Name"]?.rich_text?.map(x => x.plain_text).join("") || "",
+          campaignIds: (l.properties.Campaign?.relation || []).map(r => r.id.replace(/-/g,"")),
+        }));
+        return json({ shops });
       }
 
       if (body.action === "createLogin") {

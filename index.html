@@ -736,6 +736,13 @@
         </div>
         <div id="methodsList" style="display:none;"></div>
       </div>
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;cursor:pointer;" onclick="toggleEtsyShopsList()">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Etsy Shops <span id="etsyShopsToggleIcon" style="opacity:.5;">▶</span></span>
+          <button onclick="event.stopPropagation();connectEtsyShop()" style="font-size:11px;font-weight:600;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:3px 8px;border-radius:3px;font-family:inherit;">+ Connect</button>
+        </div>
+        <div id="etsyShopsList" style="display:none;"></div>
+      </div>
     </div>
     <a class="add-link" onclick="openAddTdModal()">+ Add to do item</a>
     <a href="https://app.notion.com/p/3c21f7d3a4bb81119dffef23153e97d7" target="_blank" rel="noopener" style="display:inline-block;margin-bottom:14px;font-size:12px;font-weight:400;color:var(--text3);text-decoration:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;">Information Flow</a>
@@ -8980,6 +8987,58 @@ function saveProcesses() {
   btn.style.color = '#4ade80';
   setTimeout(() => { btn.textContent = 'Save'; btn.style.color = ''; btn.style.display = 'none'; }, 1500);
 }
+
+// ── ETSY SHOPS ───────────────────────────────────────────────────────
+function toggleEtsyShopsList() {
+  const el = document.getElementById('etsyShopsList');
+  const icon = document.getElementById('etsyShopsToggleIcon');
+  const collapsed = el.style.display === 'none';
+  el.style.display = collapsed ? 'block' : 'none';
+  icon.textContent = collapsed ? '▾' : '▶';
+  if (collapsed && !el.dataset.loaded) { el.dataset.loaded = '1'; loadEtsyShopsList(); }
+}
+
+async function loadEtsyShopsList() {
+  const el = document.getElementById('etsyShopsList');
+  if (!el) return;
+  try {
+    const data = await call('listEtsyShops', {});
+    renderEtsyShopsList(data.shops || []);
+  } catch(e) { console.error('Failed to load Etsy shops:', e); }
+}
+
+function renderEtsyShopsList(shops) {
+  const el = document.getElementById('etsyShopsList');
+  if (!el) return;
+  if (!shops.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);font-style:italic;padding:8px 10px;">No Etsy shops connected yet.</div>'; return; }
+  el.innerHTML = shops.map(s => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);">
+      <span style="flex:1;font-size:13px;color:var(--text2);">${esc(s.shopName || s.name)}</span>
+      <span style="font-size:10px;color:var(--text3);">${s.campaignIds.length ? s.campaignIds.length + ' campaign' + (s.campaignIds.length===1?'':'s') : 'not assigned to a campaign'}</span>
+      <a href="https://www.notion.so/${s.id}" target="_blank" rel="noopener" style="font-size:10px;color:var(--text3);text-decoration:none;border:1px solid var(--border);padding:1px 5px;" title="Open in Notion — assign to a campaign here">↗</a>
+    </div>
+  `).join('');
+}
+
+async function connectEtsyShop() {
+  try {
+    const data = await call('startEtsyConnect', {});
+    if (data.authorizeUrl) window.location.href = data.authorizeUrl;
+  } catch(e) { showToast('Failed to start Etsy connect: ' + e.message, 'error'); }
+}
+
+(function handleEtsyOAuthReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const connected = params.get('etsyConnected');
+  const error = params.get('etsyError');
+  if (connected) { showToast('Connected Etsy shop: ' + connected, 'success'); }
+  else if (error) { showToast('Etsy connect failed: ' + error, 'error'); }
+  if (connected || error) {
+    params.delete('etsyConnected'); params.delete('etsyError');
+    const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+    window.history.replaceState({}, '', clean);
+  }
+})();
 
 // ── TODAY ────────────────────────────────────────────────────────────
 let todayCollapsed = false;
