@@ -7,7 +7,8 @@ const CONTENT_STRATEGY_DB = "9fa5f42f010b47e7a82032607e07d6a1";
 const PRODUCTS_DB        = "e92fcfce75fc4f54b553df0b7672ff48";
 const MAIN_TD_DB         = "3471f7d3a4bb80de87c1d9e850f4a426";
 const METHODS_DB         = "285ed0b668be4dad89dfd090350096bc";
-const STRATEGY_DB        = "6f7a8666944746b2ae98d41db0c4e419";
+const STRATEGY_DB        = "6f7a8666944746b2ae98d41db0c4e419"; // per-Method Strategy Briefs only now — Method relation always set. Positioning docs (Method used to be empty) live in PRODUCT_RESEARCH_DB below.
+const PRODUCT_RESEARCH_DB = "a412ac1f57f349d3bbac8cfa94737c39"; // 🔬 Product Research — one fixed positioning record per product (Customer/Pain Points/Offer Structure/etc.), split out from STRATEGY_DB so a 1:1 concept isn't sharing a table with a 1:N one. No Method property at all — that's the whole point.
 const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
 const PLATFORMS_DB       = "8248b700ebb7428aa28d8b5246509898";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
@@ -95,22 +96,23 @@ const STRATEGY_FIELD_HINTS = {
 };
 // Notion has no atomic "create if missing" — confirmed to have actually
 // happened: several near-simultaneous generateStrategyField calls for the
-// same product each independently queried "does a Strategy record exist?",
+// same product each independently queried "does a Research record exist?",
 // all saw no results yet, and each created its own duplicate record, ending
 // up with 4 separate pages for one product, each holding a different subset
-// of fields. Every Strategy read/write site queries through this helper
+// of fields (this actually happened — 4 duplicate "Tool Implementation
+// Consulting" records, resolved by hand when PRODUCT_RESEARCH_DB was split
+// out). Every Product Research read/write site queries through this helper
 // instead of blindly taking query results[0], so they all converge on the
 // SAME record (whichever duplicate has the most fields already filled in,
 // tie-broken by Notion's default order) rather than surfacing whichever one
-// Notion's query happens to return first.
-async function findBestStrategyRecord(hdr, productId) {
+// Notion's query happens to return first. No Method filter needed here —
+// PRODUCT_RESEARCH_DB holds only positioning docs, one concept, unlike the
+// old shared STRATEGY_DB this used to query.
+async function findBestProductResearchRecord(hdr, productId) {
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-  const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+  const q = await fetch(`https://api.notion.com/v1/databases/${PRODUCT_RESEARCH_DB}/query`, {
     method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-    body: JSON.stringify({ filter: { and: [
-      { property: "Product", relation: { contains: dash(productId) } },
-      { property: "Method", relation: { is_empty: true } },
-    ] } }),
+    body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
   }).then(r => r.json()).catch(() => ({ results: [] }));
   const results = q.results || [];
   if (!results.length) return null;
@@ -890,7 +892,7 @@ async function writePillarContent(hdr, env, { titleId, titleText, campaignId, pr
       // Method:is_empty here is the fix for the real bug documented in
       // docs/methods-titles-assets.md (querying by Product alone can
       // silently return a Brief instead).
-      const stratRecord = await findBestStrategyRecord(hdr, productId).catch(() => null);
+      const stratRecord = await findBestProductResearchRecord(hdr, productId).catch(() => null);
       const sp = stratRecord?.properties;
       if (sp) {
         const stratLines = STRATEGY_FIELDS.map(f => rt(sp, f) && `${f}: ${rt(sp, f)}`).filter(Boolean);
@@ -967,7 +969,7 @@ Write 800-1500 words of substantive, specific, well-organized prose — real cla
 async function ensureProductStrategy(hdr, env, productId, campaignId) {
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   try {
-    if (await findBestStrategyRecord(hdr, productId)) return;
+    if (await findBestProductResearchRecord(hdr, productId)) return;
 
     if (!env.ANTHROPIC_API_KEY) return;
     const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
@@ -1022,7 +1024,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
     const fields = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
 
     const props = {
-      Name: { title: [{ type: "text", text: { content: `${productName} — Strategy`.slice(0, 200) } }] },
+      Name: { title: [{ type: "text", text: { content: `${productName} — Research`.slice(0, 200) } }] },
       Product: { relation: [{ id: dash(productId) }] },
       Status: { select: { name: "Current" } },
     };
@@ -1032,7 +1034,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
     });
     await fetch("https://api.notion.com/v1/pages", {
       method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-      body: JSON.stringify({ parent: { database_id: STRATEGY_DB }, properties: props }),
+      body: JSON.stringify({ parent: { database_id: PRODUCT_RESEARCH_DB }, properties: props }),
     });
   } catch (e) { /* best-effort — pillar still writes from whatever grounding it already has */ }
 }
@@ -1106,7 +1108,7 @@ async function buildAssetPrecedenceContext(hdr, env, { campaignId, productId, ti
       // itself calls ensureProductStrategy), so a Strategy record already
       // exists for any product that has ever generated a pillar. Re-running
       // it here would just be a redundant existence check.
-      const stratRecord = await findBestStrategyRecord(hdr, productId).catch(() => null);
+      const stratRecord = await findBestProductResearchRecord(hdr, productId).catch(() => null);
       const sp = stratRecord?.properties;
       if (sp) {
         const stratLines = STRATEGY_FIELDS.map(f => rt(sp, f) && `${f}: ${rt(sp, f)}`).filter(Boolean);
@@ -1389,24 +1391,18 @@ function gradeMechanicalCheck(text) {
   return { ok: issues.length === 0, issues };
 }
 
-// Pulls the product's real Strategy record (the 11 STRATEGY_FIELDS,
-// Product-only per the current schema — Method relation must be empty, see
-// getProductStrategy) so grading judges against actual positioning, not
-// virality in a vacuum. Falls back to campaign-level Statement/Unique
-// Opportunity/Pain Points when no product is attached. `productId`/
-// `campaignId` must already be dashed (caller's responsibility, same
-// convention as extractBlocksTextRecursive).
+// Pulls the product's real Product Research record (the 11 STRATEGY_FIELDS)
+// so grading judges against actual positioning, not virality in a vacuum.
+// Falls back to campaign-level Statement/Unique Opportunity/Pain Points when
+// no product is attached. `productId`/`campaignId` must already be dashed
+// (caller's responsibility, same convention as extractBlocksTextRecursive) —
+// findBestProductResearchRecord tolerates either form internally, so this is
+// safe either way. Routed through the same dedupe helper every other
+// Product Research site uses now, instead of taking query results[0] raw.
 async function fetchStrategyForGrading(hdr, campaignId, productId, hasProduct) {
   if (hasProduct) {
     try {
-      const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-        method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-        body: JSON.stringify({ filter: { and: [
-          { property: "Product", relation: { contains: productId } },
-          { property: "Method", relation: { is_empty: true } },
-        ] } }),
-      }).then(r => r.json());
-      const record = (q.results || [])[0];
+      const record = await findBestProductResearchRecord(hdr, productId);
       if (record) {
         const props = record.properties || {};
         const rt = key => (props[key]?.rich_text || []).map(t => t.plain_text).join("");
@@ -2839,7 +2835,7 @@ async function analyzeSavedPostForMethods(env, { pageId, instructions }) {
 
   const [methodRows, strategyRows, researchRows, productRows, campaignRows] = await Promise.all([
     notionQuery(METHODS_DB, { filter: { property: "Status", select: { equals: "Live" } } }),
-    notionQuery(STRATEGY_DB, { filter: { property: "Method", relation: { is_empty: true } } }),
+    notionQuery(PRODUCT_RESEARCH_DB, {}),
     notionQuery(RESEARCH_DB, {}),
     notionQuery(PRODUCTS_DB, {}),
     notionQuery(CAMPAIGNS_DB, {}),
@@ -5446,18 +5442,12 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
-        const [productPage, methodsResults, strategyQ] = await Promise.all([
+        const [productPage, methodsResults, stratRecordFromHelper] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
           fetch(`https://api.notion.com/v1/databases/${METHODS_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ page_size: 100 }),
           }).then(r => r.json()),
-          fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { and: [
-              { property: "Product", relation: { contains: dash(productId) } },
-              { property: "Method", relation: { is_empty: true } },
-            ] } }),
-          }).then(r => r.json()).catch(() => ({ results: [] })),
+          findBestProductResearchRecord(hdr, dash(productId)).catch(() => null),
         ]);
         if (productPage.object === "error" || !productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
         const pp = productPage.properties || {};
@@ -5469,7 +5459,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
         // Once a Product Strategy exists, ground the method suggestion in it —
         // the positioning (who it's for, what problem, what's unique) narrows
         // which method actually fits better than Type/Description alone can.
-        const stratRecord = (strategyQ.results || [])[0];
+        const stratRecord = stratRecordFromHelper;
         let strategyBlock = "";
         if (stratRecord) {
           const sp = stratRecord.properties || {};
@@ -5933,7 +5923,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
         const { productId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const record = await findBestStrategyRecord(hdr, productId);
+        const record = await findBestProductResearchRecord(hdr, productId);
         if (!record) return json({ strategy: null });
         const props = record.properties || {};
         const rt = key => (props[key]?.rich_text || []).map(t => t.plain_text).join("");
@@ -5983,13 +5973,18 @@ Return ONLY a JSON object, no other text, no markdown fences:
         const results = await Promise.all(productPages.map(async p => {
           const productId = p.id.replace(/-/g, "");
           const productName = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled";
-          const q = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
-          }).then(r => r.json()).catch(() => ({ results: [] }));
-          const records = q.results || [];
-          const strategyRec = records.find(r => !(r.properties?.Method?.relation || []).length);
-          const briefRecs = records.filter(r => (r.properties?.Method?.relation || []).length);
+          // Two separate databases now — positioning (PRODUCT_RESEARCH_DB,
+          // one per product, via the same dedupe helper every other
+          // Product Research site uses) and Method Briefs (STRATEGY_DB,
+          // every remaining record there has Method set by definition).
+          const [strategyRec, briefQ] = await Promise.all([
+            findBestProductResearchRecord(hdr, dash(productId)).catch(() => null),
+            fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
+            }).then(r => r.json()).catch(() => ({ results: [] })),
+          ]);
+          const briefRecs = briefQ.results || [];
           const briefs = await Promise.all(briefRecs.map(async r => {
             const methodRelId = r.properties.Method.relation[0]?.id;
             let methodName = "Method";
@@ -6072,7 +6067,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
         }
 
         // Existing other fields on this Strategy record, for coherence.
-        const existing = await findBestStrategyRecord(hdr, productId);
+        const existing = await findBestProductResearchRecord(hdr, productId);
         const existingProps = existing?.properties || {};
         const otherFieldsText = STRATEGY_FIELDS.filter(f => f !== field).map(f => {
           const v = (existingProps[f]?.rich_text || []).map(t => t.plain_text).join("");
@@ -6114,9 +6109,9 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
           const createResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({
-              parent: { database_id: STRATEGY_DB },
+              parent: { database_id: PRODUCT_RESEARCH_DB },
               properties: {
-                Name: { title: [{ type: "text", text: { content: `${productName} — Strategy`.slice(0, 200) } }] },
+                Name: { title: [{ type: "text", text: { content: `${productName} — Research`.slice(0, 200) } }] },
                 Product: { relation: [{ id: dash(productId) }] },
                 Status: { select: { name: "Current" } },
                 [field]: { rich_text: rtChunks },
@@ -6124,7 +6119,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
             }),
           });
           const created = await createResp.json();
-          if (!createResp.ok || !created.id) return json({ error: created.message || "Strategy create failed" }, createResp.status || 500);
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Research create failed" }, createResp.status || 500);
           strategyId = created.id.replace(/-/g,""); strategyUrl = created.url;
         }
 
@@ -6138,7 +6133,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
       // Research" action in the Product Research modal: grounded in the
       // product's own fields, Campaign Research, and any operator guidance,
       // upserting onto the single canonical Strategy record (via
-      // findBestStrategyRecord) instead of risking a new duplicate.
+      // findBestProductResearchRecord) instead of risking a new duplicate.
       if (body.action === "regenerateAllStrategyFields") {
         const { productId, campaignId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
@@ -6205,7 +6200,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (val) props[f] = { rich_text: [{ type: "text", text: { content: val.slice(0, 1990) } }] };
         });
 
-        const existing = await findBestStrategyRecord(hdr, productId);
+        const existing = await findBestProductResearchRecord(hdr, productId);
         let strategyId, strategyUrl;
         if (existing) {
           strategyId = existing.id.replace(/-/g,""); strategyUrl = existing.url;
@@ -6214,14 +6209,14 @@ Return ONLY this JSON object, no other text, no markdown fences:
             body: JSON.stringify({ properties: props }),
           });
         } else {
-          props.Name = { title: [{ type: "text", text: { content: `${productName} — Strategy`.slice(0, 200) } }] };
+          props.Name = { title: [{ type: "text", text: { content: `${productName} — Research`.slice(0, 200) } }] };
           props.Product = { relation: [{ id: dash(productId) }] };
           const createResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ parent: { database_id: STRATEGY_DB }, properties: props }),
+            body: JSON.stringify({ parent: { database_id: PRODUCT_RESEARCH_DB }, properties: props }),
           });
           const created = await createResp.json();
-          if (!createResp.ok || !created.id) return json({ error: created.message || "Strategy create failed" }, createResp.status || 500);
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Research create failed" }, createResp.status || 500);
           strategyId = created.id.replace(/-/g,""); strategyUrl = created.url;
         }
 
@@ -6241,7 +6236,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const rtChunks = [];
         for (let i = 0; i < Math.max(rtStr.length, 1); i += 2000) rtChunks.push({ type: "text", text: { content: rtStr.slice(i, i + 2000) } });
 
-        const existing = await findBestStrategyRecord(hdr, productId);
+        const existing = await findBestProductResearchRecord(hdr, productId);
         if (existing) {
           const strategyId = existing.id.replace(/-/g,"");
           await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, {
@@ -6255,9 +6250,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const createResp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({
-            parent: { database_id: STRATEGY_DB },
+            parent: { database_id: PRODUCT_RESEARCH_DB },
             properties: {
-              Name: { title: [{ type: "text", text: { content: `${productName} — Strategy`.slice(0, 200) } }] },
+              Name: { title: [{ type: "text", text: { content: `${productName} — Research`.slice(0, 200) } }] },
               Product: { relation: [{ id: dash(productId) }] },
               Status: { select: { name: "Current" } },
               [field]: { rich_text: rtChunks },
@@ -6265,7 +6260,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           }),
         });
         const created = await createResp.json();
-        if (!createResp.ok || !created.id) return json({ error: created.message || "Strategy create failed" }, createResp.status || 500);
+        if (!createResp.ok || !created.id) return json({ error: created.message || "Research create failed" }, createResp.status || 500);
         return json({ success: true, strategyId: created.id.replace(/-/g,""), url: created.url });
       }
 
@@ -6546,25 +6541,17 @@ Return ONLY a JSON array, no other text, no markdown fences:
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
-        const [productPage, stratQ, phases] = await Promise.all([
+        const [productPage, stratRecord, phases] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
-          // Method: is_empty excludes per-method Briefs (a separate record
-          // sharing this same Product relation) — this needs the actual
-          // product-level Strategy, not whichever record sorts first.
-          fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { and: [
-              { property: "Product", relation: { contains: dash(productId) } },
-              { property: "Method", relation: { is_empty: true } },
-            ] } }),
-          }).then(r => r.json()),
+          // The actual product-level Product Research record, deduped via
+          // the shared helper (not whichever duplicate sorts first).
+          findBestProductResearchRecord(hdr, dash(productId)).catch(() => null),
           parseMethodPhases(hdr, dash(methodId)),
         ]);
         const pp = productPage.properties || {};
         const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
         const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
 
-        const stratRecord = (stratQ.results || [])[0];
         const stratProps = stratRecord?.properties || {};
         const strategyBlock = STRATEGY_FIELDS.map(f => {
           const v = (stratProps[f]?.rich_text || []).map(t => t.plain_text).join("");
@@ -6760,23 +6747,15 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
-        const [productPage, stratQ, arcPhases] = await Promise.all([
+        const [productPage, stratRecord, arcPhases] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
-          // Method: is_empty — see generateTitlesFromProductStrategy.
-          fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { and: [
-              { property: "Product", relation: { contains: dash(productId) } },
-              { property: "Method", relation: { is_empty: true } },
-            ] } }),
-          }).then(r => r.json()),
+          findBestProductResearchRecord(hdr, dash(productId)).catch(() => null),
           parseMethodPhases(hdr, dash(childMethodId)),
         ]);
         const pp = productPage.properties || {};
         const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
         const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
 
-        const stratRecord = (stratQ.results || [])[0];
         const stratProps = stratRecord?.properties || {};
         const strategyBlock = STRATEGY_FIELDS.map(f => {
           const v = (stratProps[f]?.rich_text || []).map(t => t.plain_text).join("");
@@ -7589,15 +7568,9 @@ Return ONLY a JSON array, no other text, no markdown fences:
           fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
           fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, { headers: hdr }).then(r => r.json()),
           hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()) : Promise.resolve(null),
-          hasProduct ? fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { and: [
-              { property: "Product", relation: { contains: dash(productId) } },
-              { property: "Method", relation: { is_empty: true } },
-            ] } }),
-          }).then(r => r.json()).catch(() => ({ results: [] })) : Promise.resolve({ results: [] }),
+          hasProduct ? findBestProductResearchRecord(hdr, dash(productId)).catch(() => null) : Promise.resolve(null),
         ];
-        const [researchRaw, campRaw, methodPage, productPage, strategyQ] = await Promise.all(fetches);
+        const [researchRaw, campRaw, methodPage, productPage, stratRecordForMethodTitles] = await Promise.all(fetches);
         const methodBody = await extractBlocksTextRecursive(hdr, dash(methodId));
         // Operator picked an approved Growth Strategy (or "No strategy") in
         // the Generate Titles modal — when set, its full body (summary +
@@ -7645,7 +7618,7 @@ Proof Points: ${ptxt("Proof Points")}
 Objections: ${ptxt("Objections")}
 Unique Angle: ${ptxt("Unique Angle")}`;
 
-          const stratRecord = (strategyQ.results || [])[0];
+          const stratRecord = stratRecordForMethodTitles;
           if (stratRecord) {
             const sp = stratRecord.properties || {};
             const srt = key => (sp[key]?.rich_text || []).map(t => t.plain_text).join("");
@@ -7764,12 +7737,12 @@ No other text. No markdown fences.`;
 
       // ── generateGrowthStrategy ──
       // The "🚀 plan" button on a Product row. Distinct from both the
-      // per-product positioning Strategy (STRATEGY_DB, "who are we talking
-      // to and why") and Content Strategy (which is actually the Titles
-      // DB) — this recommends WHICH titles/groupings/methods/platforms to
-      // pursue, grounded in the positioning Strategy plus Research plus
-      // the product itself. Does NOT create titles or touch any Method —
-      // it's a reviewable recommendation the operator acts on by hand via
+      // per-product positioning Product Research (PRODUCT_RESEARCH_DB, "who
+      // are we talking to and why") and Content Strategy (which is actually
+      // the Titles DB) — this recommends WHICH titles/groupings/methods/
+      // platforms to pursue, grounded in Product Research plus campaign
+      // Research plus the product itself. Does NOT create titles or touch
+      // any Method — it's a reviewable recommendation the operator acts on by hand via
       // the existing per-Method "Generate Titles" flow. Never overwrites a
       // prior run — one product can have several of these over time,
       // browsable via the row's dropdown.
@@ -7800,20 +7773,14 @@ ${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? 
 `;
         }
 
-        const [productPage, campPage, researchRaw, strategyQ] = await Promise.all([
+        const [productPage, campPage, researchRaw, stratRecord] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
           fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
           fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
           }).then(r => r.json()).catch(() => ({ results: [] })),
-          fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { and: [
-              { property: "Product", relation: { contains: dash(productId) } },
-              { property: "Method", relation: { is_empty: true } },
-            ] } }),
-          }).then(r => r.json()).catch(() => ({ results: [] })),
+          findBestProductResearchRecord(hdr, dash(productId)).catch(() => null),
         ]);
         if (!productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
         const pp = productPage.properties;
@@ -7821,7 +7788,6 @@ ${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? 
         const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product";
         const campaignName = campPage.properties?.Name?.title?.map(t => t.plain_text).join("") || "Campaign";
 
-        const stratRecord = (strategyQ.results || [])[0];
         const strategyBlock = stratRecord
           ? STRATEGY_FIELDS.map(f => { const v = (stratRecord.properties?.[f]?.rich_text || []).map(t => t.plain_text).join(""); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n')
           : STRATEGY_FIELDS.map(f => { const v = ptxt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
@@ -8297,18 +8263,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
 
         let productSection = "No product linked to this slot.";
         if (productId && productPage?.properties) {
-          const strategyQ = await fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { and: [
-              { property: "Product", relation: { contains: productId } },
-              { property: "Method", relation: { is_empty: true } },
-            ] } }),
-          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const stratRecord = await findBestProductResearchRecord(hdr, productId).catch(() => null);
           const pp = productPage.properties;
           const ptxt = key => (pp[key]?.rich_text || []).map(x => x.plain_text).join("") || "";
           const productName = (pp.Name?.title || []).map(x => x.plain_text).join("") || "Unknown Product";
           productSection = `PRODUCT: ${productName}\nAvatar: ${ptxt("Avatar")}\nTransformation: ${ptxt("Transformation")}\nUnique Angle: ${ptxt("Unique Angle")}`;
-          const stratRecord = (strategyQ.results || [])[0];
           if (stratRecord) {
             const spx = stratRecord.properties || {};
             const srt = key => (spx[key]?.rich_text || []).map(t => t.plain_text).join("");
@@ -9861,7 +9820,7 @@ Produce all of this by calling the submit_article tool — do not include any of
             // exactly what this fetch exists to correct by handing the model
             // the original plain phrasing directly, not just its own summary
             // of it.
-            hasProduct ? findBestStrategyRecord(dsHdr, productId).then(rec => {
+            hasProduct ? findBestProductResearchRecord(dsHdr, productId).then(rec => {
               if (!rec) return null;
               const rt = key => (rec.properties?.[key]?.rich_text || []).map(t => t.plain_text).join("");
               const benefits = rt("Benefits"), proofPoints = rt("Proof Points"), painPoints = rt("Pain Points");
@@ -15735,7 +15694,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       // even then it left research-fetching to the fresh chat itself, which
       // is exactly the step that produced duplicate/incomplete Strategy
       // reads and "too clever" copy before those were fixed server-side
-      // (findBestStrategyRecord, writePillarContent). This builds one fully
+      // (findBestProductResearchRecord, writePillarContent). This builds one fully
       // self-contained prompt instead — pulls the skill's own .md + the
       // shared _content-governance.md skill straight from GitHub (so the
       // repo stays the one source of truth, nothing duplicated into
@@ -15813,7 +15772,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
             ].filter(Boolean);
             if (lines.length) productBlock = lines.join("\n");
 
-            const stratRecord = await findBestStrategyRecord(hdr, productId).catch(() => null);
+            const stratRecord = await findBestProductResearchRecord(hdr, productId).catch(() => null);
             const sp = stratRecord?.properties;
             if (sp) {
               const stratLines = STRATEGY_FIELDS.map(f => rt(sp, f) && `${f}: ${rt(sp, f)}`).filter(Boolean);
