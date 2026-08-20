@@ -4056,9 +4056,10 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           sorts: [{ property: "Name", direction: "ascending" }],
         });
         const methods = rows.map(m => ({
-          id:     m.id.replace(/-/g,""),
-          name:   m.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
-          status: m.properties.Status?.select?.name || "Development",
+          id:          m.id.replace(/-/g,""),
+          name:        m.properties.Name?.title?.map(x => x.plain_text).join("") || "Untitled",
+          status:      m.properties.Status?.select?.name || "Development",
+          reviewNotes: m.properties["Review Notes"]?.rich_text?.map(x => x.plain_text).join("") || "",
         })).filter(m => !query || m.name.toLowerCase().includes(query.toLowerCase()));
         // Same payload-guard-not-cap rationale as searchProducts.
         return json({ methods: methods.slice(0, 500) });
@@ -4073,6 +4074,20 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "Status": { select: { name: status } } } }),
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Update failed" }, resp.status); }
+        return json({ success: true });
+      }
+
+      if (body.action === "saveMethodNotes") {
+        const { methodId, notes } = body;
+        if (!methodId) return json({ error: "methodId required" }, 400);
+        const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const trimmed = (notes || "").slice(0, 2000);
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Review Notes": { rich_text: trimmed ? [{ type: "text", text: { content: trimmed } }] : [] } } }),
         });
         if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Update failed" }, resp.status); }
         return json({ success: true });

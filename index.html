@@ -574,6 +574,28 @@
   </div>
 </div>
 
+<!-- METHOD REVIEW NOTES MODAL — scratch notes on what to do with a method
+     during cleanup ("merge into X", "keep", etc). Stored in the Methods DB's
+     dedicated "Review Notes" property — kept separate from the existing
+     "Notes" property, which holds real method research/framework content
+     that must not be overwritten. -->
+<div class="modal-overlay" id="methodNotesModal" style="display:none;" onclick="if(event.target===this)closeMethodNotesModal()">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div class="modal-title" id="methodNotesModalTitle">Review notes</div>
+      <button class="modal-close" onclick="closeMethodNotesModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <textarea id="methodNotesTa" style="width:100%;min-height:140px;background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:inherit;font-size:13px;line-height:1.6;padding:10px 12px;resize:vertical;outline:none;box-sizing:border-box;" placeholder="What to do about this method…"></textarea>
+      <div id="methodNotesStatus" style="font-size:11px;min-height:16px;margin-top:6px;color:var(--text3);"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeMethodNotesModal()">Cancel</button>
+      <button class="modal-btn save" id="methodNotesSaveBtn" onclick="saveMethodNotesModal()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- PIN -->
 <div class="pin-screen" id="pinScreen">
   <div class="pin-logo">Hermes7</div>
@@ -8821,10 +8843,48 @@ function renderMethodsList(methods) {
         <option value="Migrate" ${m.status==='Migrate'?'selected':''}>Migrate</option>
         <option value="Delete" ${m.status==='Delete'?'selected':''}>Delete</option>
       </select>
+      <button onclick="openMethodNotesModal('${m.id}','${m.name.replace(/'/g,"\\'")}')" title="${m.reviewNotes ? 'Edit review notes' : 'Add review notes'}" style="background:none;border:none;color:${m.reviewNotes ? '#facc15' : 'var(--text3)'};cursor:pointer;font-size:13px;padding:2px 4px;font-family:inherit;">📝</button>
       <a href="https://www.notion.so/${m.id}" target="_blank" rel="noopener" style="font-size:10px;color:var(--text3);text-decoration:none;border:1px solid var(--border);padding:1px 5px;" title="Open in Notion">↗</a>
       <button onclick="deleteMethodRow('${m.id}', this)" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:2px 6px;font-family:inherit;">✕</button>
     </div>
   `).join('');
+}
+
+let methodNotesActiveId = '';
+
+function openMethodNotesModal(id, name) {
+  methodNotesActiveId = id;
+  const cached = methodsListCache.find(m => m.id === id);
+  document.getElementById('methodNotesModalTitle').textContent = 'Review notes — ' + name;
+  document.getElementById('methodNotesTa').value = cached?.reviewNotes || '';
+  document.getElementById('methodNotesStatus').textContent = '';
+  document.getElementById('methodNotesModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('methodNotesTa').focus(), 80);
+}
+
+function closeMethodNotesModal() {
+  document.getElementById('methodNotesModal').style.display = 'none';
+  methodNotesActiveId = '';
+}
+
+async function saveMethodNotesModal() {
+  const notes = document.getElementById('methodNotesTa').value;
+  const btn = document.getElementById('methodNotesSaveBtn');
+  const status = document.getElementById('methodNotesStatus');
+  btn.disabled = true;
+  status.textContent = 'Saving…';
+  try {
+    await call('saveMethodNotes', { methodId: methodNotesActiveId, notes });
+    const cached = methodsListCache.find(m => m.id === methodNotesActiveId);
+    if (cached) cached.reviewNotes = notes;
+    status.textContent = 'Saved ✓';
+    renderMethodsSorted();
+    setTimeout(closeMethodNotesModal, 600);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function updateMethodStatusRow(methodId, sel) {
