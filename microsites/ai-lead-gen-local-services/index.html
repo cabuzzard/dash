@@ -1311,6 +1311,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <label class="lm-label">Notes <span style="color:#fff;font-weight:normal;">— optional; whatever you want to remember about this idea. Fed in as guidance when the pillar auto-writes on first 🧩 Generate Assets run.</span></label>
       <textarea class="modal-ta" id="qaNotesInput" rows="4" placeholder="Angle, source, why this matters…" style="resize:vertical;"></textarea>
 
+      <label class="lm-label" style="margin-top:10px;">Keywords <span style="color:#fff;font-weight:normal;">— optional, comma-separated. Along with Notes above, this is what a "🚀 New Strategy" run in the Strategies tab grounds itself in if this title ends up unassigned.</span></label>
+      <input class="modal-ta" id="qaKeywordsInput" type="text" autocomplete="off" placeholder="keyword one, keyword two…" style="margin-bottom:0;" />
+
       <div id="qaStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;"></div>
     </div>
     <div class="modal-foot">
@@ -6850,6 +6853,30 @@ async function writeStrategyTitlePillar(titleId, btn) {
     if (btn) { btn.disabled = false; btn.textContent = '✍️ Write Pillar'; }
   }
 }
+// Researches a brand-new, separate Growth Strategy for this title's own
+// Product — grounded in the title's own Notes/Keywords (seedTitleId), never
+// merged into whatever strategy already exists for that product (Growth
+// Strategy already supports several per product). Then attaches the
+// originating title to it, same write updateTitleStrategy/🔗 Attach uses.
+// Per operator instruction: this replaces "leave it unassigned or manually
+// attach it to something that may not really fit" with "give it its own
+// strategy, built for it."
+async function generateStrategyFromTitleRow(titleId, productId, titleName, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Researching…'; }
+  try {
+    const gen = await w('generateGrowthStrategy', {
+      campaignId: CAMPAIGN_ID, productId, seedTitleId: titleId,
+      strategyTitle: `${titleName} Strategy`,
+    });
+    if (gen.error) throw new Error(gen.error);
+    const attach = await w('updateTitleStrategy', { titleId, growthStrategyId: gen.id });
+    if (attach.error) throw new Error(attach.error);
+    await loadCampaignStrategies();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🚀 New Strategy'; }
+  }
+}
 // One title chip: a stage badge, a ✍️ Write Pillar action (only while still
 // Planning — the whole point of the button is the Planning→Development
 // transition, so it disappears once that's already happened), and a plain
@@ -6875,7 +6902,10 @@ function renderStrategiesPanel(strategies, unassignedPlanningTitles) {
       + `<div style="font-size:12px;font-weight:700;color:#e8ff47;margin-bottom:6px;">Unassigned Planning Titles</div>`
       + unassignedPlanningTitles.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
         + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}${t.productName ? ` — ${esc(t.productName)}` : ''}</span>`
-        + `<button onclick="openTitleStrategyModal('${t.id}','${esc(t.name).replace(/'/g,"\\'")}','','${t.productId || ''}')" title="Attach this title to a Growth Strategy" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">🔗 Attach</button>`
+        + (t.productId
+          ? `<button onclick="generateStrategyFromTitleRow('${t.id}','${t.productId}','${esc(t.name).replace(/'/g,"\\'")}', this)" title="Research a brand-new Growth Strategy for ${esc(t.productName || 'this title’s product')}, grounded in this title's own Notes/Keywords — a separate strategy, never merged into an existing one for that product" style="font-size:9px;padding:0 5px;border:1px solid #9f7aea;border-radius:8px;background:transparent;color:#9f7aea;cursor:pointer;flex-shrink:0;line-height:1.6;">🚀 New Strategy</button>`
+          : `<span title="Needs a Product before a Strategy can be generated for it" style="font-size:9px;color:#666;flex-shrink:0;">🚀 needs Product</span>`)
+        + `<button onclick="openTitleStrategyModal('${t.id}','${esc(t.name).replace(/'/g,"\\'")}','','${t.productId || ''}')" title="Attach this title to an EXISTING Growth Strategy instead" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">🔗 Attach</button>`
         + renderStrategyTitleChip(t)
         + `</div>`).join('')
       + `</div>`
@@ -7093,6 +7123,7 @@ function openQuickAddModal() {
   sel.value = '';
   document.getElementById('qaStatusInput').value = 'Planning';
   document.getElementById('qaNotesInput').value = '';
+  document.getElementById('qaKeywordsInput').value = '';
   document.getElementById('qaStatus').textContent = '';
   const btn = document.getElementById('qaGoBtn');
   btn.disabled = false; btn.textContent = 'Add';
@@ -7111,13 +7142,14 @@ async function submitQuickAddTitle() {
   const productId = document.getElementById('qaProductInput').value || undefined;
   const titleStatus = document.getElementById('qaStatusInput').value || 'Planning';
   const notes = document.getElementById('qaNotesInput').value.trim();
+  const keywords = document.getElementById('qaKeywordsInput').value.trim();
   if (!title) { status.textContent = 'Title is required.'; status.style.color = '#fc8181'; return; }
   const btn = document.getElementById('qaGoBtn');
   btn.disabled = true; btn.textContent = 'Adding…';
   status.style.color = '#888';
   status.textContent = 'Saving…';
   try {
-    const data = await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, productId, status: titleStatus, skipPillar: true, researchInstructions: notes || undefined });
+    const data = await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, productId, status: titleStatus, skipPillar: true, researchInstructions: notes || undefined, seedKeywords: keywords || undefined });
     if (data.error) throw new Error(data.error);
     status.textContent = `✓ Added "${title}"`;
     status.style.color = '#68d391';

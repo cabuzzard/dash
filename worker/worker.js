@@ -7774,11 +7774,31 @@ No other text. No markdown fences.`;
       // prior run — one product can have several of these over time,
       // browsable via the row's dropdown.
       if (body.action === "generateGrowthStrategy") {
-        const { campaignId, productId, platformOverride, strategyTitle, researchGuidelines } = body;
+        const { campaignId, productId, platformOverride, strategyTitle, researchGuidelines, seedTitleId } = body;
         if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        // seedTitleId (optional): a specific title's OWN entry
+        // guidelines/keywords drive this run, distinct from — not replacing
+        // — the campaign Research/positioning grounding below. Per operator
+        // instruction: this is how an "unassigned" title in the Strategies
+        // tab gets a genuinely new, separate Growth Strategy for its
+        // product (never merged into whatever strategy already exists
+        // there — Growth Strategy already supports several per product).
+        const seedTitlePage = seedTitleId ? await fetch(`https://api.notion.com/v1/pages/${dash(seedTitleId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : null;
+        let seedTitleBlock = "";
+        if (seedTitlePage?.properties) {
+          const stp = seedTitlePage.properties;
+          const seedName = (stp.Title?.title || []).map(t => t.plain_text).join("") || "";
+          const seedNotes = (stp.Notes?.rich_text || []).map(t => t.plain_text).join("");
+          const seedKeywordsTxt = (stp["seed idea"]?.rich_text || []).map(t => t.plain_text).join("");
+          seedTitleBlock = `SEED TITLE (this strategy is being generated specifically to support this one title — ground the whole plan in its own angle/guidelines/keywords below; the plan should read as built FOR this title, not a generic product-wide restatement):
+Title: ${seedName}
+${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? `Initial keywords: ${seedKeywordsTxt}\n` : ""}
+`;
+        }
 
         const [productPage, campPage, researchRaw, strategyQ] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
@@ -7831,7 +7851,7 @@ No other text. No markdown fences.`;
           ? `PLATFORM FOCUS (required): every grouping must target "${platformOverride.trim()}" specifically — do not recommend any other platform.`
           : `No platform override was given — recommend the platform(s) that genuinely fit best per grouping based on the content and audience; they can differ across groupings.`;
 
-        const prompt = `${researchGuidelinesBlock(researchGuidelines)}You are a growth strategist. Given the research and positioning below for this product, produce a content growth strategy: a small number (3-6) of thematic title groupings (series/clusters an operator would actually produce together), each with specific title angles, the best content Method, and the best platform. This is a recommendation for a human to review and act on — be concrete and specific, not generic.
+        const prompt = `${researchGuidelinesBlock(researchGuidelines)}${seedTitleBlock}You are a growth strategist. Given the ${seedTitleBlock ? 'seed title above, plus the supporting ' : ''}research and positioning below for this product, produce a content growth strategy: a small number (3-6) of thematic title groupings (series/clusters an operator would actually produce together), each with specific title angles, the best content Method, and the best platform. This is a recommendation for a human to review and act on — be concrete and specific, not generic.
 
 ${platformInstruction}
 
@@ -7839,7 +7859,7 @@ PRODUCT: ${productName}
 Description: ${ptxt('Description')}
 Avatar: ${ptxt('Avatar')}
 
-POSITIONING STRATEGY:
+${seedTitleBlock ? 'SUPPORTING CONTEXT (secondary — the seed title above is the primary driver of this plan; use this only to keep it consistent with the product\'s actual positioning, not to steer it toward a different angle):' : 'POSITIONING STRATEGY:'}
 ${strategyBlock || 'Not filled in yet — infer conservatively from the product description and campaign research below.'}
 
 CAMPAIGN: ${campaignName}
