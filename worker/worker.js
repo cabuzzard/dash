@@ -4493,13 +4493,25 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       // assets exist for them yet. A single capped, sorted fetch (not the
       // auto-paginating notionQuery helper) since Content Strategy has
       // 600+ rows total and only the newest 50 are ever needed here.
+      // Status filter excludes Publish/Published/Done — this widget is
+      // "what's still queued up," not a raw creation-order feed, so a
+      // title the operator has already moved past Development shouldn't
+      // keep occupying a slot here just because it was created recently.
       if (body.action === "getRecentTitles") {
         try {
           const [titleResp, campRows] = await Promise.all([
             fetch(`https://api.notion.com/v1/databases/${CONTENT_STRATEGY_DB}/query`, {
               method: "POST",
               headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-              body: JSON.stringify({ page_size: 50, sorts: [{ timestamp: "created_time", direction: "descending" }] }),
+              body: JSON.stringify({
+                page_size: 50,
+                sorts: [{ timestamp: "created_time", direction: "descending" }],
+                filter: { and: [
+                  { property: "Status", select: { does_not_equal: "Publish" } },
+                  { property: "Status", select: { does_not_equal: "Published" } },
+                  { property: "Status", select: { does_not_equal: "Done" } },
+                ] },
+              }),
             }).then(r => r.json()),
             notionQuery(CAMPAIGNS_DB, {}),
           ]);
