@@ -4067,7 +4067,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       if (body.action === "updateMethodStatus") {
         const { methodId, status } = body;
         if (!methodId || !status) return json({ error: "methodId and status required" }, 400);
-        if (!["Development", "Live", "Delete"].includes(status)) return json({ error: "invalid status" }, 400);
+        if (!["Development", "Live", "Migrate", "Delete"].includes(status)) return json({ error: "invalid status" }, 400);
         const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, {
           method: "PATCH",
