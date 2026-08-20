@@ -483,7 +483,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-body">
       <div class="modal-hint" id="titleStrategyModalHint"></div>
-      <select class="modal-ta" id="titleStrategySelect" style="margin-top:8px;">
+      <label class="lm-label" for="titleStrategySelect" style="margin-top:8px;">Growth Strategy</label>
+      <select class="modal-ta" id="titleStrategySelect" style="margin-top:4px;">
+        <option value="">— none —</option>
+      </select>
+      <label class="lm-label" for="titleProductSelect" style="margin-top:10px;">Product <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(from this campaign's existing products)</span></label>
+      <select class="modal-ta" id="titleProductSelect" style="margin-top:4px;">
         <option value="">— none —</option>
       </select>
       <div class="modal-status" id="titleStrategyModalStatus"></div>
@@ -4425,6 +4430,9 @@ function openTitleStrategyModal(id, title, currentStrategyId, productId) {
   const sel = document.getElementById('titleStrategySelect');
   sel.innerHTML = '<option value="">— none —</option>';
   sel.disabled = true;
+  const prodSel = document.getElementById('titleProductSelect');
+  prodSel.innerHTML = '<option value="">— none —</option>';
+  prodSel.disabled = true;
   document.getElementById('titleStrategyModal').classList.add('open');
   const query = (productId && productId !== '__none__') ? { productId } : { campaignId: CAMPAIGN_ID };
   w('listGrowthStrategies', query).then(r => {
@@ -4433,6 +4441,12 @@ function openTitleStrategyModal(id, title, currentStrategyId, productId) {
     sel.value = (currentStrategyId && currentStrategyId !== '__none__') ? currentStrategyId : '';
     sel.disabled = false;
   }).catch(() => { sel.disabled = false; });
+  w('getCampaignProducts', { campaignId: CAMPAIGN_ID }).then(r => {
+    const products = r.products || [];
+    prodSel.innerHTML = '<option value="">— none —</option>' + products.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    prodSel.value = (productId && productId !== '__none__') ? productId : '';
+    prodSel.disabled = false;
+  }).catch(() => { prodSel.disabled = false; });
 }
 function closeTitleStrategyModal() {
   document.getElementById('titleStrategyModal').classList.remove('open');
@@ -4445,11 +4459,12 @@ async function applyTitleStrategyChange() {
   const status = document.getElementById('titleStrategyModalStatus');
   const btn = document.getElementById('titleStrategySaveBtn');
   const growthStrategyId = document.getElementById('titleStrategySelect').value || undefined;
+  const productId = document.getElementById('titleProductSelect').value || '__none__';
   btn.disabled = true;
   status.textContent = 'Saving…';
   status.className = 'modal-status';
   try {
-    await w('updateTitleStrategy', { titleId: tsModalTitleId, growthStrategyId });
+    await w('updateTitleStrategy', { titleId: tsModalTitleId, growthStrategyId, productId });
     status.textContent = 'Updated ✓';
     status.className = 'modal-status ok';
     setTimeout(async () => { closeTitleStrategyModal(); await loadTitles(); }, 700);

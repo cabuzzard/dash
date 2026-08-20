@@ -13026,14 +13026,24 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       // generateTitleFromSlot's growthStrategyId (which only sets this at
       // creation time). growthStrategyId '' or '__none__' clears the link.
       if (body.action === "updateTitleStrategy") {
-        const { titleId, growthStrategyId } = body;
+        const { titleId, growthStrategyId, productId } = body;
         if (!titleId) return json({ error: "titleId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const clear = !growthStrategyId || growthStrategyId === '__none__';
+        const props = { "Growth Strategy": { relation: clear ? [] : [{ id: dash(growthStrategyId) }] } };
+        // productId is optional — the Set Strategy modal's Product field,
+        // reassigning this title to a different existing product from the
+        // campaign (or clearing it). Only touched when the caller actually
+        // sends it, so this stays backward-compatible with growth-strategy-
+        // only saves.
+        if (productId !== undefined) {
+          const clearProduct = !productId || productId === '__none__';
+          props["product"] = { relation: clearProduct ? [] : [{ id: dash(productId) }] };
+        }
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Growth Strategy": { relation: clear ? [] : [{ id: dash(growthStrategyId) }] } } }),
+          body: JSON.stringify({ properties: props }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
