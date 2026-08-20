@@ -1643,6 +1643,50 @@ async function verifyToken(token, secret) {
   } catch { return false; }
 }
 
+// ── PIN brute-force lockout ─────────────────────────────────────────────
+// The 250ms per-request delay on auth/pinUpdate slows a single client but
+// does nothing against parallel requests. This adds a real per-IP lockout,
+// backed by the existing TRADES KV (no new binding needed) — 5 wrong PINs
+// within a 15-minute window locks that IP out for 15 minutes, regardless of
+// whether a later attempt in that window is correct. A successful auth
+// clears the counter. Deliberately per-IP, not global — one attacker
+// shouldn't be able to lock out the real operator by racking up failures
+// from elsewhere.
+const PIN_LOCKOUT_MAX_ATTEMPTS  = 5;
+const PIN_LOCKOUT_WINDOW_SEC    = 15 * 60;
+const PIN_LOCKOUT_COOLDOWN_SEC  = 15 * 60;
+function pinLockoutKey(request) {
+  return "pinlock:" + (request.headers.get("CF-Connecting-IP") || "unknown");
+}
+async function checkPinLockout(env, request) {
+  try {
+    const rec = await env.TRADES.get(pinLockoutKey(request), "json");
+    if (rec?.lockedUntil && Date.now() < rec.lockedUntil) {
+      return { locked: true, retryAfterSec: Math.ceil((rec.lockedUntil - Date.now()) / 1000) };
+    }
+    return { locked: false };
+  } catch (e) { return { locked: false }; } // KV outage never blocks legitimate login
+}
+async function recordPinFailure(env, request) {
+  try {
+    const key = pinLockoutKey(request);
+    let rec = await env.TRADES.get(key, "json");
+    if (!rec || Date.now() - rec.firstAt > PIN_LOCKOUT_WINDOW_SEC * 1000) {
+      rec = { count: 0, firstAt: Date.now() };
+    }
+    rec.count += 1;
+    let ttlSec = PIN_LOCKOUT_WINDOW_SEC;
+    if (rec.count >= PIN_LOCKOUT_MAX_ATTEMPTS) {
+      rec.lockedUntil = Date.now() + PIN_LOCKOUT_COOLDOWN_SEC * 1000;
+      ttlSec = PIN_LOCKOUT_COOLDOWN_SEC;
+    }
+    await env.TRADES.put(key, JSON.stringify(rec), { expirationTtl: ttlSec });
+  } catch (e) { /* best-effort — a KV failure here shouldn't break the 401 response */ }
+}
+async function clearPinLockout(env, request) {
+  try { await env.TRADES.delete(pinLockoutKey(request)); } catch (e) {}
+}
+
 async function getCampaigns() {
   const [campRows, titleRows, productRows, todoRows, methodRows, loginRows, platformRows, researchRows, micrositeRows] = await Promise.all([
     notionQuery(CAMPAIGNS_DB, {
@@ -2991,9 +3035,12 @@ export default {
     // â"€â"€ auth  -  exchange PIN for a session token (public, no token required) â"€â"€
     if (body.action === "auth") {
       if (!PIN_VAL || !HMAC_SECRET) return json({ error: "Server not configured" }, 500);
+      const lockout = await checkPinLockout(env, request);
+      if (lockout.locked) return json({ error: `Too many failed attempts — try again in ${Math.ceil(lockout.retryAfterSec / 60)} min` }, 429);
       // Small delay to slow brute force attempts
       await new Promise(r => setTimeout(r, 250));
-      if (body.pin !== PIN_VAL) return json({ error: "Unauthorized" }, 401);
+      if (body.pin !== PIN_VAL) { await recordPinFailure(env, request); return json({ error: "Unauthorized" }, 401); }
+      await clearPinLockout(env, request);
       const token = await signToken(HMAC_SECRET);
       return json({ token });
     }
@@ -3002,8 +3049,11 @@ export default {
     // Accepts: { action, pin, id, voiceId?, captionStyle?, voiceSettings? }
     if (body.action === "pinUpdate") {
       if (!PIN_VAL) return json({ error: "Server not configured" }, 500);
+      const lockout = await checkPinLockout(env, request);
+      if (lockout.locked) return json({ error: `Too many failed attempts — try again in ${Math.ceil(lockout.retryAfterSec / 60)} min` }, 429);
       await new Promise(r => setTimeout(r, 250));
-      if (body.pin !== PIN_VAL) return json({ error: "Unauthorized" }, 401);
+      if (body.pin !== PIN_VAL) { await recordPinFailure(env, request); return json({ error: "Unauthorized" }, 401); }
+      await clearPinLockout(env, request);
       const { id, voiceId, captionStyle, voiceSettings } = body;
       if (!id) return json({ error: "id required" }, 400);
       const dash = i => i.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
