@@ -4640,6 +4640,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
           const titleIds = (titleResp.results || []).map(pg => pg.id.replace(/-/g,""));
           const noteMap = {};
+          const highlightMap = {};
           if (titleIds.length) {
             try {
               const tdRows = await notionQuery(MAIN_TD_DB, {
@@ -4647,9 +4648,12 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
               });
               tdRows.forEach(td => {
                 const relTitleId = (td.properties?.Content?.relation || [])[0]?.id?.replace(/-/g,"");
-                if (relTitleId) noteMap[relTitleId] = (td.properties?.Title?.title || []).map(t => t.plain_text).join("");
+                if (relTitleId) {
+                  noteMap[relTitleId] = (td.properties?.Title?.title || []).map(t => t.plain_text).join("");
+                  highlightMap[relTitleId] = !!td.properties?.Highlighted?.checkbox;
+                }
               });
-            } catch(e) { /* notes are supplementary — a failed lookup shouldn't break the whole list */ }
+            } catch(e) { /* notes/highlights are supplementary — a failed lookup shouldn't break the whole list */ }
           }
           const titles = (titleResp.results || []).map(pg => {
             const p = pg.properties || {};
@@ -4665,6 +4669,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
               campaignMicrosite: camp.microsite,
               createdTime: pg.created_time || "",
               note: noteMap[id] || "",
+              highlighted: !!highlightMap[id],
             };
           });
           return json({ titles });
@@ -4718,6 +4723,41 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           });
           const created = await createResp.json();
           if (!createResp.ok || !created.id) return json({ error: created.message || "Note save failed" }, createResp.status || 500);
+          return json({ success: true, tdId: created.id.replace(/-/g,"") });
+        } catch(e) {
+          return json({ error: e.message }, 500);
+        }
+      }
+
+      // ── saveTitleHighlight ──
+      // The Last 50 Development Titles ⭐ toggle, persisted like the note
+      // above — was localStorage-only before (didn't sync across devices).
+      // Same search-or-create TD record as getTitleNote/saveTitleNote (one
+      // TD per title, found via Content relation contains titleId) so a
+      // title's note and highlight land on the same record either way.
+      if (body.action === "saveTitleHighlight") {
+        const { titleId, highlighted } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        try {
+          const rows = await notionQuery(MAIN_TD_DB, { filter: { property: "Content", relation: { contains: dashId(titleId) } } });
+          const existing = rows[0];
+          const prop = { Highlighted: { checkbox: !!highlighted } };
+          if (existing) {
+            await fetch(`https://api.notion.com/v1/pages/${existing.id}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: prop }),
+            });
+            return json({ success: true, tdId: existing.id.replace(/-/g,"") });
+          }
+          if (!highlighted) return json({ success: true, tdId: null }); // nothing to persist, no TD to create
+          const createResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: MAIN_TD_DB }, properties: { ...prop, Title: { title: [] }, Content: { relation: [{ id: dashId(titleId) }] } } }),
+          });
+          const created = await createResp.json();
+          if (!createResp.ok || !created.id) return json({ error: created.message || "Highlight save failed" }, createResp.status || 500);
           return json({ success: true, tdId: created.id.replace(/-/g,"") });
         } catch(e) {
           return json({ error: e.message }, 500);

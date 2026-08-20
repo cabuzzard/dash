@@ -10254,18 +10254,22 @@ let last30TitlesCollapsed = true;
 let last30TitlesLoaded = false;
 let _last30Titles = [];
 let _last30TitlesSort = { col: 'date', dir: -1 };
-// Highlight toggle — purely local, per-operator flagging (nothing worth a
-// Notion round-trip, same reasoning as hard-grind's titleGroupsOpen
-// localStorage pattern for UI-only state). Keyed by title id.
-let _last30TitlesHighlighted = {};
-try { _last30TitlesHighlighted = JSON.parse(localStorage.getItem('last30TitlesHighlighted') || '{}'); } catch(e) { _last30TitlesHighlighted = {}; }
-function saveLast30TitlesHighlighted() {
-  try { localStorage.setItem('last30TitlesHighlighted', JSON.stringify(_last30TitlesHighlighted)); } catch(e) {}
-}
-function toggleLast30TitleHighlight(id) {
-  _last30TitlesHighlighted[id] = !_last30TitlesHighlighted[id];
-  saveLast30TitlesHighlighted();
+// Highlight toggle — persisted to Notion (saveTitleHighlight, same TD
+// record as the note) so it syncs across devices. Was localStorage-only
+// before, which is why it didn't show up on a second device/browser.
+async function toggleLast30TitleHighlight(id) {
+  const row = _last30Titles.find(t => t.id === id);
+  if (!row) return;
+  const next = !row.highlighted;
+  row.highlighted = next; // optimistic
   renderLast30TitlesTable();
+  try {
+    await call('saveTitleHighlight', { titleId: id, highlighted: next });
+  } catch(e) {
+    row.highlighted = !next; // revert on failure
+    renderLast30TitlesTable();
+    showToast('Failed to save highlight: ' + e.message, 'error');
+  }
 }
 function toggleLast30TitlesSection() {
   last30TitlesCollapsed = !last30TitlesCollapsed;
@@ -10329,7 +10333,7 @@ function renderLast30TitlesTable() {
   const rowsHtml = sorted.map(t => {
     const date = t.createdTime ? new Date(t.createdTime).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
     const titleNameJs = esc(t.title || 'Untitled').replace(/'/g,"\\'");
-    const highlighted = !!_last30TitlesHighlighted[t.id];
+    const highlighted = !!t.highlighted;
     return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:32px;' + (highlighted ? 'background:color-mix(in srgb, var(--accent) 20%, transparent);' : '') + '">' +
       '<div onclick="toggleLast30TitleHighlight(\'' + t.id + '\')" title="' + (highlighted ? 'Remove highlight' : 'Highlight this row') + '" style="width:22px;flex-shrink:0;padding:6px 0;text-align:center;cursor:pointer;font-size:13px;line-height:1;color:' + (highlighted ? 'var(--accent)' : 'var(--text3)') + ';opacity:' + (highlighted ? '1' : '.4') + ';">' + (highlighted ? '★' : '☆') + '</div>' +
       '<div style="flex:3;min-width:0;padding:6px 8px;overflow:hidden;">' +
