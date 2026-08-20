@@ -10104,6 +10104,19 @@ let last30TitlesCollapsed = true;
 let last30TitlesLoaded = false;
 let _last30Titles = [];
 let _last30TitlesSort = { col: 'date', dir: -1 };
+// Highlight toggle — purely local, per-operator flagging (nothing worth a
+// Notion round-trip, same reasoning as hard-grind's titleGroupsOpen
+// localStorage pattern for UI-only state). Keyed by title id.
+let _last30TitlesHighlighted = {};
+try { _last30TitlesHighlighted = JSON.parse(localStorage.getItem('last30TitlesHighlighted') || '{}'); } catch(e) { _last30TitlesHighlighted = {}; }
+function saveLast30TitlesHighlighted() {
+  try { localStorage.setItem('last30TitlesHighlighted', JSON.stringify(_last30TitlesHighlighted)); } catch(e) {}
+}
+function toggleLast30TitleHighlight(id) {
+  _last30TitlesHighlighted[id] = !_last30TitlesHighlighted[id];
+  saveLast30TitlesHighlighted();
+  renderLast30TitlesTable();
+}
 function toggleLast30TitlesSection() {
   last30TitlesCollapsed = !last30TitlesCollapsed;
   const list = document.getElementById('last30TitlesList');
@@ -10156,6 +10169,7 @@ function renderLast30TitlesTable() {
     return '<div onclick="sortLast30TitlesBy(\'' + key + '\')" style="flex:' + flex + ';min-width:0;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + (active ? 'var(--accent)' : 'var(--text3)') + ';cursor:pointer;user-select:none;padding:7px 8px;">' + label + arrow + '</div>';
   };
   const hdrRow = '<div style="display:flex;align-items:center;border-bottom:2px solid var(--border2);margin-bottom:2px;">' +
+    '<div style="width:22px;flex-shrink:0;"></div>' +
     colHdr('title',    'Title',    '3') +
     colHdr('note',     'Note',     '2') +
     colHdr('campaign', 'Campaign', '1') +
@@ -10165,7 +10179,9 @@ function renderLast30TitlesTable() {
   const rowsHtml = sorted.map(t => {
     const date = t.createdTime ? new Date(t.createdTime).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
     const titleNameJs = esc(t.title || 'Untitled').replace(/'/g,"\\'");
-    return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:32px;">' +
+    const highlighted = !!_last30TitlesHighlighted[t.id];
+    return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:32px;' + (highlighted ? 'background:color-mix(in srgb, var(--accent) 14%, transparent);' : '') + '">' +
+      '<div onclick="toggleLast30TitleHighlight(\'' + t.id + '\')" title="' + (highlighted ? 'Remove highlight' : 'Highlight this row') + '" style="width:22px;flex-shrink:0;padding:6px 0;text-align:center;cursor:pointer;font-size:13px;line-height:1;color:' + (highlighted ? 'var(--accent)' : 'var(--text3)') + ';opacity:' + (highlighted ? '1' : '.4') + ';">' + (highlighted ? '★' : '☆') + '</div>' +
       '<div style="flex:3;min-width:0;padding:6px 8px;overflow:hidden;">' +
         '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(t.title || 'Untitled') + '</span>' +
       '</div>' +
