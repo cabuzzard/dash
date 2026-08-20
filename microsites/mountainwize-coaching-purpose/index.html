@@ -1298,6 +1298,16 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <label class="lm-label">Product <span style="color:#fff;font-weight:normal;">— optional; groups this title in the Development Titles list</span></label>
       <select class="modal-ta" id="qaProductInput" style="margin-bottom:10px;"></select>
 
+      <label class="lm-label">Status <span style="color:#fff;font-weight:normal;">— Planning stays in the Strategies tab until you write its pillar; any other status puts it straight in Development Titles below</span></label>
+      <select class="modal-ta" id="qaStatusInput" style="margin-bottom:10px;">
+        <option value="Planning" selected>Planning (Strategies tab)</option>
+        <option value="Development">Development</option>
+        <option value="Writing">Writing</option>
+        <option value="Review">Review</option>
+        <option value="Approved">Approved</option>
+        <option value="Publish">Publish</option>
+      </select>
+
       <label class="lm-label">Notes <span style="color:#fff;font-weight:normal;">— optional; whatever you want to remember about this idea. Fed in as guidance when the pillar auto-writes on first 🧩 Generate Assets run.</span></label>
       <textarea class="modal-ta" id="qaNotesInput" rows="4" placeholder="Angle, source, why this matters…" style="resize:vertical;"></textarea>
 
@@ -7081,6 +7091,7 @@ function openQuickAddModal() {
   const sel = document.getElementById('qaProductInput');
   sel.innerHTML = '<option value="">— none —</option>' + (PRODUCT_ITEMS || []).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
   sel.value = '';
+  document.getElementById('qaStatusInput').value = 'Planning';
   document.getElementById('qaNotesInput').value = '';
   document.getElementById('qaStatus').textContent = '';
   const btn = document.getElementById('qaGoBtn');
@@ -7098,6 +7109,7 @@ async function submitQuickAddTitle() {
   const status = document.getElementById('qaStatus');
   const title = document.getElementById('qaTitleInput').value.trim();
   const productId = document.getElementById('qaProductInput').value || undefined;
+  const titleStatus = document.getElementById('qaStatusInput').value || 'Planning';
   const notes = document.getElementById('qaNotesInput').value.trim();
   if (!title) { status.textContent = 'Title is required.'; status.style.color = '#fc8181'; return; }
   const btn = document.getElementById('qaGoBtn');
@@ -7105,12 +7117,15 @@ async function submitQuickAddTitle() {
   status.style.color = '#888';
   status.textContent = 'Saving…';
   try {
-    const data = await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, productId, status: 'Planning', skipPillar: true, researchInstructions: notes || undefined });
+    const data = await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, productId, status: titleStatus, skipPillar: true, researchInstructions: notes || undefined });
     if (data.error) throw new Error(data.error);
     status.textContent = `✓ Added "${title}"`;
     status.style.color = '#68d391';
     btn.textContent = 'Done';
     if (typeof loadTitles === 'function') loadTitles();
+    // Planning titles show in the Strategies tab, not here — refresh it too
+    // so switching tabs doesn't show a stale list missing what was just added.
+    if (titleStatus === 'Planning' && typeof loadCampaignStrategies === 'function') loadCampaignStrategies();
     setTimeout(closeQuickAddModal, 900);
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
