@@ -2013,8 +2013,11 @@ async function loadTitles() {
     const data = await w('getTitles', { stages: ['Planning','Development','Writing','Review','Approved','Publish','Published','Explode','Done'], campaignId: CAMPAIGN_ID });
     if (myToken !== LOAD_TITLES_TOKEN) return; // a newer loadTitles() call has since started — this response is stale, discard it
     const titles = data.titles || [];
-    // Planning sorts first — it's the pre-development stub stage (quick-add
-    // title + operator notes, no pillar content yet, per operator request).
+    // Planning is deliberately excluded here now (per operator instruction)
+    // — a Planning title is a pre-title/"slot" still living in the
+    // Strategies tab, not real Development work yet. It only reaches this
+    // list once promoted (via the Strategies tab's ✍️ Write Pillar action,
+    // or a manual ⇄ status change), same as any other stage transition.
     // 'Publish' is included here too (per operator instruction) because some
     // generation paths (e.g. T Shirt) still force a title's Status to
     // "Publish" on completion — without this, that title's row (and its
@@ -2023,9 +2026,9 @@ async function loadTitles() {
     // under Publish Assets, with no way to interact with the title itself.
     // 'Published' stays excluded — that's the fully-confirmed-live state,
     // not something still being worked on here.
-    const DEV_ORDER = { Planning:-1, Explode:0, Approved:1, Review:2, Writing:3, Development:4, Publish:5 };
+    const DEV_ORDER = { Explode:0, Approved:1, Review:2, Writing:3, Development:4, Publish:5 };
     const dev = titles
-      .filter(t => ['Planning','Development','Writing','Review','Approved','Explode','Publish'].includes(t.stage))
+      .filter(t => ['Development','Writing','Review','Approved','Explode','Publish'].includes(t.stage))
       .sort((a, b) => (DEV_ORDER[a.stage] ?? 9) - (DEV_ORDER[b.stage] ?? 9));
     // Publish/Assets section is no longer title-stage-gated — a title
     // leaving Development doesn't affect whether its assets show here (see
@@ -2196,7 +2199,7 @@ async function loadTitles() {
       GA_TITLE_ASSETS_CACHE[t.id] = t.assets || [];
       const div = document.createElement('div');
       div.className = 'title-row';
-      div.style.paddingLeft = '30px'; // innermost of Stack(10) -> Product(20) -> Title(30)
+      div.style.paddingLeft = '40px'; // innermost of Stack(10) -> Product(20) -> Strategy(30) -> Title(40)
       // No manual pillar-write step or button anymore — generateTitleAssets
       // (behind 🧩 Generate Assets) writes the pillar itself, on first run,
       // if this title doesn't have one yet, and promotes Planning →
@@ -2211,17 +2214,52 @@ async function loadTitles() {
       return div;
     }
     // Title level — the innermost Development grouping level. No Method/
-    // Phase/Grouping sub-levels here (per operator instruction: those are
-    // asset-level or legacy concepts, not title-level ones) — just a flat
-    // list of title rows within whichever Product bucket contains them.
+    // Phase sub-levels here (per operator instruction: those are asset-level
+    // or legacy concepts, not title-level ones) — just a flat list of title
+    // rows within whichever Strategy bucket contains them.
     function renderTitleLevel(titles, container, section) {
       titles.forEach(t => container.appendChild(makeTitleRow(t, section)));
+    }
+    // Strategy level — nested inside Product, one step deeper than it. Which
+    // Growth Strategy a title is grouped under (t.strategyId/strategyName,
+    // set via the 🔗 button, or automatically when a title comes from a
+    // Strategy Slot) — provenance stays visible after promotion out of the
+    // Strategies tab instead of disappearing the moment a title reaches
+    // Development. "No Strategy" sorts last, same convention as "No Stack"/
+    // "No Product".
+    function renderStrategyLevel(arr, el, section) {
+      const hasStrategy = arr.some(t => t.strategyId && t.strategyId !== '__none__');
+      if (!hasStrategy) { renderTitleLevel(arr, el, section); return; }
+      const stratOrder = [], byStrat = {};
+      arr.forEach(t => {
+        const sk = (t.strategyId || '__none__') + '||' + (t.strategyName || 'No Strategy');
+        if (!byStrat[sk]) { byStrat[sk] = []; stratOrder.push(sk); }
+        byStrat[sk].push(t);
+      });
+      stratOrder.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
+      stratOrder.forEach(sk => {
+        const sTitles = byStrat[sk];
+        const stratName = sk.split('||')[1];
+        if (stratOrder.length === 1) { renderTitleLevel(sTitles, el, section); return; }
+        const stateKey = section + '|strat|' + sk;
+        const isOpen = !!titleGroupsOpen[stateKey];
+        const gHdr = document.createElement('div');
+        gHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 30px;background:rgba(255,255,255,.045);border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;user-select:none;';
+        const gArrow = document.createElement('span'); gArrow.textContent = isOpen ? '▾' : '▶'; gArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
+        const gLabel = document.createElement('span'); gLabel.style.cssText = 'flex:1;font-size:11px;color:#fff;'; gLabel.textContent = stratName;
+        const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:#fff;'; gCount.textContent = sTitles.length;
+        gHdr.appendChild(gArrow); gHdr.appendChild(gLabel); gHdr.appendChild(gCount);
+        const gBody = document.createElement('div'); gBody.style.display = isOpen ? 'block' : 'none';
+        renderTitleLevel(sTitles, gBody, section);
+        gHdr.onclick = () => { const o = gBody.style.display !== 'none'; gBody.style.display = o ? 'none' : 'block'; gArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+        el.appendChild(gHdr); el.appendChild(gBody);
+      });
     }
     // Product level — nested inside the Stack level below it. Same collapse/
     // expand + single-bucket-skip pattern as the Stack level above it.
     function renderProductLevel(arr, el, section) {
       const hasProd = arr.some(t => t.productId && t.productId !== '__none__');
-      if (!hasProd) { renderTitleLevel(arr, el, section); return; }
+      if (!hasProd) { renderStrategyLevel(arr, el, section); return; }
       const prodOrder = [], byProd = {};
       arr.forEach(t => {
         const pk = (t.productId || '__none__') + '||' + (t.productName || 'No Product');
@@ -2232,7 +2270,7 @@ async function loadTitles() {
       prodOrder.forEach(pk => {
         const pTitles = byProd[pk];
         const prodName = pk.split('||')[1];
-        if (prodOrder.length === 1) { renderTitleLevel(pTitles, el, section); return; }
+        if (prodOrder.length === 1) { renderStrategyLevel(pTitles, el, section); return; }
         const stateKey = section + '|prod|' + pk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const pHdr = document.createElement('div');
@@ -2242,7 +2280,7 @@ async function loadTitles() {
         const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:#fff;'; pCount.textContent = pTitles.length;
         pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
         const pBody = document.createElement('div'); pBody.style.display = isOpen ? 'block' : 'none';
-        renderTitleLevel(pTitles, pBody, section);
+        renderStrategyLevel(pTitles, pBody, section);
         pHdr.onclick = () => { const o = pBody.style.display !== 'none'; pBody.style.display = o ? 'none' : 'block'; pArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
         el.appendChild(pHdr); el.appendChild(pBody);
       });
@@ -6760,13 +6798,15 @@ function closeAssetBodyModal() {
 // cached so the Add Idea modal's "Fill an open Strategy Slot" picker can
 // reuse it without a second round-trip.
 let CAMPAIGN_STRATEGIES_CACHE = [];
+let CAMPAIGN_UNASSIGNED_PLANNING_CACHE = [];
 async function loadCampaignStrategies() {
   const el = document.getElementById('strategies-panel');
   if (!el) return;
   try {
     const r = await w('getCampaignGrowthStrategies', { campaignId: CAMPAIGN_ID });
     CAMPAIGN_STRATEGIES_CACHE = r.strategies || [];
-    renderStrategiesPanel(CAMPAIGN_STRATEGIES_CACHE);
+    CAMPAIGN_UNASSIGNED_PLANNING_CACHE = r.unassignedPlanningTitles || [];
+    renderStrategiesPanel(CAMPAIGN_STRATEGIES_CACHE, CAMPAIGN_UNASSIGNED_PLANNING_CACHE);
   } catch (e) {
     el.innerHTML = '<div class="empty">Error loading strategies.</div>';
   }
@@ -6782,24 +6822,70 @@ function toggleStrategyCollapse(bodyId, arrowEl) {
   body.style.display = isOpen ? 'none' : 'block';
   if (arrowEl) arrowEl.textContent = isOpen ? '▶' : '▾';
 }
-function renderStrategiesPanel(strategies) {
+// Writes a Planning title's pillar content and (per writeTitlePillar's own
+// behavior server-side) promotes it to Development in the same call — the
+// one deliberate way a title leaves this tab and starts showing in the
+// Development list instead. Shared by every list this panel renders (slot
+// titles, General/no-slot titles under a strategy, and fully unassigned
+// Planning titles) since they're all just {id, name, stage, hasPillar}
+// shaped the same way.
+async function writeStrategyTitlePillar(titleId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Writing…'; }
+  try {
+    const r = await w('writeTitlePillar', { titleId });
+    if (r.error) throw new Error(r.error);
+    await Promise.all([loadCampaignStrategies(), (typeof loadTitles === 'function' ? loadTitles() : Promise.resolve())]);
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '✍️ Write Pillar'; }
+  }
+}
+// One title chip: a stage badge, a ✍️ Write Pillar action (only while still
+// Planning — the whole point of the button is the Planning→Development
+// transition, so it disappears once that's already happened), and a plain
+// Notion link. Shared by slot titles, General titles, and the top-level
+// Unassigned Planning list below.
+function renderStrategyTitleChip(t) {
+  const stageBadge = `<span class="title-stage ${SC[t.stage]||'ts-write'}" style="font-size:8px;padding:1px 5px;flex-shrink:0;">${esc(t.stage || '?')}</span>`;
+  const pillarBtn = t.stage === 'Planning'
+    ? `<button onclick="writeStrategyTitlePillar('${t.id}', this)" title="Write this title's pillar content and move it to Development" style="font-size:9px;padding:0 6px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;flex-shrink:0;line-height:1.6;">✍️ Write Pillar</button>`
+    : '';
+  return `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">${stageBadge}${pillarBtn}<a href="https://www.notion.so/${t.id}" target="_blank" title="${esc(t.name)}" style="font-size:9px;color:#68d391;text-decoration:none;">↗</a></div>`;
+}
+function renderStrategiesPanel(strategies, unassignedPlanningTitles) {
   const el = document.getElementById('strategies-panel');
   if (!el) return;
-  if (!strategies.length) { el.innerHTML = '<div class="empty">No Growth Strategies yet — generate one from the 🚀 button on a product row above.</div>'; return; }
-  el.innerHTML = strategies.map(s => {
+  // Unassigned Planning titles (no Growth Strategy relation at all — Quick
+  // Add with nothing picked, generateTitlesFromStrategy's positioning-doc
+  // batch, or any other creation path) render first — otherwise Planning
+  // titles with no strategy would be invisible now that Planning no longer
+  // shows in Development at all.
+  const unassignedHtml = (unassignedPlanningTitles || []).length
+    ? `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #333;">`
+      + `<div style="font-size:12px;font-weight:700;color:#e8ff47;margin-bottom:6px;">Unassigned Planning Titles</div>`
+      + unassignedPlanningTitles.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
+        + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}${t.productName ? ` — ${esc(t.productName)}` : ''}</span>`
+        + `<button onclick="openTitleStrategyModal('${t.id}','${esc(t.name).replace(/'/g,"\\'")}','','${t.productId || ''}')" title="Attach this title to a Growth Strategy" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">🔗 Attach</button>`
+        + renderStrategyTitleChip(t)
+        + `</div>`).join('')
+      + `</div>`
+    : '';
+  if (!strategies.length) { el.innerHTML = unassignedHtml || '<div class="empty">No Growth Strategies yet — generate one from the 🚀 button on a product row above.</div>'; return; }
+  el.innerHTML = unassignedHtml + strategies.map(s => {
     const stratBodyId = `strat-body-${s.id}`;
     const groupingsHtml = s.groupings.map((g, gi) => {
       const gBodyId = `${stratBodyId}-grp-${gi}`;
       const slotsHtml = g.slots.map(slot => {
-        const titles = slot.titles || (slot.titleId ? [{ id: slot.titleId, name: 'title' }] : []);
+        const titles = slot.titles || (slot.titleId ? [{ id: slot.titleId, name: 'title', stage: '' }] : []);
         // A slot can be filled more than once — once per Method — so this
         // shows every title made from it (each links out to its Notion
-        // page), not just whether it's "done". "+ title" stays clickable
-        // regardless of fill state for exactly that reason.
+        // page, plus a stage badge and a ✍️ Write Pillar action while it's
+        // still Planning), not just whether it's "done". "+ title" stays
+        // clickable regardless of fill state for exactly that reason.
         const badge = titles.length
-          ? titles.map(t => `<a href="https://www.notion.so/${t.id}" target="_blank" title="${esc(t.name)}" style="font-size:9px;color:#68d391;text-decoration:none;flex-shrink:0;">✓</a>`).join(' ')
+          ? `<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;">${titles.map(renderStrategyTitleChip).join('')}</div>`
           : `<span style="font-size:9px;color:#e8ff47;flex-shrink:0;">○ open</span>`;
-        const createBtn = `<button onclick="openCreateTitleFromSlotModal({slotId:'${slot.id}',strategyId:'${s.id}'})" title="Create a title + script from this slot" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">+ title</button>`;
+        const createBtn = `<button onclick="openCreateTitleFromSlotModal({slotId:'${slot.id}',strategyId:'${s.id}'})" title="Create a title from this slot" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">+ title</button>`;
         return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
           + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(slot.name)} — ${esc((slot.angle || '').slice(0, 80))}</span>`
           + badge
@@ -6814,6 +6900,18 @@ function renderStrategiesPanel(strategies) {
         + `<div id="${gBodyId}" style="display:none;margin-top:4px;">${slotsHtml}</div>`
         + `</div>`;
     }).join('');
+    // General (no slot) — titles attributed straight to this Strategy
+    // (generateTitleFromSlot's slot-less branch, or a manual 🔗 attach) with
+    // no specific planned angle to sit under.
+    const generalHtml = (s.generalTitles && s.generalTitles.length)
+      ? `<div style="margin:8px 0;">`
+        + `<div style="font-size:11px;font-weight:700;color:#fff;">General (no slot)</div>`
+        + s.generalTitles.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
+          + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}${t.productName ? ` — ${esc(t.productName)}` : ''}</span>`
+          + renderStrategyTitleChip(t)
+          + `</div>`).join('')
+        + `</div>`
+      : '';
     return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #222;">`
       + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">`
       + `<span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stratBodyId}', this)">▶</span>`
@@ -6823,6 +6921,7 @@ function renderStrategiesPanel(strategies) {
       + `</div>`
       + `<div id="${stratBodyId}" style="display:none;">`
       + (groupingsHtml || '<div class="empty" style="font-size:11px;">No slots recorded for this strategy.</div>')
+      + generalHtml
       + `</div>`
       + `</div>`;
   }).join('');

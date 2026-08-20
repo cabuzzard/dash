@@ -6709,9 +6709,18 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
         let created = 0;
         for (const it of items.slice(0, 5)) {
+          // Status: Planning, not Development — same reasoning as
+          // generateTitleFromSlot: this is a batch of strategy-produced
+          // titles that need operator review before they're real
+          // Development work, not immediately-live drafts. The content
+          // written to the page body below already counts as "has pillar"
+          // (extractPillarContent's legacy fallback reads any real written
+          // paragraph, not just an explicit "Pillar Content" section), so
+          // these don't need the separate Write Pillar step — just a
+          // regular status promotion (⇄) once reviewed.
           const props = {
             "Title":    { title: rtBlock(String(it.title || 'Untitled').slice(0, 200)) },
-            "Status":   { select: { name: "Development" } },
+            "Status":   { select: { name: "Planning" } },
             "Grouping": { rich_text: rtBlock(methodName || '') },
             "Campaign": { relation: [{ id: dash(campaignId) }] },
             "method":   { relation: [{ id: dash(methodId) }] },
@@ -8068,9 +8077,20 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const [stratQ, slotQ] = await Promise.all([
+        const [stratQ, slotQ, planningQ] = await Promise.all([
           notionQuery(GROWTH_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } }, sorts: [{ timestamp: "created_time", direction: "descending" }] }),
           notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } }, sorts: [{ property: "Sequence", direction: "ascending" }] }),
+          // Every Planning-stage title for this campaign — not just ones
+          // reached via a slot. Growth-Strategy-produced batches
+          // (generateTitlesFromStrategy) and one-off titles attributed to a
+          // strategy without a specific slot both land here too, since
+          // Planning titles no longer show in the Development list at all
+          // (per operator instruction) — this panel is now their only home
+          // until promoted.
+          notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [
+            { property: "Status", select: { equals: "Planning" } },
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+          ] } }),
         ]);
 
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
@@ -8083,13 +8103,43 @@ Return ONLY this JSON object, no other text, no markdown fences:
 
         // A slot's Title relation can hold several titles now (one per
         // Method, via generateTitleFromSlot) — batch-resolve their names so
-        // the panel can list/link every one, not just the first.
-        const titleIds = Array.from(new Set(slotQ.flatMap(s => (s.properties?.Title?.relation || []).map(r => r.id.replace(/-/g,"")))));
-        const titlePages = titleIds.length
-          ? await Promise.all(titleIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)))
+        // the panel can list/link every one, not just the first. Every
+        // Planning title found above (whether reached via a slot or not)
+        // also needs its own page fetched here so hasPillar/stage/product
+        // can be read off the SAME set of page objects below, one fetch
+        // pass total rather than two overlapping ones.
+        const slotTitleIds = Array.from(new Set(slotQ.flatMap(s => (s.properties?.Title?.relation || []).map(r => r.id.replace(/-/g,"")))));
+        const planningTitleIds = planningQ.map(p => p.id.replace(/-/g,""));
+        const allTitleIds = Array.from(new Set([...slotTitleIds, ...planningTitleIds]));
+        const titlePages = allTitleIds.length
+          ? await Promise.all(allTitleIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)))
           : [];
-        const titleNameById = {};
-        titlePages.filter(Boolean).forEach(p => { titleNameById[p.id.replace(/-/g,"")] = (p.properties?.Title?.title || []).map(t => t.plain_text).join("") || "Untitled"; });
+        const titleInfoById = {};
+        titlePages.filter(Boolean).forEach(p => {
+          const id = p.id.replace(/-/g,"");
+          titleInfoById[id] = {
+            name: (p.properties?.Title?.title || []).map(t => t.plain_text).join("") || "Untitled",
+            stage: p.properties?.Status?.select?.name || "",
+            productId: (p.properties?.product?.relation || [])[0]?.id?.replace(/-/g,"") || null,
+            growthStrategyId: (p.properties?.["Growth Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"") || null,
+          };
+        });
+        // hasPillar — same two-path detection extractPillarContent itself
+        // uses (an explicit "Pillar Content" heading_3, or any legacy real
+        // written body content) — only for Planning titles, the only stage
+        // this panel shows and the only ones the ✍️ Write Pillar button
+        // needs to conditionally appear/disappear for.
+        await Promise.all(planningTitleIds.map(async id => {
+          if (!titleInfoById[id]) return;
+          try {
+            const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(id)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+            const blocks = blocksResp.results || [];
+            titleInfoById[id].hasPillar = blocks.some(b =>
+              (b.type === "heading_3" && (b.heading_3?.rich_text || []).map(x => x.plain_text).join("").trim().toLowerCase() === "pillar content") ||
+              ((b.type === "paragraph" || b.type === "bulleted_list_item" || b.type === "numbered_list_item") && (b[b.type]?.rich_text || []).map(x => x.plain_text).join("").trim().length > 0)
+            );
+          } catch (e) { titleInfoById[id].hasPillar = false; }
+        }));
 
         const slotsByStrategy = {};
         slotQ.forEach(s => {
@@ -8105,9 +8155,44 @@ Return ONLY this JSON object, no other text, no markdown fences:
             platform: (s.properties?.Platform?.rich_text || []).map(t => t.plain_text).join(""),
             status: s.properties?.Status?.select?.name || "Open",
             titleId: (s.properties?.Title?.relation || [])[0]?.id?.replace(/-/g,"") || null, // first, kept for back-compat
-            titles: (s.properties?.Title?.relation || []).map(r => { const id = r.id.replace(/-/g,""); return { id, name: titleNameById[id] || "Untitled" }; }), // every title this slot has been filled with — a slot can be filled once per Method
+            // every title this slot has been filled with — a slot can be
+            // filled once per Method — each carrying its own stage/hasPillar
+            // so the panel can show a ✍️ Write Pillar action on any that are
+            // still Planning, and a plain checkmark on the rest.
+            titles: (s.properties?.Title?.relation || []).map(r => {
+              const id = r.id.replace(/-/g,"");
+              const info = titleInfoById[id];
+              return { id, name: info?.name || "Untitled", stage: info?.stage || "", hasPillar: info?.hasPillar !== false };
+            }),
           });
         });
+
+        // Planning titles NOT reached via any slot — split by whether
+        // they're at least attributed to a Growth Strategy (generateTitleFromSlot's
+        // slot-less branch, or a manual 🔗 attach) vs genuinely unattached
+        // (generateTitlesFromStrategy's batch, Quick Add with no strategy,
+        // any other creation path). The former render as a lightweight
+        // "General" grouping under their strategy; the latter get their own
+        // top-level list so nothing Planning is ever invisible.
+        const generalByStrategy = {};
+        const unassignedPlanningTitles = [];
+        planningTitleIds.forEach(id => {
+          if (slotTitleIds.includes(id)) return; // already shown via its slot above
+          const info = titleInfoById[id];
+          if (!info) return;
+          const row = { id, name: info.name, stage: info.stage, hasPillar: info.hasPillar !== false, productId: info.productId, productName: info.productId ? (productNameById[info.productId] || null) : null };
+          if (info.growthStrategyId) (generalByStrategy[info.growthStrategyId] ||= []).push(row);
+          else unassignedPlanningTitles.push(row);
+        });
+        // Product names for unassigned titles may not be in productNameById
+        // yet (that map was seeded from Strategy->Product relations only) —
+        // resolve any still-missing ones in one more batched pass.
+        const missingProductIds = Array.from(new Set(unassignedPlanningTitles.map(r => r.productId).filter(id => id && !productNameById[id])));
+        if (missingProductIds.length) {
+          const morePages = await Promise.all(missingProductIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)));
+          morePages.filter(Boolean).forEach(p => { productNameById[p.id.replace(/-/g,"")] = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product"; });
+          unassignedPlanningTitles.forEach(r => { if (r.productId && !r.productName) r.productName = productNameById[r.productId] || null; });
+        }
 
         const strategies = stratQ.map(s => {
           const id = s.id.replace(/-/g,"");
@@ -8132,10 +8217,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
               filledCount: byGrouping[g].filter(sl => sl.status === "Filled").length,
               totalCount: byGrouping[g].length,
             })),
+            generalTitles: generalByStrategy[id] || [],
           };
         });
 
-        return json({ success: true, strategies });
+        return json({ success: true, strategies, unassignedPlanningTitles });
       }
 
       // ── generateTitleFromSlot ──
@@ -8240,9 +8326,18 @@ Return ONLY this JSON object, no other text, no markdown fences:
         }
         const titleText = String(plan.title || slotName || angle || "Untitled").slice(0, 2000);
 
+        // Status: Planning, not Development — per operator instruction, a
+        // slot filling in is a "pre-title," not a real piece of work landing
+        // in Development yet. It shows up in the Strategies tab (grouped
+        // under its slot) instead, and pillar content is deliberately NOT
+        // written here anymore (was: an automatic writePillarContent call
+        // right after creation) — that's now a separate, explicit "✍️ Write
+        // Pillar" action the operator triggers from the Strategies tab when
+        // they're actually ready to develop it, which is also what promotes
+        // Planning → Development (see writeTitlePillar).
         const props = {
           Title:  { title: [{ type: "text", text: { content: titleText } }] },
-          Status: { select: { name: "Development" } },
+          Status: { select: { name: "Planning" } },
         };
         if (grouping) props["Grouping"] = { rich_text: [{ type: "text", text: { content: grouping.slice(0, 1990) } }] };
         if (campaignId) props["Campaign"] = { relation: [{ id: campaignId }] };
@@ -8256,18 +8351,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const created = await createResp.json();
         if (!createResp.ok || !created.id) return json({ error: created.message || "Failed to create title" }, createResp.status || 500);
         const newTitleId = created.id.replace(/-/g, "");
-
-        // Pillar content should exist on a title the moment it's created —
-        // this site already gathered rich product/strategy/growth-strategy
-        // context, so pass it straight through as extraContext instead of
-        // refetching. Method is deliberately absent from this whole action
-        // now — pillar content stays method-agnostic, method-specific
-        // shaping happens later at Generate Assets.
         let pillarWarning;
-        await writePillarContent(hdr, env, {
-          titleId: newTitleId, titleText, campaignId, productId, guidance,
-          extraContext: [productSection, growthStrategyBody && `GROWTH STRATEGY:\n${growthStrategyBody}`].filter(Boolean).join("\n\n"),
-        }).catch(e => { pillarWarning = e.message; });
 
         // Mark the slot Filled and APPEND this title to its Title relation —
         // never replace, so a second/third title from a different Method
