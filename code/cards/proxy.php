@@ -2,7 +2,13 @@
 // ============================================================
 //  PASTE YOUR ANTHROPIC API KEY BELOW
 // ============================================================
-$ANTHROPIC_API_KEY = "ntn_C8452809915b7aOiGkLvtkgHnmAA5v1Dt4OCeEXtHCU6FS";
+// A live Notion token (mislabeled as this Anthropic key — wrong credential
+// entirely, ask_claude below would never have worked with it) was hardcoded
+// here and committed to this PUBLIC repo — rotated 2026-08-20. This file is
+// also PHP inside a repo served by GitHub Pages, which cannot execute PHP —
+// confirm how/where this actually runs before relying on it. Never hardcode
+// a real secret here again; see the Claude <-> Cowork dialogue page.
+$ANTHROPIC_API_KEY = getenv("ANTHROPIC_API_KEY") ?: "";
 // ============================================================
 
 header("Access-Control-Allow-Origin: *");

@@ -113,7 +113,15 @@
 //  CONFIG — update PROXY_URL if you put proxy.php in a subfolder
 // ============================================================
 const PROXY_URL    = "proxy.php";
-const NOTION_TOKEN = "ntn_C8452809915b7aOiGkLvtkgHnmAA5v1Dt4OCeEXtHCU6FS";
+// A live Notion token was hardcoded here and committed to this PUBLIC repo —
+// rotated 2026-08-20. Never hardcode a real secret here again: this file is
+// served as-is by GitHub Pages (a static host with no server-side execution,
+// which also means proxy.php's own PHP never actually runs there either).
+// See the "Notion token rotation cleanup" entry in the Claude <-> Cowork
+// dialogue page for the real fix under discussion (routing this through the
+// existing Cloudflare Worker's secret-managed NOTION_TOKEN-style pattern
+// instead of a client-exposed constant).
+const NOTION_TOKEN = ""; // set locally only, never commit a real value here
 const SITES_PAGE_ID = "3341f7d3-a4bb-815d-ac80-d2977ee68dfe";
 const EXCLUDE = ["master platform list", "contractor database"];
 // ============================================================
