@@ -584,6 +584,8 @@
     <div class="pin-dot" id="d1"></div>
     <div class="pin-dot" id="d2"></div>
     <div class="pin-dot" id="d3"></div>
+    <div class="pin-dot" id="d4"></div>
+    <div class="pin-dot" id="d5"></div>
   </div>
   <div class="pin-pad">
     <button class="pin-btn" onclick="pinPress('1')">1</button>
@@ -599,6 +601,9 @@
     <button class="pin-btn" onclick="pinPress('0')">0</button>
     <button class="pin-btn del" onclick="pinDel()">⌫</button>
   </div>
+  <label class="pin-remember" style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:14px;font-size:12px;color:var(--text3);cursor:pointer;user-select:none;">
+    <input type="checkbox" id="pinRemember" style="cursor:pointer;" /> Remember this device for 30 days
+  </label>
   <div class="pin-error" id="pinError"></div>
 </div>
 
@@ -2875,16 +2880,23 @@ const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 let session      = { authed: false };
 let ovLoaded     = false;
 let pinBuffer    = '';
-let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
+// "Remember this device" (localStorage, survives closing the browser) takes
+// priority over the normal per-tab session (sessionStorage) — see checkPin.
+let SESSION_TOKEN = localStorage.getItem('hermes_token_remember') || sessionStorage.getItem('hermes_token') || null;
 
 // Auto-restore is handled after all functions are defined — see bottom of script
 
 // ── PIN ──────────────────────────────────────────────────────────────
+// 6 digits — matches the current admin PIN length. If the PIN's length ever
+// changes again, update PIN_LENGTH here (and the dot count in the pinScreen
+// HTML) together, or entry silently stops being submittable past whatever
+// this cap is.
+const PIN_LENGTH = 6;
 function pinPress(d) {
-  if (pinBuffer.length >= 4) return;
+  if (pinBuffer.length >= PIN_LENGTH) return;
   pinBuffer += d;
   updateDots();
-  if (pinBuffer.length === 4) setTimeout(checkPin, 120);
+  if (pinBuffer.length === PIN_LENGTH) setTimeout(checkPin, 120);
 }
 function pinDel() {
   pinBuffer = pinBuffer.slice(0, -1);
@@ -2893,7 +2905,7 @@ function pinDel() {
   document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error'));
 }
 function updateDots() {
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < PIN_LENGTH; i++) {
     const dot = document.getElementById('d' + i);
     dot.classList.toggle('filled', i < pinBuffer.length);
     dot.classList.remove('error');
@@ -2904,15 +2916,26 @@ let allTodos = [];
 
 async function checkPin() {
   try {
+    const remember = !!document.getElementById('pinRemember')?.checked;
     const data = await fetch(WORKER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'auth', pin: pinBuffer })
+      body: JSON.stringify({ action: 'auth', pin: pinBuffer, remember })
     }).then(r => r.json());
 
     if (data.token) {
       SESSION_TOKEN = data.token;
-      sessionStorage.setItem('hermes_token', SESSION_TOKEN);
+      // Remembered devices persist the token in localStorage (survives
+      // closing the browser); everyone else gets the normal per-tab
+      // sessionStorage token. Always clear the other slot so switching
+      // "remember" on/off between logins doesn't leave a stale token behind.
+      if (remember) {
+        localStorage.setItem('hermes_token_remember', SESSION_TOKEN);
+        sessionStorage.removeItem('hermes_token');
+      } else {
+        sessionStorage.setItem('hermes_token', SESSION_TOKEN);
+        localStorage.removeItem('hermes_token_remember');
+      }
       session.authed = true;
       document.getElementById('pinScreen').classList.add('hidden');
       if (!ovLoaded) { ovLoaded = true; loadOverview(); }
@@ -2953,6 +2976,7 @@ function resetLoadFlags() {
 function lockApp() {
   SESSION_TOKEN = null;
   sessionStorage.removeItem('hermes_token');
+  localStorage.removeItem('hermes_token_remember'); // manual Lock means actually lock, even on a remembered device
   pinBuffer = ''; session.authed = false; resetLoadFlags();
   updateDots();
   document.getElementById('pinScreen').classList.remove('hidden');
@@ -2981,6 +3005,7 @@ async function call(action, extra = {}) {
     // error banner stuck on screen until a manual page refresh.
     SESSION_TOKEN = null;
     sessionStorage.removeItem('hermes_token');
+    localStorage.removeItem('hermes_token_remember'); // a rejected token (expired or PIN rotated) is dead either way
     session.authed = false;
     resetLoadFlags();
     document.getElementById('pinScreen').classList.remove('hidden');

@@ -1616,8 +1616,8 @@ Return ONLY a JSON array, no other text, no markdown fences:
 }
 
 // â"€â"€ SESSION TOKEN HELPERS â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-async function signToken(secret) {
-  const payload  = { exp: Date.now() + 8 * 3600 * 1000, v: 1 };
+async function signToken(secret, ttlMs = 8 * 3600 * 1000) {
+  const payload  = { exp: Date.now() + ttlMs, v: 1 };
   const payloadB64 = btoa(JSON.stringify(payload));
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -3041,7 +3041,11 @@ export default {
       await new Promise(r => setTimeout(r, 250));
       if (body.pin !== PIN_VAL) { await recordPinFailure(env, request); return json({ error: "Unauthorized" }, 401); }
       await clearPinLockout(env, request);
-      const token = await signToken(HMAC_SECRET);
+      // "Remember this device" — a much longer-lived token (30 days) for a
+      // device the operator explicitly trusts, stored client-side in
+      // localStorage instead of the default 8h sessionStorage token. Same
+      // signing/verification path either way, just a different expiry.
+      const token = await signToken(HMAC_SECRET, body.remember ? 30 * 24 * 3600 * 1000 : undefined);
       return json({ token });
     }
 
