@@ -4493,10 +4493,11 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       // assets exist for them yet. A single capped, sorted fetch (not the
       // auto-paginating notionQuery helper) since Content Strategy has
       // 600+ rows total and only the newest 50 are ever needed here.
-      // Status filter excludes Publish/Published/Done — this widget is
-      // "what's still queued up," not a raw creation-order feed, so a
-      // title the operator has already moved past Development shouldn't
-      // keep occupying a slot here just because it was created recently.
+      // Status filter excludes Publish/Published/Done (already past
+      // Development) and Planning (not yet real Development work — those
+      // live in the Strategies tab now, same reasoning as the microsite's
+      // Development list) — this widget is "what's actively queued up in
+      // Development," not a raw creation-order feed.
       if (body.action === "getRecentTitles") {
         try {
           const [titleResp, campRows] = await Promise.all([
@@ -4507,6 +4508,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
                 page_size: 50,
                 sorts: [{ timestamp: "created_time", direction: "descending" }],
                 filter: { and: [
+                  { property: "Status", select: { does_not_equal: "Planning" } },
                   { property: "Status", select: { does_not_equal: "Publish" } },
                   { property: "Status", select: { does_not_equal: "Published" } },
                   { property: "Status", select: { does_not_equal: "Done" } },
