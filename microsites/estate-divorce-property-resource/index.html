@@ -5671,7 +5671,12 @@ function gaHandleLoginSelect() {
     return;
   }
   const login = (GA_LOGINS_CACHE || []).find(l => l.id === sel.value);
-  btn.style.display = (login && !login.etsyShopId) ? 'inline-block' : 'none';
+  // Always show the button for a real (non-blank) Login selection, even
+  // once connected — a token already issued can't gain scopes it wasn't
+  // granted at connect time, so re-running OAuth is the only way to pick
+  // up a newly-added scope (or recover from a revoked/expired connection).
+  btn.style.display = login ? 'inline-block' : 'none';
+  btn.textContent = (login && login.etsyShopId) ? '🔗 Reconnect' : '🔗 Connect';
 }
 function gaConnectSelectedLoginToEtsy() {
   const sel = document.getElementById('gaLoginInput');
