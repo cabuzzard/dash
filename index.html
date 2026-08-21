@@ -574,6 +574,30 @@
   </div>
 </div>
 
+<!-- TITLE PHOTOS MODAL — Last 50 Development Titles widget's 📷 button.
+     Uploads straight from a phone browser's file picker (Camera/Photo
+     Library/multi-select, no special handling needed) to the title's own
+     "Photos" files property — built so photos can go from phone to a
+     title without a separate phone-to-computer transfer step first.
+     Accumulating upload (uploadTitlePhoto/removeTitlePhoto, worker.js) —
+     same pattern as the Listing method's photo gallery. -->
+<div class="modal-overlay" id="titlePhotosModal" style="display:none;" onclick="if(event.target===this)closeTitlePhotosModal()">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="titlePhotosModalTitle">Photos</div>
+      <button class="modal-close" onclick="closeTitlePhotosModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="titlePhotosGrid" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;"></div>
+      <input type="file" id="titlePhotosInput" accept="image/*" multiple style="width:100%;font-size:12px;color:var(--text2);" onchange="uploadTitlePhotos()" />
+      <div id="titlePhotosStatus" style="font-size:11px;min-height:16px;margin-top:8px;color:var(--text3);"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeTitlePhotosModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- METHOD REVIEW NOTES MODAL — scratch notes on what to do with a method
      during cleanup ("merge into X", "keep", etc). Stored in the Methods DB's
      dedicated "Review Notes" property — kept separate from the existing
@@ -10447,6 +10471,7 @@ function renderLast30TitlesTable() {
     colHdr('campaign', 'Campaign', '1') +
     colHdr('date',     'Date',     '0 0 70px') +
     '<div style="width:24px;flex-shrink:0;"></div>' +
+    '<div style="width:24px;flex-shrink:0;"></div>' +
   '</div>';
   const rowsHtml = sorted.map(t => {
     const date = t.createdTime ? new Date(t.createdTime).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
@@ -10465,6 +10490,9 @@ function renderLast30TitlesTable() {
       '</div>' +
       '<div style="flex:0 0 70px;min-width:0;padding:6px 8px;">' +
         '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
+      '</div>' +
+      '<div onclick="openTitlePhotosModal(\'' + t.id + '\',\'' + titleNameJs + '\')" title="' + ((t.photos||[]).length ? (t.photos.length + ' photo' + (t.photos.length===1?'':'s')) : 'Add photos') + '" style="width:24px;flex-shrink:0;padding:6px 4px;text-align:center;cursor:pointer;font-size:12px;position:relative;color:' + ((t.photos||[]).length ? 'var(--accent)' : 'var(--text3)') + ';opacity:' + ((t.photos||[]).length ? '1' : '.5') + ';">📷' +
+        ((t.photos||[]).length ? '<span style="position:absolute;top:0;right:0;font-size:8px;background:var(--accent);color:#000;border-radius:6px;padding:0 3px;line-height:1.3;">' + t.photos.length + '</span>' : '') +
       '</div>' +
       '<div style="width:24px;flex-shrink:0;padding:6px 4px;">' +
         (t.campaignMicrosite ? '<a href="' + esc(t.campaignMicrosite) + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' : '') +
@@ -10517,6 +10545,83 @@ async function saveTitleNoteModal() {
     status.textContent = 'Error: ' + e.message;
   } finally {
     btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+// ── TITLE PHOTOS MODAL ───────────────────────────────────────────────
+// 📷 button on a Last 50 Development Titles row. Uploads to the title's
+// own "Photos" files property (uploadTitlePhoto/removeTitlePhoto,
+// worker.js) — an accumulating gallery, same pattern as the Listing
+// method's photo upload. Built specifically to solve phone→computer photo
+// transfer: open this dashboard in a phone browser, the file input's
+// native picker offers Camera/Photo Library with multi-select built in.
+let titlePhotosActiveId = '';
+function openTitlePhotosModal(titleId, titleName) {
+  titlePhotosActiveId = titleId;
+  document.getElementById('titlePhotosModalTitle').textContent = 'Photos — ' + titleName;
+  document.getElementById('titlePhotosInput').value = '';
+  document.getElementById('titlePhotosStatus').textContent = '';
+  renderTitlePhotosGrid();
+  document.getElementById('titlePhotosModal').style.display = 'flex';
+}
+function closeTitlePhotosModal() {
+  document.getElementById('titlePhotosModal').style.display = 'none';
+  titlePhotosActiveId = '';
+}
+function renderTitlePhotosGrid() {
+  const grid = document.getElementById('titlePhotosGrid');
+  const row = _last30Titles.find(t => t.id === titlePhotosActiveId);
+  const photos = (row && row.photos) || [];
+  if (!photos.length) { grid.innerHTML = '<div style="font-size:12px;color:var(--text3);">No photos yet.</div>'; return; }
+  grid.innerHTML = photos.map(url =>
+    '<div style="position:relative;width:84px;height:84px;flex-shrink:0;">' +
+      '<img src="' + esc(url) + '" style="width:100%;height:100%;object-fit:cover;border-radius:4px;border:1px solid var(--border2);" />' +
+      '<div onclick="removeTitlePhotoRow(\'' + esc(url).replace(/'/g,"\\'") + '\')" title="Remove" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;line-height:18px;text-align:center;border-radius:50%;background:var(--danger,#e05);color:#fff;font-size:11px;cursor:pointer;">✕</div>' +
+    '</div>'
+  ).join('');
+}
+async function uploadTitlePhotos() {
+  const input = document.getElementById('titlePhotosInput');
+  const files = Array.from(input.files || []);
+  if (!files.length || !titlePhotosActiveId) return;
+  const status = document.getElementById('titlePhotosStatus');
+  const row = _last30Titles.find(t => t.id === titlePhotosActiveId);
+  let done = 0;
+  for (const file of files) {
+    if (file.size > 15 * 1024 * 1024) { status.textContent = file.name + ' skipped — over 15MB.'; status.style.color = '#f0b429'; continue; }
+    status.textContent = 'Uploading ' + (done + 1) + '/' + files.length + '…';
+    status.style.color = 'var(--text3)';
+    try {
+      const b64 = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = e => res(e.target.result.split(',')[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      const r = await call('uploadTitlePhoto', { titleId: titlePhotosActiveId, fileName: file.name, contentType: file.type || 'image/jpeg', fileData: b64 });
+      if (r.error) throw new Error(r.error);
+      if (row) row.photos = r.photos;
+      done++;
+      renderTitlePhotosGrid();
+    } catch(e) {
+      status.textContent = 'Error on ' + file.name + ': ' + e.message;
+      status.style.color = '#fc8181';
+    }
+  }
+  if (done === files.length) { status.textContent = '✓ Uploaded ' + done + (done === 1 ? ' photo' : ' photos') + '.'; status.style.color = 'var(--text3)'; }
+  input.value = '';
+  renderLast30TitlesTable();
+}
+async function removeTitlePhotoRow(url) {
+  const row = _last30Titles.find(t => t.id === titlePhotosActiveId);
+  try {
+    const r = await call('removeTitlePhoto', { titleId: titlePhotosActiveId, photoUrl: url });
+    if (r.error) throw new Error(r.error);
+    if (row) row.photos = r.photos;
+    renderTitlePhotosGrid();
+    renderLast30TitlesTable();
+  } catch(e) {
+    showToast('Failed to remove photo: ' + e.message, 'error');
   }
 }
 

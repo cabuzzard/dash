@@ -4872,6 +4872,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
               createdTime: pg.created_time || "",
               note: noteMap[id] || "",
               highlighted: !!highlightMap[id],
+              photos: (p.Photos?.files || []).map(f => f.external?.url || f.file?.url).filter(Boolean),
             };
           });
           return json({ titles });
@@ -23290,12 +23291,14 @@ Produce all of this by calling the submit_listing tool — do not include any of
           "Etsy Tags":    { rich_text: [{ type: "text", text: { content: tagsLine.slice(0, 1990) } }] },
           "Craigslist Listing":     { rich_text: [{ type: "text", text: { content: craigslistBlock.slice(0, 1990) } }] },
           "FB Marketplace Listing": { rich_text: [{ type: "text", text: { content: fbBlock.slice(0, 1990) } }] },
-          // Deliberately NOT "Publish" — a listing isn't postable to any
-          // marketplace without real photos attached first (Listing Photos,
-          // via uploadListingPhoto), so this stays in Development until the
-          // operator uploads photos and reviews the copy, same as any other
-          // asset that still needs manual finishing.
-          "Asset Status": { select: { name: "Development" } },
+          // Same as every other method (T Shirt, Carousel, Text Video, ...):
+          // generation itself lands the asset in "Publish" status, which is
+          // what makes it show up in the Publish Assets section at all
+          // (gated on PUBLISH_GATE client-side) — that section is exactly
+          // where the operator uploads photos, fills in the Etsy-required
+          // fields, and hits Publish, not somewhere it should be hidden
+          // from until manually finished elsewhere first.
+          "Asset Status": { select: { name: "Publish" } },
         };
         if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
         if (platformId) assetProps["Platform"] = { relation: [{ id: dash(platformId) }] };
@@ -23392,6 +23395,94 @@ Produce all of this by calling the submit_listing tool — do not include any of
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save Listing Photos property" }, 500); }
 
         return json({ success: true, photoUrl, photos: newFiles.map(f => f.external.url) });
+      }
+
+      // ── uploadTitlePhoto ──
+      // Lets a title on the root dashboard's "Last 50 Development Titles"
+      // widget accept photo uploads directly (📷 button per row) — same
+      // accumulating-upload pattern as uploadListingPhoto, just scoped to a
+      // Content Strategy title instead of an Asset. Built specifically so
+      // photos taken on a phone can go straight from the phone's browser
+      // into a title's page without needing a separate phone-to-computer
+      // transfer step first — a mobile browser's file picker offers Camera/
+      // Photo Library/multi-select on this same <input type="file" multiple>.
+      if (body.action === "uploadTitlePhoto") {
+        const { titleId, fileName, contentType, fileData } = body;
+        if (!titleId || !fileData) return json({ error: "titleId and fileData required" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+        // "Photos" needs to be a files-type property (the only type
+        // structurally capable of holding multiple accumulated images) —
+        // create it if it doesn't exist yet. Never touched if it already
+        // exists in any type.
+        try {
+          const dbResp = await fetch(`https://api.notion.com/v1/databases/${CONTENT_STRATEGY_DB}`, { headers: hdr }).then(r => r.json());
+          if (!dbResp.properties?.["Photos"]) {
+            await fetch(`https://api.notion.com/v1/databases/${CONTENT_STRATEGY_DB}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "Photos": { files: {} } } }),
+            });
+          }
+        } catch (e) { /* best-effort */ }
+
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const titleName = titlePage.properties["Title"]?.title?.map(t => t.plain_text).join("") || "title";
+        const campaignId = titlePage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+        const existingFiles = (titlePage.properties["Photos"]?.files || [])
+          .map(f => ({ name: f.name, type: "external", external: { url: f.external?.url || f.file?.url } }))
+          .filter(f => f.external.url);
+
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const extFromType = (String(contentType || '').split('/')[1] || '').toLowerCase().replace('jpeg', 'jpg');
+        const extFromName = (String(fileName || '').match(/\.([a-zA-Z0-9]+)$/) || [, ''])[1].toLowerCase();
+        const ext = extFromType || extFromName || 'jpg';
+        const n = existingFiles.length + 1;
+        const path = `web/${deployPath}/title-photos/${slugify(titleName) || titleId}-${n}-${Date.now()}.${ext}`;
+
+        const b64 = String(fileData).split(',').pop();
+        if (!b64) return json({ error: "No image data" }, 400);
+
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" },
+          body: JSON.stringify({ message: `Title photo upload: ${titleName} (${n})`, content: b64, branch: BRANCH }),
+        });
+        if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || putResp.status}` }, 500); }
+
+        const photoUrl = `https://cabuzzard.github.io/dash/${path}`;
+        const newFiles = [...existingFiles, { name: `photo-${n}`, type: "external", external: { url: photoUrl } }];
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Photos": { files: newFiles } } }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save Photos property" }, 500); }
+
+        return json({ success: true, photoUrl, photos: newFiles.map(f => f.external.url) });
+      }
+
+      // ── removeTitlePhoto ──
+      if (body.action === "removeTitlePhoto") {
+        const { titleId, photoUrl } = body;
+        if (!titleId || !photoUrl) return json({ error: "titleId and photoUrl required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!titlePage.properties) return json({ error: titlePage.message || "Title not found" }, 404);
+        const remaining = (titlePage.properties["Photos"]?.files || [])
+          .map(f => ({ name: f.name, type: "external", external: { url: f.external?.url || f.file?.url } }))
+          .filter(f => f.external.url && f.external.url !== photoUrl);
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Photos": { files: remaining } } }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to update Photos" }, 500); }
+        return json({ success: true, photos: remaining.map(f => f.external.url) });
       }
 
       // ── getEtsyShippingProfiles ──
