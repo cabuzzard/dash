@@ -23287,6 +23287,12 @@ Produce all of this by calling the submit_listing tool — do not include any of
 
         const assetProps = {
           "Asset Title":  { title: [{ type: "text", text: { content: String(parsed.etsyTitle).slice(0, 200) } }] },
+          // Platform Title — the platform's own title-entry field (what
+          // actually gets typed into Etsy's Title box), same convention as
+          // every other method. For Listing this is the same SEO-front-
+          // loaded string as Asset Title, since Etsy's listing title IS the
+          // platform title here — just written to both fields.
+          "Platform Title": { rich_text: [{ type: "text", text: { content: String(parsed.etsyTitle).slice(0, 200) } }] },
           "Description":  { rich_text: [{ type: "text", text: { content: String(parsed.etsyDescription || '').slice(0, 1990) } }] },
           "Etsy Tags":    { rich_text: [{ type: "text", text: { content: tagsLine.slice(0, 1990) } }] },
           "Craigslist Listing":     { rich_text: [{ type: "text", text: { content: craigslistBlock.slice(0, 1990) } }] },
@@ -23564,7 +23570,10 @@ Produce all of this by calling the submit_listing tool — do not include any of
           const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
           if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
           const p = assetPage.properties;
-          const title = p["Asset Title"]?.title?.map(t => t.plain_text).join("") || "";
+          // Platform Title is the operator-editable "what actually goes into
+          // Etsy's title field" copy (Publish modal) — prefer it if set, so
+          // an edit there before publishing actually takes effect.
+          const title = p["Platform Title"]?.rich_text?.map(t => t.plain_text).join("") || p["Asset Title"]?.title?.map(t => t.plain_text).join("") || "";
           const description = p["Description"]?.rich_text?.map(t => t.plain_text).join("") || "";
           const tagsLine = p["Etsy Tags"]?.rich_text?.map(t => t.plain_text).join("") || "";
           const tags = tagsLine.split(",").map(s => s.trim()).filter(Boolean).slice(0, 13);
