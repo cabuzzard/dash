@@ -1099,6 +1099,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
               <option value="">— pick a Login with a connected shop first —</option>
             </select>
           </div>
+          <div style="margin-top:8px;">
+            <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Return Policy <span style="font-weight:400;">(from Shop Manager's Policies settings — create one there first if none show up)</span></label>
+            <select class="modal-ta" id="etsyReturnPolicy" style="height:32px;padding:0 6px;width:100%;background:#1e1e1e;color:#fff;border:1px solid #333;">
+              <option value="">— pick a Login with a connected shop first —</option>
+            </select>
+          </div>
           <label class="lm-label" style="margin-top:10px;">Package Weight &amp; Dimensions <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(required for a Calculated shipping profile — real carrier rates need the actual packaged size/weight)</span></label>
           <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
             <div style="flex:1;min-width:80px;">
@@ -6164,6 +6170,7 @@ function openPublishAssetModal(btn) {
     document.getElementById('etsyPublishStatus').textContent = '';
     etsyLoadShippingProfiles(assetId);
     etsyLoadReadinessStates(assetId);
+    etsyLoadReturnPolicies(assetId);
   }
   const printifyWrap = document.getElementById('pubPrintifyWrap');
   printifyWrap.style.display = data.type === 't shirt' ? 'block' : 'none';
@@ -6594,6 +6601,20 @@ async function etsyLoadReadinessStates(assetId) {
     sel.innerHTML = `<option value="">${esc(e.message)}</option>`;
   }
 }
+async function etsyLoadReturnPolicies(assetId) {
+  const sel = document.getElementById('etsyReturnPolicy');
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const data = await w('getEtsyReturnPolicies', { assetId });
+    if (!data.policies || !data.policies.length) {
+      sel.innerHTML = '<option value="">No return policies found — create one in Etsy Shop Manager (Settings > Policies)</option>';
+      return;
+    }
+    sel.innerHTML = data.policies.map(p => `<option value="${p.id}">${esc(p.label)}</option>`).join('');
+  } catch(e) {
+    sel.innerHTML = `<option value="">${esc(e.message)}</option>`;
+  }
+}
 async function publishListingToEtsy() {
   const btn = document.getElementById('etsyPublishBtn');
   const status = document.getElementById('etsyPublishStatus');
@@ -6602,6 +6623,7 @@ async function publishListingToEtsy() {
   const taxonomyId = document.getElementById('etsyCategoryId').value;
   const shippingProfileId = document.getElementById('etsyShippingProfile').value;
   const readinessStateId = document.getElementById('etsyReadinessState').value;
+  const returnPolicyId = document.getElementById('etsyReturnPolicy').value;
   const itemWeight = parseFloat(document.getElementById('etsyItemWeight').value);
   const itemLength = parseFloat(document.getElementById('etsyItemLength').value);
   const itemWidth = parseFloat(document.getElementById('etsyItemWidth').value);
@@ -6611,6 +6633,7 @@ async function publishListingToEtsy() {
   if (!taxonomyId) { status.textContent = 'Pick a category first.'; status.className = 'modal-status err'; return; }
   if (!shippingProfileId) { status.textContent = 'Pick a shipping profile first.'; status.className = 'modal-status err'; return; }
   if (!readinessStateId) { status.textContent = 'Pick a processing time first.'; status.className = 'modal-status err'; return; }
+  if (!returnPolicyId) { status.textContent = 'Pick a return policy first.'; status.className = 'modal-status err'; return; }
   if (!itemWeight || !itemLength || !itemWidth || !itemHeight) { status.textContent = 'Enter package weight and dimensions first.'; status.className = 'modal-status err'; return; }
   if (!confirm('Publish this listing live on Etsy now? This creates a real, public listing.')) return;
   btn.disabled = true;
@@ -6618,7 +6641,7 @@ async function publishListingToEtsy() {
   status.className = 'modal-status';
   try {
     const r = await w('publishListingToEtsy', {
-      assetId: pubAssetId, price, quantity, taxonomyId, shippingProfileId, readinessStateId,
+      assetId: pubAssetId, price, quantity, taxonomyId, shippingProfileId, readinessStateId, returnPolicyId,
       itemWeight, itemLength, itemWidth, itemHeight,
       itemWeightUnit: document.getElementById('etsyItemWeightUnit').value,
       itemDimensionsUnit: document.getElementById('etsyItemDimensionsUnit').value,

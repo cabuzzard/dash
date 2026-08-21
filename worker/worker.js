@@ -23552,6 +23552,41 @@ Produce all of this by calling the submit_listing tool — do not include any of
         } catch (e) { return json({ error: e.message }, 500); }
       }
 
+      // ── getEtsyReturnPolicies ──
+      // Activating a listing (not creating it — the error only shows up
+      // after the draft already exists) rejects with "/return/policy:
+      // cannot be null" without one — same undocumented-conditional
+      // pattern as shipping_profile_id and readiness_state_id, just
+      // surfacing one step later. No "title" field on Etsy's side, so the
+      // label is built from what the policy actually says.
+      if (body.action === "getEtsyReturnPolicies") {
+        const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        let loginId = body.loginId || null;
+        if (!loginId && body.assetId) {
+          const hdr0 = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+          const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(body.assetId)}`, { headers: hdr0 }).then(r => r.json());
+          loginId = assetPage.properties?.["Login"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        }
+        if (!loginId) return json({ error: "loginId or assetId (with a Login set) required" }, 400);
+        try {
+          const loginPage = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+          }).then(r => r.json());
+          const shopId = loginPage.properties?.["Etsy Shop ID"]?.number;
+          if (!shopId) return json({ error: "This Login has no connected Etsy shop" }, 400);
+          const accessToken = await getValidEtsyAccessToken(env, loginId);
+          const resp = await fetch(`https://api.etsy.com/v3/application/shops/${shopId}/policies/return`, {
+            headers: { "x-api-key": `${env.ETSY_KEYSTRING}:${env.ETSY_SHARED_SECRET}`, "Authorization": `Bearer ${accessToken}` },
+          });
+          const data = await resp.json();
+          if (!resp.ok) return json({ error: data.error || "Failed to load return policies" }, resp.status);
+          const label = p => p.accepts_returns
+            ? `Accepts returns${p.return_deadline ? ` (${p.return_deadline} days)` : ""}${p.accepts_exchanges ? " + exchanges" : ""}`
+            : "No returns or exchanges accepted";
+          return json({ policies: (data.results || []).map(p => ({ id: p.return_policy_id, label: label(p) })) });
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
+
       // ── getEtsyTaxonomy ──
       // The full seller-taxonomy tree (category picker for createDraftListing's
       // required taxonomy_id) — public endpoint (api_key only, no OAuth), so
@@ -23590,11 +23625,11 @@ Produce all of this by calling the submit_listing tool — do not include any of
       // anything the Listing method's AI generation can invent truthfully,
       // so the operator supplies them here at publish time.
       if (body.action === "publishListingToEtsy") {
-        const { assetId, price, quantity, taxonomyId, whoMade, whenMade, isSupply, shippingProfileId, readinessStateId, materials,
+        const { assetId, price, quantity, taxonomyId, whoMade, whenMade, isSupply, shippingProfileId, readinessStateId, returnPolicyId, materials,
                 itemWeight, itemLength, itemWidth, itemHeight, itemWeightUnit, itemDimensionsUnit } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         for (const [k, v] of Object.entries({
-          price, quantity, taxonomyId, whoMade, whenMade, shippingProfileId, readinessStateId,
+          price, quantity, taxonomyId, whoMade, whenMade, shippingProfileId, readinessStateId, returnPolicyId,
           // A Calculated shipping profile (the only kind this shop has) needs
           // real package weight/dimensions to price carrier rates — Etsy
           // rejects the listing without them, not documented as required
@@ -23633,6 +23668,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
             who_made: whoMade, when_made: whenMade, taxonomy_id: String(taxonomyId),
             shipping_profile_id: String(shippingProfileId),
             readiness_state_id: String(readinessStateId),
+            return_policy_id: String(returnPolicyId),
             is_supply: isSupply ? "true" : "false", type: "physical",
             item_weight: String(itemWeight), item_length: String(itemLength),
             item_width: String(itemWidth), item_height: String(itemHeight),
@@ -23669,7 +23705,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
           // (just uploaded above).
           const activateResp = await fetch(`https://api.etsy.com/v3/application/shops/${shopId}/listings/${listingId}`, {
             method: "PATCH", headers: { ...etsyHdr, "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ state: "active" }),
+            body: new URLSearchParams({ state: "active", return_policy_id: String(returnPolicyId) }),
           });
           const activated = await activateResp.json();
           const liveUrl = activated.url || listing.url || `https://www.etsy.com/listing/${listingId}`;
