@@ -227,8 +227,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   <button class="tab-btn active" data-tab="tab-campaign" onclick="switchTab('tab-campaign')">Campaign</button>
   <button class="tab-btn" data-tab="tab-keywords" onclick="switchTab('tab-keywords')">Keywords &amp; Notes</button>
   <button class="tab-btn" data-tab="tab-products" onclick="switchTab('tab-products')">Products &amp; Methods</button>
-  <button class="tab-btn" data-tab="tab-strategies" onclick="switchTab('tab-strategies')">Strategies</button>
-  <button class="tab-btn" data-tab="tab-titles" onclick="switchTab('tab-titles')">Titles &amp; Logins</button>
+  <button class="tab-btn" data-tab="tab-titles" onclick="switchTab('tab-titles')">Titles</button>
   <button class="tab-btn" data-tab="tab-research" onclick="switchTab('tab-research')">Research</button>
   <button class="tab-btn" data-tab="tab-growth" onclick="switchTab('tab-growth')">Growth Tools</button>
 </div>
@@ -297,7 +296,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 
 </div>
 <div class="tab-page" id="tab-products">
-<!-- SEC 2: three col — products / methods / files -->
+<!-- SEC 2: three col — products / methods / logins -->
 <div class="three-col">
   <div class="col">
     <h2>Products <button class="td-add-btn-inline" onclick="openProductModal()" title="Add product">+</button></h2>
@@ -312,36 +311,28 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2>Files <button class="td-add-btn-inline" onclick="openFileUploadModal()" title="Upload file">+</button></h2>
+    <h2>Logins <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
     <div class="content">
-      <div class="deliverable-list" id="deliverable-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
 </div>
 
 </div>
-<div class="tab-page" id="tab-strategies">
-<!-- SEC 2b: one col — every Growth Strategy for this campaign, with real
-     fill-progress per grouping (not the titles themselves — the planned
-     slots, e.g. "Behind the Scenes #1", and whether a real Title has been
-     made from each one yet). Strategies are built off Products (🚀 button
-     on a product row above, or the + button here); this just makes them
-     visible/trackable at the campaign level instead of buried per-product. -->
-<div class="one-col">
-  <h2>Strategies <button class="td-add-btn-inline" onclick="openAddStrategyModal()" title="Add strategy">+</button><button class="td-add-btn-inline" onclick="loadCampaignStrategies()" title="Refresh">⟳</button></h2>
-  <div class="content">
-    <div id="strategies-panel"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-  </div>
-</div>
-
-</div>
 <div class="tab-page" id="tab-titles">
-<!-- SEC 3: three col — logins / development titles / publish titles -->
+<!-- SEC 3: three col — strategies / development titles / publish titles.
+     Strategies used to be its own tab (one-col, "every Growth Strategy for
+     this campaign, with real fill-progress per grouping — not the titles
+     themselves, the planned slots, e.g. "Behind the Scenes #1", and whether
+     a real Title has been made from each one yet"); folded in here as the
+     left column since Planning-stage titles live here and Development/
+     Publish titles sit right next to it — one continuous title pipeline
+     instead of a separate tab to check. -->
 <div class="three-col">
   <div class="col">
-    <h2>Logins <button class="td-add-btn-inline" onclick="openLoginModal()" title="Add login">+</button></h2>
+    <h2>Strategies <button class="td-add-btn-inline" onclick="openAddStrategyModal()" title="Add strategy">+</button><button class="td-add-btn-inline" onclick="loadCampaignStrategies()" title="Refresh">⟳</button></h2>
     <div class="content">
-      <div class="login-list" id="login-list"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <div id="strategies-panel"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
@@ -4742,7 +4733,6 @@ function init() {
   loadProducts();
   loadLogins();
   loadSmPosts();
-  loadDeliverables();
   loadDesignSpecs();
   loadCampaignStrategies();
 }
