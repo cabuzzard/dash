@@ -1093,6 +1093,12 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
               <option value="">— pick a Login with a connected shop first —</option>
             </select>
           </div>
+          <div style="margin-top:8px;">
+            <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Processing Time <span style="font-weight:400;">(from Shop Manager's "processing profiles" — create one there first if none show up)</span></label>
+            <select class="modal-ta" id="etsyReadinessState" style="height:32px;padding:0 6px;width:100%;background:#1e1e1e;color:#fff;border:1px solid #333;">
+              <option value="">— pick a Login with a connected shop first —</option>
+            </select>
+          </div>
           <button class="modal-btn cancel" id="etsyPublishBtn" onclick="publishListingToEtsy()" style="margin-top:10px;width:100%;background:#e8ff47;color:#000;font-weight:600;border:none;">🚀 Publish to Etsy</button>
           <div class="modal-status" id="etsyPublishStatus" style="margin-top:4px;"></div>
         </div>
@@ -6120,6 +6126,7 @@ function openPublishAssetModal(btn) {
     document.getElementById('etsyIsSupply').checked = false;
     document.getElementById('etsyPublishStatus').textContent = '';
     etsyLoadShippingProfiles(assetId);
+    etsyLoadReadinessStates(assetId);
   }
   const printifyWrap = document.getElementById('pubPrintifyWrap');
   printifyWrap.style.display = data.type === 't shirt' ? 'block' : 'none';
@@ -6536,6 +6543,20 @@ async function etsyLoadShippingProfiles(assetId) {
     sel.innerHTML = `<option value="">${esc(e.message)}</option>`;
   }
 }
+async function etsyLoadReadinessStates(assetId) {
+  const sel = document.getElementById('etsyReadinessState');
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const data = await w('getEtsyReadinessStates', { assetId });
+    if (!data.states || !data.states.length) {
+      sel.innerHTML = '<option value="">No processing profiles found — create one in Etsy Shop Manager (Shipping settings > Your processing profiles)</option>';
+      return;
+    }
+    sel.innerHTML = data.states.map(s => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
+  } catch(e) {
+    sel.innerHTML = `<option value="">${esc(e.message)}</option>`;
+  }
+}
 async function publishListingToEtsy() {
   const btn = document.getElementById('etsyPublishBtn');
   const status = document.getElementById('etsyPublishStatus');
@@ -6543,21 +6564,22 @@ async function publishListingToEtsy() {
   const quantity = parseInt(document.getElementById('etsyQuantity').value, 10);
   const taxonomyId = document.getElementById('etsyCategoryId').value;
   const shippingProfileId = document.getElementById('etsyShippingProfile').value;
+  const readinessStateId = document.getElementById('etsyReadinessState').value;
   if (!price || price <= 0) { status.textContent = 'Enter a valid price first.'; status.className = 'modal-status err'; return; }
   if (!quantity || quantity < 1) { status.textContent = 'Enter a valid quantity first.'; status.className = 'modal-status err'; return; }
   if (!taxonomyId) { status.textContent = 'Pick a category first.'; status.className = 'modal-status err'; return; }
   if (!shippingProfileId) { status.textContent = 'Pick a shipping profile first.'; status.className = 'modal-status err'; return; }
+  if (!readinessStateId) { status.textContent = 'Pick a processing time first.'; status.className = 'modal-status err'; return; }
   if (!confirm('Publish this listing live on Etsy now? This creates a real, public listing.')) return;
   btn.disabled = true;
   status.textContent = 'Publishing to Etsy…';
   status.className = 'modal-status';
   try {
     const r = await w('publishListingToEtsy', {
-      assetId: pubAssetId, price, quantity, taxonomyId,
+      assetId: pubAssetId, price, quantity, taxonomyId, shippingProfileId, readinessStateId,
       whoMade: document.getElementById('etsyWhoMade').value,
       whenMade: document.getElementById('etsyWhenMade').value,
       isSupply: document.getElementById('etsyIsSupply').checked,
-      shippingProfileId,
     });
     status.textContent = 'Live ✓ ' + r.listingUrl;
     status.className = 'modal-status ok';

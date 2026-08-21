@@ -23521,6 +23521,37 @@ Produce all of this by calling the submit_listing tool — do not include any of
         } catch (e) { return json({ error: e.message }, 500); }
       }
 
+      // ── getEtsyReadinessStates ──
+      // "Processing profiles" from Shop Manager (Shipping settings > Your
+      // processing profiles) — createDraftListing rejects physical listings
+      // without a readiness_state_id even though it's not in the API's
+      // formal "required" list, same conditional-requirement pattern as
+      // shipping_profile_id. Also created in Etsy's own UI, not via this API.
+      if (body.action === "getEtsyReadinessStates") {
+        const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        let loginId = body.loginId || null;
+        if (!loginId && body.assetId) {
+          const hdr0 = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+          const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(body.assetId)}`, { headers: hdr0 }).then(r => r.json());
+          loginId = assetPage.properties?.["Login"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        }
+        if (!loginId) return json({ error: "loginId or assetId (with a Login set) required" }, 400);
+        try {
+          const loginPage = await fetch(`https://api.notion.com/v1/pages/${dash(loginId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
+          }).then(r => r.json());
+          const shopId = loginPage.properties?.["Etsy Shop ID"]?.number;
+          if (!shopId) return json({ error: "This Login has no connected Etsy shop" }, 400);
+          const accessToken = await getValidEtsyAccessToken(env, loginId);
+          const resp = await fetch(`https://api.etsy.com/v3/application/shops/${shopId}/readiness-state-definitions`, {
+            headers: { "x-api-key": `${env.ETSY_KEYSTRING}:${env.ETSY_SHARED_SECRET}`, "Authorization": `Bearer ${accessToken}` },
+          });
+          const data = await resp.json();
+          if (!resp.ok) return json({ error: data.error || "Failed to load processing profiles" }, resp.status);
+          return json({ states: (data.results || []).map(s => ({ id: s.readiness_state_id, label: s.processing_days_display_label || s.readiness_state })) });
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
+
       // ── getEtsyTaxonomy ──
       // The full seller-taxonomy tree (category picker for createDraftListing's
       // required taxonomy_id) — public endpoint (api_key only, no OAuth), so
@@ -23559,9 +23590,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
       // anything the Listing method's AI generation can invent truthfully,
       // so the operator supplies them here at publish time.
       if (body.action === "publishListingToEtsy") {
-        const { assetId, price, quantity, taxonomyId, whoMade, whenMade, isSupply, shippingProfileId, materials } = body;
+        const { assetId, price, quantity, taxonomyId, whoMade, whenMade, isSupply, shippingProfileId, readinessStateId, materials } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
-        for (const [k, v] of Object.entries({ price, quantity, taxonomyId, whoMade, whenMade, shippingProfileId })) {
+        for (const [k, v] of Object.entries({ price, quantity, taxonomyId, whoMade, whenMade, shippingProfileId, readinessStateId })) {
           if (v === undefined || v === null || v === "") return json({ error: `${k} required` }, 400);
         }
         const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -23593,6 +23624,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
             quantity: String(quantity), title, description, price: String(price),
             who_made: whoMade, when_made: whenMade, taxonomy_id: String(taxonomyId),
             shipping_profile_id: String(shippingProfileId),
+            readiness_state_id: String(readinessStateId),
             is_supply: isSupply ? "true" : "false", type: "physical",
           });
           tags.forEach(t => createBody.append("tags", t));
