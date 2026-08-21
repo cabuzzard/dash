@@ -6361,14 +6361,41 @@ Return ONLY a JSON object, no other text, no markdown fences:
       if (body.action === "getProductStrategy") {
         const { productId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const record = await findBestProductResearchRecord(hdr, productId);
-        if (!record) return json({ strategy: null });
+        // Keywords lives on the Product itself, not this Strategy/Research
+        // record (one canonical field — see generateProductKeywords) — read
+        // it here too so the Research modal can show/edit it without a
+        // second round-trip, without duplicating where it's stored.
+        const [record, productPage] = await Promise.all([
+          findBestProductResearchRecord(hdr, productId),
+          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+        ]);
+        const keywords = (productPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+        if (!record) return json({ strategy: null, keywords });
         const props = record.properties || {};
         const rt = key => (props[key]?.rich_text || []).map(t => t.plain_text).join("");
         const fields = {};
         for (const f of STRATEGY_FIELDS) fields[f] = rt(f);
-        return json({ strategy: { id: record.id.replace(/-/g,""), url: record.url, status: props.Status?.select?.name || "", fields } });
+        return json({ strategy: { id: record.id.replace(/-/g,""), url: record.url, status: props.Status?.select?.name || "", fields }, keywords });
+      }
+
+      // ── updateProductKeywords ──
+      // Manual-edit save for the product's own canonical Keywords field
+      // (generateProductKeywords is the AI-assisted path; this is the plain
+      // "operator typed something and hit Save" path, same pairing every
+      // Strategy field already has via updateProductStrategyField).
+      if (body.action === "updateProductKeywords") {
+        const { productId, keywords } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Keywords: { rich_text: [{ type: "text", text: { content: String(keywords || "").slice(0, 1990) } }] } } }),
+        });
+        if (!resp.ok) { const r = await resp.json(); return json({ error: r.message || "Update failed" }, resp.status); }
+        return json({ success: true });
       }
 
       // ── researchProductStrategy ──

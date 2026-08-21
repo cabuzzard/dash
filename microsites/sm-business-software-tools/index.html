@@ -4730,12 +4730,61 @@ async function loadDeliverables() {
 // here as a per-row modal instead of a dedicated page section.
 const STRATEGY_FIELDS = ["Customer", "Niche", "Pain Points", "Emotions", "Solution", "Benefits", "Unique Opportunity", "Transformation", "Offer Structure", "Proof Points", "Objections"];
 let SM_PRODUCT_ID = null;
-let SM_STRATEGY = { fields: {}, url: null };
+let SM_STRATEGY = { fields: {}, url: null, keywords: '' };
 function sfId(field) { return 'sf-' + field.replace(/\s+/g, '-'); }
+
+// Keywords is NOT one of STRATEGY_FIELDS — it lives on the Product itself
+// (one canonical field, read by every Strategy field as grounding — see
+// generateProductKeywords, worker.js), so it renders as its own fixed block
+// above the generated fields instead of joining that array.
+function renderSmKeywords() {
+  const el = document.getElementById('sm-keywords-field');
+  if (!el) return;
+  const val = SM_STRATEGY.keywords || '';
+  el.innerHTML = `<div style="border-bottom:1px solid #161616;padding:8px 0;">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="flex:1;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#fff;">Keywords <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888;">(the one canonical set — every Strategy field above reads these as grounding)</span></span>
+      <button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" id="sf-Keywords-btn" onclick="genSmKeywords()">${val ? '↻' : 'Generate'}</button>
+      <button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" onclick="saveSmKeywords()">Save</button>
+    </div>
+    <textarea id="sf-Keywords" class="modal-ta" rows="2" style="width:100%;margin-top:6px;font-size:12px;resize:vertical;min-height:44px!important;padding:6px 8px;">${esc(val)}</textarea>
+  </div>`;
+}
+async function genSmKeywords() {
+  const btn = document.getElementById('sf-Keywords-btn');
+  const status = document.getElementById('strategyFieldsStatus');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  if (status) { status.textContent = 'Generating Keywords…'; status.style.color = '#888'; }
+  try {
+    const r = await w('generateProductKeywords', { productId: SM_PRODUCT_ID, researchGuidelines: (document.getElementById('sm-guidance')?.value || '').trim() || undefined });
+    if (r.error) throw new Error(r.error);
+    SM_STRATEGY.keywords = r.keywords;
+    renderSmKeywords();
+    if (status) { status.textContent = '✓ Keywords generated.'; status.style.color = '#68d391'; }
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+    if (btn) { btn.disabled = false; btn.textContent = '↻'; }
+  }
+}
+async function saveSmKeywords() {
+  const ta = document.getElementById('sf-Keywords');
+  if (!ta) return;
+  const status = document.getElementById('strategyFieldsStatus');
+  if (status) { status.textContent = 'Saving Keywords…'; status.style.color = '#888'; }
+  try {
+    const r = await w('updateProductKeywords', { productId: SM_PRODUCT_ID, keywords: ta.value.trim() });
+    if (r.error) throw new Error(r.error);
+    SM_STRATEGY.keywords = ta.value.trim();
+    if (status) { status.textContent = '✓ Keywords saved.'; status.style.color = '#68d391'; }
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+  }
+}
 
 function renderSmFields() {
   const el = document.getElementById('sm-fields');
   if (!el) return;
+  renderSmKeywords();
   el.innerHTML = STRATEGY_FIELDS.map(f => {
     const val = SM_STRATEGY.fields[f] || '';
     const id = sfId(f);
@@ -4752,9 +4801,10 @@ function renderSmFields() {
 
 function openStrategyModal(productId, productName) {
   SM_PRODUCT_ID = productId;
-  SM_STRATEGY = { fields: {}, url: null };
+  SM_STRATEGY = { fields: {}, url: null, keywords: '' };
   document.getElementById('sm-modal-title').textContent = (productName || 'Product') + ' — Research';
   document.getElementById('sm-fields').innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  document.getElementById('sm-keywords-field').innerHTML = '';
   document.getElementById('strategyFieldsStatus').textContent = '';
   const guidanceEl = document.getElementById('sm-guidance');
   if (guidanceEl) guidanceEl.value = '';
@@ -4769,7 +4819,7 @@ function closeStrategyModal() {
 async function loadSmStrategy() {
   try {
     const data = await w('getProductStrategy', { productId: SM_PRODUCT_ID });
-    SM_STRATEGY = { fields: (data.strategy && data.strategy.fields) || {}, url: data.strategy ? data.strategy.url : null };
+    SM_STRATEGY = { fields: (data.strategy && data.strategy.fields) || {}, url: data.strategy ? data.strategy.url : null, keywords: data.keywords || '' };
   } catch(e) { /* leave panel showing empty fields */ }
   renderSmFields();
 }
@@ -4804,7 +4854,7 @@ async function regenerateAllSmFields() {
     const guidance = (document.getElementById('sm-guidance')?.value || '').trim();
     const r = await w('regenerateAllStrategyFields', { productId: SM_PRODUCT_ID, campaignId: CAMPAIGN_ID, researchGuidelines: guidance || undefined });
     if (r.error) throw new Error(r.error);
-    SM_STRATEGY = { fields: r.fields || {}, url: r.url };
+    SM_STRATEGY = { fields: r.fields || {}, url: r.url, keywords: SM_STRATEGY.keywords };
     renderSmFields();
     if (status) { status.textContent = '✓ All fields regenerated.'; status.style.color = '#68d391'; }
     const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
@@ -8251,6 +8301,7 @@ async function runRegenKeywords() {
       <textarea id="sm-guidance" class="modal-ta" rows="2" style="width:100%;margin-top:6px;font-size:12px;resize:vertical;min-height:44px!important;padding:6px 8px;" placeholder="e.g. lean into the DIY-to-hire transition angle, avoid enterprise language"></textarea>
       <button class="td-add-btn-inline" id="sm-run-all-btn" style="font-size:11px;padding:4px 10px;margin-top:6px;" onclick="regenerateAllSmFields()">Run All Research</button>
     </div>
+    <div id="sm-keywords-field"></div>
     <div id="sm-fields"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     <div id="strategyFieldsStatus" style="font-size:12px;min-height:16px;margin-top:8px;"></div>
     <div class="modal-actions">
