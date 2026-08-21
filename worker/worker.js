@@ -10523,7 +10523,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           const passed = !!(grade && grade.passed);
           const properties = {
             "Asset Title":  { title: [{ text: { content: String(current.assetTitle || "Untitled option").slice(0, 200) } }] },
-            "Asset Status": { select: { name: "Development" } },
+            "Asset Status": { select: { name: "Publish" } },
             "Body":         { rich_text: [{ text: { content: String(current.body || "").slice(0, 2000) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
             "Status":       { select: { name: passed ? "Ready" : "Needs Revision" } },
@@ -11969,7 +11969,7 @@ Rules:
 
         const properties = {
           "Asset Title": { title: [{ text: { content: assetTitle } }] },
-          "Asset Status": { select: { name: "Development" } },
+          "Asset Status": { select: { name: "Publish" } },
           "Body": { rich_text: [{ text: { content: (content || "").slice(0, 2000) } }] },
           "Content Strategy": { relation: [{ id: dash(titleId) }] },
         };
@@ -15665,7 +15665,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           const props = {
             "Asset Title": { title: [{ type: "text", text: { content: title || (assetType + " — " + (sp["Asset Title"]?.title?.map(x=>x.plain_text).join("") || "Untitled")) } }] },
             "Asset Type": { select: { name: assetType } },
-            "Asset Status": { select: { name: sp["Asset Status"]?.select?.name || "Development" } },
+            "Asset Status": { select: { name: sp["Asset Status"]?.select?.name || "Publish" } },
             "Status": { select: { name: "Draft" } },
             "Parent Asset": { relation: [{ id: dash(parentAssetId) }] },
           };
