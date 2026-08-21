@@ -2730,6 +2730,28 @@
   </div>
 </div>
 
+<!-- Link Tag Modal (Links tab): read the transcript and tag which real
+     schema entities (Method/Platform/Tool Stack category/Product Stack/
+     Keyword Cluster) it relates to — ground truth for the Knowledge tab's
+     node graph, distinct from (and a manual complement to) the automated
+     runKnowledgeGraphAnalysis matching. Tagging fields sit above the
+     transcript on purpose so tagging happens while reading, not after. -->
+<div class="modal-overlay" id="linkTagModal" style="display:none;" onclick="if(event.target===this)closeLinkTagModal()">
+  <div class="modal" style="width:640px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;">
+      <div class="modal-title" id="ltModalTitle" style="margin:0;font-size:14px;">Tag Saved Post</div>
+      <span onclick="closeLinkTagModal()" style="cursor:pointer;color:var(--text3);font-size:18px;">✕</span>
+    </div>
+    <div id="ltStatus" style="font-size:11px;color:var(--text3);min-height:14px;margin-bottom:6px;flex-shrink:0;"></div>
+    <div id="ltTagFields" style="flex-shrink:0;padding-bottom:10px;border-bottom:1px solid var(--border2);margin-bottom:10px;">
+      <div class="loading-wrap"><div class="spinner"></div>Loading…</div>
+    </div>
+    <div style="overflow-y:auto;flex:1;">
+      <div id="ltTranscript" style="font-size:13px;color:var(--text2);line-height:1.6;white-space:pre-wrap;"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Edit Asset Modal (components + login) -->
 <div class="modal-overlay" id="editAssetModal" style="display:none;" onclick="if(event.target===this)closeEditAssetModal()">
   <div class="modal" style="max-height:88vh;display:flex;flex-direction:column;width:560px;max-width:96vw;">
@@ -3951,6 +3973,9 @@ function renderLinks() {
     const analyzeBtn = (p.status === 'Done')
       ? '<button onclick="openAnalyzeModal(\'' + p.id + '\')" title="Cross-reference this transcript against your Methods/Strategy/Research" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">🔍 Analyze</button>'
       : '';
+    const tagBtn = (p.status === 'Done')
+      ? '<button onclick="openLinkTagModal(\'' + p.id + '\',\'' + esc(p.url || '').replace(/'/g,"\\'") + '\',\'' + esc(p.name || '').replace(/'/g,"\\'") + '\')" title="Read the transcript and tag which Methods/Platforms/Tool Stack/Product Stacks/Keyword Clusters this relates to" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">🏷 Tag</button>'
+      : '';
     const deleteBtn = '<button onclick="deleteLinkRow(\'' + p.id + '\')" title="Delete" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0 0 0 8px;flex-shrink:0;color:var(--text3);">🗑</button>';
     const titleBtn = '<button onclick="openLinkTitleModal(\'' + p.id + '\')" title="Create a Content Strategy title from this post" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">✚ title</button>';
     const creatorBtn = p.account
@@ -3972,6 +3997,7 @@ function renderLinks() {
             creatorBtn +
             runBtn +
             analyzeBtn +
+            tagBtn +
             deleteBtn +
           '</div>' +
         '</div>' +
@@ -4116,6 +4142,77 @@ function openAnalyzeModal(postId) {
   document.getElementById('analyzeModal').style.display = 'flex';
 }
 function closeAnalyzeModal() { document.getElementById('analyzeModal').style.display = 'none'; }
+
+// ── LINK TAG MODAL ───────────────────────────────────────────────────
+// 🏷 Tag button on a Links row (only once the transcript's been run).
+// Tagging fields sit above the transcript so tagging happens WHILE
+// reading — each click saves immediately (optimistic UI, same pattern as
+// the highlight toggle), no separate Save step. Ground-truth manual tags
+// for the Knowledge tab's node graph, distinct from — and eventually a
+// grounding source for — the automated per-post matching.
+let LT_TAG_POST = null; // { id, url, name }
+let LT_TAG_CANDIDATES = null;
+let LT_TAG_SELECTED = new Set();
+const LT_TAG_TYPE_LABEL = { method: 'Methods', platform: 'Platforms', toolStack: 'Tool Stack', productStack: 'Product Stacks', keywordCluster: 'Keyword Clusters' };
+
+function openLinkTagModal(postId, postUrl, postName) {
+  LT_TAG_POST = { id: postId, url: postUrl, name: postName };
+  LT_TAG_CANDIDATES = null;
+  LT_TAG_SELECTED = new Set();
+  document.getElementById('ltModalTitle').textContent = 'Tag — ' + (postName || 'Saved Post');
+  document.getElementById('ltStatus').textContent = '';
+  document.getElementById('ltTagFields').innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading…</div>';
+  document.getElementById('ltTranscript').textContent = '';
+  document.getElementById('linkTagModal').style.display = 'flex';
+  loadLinkTagData();
+}
+function closeLinkTagModal() {
+  document.getElementById('linkTagModal').style.display = 'none';
+  LT_TAG_POST = null;
+}
+async function loadLinkTagData() {
+  try {
+    const r = await call('getLinkTagData', { postId: LT_TAG_POST.id, postUrl: LT_TAG_POST.url });
+    if (r.error) throw new Error(r.error);
+    LT_TAG_CANDIDATES = r.candidates || {};
+    LT_TAG_SELECTED = new Set(r.taggedNames || []);
+    document.getElementById('ltTranscript').textContent = r.transcript || '(no transcript saved on this post)';
+    renderLinkTagFields();
+  } catch(e) {
+    document.getElementById('ltTagFields').innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
+  }
+}
+function renderLinkTagFields() {
+  const el = document.getElementById('ltTagFields');
+  const types = ['method','platform','toolStack','productStack','keywordCluster'];
+  const html = types.map(type => {
+    const names = (LT_TAG_CANDIDATES && LT_TAG_CANDIDATES[type]) || [];
+    if (!names.length) return '';
+    return '<div style="margin-bottom:8px;">' +
+      '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:4px;">' + LT_TAG_TYPE_LABEL[type] + '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
+      names.map(name => {
+        const active = LT_TAG_SELECTED.has(name);
+        return '<span onclick="toggleLinkTag(\'' + esc(name).replace(/'/g,"\\'") + '\')" style="font-size:11px;padding:3px 9px;border-radius:10px;cursor:pointer;border:1px solid ' + (active ? 'var(--accent)' : 'var(--border2)') + ';background:' + (active ? 'var(--accent)' : 'transparent') + ';color:' + (active ? '#000' : 'var(--text2)') + ';">' + esc(name) + '</span>';
+      }).join('') +
+      '</div></div>';
+  }).join('');
+  el.innerHTML = html || '<div style="font-size:12px;color:var(--text3);">No candidates yet — add Methods/Platforms/Tool Stack/Products/Keyword Clusters first.</div>';
+}
+async function toggleLinkTag(name) {
+  if (LT_TAG_SELECTED.has(name)) LT_TAG_SELECTED.delete(name); else LT_TAG_SELECTED.add(name);
+  renderLinkTagFields();
+  const status = document.getElementById('ltStatus');
+  status.textContent = 'Saving…';
+  try {
+    const tags = [...LT_TAG_SELECTED].map(n => ({ name: n }));
+    const r = await call('saveLinkKnowledgeTags', { postId: LT_TAG_POST.id, postUrl: LT_TAG_POST.url, postName: LT_TAG_POST.name, tags });
+    if (r.error) throw new Error(r.error);
+    status.textContent = '✓ Saved (' + tags.length + ' tag' + (tags.length===1?'':'s') + ')';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+  }
+}
 
 async function runAnalyze() {
   const btn = document.getElementById('anRunBtn');

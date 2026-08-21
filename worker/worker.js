@@ -2897,6 +2897,31 @@ async function processSavedPost(env, page) {
 // posts — the prompt says so explicitly, and a post is marked
 // "Knowledge Analyzed" regardless of whether it matched anything, so it's
 // never re-billed on a later run.
+// Shared by the automated cron/on-load analysis below AND the manual 🏷
+// Tags modal (getKnowledgeCandidates/saveLinkKnowledgeTags) — both need the
+// exact same "real schema entity" candidate lists so a manual tag and an
+// auto-detected one are drawn from, and land in, the same namespace.
+async function buildKnowledgeCandidates(hdr) {
+  const [methodRows, platformRows, toolRows, productRows, clusterRows] = await Promise.all([
+    notionQuery(METHODS_DB, { filter: { property: "Status", select: { equals: "Live" } } }).catch(() => []),
+    notionQuery(PLATFORMS_DB, {}).catch(() => []),
+    notionQuery(TOOLS_DB, {}).catch(() => []),
+    notionQuery(PRODUCTS_DB, {}).catch(() => []),
+    notionQuery(KEYWORD_CLUSTERS_DB, {}).catch(() => []),
+  ]);
+  const nameOf = p => p.properties?.Name?.title?.map(t => t.plain_text).join("") || "";
+  const clusterNameOf = c => c.properties?.["Cluster Name"]?.title?.map(t => t.plain_text).join("") || "";
+  const clusterIdByName = {};
+  clusterRows.forEach(c => { const n = clusterNameOf(c); if (n) clusterIdByName[n] = c.id; });
+  return {
+    method:        [...new Set(methodRows.map(nameOf).filter(Boolean))],
+    platform:      [...new Set(platformRows.map(nameOf).filter(Boolean))],
+    toolStack:     [...new Set(toolRows.map(t => t.properties?.Category?.select?.name).filter(Boolean))],
+    productStack:  [...new Set(productRows.map(p => (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("")).filter(Boolean))],
+    keywordCluster:[...new Set(Object.keys(clusterIdByName))],
+    clusterIdByName,
+  };
+}
 async function runKnowledgeGraphAnalysis(env, { limit = 15 } = {}) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
   if (!NOTION_TOKEN || !env.ANTHROPIC_API_KEY) return;
@@ -2912,25 +2937,7 @@ async function runKnowledgeGraphAnalysis(env, { limit = 15 } = {}) {
   }).catch(() => []);
   if (!rows.length) return;
 
-  const [methodRows, platformRows, toolRows, productRows, clusterRows] = await Promise.all([
-    notionQuery(METHODS_DB, { filter: { property: "Status", select: { equals: "Live" } } }).catch(() => []),
-    notionQuery(PLATFORMS_DB, {}).catch(() => []),
-    notionQuery(TOOLS_DB, {}).catch(() => []),
-    notionQuery(PRODUCTS_DB, {}).catch(() => []),
-    notionQuery(KEYWORD_CLUSTERS_DB, {}).catch(() => []),
-  ]);
-  const nameOf = p => p.properties?.Name?.title?.map(t => t.plain_text).join("") || "";
-  const clusterNameOf = c => c.properties?.["Cluster Name"]?.title?.map(t => t.plain_text).join("") || "";
-  const clusterIdByName = {};
-  clusterRows.forEach(c => { const n = clusterNameOf(c); if (n) clusterIdByName[n] = c.id; });
-  const candidates = {
-    method:        [...new Set(methodRows.map(nameOf).filter(Boolean))],
-    platform:      [...new Set(platformRows.map(nameOf).filter(Boolean))],
-    toolStack:     [...new Set(toolRows.map(t => t.properties?.Category?.select?.name).filter(Boolean))],
-    productStack:  [...new Set(productRows.map(p => (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("")).filter(Boolean))],
-    keywordCluster:[...new Set(Object.keys(clusterIdByName))],
-    clusterIdByName,
-  };
+  const candidates = await buildKnowledgeCandidates(hdr);
 
   for (const page of rows.slice(0, limit)) {
     try { await analyzeOneSavedPostForKnowledgeGraph(env, hdr, page, candidates); }
@@ -22038,6 +22045,73 @@ ${assemblyManifest}`;
           entryCount: (p.properties["Knowledge Entries"]?.relation || []).length,
         }));
         return json({ entries, clusters });
+      }
+
+      // ── getLinkTagData ──
+      // Powers the Links tab's tagging modal: run the transcriber first
+      // (existing ▶ Run button), then open this — it hands back the saved
+      // post's full transcript text (read while deciding what to tag,
+      // rather than a separate AI-suggestion step) plus the same real
+      // schema candidate lists runKnowledgeGraphAnalysis matches against,
+      // plus which of those are already tagged for this post (matched by
+      // Source URL, same key the auto-analysis path already uses).
+      if (body.action === "getLinkTagData") {
+        const { postId, postUrl } = body;
+        if (!postId) return json({ error: "postId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const [transcript, candidates, existingQ] = await Promise.all([
+          extractBlocksTextRecursive(hdr, dashId16(postId)).catch(() => ""),
+          buildKnowledgeCandidates(hdr),
+          postUrl ? notionQuery(KNOWLEDGE_BRAIN_DB, { filter: { property: "Source URL", url: { equals: postUrl } } }).catch(() => []) : Promise.resolve([]),
+        ]);
+        const taggedNames = existingQ.map(p => p.properties?.["Knowledge Category"]?.select?.name).filter(Boolean);
+        return json({ transcript, candidates, taggedNames });
+      }
+
+      // ── saveLinkKnowledgeTags ──
+      // Replaces the FULL set of manual tags for one saved post with
+      // whatever the modal currently has checked — diffs against existing
+      // KNOWLEDGE_BRAIN_DB entries for this post's URL (same matching key
+      // the auto path uses) rather than blindly appending, so unchecking a
+      // tag actually removes it. Each manually-created entry is flagged
+      // "Manually Tagged" — distinct from ones runKnowledgeGraphAnalysis
+      // writes — so these can later seed/ground that automated matching
+      // (real operator-confirmed examples) once there's enough of them,
+      // rather than being indistinguishable from a guess.
+      if (body.action === "saveLinkKnowledgeTags") {
+        const { postId, postUrl, postName, tags } = body;
+        if (!postId || !Array.isArray(tags)) return json({ error: "postId and tags[] required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await ensureDbCheckboxProperty(hdr, KNOWLEDGE_BRAIN_DB, "Manually Tagged");
+
+        const existingQ = postUrl ? await notionQuery(KNOWLEDGE_BRAIN_DB, { filter: { property: "Source URL", url: { equals: postUrl } } }).catch(() => []) : [];
+        const existingByName = {};
+        existingQ.forEach(p => { const n = p.properties?.["Knowledge Category"]?.select?.name; if (n) existingByName[n] = p.id; });
+
+        const wantNames = new Set(tags.map(t => t.name).filter(Boolean));
+        // Remove (archive) anything no longer checked.
+        await Promise.all(Object.entries(existingByName)
+          .filter(([name]) => !wantNames.has(name))
+          .map(([, pageId]) => fetch(`https://api.notion.com/v1/pages/${dashId16(pageId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
+          }).catch(() => {})));
+        // Create anything newly checked that doesn't already exist.
+        await Promise.all(tags
+          .filter(t => t.name && !existingByName[t.name])
+          .map(t => {
+            const props = {
+              Name: { title: [{ type: "text", text: { content: `${postName || 'Saved Post'} → ${t.name}`.slice(0, 200) } }] },
+              "Knowledge Category": { select: { name: t.name } },
+              "Manually Tagged": { checkbox: true },
+            };
+            if (postUrl) props["Source URL"] = { url: postUrl };
+            return fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: KNOWLEDGE_BRAIN_DB }, properties: props }),
+            }).catch(() => {});
+          }));
+
+        return json({ success: true, tagCount: tags.length });
       }
 
       if (body.action === "deleteTool") {
