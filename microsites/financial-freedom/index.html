@@ -1099,6 +1099,39 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
               <option value="">— pick a Login with a connected shop first —</option>
             </select>
           </div>
+          <label class="lm-label" style="margin-top:10px;">Package Weight &amp; Dimensions <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(required for a Calculated shipping profile — real carrier rates need the actual packaged size/weight)</span></label>
+          <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:80px;">
+              <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Weight</label>
+              <input class="modal-ta" id="etsyItemWeight" type="number" min="0" step="0.01" style="height:32px;padding:5px 8px;width:100%;" />
+            </div>
+            <div style="flex:1;min-width:70px;">
+              <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Unit</label>
+              <select class="modal-ta" id="etsyItemWeightUnit" style="height:32px;padding:0 6px;width:100%;background:#1e1e1e;color:#fff;border:1px solid #333;">
+                <option value="oz">oz</option><option value="lb">lb</option><option value="g">g</option><option value="kg">kg</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:70px;">
+              <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Length</label>
+              <input class="modal-ta" id="etsyItemLength" type="number" min="0" step="0.1" style="height:32px;padding:5px 8px;width:100%;" />
+            </div>
+            <div style="flex:1;min-width:70px;">
+              <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Width</label>
+              <input class="modal-ta" id="etsyItemWidth" type="number" min="0" step="0.1" style="height:32px;padding:5px 8px;width:100%;" />
+            </div>
+            <div style="flex:1;min-width:70px;">
+              <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Height</label>
+              <input class="modal-ta" id="etsyItemHeight" type="number" min="0" step="0.1" style="height:32px;padding:5px 8px;width:100%;" />
+            </div>
+            <div style="flex:1;min-width:70px;">
+              <label style="font-size:10px;color:#fff;display:block;margin-bottom:3px;">Unit</label>
+              <select class="modal-ta" id="etsyItemDimensionsUnit" style="height:32px;padding:0 6px;width:100%;background:#1e1e1e;color:#fff;border:1px solid #333;">
+                <option value="in">in</option><option value="ft">ft</option><option value="cm">cm</option><option value="mm">mm</option><option value="m">m</option>
+              </select>
+            </div>
+          </div>
           <button class="modal-btn cancel" id="etsyPublishBtn" onclick="publishListingToEtsy()" style="margin-top:10px;width:100%;background:#e8ff47;color:#000;font-weight:600;border:none;">🚀 Publish to Etsy</button>
           <div class="modal-status" id="etsyPublishStatus" style="margin-top:4px;"></div>
         </div>
@@ -6124,6 +6157,10 @@ function openPublishAssetModal(btn) {
     document.getElementById('etsyCategoryInput').value = '';
     document.getElementById('etsyCategoryId').value = '';
     document.getElementById('etsyIsSupply').checked = false;
+    document.getElementById('etsyItemWeight').value = '';
+    document.getElementById('etsyItemLength').value = '';
+    document.getElementById('etsyItemWidth').value = '';
+    document.getElementById('etsyItemHeight').value = '';
     document.getElementById('etsyPublishStatus').textContent = '';
     etsyLoadShippingProfiles(assetId);
     etsyLoadReadinessStates(assetId);
@@ -6565,11 +6602,16 @@ async function publishListingToEtsy() {
   const taxonomyId = document.getElementById('etsyCategoryId').value;
   const shippingProfileId = document.getElementById('etsyShippingProfile').value;
   const readinessStateId = document.getElementById('etsyReadinessState').value;
+  const itemWeight = parseFloat(document.getElementById('etsyItemWeight').value);
+  const itemLength = parseFloat(document.getElementById('etsyItemLength').value);
+  const itemWidth = parseFloat(document.getElementById('etsyItemWidth').value);
+  const itemHeight = parseFloat(document.getElementById('etsyItemHeight').value);
   if (!price || price <= 0) { status.textContent = 'Enter a valid price first.'; status.className = 'modal-status err'; return; }
   if (!quantity || quantity < 1) { status.textContent = 'Enter a valid quantity first.'; status.className = 'modal-status err'; return; }
   if (!taxonomyId) { status.textContent = 'Pick a category first.'; status.className = 'modal-status err'; return; }
   if (!shippingProfileId) { status.textContent = 'Pick a shipping profile first.'; status.className = 'modal-status err'; return; }
   if (!readinessStateId) { status.textContent = 'Pick a processing time first.'; status.className = 'modal-status err'; return; }
+  if (!itemWeight || !itemLength || !itemWidth || !itemHeight) { status.textContent = 'Enter package weight and dimensions first.'; status.className = 'modal-status err'; return; }
   if (!confirm('Publish this listing live on Etsy now? This creates a real, public listing.')) return;
   btn.disabled = true;
   status.textContent = 'Publishing to Etsy…';
@@ -6577,6 +6619,9 @@ async function publishListingToEtsy() {
   try {
     const r = await w('publishListingToEtsy', {
       assetId: pubAssetId, price, quantity, taxonomyId, shippingProfileId, readinessStateId,
+      itemWeight, itemLength, itemWidth, itemHeight,
+      itemWeightUnit: document.getElementById('etsyItemWeightUnit').value,
+      itemDimensionsUnit: document.getElementById('etsyItemDimensionsUnit').value,
       whoMade: document.getElementById('etsyWhoMade').value,
       whenMade: document.getElementById('etsyWhenMade').value,
       isSupply: document.getElementById('etsyIsSupply').checked,

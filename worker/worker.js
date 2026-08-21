@@ -23590,9 +23590,17 @@ Produce all of this by calling the submit_listing tool — do not include any of
       // anything the Listing method's AI generation can invent truthfully,
       // so the operator supplies them here at publish time.
       if (body.action === "publishListingToEtsy") {
-        const { assetId, price, quantity, taxonomyId, whoMade, whenMade, isSupply, shippingProfileId, readinessStateId, materials } = body;
+        const { assetId, price, quantity, taxonomyId, whoMade, whenMade, isSupply, shippingProfileId, readinessStateId, materials,
+                itemWeight, itemLength, itemWidth, itemHeight, itemWeightUnit, itemDimensionsUnit } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
-        for (const [k, v] of Object.entries({ price, quantity, taxonomyId, whoMade, whenMade, shippingProfileId, readinessStateId })) {
+        for (const [k, v] of Object.entries({
+          price, quantity, taxonomyId, whoMade, whenMade, shippingProfileId, readinessStateId,
+          // A Calculated shipping profile (the only kind this shop has) needs
+          // real package weight/dimensions to price carrier rates — Etsy
+          // rejects the listing without them, not documented as required
+          // up front, same conditional pattern as the other two.
+          itemWeight, itemLength, itemWidth, itemHeight, itemWeightUnit, itemDimensionsUnit,
+        })) {
           if (v === undefined || v === null || v === "") return json({ error: `${k} required` }, 400);
         }
         const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -23626,6 +23634,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
             shipping_profile_id: String(shippingProfileId),
             readiness_state_id: String(readinessStateId),
             is_supply: isSupply ? "true" : "false", type: "physical",
+            item_weight: String(itemWeight), item_length: String(itemLength),
+            item_width: String(itemWidth), item_height: String(itemHeight),
+            item_weight_unit: itemWeightUnit, item_dimensions_unit: itemDimensionsUnit,
           });
           tags.forEach(t => createBody.append("tags", t));
           (Array.isArray(materials) ? materials : []).forEach(m => createBody.append("materials", m));
