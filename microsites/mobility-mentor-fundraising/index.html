@@ -1478,11 +1478,17 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       </div>
 
       <div id="gaJobAssetWrap" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #3a3350;background:rgba(159,122,234,.06);border-radius:4px;">
-        <div style="font-size:11px;color:#b794f4;margin-bottom:8px;">Generate searches real postings (job boards for Resume, Upwork for Upwork Proposal) using the Product's Keywords below, writes a tailored asset for the top 5 matches, each with the posting link attached. Pick/create the Product above first — real career history is global, not per-product: manage it in the main dashboard's <strong>TD tab → 🧠 Personal Research</strong> section before generating.</div>
+        <div style="font-size:11px;color:#b794f4;margin-bottom:8px;">Generate searches real postings (job boards for Resume, Upwork for Upwork Proposal) using the Product's Keywords below, writes a tailored asset for the top 5 matches, each with the posting link attached. The Product comes from this title's own attached product — real career history is global, not per-product: manage it in the main dashboard's <strong>TD tab → 🧠 Personal Research</strong> section before generating.</div>
         <label class="lm-label">Career Avatar <span style="color:#fff;font-weight:normal;">— optional; aligns the resume/proposal's emphasis with a specific professional persona (e.g. Construction Manager) instead of your whole career. Manage avatars in the TD tab too.</span></label>
         <select class="modal-ta" id="gaAvatarInput">
           <option value="">— use full work history (no avatar) —</option>
         </select>
+        <div id="gaJobListingWrap" style="display:none;">
+          <label class="lm-label" style="margin-top:8px;">Job Listing <span style="color:#fff;font-weight:normal;">— optional; pick one of this Product's saved Job Board Listings to write for instead of the top-5 batch. Picking one fills in Source URL below — clear it to go back to batch mode.</span></label>
+          <select class="modal-ta" id="gaJobListingInput" onchange="gaApplyJobListingPick()">
+            <option value="">— write for the top 5 matches (batch) —</option>
+          </select>
+        </div>
         <label class="lm-label" style="margin-top:8px;">Source URL <span style="color:#fff;font-weight:normal;">— optional; a specific job posting/org page to write for instead of searching. Overrides the job board/Upwork search entirely — the page is fetched and used as the single target posting.</span></label>
         <input class="modal-ta" id="gaSourceInput" type="text" placeholder="e.g. https://example.org/careers/webmaster" autocomplete="off" />
       </div>
@@ -5708,7 +5714,7 @@ function gaUpdateSkillHint() {
     if (tshirtWrap) tshirtWrap.style.display = isTshirt ? 'block' : 'none';
     if (loginWrap) loginWrap.style.display = needsLogin ? 'block' : 'none';
     if (isAvatar) gaLoadCampaignPresenter();
-    if (isJobAsset) gaLoadCareerAvatars();
+    if (isJobAsset) { gaLoadCareerAvatars(); gaLoadJobListings(); }
     if (isTshirt) gaLoadTshirtColors();
     if (needsLogin) gaLoadLogins();
     return;
@@ -5810,6 +5816,48 @@ function gaLoadCareerAvatars() {
     });
     if ([...sel.options].some(o => o.value === current)) sel.value = current;
   }).catch(() => {});
+}
+
+// Job Listing picker — reads the Product's already-saved "Job Board
+// Listings" (Product Research → 🔄 search, or the auto-run at product
+// creation) and lets the operator target ONE specific posting from
+// Generate Assets instead of always writing the top-5 batch. Resume-only:
+// Upwork Proposal has no equivalent saved field (it searches Upwork live).
+// Same "Title: meta — url" line shape renderJobBoardListings/
+// renderSmJobBoards already parse, parsed here into <option>s.
+function gaParseSavedJobListings(text) {
+  return String(text || '').trim().split('\n').filter(l => l.trim()).map(line => {
+    const urlMatch = line.match(/(https?:\/\/\S+)\s*$/);
+    const url = urlMatch ? urlMatch[1] : '';
+    if (!url) return null;
+    const label = line.slice(0, line.lastIndexOf('—')).trim();
+    const colonIdx = label.indexOf(':');
+    const title = colonIdx === -1 ? label : label.slice(0, colonIdx).trim();
+    return { title: title || url, url };
+  }).filter(Boolean);
+}
+function gaLoadJobListings() {
+  const wrap = document.getElementById('gaJobListingWrap');
+  const sel = document.getElementById('gaJobListingInput');
+  if (!wrap || !sel) return;
+  const isResumeJobAsset = gaMatchSkill(GA_METHOD_NAME)?.assetType === 'resume';
+  if (!isResumeJobAsset || !GA_PRODUCT_ID) { wrap.style.display = 'none'; sel.innerHTML = '<option value="">— write for the top 5 matches (batch) —</option>'; return; }
+  w('getProductStrategy', { productId: GA_PRODUCT_ID }).then(r => {
+    const listings = gaParseSavedJobListings(r.jobBoardListings || '');
+    sel.innerHTML = '<option value="">— write for the top 5 matches (batch) —</option>';
+    listings.forEach(l => {
+      const o = document.createElement('option');
+      o.value = l.url;
+      o.textContent = l.title.slice(0, 90);
+      sel.appendChild(o);
+    });
+    wrap.style.display = listings.length ? 'block' : 'none';
+  }).catch(() => { wrap.style.display = 'none'; });
+}
+function gaApplyJobListingPick() {
+  const sel = document.getElementById('gaJobListingInput');
+  const src = document.getElementById('gaSourceInput');
+  if (sel && src && sel.value) src.value = sel.value;
 }
 
 // T Shirt colors are fixed to one blueprint/provider (see
@@ -7965,18 +8013,17 @@ async function submitGenAssets() {
       const overrideText = document.getElementById('gaDesignRefNotesInput')?.value.trim() || undefined;
       const platformId = document.getElementById('gaPlatformInput')?.value || undefined;
       const platformName = platformId ? document.getElementById('gaPlatformInput').selectedOptions[0].textContent : undefined;
-      // Job assets need a real Product resolved (create-if-new, same as the
-      // generic path's gaResolve) since Keywords + Work History live there
-      // and the title may not carry the relation yet. Product's own field
-      // is gone from the modal (gaResolve returns { id: null } cleanly
-      // now), so this reliably hits the "Pick or type a Product" message
-      // below until Resume/Upwork Proposal get their fields back.
+      // Job assets need a real Product (Keywords + Work History live there).
+      // The modal's generic product picker was removed, but openGenAssetsModal
+      // already resolves GA_PRODUCT_ID from the title's own product relation
+      // on open (getTitleDetails) — use that directly instead of the dead
+      // gaResolve('product', ...) call, which always returned { id: null }
+      // since its input element no longer exists.
       let jobProductId;
       const sourceUrl = isJobAsset ? (document.getElementById('gaSourceInput')?.value.trim() || undefined) : undefined;
       if (isJobAsset) {
-        const product = await gaResolve('product', status);
-        if (!product.id) { status.textContent = 'Pick or type a Product above first — Keywords/Work History live on it.'; status.style.color = '#fc8181'; btn.disabled = false; btn.textContent = 'Generate'; return; }
-        jobProductId = product.id;
+        if (!GA_PRODUCT_ID) { status.textContent = 'This title has no Product attached yet — attach one from the title row first, then Generate again. Keywords/Work History live on the Product.'; status.style.color = '#fc8181'; btn.disabled = false; btn.textContent = 'Generate'; return; }
+        jobProductId = GA_PRODUCT_ID;
         status.textContent = sourceUrl
           ? `Reading the source URL and writing the ${skillMatch.assetType} for it…`
           : `Searching ${skillMatch.assetType === 'resume' ? 'job boards' : 'Upwork'} for the top matches…`;

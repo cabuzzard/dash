@@ -1020,6 +1020,48 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       } catch (e) { /* best-effort — Strategy generation still proceeds, just without Keywords grounding */ }
     }
 
+    // Job Board Listings — same real, curated-postings search the manual
+    // "🔄 search" button in Product Research runs (getProductJobBoardListings),
+    // now also run automatically at product-creation time alongside the rest
+    // of the research, per operator direction: "run that with all the other
+    // research when the product is created." Merges these fresh Keywords
+    // with the campaign's own (buildJobSearchContext — same merge
+    // generateJobAsset/researchJobListingTitles use) so a brand-new product
+    // already has real postings ready to pick from in Generate Assets,
+    // instead of the operator having to remember to run the search by hand
+    // first. Fire-and-forget best-effort: a zero-result or failed search
+    // here should never block the Strategy fields below.
+    if (productKeywords) {
+      try {
+        const jobCtx = await buildJobSearchContext(hdr, { campaignId, productKeywords, productPositionText: productKeywords, researchInstructions: '', isResume: true });
+        const jobSearchTerms = jobCtx.searchTerms;
+        if (jobSearchTerms.length) {
+          const rawPostings = await searchJobBoardsFor(env, jobSearchTerms);
+          const lowerTerms = jobSearchTerms.map(t => t.toLowerCase());
+          const seen = new Set();
+          const ranked = rawPostings
+            .filter(p => p.url && !seen.has(p.url) && (seen.add(p.url), true))
+            .map(p => {
+              const hay = `${p.title} ${p.tags || ''} ${p.description || ''}`.toLowerCase();
+              const score = lowerTerms.reduce((n, t) => n + (t && hay.includes(t) ? 1 : 0), 0);
+              return { ...p, score };
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 15);
+          if (ranked.length) {
+            const jobResult = ranked.map(p => {
+              const meta = [p.company, p.tags, p.source].filter(Boolean).join(' · ');
+              return `${p.title}: ${meta} — ${p.url}`;
+            }).join('\n');
+            await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "Job Board Listings": { rich_text: [{ type: "text", text: { content: jobResult.slice(0, 2000) } }] } } }),
+            });
+          }
+        }
+      } catch (e) { /* best-effort — Strategy generation still proceeds either way */ }
+    }
+
     let researchBlock = "";
     if (campaignId) {
       const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
