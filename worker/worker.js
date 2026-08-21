@@ -980,7 +980,45 @@ async function ensureProductStrategy(hdr, env, productId, campaignId) {
     const rt = key => (pp[key]?.rich_text || []).map(t => t.plain_text).join("");
     const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
     const productDesc = rt("Description");
-    const productKeywords = rt("Keywords");
+    const productStack = rt("Product Stack");
+    let productKeywords = rt("Keywords");
+
+    // A brand-new product almost never has Keywords set yet — the Add
+    // Product form has no Keywords field of its own, only Title/Stack/
+    // Description — so without this, every first-pass Strategy generation
+    // ran with "KEYWORDS: (none)" and the operator had to notice and fill
+    // Keywords in manually afterward before anything downstream (Strategy
+    // fields, Job Board Listings, asset generation) actually reflected
+    // real keywords. Derive them here from the same Title/Stack/
+    // Description the operator just typed into the Add Product form, and
+    // save them to the Product's own Keywords field, before writing the
+    // Strategy fields below so they're grounded in real keywords from the
+    // very first pass — same one-canonical-Keywords-field design
+    // generateProductKeywords already uses.
+    if (!productKeywords) {
+      try {
+        const kwPrompt = `You are an SEO/positioning strategist. Generate a refined, specific keyword list for this product.
+
+PRODUCT: ${productName}
+${productStack ? `PRODUCT STACK: ${productStack}\n` : ''}DESCRIPTION: ${productDesc || "(none)"}
+
+Return 10-15 real, specific keywords/phrases this product should be associated with — a mix of category terms, buyer-intent phrases, and long-tail specifics. Comma-separated, no other text, no numbering, no explanation.`;
+        const kwResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: kwPrompt }] }),
+        });
+        const kwData = await kwResp.json();
+        const generatedKeywords = (kwData.content?.[0]?.text || "").trim();
+        if (generatedKeywords) {
+          productKeywords = generatedKeywords;
+          await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { Keywords: { rich_text: [{ type: "text", text: { content: productKeywords.slice(0, 1990) } }] } } }),
+          });
+        }
+      } catch (e) { /* best-effort — Strategy generation still proceeds, just without Keywords grounding */ }
+    }
 
     let researchBlock = "";
     if (campaignId) {

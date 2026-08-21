@@ -4833,7 +4833,21 @@ async function saveSmKeywords() {
     const r = await w('updateProductKeywords', { productId: SM_PRODUCT_ID, keywords: ta.value.trim() });
     if (r.error) throw new Error(r.error);
     SM_STRATEGY.keywords = ta.value.trim();
-    if (status) { status.textContent = '✓ Keywords saved.'; status.style.color = '#68d391'; }
+    // Saving Keywords is the actual signal that this product's research
+    // should reflect them — a bare save with no follow-up left every
+    // Strategy field grounded in whatever (or nothing) was there before,
+    // which read as "nothing happened." Re-run the full Strategy field
+    // set now, same as the "Run All Research" button, so the fields
+    // actually pick up the new Keywords immediately.
+    if (status) { status.textContent = 'Keywords saved — re-running research with them…'; status.style.color = '#888'; }
+    const guidance = (document.getElementById('sm-guidance')?.value || '').trim();
+    const rr = await w('regenerateAllStrategyFields', { productId: SM_PRODUCT_ID, campaignId: CAMPAIGN_ID, researchGuidelines: guidance || undefined });
+    if (rr.error) throw new Error(rr.error);
+    SM_STRATEGY = { fields: rr.fields || {}, url: rr.url, keywords: SM_STRATEGY.keywords, jobBoardListings: SM_STRATEGY.jobBoardListings };
+    renderSmFields();
+    if (status) { status.textContent = '✓ Keywords saved and research re-run.'; status.style.color = '#68d391'; }
+    const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
+    if (idx !== -1) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; renderProducts(); }
   } catch(e) {
     if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
   }
