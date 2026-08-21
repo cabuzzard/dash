@@ -22625,9 +22625,30 @@ Return ONLY the HTML document.`;
         const skillsBlock = skillPages.map(p => p.properties.Skill?.title?.map(t => t.plain_text).join("") || "").filter(Boolean).join(", ");
 
         const sourceUrl = String(source || '').trim();
-        const jobSearchCtx = sourceUrl ? { searchTerms: [] } : await buildJobSearchContext(hdr, { campaignId, productKeywords: keywords, productPositionText: keywords, researchInstructions, isResume });
+
+        // Resume postings the operator already found + reviewed on the
+        // Product's own Research tab (getProductJobBoardListings — saved to
+        // the Product's "Job Board Listings" field). When present, this IS
+        // "the job listings in the research of the product it is attached
+        // to" — use those specific, already-curated postings instead of
+        // blindly re-searching the job boards from scratch. Upwork
+        // Proposal is unaffected (it has no equivalent saved field; it
+        // always searches Upwork live below).
+        const savedJobListingsText = isResume ? (productPage.properties?.["Job Board Listings"]?.rich_text || []).map(t => t.plain_text).join("") : "";
+        const savedJobListings = savedJobListingsText.trim() ? savedJobListingsText.trim().split('\n').filter(l => l.trim()).map(line => {
+          const urlMatch = line.match(/(https?:\/\/\S+)\s*$/);
+          const url = urlMatch ? urlMatch[1] : '';
+          if (!url) return null;
+          const label = line.slice(0, line.lastIndexOf('—')).trim();
+          const colonIdx = label.indexOf(':');
+          const title = colonIdx === -1 ? label : label.slice(0, colonIdx).trim();
+          const meta = colonIdx === -1 ? '' : label.slice(colonIdx + 1).trim();
+          return { title, meta, url };
+        }).filter(Boolean) : [];
+
+        const jobSearchCtx = (sourceUrl || savedJobListings.length) ? { searchTerms: [] } : await buildJobSearchContext(hdr, { campaignId, productKeywords: keywords, productPositionText: keywords, researchInstructions, isResume });
         const searchTerms = jobSearchCtx.searchTerms;
-        if (!sourceUrl && !searchTerms.length) return json({ error: "This Product has no Keywords set, and no research instructions or Source URL were given to search with." }, 400);
+        if (!sourceUrl && !savedJobListings.length && !searchTerms.length) return json({ error: "This Product has no Keywords set, and no research instructions or Source URL were given to search with." }, 400);
 
         // ── Source override: a specific job posting/org page, given directly
         // by the operator, that skips the job-board/Upwork search entirely.
@@ -22651,6 +22672,17 @@ Return ONLY the HTML document.`;
             ranked = [await fetchSourcePosting(sourceUrl)];
           } catch (e) {
             return json({ error: `Source URL: ${e.message || e}` }, 400);
+          }
+        } else if (savedJobListings.length) {
+          const fetched = await Promise.all(savedJobListings.slice(0, 5).map(async p => {
+            try {
+              const full = await fetchSourcePosting(p.url);
+              return { title: p.title || full.title, company: p.meta, url: p.url, description: full.description, tags: '', source: 'Job Board Listings' };
+            } catch (e) { return null; }
+          }));
+          ranked = fetched.filter(Boolean);
+          if (!ranked.length) {
+            return json({ success: true, created: 0, needsWorkHistory: false, note: `Couldn't fetch full details for any of the saved Job Board Listings — they may have expired. Re-run the search on the Product's Research field, or paste a Source URL to target one directly.` });
           }
         } else {
           const rawPostings = isResume ? await searchJobBoardsFor(env, searchTerms) : await searchUpworkFor(env, searchTerms);
