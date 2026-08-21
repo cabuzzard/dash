@@ -4999,7 +4999,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           + "?response_type=code"
           + "&client_id=" + encodeURIComponent(env.ETSY_KEYSTRING || "")
           + "&redirect_uri=" + encodeURIComponent(ETSY_REDIRECT_URI)
-          + "&scope=" + encodeURIComponent("listings_r listings_w")
+          + "&scope=" + encodeURIComponent("listings_r listings_w shops_r")
           + "&state=" + state
           + "&code_challenge=" + codeChallenge
           + "&code_challenge_method=S256";
