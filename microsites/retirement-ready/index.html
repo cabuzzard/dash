@@ -454,6 +454,20 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
 </div>
+
+<!-- SEC 5b: one col — job board listings, matched against the global Job Boards list -->
+<div class="one-col">
+  <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+    <span>Job Board Listings</span>
+    <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+      <input id="jobBoardsKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
+      <button id="jobBoardsBtn" onclick="runJobBoardListings()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+    </span>
+  </h2>
+  <div class="content">
+    <div id="r-jobboards"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+  </div>
+</div>
 </div>
 
 
@@ -1810,6 +1824,47 @@ async function runKDPBestSellers() {
   }
 }
 
+// Job Board Listings — matches the global Job Boards list against campaign/
+// title keywords (or a manual override). Same "Name: meta — url" line shape
+// as renderSeedChannels, so real postings render as clickable rows.
+function renderJobBoardListings(text) {
+  const el = document.getElementById('r-jobboards');
+  if (!el) return;
+  if (!text || !text.trim()) {
+    el.innerHTML = '<span class="empty">No results yet — press ⟳ search to match live job listings against the campaign keywords (or type keywords above to override).</span>';
+    return;
+  }
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  el.innerHTML = lines.map(line => {
+    const urlMatch = line.match(/(https?:\/\/\S+)\s*$/);
+    const url = urlMatch ? urlMatch[1] : '';
+    const label = url ? line.slice(0, line.lastIndexOf('—')).trim() : line.trim();
+    const colonIdx = label.indexOf(':');
+    const name = colonIdx === -1 ? label : label.slice(0, colonIdx).trim();
+    const meta = colonIdx === -1 ? '' : label.slice(colonIdx + 1).trim();
+    const inner = `<span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${meta}</span>`;
+    return url
+      ? `<div class="sm-trend-row"><a href="${url}" target="_blank" rel="noopener" style="display:flex;gap:6px;align-items:baseline;flex:1;min-width:0;text-decoration:none;color:inherit">${inner} <span style="font-size:9px;color:#4488ff">↗</span></a></div>`
+      : `<div class="sm-trend-row">${inner}</div>`;
+  }).join('');
+}
+async function runJobBoardListings() {
+  const btn = document.getElementById('jobBoardsBtn');
+  const el  = document.getElementById('r-jobboards');
+  const kwOverride = (document.getElementById('jobBoardsKwInput')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Searching job boards…</div>';
+  try {
+    const data = await w('getJobBoardListings', { researchId: RESEARCH_ID_LIVE || RESEARCH_ID, kwOverride });
+    if (data.error) { el.innerHTML = `<span class="empty" style="color:#c0392b">${data.error}</span>`; return; }
+    renderJobBoardListings(data.text || '');
+  } catch(e) {
+    el.innerHTML = '<span class="empty" style="color:#c0392b">Search failed — try again.</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
+
 // Seed channels for the Video Copy method — built off the campaign keywords.
 function renderSeedChannels(text) {
   const el = document.getElementById('r-seed');
@@ -2057,6 +2112,9 @@ async function loadResearch() {
 
     // SEC 3 — KDP Best Sellers field
     renderKDPBestSellers(r.kdpBestSellers || '');
+
+    // SEC 5b — Job Board Listings field
+    renderJobBoardListings(r.jobBoardListings || '');
 
     // SEC 3 — Seed Channels field (Video Copy method)
     renderSeedChannels(r.seedChannels || '');
@@ -4730,7 +4788,7 @@ async function loadDeliverables() {
 // here as a per-row modal instead of a dedicated page section.
 const STRATEGY_FIELDS = ["Customer", "Niche", "Pain Points", "Emotions", "Solution", "Benefits", "Unique Opportunity", "Transformation", "Offer Structure", "Proof Points", "Objections"];
 let SM_PRODUCT_ID = null;
-let SM_STRATEGY = { fields: {}, url: null, keywords: '' };
+let SM_STRATEGY = { fields: {}, url: null, keywords: '', jobBoardListings: '' };
 function sfId(field) { return 'sf-' + field.replace(/\s+/g, '-'); }
 
 // Keywords is NOT one of STRATEGY_FIELDS — it lives on the Product itself
@@ -4781,10 +4839,60 @@ async function saveSmKeywords() {
   }
 }
 
+// Job Board Listings — product-level counterpart to the campaign Research
+// tab's Job Board Listings field. Same "Name: meta — url" line shape as
+// renderJobBoardListings, matched against merged product+campaign keywords
+// (or a manual override) instead of just the campaign's.
+function renderSmJobBoards() {
+  const el = document.getElementById('sm-jobboards-field');
+  if (!el) return;
+  const val = SM_STRATEGY.jobBoardListings || '';
+  const lines = val.trim() ? val.trim().split('\n').filter(l => l.trim()) : [];
+  const rowsHtml = lines.length ? lines.map(line => {
+    const urlMatch = line.match(/(https?:\/\/\S+)\s*$/);
+    const url = urlMatch ? urlMatch[1] : '';
+    const label = url ? line.slice(0, line.lastIndexOf('—')).trim() : line.trim();
+    const colonIdx = label.indexOf(':');
+    const name = colonIdx === -1 ? label : label.slice(0, colonIdx).trim();
+    const meta = colonIdx === -1 ? '' : label.slice(colonIdx + 1).trim();
+    const inner = `<span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${meta}</span>`;
+    return url
+      ? `<div class="sm-trend-row"><a href="${url}" target="_blank" rel="noopener" style="display:flex;gap:6px;align-items:baseline;flex:1;min-width:0;text-decoration:none;color:inherit">${inner} <span style="font-size:9px;color:#4488ff">↗</span></a></div>`
+      : `<div class="sm-trend-row">${inner}</div>`;
+  }).join('') : '<span class="empty">No results yet — press ⟳ search to match live job listings against this product\'s keywords.</span>';
+  el.innerHTML = `<div style="border-bottom:1px solid #161616;padding:8px 0;">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="flex:1;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#fff;">Job Board Listings <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888;">(live postings matched against this product's + campaign's Keywords)</span></span>
+      <input id="sm-jobboards-kw" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:110px;outline:none">
+      <button class="td-add-btn-inline" style="font-size:10px;padding:2px 7px;" id="sm-jobboards-btn" onclick="runSmJobBoards()">⟳ search</button>
+    </div>
+    <div style="margin-top:6px;">${rowsHtml}</div>
+  </div>`;
+}
+async function runSmJobBoards() {
+  const btn = document.getElementById('sm-jobboards-btn');
+  const status = document.getElementById('strategyFieldsStatus');
+  const kwOverride = (document.getElementById('sm-jobboards-kw')?.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  if (status) { status.textContent = 'Searching job boards…'; status.style.color = '#888'; }
+  try {
+    const r = await w('getProductJobBoardListings', { productId: SM_PRODUCT_ID, campaignId: CAMPAIGN_ID, kwOverride });
+    if (r.error) throw new Error(r.error);
+    SM_STRATEGY.jobBoardListings = r.text || '';
+    renderSmJobBoards();
+    if (status) { status.textContent = `✓ ${r.count || 0} listing${r.count === 1 ? '' : 's'} found.`; status.style.color = '#68d391'; }
+  } catch(e) {
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ search'; }
+  }
+}
+
 function renderSmFields() {
   const el = document.getElementById('sm-fields');
   if (!el) return;
   renderSmKeywords();
+  renderSmJobBoards();
   el.innerHTML = STRATEGY_FIELDS.map(f => {
     const val = SM_STRATEGY.fields[f] || '';
     const id = sfId(f);
@@ -4801,10 +4909,11 @@ function renderSmFields() {
 
 function openStrategyModal(productId, productName) {
   SM_PRODUCT_ID = productId;
-  SM_STRATEGY = { fields: {}, url: null, keywords: '' };
+  SM_STRATEGY = { fields: {}, url: null, keywords: '', jobBoardListings: '' };
   document.getElementById('sm-modal-title').textContent = (productName || 'Product') + ' — Research';
   document.getElementById('sm-fields').innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
   document.getElementById('sm-keywords-field').innerHTML = '';
+  document.getElementById('sm-jobboards-field').innerHTML = '';
   document.getElementById('strategyFieldsStatus').textContent = '';
   const guidanceEl = document.getElementById('sm-guidance');
   if (guidanceEl) guidanceEl.value = '';
@@ -4819,7 +4928,7 @@ function closeStrategyModal() {
 async function loadSmStrategy() {
   try {
     const data = await w('getProductStrategy', { productId: SM_PRODUCT_ID });
-    SM_STRATEGY = { fields: (data.strategy && data.strategy.fields) || {}, url: data.strategy ? data.strategy.url : null, keywords: data.keywords || '' };
+    SM_STRATEGY = { fields: (data.strategy && data.strategy.fields) || {}, url: data.strategy ? data.strategy.url : null, keywords: data.keywords || '', jobBoardListings: data.jobBoardListings || '' };
   } catch(e) { /* leave panel showing empty fields */ }
   renderSmFields();
 }
@@ -4854,7 +4963,7 @@ async function regenerateAllSmFields() {
     const guidance = (document.getElementById('sm-guidance')?.value || '').trim();
     const r = await w('regenerateAllStrategyFields', { productId: SM_PRODUCT_ID, campaignId: CAMPAIGN_ID, researchGuidelines: guidance || undefined });
     if (r.error) throw new Error(r.error);
-    SM_STRATEGY = { fields: r.fields || {}, url: r.url, keywords: SM_STRATEGY.keywords };
+    SM_STRATEGY = { fields: r.fields || {}, url: r.url, keywords: SM_STRATEGY.keywords, jobBoardListings: SM_STRATEGY.jobBoardListings };
     renderSmFields();
     if (status) { status.textContent = '✓ All fields regenerated.'; status.style.color = '#68d391'; }
     const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
@@ -8302,6 +8411,7 @@ async function runRegenKeywords() {
       <button class="td-add-btn-inline" id="sm-run-all-btn" style="font-size:11px;padding:4px 10px;margin-top:6px;" onclick="regenerateAllSmFields()">Run All Research</button>
     </div>
     <div id="sm-keywords-field"></div>
+    <div id="sm-jobboards-field"></div>
     <div id="sm-fields"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     <div id="strategyFieldsStatus" style="font-size:12px;min-height:16px;margin-top:8px;"></div>
     <div class="modal-actions">

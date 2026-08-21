@@ -6372,12 +6372,76 @@ Return ONLY a JSON object, no other text, no markdown fences:
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
         ]);
         const keywords = (productPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("");
-        if (!record) return json({ strategy: null, keywords });
+        const jobBoardListings = (productPage.properties?.["Job Board Listings"]?.rich_text || []).map(t => t.plain_text).join("");
+        if (!record) return json({ strategy: null, keywords, jobBoardListings });
         const props = record.properties || {};
         const rt = key => (props[key]?.rich_text || []).map(t => t.plain_text).join("");
         const fields = {};
         for (const f of STRATEGY_FIELDS) fields[f] = rt(f);
-        return json({ strategy: { id: record.id.replace(/-/g,""), url: record.url, status: props.Status?.select?.name || "", fields }, keywords });
+        return json({ strategy: { id: record.id.replace(/-/g,""), url: record.url, status: props.Status?.select?.name || "", fields }, keywords, jobBoardListings });
+      }
+
+      // ── getProductJobBoardListings ──
+      // Product-level counterpart to getJobBoardListings — same override-
+      // keyword + search-button UI pattern, but scoped to a Product Research
+      // modal instead of the campaign Research tab. Merges the product's own
+      // Keywords with the campaign's Keywords (buildJobSearchContext — same
+      // merge researchJobListingTitles/generateJobAsset use) unless the
+      // operator supplies a manual override, then matches against the global
+      // Active Job Boards list. Saved to the Product's own "Job Board
+      // Listings" field.
+      if (body.action === "getProductJobBoardListings") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const { productId, campaignId, kwOverride } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const override = (kwOverride || "").trim();
+        let searchTerms;
+        if (override) {
+          searchTerms = Array.from(new Set(override.split(/[,;\n]+/).map(t => stripJobSearchNoise(t).join(' ')).filter(Boolean))).slice(0, 6);
+        } else {
+          const productPage = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, { headers: hdr }).then(r => r.json());
+          const productKeywords = (productPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+          if (campaignId) {
+            const ctx = await buildJobSearchContext(hdr, { campaignId, productKeywords, productPositionText: '', researchInstructions: '', isResume: true });
+            searchTerms = ctx.searchTerms;
+          } else {
+            searchTerms = Array.from(new Set(productKeywords.split(/[,;\n]+/).map(t => stripJobSearchNoise(t).join(' ')).filter(Boolean))).slice(0, 6);
+          }
+        }
+        if (!searchTerms.length) return json({ error: "No keywords found — add Keywords to the product or enter them manually" }, 400);
+
+        const rawPostings = await searchJobBoardsFor(env, searchTerms);
+        const lowerTerms = searchTerms.map(t => t.toLowerCase());
+        const seen = new Set();
+        const ranked = rawPostings
+          .filter(p => p.url && !seen.has(p.url) && (seen.add(p.url), true))
+          .map(p => {
+            const hay = `${p.title} ${p.tags || ''} ${p.description || ''}`.toLowerCase();
+            const score = lowerTerms.reduce((n, t) => n + (t && hay.includes(t) ? 1 : 0), 0);
+            return { ...p, score };
+          })
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 15);
+        if (!ranked.length) return json({ error: `No live listings matched "${searchTerms.join(', ')}" across the active Job Boards — try different keywords, or add more boards.` }, 404);
+
+        const result = ranked.map(p => {
+          const meta = [p.company, p.tags, p.source].filter(Boolean).join(' · ');
+          return `${p.title}: ${meta} — ${p.url}`;
+        }).join('\n');
+
+        const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Job Board Listings": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+        });
+        if (!patch.ok) {
+          const pe = await patch.json();
+          return json({ error: pe.message || "Notion write failed" }, patch.status);
+        }
+        return json({ success: true, text: result, count: ranked.length });
       }
 
       // ── updateProductKeywords ──
@@ -11770,6 +11834,7 @@ Return ONLY a JSON object with these exact keys:
             productIdeas:      rt(null, "Product Ideas"),
             tikTokShopProducts:rt(null, "TikTok Shop Products"),
             kdpBestSellers:    rt(null, "KDP Best Sellers"),
+            jobBoardListings:  rt(null, "Job Board Listings"),
             tiktokTrends:      rt(null, "TikTok Trends"),
             trendIntelligence: rt(null, "Trend Intelligence"),
             etsyProducts:      rt(null, "Etsy Products"),
@@ -12391,6 +12456,72 @@ Rules:
           return json({ error: pe.message || "Notion write failed" }, patch.status);
         }
         return json({ success: true, text: result });
+      }
+
+      // ── getJobBoardListings ──
+      // Job Boards research field for the campaign Research tab — same
+      // override-keyword + search-button UI pattern as getKDPBestSellers/
+      // getSeedChannels, but instead of an AI-generated list, runs a REAL
+      // search against the global Active Job Boards DB (JOB_BOARDS_DB) via
+      // the same searchJobBoardsFor() helper researchJobListingTitles uses,
+      // ranked by keyword match, and saved to the Research record's own
+      // "Job Board Listings" field so it persists like every other research
+      // field. Lines are formatted "Title: meta — url" (same shape
+      // renderSeedChannels already parses) so each row links straight to
+      // the real posting.
+      if (body.action === "getJobBoardListings") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const { researchId, kwOverride } = body;
+        if (!researchId) return json({ error: "researchId required" }, 400);
+
+        const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+
+        let keywords = (kwOverride || "").trim();
+        if (!keywords) {
+          try {
+            const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+            });
+            const resData = await resResp.json();
+            keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+          } catch {}
+        }
+        if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
+
+        const searchTerms = Array.from(new Set(
+          keywords.split(/[,;\n]+/).map(t => stripJobSearchNoise(t).join(' ')).filter(Boolean)
+        )).slice(0, 6);
+        if (!searchTerms.length) return json({ error: "No usable search terms in those keywords — try different keywords" }, 400);
+
+        const rawPostings = await searchJobBoardsFor(env, searchTerms);
+        const lowerTerms = searchTerms.map(t => t.toLowerCase());
+        const seen = new Set();
+        const ranked = rawPostings
+          .filter(p => p.url && !seen.has(p.url) && (seen.add(p.url), true))
+          .map(p => {
+            const hay = `${p.title} ${p.tags || ''} ${p.description || ''}`.toLowerCase();
+            const score = lowerTerms.reduce((n, t) => n + (t && hay.includes(t) ? 1 : 0), 0);
+            return { ...p, score };
+          })
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 15);
+        if (!ranked.length) return json({ error: `No live listings matched "${searchTerms.join(', ')}" across the active Job Boards — try different keywords, or add more boards.` }, 404);
+
+        const result = ranked.map(p => {
+          const meta = [p.company, p.tags, p.source].filter(Boolean).join(' · ');
+          return `${p.title}: ${meta} — ${p.url}`;
+        }).join('\n');
+
+        const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Job Board Listings": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+        });
+        if (!patch.ok) {
+          const pe = await patch.json();
+          return json({ error: pe.message || "Notion write failed" }, patch.status);
+        }
+        return json({ success: true, text: result, count: ranked.length });
       }
 
       // ── getTikTokShopProducts ──
