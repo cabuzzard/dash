@@ -22050,22 +22050,28 @@ ${assemblyManifest}`;
       // ── getLinkTagData ──
       // Powers the Links tab's tagging modal: run the transcriber first
       // (existing ▶ Run button), then open this — it hands back the saved
-      // post's full transcript text (read while deciding what to tag,
-      // rather than a separate AI-suggestion step) plus the same real
-      // schema candidate lists runKnowledgeGraphAnalysis matches against,
-      // plus which of those are already tagged for this post (matched by
-      // Source URL, same key the auto-analysis path already uses).
+      // post's full transcript text (read while deciding what to tag)
+      // plus the operator's own tag vocabulary for autocomplete (every
+      // value the "Knowledge Category" select has ever registered — a
+      // single schema read, not a query over every entry) plus which of
+      // those are already applied to this post (matched by Source URL,
+      // same key the auto-analysis path uses). Deliberately NOT the
+      // schema-derived Method/Platform/etc. candidate lists
+      // runKnowledgeGraphAnalysis matches against — per operator
+      // correction, this modal is for freeform tags in the operator's own
+      // words, not a picker constrained to existing dashboard entities.
       if (body.action === "getLinkTagData") {
         const { postId, postUrl } = body;
         if (!postId) return json({ error: "postId required" }, 400);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const [transcript, candidates, existingQ] = await Promise.all([
+        const [transcript, dbSchema, existingQ] = await Promise.all([
           extractBlocksTextRecursive(hdr, dashId16(postId)).catch(() => ""),
-          buildKnowledgeCandidates(hdr),
+          fetch(`https://api.notion.com/v1/databases/${KNOWLEDGE_BRAIN_DB}`, { headers: hdr }).then(r => r.json()).catch(() => null),
           postUrl ? notionQuery(KNOWLEDGE_BRAIN_DB, { filter: { property: "Source URL", url: { equals: postUrl } } }).catch(() => []) : Promise.resolve([]),
         ]);
+        const allTags = (dbSchema?.properties?.["Knowledge Category"]?.select?.options || []).map(o => o.name).filter(Boolean);
         const taggedNames = existingQ.map(p => p.properties?.["Knowledge Category"]?.select?.name).filter(Boolean);
-        return json({ transcript, candidates, taggedNames });
+        return json({ transcript, allTags, taggedNames });
       }
 
       // ── saveLinkKnowledgeTags ──

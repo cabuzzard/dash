@@ -2743,8 +2743,14 @@
       <span onclick="closeLinkTagModal()" style="cursor:pointer;color:var(--text3);font-size:18px;">✕</span>
     </div>
     <div id="ltStatus" style="font-size:11px;color:var(--text3);min-height:14px;margin-bottom:6px;flex-shrink:0;"></div>
-    <div id="ltTagFields" style="flex-shrink:0;padding-bottom:10px;border-bottom:1px solid var(--border2);margin-bottom:10px;">
-      <div class="loading-wrap"><div class="spinner"></div>Loading…</div>
+    <div style="flex-shrink:0;padding-bottom:10px;border-bottom:1px solid var(--border2);margin-bottom:10px;">
+      <div id="ltTagChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
+      <div style="position:relative;">
+        <input class="modal-input" id="ltTagInput" type="text" placeholder="Type a tag, press Enter…" autocomplete="off"
+          oninput="ltFilterTagInput()" onfocus="ltFilterTagInput()" onkeydown="ltTagInputKeydown(event)"
+          onblur="setTimeout(()=>{const dd=document.getElementById('ltTagDD'); if(dd) dd.style.display='none';},180)" />
+        <div id="ltTagDD" class="camp-dropdown" style="display:none;"></div>
+      </div>
     </div>
     <div style="overflow-y:auto;flex:1;">
       <div id="ltTranscript" style="font-size:13px;color:var(--text2);line-height:1.6;white-space:pre-wrap;"></div>
@@ -4145,23 +4151,29 @@ function closeAnalyzeModal() { document.getElementById('analyzeModal').style.dis
 
 // ── LINK TAG MODAL ───────────────────────────────────────────────────
 // 🏷 Tag button on a Links row (only once the transcript's been run).
-// Tagging fields sit above the transcript so tagging happens WHILE
-// reading — each click saves immediately (optimistic UI, same pattern as
-// the highlight toggle), no separate Save step. Ground-truth manual tags
-// for the Knowledge tab's node graph, distinct from — and eventually a
-// grounding source for — the automated per-post matching.
+// Freeform per operator correction — no fixed candidate list, no schema
+// picker. The operator types their own tag in their own words; the
+// input autocompletes against every tag they've used before (so the
+// vocabulary converges naturally instead of drifting into near-duplicate
+// one-off phrasings), but typing something brand new always works too.
+// Tagging input sits above the transcript so tagging happens WHILE
+// reading — each add/remove saves immediately, no separate Save step.
+// This is exactly the training signal for the Knowledge tab's node graph
+// the operator asked for: how THEY categorize things, not a mapping onto
+// pre-existing dashboard entities.
 let LT_TAG_POST = null; // { id, url, name }
-let LT_TAG_CANDIDATES = null;
+let LT_ALL_TAGS = [];
 let LT_TAG_SELECTED = new Set();
-const LT_TAG_TYPE_LABEL = { method: 'Methods', platform: 'Platforms', toolStack: 'Tool Stack', productStack: 'Product Stacks', keywordCluster: 'Keyword Clusters' };
 
 function openLinkTagModal(postId, postUrl, postName) {
   LT_TAG_POST = { id: postId, url: postUrl, name: postName };
-  LT_TAG_CANDIDATES = null;
+  LT_ALL_TAGS = [];
   LT_TAG_SELECTED = new Set();
   document.getElementById('ltModalTitle').textContent = 'Tag — ' + (postName || 'Saved Post');
-  document.getElementById('ltStatus').textContent = '';
-  document.getElementById('ltTagFields').innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading…</div>';
+  document.getElementById('ltStatus').textContent = 'Loading…';
+  document.getElementById('ltTagChips').innerHTML = '';
+  document.getElementById('ltTagInput').value = '';
+  document.getElementById('ltTagDD').style.display = 'none';
   document.getElementById('ltTranscript').textContent = '';
   document.getElementById('linkTagModal').style.display = 'flex';
   loadLinkTagData();
@@ -4174,34 +4186,59 @@ async function loadLinkTagData() {
   try {
     const r = await call('getLinkTagData', { postId: LT_TAG_POST.id, postUrl: LT_TAG_POST.url });
     if (r.error) throw new Error(r.error);
-    LT_TAG_CANDIDATES = r.candidates || {};
+    LT_ALL_TAGS = r.allTags || [];
     LT_TAG_SELECTED = new Set(r.taggedNames || []);
     document.getElementById('ltTranscript').textContent = r.transcript || '(no transcript saved on this post)';
-    renderLinkTagFields();
+    document.getElementById('ltStatus').textContent = '';
+    renderLtTagChips();
   } catch(e) {
-    document.getElementById('ltTagFields').innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
+    document.getElementById('ltStatus').textContent = 'Error: ' + e.message;
   }
 }
-function renderLinkTagFields() {
-  const el = document.getElementById('ltTagFields');
-  const types = ['method','platform','toolStack','productStack','keywordCluster'];
-  const html = types.map(type => {
-    const names = (LT_TAG_CANDIDATES && LT_TAG_CANDIDATES[type]) || [];
-    if (!names.length) return '';
-    return '<div style="margin-bottom:8px;">' +
-      '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:4px;">' + LT_TAG_TYPE_LABEL[type] + '</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
-      names.map(name => {
-        const active = LT_TAG_SELECTED.has(name);
-        return '<span onclick="toggleLinkTag(\'' + esc(name).replace(/'/g,"\\'") + '\')" style="font-size:11px;padding:3px 9px;border-radius:10px;cursor:pointer;border:1px solid ' + (active ? 'var(--accent)' : 'var(--border2)') + ';background:' + (active ? 'var(--accent)' : 'transparent') + ';color:' + (active ? '#000' : 'var(--text2)') + ';">' + esc(name) + '</span>';
-      }).join('') +
-      '</div></div>';
-  }).join('');
-  el.innerHTML = html || '<div style="font-size:12px;color:var(--text3);">No candidates yet — add Methods/Platforms/Tool Stack/Products/Keyword Clusters first.</div>';
+function renderLtTagChips() {
+  const el = document.getElementById('ltTagChips');
+  if (!LT_TAG_SELECTED.size) { el.innerHTML = '<span style="font-size:12px;color:var(--text3);font-style:italic;">No tags yet — type one below.</span>'; return; }
+  el.innerHTML = [...LT_TAG_SELECTED].map(name =>
+    '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 6px 3px 9px;border-radius:10px;background:var(--accent);color:#000;">' +
+      esc(name) +
+      '<span onclick="removeLinkTag(\'' + esc(name).replace(/'/g,"\\'") + '\')" style="cursor:pointer;font-weight:700;line-height:1;">✕</span>' +
+    '</span>'
+  ).join('');
 }
-async function toggleLinkTag(name) {
-  if (LT_TAG_SELECTED.has(name)) LT_TAG_SELECTED.delete(name); else LT_TAG_SELECTED.add(name);
-  renderLinkTagFields();
+function ltFilterTagInput() {
+  const input = document.getElementById('ltTagInput');
+  const dd = document.getElementById('ltTagDD');
+  const q = input.value.trim().toLowerCase();
+  const matches = LT_ALL_TAGS.filter(t => !LT_TAG_SELECTED.has(t) && (!q || t.toLowerCase().includes(q)));
+  if (!matches.length) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
+  dd.innerHTML = matches.slice(0, 30).map(t =>
+    '<div class="camp-option" onmousedown="addLinkTag(\'' + esc(t).replace(/'/g,"\\'") + '\')">' + esc(t) + '</div>'
+  ).join('');
+  dd.style.display = 'block';
+}
+function ltTagInputKeydown(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const input = document.getElementById('ltTagInput');
+  const val = input.value.trim();
+  if (val) addLinkTag(val);
+}
+async function addLinkTag(name) {
+  name = String(name || '').trim();
+  if (!name || LT_TAG_SELECTED.has(name)) return;
+  LT_TAG_SELECTED.add(name);
+  if (!LT_ALL_TAGS.includes(name)) LT_ALL_TAGS.push(name);
+  document.getElementById('ltTagInput').value = '';
+  document.getElementById('ltTagDD').style.display = 'none';
+  renderLtTagChips();
+  await saveLinkTagsNow();
+}
+async function removeLinkTag(name) {
+  LT_TAG_SELECTED.delete(name);
+  renderLtTagChips();
+  await saveLinkTagsNow();
+}
+async function saveLinkTagsNow() {
   const status = document.getElementById('ltStatus');
   status.textContent = 'Saving…';
   try {
