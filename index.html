@@ -4208,6 +4208,15 @@ function renderLtTagChips() {
 function ltFilterTagInput() {
   const input = document.getElementById('ltTagInput');
   const dd = document.getElementById('ltTagDD');
+  // Comma splits as you type — everything before the last comma commits
+  // as its own tag immediately, only the trailing segment (after the
+  // last comma) stays live in the input for continued typing/autocomplete.
+  if (input.value.includes(',')) {
+    const parts = input.value.split(',');
+    const remainder = parts.pop();
+    parts.map(p => p.trim()).filter(Boolean).forEach(addLinkTag);
+    input.value = remainder; // addLinkTag clears the input synchronously — restore just the trailing segment after it runs
+  }
   const q = input.value.trim().toLowerCase();
   const matches = LT_ALL_TAGS.filter(t => !LT_TAG_SELECTED.has(t) && (!q || t.toLowerCase().includes(q)));
   if (!matches.length) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
@@ -4220,8 +4229,10 @@ function ltTagInputKeydown(e) {
   if (e.key !== 'Enter') return;
   e.preventDefault();
   const input = document.getElementById('ltTagInput');
-  const val = input.value.trim();
-  if (val) addLinkTag(val);
+  // Enter also accepts comma-separated tags typed all at once (e.g. pasted).
+  input.value.split(',').map(p => p.trim()).filter(Boolean).forEach(addLinkTag);
+  input.value = '';
+  document.getElementById('ltTagDD').style.display = 'none';
 }
 async function addLinkTag(name) {
   name = String(name || '').trim();
