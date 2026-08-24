@@ -7482,7 +7482,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
           const grouping = [parentMethodName, childMethodName, it.postType].filter(Boolean).join(' > ');
           const props = {
             "Title":          { title: rtBlock(String(it.title || 'Untitled').slice(0, 200)) },
-            "Status":         { select: { name: "Development" } },
+            "Status":         { select: { name: "Planning" } },
             "Grouping":       { rich_text: rtBlock(grouping) },
             "Core Idea":      { rich_text: rtBlock(String(it.description || '').slice(0, 1990)) },
             "method":         { relation: [{ id: dash(childMethodId) }] },
