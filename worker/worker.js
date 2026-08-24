@@ -1447,10 +1447,10 @@ List 5-8 real, CURRENT trending topics, news stories, or conversations (as of ri
       body: JSON.stringify({ model: "grok-4.6", messages: [{ role: "user", content: prompt }], max_tokens: 900 }),
     });
     const data = await resp.json();
-    if (!resp.ok) return "";
+    if (!resp.ok) { console.error("callGrokTrendingTopics: xAI API error", resp.status, data.error?.message || JSON.stringify(data).slice(0, 300)); return ""; }
     const text = (data.choices?.[0]?.message?.content || "").trim();
     return text ? `CURRENT TRENDING TOPICS (via Grok real-time search on ${platformName || "X"} — ground titles in these where they genuinely fit the niche, never force a fit):\n${text.slice(0, 3000)}\n\n` : "";
-  } catch (e) { return ""; }
+  } catch (e) { console.error("callGrokTrendingTopics: request failed", e.message); return ""; }
 }
 
 async function parseMethodPhases(hdr, methodId) {
