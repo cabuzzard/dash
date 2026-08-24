@@ -222,6 +222,25 @@ async function ensureDbCheckboxProperty(hdr, dbId, propName) {
   } catch (e) { /* best-effort */ }
 }
 
+// A KNOWLEDGE_BRAIN_DB entry used to only carry its saved post's URL as a
+// plain "Source URL" text/url property — that never showed up on the
+// Saved Post's own Notion page at all (nothing points back), which is
+// exactly why manually-tagging felt like it "saved the tag" without
+// "attaching it to the link." This is a real two-way relation instead:
+// visible and queryable from BOTH sides the moment it's created (that's
+// what dual_property means), not a follow-up step. Created once, never
+// touched again if it already exists.
+async function ensureKnowledgeSavedPostRelation(hdr) {
+  try {
+    const dbResp = await fetch(`https://api.notion.com/v1/databases/${KNOWLEDGE_BRAIN_DB}`, { headers: hdr }).then(r => r.json());
+    if (dbResp.properties?.["Saved Post"]) return;
+    await fetch(`https://api.notion.com/v1/databases/${KNOWLEDGE_BRAIN_DB}`, {
+      method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ properties: { "Saved Post": { relation: { database_id: SAVED_POSTS_DB, type: "dual_property", dual_property: {} } } } }),
+    });
+  } catch (e) { /* best-effort */ }
+}
+
 // Pulls the operator's real personal narrative arcs (🎭 Character Arcs,
 // global — "Personal Research" area, distinct from per-campaign market
 // Research) that are topically relevant to the given context text, so
@@ -22054,20 +22073,25 @@ ${assemblyManifest}`;
       // plus the operator's own tag vocabulary for autocomplete (every
       // value the "Knowledge Category" select has ever registered — a
       // single schema read, not a query over every entry) plus which of
-      // those are already applied to this post (matched by Source URL,
-      // same key the auto-analysis path uses). Deliberately NOT the
+      // those are already applied to this post. Matched via a real two-way
+      // Notion relation (Saved Post <-> Knowledge Tags — see
+      // ensureKnowledgeSavedPostRelation), not a Source URL string
+      // comparison — a plain url property never showed up on the Saved
+      // Post's own Notion page at all, which is exactly why tags "saved"
+      // but didn't feel "attached to the link." Deliberately NOT the
       // schema-derived Method/Platform/etc. candidate lists
       // runKnowledgeGraphAnalysis matches against — per operator
       // correction, this modal is for freeform tags in the operator's own
       // words, not a picker constrained to existing dashboard entities.
       if (body.action === "getLinkTagData") {
-        const { postId, postUrl } = body;
+        const { postId } = body;
         if (!postId) return json({ error: "postId required" }, 400);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await ensureKnowledgeSavedPostRelation(hdr);
         const [transcript, dbSchema, existingQ] = await Promise.all([
           extractBlocksTextRecursive(hdr, dashId16(postId)).catch(() => ""),
           fetch(`https://api.notion.com/v1/databases/${KNOWLEDGE_BRAIN_DB}`, { headers: hdr }).then(r => r.json()).catch(() => null),
-          postUrl ? notionQuery(KNOWLEDGE_BRAIN_DB, { filter: { property: "Source URL", url: { equals: postUrl } } }).catch(() => []) : Promise.resolve([]),
+          notionQuery(KNOWLEDGE_BRAIN_DB, { filter: { property: "Saved Post", relation: { contains: dashId16(postId) } } }).catch(() => []),
         ]);
         const allTags = (dbSchema?.properties?.["Knowledge Category"]?.select?.options || []).map(o => o.name).filter(Boolean);
         const taggedNames = existingQ.map(p => p.properties?.["Knowledge Category"]?.select?.name).filter(Boolean);
@@ -22077,20 +22101,23 @@ ${assemblyManifest}`;
       // ── saveLinkKnowledgeTags ──
       // Replaces the FULL set of manual tags for one saved post with
       // whatever the modal currently has checked — diffs against existing
-      // KNOWLEDGE_BRAIN_DB entries for this post's URL (same matching key
-      // the auto path uses) rather than blindly appending, so unchecking a
-      // tag actually removes it. Each manually-created entry is flagged
-      // "Manually Tagged" — distinct from ones runKnowledgeGraphAnalysis
-      // writes — so these can later seed/ground that automated matching
-      // (real operator-confirmed examples) once there's enough of them,
-      // rather than being indistinguishable from a guess.
+      // KNOWLEDGE_BRAIN_DB entries related to THIS post (a real relation,
+      // not a Source URL match) rather than blindly appending, so
+      // unchecking a tag actually removes it. Each manually-created entry
+      // is flagged "Manually Tagged" — distinct from ones
+      // runKnowledgeGraphAnalysis writes — so these can later seed/ground
+      // that automated matching (real operator-confirmed examples) once
+      // there's enough of them.
       if (body.action === "saveLinkKnowledgeTags") {
         const { postId, postUrl, postName, tags } = body;
         if (!postId || !Array.isArray(tags)) return json({ error: "postId and tags[] required" }, 400);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        await ensureDbCheckboxProperty(hdr, KNOWLEDGE_BRAIN_DB, "Manually Tagged");
+        await Promise.all([
+          ensureDbCheckboxProperty(hdr, KNOWLEDGE_BRAIN_DB, "Manually Tagged"),
+          ensureKnowledgeSavedPostRelation(hdr),
+        ]);
 
-        const existingQ = postUrl ? await notionQuery(KNOWLEDGE_BRAIN_DB, { filter: { property: "Source URL", url: { equals: postUrl } } }).catch(() => []) : [];
+        const existingQ = await notionQuery(KNOWLEDGE_BRAIN_DB, { filter: { property: "Saved Post", relation: { contains: dashId16(postId) } } }).catch(() => []);
         const existingByName = {};
         existingQ.forEach(p => { const n = p.properties?.["Knowledge Category"]?.select?.name; if (n) existingByName[n] = p.id; });
 
@@ -22109,6 +22136,7 @@ ${assemblyManifest}`;
               Name: { title: [{ type: "text", text: { content: `${postName || 'Saved Post'} → ${t.name}`.slice(0, 200) } }] },
               "Knowledge Category": { select: { name: t.name } },
               "Manually Tagged": { checkbox: true },
+              "Saved Post": { relation: [{ id: dashId16(postId) }] },
             };
             if (postUrl) props["Source URL"] = { url: postUrl };
             return fetch("https://api.notion.com/v1/pages", {
