@@ -8895,6 +8895,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         };
         if (grouping) props["Grouping"] = { rich_text: [{ type: "text", text: { content: grouping.slice(0, 1990) } }] };
         if (slotType) props["Type"] = { rich_text: [{ type: "text", text: { content: slotType.slice(0, 1990) } }] };
+        if (slotId) props["Strategy Slot"] = { relation: [{ id: dash(slotId) }] };
         if (campaignId) props["Campaign"] = { relation: [{ id: campaignId }] };
         if (productId) props["product"] = { relation: [{ id: productId }] };
         if (growthStrategyId) props["Growth Strategy"] = { relation: [{ id: growthStrategyId }] };
