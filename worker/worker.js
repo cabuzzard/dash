@@ -3108,6 +3108,159 @@ async function runListingRepostReminders(env) {
   }
 }
 
+// ── runStrategySequenceReminders ──
+// Nightly reconciliation for the Strategy Slot -> Title -> "what's next"
+// queue, per operator design: scan every Published title that traces back
+// to a Strategy Slot, find the most recently published one in each
+// "line" (same Growth Strategy + Grouping -- the sequence a Slot's own
+// Type/Sequence/Recurrence describes), and work out what's next: either
+// the next unfilled Slot in a fixed Sequential rollout (Sequence+1, still
+// Open), or another cycle of the SAME recurring Slot once its Recurrence
+// interval has elapsed since the last publish (a Slot can be filled more
+// than once by design -- see generateTitleFromSlot). Writes exactly one
+// open Main TD per active line, pointed at the target Slot via TD's own
+// "Strategy Slot" relation. Idempotent and self-correcting rather than
+// event-triggered: a stale TD (pointing at a Slot that's no longer the
+// correct "next" for its line) gets archived and replaced on the next
+// run; a TD that already matches is left alone; nothing gets created
+// before its due date. This intentionally covers only Sequential/Recurring
+// content lines -- the third bucket, "maintenance, not new content" (e.g.
+// an Etsy listing that just needs a periodic repost, no new title
+// involved), is runListingRepostReminders above, a separate/older
+// mechanism kept as-is rather than folded in here.
+//
+// Legacy published content that predates Strategy Slots has no "Strategy
+// Slot" relation at all and is invisible to this scan until it's
+// retroactively backfilled with one -- not yet done.
+async function runStrategySequenceReminders(env) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  if (!NOTION_TOKEN) return;
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const undash = raw => String(raw || "").replace(/-/g, "");
+
+  const RECURRENCE_DAYS = [
+    [/daily/i, 1],
+    [/2x|twice/i, 3],
+    [/weekly/i, 7],
+    [/biweekly|every.*2.*week/i, 14],
+    [/monthly/i, 30],
+  ];
+  const parseRecurrenceDays = text => {
+    const t = String(text || "");
+    for (const [re, days] of RECURRENCE_DAYS) if (re.test(t)) return days;
+    return 7; // unrecognized phrase -- weekly is the safest default cadence
+  };
+
+  let titles, allSlots, existingSlotTDs;
+  try {
+    [titles, allSlots, existingSlotTDs] = await Promise.all([
+      notionQuery(CONTENT_STRATEGY_DB, {
+        filter: { and: [
+          { or: [{ property: "Status", select: { equals: "Publish" } }, { property: "Status", select: { equals: "Published" } }] },
+          { property: "Strategy Slot", relation: { is_not_empty: true } },
+        ] },
+      }),
+      notionQuery(STRATEGY_SLOTS_DB, {}),
+      notionQuery(MAIN_TD_DB, { filter: { property: "Strategy Slot", relation: { is_not_empty: true } } }),
+    ]);
+  } catch (e) { return; }
+  if (!titles.length || !allSlots.length) return;
+
+  const slotById = new Map(allSlots.map(s => [undash(s.id), s]));
+  const slotLineKey = slot => {
+    const p = slot.properties;
+    const gsId = (p["Growth Strategy"]?.relation || [])[0]?.id || "none";
+    const grouping = (p.Grouping?.rich_text || []).map(x => x.plain_text).join("");
+    return `${undash(gsId)}::${grouping}`;
+  };
+
+  // Group published titles into lines, read off each title's own Slot.
+  const lines = new Map();
+  for (const t of titles) {
+    const slotRel = (t.properties["Strategy Slot"]?.relation || [])[0];
+    const slot = slotRel && slotById.get(undash(slotRel.id));
+    if (!slot) continue;
+    const key = slotLineKey(slot);
+    if (!lines.has(key)) lines.set(key, []);
+    lines.get(key).push({ title: t, slot });
+  }
+
+  // Existing "next" TD items, grouped by the same line key (via their own
+  // target Slot) so each line's stale/current TDs can be found in memory
+  // instead of re-querying Main TD once per line.
+  const tdsByLine = new Map();
+  for (const td of existingSlotTDs) {
+    const tdSlotId = (td.properties["Strategy Slot"]?.relation || [])[0]?.id;
+    const tdSlot = tdSlotId && slotById.get(undash(tdSlotId));
+    if (!tdSlot) continue;
+    const key = slotLineKey(tdSlot);
+    if (!tdsByLine.has(key)) tdsByLine.set(key, []);
+    tdsByLine.get(key).push({ td, targetSlotId: undash(tdSlotId) });
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  for (const [key, entries] of lines) {
+    try {
+      entries.sort((a, b) => new Date(b.title.last_edited_time) - new Date(a.title.last_edited_time));
+      const latest = entries[0];
+      const sp = latest.slot.properties;
+      const type = (sp.Type?.rich_text || []).map(x => x.plain_text).join("");
+      const recurrence = (sp.Recurrence?.rich_text || []).map(x => x.plain_text).join("");
+      const sequence = sp.Sequence?.number;
+      const grouping = (sp.Grouping?.rich_text || []).map(x => x.plain_text).join("");
+      const productRel = sp.Product?.relation || [];
+      const campaignRel = sp.Campaign?.relation || [];
+
+      // Sequential: next = the sibling Slot at sequence+1 in the same
+      // line that's still Open (not yet filled/published).
+      let targetSlot = null, dueDate = todayStr, label = "";
+      if (Number.isFinite(sequence)) {
+        targetSlot = allSlots.find(s => slotLineKey(s) === key && s.properties.Sequence?.number === sequence + 1 && s.properties.Status?.select?.name === "Open") || null;
+        if (targetSlot) label = (targetSlot.properties.Angle?.rich_text || []).map(x => x.plain_text).join("") || type || grouping;
+      }
+      // Recurring (no next sequential slot, or not sequential at all): the
+      // SAME Slot fires again once its Recurrence interval has elapsed.
+      if (!targetSlot && recurrence) {
+        const due = new Date(latest.title.last_edited_time);
+        due.setUTCDate(due.getUTCDate() + parseRecurrenceDays(recurrence));
+        dueDate = due.toISOString().slice(0, 10);
+        if (dueDate > todayStr) continue; // not due yet
+        targetSlot = latest.slot;
+        label = type || grouping;
+      }
+      if (!targetSlot) continue; // fixed sequence exhausted, no recurrence -- line complete
+
+      const targetSlotId = undash(targetSlot.id);
+      const lineTDs = tdsByLine.get(key) || [];
+      if (lineTDs.some(e => e.targetSlotId === targetSlotId)) continue; // already correct
+
+      // Archive any stale TD(s) for this line before creating the correct one.
+      for (const stale of lineTDs) {
+        await fetch(`https://api.notion.com/v1/pages/${stale.td.id}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        }).catch(() => {});
+      }
+
+      const props = {
+        Title: { title: [{ type: "text", text: { content: `Next: ${label || 'Untitled'} (${grouping || type || 'sequence'})`.slice(0, 200) } }] },
+        "Strategy Slot": { relation: [{ id: dash(targetSlotId) }] },
+        "Due Date": { date: { start: dueDate } },
+        priority: { multi_select: [{ name: "daily content" }] },
+      };
+      if (productRel[0]) props["Product"] = { relation: [{ id: productRel[0].id }] };
+      if (campaignRel[0]) props["campaign"] = { relation: [{ id: campaignRel[0].id }] };
+
+      await fetch("https://api.notion.com/v1/pages", {
+        method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ parent: { database_id: MAIN_TD_DB }, properties: props }),
+      }).catch(() => {});
+    } catch (e) { /* one bad line never blocks the rest */ }
+  }
+}
+
 // Cross-references a Saved Post's transcript against the operator's actual
 // Methods/Strategy/Research across every campaign — modeled on
 // generateGrowthStrategy's "recommendation, never auto-write" contract
@@ -24132,6 +24285,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
     ctx.waitUntil(runAutoTradeScan(env).catch(e => console.error('runAutoTradeScan failed:', e.message)));
     ctx.waitUntil(runKnowledgeGraphAnalysis(env).catch(e => console.error('runKnowledgeGraphAnalysis failed:', e.message)));
     ctx.waitUntil(runListingRepostReminders(env).catch(e => console.error('runListingRepostReminders failed:', e.message)));
+    ctx.waitUntil(runStrategySequenceReminders(env).catch(e => console.error('runStrategySequenceReminders failed:', e.message)));
   },
 };
 
