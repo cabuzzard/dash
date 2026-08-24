@@ -1426,6 +1426,33 @@ const researchGuidelinesBlock = g => {
   return `OPERATOR RESEARCH GUIDELINES (standing routing recommendations from the user — apply them when choosing sources, angles, framing, and routing; where they conflict with the default approach below, the guidelines win):\n${t.slice(0, 1500)}\n\n`;
 };
 
+// Best-effort real-time topic research via xAI's Grok API (grok-4.6,
+// api.x.ai — OpenAI-compatible chat completions), used to ground X/Twitter
+// title generation in what's ACTUALLY trending right now, which Claude has
+// no live access to. Not MCP — the worker has no MCP client, this is a
+// plain fetch() to xAI exactly like the existing Anthropic calls. Returns
+// "" (never throws) when XAI_API_KEY isn't set or the call fails, so
+// callers can splice the result straight into a prompt unconditionally.
+async function callGrokTrendingTopics(env, { niche, customer, platformName }) {
+  if (!env.XAI_API_KEY) return "";
+  try {
+    const prompt = `Search X/Twitter and the news right now for what's actually trending that would matter to this audience:
+NICHE: ${niche || "(not specified)"}
+AUDIENCE: ${customer || "(not specified)"}
+
+List 5-8 real, CURRENT trending topics, news stories, or conversations (as of right now) that this audience would care about. For each: the topic itself, one line on why it's live right now, and a one-line content angle a creator in this niche could take on it. Skip anything generic/evergreen — only genuinely current material. Plain text, no JSON, no preamble.`;
+    const resp = await fetch("https://api.x.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${env.XAI_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: "grok-4.6", messages: [{ role: "user", content: prompt }], max_tokens: 900 }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) return "";
+    const text = (data.choices?.[0]?.message?.content || "").trim();
+    return text ? `CURRENT TRENDING TOPICS (via Grok real-time search on ${platformName || "X"} — ground titles in these where they genuinely fit the niche, never force a fit):\n${text.slice(0, 3000)}\n\n` : "";
+  } catch (e) { return ""; }
+}
+
 async function parseMethodPhases(hdr, methodId) {
   const resp = await fetch(`https://api.notion.com/v1/blocks/${methodId}/children?page_size=100`, { headers: hdr }).then(r => r.json());
   const blocks = resp.results || [];
@@ -7402,9 +7429,18 @@ Return ONLY a JSON array — no other text, no markdown fences:
           `${p.name}\n` + p.groupings.map(g => `  ${g.name}: ${g.notes.join("; ")}`).join("\n")
         ).join("\n\n");
 
+        // X-specific real-time grounding — Claude has no live X/news access,
+        // Grok does. Best-effort: "" (no-op) when XAI_API_KEY isn't set.
+        const isXPlatform = /\bx\b|twitter/i.test(childMethodName || "");
+        const nicheText = (stratProps["Niche"]?.rich_text || []).map(t => t.plain_text).join("");
+        const customerText = (stratProps["Customer"]?.rich_text || []).map(t => t.plain_text).join("");
+        const grokBlock = isXPlatform
+          ? await callGrokTrendingTopics(env, { niche: nicheText, customer: customerText, platformName: childMethodName })
+          : "";
+
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist planning growth content for one platform. Organize your plan by POST TYPE (the distinct content formats this platform actually supports — e.g. Carousel, Reel, Picture Post for Instagram; just "Email" for an email list; "Video" for YouTube).
 
-${arcBlock ? `THIS PLATFORM'S RESEARCHED GROWTH ARCS (reusable structural patterns for ${childMethodName} — use these as the actual postType/sequence structure, don't invent a different structure from scratch):\n${arcBlock}\n\n` : ''}${parentMethodName ? `DESTINATION THIS TRAFFIC SERVES: ${parentMethodName}\n\n` : ''}PRODUCT STRATEGY (the substance — what to actually say, ground every title in this):
+${grokBlock}${arcBlock ? `THIS PLATFORM'S RESEARCHED GROWTH ARCS (reusable structural patterns for ${childMethodName} — use these as the actual postType/sequence structure, don't invent a different structure from scratch):\n${arcBlock}\n\n` : ''}${parentMethodName ? `DESTINATION THIS TRAFFIC SERVES: ${parentMethodName}\n\n` : ''}PRODUCT STRATEGY (the substance — what to actually say, ground every title in this):
 ${strategyBlock || "(no strategy fields generated yet)"}
 
 PLATFORM/METHOD: ${childMethodName}
@@ -7415,7 +7451,7 @@ KEYWORDS: ${productKeywords || "(none on file)"}
 INSTRUCTIONS:
 - Group titles by postType, following the researched growth arcs above where provided. For each postType with more than one title, they form a ROLLOUT SEQUENCE — assign sequenceOrder 1, 2, 3... reflecting the order they'd actually post in (each building on or varying the last per the arc's structure, not repetitive).
 - 2-4 titles per postType. 2-4 postTypes total (only ones that genuinely fit this platform).
-- Titles are deliverable names (things to produce), specific to this product's strategy above — not generic content ideas.
+- Titles are deliverable names (things to produce), specific to this product's strategy above — not generic content ideas.${grokBlock ? '\n- Where a current trending topic above genuinely fits the strategy and niche, use it to ground one or more titles (real specificity beats generic evergreen framing) — but never force a trending topic in if it doesn\'t actually fit.' : ''}
 
 Return ONLY a JSON array — no other text, no markdown fences:
 { "title": "...", "description": "1-2 sentences, specific to this product", "postType": "e.g. Carousel", "sequenceOrder": 1 }`;
