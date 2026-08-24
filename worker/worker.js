@@ -7387,119 +7387,6 @@ Return ONLY a JSON array — no other text, no markdown fences:
         return json({ created });
       }
 
-      // ── generateTrafficMethodTitles ──
-      // For a GROWTH/DISTRIBUTION method (Instagram, X, Pinterest, Email —
-      // a platform an audience is grown ON, not a page landed on), generates
-      // a comprehensive, multi-post-type title set in one pass. Grounded in
-      // the PRODUCT-level Strategy (11 fields — what to say) AND the
-      // method's own researched [Arc] phases (parseMethodPhases — the
-      // reusable, product-agnostic structural patterns that drive growth on
-      // THIS platform, from researchAndWriteMethodology). Claude organizes
-      // titles by POST TYPE (Carousel/Reel/Picture Post, or whatever
-      // genuinely fits — informed by the method's own arc research, not
-      // invented from scratch each time), with 2-4 titles per type carrying
-      // an explicit sequenceOrder so a rollout (Reel 1, Reel 2, Reel 3...)
-      // is a real, orderable sequence. Works standalone OR nested under a
-      // destination (parentMethodId/parentMethodName are optional, purely
-      // for the Grouping lineage label) — a growth method doesn't require a
-      // parent destination to be worth generating for.
-      if (body.action === "generateTrafficMethodTitles") {
-        const { productId, campaignId, parentMethodName, parentMethodId, childMethodId, childMethodName, childMethodNotes } = body;
-        if (!productId || !childMethodId || !childMethodName) return json({ error: "productId, childMethodId, childMethodName required" }, 400);
-        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-
-        const [productPage, stratRecord, arcPhases] = await Promise.all([
-          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
-          findBestProductResearchRecord(hdr, dash(productId)).catch(() => null),
-          parseMethodPhases(hdr, dash(childMethodId)),
-        ]);
-        const pp = productPage.properties || {};
-        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
-        const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
-
-        const stratProps = stratRecord?.properties || {};
-        const strategyBlock = STRATEGY_FIELDS.map(f => {
-          const v = (stratProps[f]?.rich_text || []).map(t => t.plain_text).join("");
-          return v ? `${f}: ${v}` : '';
-        }).filter(Boolean).join("\n");
-
-        const arcBlock = arcPhases.map(p =>
-          `${p.name}\n` + p.groupings.map(g => `  ${g.name}: ${g.notes.join("; ")}`).join("\n")
-        ).join("\n\n");
-
-        // X-specific real-time grounding — Claude has no live X/news access,
-        // Grok does. Best-effort: "" (no-op) when XAI_API_KEY isn't set.
-        const isXPlatform = /\bx\b|twitter/i.test(childMethodName || "");
-        const nicheText = (stratProps["Niche"]?.rich_text || []).map(t => t.plain_text).join("");
-        const customerText = (stratProps["Customer"]?.rich_text || []).map(t => t.plain_text).join("");
-        const grokBlock = isXPlatform
-          ? await callGrokTrendingTopics(env, { niche: nicheText, customer: customerText, platformName: childMethodName })
-          : "";
-
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist planning growth content for one platform. Organize your plan by POST TYPE (the distinct content formats this platform actually supports — e.g. Carousel, Reel, Picture Post for Instagram; just "Email" for an email list; "Video" for YouTube).
-
-${grokBlock}${arcBlock ? `THIS PLATFORM'S RESEARCHED GROWTH ARCS (reusable structural patterns for ${childMethodName} — use these as the actual postType/sequence structure, don't invent a different structure from scratch):\n${arcBlock}\n\n` : ''}${parentMethodName ? `DESTINATION THIS TRAFFIC SERVES: ${parentMethodName}\n\n` : ''}PRODUCT STRATEGY (the substance — what to actually say, ground every title in this):
-${strategyBlock || "(no strategy fields generated yet)"}
-
-PLATFORM/METHOD: ${childMethodName}
-METHOD NOTES: ${childMethodNotes || "(none)"}
-PRODUCT: ${productName}
-KEYWORDS: ${productKeywords || "(none on file)"}
-
-INSTRUCTIONS:
-- Group titles by postType, following the researched growth arcs above where provided. For each postType with more than one title, they form a ROLLOUT SEQUENCE — assign sequenceOrder 1, 2, 3... reflecting the order they'd actually post in (each building on or varying the last per the arc's structure, not repetitive).
-- 2-4 titles per postType. 2-4 postTypes total (only ones that genuinely fit this platform).
-- Titles are deliverable names (things to produce), specific to this product's strategy above — not generic content ideas.${grokBlock ? '\n- Where a current trending topic above genuinely fits the strategy and niche, use it to ground one or more titles (real specificity beats generic evergreen framing) — but never force a trending topic in if it doesn\'t actually fit.' : ''}
-
-Return ONLY a JSON array — no other text, no markdown fences:
-{ "title": "...", "description": "1-2 sentences, specific to this product", "postType": "e.g. Carousel", "sequenceOrder": 1 }`;
-
-        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2500, messages: [{ role: "user", content: prompt }] }),
-        });
-        const aiData = await aiResp.json();
-        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
-
-        let items;
-        try {
-          const raw = aiData.content?.[0]?.text || "";
-          const s = raw.indexOf('['), e = raw.lastIndexOf(']');
-          if (s === -1 || e === -1 || e < s) throw new Error("No JSON array found");
-          items = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
-          if (!Array.isArray(items)) throw new Error("Not an array");
-        } catch(e) {
-          return json({ error: "Failed to parse titles JSON: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
-        }
-
-        const rtBlock = text => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
-        let created = 0;
-        const byPostType = {};
-        for (const it of items) {
-          const grouping = [parentMethodName, childMethodName, it.postType].filter(Boolean).join(' > ');
-          const props = {
-            "Title":          { title: rtBlock(String(it.title || 'Untitled').slice(0, 200)) },
-            "Status":         { select: { name: "Planning" } },
-            "Grouping":       { rich_text: rtBlock(grouping) },
-            "Core Idea":      { rich_text: rtBlock(String(it.description || '').slice(0, 1990)) },
-            "method":         { relation: [{ id: dash(childMethodId) }] },
-            "product":        { relation: [{ id: dash(productId) }] },
-          };
-          if (campaignId) props["Campaign"] = { relation: [{ id: dash(campaignId) }] };
-          if (Number.isFinite(it.sequenceOrder)) props["Sequence Order"] = { number: it.sequenceOrder };
-          const resp = await fetch("https://api.notion.com/v1/pages", {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props }),
-          });
-          const page = await resp.json();
-          if (page.id) { created++; byPostType[it.postType || 'Other'] = (byPostType[it.postType || 'Other'] || 0) + 1; }
-        }
-        return json({ created, postTypes: byPostType });
-      }
-
       // ── addProductMethod / removeProductMethod ──
       // Manual attach/detach of an existing Method to a product — kept
       // available independent of the AI matching pipeline above, so a
@@ -8509,12 +8396,16 @@ ${methodCatalogBlock}
 
 If a grouping's platform genuinely has no suitable existing method above, you may propose a brand-new one instead — it will be created and attached automatically. Only do this when reusing an existing method would be a real mismatch (wrong platform/format), not because a new one is marginally more specific.
 
+For each grouping, also recommend a "type" and a "recurrence" — two properties DISTINCT from method/platform:
+- "type": the STRATEGIC content category this grouping represents (e.g. Teach, Take, Story, Relate, Thread, Reply, Behind-the-Scenes, Q&A, Exclusive, Announcement) — describes WHAT KIND of content this is, carries the strategic reasoning, and can apply across different platforms/methods. Never just restate the platform or method name here.
+- "recurrence": how often this type of content should actually happen on an ongoing basis (e.g. "Daily", "Weekly", "2x/week", "One-time") — a realistic cadence, not a one-off guess.
+
 Return ONLY this JSON object, no other text, no markdown fences:
 {
   "summary": "2-4 sentences: the overall growth angle and why it fits this positioning",
   "recommendedPlatforms": ["...", "..."],
   "groupings": [
-    { "name": "...", "rationale": "...", "titles": ["...", "...", "..."], "recommendedMethod": "...", "recommendedPlatform": "...", "newMethod": false, "newMethodCategory": "Content|Outreach|Research|SEO|Ecommerce|Video" }
+    { "name": "...", "rationale": "...", "titles": ["...", "...", "..."], "recommendedMethod": "...", "recommendedPlatform": "...", "type": "...", "recurrence": "...", "newMethod": false, "newMethodCategory": "Content|Outreach|Research|SEO|Ecommerce|Video" }
   ]
 }
 "recommendedMethod" is either an exact name from the catalog above, or (only when "newMethod" is true) the name of the new method to create. "newMethodCategory" is only needed when "newMethod" is true.`;
@@ -8654,6 +8545,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
                   "Angle": { rich_text: [{ type: "text", text: { content: String(angle || '').slice(0, 1990) } }] },
                   "Method Name": { rich_text: [{ type: "text", text: { content: String(g.recommendedMethod || '').slice(0, 1990) } }] },
                   "Platform": { rich_text: [{ type: "text", text: { content: String(g.recommendedPlatform || platformOverride || '').slice(0, 1990) } }] },
+                  "Type": { rich_text: [{ type: "text", text: { content: String(g.type || '').slice(0, 1990) } }] },
+                  "Recurrence": { rich_text: [{ type: "text", text: { content: String(g.recurrence || '').slice(0, 1990) } }] },
                   "Status": { select: { name: "Open" } },
                 },
               }),
@@ -8909,7 +8802,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
-        let slotName = '', grouping = '', angle = '', platform = '', growthStrategyId = null, productId = productIdParam ? dash(productIdParam) : null, campaignId = campaignIdParam ? dash(campaignIdParam) : null, existingTitleIds = [];
+        let slotName = '', grouping = '', angle = '', platform = '', slotType = '', slotRecurrence = '', growthStrategyId = null, productId = productIdParam ? dash(productIdParam) : null, campaignId = campaignIdParam ? dash(campaignIdParam) : null, existingTitleIds = [];
         if (slotId) {
           const slotPage = await fetch(`https://api.notion.com/v1/pages/${dash(slotId)}`, { headers: hdr }).then(r => r.json());
           if (!slotPage.properties) return json({ error: slotPage.message || "Strategy Slot not found" }, 404);
@@ -8918,6 +8811,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
           grouping = (sp.Grouping?.rich_text || []).map(t => t.plain_text).join("");
           angle = (sp.Angle?.rich_text || []).map(t => t.plain_text).join("");
           platform = (sp.Platform?.rich_text || []).map(t => t.plain_text).join("");
+          slotType = (sp.Type?.rich_text || []).map(t => t.plain_text).join("");
+          slotRecurrence = (sp.Recurrence?.rich_text || []).map(t => t.plain_text).join("");
           growthStrategyId = (sp["Growth Strategy"]?.relation || [])[0]?.id || null; // already dashed (from Notion) — the slot's own strategy always wins over a client-passed one
           productId = (sp.Product?.relation || [])[0]?.id || productId;             // already dashed — slot's own relation wins if both given
           campaignId = (sp.Campaign?.relation || [])[0]?.id || campaignId;
@@ -8934,6 +8829,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         ]);
 
         let productSection = "No product linked to this slot.";
+        let nicheText = '', customerText = '';
         if (productId && productPage?.properties) {
           const stratRecord = await findBestProductResearchRecord(hdr, productId).catch(() => null);
           const pp = productPage.properties;
@@ -8943,18 +8839,25 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (stratRecord) {
             const spx = stratRecord.properties || {};
             const srt = key => (spx[key]?.rich_text || []).map(t => t.plain_text).join("");
+            nicheText = srt("Niche"); customerText = srt("Customer");
             const lines = ["Customer", "Pain Points", "Solution", "Benefits", "Emotions", "Niche", "Unique Opportunity", "Offer Structure", "Transformation", "Proof Points", "Objections"]
               .map(f => srt(f) && `${f}: ${srt(f)}`).filter(Boolean);
             if (lines.length) productSection += `\n\nPRODUCT STRATEGY (worked-out positioning doc):\n${lines.join("\n")}`;
           }
         }
 
+        // Real-time grounding for X slots — see callGrokTrendingTopics.
+        // Best-effort, "" when XAI_API_KEY isn't set or the platform isn't X.
+        const grokBlock = /\bx\b|twitter/i.test(platform || '')
+          ? await callGrokTrendingTopics(env, { niche: nicheText, customer: customerText, platformName: platform })
+          : "";
+
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist. Write ONE specific, concrete deliverable title${slotId ? ' for a specific planned content angle' : ''} — a thing to produce, not a content-post headline. Do not write any script, slides, or body content — only the title. Its actual content is written separately, method-agnostically, right after this.
 
-${slotId ? `SLOT: ${slotName} (grouping: "${grouping}")\nPLANNED ANGLE: ${angle}\n` : ''}${platform ? `PLATFORM: ${platform}\n` : ''}
+${grokBlock}${slotId ? `SLOT: ${slotName} (grouping: "${grouping}")\nPLANNED ANGLE: ${angle}\n` : ''}${platform ? `PLATFORM: ${platform}\n` : ''}${slotType ? `CONTENT TYPE: ${slotType} (the strategic category this title must clearly execute)\n` : ''}${slotRecurrence ? `RECURRENCE: ${slotRecurrence} — this is a recurring slot type, so this specific instance should feel fresh, not interchangeable with a prior fill of the same slot\n` : ''}
 ${productSection}
 ${growthStrategyBody ? `\nGROWTH STRATEGY (full context this slot was planned under — stay consistent with its rationale/platform):\n${growthStrategyBody}\n` : ''}${(guidance || '').trim() ? `\nOPERATOR GUIDANCE (overrides/refines how the strategy above should be applied to this specific title — follow this over the strategy's general direction wherever they conflict):\n${guidance.trim()}\n` : `\n(No operator guidance given — write strictly from ${slotId ? 'the strategy and angle above' : 'the product context above'}.)\n`}
-${slotId ? 'Refine/sharpen the planned angle above into a real title — don\'t just restate it verbatim.' : 'Ground the title in the product context and any guidance above.'}
+${slotId ? 'Refine/sharpen the planned angle above into a real title — don\'t just restate it verbatim.' : 'Ground the title in the product context and any guidance above.'}${grokBlock ? ' Where a current trending topic above genuinely fits, use it — but never force one in.' : ''}
 
 Return ONLY this JSON object, no other text, no markdown fences:
 { "title": "..." }`;
@@ -8991,6 +8894,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           Status: { select: { name: "Planning" } },
         };
         if (grouping) props["Grouping"] = { rich_text: [{ type: "text", text: { content: grouping.slice(0, 1990) } }] };
+        if (slotType) props["Type"] = { rich_text: [{ type: "text", text: { content: slotType.slice(0, 1990) } }] };
         if (campaignId) props["Campaign"] = { relation: [{ id: campaignId }] };
         if (productId) props["product"] = { relation: [{ id: productId }] };
         if (growthStrategyId) props["Growth Strategy"] = { relation: [{ id: growthStrategyId }] };

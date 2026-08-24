@@ -172,9 +172,15 @@ data a prompt can't provide:
 There is no more Destination-vs-flat/traffic split. That used to route to
 `generateTitlesFromProductStrategy` (one deliverable per phase) or
 `generateTrafficMethodTitles` (post-type/sequence) based on the method's
-"Needs Traffic Plan" checkbox — both still exist server-side but nothing
-calls them. The method's own framework text already drives phase/grouping
-shape generically, so a different code path per type wasn't needed.
+"Needs Traffic Plan" checkbox — `generateTitlesFromProductStrategy` still
+exists server-side but nothing calls it; `generateTrafficMethodTitles` was
+removed outright (2026-08-24) once it was confirmed to have no caller and
+its real capability — Arc-grounded, platform-specific title generation —
+was rebuilt properly inside the live Growth Strategy → Strategy Slot →
+`generateTitleFromSlot` path instead (see "Strategy Slots carry a Type and
+Recurrence" below). The method's own framework text already drives
+phase/grouping shape generically, so a different code path per type wasn't
+needed.
 
 **What `generateMethodTitles` merges in, for every method:**
 - **Campaign Research** (Keywords, Statement, Unique Opportunity, Key
@@ -278,11 +284,13 @@ never auto-patch after first creation" discipline as
 `resolveCampaignDesignDefaults` — an existing Strategy record, even a
 partially-filled one, is left completely untouched.
 
-**Title creation is not one action.** Ten places in `worker.js` create a
-Content Strategy page; three have no active UI caller
+**Title creation is not one action.** Content Strategy pages get created
+from several places in `worker.js`; two have no active UI caller
 (`generateTitlesFromProductStrategy`, `generateTitlesFromStrategy` — the
-legacy "Method Brief" path — and `generateTrafficMethodTitles`) and are
-removal candidates, not wired to pillar-writing. The seven live ones —
+legacy "Method Brief" path) and are removal candidates, not wired to
+pillar-writing (`generateTrafficMethodTitles` was a third such candidate —
+removed outright, see above, once its capability was rebuilt into the live
+path below). The live ones —
 `createDevTitle` (manual Add Idea), `generateTitleFromSlot` (the Strategy
 Slots step), `saveMethodTitles` (persistence for the main
 `generateMethodTitles` pipeline), `generateIdeaTitles` (Add Idea's
