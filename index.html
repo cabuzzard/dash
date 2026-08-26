@@ -2562,6 +2562,23 @@
   </div>
 </div>
 
+<!-- Build Strategy From Asset Modal (Published Assets, TD tab) -->
+<div id="buildStrategyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)closeBuildStrategyModal()">
+  <div class="modal" style="max-width:460px;transform:none;border-radius:var(--radius);margin:0;width:100%;">
+    <div class="modal-title">Build Strategy</div>
+    <div style="font-size:11px;color:var(--text3);margin:-8px 0 14px;" id="buildStrategyAssetName"></div>
+    <div class="modal-field">
+      <label class="modal-label">Describe the strategy for this asset (cadence, sequence, or upkeep)</label>
+      <textarea class="modal-input" id="buildStrategyGuidance" rows="5" style="font-size:13px;resize:vertical;" placeholder="e.g. I want to post 2 of these a week, alternating a teach angle and a customer story. Or: this is step 1 of a launch series, next should dig into pricing objections, then a case study."></textarea>
+    </div>
+    <div id="buildStrategyResult" style="display:none;margin:0 0 12px;padding:10px;border:1px solid rgba(74,222,128,.3);border-radius:6px;background:rgba(74,222,128,.06);font-size:12px;color:#4ade80;"></div>
+    <div class="modal-actions" style="margin-bottom:0;">
+      <button class="btn btn-secondary" onclick="closeBuildStrategyModal()">Cancel</button>
+      <button class="btn btn-primary" id="buildStrategyBtn" onclick="submitBuildStrategy()">Build Strategy</button>
+    </div>
+  </div>
+</div>
+
 <!-- Duplicate Asset Modal -->
 <div class="modal-overlay" id="dupAssetModal" style="display:none;" onclick="if(event.target===this)closeDupAssetModal()">
   <div class="modal" style="width:440px;max-width:95vw;">
@@ -12780,6 +12797,43 @@ async function loadPublishedAssets() {
   }
 }
 
+// ── Published Assets — Build Strategy modal ───────────────────────────
+let _buildStrategyAssetId = null;
+
+function openBuildStrategyModal(assetId, assetTitle) {
+  _buildStrategyAssetId = assetId;
+  document.getElementById('buildStrategyAssetName').textContent = assetTitle || '';
+  document.getElementById('buildStrategyGuidance').value = '';
+  document.getElementById('buildStrategyResult').style.display = 'none';
+  const btn = document.getElementById('buildStrategyBtn');
+  btn.disabled = false; btn.textContent = 'Build Strategy';
+  document.getElementById('buildStrategyModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('buildStrategyGuidance').focus(), 60);
+}
+
+function closeBuildStrategyModal() {
+  document.getElementById('buildStrategyModal').style.display = 'none';
+  _buildStrategyAssetId = null;
+}
+
+async function submitBuildStrategy() {
+  const guidance = document.getElementById('buildStrategyGuidance').value.trim();
+  if (!guidance) { showToast('Describe the strategy first', 'error'); return; }
+  const btn = document.getElementById('buildStrategyBtn');
+  btn.disabled = true; btn.textContent = 'Building…';
+  try {
+    const r = await call('buildStrategyFromAsset', { assetId: _buildStrategyAssetId, guidance });
+    const resultDiv = document.getElementById('buildStrategyResult');
+    resultDiv.style.display = 'block';
+    resultDiv.textContent = (r.cadenceKind === 'sequential' ? 'Sequential' : 'Recurring' + (r.recurrence ? ' (' + r.recurrence + ')' : '')) + ' — ' + (r.grouping || r.type) + (r.nextDue ? '. Next due ' + r.nextDue + '.' : '.');
+    showToast('Strategy built ✓', 'success');
+    setTimeout(closeBuildStrategyModal, 2200);
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Build Strategy';
+  }
+}
+
 function sortPublishedBy(col) {
   if (_pubSort.col === col) {
     _pubSort.dir *= -1;
@@ -12845,8 +12899,9 @@ function renderPublishedTable() {
       '<div style="flex:2;min-width:0;padding:6px 8px;overflow:hidden;">' +
         '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.title) + '</span>' +
       '</div>' +
-      '<div style="width:28px;flex-shrink:0;padding:6px 4px;">' +
-        '<a href="https://www.notion.so/' + a.id + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' +
+      '<div style="width:120px;flex-shrink:0;padding:6px 4px;display:flex;align-items:center;gap:6px;justify-content:flex-end;">' +
+        '<button onclick="openBuildStrategyModal(\'' + a.id + '\',\'' + (a.title || '').replace(/'/g,"\\'").replace(/"/g,'&quot;') + '\')" title="Build a repeatable strategy from this published asset — describe a cadence or a fixed sequence of next steps, and it gets attached to this asset\'s title so the nightly queue knows what\'s next." style="font-size:10px;padding:1px 7px;border:1px solid #f6ad55;background:transparent;color:#f6ad55;border-radius:9px;cursor:pointer;flex-shrink:0;white-space:nowrap;">🎯 Strategy</button>' +
+        '<a href="https://www.notion.so/' + a.id + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;flex-shrink:0;">↗</a>' +
       '</div>' +
     '</div>';
   }).join('');
