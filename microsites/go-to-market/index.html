@@ -2549,13 +2549,162 @@ async function loadTitles() {
         el.appendChild(sHdr); el.appendChild(sBody);
       });
     }
-    renderTitlesNested(dev, devEl, 'dev');
+    // NEXT lives above the regular Stack -> Product -> Parent Strategy ->
+    // Strategy tree, in its own sibling container, so renderTitlesNested's
+    // own innerHTML reset can't wipe it out (and vice versa) — the two load
+    // independently, NEXT via its own round-trip (getNextSlots), so a slow
+    // NEXT fetch never blocks the rest of Development from rendering.
+    devEl.innerHTML = '<div id="devNextWrap"></div><div id="devTreeWrap"></div>';
+    renderTitlesNested(dev, document.getElementById('devTreeWrap'), 'dev');
+    loadNextSlots(document.getElementById('devNextWrap'));
     renderPublishedAssets(pub, pubEl);
   } catch(e) {
     if (myToken !== LOAD_TITLES_TOKEN) return; // superseded — don't show a stale error over a newer render
     devEl.innerHTML = `<div class="empty" style="color:#ff4444">${e.message}</div>`;
     pubEl.innerHTML = '<div class="empty">—</div>';
   }
+}
+
+// ── NEXT section — live "what's next" roadmap ───────────────────────────
+// Read-only counterpart to the nightly runStrategySequenceReminders cron:
+// for every content line with at least one Published title, shows the next
+// Slot in its Sequential/Recurring rollout, grouped the same way as the
+// rest of Development (Stack -> Product -> Parent Strategy -> Strategy),
+// but every line is shown regardless of whether it's due today — this
+// reads as a roadmap to browse, not just today's action queue. Default
+// OPEN (unlike every other collapsible section here) since surfacing it
+// immediately, above everything else, is the whole point of building it.
+const NEXT_NO_STACK_KEY = '__no_stack__';
+async function loadNextSlots(container) {
+  container.innerHTML = '<div class="empty">Loading…</div>';
+  let data;
+  try { data = await w('getNextSlots', { campaignId: CAMPAIGN_ID }); }
+  catch (e) { container.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`; return; }
+  const next = data.next || [];
+  const stateKey = 'next|section';
+  const isOpen = titleGroupsOpen[stateKey] !== false; // undefined (never toggled) reads as open
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-bottom:14px;border:1px solid #3a3a1a;border-radius:6px;overflow:hidden;';
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px;background:rgba(232,255,71,.12);cursor:pointer;user-select:none;';
+  const arrow = document.createElement('span'); arrow.textContent = isOpen ? '▾' : '▶'; arrow.style.cssText = 'font-size:9px;color:#e8ff47;flex-shrink:0;';
+  const label = document.createElement('span'); label.style.cssText = 'flex:1;font-size:13px;font-weight:700;color:#e8ff47;letter-spacing:.05em;'; label.textContent = 'NEXT';
+  const count = document.createElement('span'); count.style.cssText = 'font-size:10px;color:#fff;'; count.textContent = next.length;
+  hdr.appendChild(arrow); hdr.appendChild(label); hdr.appendChild(count);
+  const body = document.createElement('div');
+  body.style.display = isOpen ? 'block' : 'none';
+  hdr.onclick = () => { const o = body.style.display !== 'none'; body.style.display = o ? 'none' : 'block'; arrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+  if (!next.length) {
+    body.innerHTML = '<div class="empty" style="padding:8px 10px;">No active content lines yet — NEXT fills in once a Slot-sourced title is Published.</div>';
+  } else {
+    renderNextStackLevel(next, body);
+  }
+  wrap.appendChild(hdr); wrap.appendChild(body);
+  container.innerHTML = '';
+  container.appendChild(wrap);
+}
+function renderNextRow(n) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 10px 5px 40px;border-bottom:1px solid rgba(255,255,255,.04);font-size:11px;';
+  const dueBadge = n.isDue
+    ? `<span style="font-size:9px;padding:1px 6px;border-radius:8px;background:rgba(232,255,71,.2);color:#e8ff47;flex-shrink:0;">due ${esc(n.dueDate)}</span>`
+    : `<span style="font-size:9px;padding:1px 6px;border-radius:8px;border:1px solid #444;color:#888;flex-shrink:0;">due ${esc(n.dueDate)}</span>`;
+  row.innerHTML = `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(n.label)}">${esc(n.label)}</span>`
+    + `<span style="font-size:10px;color:#a0aec0;flex-shrink:0;">${esc(n.methodName || n.platform || '')}</span>`
+    + dueBadge
+    + `<button onclick="openCreateTitleFromSlotModal({slotId:'${n.slotId}',strategyId:'${n.strategyId || ''}'})" title="Generate this next title now" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">+ title</button>`;
+  return row;
+}
+function renderNextStrategyLevel(arr, el) {
+  const hasStrategy = arr.some(n => n.strategyId && n.strategyId !== '__none__');
+  if (!hasStrategy) { arr.forEach(n => el.appendChild(renderNextRow(n))); return; }
+  const order = [], by = {};
+  arr.forEach(n => { const k = (n.strategyId || '__none__') + '||' + (n.strategyName || 'No Strategy'); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(n); });
+  if (order.length === 1) { arr.forEach(n => el.appendChild(renderNextRow(n))); return; }
+  order.forEach(k => {
+    const items = by[k], name = k.split('||')[1];
+    const stateKey = 'next|strat|' + k;
+    const isOpen = !!titleGroupsOpen[stateKey];
+    const h = document.createElement('div');
+    h.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 30px;background:rgba(255,255,255,.045);border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;user-select:none;';
+    const a = document.createElement('span'); a.textContent = isOpen ? '▾' : '▶'; a.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
+    const l = document.createElement('span'); l.style.cssText = 'flex:1;font-size:11px;color:#fff;'; l.textContent = name;
+    const c = document.createElement('span'); c.style.cssText = 'font-size:10px;color:#fff;'; c.textContent = items.length;
+    h.appendChild(a); h.appendChild(l); h.appendChild(c);
+    const b = document.createElement('div'); b.style.display = isOpen ? 'block' : 'none';
+    items.forEach(n => b.appendChild(renderNextRow(n)));
+    h.onclick = () => { const o = b.style.display !== 'none'; b.style.display = o ? 'none' : 'block'; a.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+    el.appendChild(h); el.appendChild(b);
+  });
+}
+function renderNextParentLevel(arr, el) {
+  const hasParent = arr.some(n => n.parentStrategyId && n.parentStrategyId !== '__none__');
+  if (!hasParent) { renderNextStrategyLevel(arr, el); return; }
+  const order = [], by = {};
+  arr.forEach(n => { const k = (n.parentStrategyId || '__none__') + '||' + (n.parentStrategyName || 'No Parent Strategy'); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(n); });
+  order.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
+  if (order.length === 1) { renderNextStrategyLevel(arr, el); return; }
+  order.forEach(k => {
+    const items = by[k], name = k.split('||')[1];
+    const stateKey = 'next|parentstrat|' + k;
+    const isOpen = !!titleGroupsOpen[stateKey];
+    const h = document.createElement('div');
+    h.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 25px;background:rgba(232,255,71,.06);border-bottom:1px solid rgba(232,255,71,.15);cursor:pointer;user-select:none;';
+    const a = document.createElement('span'); a.textContent = isOpen ? '▾' : '▶'; a.style.cssText = 'font-size:8px;color:#e8ff47;flex-shrink:0;';
+    const l = document.createElement('span'); l.style.cssText = 'flex:1;font-size:11px;color:#e8ff47;font-weight:600;'; l.textContent = name;
+    const c = document.createElement('span'); c.style.cssText = 'font-size:10px;color:#fff;'; c.textContent = items.length;
+    h.appendChild(a); h.appendChild(l); h.appendChild(c);
+    const b = document.createElement('div'); b.style.display = isOpen ? 'block' : 'none';
+    renderNextStrategyLevel(items, b);
+    h.onclick = () => { const o = b.style.display !== 'none'; b.style.display = o ? 'none' : 'block'; a.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+    el.appendChild(h); el.appendChild(b);
+  });
+}
+function renderNextProductLevel(arr, el) {
+  const hasProd = arr.some(n => n.productId && n.productId !== '__none__');
+  if (!hasProd) { renderNextParentLevel(arr, el); return; }
+  const order = [], by = {};
+  arr.forEach(n => { const k = (n.productId || '__none__') + '||' + (n.productName || 'No Product'); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(n); });
+  order.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
+  if (order.length === 1) { renderNextParentLevel(arr, el); return; }
+  order.forEach(k => {
+    const items = by[k], name = k.split('||')[1];
+    const stateKey = 'next|prod|' + k;
+    const isOpen = !!titleGroupsOpen[stateKey];
+    const h = document.createElement('div');
+    h.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px 6px 20px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);cursor:pointer;user-select:none;';
+    const a = document.createElement('span'); a.textContent = isOpen ? '▾' : '▶'; a.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
+    const l = document.createElement('span'); l.style.cssText = 'flex:1;font-size:12px;color:#fff;font-weight:600;'; l.textContent = name;
+    const c = document.createElement('span'); c.style.cssText = 'font-size:10px;color:#fff;'; c.textContent = items.length;
+    h.appendChild(a); h.appendChild(l); h.appendChild(c);
+    const b = document.createElement('div'); b.style.display = isOpen ? 'block' : 'none';
+    renderNextParentLevel(items, b);
+    h.onclick = () => { const o = b.style.display !== 'none'; b.style.display = o ? 'none' : 'block'; a.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+    el.appendChild(h); el.appendChild(b);
+  });
+}
+function renderNextStackLevel(arr, el) {
+  const hasStack = arr.some(n => n.productStack);
+  if (!hasStack) { renderNextProductLevel(arr, el); return; }
+  const order = [], by = {};
+  arr.forEach(n => { const k = n.productStack || NEXT_NO_STACK_KEY; if (!by[k]) { by[k] = []; order.push(k); } by[k].push(n); });
+  order.sort((a, b) => { if (a === NEXT_NO_STACK_KEY) return 1; if (b === NEXT_NO_STACK_KEY) return -1; return a.localeCompare(b); });
+  if (order.length === 1) { renderNextProductLevel(arr, el); return; }
+  order.forEach(k => {
+    const items = by[k], name = k === NEXT_NO_STACK_KEY ? 'No Stack' : k;
+    const stateKey = 'next|stack|' + k;
+    const isOpen = !!titleGroupsOpen[stateKey];
+    const h = document.createElement('div');
+    h.style.cssText = 'display:flex;align-items:center;gap:6px;padding:7px 10px;background:rgba(167,139,250,.1);border-bottom:1px solid rgba(167,139,250,.2);cursor:pointer;user-select:none;';
+    const a = document.createElement('span'); a.textContent = isOpen ? '▾' : '▶'; a.style.cssText = 'font-size:8px;color:#a78bfa;flex-shrink:0;';
+    const l = document.createElement('span'); l.style.cssText = 'flex:1;font-size:12px;color:#a78bfa;font-weight:700;'; l.textContent = name;
+    const c = document.createElement('span'); c.style.cssText = 'font-size:10px;color:#fff;'; c.textContent = items.length;
+    h.appendChild(a); h.appendChild(l); h.appendChild(c);
+    const b = document.createElement('div'); b.style.display = isOpen ? 'block' : 'none';
+    renderNextProductLevel(items, b);
+    h.onclick = () => { const o = b.style.display !== 'none'; b.style.display = o ? 'none' : 'block'; a.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+    el.appendChild(h); el.appendChild(b);
+  });
 }
 
 async function deleteTitleRow(titleId, titleText, btn) {

@@ -9020,6 +9020,143 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true, strategies: topLevel, unassignedPlanningTitles });
       }
 
+      // ── getNextSlots ──
+      // Live, read-only counterpart to runStrategySequenceReminders' nightly
+      // Main TD queue, scoped to one campaign for the Development tab's
+      // "NEXT" section: for every content line (Growth Strategy + Grouping)
+      // with at least one Published title tracing back to a Strategy Slot,
+      // works out the next Slot in that line's rollout — same Sequential
+      // (next Open sibling at Sequence+1) / Recurring (same Slot again once
+      // its interval elapses) logic as the cron — but every line is
+      // returned regardless of whether it's due today, so this reads as a
+      // roadmap an operator can browse, not just today's action queue.
+      // Never writes anything (no Main TD side effect) — purely a view.
+      if (body.action === "getNextSlots") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const undash = raw => String(raw || "").replace(/-/g, "");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const [titles, allSlots] = await Promise.all([
+          notionQuery(CONTENT_STRATEGY_DB, {
+            filter: { and: [
+              { or: [{ property: "Status", select: { equals: "Publish" } }, { property: "Status", select: { equals: "Published" } }] },
+              { property: "Strategy Slot", relation: { is_not_empty: true } },
+              { property: "Campaign", relation: { contains: dash(campaignId) } },
+            ] },
+          }),
+          notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+        ]);
+        if (!titles.length || !allSlots.length) return json({ success: true, next: [] });
+
+        const slotById = new Map(allSlots.map(s => [undash(s.id), s]));
+        const slotLineKey = slot => {
+          const p = slot.properties;
+          const gsId = (p["Growth Strategy"]?.relation || [])[0]?.id || "none";
+          const grouping = (p.Grouping?.rich_text || []).map(x => x.plain_text).join("");
+          return `${undash(gsId)}::${grouping}`;
+        };
+
+        const lines = new Map();
+        for (const t of titles) {
+          const slotRel = (t.properties["Strategy Slot"]?.relation || [])[0];
+          const slot = slotRel && slotById.get(undash(slotRel.id));
+          if (!slot) continue;
+          const key = slotLineKey(slot);
+          if (!lines.has(key)) lines.set(key, []);
+          lines.get(key).push({ title: t, slot });
+        }
+
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const results = [];
+        for (const [key, entries] of lines) {
+          entries.sort((a, b) => new Date(b.title.last_edited_time) - new Date(a.title.last_edited_time));
+          const latest = entries[0];
+          const sp = latest.slot.properties;
+          const type = (sp.Type?.rich_text || []).map(x => x.plain_text).join("");
+          const recurrence = (sp.Recurrence?.rich_text || []).map(x => x.plain_text).join("");
+          const sequence = sp.Sequence?.number;
+          const grouping = (sp.Grouping?.rich_text || []).map(x => x.plain_text).join("");
+          const gsId = (sp["Growth Strategy"]?.relation || [])[0]?.id ? undash(sp["Growth Strategy"].relation[0].id) : null;
+          const productId = (sp.Product?.relation || [])[0]?.id ? undash(sp.Product.relation[0].id) : null;
+
+          let targetSlot = null, dueDate = todayStr, label = "";
+          if (Number.isFinite(sequence)) {
+            targetSlot = allSlots.find(s => slotLineKey(s) === key && s.properties.Sequence?.number === sequence + 1 && s.properties.Status?.select?.name === "Open") || null;
+            if (targetSlot) label = (targetSlot.properties.Angle?.rich_text || []).map(x => x.plain_text).join("") || type || grouping;
+          }
+          if (!targetSlot && recurrence) {
+            const due = new Date(latest.title.last_edited_time);
+            due.setUTCDate(due.getUTCDate() + parseRecurrenceDays(recurrence));
+            dueDate = due.toISOString().slice(0, 10);
+            targetSlot = latest.slot;
+            label = type || grouping;
+          }
+          if (!targetSlot) continue; // fixed sequence exhausted, no recurrence -- line complete
+
+          results.push({
+            slotId: undash(targetSlot.id),
+            label: label || 'Untitled',
+            grouping,
+            type,
+            recurrence,
+            platform: (targetSlot.properties.Platform?.rich_text || []).map(x => x.plain_text).join(""),
+            methodName: (targetSlot.properties["Method Name"]?.rich_text || []).map(x => x.plain_text).join(""),
+            dueDate,
+            isDue: dueDate <= todayStr,
+            growthStrategyId: gsId,
+            productId,
+            lastPublished: latest.title.last_edited_time,
+            lastPublishedTitle: (latest.title.properties.Title?.title || []).map(x => x.plain_text).join(""),
+          });
+        }
+
+        // Resolve Product (name+stack) and Growth Strategy (name+parent) for
+        // every "next" entry so the Development tab can group it the same
+        // way as everything else: Stack -> Product -> Parent Strategy ->
+        // Strategy.
+        const prodIds = [...new Set(results.map(r => r.productId).filter(Boolean))];
+        const gsIds = [...new Set(results.map(r => r.growthStrategyId).filter(Boolean))];
+        const [prodPages, gsPages] = await Promise.all([
+          Promise.all(prodIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null))),
+          Promise.all(gsIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null))),
+        ]);
+        const prodInfo = {};
+        prodPages.filter(Boolean).forEach(p => {
+          prodInfo[undash(p.id)] = {
+            name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product",
+            stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim() || null,
+          };
+        });
+        const gsInfo = {};
+        gsPages.filter(Boolean).forEach(p => {
+          gsInfo[undash(p.id)] = {
+            name: (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy",
+            parentId: (p.properties?.["Parent Strategy"]?.relation || [])[0]?.id ? undash(p.properties["Parent Strategy"].relation[0].id) : null,
+          };
+        });
+        const parentIdsNeeded = [...new Set(Object.values(gsInfo).map(g => g.parentId).filter(id => id && !gsInfo[id]))];
+        if (parentIdsNeeded.length) {
+          const parentPages = await Promise.all(parentIdsNeeded.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)));
+          parentPages.filter(Boolean).forEach(p => { gsInfo[undash(p.id)] = { name: (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy", parentId: null }; });
+        }
+
+        results.forEach(r => {
+          const pi = r.productId ? prodInfo[r.productId] : null;
+          r.productName = pi ? pi.name : 'No Product';
+          r.productStack = pi ? pi.stack : null;
+          const gi = r.growthStrategyId ? gsInfo[r.growthStrategyId] : null;
+          r.strategyId = r.growthStrategyId;
+          r.strategyName = gi ? gi.name : 'No Strategy';
+          r.parentStrategyId = gi && gi.parentId ? gi.parentId : '__none__';
+          r.parentStrategyName = gi && gi.parentId ? (gsInfo[gi.parentId]?.name || '?') : null;
+        });
+
+        results.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+        return json({ success: true, next: results });
+      }
+
       // ── generateTitleFromSlot ──
       // The single "Generate Title" modal — Product (or none) → Slot (or
       // none) → Method → Generate, the only title-creation entry point now
