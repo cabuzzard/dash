@@ -9127,21 +9127,24 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // roadmap an operator can browse, not just today's action queue.
       // Never writes anything (no Main TD side effect) — purely a view.
       if (body.action === "getNextSlots") {
+        // campaignId is optional — omit it for a global scan across every
+        // campaign (the root dashboard's Development tab); pass it to scope
+        // to one campaign (a campaign microsite's own Titles tab).
         const { campaignId } = body;
-        if (!campaignId) return json({ error: "campaignId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const undash = raw => String(raw || "").replace(/-/g, "");
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
+        const titleFilters = [
+          { or: [{ property: "Status", select: { equals: "Publish" } }, { property: "Status", select: { equals: "Published" } }] },
+          { property: "Strategy Slot", relation: { is_not_empty: true } },
+        ];
+        const slotFilter = campaignId ? { property: "Campaign", relation: { contains: dash(campaignId) } } : undefined;
+        if (campaignId) titleFilters.push({ property: "Campaign", relation: { contains: dash(campaignId) } });
+
         const [titles, allSlots] = await Promise.all([
-          notionQuery(CONTENT_STRATEGY_DB, {
-            filter: { and: [
-              { or: [{ property: "Status", select: { equals: "Publish" } }, { property: "Status", select: { equals: "Published" } }] },
-              { property: "Strategy Slot", relation: { is_not_empty: true } },
-              { property: "Campaign", relation: { contains: dash(campaignId) } },
-            ] },
-          }),
-          notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          notionQuery(CONTENT_STRATEGY_DB, { filter: { and: titleFilters } }),
+          notionQuery(STRATEGY_SLOTS_DB, slotFilter ? { filter: slotFilter } : {}),
         ]);
         if (!titles.length || !allSlots.length) return json({ success: true, next: [] });
 
@@ -9175,6 +9178,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           const grouping = (sp.Grouping?.rich_text || []).map(x => x.plain_text).join("");
           const gsId = (sp["Growth Strategy"]?.relation || [])[0]?.id ? undash(sp["Growth Strategy"].relation[0].id) : null;
           const productId = (sp.Product?.relation || [])[0]?.id ? undash(sp.Product.relation[0].id) : null;
+          const slotCampaignId = (sp.Campaign?.relation || [])[0]?.id ? undash(sp.Campaign.relation[0].id) : null;
 
           let targetSlot = null, dueDate = todayStr, label = "";
           if (Number.isFinite(sequence)) {
@@ -9202,6 +9206,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             isDue: dueDate <= todayStr,
             growthStrategyId: gsId,
             productId,
+            campaignId: slotCampaignId,
             lastPublished: latest.title.last_edited_time,
             lastPublishedTitle: (latest.title.properties.Title?.title || []).map(x => x.plain_text).join(""),
           });
@@ -9213,10 +9218,25 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // Strategy.
         const prodIds = [...new Set(results.map(r => r.productId).filter(Boolean))];
         const gsIds = [...new Set(results.map(r => r.growthStrategyId).filter(Boolean))];
-        const [prodPages, gsPages] = await Promise.all([
+        // Campaign resolution (name + microsite link) — only meaningful for
+        // a global (no campaignId) scan spanning several campaigns; a
+        // scoped per-campaign call already knows this from its own context,
+        // but resolving it here too costs nothing extra when there's only
+        // one and keeps the response shape identical either way.
+        const campIds = [...new Set(results.map(r => r.campaignId).filter(Boolean))];
+        const [prodPages, gsPages, campPages] = await Promise.all([
           Promise.all(prodIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null))),
           Promise.all(gsIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null))),
+          Promise.all(campIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null))),
         ]);
+        const campInfo = {};
+        campPages.filter(Boolean).forEach(p => {
+          campInfo[undash(p.id)] = {
+            name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Campaign",
+            site: p.properties?.site?.rich_text?.map(t => t.plain_text).join("") || p.properties?.site?.select?.name || "",
+            microsite: p.properties?.microsite?.url || (p.properties?.microsite?.rich_text || []).map(t => t.plain_text).join("") || "",
+          };
+        });
         const prodInfo = {};
         prodPages.filter(Boolean).forEach(p => {
           prodInfo[undash(p.id)] = {
@@ -9246,6 +9266,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
           r.strategyName = gi ? gi.name : 'No Strategy';
           r.parentStrategyId = gi && gi.parentId ? gi.parentId : '__none__';
           r.parentStrategyName = gi && gi.parentId ? (gsInfo[gi.parentId]?.name || '?') : null;
+          const ci = r.campaignId ? campInfo[r.campaignId] : null;
+          r.campaignName = ci ? ci.name : null;
+          r.campaignSite = ci ? ci.site : null;
+          r.microsite = ci ? ci.microsite : null;
         });
 
         results.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
