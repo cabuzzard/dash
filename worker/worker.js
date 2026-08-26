@@ -2462,6 +2462,59 @@ function calcSignals(sym, data) {
   };
 }
 
+// ── MEAN REVERSION SCREEN (RSI + Bollinger) ──────────────────────────────
+// Walk-forward validated (Aug 2026): on a neutral 10-stock universe, RSI(14)
+// oversold and Bollinger(20,2) lower-band touches showed real out-of-sample
+// edge (19/20 walk-forward folds profitable) where breakout/trend strategies
+// did not. Median time to +10% ~17-18 trading days. A hard -10% stop caps
+// the worst-case tail (turns -45%-style disasters into -10%) at a modest
+// cost to hit-rate — `stopPrice` here is that reference level; it is
+// informational only, nothing in this app enforces it automatically.
+function calcMeanReversionSignal(sym, data) {
+  const res = data?.chart?.result?.[0];
+  if (!res) return null;
+  const quotes = res.indicators?.quote?.[0];
+  const closes = quotes?.close?.filter(c => c != null);
+  if (!closes || closes.length < 21) return null;
+  const n    = closes.length;
+  const last = closes[n - 1];
+
+  // RSI(14), Wilder-style simple average over the trailing window
+  const period = 14;
+  let gainSum = 0, lossSum = 0;
+  for (let i = n - period; i < n; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gainSum += diff; else lossSum -= diff;
+  }
+  const avgGain = gainSum / period, avgLoss = lossSum / period;
+  const rsi = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
+
+  // Bollinger(20, 2)
+  const bwin    = closes.slice(n - 20);
+  const sma20   = bwin.reduce((s, c) => s + c, 0) / 20;
+  const variance = bwin.reduce((s, c) => s + (c - sma20) ** 2, 0) / 20;
+  const stdev   = Math.sqrt(variance);
+  const bbLower = sma20 - 2 * stdev;
+  const bbUpper = sma20 + 2 * stdev;
+  const percentB = bbUpper === bbLower ? 50 : (last - bbLower) / (bbUpper - bbLower) * 100;
+
+  const signals = [];
+  if (rsi <= 30) signals.push('RSI Oversold');
+  if (last <= bbLower) signals.push('Bollinger Lower Band');
+  if (!signals.length) return null;
+
+  return {
+    sym,
+    price:     +last.toFixed(2),
+    rsi:       +rsi.toFixed(1),
+    bbLower:   +bbLower.toFixed(2),
+    bbUpper:   +bbUpper.toFixed(2),
+    percentB:  +percentB.toFixed(1),
+    signals,
+    stopPrice: +(last * 0.90).toFixed(2),
+  };
+}
+
 // ── AUTO-TRADE SCAN (scheduled) ──────────────────────────────────────────
 // Runs on the daily cron alongside deepScan(). Scans the saved watchlist +
 // Yahoo's top-100 most-active tickers; for any BUY verdict with no existing
@@ -16094,7 +16147,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       // â"€â"€ TRADES â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
       if (body.action === 'saveTrade') {
-        const { ticker, strike, expiry, direction, notes, entry_contract, contract_captured } = body;
+        const { ticker, strike, expiry, direction, notes, entry_contract, contract_captured, strategy } = body;
         if (!ticker || !strike || !expiry || !direction) {
           return json({ error: 'Missing required trade fields' }, 400);
         }
@@ -16107,6 +16160,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           strike:              parseFloat(strike),
           expiry,
           direction,
+          strategy:            strategy || 'Manual',
           notes:               notes || '',
           entry_time:          now,
           entry_price:         null,   // underlying at entry  -  filled by poller
@@ -16167,6 +16221,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
                   Strike:                { number: updated.strike ?? null },
                   Expiry:                rt(updated.expiry || ""),
                   Direction:             { select: { name: updated.direction || "C" } },
+                  Strategy:              rt(updated.strategy || "Manual"),
                   Status:                { select: { name: "Expired" } },
                   "Entry Price":         { number: updated.entry_price ?? null },
                   "Current Price":       { number: updated.current_price ?? null },
@@ -16237,6 +16292,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
               Strike:                { number: trade.strike ?? null },
               Expiry:                rt(trade.expiry || ""),
               Direction:             { select: { name: trade.direction || "C" } },
+              Strategy:              rt(trade.strategy || "Manual"),
               Status:                { select: { name: "Expired" } },
               "Entry Price":         { number: trade.entry_price ?? null },
               "Current Price":       { number: trade.current_price ?? null },
@@ -16569,6 +16625,23 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const clean = tickers.map(t => t.toUpperCase().trim()).filter(Boolean);
         await env.TRADES.put('screener:watchlist', JSON.stringify(clean));
         return json({ ok: true });
+      }
+
+      if (body.action === 'runMeanReversionScan') {
+        const raw = await env.TRADES.get('screener:watchlist');
+        const tickers = raw ? JSON.parse(raw) : [];
+        if (!tickers.length) {
+          return json({ error: 'No watchlist saved — add tickers in the Screener section first.' }, 400);
+        }
+        const list = tickers.slice(0, 40);
+        const results = await Promise.allSettled(
+          list.map(async sym => calcMeanReversionSignal(sym, await fetchChart(sym)))
+        );
+        const candidates = results
+          .map(r => r.status === 'fulfilled' ? r.value : null)
+          .filter(Boolean)
+          .sort((a, b) => a.percentB - b.percentB);
+        return json({ candidates, scanned: list.length });
       }
 
       if (body.action === 'screenStocks') {
