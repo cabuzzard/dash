@@ -12104,7 +12104,7 @@ async function runMeanReversionScan() {
           <td class="scr-mono">${r.rsi}</td>
           <td style="font-size:11px;color:var(--text2);">${esc(sig)}</td>
           <td class="scr-mono" style="color:#ff4444;">$${r.stopPrice}</td>
-          <td><button onclick="openNewTradeModal('${esc(r.sym)}','${esc(strategyTag)}')" style="font-size:10px;font-weight:700;padding:3px 9px;border:1px solid #cc88ff;border-radius:4px;background:transparent;color:#cc88ff;cursor:pointer;white-space:nowrap;">+ Trade</button></td>
+          <td><button onclick="autoPickTrade(this,'${esc(r.sym)}','${esc(strategyTag)}')" style="font-size:10px;font-weight:700;padding:3px 9px;border:1px solid #cc88ff;border-radius:4px;background:transparent;color:#cc88ff;cursor:pointer;white-space:nowrap;">+ Trade</button></td>
         </tr>`;
       }).join('');
       wrap.style.display = '';
@@ -12116,6 +12116,22 @@ async function runMeanReversionScan() {
     showToast(e.message, 'error');
   } finally {
     btn.disabled = false; btn.textContent = '⟳ Scan';
+  }
+}
+
+async function autoPickTrade(btn, sym, strategyLabel) {
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const data = await call('autoPickAndSaveTrade', { ticker: sym, strategy: strategyLabel, direction: 'C' });
+    const p = data.picked;
+    showToast(`${sym} $${p.strike}C ${fmtExpiry(p.expiry)} @ $${p.price} logged ✓${p.note ? ' (' + p.note + ')' : ''}`, 'success');
+    tradesLoaded = false;
+    await loadTrades();
+  } catch(e) {
+    showToast(e.message || 'Failed to auto-pick contract', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
   }
 }
 

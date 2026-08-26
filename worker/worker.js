@@ -2600,6 +2600,48 @@ async function pickSwingCallContract(ticker) {
   return { ticker, strike: c.strike, expiry: expYYYYMMDD, price, delta: best.delta, dte: Math.round((bestExpiry - now) / 86400) };
 }
 
+// Picks the call contract nearest the money (min |strike - underlying|) among
+// those priced under $100/contract (premium < $1.00), at the expiry closest
+// to 42 days out (same swing-window convention as pickSwingCallContract).
+// Falls back to the single cheapest contract available if nothing clears the
+// $100 cap, so this always returns *something* tradeable rather than failing.
+async function pickAffordableAtmContract(ticker, direction = 'C') {
+  const first = await fetchYahooOptionsChain(ticker);
+  if (!first.underlying || !first.expirationDates.length) return null;
+
+  const now = Date.now() / 1000;
+  const targetSecs = 42 * 86400;
+  let bestExpiry = first.expirationDates[0];
+  let bestDiff = Infinity;
+  for (const ts of first.expirationDates) {
+    const diff = Math.abs((ts - now) - targetSecs);
+    if (diff < bestDiff) { bestDiff = diff; bestExpiry = ts; }
+  }
+
+  const chain = bestExpiry === first.fetchedDate ? first : await fetchYahooOptionsChain(ticker, bestExpiry);
+  const contracts = direction === 'P' ? chain.puts : chain.calls;
+  if (!contracts?.length) return null;
+
+  const priced = contracts
+    .map(c => ({ c, price: c.lastPrice > 0 ? c.lastPrice : (c.bid > 0 && c.ask > 0 ? (c.bid + c.ask) / 2 : null) }))
+    .filter(x => x.price != null && x.c.strike > 0);
+  if (!priced.length) return null;
+
+  const underCap = priced.filter(x => x.price < 1.0);
+  const pool = underCap.length ? underCap : priced;
+  const note = underCap.length ? '' : 'No contract under $100 at this expiry — picked cheapest available instead.';
+
+  let best = pool[0], bestDist = Infinity;
+  for (const x of pool) {
+    const dist = underCap.length ? Math.abs(x.c.strike - chain.underlying) : x.price;
+    if (dist < bestDist) { bestDist = dist; best = x; }
+  }
+
+  const d = new Date(bestExpiry * 1000);
+  const expYYYYMMDD = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+  return { ticker, strike: best.c.strike, expiry: expYYYYMMDD, price: best.price, note, underlying: chain.underlying, dte: Math.round((bestExpiry - now) / 86400) };
+}
+
 async function runAutoTradeScan(env) {
   // 1. Universe = saved watchlist ∪ Yahoo top-100 most-active
   const rawWatchlist = await env.TRADES.get('screener:watchlist');
@@ -16391,6 +16433,55 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       }
 
       // â"€â"€ TRADES â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+      if (body.action === 'autoPickAndSaveTrade') {
+        const { ticker, strategy, direction } = body;
+        if (!ticker) return json({ error: 'ticker required' }, 400);
+        const dir = direction === 'P' ? 'P' : 'C';
+        let picked;
+        try {
+          picked = await pickAffordableAtmContract(ticker, dir);
+        } catch (e) {
+          return json({ error: e.message || 'Options chain lookup failed' }, 502);
+        }
+        if (!picked) return json({ error: `No tradeable ${dir === 'C' ? 'call' : 'put'} contract found for ${ticker}` }, 502);
+
+        const now = new Date().toISOString();
+        const ts  = now.replace(/[-:T.Z]/g, '').slice(0, 14);
+        const id  = `${ticker.toUpperCase()}_${ts}`;
+        const trade = {
+          id,
+          ticker:                 ticker.toUpperCase(),
+          strike:                 picked.strike,
+          expiry:                 picked.expiry,
+          direction:               dir,
+          strategy:                strategy || 'Auto-picked',
+          notes:                   picked.note || '',
+          entry_time:              now,
+          entry_price:             null,
+          price_captured:          false,
+          current_price:           null,
+          current_pct:             null,
+          max_high:                null,
+          max_high_time:           null,
+          max_low:                 null,
+          max_low_time:            null,
+          strike_reached:          false,
+          strike_reached_time:     null,
+          last_updated:            null,
+          expired:                 false,
+          entry_contract:          picked.price ?? null,
+          contract_captured:       picked.price != null,
+          current_contract:        null,
+          contract_pct:            null,
+          contract_max_high:       null,
+          contract_max_high_time:  null,
+          contract_max_low:        null,
+          contract_max_low_time:   null,
+        };
+        await env.TRADES.put(`trades:${id}`, JSON.stringify(trade));
+        return json({ success: true, id, picked });
+      }
 
       if (body.action === 'saveTrade') {
         const { ticker, strike, expiry, direction, notes, entry_contract, contract_captured, strategy } = body;
