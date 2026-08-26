@@ -8044,8 +8044,12 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const dashify = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const fetchName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?" }; } catch(e) { return { id, name: "?" }; } };
         // Growth Strategy's title property is "Strategy Name", not "Name" —
-        // needs its own fetch helper.
-        const fetchStrategyName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "?" }; } catch(e) { return { id, name: "?" }; } };
+        // needs its own fetch helper. Also reads "Parent Strategy" so a
+        // title made from a divergent sub-strategy's slot (see
+        // generateGrowthStrategy) can be grouped one level up under its
+        // parent in the Development readout, instead of every sub-strategy
+        // showing as an indistinguishable flat bucket.
+        const fetchStrategyName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "?", parentId: (p.properties?.["Parent Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"") || null }; } catch(e) { return { id, name: "?", parentId: null }; } };
         // Products also carry a Product Stack (the same Campaign -> Product
         // Stack -> Product grouping used on the Development tab and the
         // microsite's own Products section) — fetched alongside the name
@@ -8067,11 +8071,24 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const pStacks = Object.fromEntries(prodPages.map(p => [p.id, p.stack]));
         const mNames = Object.fromEntries(methPages.map(p => [p.id, p.name]));
         const sNames = Object.fromEntries(stratPages.map(p => [p.id, p.name]));
+        const sParentId = Object.fromEntries(stratPages.map(p => [p.id, p.parentId]));
+        // A title's own Growth Strategy might itself be a divergent
+        // sub-strategy (has a Parent Strategy) — fetch any parent ids not
+        // already covered by sIds above so the Development tree can group
+        // Stack -> Product -> Parent Strategy -> Sub-Strategy -> Title.
+        const parentIdsNeeded = [...new Set(Object.values(sParentId).filter(Boolean))].filter(id => !sNames[id]);
+        if (parentIdsNeeded.length) {
+          const parentPages = await Promise.all(parentIdsNeeded.map(fetchStrategyName));
+          parentPages.forEach(p => { sNames[p.id] = p.name; });
+        }
         titleList.forEach(t => {
           t.productName  = t.productId === '__none__' ? 'No Product' : (pNames[t.productId] || '?');
           t.productStack = t.productId === '__none__' ? null : (pStacks[t.productId] || null); // null = No Stack
           t.methodName   = t.methodId  === '__none__' ? 'No Method'  : (mNames[t.methodId]  || '?');
           t.strategyName = t.strategyId === '__none__' ? 'No Strategy' : (sNames[t.strategyId] || '?');
+          const parentStrategyId = t.strategyId === '__none__' ? null : (sParentId[t.strategyId] || null);
+          t.parentStrategyId = parentStrategyId || '__none__';
+          t.parentStrategyName = parentStrategyId ? (sNames[parentStrategyId] || '?') : null;
           const parts = (t._rawGrouping || '').split(' > ');
           t.phase    = parts.length > 1 ? parts[0].trim() : '';
           t.grouping = parts.length > 1 ? parts.slice(1).join(' > ').trim() : (t._rawGrouping || '');
@@ -8638,53 +8655,63 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const strategyName = ((strategyTitle || '').trim() || `${productName} Growth Strategy — ${dateLabel}`).slice(0, 200);
         const esc3 = s => String(s || '');
         const rtBlock = text => [{ type: "text", text: { content: esc3(text) } }];
-        const children = [
-          { object: "block", type: "heading_2", heading_2: { rich_text: rtBlock("Summary") } },
-          { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(plan.summary || 'Not provided.') } },
-          ...(platformOverride ? [{ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Platform focus (operator-specified): ${platformOverride}`) } }]
-            : [{ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Recommended platforms: ${recommendedPlatforms.join(', ') || 'Not specified'}`) } }]),
-          { object: "block", type: "divider", divider: {} },
-        ];
-        groupings.forEach(g => {
-          children.push({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(g.name || 'Untitled Grouping') } });
-          children.push({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(g.rationale || '') } });
+
+        // Divergence check — per operator direction, platform divergence is
+        // meant to happen AFTER title generation (one flat strategy, several
+        // groupings, same as always) UNLESS the groupings are so
+        // format-incompatible that flattening them together clutters the
+        // Strategies/Development readouts (e.g. a LinkedIn text-post series
+        // next to a YouTube video series). Distinct recommendedPlatform
+        // values across groupings is the concrete signal: groupings sharing
+        // a platform are the same production format and stay flat together;
+        // 2+ distinct platforms means a parent Growth Strategy (summary
+        // only, no Slots of its own) gets created, plus one child Growth
+        // Strategy per grouping — each with its own Slots — linked back via
+        // "Parent Strategy". The UI collapses parent/children by default
+        // everywhere strategies show.
+        const distinctPlatforms = new Set(groupings.map(g => String(g.recommendedPlatform || '').trim()).filter(Boolean));
+        const divergent = groupings.length > 1 && distinctPlatforms.size > 1;
+
+        async function createStrategyPage({ name, parentId, summary, recPlatforms, platformOverrideVal, groupingCount, bodyChildren }) {
+          const props = {
+            "Strategy Name": { title: [{ text: { content: name.slice(0, 200) } }] },
+            "Product": { relation: [{ id: dash(productId) }] },
+            "Campaign": { relation: [{ id: dash(campaignId) }] },
+            "Platform Override": { rich_text: rtBlock(platformOverrideVal || '') },
+            "Recommended Platforms": { multi_select: recPlatforms.map(p => ({ name: p })) },
+            "Status": { select: { name: "Draft" } },
+            "Summary": { rich_text: rtBlock(summary || '') },
+            "Grouping Count": { number: groupingCount },
+          };
+          if (parentId) props["Parent Strategy"] = { relation: [{ id: dash(parentId) }] };
+          return fetch(`https://api.notion.com/v1/pages`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: GROWTH_STRATEGY_DB }, properties: props, children: bodyChildren.slice(0, 100) }),
+          }).then(r => r.json());
+        }
+
+        function groupingBlocks(g) {
+          const out = [];
+          out.push({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(g.name || 'Untitled Grouping') } });
+          out.push({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(g.rationale || '') } });
           (Array.isArray(g.titles) ? g.titles : []).forEach(t => {
-            children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(t) } });
+            out.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(t) } });
           });
-          children.push({ object: "block", type: "paragraph", paragraph: { rich_text: [
+          out.push({ object: "block", type: "paragraph", paragraph: { rich_text: [
             { type: "text", text: { content: "Method: " }, annotations: { bold: true } }, { type: "text", text: { content: `${esc3(g.recommendedMethod) || 'Not specified'}  ·  ` } },
             { type: "text", text: { content: "Platform: " }, annotations: { bold: true } }, { type: "text", text: { content: esc3(g.recommendedPlatform) || 'Not specified' } },
           ] } });
-          children.push({ object: "block", type: "divider", divider: {} });
-        });
-
-        const createResp = await fetch(`https://api.notion.com/v1/pages`, {
-          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            parent: { database_id: GROWTH_STRATEGY_DB },
-            properties: {
-              "Strategy Name": { title: [{ text: { content: strategyName } }] },
-              "Product": { relation: [{ id: dash(productId) }] },
-              "Campaign": { relation: [{ id: dash(campaignId) }] },
-              "Platform Override": { rich_text: rtBlock(platformOverride || '') },
-              "Recommended Platforms": { multi_select: recommendedPlatforms.map(p => ({ name: p })) },
-              "Status": { select: { name: "Draft" } },
-              "Summary": { rich_text: rtBlock(plan.summary || '') },
-              "Grouping Count": { number: groupings.length },
-            },
-            children: children.slice(0, 100), // Notion caps children-on-create at 100 blocks
-          }),
-        }).then(r => r.json());
-        if (!createResp.id) return json({ error: createResp.message || "Failed to create Growth Strategy page" }, 500);
-        const strategyId = createResp.id.replace(/-/g, "");
+          out.push({ object: "block", type: "divider", divider: {} });
+          return out;
+        }
 
         // One Strategy Slot row per grouping angle (e.g. "Behind the Scenes
         // #1") — the trackable, fillable counterpart to the prose bullets
         // above. Best-effort: a slot-creation failure doesn't fail the
         // strategy itself, which already saved successfully.
-        const slotResults = await Promise.all(groupings.flatMap(g => {
+        function createSlotsFor(strategyIdForSlots, g) {
           const titles = Array.isArray(g.titles) ? g.titles : [];
-          return titles.map((angle, i) => {
+          return Promise.all(titles.map((angle, i) => {
             const seq = i + 1;
             const name = `${g.name || 'Untitled'} #${seq}`;
             return fetch("https://api.notion.com/v1/pages", {
@@ -8693,7 +8720,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
                 parent: { database_id: STRATEGY_SLOTS_DB },
                 properties: {
                   "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
-                  "Growth Strategy": { relation: [{ id: dash(strategyId) }] },
+                  "Growth Strategy": { relation: [{ id: dash(strategyIdForSlots) }] },
                   "Campaign": { relation: [{ id: dash(campaignId) }] },
                   "Product": { relation: [{ id: dash(productId) }] },
                   "Grouping": { rich_text: [{ type: "text", text: { content: String(g.name || '').slice(0, 1990) } }] },
@@ -8707,11 +8734,60 @@ Return ONLY this JSON object, no other text, no markdown fences:
                 },
               }),
             }).then(r => r.json()).catch(e => ({ error: String(e) }));
-          });
-        }));
-        const slotsCreated = slotResults.filter(r => r && r.id).length;
+          }));
+        }
 
-        return json({ success: true, id: strategyId, url: createResp.url, groupingCount: groupings.length, slotsCreated, attachedMethods });
+        if (!divergent) {
+          // ── flat path — one Growth Strategy record holding every
+          // grouping, unchanged from before this feature existed. ──
+          const children = [
+            { object: "block", type: "heading_2", heading_2: { rich_text: rtBlock("Summary") } },
+            { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(plan.summary || 'Not provided.') } },
+            ...(platformOverride ? [{ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Platform focus (operator-specified): ${platformOverride}`) } }]
+              : [{ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Recommended platforms: ${recommendedPlatforms.join(', ') || 'Not specified'}`) } }]),
+            { object: "block", type: "divider", divider: {} },
+            ...groupings.flatMap(groupingBlocks),
+          ];
+          const createResp = await createStrategyPage({ name: strategyName, parentId: null, summary: plan.summary, recPlatforms: recommendedPlatforms, platformOverrideVal: platformOverride, groupingCount: groupings.length, bodyChildren: children });
+          if (!createResp.id) return json({ error: createResp.message || "Failed to create Growth Strategy page" }, 500);
+          const strategyId = createResp.id.replace(/-/g, "");
+          const slotResults = (await Promise.all(groupings.map(g => createSlotsFor(strategyId, g)))).flat();
+          const slotsCreated = slotResults.filter(r => r && r.id).length;
+          return json({ success: true, id: strategyId, url: createResp.url, groupingCount: groupings.length, slotsCreated, attachedMethods, divergent: false });
+        }
+
+        // ── divergent path — one parent (summary + links only, no Slots of
+        // its own) plus one child Growth Strategy per grouping, each with
+        // its own Slots. ──
+        const parentSummary = `${plan.summary || ''}\n\nThis strategy splits into ${groupings.length} sub-strategies, one per format: ${groupings.map(g => g.name).join(', ')}.`.trim();
+        const parentChildren = [
+          { object: "block", type: "heading_2", heading_2: { rich_text: rtBlock("Summary") } },
+          { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(plan.summary || 'Not provided.') } },
+          { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Recommended platforms: ${recommendedPlatforms.join(', ') || 'Not specified'}`) } },
+          { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Sub-strategies (one per format): ${groupings.map(g => g.name).join(', ')}`) } },
+        ];
+        const parentResp = await createStrategyPage({ name: strategyName, parentId: null, summary: parentSummary, recPlatforms: recommendedPlatforms, platformOverrideVal: platformOverride, groupingCount: groupings.length, bodyChildren: parentChildren });
+        if (!parentResp.id) return json({ error: parentResp.message || "Failed to create parent Growth Strategy page" }, 500);
+        const parentId = parentResp.id.replace(/-/g, "");
+
+        const childResults = await Promise.all(groupings.map(async g => {
+          const childName = `${strategyName} — ${g.name}`.slice(0, 200);
+          const childResp = await createStrategyPage({
+            name: childName, parentId, summary: g.rationale || '',
+            recPlatforms: g.recommendedPlatform ? [g.recommendedPlatform] : [],
+            platformOverrideVal: g.recommendedPlatform || '', groupingCount: 1, bodyChildren: groupingBlocks(g),
+          });
+          if (!childResp.id) return { grouping: g, error: childResp.message || "Failed to create child strategy" };
+          const childId = childResp.id.replace(/-/g, "");
+          const slotResults = await createSlotsFor(childId, g);
+          return { grouping: g, id: childId, url: childResp.url, slotsCreated: slotResults.filter(r => r && r.id).length };
+        }));
+        const totalSlotsCreated = childResults.reduce((n, c) => n + (c.slotsCreated || 0), 0);
+        return json({
+          success: true, id: parentId, url: parentResp.url,
+          childIds: childResults.filter(c => c.id).map(c => c.id),
+          groupingCount: groupings.length, slotsCreated: totalSlotsCreated, attachedMethods, divergent: true,
+        });
       }
 
       // ── listGrowthStrategies ──
@@ -8901,9 +8977,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
           unassignedPlanningTitles.forEach(r => { if (r.productId && !r.productName) r.productName = productNameById[r.productId] || null; });
         }
 
-        const strategies = stratQ.map(s => {
+        const allStrategies = stratQ.map(s => {
           const id = s.id.replace(/-/g,"");
           const productId = (s.properties?.Product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+          const parentId = (s.properties?.["Parent Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"") || null;
           const slots = slotsByStrategy[id] || [];
           const groupingOrder = [];
           const byGrouping = {};
@@ -8914,6 +8991,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           });
           return {
             id,
+            parentId,
             name: (s.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled",
             status: s.properties?.Status?.select?.name || "Draft",
             productId,
@@ -8928,7 +9006,18 @@ Return ONLY this JSON object, no other text, no markdown fences:
           };
         });
 
-        return json({ success: true, strategies, unassignedPlanningTitles });
+        // Nest divergent-path children (each carrying a "Parent Strategy"
+        // relation, see generateGrowthStrategy) under their parent — the
+        // parent itself has no Slots/groupings of its own in that path, just
+        // links to children, so the panel renders children instead. A
+        // flat (non-divergent) strategy has no parentId and no children —
+        // renders exactly as it always has.
+        const byParentId = {};
+        const topLevel = [];
+        allStrategies.forEach(s => { if (s.parentId) (byParentId[s.parentId] ||= []).push(s); else topLevel.push(s); });
+        topLevel.forEach(s => { s.children = byParentId[s.id] || []; });
+
+        return json({ success: true, strategies: topLevel, unassignedPlanningTitles });
       }
 
       // ── generateTitleFromSlot ──

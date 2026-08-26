@@ -2449,7 +2449,7 @@ async function loadTitles() {
     // expand + single-bucket-skip pattern as the Stack level above it.
     function renderProductLevel(arr, el, section) {
       const hasProd = arr.some(t => t.productId && t.productId !== '__none__');
-      if (!hasProd) { renderStrategyLevel(arr, el, section); return; }
+      if (!hasProd) { renderParentStrategyLevel(arr, el, section); return; }
       const prodOrder = [], byProd = {};
       arr.forEach(t => {
         const pk = (t.productId || '__none__') + '||' + (t.productName || 'No Product');
@@ -2460,7 +2460,7 @@ async function loadTitles() {
       prodOrder.forEach(pk => {
         const pTitles = byProd[pk];
         const prodName = pk.split('||')[1];
-        if (prodOrder.length === 1) { renderStrategyLevel(pTitles, el, section); return; }
+        if (prodOrder.length === 1) { renderParentStrategyLevel(pTitles, el, section); return; }
         const stateKey = section + '|prod|' + pk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const pHdr = document.createElement('div');
@@ -2470,9 +2470,46 @@ async function loadTitles() {
         const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:#fff;'; pCount.textContent = pTitles.length;
         pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
         const pBody = document.createElement('div'); pBody.style.display = isOpen ? 'block' : 'none';
-        renderStrategyLevel(pTitles, pBody, section);
+        renderParentStrategyLevel(pTitles, pBody, section);
         pHdr.onclick = () => { const o = pBody.style.display !== 'none'; pBody.style.display = o ? 'none' : 'block'; pArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
         el.appendChild(pHdr); el.appendChild(pBody);
+      });
+    }
+    // Parent-strategy level — nested between Product and (sub-)Strategy.
+    // Only appears when a title's own Growth Strategy is itself a divergent
+    // sub-strategy (has a Parent Strategy — see generateGrowthStrategy's
+    // format-divergence split): groups those titles one level up under the
+    // parent's name, default collapsed, so several format-specific
+    // sub-strategies under one parent don't flatten together
+    // indistinguishably. A flat (non-divergent) strategy has no
+    // parentStrategyId on any of its titles and skips straight to
+    // renderStrategyLevel, exactly as before this level existed.
+    function renderParentStrategyLevel(arr, el, section) {
+      const hasParent = arr.some(t => t.parentStrategyId && t.parentStrategyId !== '__none__');
+      if (!hasParent) { renderStrategyLevel(arr, el, section); return; }
+      const parentOrder = [], byParent = {};
+      arr.forEach(t => {
+        const pk = (t.parentStrategyId || '__none__') + '||' + (t.parentStrategyName || 'No Parent Strategy');
+        if (!byParent[pk]) { byParent[pk] = []; parentOrder.push(pk); }
+        byParent[pk].push(t);
+      });
+      parentOrder.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
+      parentOrder.forEach(pk => {
+        const pTitles = byParent[pk];
+        const parentName = pk.split('||')[1];
+        if (parentOrder.length === 1) { renderStrategyLevel(pTitles, el, section); return; }
+        const stateKey = section + '|parentstrat|' + pk;
+        const isOpen = !!titleGroupsOpen[stateKey];
+        const gHdr = document.createElement('div');
+        gHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 25px;background:rgba(232,255,71,.06);border-bottom:1px solid rgba(232,255,71,.15);cursor:pointer;user-select:none;';
+        const gArrow = document.createElement('span'); gArrow.textContent = isOpen ? '▾' : '▶'; gArrow.style.cssText = 'font-size:8px;color:#e8ff47;flex-shrink:0;';
+        const gLabel = document.createElement('span'); gLabel.style.cssText = 'flex:1;font-size:11px;color:#e8ff47;font-weight:600;'; gLabel.textContent = parentName;
+        const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:#fff;'; gCount.textContent = pTitles.length;
+        gHdr.appendChild(gArrow); gHdr.appendChild(gLabel); gHdr.appendChild(gCount);
+        const gBody = document.createElement('div'); gBody.style.display = isOpen ? 'block' : 'none';
+        renderStrategyLevel(pTitles, gBody, section);
+        gHdr.onclick = () => { const o = gBody.style.display !== 'none'; gBody.style.display = o ? 'none' : 'block'; gArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+        el.appendChild(gHdr); el.appendChild(gBody);
       });
     }
     // Outermost Development-list grouping level — buckets by Product Stack
@@ -7445,6 +7482,88 @@ function renderStrategyTitleChip(t) {
     : '';
   return `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">${stageBadge}${pillarBtn}<a href="https://www.notion.so/${t.id}" target="_blank" title="${esc(t.name)}" style="font-size:9px;color:#68d391;text-decoration:none;">↗</a></div>`;
 }
+// A single strategy's groupings/slots/general-titles body — shared by a
+// flat (non-divergent) strategy and by each child of a divergent parent
+// (see generateGrowthStrategy's "Parent Strategy" split). indentPx nests a
+// child visually under its parent header.
+function renderStrategyBlock(s, indentPx) {
+  const stratBodyId = `strat-body-${s.id}`;
+  const groupingsHtml = s.groupings.map((g, gi) => {
+    const gBodyId = `${stratBodyId}-grp-${gi}`;
+    const slotsHtml = g.slots.map(slot => {
+      const titles = slot.titles || (slot.titleId ? [{ id: slot.titleId, name: 'title', stage: '' }] : []);
+      // A slot can be filled more than once — once per Method — so this
+      // shows every title made from it (each links out to its Notion
+      // page, plus a stage badge and a ✍️ Write Pillar action while it's
+      // still Planning), not just whether it's "done". "+ title" stays
+      // clickable regardless of fill state for exactly that reason.
+      const badge = titles.length
+        ? `<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;">${titles.map(renderStrategyTitleChip).join('')}</div>`
+        : `<span style="font-size:9px;color:#e8ff47;flex-shrink:0;">○ open</span>`;
+      const createBtn = `<button onclick="openCreateTitleFromSlotModal({slotId:'${slot.id}',strategyId:'${s.id}'})" title="Create a title from this slot" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">+ title</button>`;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
+        + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(slot.name)} — ${esc((slot.angle || '').slice(0, 80))}</span>`
+        + badge
+        + createBtn
+        + `</div>`;
+    }).join('');
+    return `<div style="margin:8px 0;">`
+      + `<div style="font-size:11px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleStrategyCollapse('${gBodyId}', this.querySelector('.gs-arrow'))">`
+      + `<span style="display:flex;align-items:center;gap:6px;min-width:0;"><span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;">▶</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span></span>`
+      + `<span style="color:#fff;flex-shrink:0;">${g.filledCount}/${g.totalCount} filled</span>`
+      + `</div>`
+      + `<div id="${gBodyId}" style="display:none;margin-top:4px;">${slotsHtml}</div>`
+      + `</div>`;
+  }).join('');
+  // General (no slot) — titles attributed straight to this Strategy
+  // (generateTitleFromSlot's slot-less branch, or a manual 🔗 attach) with
+  // no specific planned angle to sit under.
+  const generalHtml = (s.generalTitles && s.generalTitles.length)
+    ? `<div style="margin:8px 0;">`
+      + `<div style="font-size:11px;font-weight:700;color:#fff;">General (no slot)</div>`
+      + s.generalTitles.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
+        + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}${t.productName ? ` — ${esc(t.productName)}` : ''}</span>`
+        + renderStrategyTitleChip(t)
+        + `</div>`).join('')
+      + `</div>`
+    : '';
+  return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #222;padding-left:${indentPx || 0}px;">`
+    + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">`
+    + `<span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stratBodyId}', this)">▶</span>`
+    + `<span style="font-size:13px;font-weight:700;color:#fff;cursor:pointer;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
+    + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
+    + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
+    + `</div>`
+    + `<div id="${stratBodyId}" style="display:none;">`
+    + (groupingsHtml || '<div class="empty" style="font-size:11px;">No slots recorded for this strategy.</div>')
+    + generalHtml
+    + `</div>`
+    + `</div>`;
+}
+// One top-level Strategies-tab entry. A divergent-path parent (see
+// generateGrowthStrategy) has no groupings/Slots of its own — just links to
+// children, one per incompatible format (e.g. a LinkedIn post series next
+// to a YouTube video series) — so it renders as one more collapse level
+// (default collapsed, same ▶/▾ convention) wrapping each child's own
+// indented block instead of "No slots recorded". A flat (non-divergent)
+// strategy has no children and renders exactly as it always has.
+function renderStrategyItem(s) {
+  if (s.children && s.children.length) {
+    const parentBodyId = `strat-parent-body-${s.id}`;
+    const childrenHtml = s.children.map(c => renderStrategyBlock(c, 16)).join('');
+    return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #333;">`
+      + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">`
+      + `<span class="gs-arrow" style="font-size:8px;color:#e8ff47;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${parentBodyId}', this)">▶</span>`
+      + `<span style="font-size:13px;font-weight:700;color:#e8ff47;cursor:pointer;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
+      + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
+      + `<span style="font-size:10px;color:#fff;">${s.children.length} sub-strateg${s.children.length === 1 ? 'y' : 'ies'}</span>`
+      + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
+      + `</div>`
+      + `<div id="${parentBodyId}" style="display:none;">${childrenHtml}</div>`
+      + `</div>`;
+  }
+  return renderStrategyBlock(s, 0);
+}
 function renderStrategiesPanel(strategies, unassignedPlanningTitles) {
   const el = document.getElementById('strategies-panel');
   if (!el) return;
@@ -7467,60 +7586,7 @@ function renderStrategiesPanel(strategies, unassignedPlanningTitles) {
       + `</div>`
     : '';
   if (!strategies.length) { el.innerHTML = unassignedHtml || '<div class="empty">No Growth Strategies yet — generate one from the 🚀 button on a product row above.</div>'; return; }
-  el.innerHTML = unassignedHtml + strategies.map(s => {
-    const stratBodyId = `strat-body-${s.id}`;
-    const groupingsHtml = s.groupings.map((g, gi) => {
-      const gBodyId = `${stratBodyId}-grp-${gi}`;
-      const slotsHtml = g.slots.map(slot => {
-        const titles = slot.titles || (slot.titleId ? [{ id: slot.titleId, name: 'title', stage: '' }] : []);
-        // A slot can be filled more than once — once per Method — so this
-        // shows every title made from it (each links out to its Notion
-        // page, plus a stage badge and a ✍️ Write Pillar action while it's
-        // still Planning), not just whether it's "done". "+ title" stays
-        // clickable regardless of fill state for exactly that reason.
-        const badge = titles.length
-          ? `<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;">${titles.map(renderStrategyTitleChip).join('')}</div>`
-          : `<span style="font-size:9px;color:#e8ff47;flex-shrink:0;">○ open</span>`;
-        const createBtn = `<button onclick="openCreateTitleFromSlotModal({slotId:'${slot.id}',strategyId:'${s.id}'})" title="Create a title from this slot" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">+ title</button>`;
-        return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
-          + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(slot.name)} — ${esc((slot.angle || '').slice(0, 80))}</span>`
-          + badge
-          + createBtn
-          + `</div>`;
-      }).join('');
-      return `<div style="margin:8px 0;">`
-        + `<div style="font-size:11px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleStrategyCollapse('${gBodyId}', this.querySelector('.gs-arrow'))">`
-        + `<span style="display:flex;align-items:center;gap:6px;min-width:0;"><span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;">▶</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span></span>`
-        + `<span style="color:#fff;flex-shrink:0;">${g.filledCount}/${g.totalCount} filled</span>`
-        + `</div>`
-        + `<div id="${gBodyId}" style="display:none;margin-top:4px;">${slotsHtml}</div>`
-        + `</div>`;
-    }).join('');
-    // General (no slot) — titles attributed straight to this Strategy
-    // (generateTitleFromSlot's slot-less branch, or a manual 🔗 attach) with
-    // no specific planned angle to sit under.
-    const generalHtml = (s.generalTitles && s.generalTitles.length)
-      ? `<div style="margin:8px 0;">`
-        + `<div style="font-size:11px;font-weight:700;color:#fff;">General (no slot)</div>`
-        + s.generalTitles.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
-          + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}${t.productName ? ` — ${esc(t.productName)}` : ''}</span>`
-          + renderStrategyTitleChip(t)
-          + `</div>`).join('')
-        + `</div>`
-      : '';
-    return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #222;">`
-      + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">`
-      + `<span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stratBodyId}', this)">▶</span>`
-      + `<span style="font-size:13px;font-weight:700;color:#fff;cursor:pointer;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
-      + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
-      + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
-      + `</div>`
-      + `<div id="${stratBodyId}" style="display:none;">`
-      + (groupingsHtml || '<div class="empty" style="font-size:11px;">No slots recorded for this strategy.</div>')
-      + generalHtml
-      + `</div>`
-      + `</div>`;
-  }).join('');
+  el.innerHTML = unassignedHtml + strategies.map(renderStrategyItem).join('');
 }
 
 // ── Generate Title modal (the ONE title-creation flow) ──────────────────
