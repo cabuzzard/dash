@@ -506,6 +506,27 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- BUILD STRATEGY FROM ASSET MODAL -->
+<div class="modal-overlay" id="buildStrategyModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Build Strategy</div>
+      <button class="modal-close" onclick="closeBuildStrategyModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="buildStrategyModalHint"></div>
+      <label class="lm-label" for="buildStrategyGuidance" style="margin-top:8px;">Describe the strategy for this asset <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(cadence, sequence, or upkeep)</span></label>
+      <textarea class="modal-ta" id="buildStrategyGuidance" rows="5" placeholder="e.g. I want to post 2 of these a week, alternating a teach angle and a customer story. Or: this is step 1 of a launch series, next should dig into pricing objections, then a case study."></textarea>
+      <div class="modal-status" id="buildStrategyModalStatus"></div>
+      <div id="buildStrategyModalResult" style="display:none;margin-top:10px;padding:10px;border:1px solid rgba(104,211,145,.3);border-radius:8px;background:rgba(104,211,145,.06);font-size:12px;color:#68d391;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeBuildStrategyModal()">Cancel</button>
+      <button class="modal-btn save" id="buildStrategySaveBtn" onclick="applyBuildStrategy()">Build Strategy</button>
+    </div>
+  </div>
+</div>
+
 <!-- LOGIN ADD MODAL -->
 <div class="modal-overlay" id="loginModal">
   <div class="modal">
@@ -2238,6 +2259,7 @@ async function loadTitles() {
         + ((a.type === 'carousel' || a.type === 'text video') ? `<button class="td-assemble" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" onclick="openAssembleModal(this)" title="Reads the uploaded Visual Production Brief + Production Assembly Package + Assembly Manifest — no upload here, just an optional override/addition. No media hosted yet: copies a Claude Code build prompt with all three documents attached. Media already hosted: for any asset type with a registered renderer (carousel today), RE-RENDERS from the Assembly Manifest first (so this always packages images that actually match what was approved), then packages it + publishing metadata into a hosted review page — which itself has a 'Request a Change' box to keep iterating without leaving the page." style="font-size:10px;padding:1px 7px;border:1px solid #f0b429;background:transparent;color:#f0b429;border-radius:9px;cursor:pointer;flex-shrink:0;">🧷 Assemble</button>` : '')
         + ((a.type === 'resume' || a.type === 'upwork proposal') ? `<button class="td-view-body" data-assetid="${a.id}" data-title="${esc(a.title)}" onclick="openAssetBodyModal(this)" title="View the written ${esc(a.type)} text (and cover letter, for Resume) — this asset type has no render/preview link, the text itself is the deliverable." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">📄 View</button>` : '')
         + ((a.type === 'resume' || a.type === 'upwork proposal') ? `<button class="td-generate-job" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" onclick="generateJobAssetFromRow(this)" title="Pull a fresh batch of 5 matching postings and write a tailored ${esc(a.type)} for each (real career history is global — edit it in the main dashboard's TD tab, Career section)." style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">✨ Generate</button>` : '')
+        + `<button class="td-status" onclick="openBuildStrategyModal('${a.id}','${esc(a.title || a.type || '').replace(/'/g,"\\'")}')" title="Build a repeatable strategy from this published asset — describe a cadence (e.g. weekly) or a fixed sequence of next steps, and it gets attached to this asset's title so the nightly queue knows what's next." style="font-size:10px;padding:1px 7px;border:1px solid #f6ad55;background:transparent;color:#f6ad55;border-radius:9px;cursor:pointer;flex-shrink:0;">🎯 Build Strategy</button>`
         + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
       return ar;
     }
@@ -4674,6 +4696,47 @@ async function applyTitleStrategyChange() {
     status.textContent = 'Updated ✓';
     status.className = 'modal-status ok';
     setTimeout(async () => { closeTitleStrategyModal(); await loadTitles(); }, 700);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false;
+  }
+}
+
+let bsModalAssetId = null;
+function openBuildStrategyModal(assetId, assetTitle) {
+  bsModalAssetId = assetId;
+  document.getElementById('buildStrategyModalHint').textContent = assetTitle;
+  document.getElementById('buildStrategyGuidance').value = '';
+  document.getElementById('buildStrategyModalStatus').textContent = '';
+  document.getElementById('buildStrategyModalStatus').className = 'modal-status';
+  document.getElementById('buildStrategyModalResult').style.display = 'none';
+  document.getElementById('buildStrategySaveBtn').disabled = false;
+  document.getElementById('buildStrategyModal').classList.add('open');
+}
+function closeBuildStrategyModal() {
+  document.getElementById('buildStrategyModal').classList.remove('open');
+  bsModalAssetId = null;
+}
+document.getElementById('buildStrategyModal').addEventListener('click', function(e) {
+  if (e.target === this) closeBuildStrategyModal();
+});
+async function applyBuildStrategy() {
+  const status = document.getElementById('buildStrategyModalStatus');
+  const btn = document.getElementById('buildStrategySaveBtn');
+  const guidance = document.getElementById('buildStrategyGuidance').value.trim();
+  if (!guidance) { status.textContent = 'Describe the strategy first.'; status.className = 'modal-status err'; return; }
+  btn.disabled = true;
+  status.textContent = 'Building strategy…';
+  status.className = 'modal-status';
+  try {
+    const r = await w('buildStrategyFromAsset', { assetId: bsModalAssetId, guidance });
+    status.textContent = 'Strategy built ✓';
+    status.className = 'modal-status ok';
+    const resultDiv = document.getElementById('buildStrategyModalResult');
+    resultDiv.style.display = 'block';
+    resultDiv.textContent = (r.cadenceKind === 'sequential' ? 'Sequential' : 'Recurring' + (r.recurrence ? ' (' + r.recurrence + ')' : '')) + ' — ' + (r.grouping || r.type) + (r.nextDue ? '. Next due ' + r.nextDue + '.' : '.');
+    setTimeout(() => { closeBuildStrategyModal(); }, 2200);
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.className = 'modal-status err';

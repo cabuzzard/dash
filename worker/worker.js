@@ -1420,6 +1420,22 @@ async function buildJobSearchContext(hdr, { campaignId, productKeywords, product
 // sources, angles, framing, and routing across the whole production flow
 // without editing each prompt. Returns '' when unset so call sites can
 // interpolate unconditionally.
+// Shared by runStrategySequenceReminders and buildStrategyFromAsset — turns
+// a free-text Recurrence phrase (e.g. "Weekly", "2x/week") into a day
+// interval. Unrecognized phrases default to weekly, the safest guess.
+const RECURRENCE_DAYS = [
+  [/daily/i, 1],
+  [/2x|twice/i, 3],
+  [/weekly/i, 7],
+  [/biweekly|every.*2.*week/i, 14],
+  [/monthly/i, 30],
+];
+function parseRecurrenceDays(text) {
+  const t = String(text || "");
+  for (const [re, days] of RECURRENCE_DAYS) if (re.test(t)) return days;
+  return 7;
+}
+
 const researchGuidelinesBlock = g => {
   const t = (g == null ? "" : String(g)).trim();
   if (!t) return "";
@@ -3138,19 +3154,6 @@ async function runStrategySequenceReminders(env) {
   const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
   const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const undash = raw => String(raw || "").replace(/-/g, "");
-
-  const RECURRENCE_DAYS = [
-    [/daily/i, 1],
-    [/2x|twice/i, 3],
-    [/weekly/i, 7],
-    [/biweekly|every.*2.*week/i, 14],
-    [/monthly/i, 30],
-  ];
-  const parseRecurrenceDays = text => {
-    const t = String(text || "");
-    for (const [re, days] of RECURRENCE_DAYS) if (re.test(t)) return days;
-    return 7; // unrecognized phrase -- weekly is the safest default cadence
-  };
 
   let titles, allSlots, existingSlotTDs;
   try {
@@ -9076,6 +9079,183 @@ Return ONLY this JSON object, no other text, no markdown fences:
         }
 
         return json({ success: true, id: newTitleId, title: titleText, pillarWarning });
+      }
+
+      // ── buildStrategyFromAsset ──
+      // The 🎯 Build Strategy button on a published Asset row — the manual,
+      // per-asset counterpart to the retroactive backfill
+      // runStrategySequenceReminders still needs for the rest of publish
+      // history. Instead of an AI batch-classifying everything ever
+      // published, the operator describes one asset's cadence/sequence in
+      // free text; this creates a real Strategy Slot for it, attaches the
+      // asset's source Title to that Slot (Title's own "Strategy Slot"
+      // relation), and computes + creates the first "Next" Main TD
+      // immediately — instant feedback rather than waiting for the nightly
+      // cron, which will keep this line current from here on the same way
+      // it does for anything created through Growth Strategy.
+      if (body.action === "buildStrategyFromAsset") {
+        const { assetId, guidance } = body;
+        if (!assetId || !String(guidance || '').trim()) return json({ error: "assetId and guidance required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const undash = raw => String(raw || '').replace(/-/g, "");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const ap = assetPage.properties;
+        const assetTitleText = (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("") || "Asset";
+        const assetType = ap["Asset Type"]?.select?.name || "";
+        const titleId = (ap["Content Strategy"]?.relation || [])[0]?.id;
+        if (!titleId) return json({ error: "This asset has no source Title (Content Strategy relation) — can't attach a strategy without one." }, 400);
+
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${titleId}`, { headers: hdr }).then(r => r.json());
+        const tp = titlePage.properties || {};
+        const titleName = (tp.Title?.title || []).map(t => t.plain_text).join("") || "Untitled";
+        const productId = (tp.product?.relation || [])[0]?.id || null;
+        const campaignId = (tp.Campaign?.relation || [])[0]?.id || null;
+
+        let productName = '', nicheText = '', customerText = '';
+        if (productId) {
+          const [productPage, stratRecord] = await Promise.all([
+            fetch(`https://api.notion.com/v1/pages/${productId}`, { headers: hdr }).then(r => r.json()),
+            findBestProductResearchRecord(hdr, productId).catch(() => null),
+          ]);
+          productName = (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "";
+          if (stratRecord) {
+            const spx = stratRecord.properties || {};
+            nicheText = (spx.Niche?.rich_text || []).map(t => t.plain_text).join("");
+            customerText = (spx.Customer?.rich_text || []).map(t => t.plain_text).join("");
+          }
+        }
+
+        const prompt = `You are a content strategist. An operator has an existing PUBLISHED asset and wants to turn it into a repeatable strategy line going forward. Read their guidance and design that line.
+
+PUBLISHED ASSET: ${assetTitleText} (type: ${assetType || 'unknown'})
+SOURCE TITLE: ${titleName}
+PRODUCT: ${productName || '(none)'}${nicheText ? `\nNICHE: ${nicheText}` : ''}${customerText ? `\nCUSTOMER: ${customerText}` : ''}
+
+OPERATOR GUIDANCE (what they want this strategy to be):
+${guidance.trim()}
+
+Decide whether this is:
+- "recurring": the same TYPE of content repeats on a cadence (e.g. weekly, 2x/week) — no fixed end.
+- "sequential": a fixed handful of NEXT steps in a specific order (e.g. a launch series) — give each step a short one-line angle.
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "grouping": "short name for this strategy line, specific to this product/asset", "type": "the strategic content category, e.g. Teach/Take/Story/Relate/Thread/Reply/Behind-the-Scenes/Q&A/Exclusive/Announcement — distinct from platform/method", "cadenceKind": "recurring"|"sequential", "recurrence": "Daily|Weekly|2x/week|Monthly (only if recurring)", "sequenceSteps": ["short angle for the next step", "..."] }
+"sequenceSteps" only when cadenceKind is "sequential" — 1 to 5 short angles for what comes after this asset, in order.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let plan;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+          if (s === -1 || e === -1) throw new Error("No JSON object found");
+          plan = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+        } catch(e) {
+          return json({ error: "Failed to parse strategy JSON: " + e.message }, 500);
+        }
+
+        const grouping = String(plan.grouping || `${productName || titleName} Strategy`).slice(0, 200);
+        const type = String(plan.type || '').slice(0, 200);
+        const isSequential = plan.cadenceKind === 'sequential' && Array.isArray(plan.sequenceSteps) && plan.sequenceSteps.length > 0;
+        const recurrence = String(plan.recurrence || '').slice(0, 200);
+
+        const relProps = {};
+        if (productId) relProps["Product"] = { relation: [{ id: dash(productId) }] };
+        if (campaignId) relProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+
+        // Current Slot — represents this already-published asset's title,
+        // Filled from the start since it already has a real published title.
+        const currentSlotResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: STRATEGY_SLOTS_DB },
+            properties: {
+              "Name": { title: [{ type: "text", text: { content: `${grouping} #1`.slice(0, 200) } }] },
+              "Grouping": { rich_text: [{ type: "text", text: { content: grouping } }] },
+              "Type": { rich_text: [{ type: "text", text: { content: type } }] },
+              "Recurrence": { rich_text: [{ type: "text", text: { content: isSequential ? '' : recurrence } }] },
+              ...(isSequential ? { "Sequence": { number: 1 } } : {}),
+              "Angle": { rich_text: [{ type: "text", text: { content: assetTitleText.slice(0, 1990) } }] },
+              "Status": { select: { name: "Filled" } },
+              "Title": { relation: [{ id: dash(titleId) }] },
+              ...relProps,
+            },
+          }),
+        }).then(r => r.json());
+        if (!currentSlotResp.id) return json({ error: currentSlotResp.message || "Failed to create Strategy Slot" }, 500);
+        const currentSlotId = undash(currentSlotResp.id);
+
+        // Attach the existing title to its new Slot — the actual "attach
+        // the asset to that strategy" step (via Title's own dual relation).
+        await fetch(`https://api.notion.com/v1/pages/${titleId}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Strategy Slot": { relation: [{ id: dash(currentSlotId) }] } } }),
+        }).catch(() => {});
+
+        // Sequential: pre-create the remaining Open sibling slots so the
+        // nightly cron (and this same call, for the first one) can find them.
+        let firstSiblingId = null;
+        if (isSequential) {
+          for (let i = 0; i < plan.sequenceSteps.length; i++) {
+            const seq = i + 2; // the current published asset already occupies #1
+            const stepResp = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                parent: { database_id: STRATEGY_SLOTS_DB },
+                properties: {
+                  "Name": { title: [{ type: "text", text: { content: `${grouping} #${seq}`.slice(0, 200) } }] },
+                  "Grouping": { rich_text: [{ type: "text", text: { content: grouping } }] },
+                  "Type": { rich_text: [{ type: "text", text: { content: type } }] },
+                  "Sequence": { number: seq },
+                  "Angle": { rich_text: [{ type: "text", text: { content: String(plan.sequenceSteps[i] || '').slice(0, 1990) } }] },
+                  "Status": { select: { name: "Open" } },
+                  ...relProps,
+                },
+              }),
+            }).then(r => r.json());
+            if (seq === 2 && stepResp.id) firstSiblingId = undash(stepResp.id);
+          }
+        }
+
+        // Compute + create the first "Next" TD immediately, same shape as
+        // runStrategySequenceReminders' own per-line logic.
+        const todayStr = new Date().toISOString().slice(0, 10);
+        let targetSlotId = null, dueDate = todayStr, label = '';
+        if (isSequential && firstSiblingId) {
+          targetSlotId = firstSiblingId; label = plan.sequenceSteps[0] || type || grouping;
+        } else if (recurrence) {
+          const due = new Date();
+          due.setUTCDate(due.getUTCDate() + parseRecurrenceDays(recurrence));
+          dueDate = due.toISOString().slice(0, 10);
+          targetSlotId = currentSlotId; label = type || grouping;
+        }
+        let nextDue = null;
+        if (targetSlotId) {
+          const tdProps = {
+            Title: { title: [{ type: "text", text: { content: `Next: ${label || 'Untitled'} (${grouping})`.slice(0, 200) } }] },
+            "Strategy Slot": { relation: [{ id: dash(targetSlotId) }] },
+            "Due Date": { date: { start: dueDate } },
+            priority: { multi_select: [{ name: "daily content" }] },
+          };
+          if (productId) tdProps["Product"] = { relation: [{ id: dash(productId) }] };
+          if (campaignId) tdProps["campaign"] = { relation: [{ id: dash(campaignId) }] };
+          await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: MAIN_TD_DB }, properties: tdProps }),
+          }).catch(() => {});
+          nextDue = dueDate;
+        }
+
+        return json({ success: true, grouping, type, cadenceKind: isSequential ? 'sequential' : 'recurring', recurrence: isSequential ? '' : recurrence, nextDue });
       }
 
       // ── saveMethodTitles ──
