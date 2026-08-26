@@ -9210,6 +9210,252 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true, next: results });
       }
 
+      // ── backfillLegacyStrategy ──
+      // Retroactively brings pre-Strategy-Slot published content into the
+      // same Growth Strategy / Slot machinery everything else now uses, so
+      // it starts showing up in getNextSlots/runStrategySequenceReminders
+      // going forward. Per operator direction: for a Product's legacy
+      // titles (Publish/Published, no Growth Strategy yet), group them by
+      // Method (one line per Method — same "one format = one line" rule as
+      // generateGrowthStrategy's divergence split), reverse-engineer a
+      // Growth Strategy from what's ACTUALLY already been published
+      // (chronological title list + real pillar content, not invented
+      // positioning), create one "Filled" Slot per legacy title (retroactive
+      // history) plus exactly one new "Open" Slot proposing what comes next,
+      // and re-point every legacy title's own Growth Strategy/Strategy Slot
+      // relations at the new records. 2+ distinct Methods for the product ->
+      // parent + one child per Method, same shape as the live-generation
+      // divergent path; a single Method -> one flat strategy.
+      if (body.action === "backfillLegacyStrategy") {
+        const { campaignId, productId } = body;
+        if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const undash = raw => String(raw || "").replace(/-/g, "");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const legacyTitles = await notionQuery(CONTENT_STRATEGY_DB, {
+          filter: { and: [
+            { or: [{ property: "Status", select: { equals: "Publish" } }, { property: "Status", select: { equals: "Published" } }] },
+            { property: "product", relation: { contains: dash(productId) } },
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+            { property: "Growth Strategy", relation: { is_empty: true } },
+          ] },
+        });
+        if (!legacyTitles.length) return json({ success: true, created: false, message: "No eligible legacy titles found for this product — every Publish/Published title here already belongs to a Growth Strategy." });
+
+        const [productPage, campPage] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
+        ]);
+        const productName = (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product";
+
+        // Group by Method — legacy titles with no Method at all fall into
+        // one "No Method" bucket rather than being dropped.
+        const methodIds = [...new Set(legacyTitles.map(t => (t.properties.method?.relation || [])[0]?.id).filter(Boolean).map(undash))];
+        const methodPages = methodIds.length
+          ? await Promise.all(methodIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)))
+          : [];
+        const methodInfo = {};
+        methodPages.filter(Boolean).forEach(p => {
+          methodInfo[undash(p.id)] = {
+            name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Method",
+            platform: p.properties?.Platform?.select?.name || "",
+          };
+        });
+
+        const groups = new Map(); // methodId ('__none__' fallback) -> titles[]
+        for (const t of legacyTitles) {
+          const mId = (t.properties.method?.relation || [])[0]?.id ? undash(t.properties.method.relation[0].id) : '__none__';
+          if (!groups.has(mId)) groups.set(mId, []);
+          groups.get(mId).push(t);
+        }
+        for (const arr of groups.values()) arr.sort((a, b) => new Date(a.created_time) - new Date(b.created_time));
+
+        // Pull real pillar content (truncated) for grounding — reverse-
+        // engineering the strategy from what was ACTUALLY written, not
+        // inventing new positioning.
+        const bodyCache = new Map();
+        for (const arr of groups.values()) {
+          for (const t of arr) {
+            const id = undash(t.id);
+            try { bodyCache.set(id, (await extractBlocksTextRecursive(hdr, dash(id))).slice(0, 1200)); }
+            catch (e) { bodyCache.set(id, ""); }
+          }
+        }
+
+        const esc4 = s => String(s || '');
+        const rtBlock4 = text => [{ type: "text", text: { content: esc4(text) } }];
+
+        async function createStrategyPage4({ name, parentId, summary, recPlatforms, groupingCount, bodyChildren }) {
+          const props = {
+            "Strategy Name": { title: [{ text: { content: name.slice(0, 200) } }] },
+            "Product": { relation: [{ id: dash(productId) }] },
+            "Campaign": { relation: [{ id: dash(campaignId) }] },
+            "Recommended Platforms": { multi_select: recPlatforms.map(p => ({ name: p })) },
+            "Status": { select: { name: "Draft" } },
+            "Summary": { rich_text: rtBlock4(summary || '') },
+            "Grouping Count": { number: groupingCount },
+          };
+          if (parentId) props["Parent Strategy"] = { relation: [{ id: dash(parentId) }] };
+          return fetch(`https://api.notion.com/v1/pages`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: GROWTH_STRATEGY_DB }, properties: props, children: bodyChildren.slice(0, 100) }),
+          }).then(r => r.json());
+        }
+
+        // One AI call per Method-group: summarize what's already published
+        // (real chronology + real content) and propose exactly one next
+        // angle that continues it without repeating ground already covered.
+        async function analyzeGroup(mId, titles) {
+          const mInfo = methodInfo[mId] || { name: 'No Method', platform: '' };
+          const listBlock = titles.map((t, i) => {
+            const name = (t.properties.Title?.title || []).map(x => x.plain_text).join("") || "Untitled";
+            return `${i + 1}. "${name}" (published ${t.created_time.slice(0, 10)})\n${(bodyCache.get(undash(t.id)) || '').slice(0, 600)}`;
+          }).join("\n\n");
+          const prompt = `Below is the FULL chronological list of already-published content for the product "${productName}", method "${mInfo.name}"${mInfo.platform ? ` (platform: ${mInfo.platform})` : ''}. Reverse-engineer what this series has actually been doing, then propose exactly ONE next piece that continues it naturally without repeating ground already covered.
+
+${listBlock}
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{
+  "summary": "2-4 sentences: what this published series has actually been covering and why, grounded only in the content above",
+  "type": "the strategic content category (e.g. Teach, Take, Story, Behind-the-Scenes) that best describes this series",
+  "recurrence": "the realistic cadence implied by the actual publish dates above (e.g. Weekly, 2x/week) — infer from the real gaps between dates, don't guess a default",
+  "nextAngle": "one specific, concrete next title/angle that continues this series — not a repeat of anything already published above"
+}`;
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+          if (start === -1 || end === -1) throw new Error("No JSON object found in analysis response");
+          return JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        }
+
+        const groupIds = [...groups.keys()];
+        const divergent = groupIds.length > 1;
+        const dateLabel = new Date(campPage.last_edited_time || Date.now()).toISOString().slice(0, 10);
+        const baseName = `${productName} Backfilled Strategy — ${dateLabel}`;
+        const strategiesCreated = [];
+        let totalSlotsCreated = 0, totalTitlesLinked = 0;
+
+        let parentId = null;
+        if (divergent) {
+          const parentResp = await createStrategyPage4({
+            name: baseName, parentId: null,
+            summary: `Backfilled from ${legacyTitles.length} already-published legacy titles across ${groupIds.length} methods — one sub-strategy per method, each carrying its real publish history plus one proposed next piece.`,
+            recPlatforms: groupIds.map(mId => methodInfo[mId]?.platform).filter(Boolean),
+            groupingCount: groupIds.length,
+            bodyChildren: [
+              { object: "block", type: "heading_2", heading_2: { rich_text: rtBlock4("Summary") } },
+              { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock4(`Backfilled from ${legacyTitles.length} already-published legacy titles across ${groupIds.length} methods.`) } },
+            ],
+          });
+          if (!parentResp.id) return json({ error: parentResp.message || "Failed to create parent backfill strategy" }, 500);
+          parentId = undash(parentResp.id);
+          strategiesCreated.push({ id: parentId, name: baseName, isParent: true });
+        }
+
+        for (const mId of groupIds) {
+          const titles = groups.get(mId);
+          const mInfo = methodInfo[mId] || { name: 'No Method', platform: '' };
+          let analysis;
+          try { analysis = await analyzeGroup(mId, titles); }
+          catch (e) { continue; } // one bad group never blocks the rest
+
+          const stratName = divergent ? `${baseName} — ${mInfo.name}` : baseName;
+          const bodyChildren = [
+            { object: "block", type: "heading_2", heading_2: { rich_text: rtBlock4(mInfo.name) } },
+            { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock4(analysis.summary || '') } },
+            { object: "block", type: "heading_3", heading_3: { rich_text: rtBlock4("Already Published (backfilled history)") } },
+            ...titles.map(t => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock4(`${(t.properties.Title?.title || []).map(x => x.plain_text).join("") || 'Untitled'} (${t.created_time.slice(0, 10)})`) } })),
+            { object: "block", type: "heading_3", heading_3: { rich_text: rtBlock4("Proposed Next") } },
+            { object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock4(analysis.nextAngle || '') } },
+          ];
+          const stratResp = await createStrategyPage4({
+            name: stratName, parentId, summary: analysis.summary,
+            recPlatforms: mInfo.platform ? [mInfo.platform] : [],
+            groupingCount: 1, bodyChildren,
+          });
+          if (!stratResp.id) continue;
+          const stratId = undash(stratResp.id);
+          strategiesCreated.push({ id: stratId, name: stratName, isParent: false, titleCount: titles.length });
+
+          // One "Filled" Slot per legacy title, in real chronological order,
+          // each pointed at the real title it's backfilling — then exactly
+          // one "Open" Slot proposing what comes next.
+          const seqSlots = [];
+          for (let i = 0; i < titles.length; i++) {
+            const t = titles[i];
+            const seq = i + 1;
+            const name = `${mInfo.name} #${seq} (backfilled)`;
+            const slotResp = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                parent: { database_id: STRATEGY_SLOTS_DB },
+                properties: {
+                  "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
+                  "Growth Strategy": { relation: [{ id: dash(stratId) }] },
+                  "Campaign": { relation: [{ id: dash(campaignId) }] },
+                  "Product": { relation: [{ id: dash(productId) }] },
+                  "Grouping": { rich_text: [{ type: "text", text: { content: mInfo.name.slice(0, 1990) } }] },
+                  "Sequence": { number: seq },
+                  "Angle": { rich_text: [{ type: "text", text: { content: ((t.properties.Title?.title || []).map(x => x.plain_text).join("") || '').slice(0, 1990) } }] },
+                  "Method Name": { rich_text: [{ type: "text", text: { content: mInfo.name.slice(0, 1990) } }] },
+                  "Platform": { rich_text: [{ type: "text", text: { content: (mInfo.platform || '').slice(0, 1990) } }] },
+                  "Type": { rich_text: [{ type: "text", text: { content: (analysis.type || '').slice(0, 1990) } }] },
+                  "Recurrence": { rich_text: [{ type: "text", text: { content: (analysis.recurrence || '').slice(0, 1990) } }] },
+                  "Status": { select: { name: "Filled" } },
+                  "Title": { relation: [{ id: dash(undash(t.id)) }] },
+                },
+              }),
+            }).then(r => r.json()).catch(e => ({ error: String(e) }));
+            if (slotResp.id) { seqSlots.push(undash(slotResp.id)); totalSlotsCreated++; }
+            // Re-point the legacy title itself so it's picked up by
+            // getNextSlots/runStrategySequenceReminders going forward.
+            if (slotResp.id) {
+              await fetch(`https://api.notion.com/v1/pages/${dash(undash(t.id))}`, {
+                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: {
+                  "Growth Strategy": { relation: [{ id: dash(stratId) }] },
+                  "Strategy Slot": { relation: [{ id: dash(undash(slotResp.id)) }] },
+                } }),
+              }).catch(() => {});
+              totalTitlesLinked++;
+            }
+          }
+          // The proposed next piece — one Open Slot at the next Sequence.
+          const nextSeq = titles.length + 1;
+          await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parent: { database_id: STRATEGY_SLOTS_DB },
+              properties: {
+                "Name": { title: [{ type: "text", text: { content: `${mInfo.name} #${nextSeq}`.slice(0, 200) } }] },
+                "Growth Strategy": { relation: [{ id: dash(stratId) }] },
+                "Campaign": { relation: [{ id: dash(campaignId) }] },
+                "Product": { relation: [{ id: dash(productId) }] },
+                "Grouping": { rich_text: [{ type: "text", text: { content: mInfo.name.slice(0, 1990) } }] },
+                "Sequence": { number: nextSeq },
+                "Angle": { rich_text: [{ type: "text", text: { content: (analysis.nextAngle || '').slice(0, 1990) } }] },
+                "Method Name": { rich_text: [{ type: "text", text: { content: mInfo.name.slice(0, 1990) } }] },
+                "Platform": { rich_text: [{ type: "text", text: { content: (mInfo.platform || '').slice(0, 1990) } }] },
+                "Type": { rich_text: [{ type: "text", text: { content: (analysis.type || '').slice(0, 1990) } }] },
+                "Recurrence": { rich_text: [{ type: "text", text: { content: (analysis.recurrence || '').slice(0, 1990) } }] },
+                "Status": { select: { name: "Open" } },
+              },
+            }),
+          }).then(r => r.json()).then(r => { if (r.id) totalSlotsCreated++; }).catch(() => {});
+        }
+
+        return json({ success: true, created: true, strategiesCreated, slotsCreated: totalSlotsCreated, titlesLinked: totalTitlesLinked });
+      }
+
       // ── generateTitleFromSlot ──
       // The single "Generate Title" modal — Product (or none) → Slot (or
       // none) → Method → Generate, the only title-creation entry point now
@@ -16628,12 +16874,28 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       }
 
       if (body.action === 'runMeanReversionScan') {
+        // Discovery universe, not just the saved watchlist: Yahoo's top-100
+        // most-active tickers (same source discoverStocks uses) merged with
+        // whatever's on the saved watchlist, deduped. This is what actually
+        // finds NEW candidates matching the criteria, rather than only
+        // re-checking a short hand-picked list.
+        const scrUrl = 'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=most_actives&count=100&formatted=false&lang=en-US&region=US';
+        let mostActive = [];
+        try {
+          const scrResp = await fetch(scrUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          if (scrResp.ok) {
+            const scrData = await scrResp.json();
+            mostActive = (scrData?.finance?.result?.[0]?.quotes || []).map(q => q.symbol).filter(Boolean);
+          }
+        } catch { /* fall through to watchlist-only if Yahoo screener fails */ }
+
         const raw = await env.TRADES.get('screener:watchlist');
-        const tickers = raw ? JSON.parse(raw) : [];
-        if (!tickers.length) {
-          return json({ error: 'No watchlist saved — add tickers in the Screener section first.' }, 400);
+        const watchlist = raw ? JSON.parse(raw) : [];
+
+        const list = [...new Set([...mostActive, ...watchlist])].slice(0, 120);
+        if (!list.length) {
+          return json({ error: 'No universe to scan — Yahoo most-active fetch failed and no watchlist saved.' }, 400);
         }
-        const list = tickers.slice(0, 40);
         const results = await Promise.allSettled(
           list.map(async sym => calcMeanReversionSignal(sym, await fetchChart(sym)))
         );
