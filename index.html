@@ -10538,8 +10538,9 @@ function renderLast30Table() {
       '<div style="flex:0 0 70px;min-width:0;padding:6px 8px;">' +
         '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
       '</div>' +
-      '<div style="width:24px;flex-shrink:0;padding:6px 4px;">' +
-        (a.campaignMicrosite ? '<a href="' + esc(a.campaignMicrosite) + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' : '') +
+      '<div style="width:110px;flex-shrink:0;padding:6px 4px;display:flex;align-items:center;gap:6px;justify-content:flex-end;">' +
+        '<button onclick="openBuildStrategyModal(\'' + a.id + '\',\'' + (a.title || '').replace(/'/g,"\\'").replace(/"/g,'&quot;') + '\')" title="Build a repeatable strategy from this published asset — describe a cadence or a fixed sequence of next steps, and it gets attached to this asset\'s title so the nightly queue knows what\'s next." style="font-size:10px;padding:1px 7px;border:1px solid #f6ad55;background:transparent;color:#f6ad55;border-radius:9px;cursor:pointer;flex-shrink:0;white-space:nowrap;">🎯 Strategy</button>' +
+        (a.campaignMicrosite ? '<a href="' + esc(a.campaignMicrosite) + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;flex-shrink:0;">↗</a>' : '') +
       '</div>' +
     '</div>';
   }).join('');
