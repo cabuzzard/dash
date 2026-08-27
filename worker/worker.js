@@ -5170,6 +5170,120 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       //   Slot relations are just cleared, so it survives and drops back
       //   into "Unassigned Planning Titles" instead of the panel silently
       //   losing track of it
+      // ── launchStrategyRun ──
+      // Per operator direction: a Strategy can act as a reusable "Guide"
+      // (the content framework — groupings, angles, recommended Method/
+      // Platform per grouping) that stays put in the Strategies panel,
+      // while an actual execution against a specific Product is a "Run" —
+      // implemented as a Growth Strategy child (Parent Strategy relation),
+      // reusing the existing divergent-path parent/child machinery this
+      // system already understands everywhere (rendering, backfill,
+      // delete-cascade). ANY existing strategy can serve as a Guide, not
+      // just ones with no Product of their own — launching a Run just
+      // creates a new child scoped to whatever Product you point it at.
+      //
+      // Reuses the Guide's content by parsing its own page body back out —
+      // the inverse of generateGrowthStrategy's groupingBlocks(): each
+      // heading_3 is a grouping name, the paragraph right after it is the
+      // rationale, bulleted_list_items are the angles, and the bold
+      // "Method: X  ·  Platform: Y" paragraph carries the recommendation.
+      // Post Type is deliberately left unset on the new Run's slots (no
+      // reliable per-grouping mapping to copy without another AI call) —
+      // the existing 🏷️ Assign Types button (backfillStrategyPostTypes)
+      // is the already-built way to fill that in afterward.
+      if (body.action === "launchStrategyRun") {
+        const { guideStrategyId, productId, campaignId } = body;
+        if (!guideStrategyId || !productId) return json({ error: "guideStrategyId and productId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const [guidePage, blocksResp, productPage] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(guideStrategyId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/blocks/${dash(guideStrategyId)}/children?page_size=100`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+        ]);
+        if (!guidePage.properties) return json({ error: guidePage.message || "Guide strategy not found" }, 404);
+        if (!productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
+        const guideName = (guidePage.properties["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Guide";
+        const productName = (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const resolvedCampaignId = campaignId
+          || (guidePage.properties.Campaign?.relation || [])[0]?.id?.replace(/-/g,"")
+          || (productPage.properties?.Campaigns?.relation || [])[0]?.id?.replace(/-/g,"")
+          || null;
+
+        // Parse groupings out of the Guide's own body blocks.
+        const blocks = blocksResp.results || [];
+        const groupings = [];
+        let current = null;
+        for (const b of blocks) {
+          if (b.type === "heading_3") {
+            if (current) groupings.push(current);
+            current = { name: (b.heading_3?.rich_text || []).map(t => t.plain_text).join(""), rationale: "", titles: [], method: "", platform: "" };
+            continue;
+          }
+          if (!current) continue; // still inside the "Summary" section before the first grouping
+          if (b.type === "paragraph") {
+            const text = (b.paragraph?.rich_text || []).map(t => t.plain_text).join("");
+            const methodMatch = text.match(/Method:\s*(.*?)\s*(?:·|$)/);
+            const platformMatch = text.match(/Platform:\s*(.*)$/);
+            if (methodMatch || platformMatch) {
+              if (methodMatch) current.method = methodMatch[1].trim();
+              if (platformMatch) current.platform = platformMatch[1].trim();
+            } else if (!current.rationale && text.trim()) {
+              current.rationale = text;
+            }
+          }
+          if (b.type === "bulleted_list_item") {
+            const text = (b.bulleted_list_item?.rich_text || []).map(t => t.plain_text).join("");
+            if (text.trim()) current.titles.push(text);
+          }
+        }
+        if (current) groupings.push(current);
+        if (!groupings.length) return json({ error: "Could not find any groupings in this guide's content to reuse" }, 400);
+
+        const runName = `${guideName} — ${productName} Run`.slice(0, 200);
+        const runProps = {
+          "Strategy Name": { title: [{ type: "text", text: { content: runName } }] },
+          "Product": { relation: [{ id: dash(productId) }] },
+          "Parent Strategy": { relation: [{ id: dash(guideStrategyId) }] },
+          "Status": { select: { name: "Draft" } },
+          "Grouping Count": { number: groupings.length },
+        };
+        if (resolvedCampaignId) runProps["Campaign"] = { relation: [{ id: dash(resolvedCampaignId) }] };
+        const runResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: GROWTH_STRATEGY_DB }, properties: runProps }),
+        }).then(r => r.json());
+        if (!runResp.id) return json({ error: runResp.message || "Failed to create Run" }, 500);
+        const runId = runResp.id.replace(/-/g,"");
+
+        let slotsCreated = 0;
+        for (const g of groupings) {
+          for (let i = 0; i < g.titles.length; i++) {
+            const seq = i + 1;
+            const props = {
+              "Name": { title: [{ type: "text", text: { content: `${g.name} #${seq}`.slice(0, 200) } }] },
+              "Growth Strategy": { relation: [{ id: dash(runId) }] },
+              "Product": { relation: [{ id: dash(productId) }] },
+              "Grouping": { rich_text: [{ type: "text", text: { content: g.name.slice(0, 1990) } }] },
+              "Sequence": { number: seq },
+              "Angle": { rich_text: [{ type: "text", text: { content: g.titles[i].slice(0, 1990) } }] },
+              "Method Name": { rich_text: [{ type: "text", text: { content: g.method.slice(0, 1990) } }] },
+              "Platform": { rich_text: [{ type: "text", text: { content: g.platform.slice(0, 1990) } }] },
+              "Status": { select: { name: "Open" } },
+            };
+            if (resolvedCampaignId) props["Campaign"] = { relation: [{ id: dash(resolvedCampaignId) }] };
+            const r = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: props }),
+            }).then(r => r.json()).catch(() => null);
+            if (r && r.id) slotsCreated++;
+          }
+        }
+
+        return json({ success: true, runId, runName, groupingCount: groupings.length, slotsCreated });
+      }
+
       if (body.action === "deleteGrowthStrategy") {
         const { growthStrategyId } = body;
         if (!growthStrategyId) return json({ error: "growthStrategyId required" }, 400);
