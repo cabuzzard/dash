@@ -9218,8 +9218,18 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const slotById = new Map(allSlots.map(s => [undash(s.id), s]));
 
         // Resolve each published asset's source Title (Content Strategy rel).
+        // Chunked (4 at a time) rather than one big Promise.all — a wide fan
+        // of concurrent page fetches trips Notion's rate limit.
+        const fetchPagesChunked = async (ids, size = 4) => {
+          const out = [];
+          for (let i = 0; i < ids.length; i += size) {
+            out.push(...await Promise.all(ids.slice(i, i + size).map(id =>
+              fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null))));
+          }
+          return out;
+        };
         const titleIds = [...new Set(assets.map(a => (a.properties["Content Strategy"]?.relation || [])[0]?.id).filter(Boolean).map(undash))];
-        const titlePages = await Promise.all(titleIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)));
+        const titlePages = await fetchPagesChunked(titleIds);
         const titleById = new Map();
         titlePages.filter(p => p && p.id).forEach(p => titleById.set(undash(p.id), p));
 
@@ -9420,21 +9430,17 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // every "next" entry so the Development tab can group it the same
         // way as everything else: Stack -> Product -> Parent Strategy ->
         // Strategy.
-        const prodIds = [...new Set(results.map(r => r.productId).filter(Boolean))];
-        const gsIds = [...new Set(results.map(r => r.growthStrategyId).filter(Boolean))];
-        // Campaign resolution (name + microsite link) — only meaningful for
-        // a global (no campaignId) scan spanning several campaigns; a
-        // scoped per-campaign call already knows this from its own context,
-        // but resolving it here too costs nothing extra when there's only
-        // one and keeps the response shape identical either way.
-        const campIds = [...new Set(results.map(r => r.campaignId).filter(Boolean))];
-        const [prodPages, gsPages, campPages] = await Promise.all([
-          Promise.all(prodIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null))),
-          Promise.all(gsIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null))),
-          Promise.all(campIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null))),
+        // Resolve names via THREE bulk DB scans (one paginated query each) —
+        // not N concurrent per-id page fetches, which reliably tripped
+        // Notion's rate limit once the row count grew and left every row
+        // showing "No Strategy" / "No Product".
+        const [gsRows, campRows2, prodRows2] = await Promise.all([
+          notionQuery(GROWTH_STRATEGY_DB, {}).catch(() => []),
+          notionQuery(CAMPAIGNS_DB, {}).catch(() => []),
+          notionQuery(PRODUCTS_DB, {}).catch(() => []),
         ]);
         const campInfo = {};
-        campPages.filter(Boolean).forEach(p => {
+        campRows2.forEach(p => {
           campInfo[undash(p.id)] = {
             name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Campaign",
             site: p.properties?.site?.rich_text?.map(t => t.plain_text).join("") || p.properties?.site?.select?.name || "",
@@ -9442,24 +9448,19 @@ Return ONLY this JSON object, no other text, no markdown fences:
           };
         });
         const prodInfo = {};
-        prodPages.filter(Boolean).forEach(p => {
+        prodRows2.forEach(p => {
           prodInfo[undash(p.id)] = {
             name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product",
             stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim() || null,
           };
         });
         const gsInfo = {};
-        gsPages.filter(Boolean).forEach(p => {
+        gsRows.forEach(p => {
           gsInfo[undash(p.id)] = {
             name: (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy",
             parentId: (p.properties?.["Parent Strategy"]?.relation || [])[0]?.id ? undash(p.properties["Parent Strategy"].relation[0].id) : null,
           };
         });
-        const parentIdsNeeded = [...new Set(Object.values(gsInfo).map(g => g.parentId).filter(id => id && !gsInfo[id]))];
-        if (parentIdsNeeded.length) {
-          const parentPages = await Promise.all(parentIdsNeeded.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)));
-          parentPages.filter(Boolean).forEach(p => { gsInfo[undash(p.id)] = { name: (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy", parentId: null }; });
-        }
 
         results.forEach(r => {
           const pi = r.productId ? prodInfo[r.productId] : null;
