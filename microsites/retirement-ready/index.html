@@ -1380,6 +1380,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       </select>
       <div class="modal-hint" id="ctsSlotContext" style="display:none;margin-bottom:10px;"></div>
 
+      <label class="lm-label">Title <span style="color:#fff;font-weight:normal;">— pre-filled from the slot's planned angle; edit it or leave it, or clear it to have AI write one</span></label>
+      <input class="modal-ta" id="ctsTitleInput" type="text" placeholder="Leave blank to have AI write one" style="margin-bottom:10px;">
+
       <label class="lm-label">Strategy <span style="color:#fff;font-weight:normal;">— optional; locked to the picked Slot's strategy, or pick one directly for a one-off title (e.g. a "tool guide") still grouped under an overall strategy</span></label>
       <select class="modal-ta" id="ctsStrategy" disabled style="margin-bottom:10px;">
         <option value="">— none —</option>
@@ -8222,9 +8225,13 @@ function ctsPopulateSlots(productId, selectedSlotId) {
 function ctsUpdateSlotContext() {
   const found = ctsFindSlot(document.getElementById('ctsSlot').value);
   const ctxEl = document.getElementById('ctsSlotContext');
-  if (!found) { ctxEl.style.display = 'none'; ctxEl.innerHTML = ''; return; }
+  const titleInput = document.getElementById('ctsTitleInput');
+  if (!found) { ctxEl.style.display = 'none'; ctxEl.innerHTML = ''; titleInput.value = ''; return; }
   ctxEl.style.display = 'block';
   ctxEl.innerHTML = `<strong>${esc(found.strategyName)}</strong> → ${esc(found.groupingName)}: ${esc(found.slot.name)}<br><span style="color:#fff;">${esc(found.slot.angle || '')}</span>`;
+  // Pre-fill from the slot's already-written planned angle — the operator
+  // can edit or clear it; clearing falls back to the AI "sharpen it" path.
+  titleInput.value = found.slot.angle || '';
 }
 // forceStrategyId: when a Slot is picked, its parent strategy is the only
 // valid choice — populate then lock the select to it. With no Slot, the
@@ -8301,12 +8308,13 @@ async function submitCreateTitleFromSlot() {
   const productId = document.getElementById('ctsProduct').value || undefined;
   const growthStrategyId = document.getElementById('ctsStrategy').value || undefined;
   const guidance = document.getElementById('ctsGuidance').value.trim();
+  const titleOverride = document.getElementById('ctsTitleInput').value.trim();
   const btn = document.getElementById('ctsGoBtn');
   btn.disabled = true; btn.textContent = 'Generating…';
   status.style.color = '#888';
-  status.textContent = 'Writing title and pillar content…';
+  status.textContent = titleOverride ? 'Saving title…' : 'Writing title…';
   try {
-    const data = await w('generateTitleFromSlot', { slotId, productId, growthStrategyId, guidance: guidance || undefined, campaignId: CAMPAIGN_ID });
+    const data = await w('generateTitleFromSlot', { slotId, productId, growthStrategyId, guidance: guidance || undefined, titleOverride: titleOverride || undefined, campaignId: CAMPAIGN_ID });
     if (data.error) throw new Error(data.error);
     status.textContent = `✓ Created "${data.title}"`;
     status.style.color = '#68d391';

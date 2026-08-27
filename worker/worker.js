@@ -10381,9 +10381,14 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // title/pillar creation — this now only writes a title + its
         // method-agnostic pillar content (via writePillarContent below).
         // Method-specific shaping happens later, at Generate Assets.
-        const { slotId, guidance, campaignId: campaignIdParam, productId: productIdParam, growthStrategyId: growthStrategyIdParam } = body;
+        const { slotId, guidance, campaignId: campaignIdParam, productId: productIdParam, growthStrategyId: growthStrategyIdParam, titleOverride } = body;
         if (!slotId && !campaignIdParam) return json({ error: "campaignId required when no slot is given" }, 400);
-        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        // titleOverride: the operator typed/edited an exact title in the
+        // modal (pre-filled from the slot's own Angle) rather than letting
+        // the AI "sharpen" it — when set, the AI title-writing call below is
+        // skipped entirely and this text is used verbatim.
+        const hasTitleOverride = typeof titleOverride === 'string' && titleOverride.trim();
+        if (!hasTitleOverride && !env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
@@ -10431,13 +10436,19 @@ Return ONLY this JSON object, no other text, no markdown fences:
           }
         }
 
-        // Real-time grounding for X slots — see callGrokTrendingTopics.
-        // Best-effort, "" when XAI_API_KEY isn't set or the platform isn't X.
-        const grokBlock = /\bx\b|twitter/i.test(platform || '')
-          ? await callGrokTrendingTopics(env, { niche: nicheText, customer: customerText, platformName: platform })
-          : "";
+        let plan;
+        if (hasTitleOverride) {
+          // Operator typed/edited an exact title in the modal — use it
+          // verbatim, skip the AI "sharpen the angle" call entirely.
+          plan = { title: titleOverride.trim() };
+        } else {
+          // Real-time grounding for X slots — see callGrokTrendingTopics.
+          // Best-effort, "" when XAI_API_KEY isn't set or the platform isn't X.
+          const grokBlock = /\bx\b|twitter/i.test(platform || '')
+            ? await callGrokTrendingTopics(env, { niche: nicheText, customer: customerText, platformName: platform })
+            : "";
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist. Write ONE specific, concrete deliverable title${slotId ? ' for a specific planned content angle' : ''} — a thing to produce, not a content-post headline. Do not write any script, slides, or body content — only the title. Its actual content is written separately, method-agnostically, right after this.
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist. Write ONE specific, concrete deliverable title${slotId ? ' for a specific planned content angle' : ''} — a thing to produce, not a content-post headline. Do not write any script, slides, or body content — only the title. Its actual content is written separately, method-agnostically, right after this.
 
 ${grokBlock}${slotId ? `SLOT: ${slotName} (grouping: "${grouping}")\nPLANNED ANGLE: ${angle}\n` : ''}${platform ? `PLATFORM: ${platform}\n` : ''}${slotType ? `CONTENT TYPE: ${slotType} (the strategic category this title must clearly execute)\n` : ''}${slotRecurrence ? `RECURRENCE: ${slotRecurrence} — this is a recurring slot type, so this specific instance should feel fresh, not interchangeable with a prior fill of the same slot\n` : ''}
 ${productSection}
@@ -10447,21 +10458,21 @@ ${slotId ? 'Refine/sharpen the planned angle above into a real title — don\'t 
 Return ONLY this JSON object, no other text, no markdown fences:
 { "title": "..." }`;
 
-        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: prompt }] }),
-        });
-        const aiData = await aiResp.json();
-        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
-        let plan;
-        try {
-          const raw = aiData.content?.[0]?.text || "";
-          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-          if (start === -1 || end === -1) throw new Error("No JSON object found");
-          plan = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
-        } catch(e) {
-          return json({ error: "Failed to parse title JSON: " + e.message }, 500);
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: prompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+          try {
+            const raw = aiData.content?.[0]?.text || "";
+            const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+            if (start === -1 || end === -1) throw new Error("No JSON object found");
+            plan = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          } catch(e) {
+            return json({ error: "Failed to parse title JSON: " + e.message }, 500);
+          }
         }
         const titleText = String(plan.title || slotName || angle || "Untitled").slice(0, 2000);
 
