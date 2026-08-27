@@ -8935,16 +8935,20 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // product); campaignId is a fallback for contexts with no product —
         // e.g. editing an existing title that has none — filtering by
         // Campaign instead of Product. At least one is required.
+        // productId / campaignId both optional — with neither, return every
+        // Growth Strategy (the root dashboard's Build-Strategy modal, which
+        // only knows an asset, uses this to offer "attach to existing").
         const { productId, campaignId } = body;
-        if (!productId && !campaignId) return json({ error: "productId or campaignId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const q = await fetch(`https://api.notion.com/v1/databases/${GROWTH_STRATEGY_DB}/query`, {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({
-            filter: productId
-              ? { property: "Product", relation: { contains: dash(productId) } }
-              : { property: "Campaign", relation: { contains: dash(campaignId) } },
+            ...(productId
+              ? { filter: { property: "Product", relation: { contains: dash(productId) } } }
+              : campaignId
+                ? { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }
+                : {}),
             sorts: [{ timestamp: "created_time", direction: "descending" }],
           }),
         }).then(r => r.json()).catch(() => ({ results: [] }));
@@ -9885,9 +9889,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // cron, which will keep this line current from here on the same way
       // it does for anything created through Growth Strategy.
       if (body.action === "buildStrategyFromAsset") {
-        const { assetId, guidance } = body;
-        if (!assetId || !String(guidance || '').trim()) return json({ error: "assetId and guidance required" }, 400);
-        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const { assetId, guidance, growthStrategyId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        if (!growthStrategyId && !String(guidance || '').trim()) return json({ error: "guidance required when not attaching to an existing strategy" }, 400);
+        if (!growthStrategyId && !env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const undash = raw => String(raw || '').replace(/-/g, "");
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
@@ -9905,6 +9910,60 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const titleName = (tp.Title?.title || []).map(t => t.plain_text).join("") || "Untitled";
         const productId = (tp.product?.relation || [])[0]?.id || null;
         const campaignId = (tp.Campaign?.relation || [])[0]?.id || null;
+
+        // ── Attach to an EXISTING Growth Strategy ──
+        // No Claude call: derive the line's shape (grouping / type /
+        // recurrence) from the strategy's existing slots — most common value
+        // wins — create one recurring slot for this asset under it, and wire
+        // asset ↔ slot ↔ title exactly like the create-new path does.
+        if (growthStrategyId) {
+          const gsDash = dash(growthStrategyId);
+          const [gsPage, gsSlots] = await Promise.all([
+            fetch(`https://api.notion.com/v1/pages/${gsDash}`, { headers: hdr }).then(r => r.json()),
+            notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Growth Strategy", relation: { contains: gsDash } } }).catch(() => []),
+          ]);
+          if (!gsPage.properties) return json({ error: gsPage.message || "Growth Strategy not found" }, 404);
+          const gsName = (gsPage.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Strategy";
+          const mode = (arr) => { const c = {}; let best = "", n = 0; arr.forEach(v => { if (!v) return; c[v] = (c[v] || 0) + 1; if (c[v] > n) { n = c[v]; best = v; } }); return best; };
+          const grpG = mode(gsSlots.map(s => (s.properties.Grouping?.rich_text || []).map(x => x.plain_text).join(""))) || gsName;
+          const typeG = mode(gsSlots.map(s => (s.properties.Type?.rich_text || []).map(x => x.plain_text).join(""))) || "Teach";
+          const recG = mode(gsSlots.map(s => (s.properties.Recurrence?.rich_text || []).map(x => x.plain_text).join(""))) || "Weekly";
+          const rel = {};
+          if (productId) rel["Product"] = { relation: [{ id: dash(productId) }] };
+          if (campaignId) rel["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+          const slotResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: {
+              "Name": { title: [{ type: "text", text: { content: `${grpG} — ${titleName}`.slice(0, 200) } }] },
+              "Grouping": { rich_text: [{ type: "text", text: { content: String(grpG).slice(0, 1990) } }] },
+              "Type": { rich_text: [{ type: "text", text: { content: String(typeG).slice(0, 1990) } }] },
+              "Recurrence": { rich_text: [{ type: "text", text: { content: String(recG).slice(0, 1990) } }] },
+              "Guideline": { rich_text: [{ type: "text", text: { content: String(guidance || '').slice(0, 1990) } }] },
+              "Angle": { rich_text: [{ type: "text", text: { content: assetTitleText.slice(0, 1990) } }] },
+              "Status": { select: { name: "Published" } },
+              "Growth Strategy": { relation: [{ id: gsDash }] },
+              "Asset": { relation: [{ id: dash(assetId) }] },
+              "Title": { relation: [{ id: dash(undash(titleId)) }] },
+              "Title 1": { relation: [{ id: dash(undash(titleId)) }] },
+              ...rel,
+            } }),
+          }).then(r => r.json());
+          if (!slotResp.id) return json({ error: slotResp.message || "Failed to create Strategy Slot" }, 500);
+          await fetch(`https://api.notion.com/v1/pages/${titleId}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: {
+              "Growth Strategy": { relation: [{ id: gsDash }] },
+              "Strategy Slot": { relation: [{ id: dash(undash(slotResp.id)) }] },
+            } }),
+          }).catch(() => {});
+          if (!ap["Publishing Date"]?.date?.start) {
+            await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "Publishing Date": { date: { start: (assetPage.last_edited_time || new Date().toISOString()).slice(0, 10) } } } }),
+            }).catch(() => {});
+          }
+          return json({ success: true, attachedTo: gsName, cadenceKind: "recurring", recurrence: recG, grouping: grpG, type: typeG });
+        }
 
         let productName = '', nicheText = '', customerText = '';
         if (productId) {

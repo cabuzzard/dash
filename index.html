@@ -2605,8 +2605,17 @@
   <div class="modal" style="max-width:460px;transform:none;border-radius:var(--radius);margin:0;width:100%;">
     <div class="modal-title">Build Strategy</div>
     <div style="font-size:11px;color:var(--text3);margin:-8px 0 14px;" id="buildStrategyAssetName"></div>
-    <div class="modal-field">
-      <label class="modal-label">Describe the strategy for this asset (cadence, sequence, or upkeep)</label>
+    <div style="display:flex;gap:6px;margin-bottom:12px;">
+      <button type="button" id="bsModeNew" onclick="setBuildStrategyMode('new')" style="flex:1;font-size:12px;font-weight:600;padding:6px 8px;border:1px solid var(--accent);border-radius:6px;background:rgba(232,255,71,.1);color:var(--accent);cursor:pointer;">Create new</button>
+      <button type="button" id="bsModeExisting" onclick="setBuildStrategyMode('existing')" style="flex:1;font-size:12px;font-weight:600;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:transparent;color:var(--text3);cursor:pointer;">Attach to existing</button>
+    </div>
+    <div class="modal-field" id="bsExistingField" style="display:none;">
+      <label class="modal-label">Existing Growth Strategy</label>
+      <select class="modal-select" id="buildStrategyExisting"><option value="">Loading…</option></select>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;">This asset's title is attached to the chosen strategy and gets a recurring slot matching that strategy's cadence.</div>
+    </div>
+    <div class="modal-field" id="bsGuidanceField">
+      <label class="modal-label" id="bsGuidanceLabel">Describe the strategy for this asset (cadence, sequence, or upkeep)</label>
       <textarea class="modal-input" id="buildStrategyGuidance" rows="5" style="font-size:13px;resize:vertical;" placeholder="e.g. I want to post 2 of these a week, alternating a teach angle and a customer story. Or: this is step 1 of a launch series, next should dig into pricing objections, then a case study."></textarea>
     </div>
     <div id="buildStrategyResult" style="display:none;margin:0 0 12px;padding:10px;border:1px solid rgba(74,222,128,.3);border-radius:6px;background:rgba(74,222,128,.06);font-size:12px;color:#4ade80;"></div>
@@ -13029,15 +13038,38 @@ async function loadPublishedAssets() {
 // ── Published Assets — Build Strategy modal ───────────────────────────
 let _buildStrategyAssetId = null;
 
-function openBuildStrategyModal(assetId, assetTitle) {
+let _buildStrategyMode = 'new';
+function setBuildStrategyMode(mode) {
+  _buildStrategyMode = mode;
+  const on = 'flex:1;font-size:12px;font-weight:600;padding:6px 8px;border:1px solid var(--accent);border-radius:6px;background:rgba(232,255,71,.1);color:var(--accent);cursor:pointer;';
+  const off = 'flex:1;font-size:12px;font-weight:600;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:transparent;color:var(--text3);cursor:pointer;';
+  document.getElementById('bsModeNew').style.cssText = mode === 'new' ? on : off;
+  document.getElementById('bsModeExisting').style.cssText = mode === 'existing' ? on : off;
+  document.getElementById('bsExistingField').style.display = mode === 'existing' ? '' : 'none';
+  document.getElementById('bsGuidanceLabel').textContent = mode === 'existing'
+    ? 'Optional note for this asset’s slot (leave blank to just match the strategy)'
+    : 'Describe the strategy for this asset (cadence, sequence, or upkeep)';
+  document.getElementById('buildStrategyBtn').textContent = mode === 'existing' ? 'Attach' : 'Build Strategy';
+}
+async function openBuildStrategyModal(assetId, assetTitle) {
   _buildStrategyAssetId = assetId;
   document.getElementById('buildStrategyAssetName').textContent = assetTitle || '';
   document.getElementById('buildStrategyGuidance').value = '';
   document.getElementById('buildStrategyResult').style.display = 'none';
   const btn = document.getElementById('buildStrategyBtn');
-  btn.disabled = false; btn.textContent = 'Build Strategy';
+  btn.disabled = false;
+  setBuildStrategyMode('new');
   document.getElementById('buildStrategyModal').style.display = 'flex';
   setTimeout(() => document.getElementById('buildStrategyGuidance').focus(), 60);
+  const sel = document.getElementById('buildStrategyExisting');
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const d = await call('listGrowthStrategies', {});
+    const list = (d.strategies || []);
+    sel.innerHTML = list.length
+      ? '<option value="">— pick a strategy —</option>' + list.map(s => '<option value="' + s.id + '">' + esc(s.name) + (s.status && s.status !== 'Draft' ? ' (' + esc(s.status) + ')' : '') + '</option>').join('')
+      : '<option value="">No strategies exist yet</option>';
+  } catch(e) { sel.innerHTML = '<option value="">Failed to load strategies</option>'; }
 }
 
 function closeBuildStrategyModal() {
@@ -13046,20 +13078,31 @@ function closeBuildStrategyModal() {
 }
 
 async function submitBuildStrategy() {
-  const guidance = document.getElementById('buildStrategyGuidance').value.trim();
-  if (!guidance) { showToast('Describe the strategy first', 'error'); return; }
   const btn = document.getElementById('buildStrategyBtn');
-  btn.disabled = true; btn.textContent = 'Building…';
+  const guidance = document.getElementById('buildStrategyGuidance').value.trim();
+  let payload;
+  if (_buildStrategyMode === 'existing') {
+    const gsId = document.getElementById('buildStrategyExisting').value;
+    if (!gsId) { showToast('Pick a strategy to attach to', 'error'); return; }
+    payload = { assetId: _buildStrategyAssetId, growthStrategyId: gsId, guidance };
+  } else {
+    if (!guidance) { showToast('Describe the strategy first', 'error'); return; }
+    payload = { assetId: _buildStrategyAssetId, guidance };
+  }
+  btn.disabled = true; btn.textContent = _buildStrategyMode === 'existing' ? 'Attaching…' : 'Building…';
   try {
-    const r = await call('buildStrategyFromAsset', { assetId: _buildStrategyAssetId, guidance });
+    const r = await call('buildStrategyFromAsset', payload);
     const resultDiv = document.getElementById('buildStrategyResult');
     resultDiv.style.display = 'block';
-    resultDiv.textContent = (r.cadenceKind === 'sequential' ? 'Sequential' : 'Recurring' + (r.recurrence ? ' (' + r.recurrence + ')' : '')) + ' — ' + (r.grouping || r.type) + (r.nextDue ? '. Next due ' + r.nextDue + '.' : '.');
-    showToast('Strategy built ✓', 'success');
+    resultDiv.textContent = r.attachedTo
+      ? 'Attached to “' + r.attachedTo + '” — recurring' + (r.recurrence ? ' (' + r.recurrence + ')' : '') + '.'
+      : (r.cadenceKind === 'sequential' ? 'Sequential' : 'Recurring' + (r.recurrence ? ' (' + r.recurrence + ')' : '')) + ' — ' + (r.grouping || r.type) + (r.nextDue ? '. Next due ' + r.nextDue + '.' : '.');
+    showToast(r.attachedTo ? 'Attached ✓' : 'Strategy built ✓', 'success');
+    if (typeof loadLast30Published === 'function' && last30Loaded) loadLast30Published();
     setTimeout(closeBuildStrategyModal, 2200);
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
-    btn.disabled = false; btn.textContent = 'Build Strategy';
+    btn.disabled = false; btn.textContent = _buildStrategyMode === 'existing' ? 'Attach' : 'Build Strategy';
   }
 }
 
