@@ -2614,6 +2614,10 @@
       <select class="modal-select" id="buildStrategyExisting"><option value="">Loading…</option></select>
       <div style="font-size:11px;color:var(--text3);margin-top:4px;">This asset's title is attached to the chosen strategy and gets a recurring slot matching that strategy's cadence.</div>
     </div>
+    <div class="modal-field" id="bsNameField">
+      <label class="modal-label">Strategy name</label>
+      <input class="modal-input" id="buildStrategyName" type="text" style="font-size:13px;" placeholder="e.g. Retro Music Tees — Etsy Growth" />
+    </div>
     <div class="modal-field" id="bsGuidanceField">
       <label class="modal-label" id="bsGuidanceLabel">Describe the strategy for this asset (cadence, sequence, or upkeep)</label>
       <textarea class="modal-input" id="buildStrategyGuidance" rows="5" style="font-size:13px;resize:vertical;" placeholder="e.g. I want to post 2 of these a week, alternating a teach angle and a customer story. Or: this is step 1 of a launch series, next should dig into pricing objections, then a case study."></textarea>
@@ -13046,6 +13050,7 @@ function setBuildStrategyMode(mode) {
   document.getElementById('bsModeNew').style.cssText = mode === 'new' ? on : off;
   document.getElementById('bsModeExisting').style.cssText = mode === 'existing' ? on : off;
   document.getElementById('bsExistingField').style.display = mode === 'existing' ? '' : 'none';
+  document.getElementById('bsNameField').style.display = mode === 'existing' ? 'none' : '';
   document.getElementById('bsGuidanceLabel').textContent = mode === 'existing'
     ? 'Optional note for this asset’s slot (leave blank to just match the strategy)'
     : 'Describe the strategy for this asset (cadence, sequence, or upkeep)';
@@ -13055,6 +13060,7 @@ async function openBuildStrategyModal(assetId, assetTitle) {
   _buildStrategyAssetId = assetId;
   document.getElementById('buildStrategyAssetName').textContent = assetTitle || '';
   document.getElementById('buildStrategyGuidance').value = '';
+  document.getElementById('buildStrategyName').value = '';
   document.getElementById('buildStrategyResult').style.display = 'none';
   const btn = document.getElementById('buildStrategyBtn');
   btn.disabled = false;
@@ -13087,7 +13093,8 @@ async function submitBuildStrategy() {
     payload = { assetId: _buildStrategyAssetId, growthStrategyId: gsId, guidance };
   } else {
     if (!guidance) { showToast('Describe the strategy first', 'error'); return; }
-    payload = { assetId: _buildStrategyAssetId, guidance };
+    const strategyName = document.getElementById('buildStrategyName').value.trim();
+    payload = { assetId: _buildStrategyAssetId, guidance, strategyName };
   }
   btn.disabled = true; btn.textContent = _buildStrategyMode === 'existing' ? 'Attaching…' : 'Building…';
   try {

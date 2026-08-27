@@ -10022,6 +10022,24 @@ Return ONLY this JSON object, no other text, no markdown fences:
         if (productId) relProps["Product"] = { relation: [{ id: dash(productId) }] };
         if (campaignId) relProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
 
+        // Create a real Growth Strategy record so the line shows a resolvable
+        // name in NEXT (a slot with no Growth Strategy renders as "No
+        // Strategy" there). Name from the operator's dictated title, else the
+        // grouping.
+        const gsName = (String(body.strategyName || '').trim() || grouping).slice(0, 200);
+        const gsResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: GROWTH_STRATEGY_DB }, properties: {
+            "Strategy Name": { title: [{ type: "text", text: { content: gsName } }] },
+            "Status": { select: { name: "Draft" } },
+            "Summary": { rich_text: [{ type: "text", text: { content: `Built from published asset "${assetTitleText}". ${String(guidance || '').slice(0, 1500)}` } }] },
+            ...(campaignId ? { "Campaign": { relation: [{ id: dash(campaignId) }] } } : {}),
+            ...(productId ? { "Product": { relation: [{ id: dash(productId) }] } } : {}),
+          } }),
+        }).then(r => r.json());
+        const gsId2 = gsResp.id ? dash(undash(gsResp.id)) : null;
+        const gsRel = gsId2 ? { "Growth Strategy": { relation: [{ id: gsId2 }] } } : {};
+
         // Current Slot — represents this already-published asset's title,
         // Filled from the start since it already has a real published title.
         const currentSlotResp = await fetch("https://api.notion.com/v1/pages", {
@@ -10037,6 +10055,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
               "Angle": { rich_text: [{ type: "text", text: { content: assetTitleText.slice(0, 1990) } }] },
               "Status": { select: { name: "Filled" } },
               "Title": { relation: [{ id: dash(titleId) }] },
+              ...gsRel,
               ...relProps,
             },
           }),
@@ -10044,11 +10063,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
         if (!currentSlotResp.id) return json({ error: currentSlotResp.message || "Failed to create Strategy Slot" }, 500);
         const currentSlotId = undash(currentSlotResp.id);
 
-        // Attach the existing title to its new Slot — the actual "attach
-        // the asset to that strategy" step (via Title's own dual relation).
+        // Attach the existing title to its new Slot + Growth Strategy.
         await fetch(`https://api.notion.com/v1/pages/${titleId}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Strategy Slot": { relation: [{ id: dash(currentSlotId) }] } } }),
+          body: JSON.stringify({ properties: { "Strategy Slot": { relation: [{ id: dash(currentSlotId) }] }, ...gsRel } }),
         }).catch(() => {});
 
         // Bind the published asset directly to its current slot and mark the
@@ -10084,6 +10102,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
                   "Sequence": { number: seq },
                   "Angle": { rich_text: [{ type: "text", text: { content: String(plan.sequenceSteps[i] || '').slice(0, 1990) } }] },
                   "Status": { select: { name: "Open" } },
+                  ...gsRel,
                   ...relProps,
                 },
               }),
