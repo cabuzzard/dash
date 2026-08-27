@@ -7868,7 +7868,7 @@ function renderStrategyBlock(s, indentPx) {
     }).join('');
     return `<div style="margin:8px 0;">`
       + `<div style="font-size:11px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleStrategyCollapse('${gBodyId}', this.querySelector('.gs-arrow'))">`
-      + `<span style="display:flex;align-items:center;gap:6px;min-width:0;"><span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;">▶</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span></span>`
+      + `<span style="display:flex;align-items:center;gap:6px;min-width:0;"><span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;">▶</span><span title="${esc(g.rationale || '')}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span></span>`
       + `<span style="color:#fff;flex-shrink:0;">${g.filledCount}/${g.totalCount} filled</span>`
       + `</div>`
       + `<div id="${gBodyId}" style="display:none;margin-top:4px;">${slotsHtml}</div>`
@@ -7892,10 +7892,15 @@ function renderStrategyBlock(s, indentPx) {
     : '';
   const deleteBtn = `<button onclick="deleteGrowthStrategy('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Delete this strategy — archives it and every one of its Strategy Slots. Any real title attached to it is kept, not deleted, and drops back to Unassigned Planning Titles." style="font-size:9px;padding:0 6px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️ Delete Strategy</button>`;
   const launchRunBtn = `<button onclick="openLaunchRunModal('${s.id}','${esc(s.name).replace(/'/g,"\\'")}')" title="Launch a Run — reuse this strategy as a Guide: pick a Product and create a child strategy with its own fresh Slots, reusing this Guide's groupings/angles as a template." style="font-size:9px;padding:0 6px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;flex-shrink:0;line-height:1.6;">🚀 Launch Run</button>`;
+  // A divergent-path child always has exactly one grouping matching its own
+  // short name — reuse that grouping's rationale as the header tooltip too,
+  // so the full explanation is one hover away here as well, not just on
+  // the grouping row below.
+  const stratNameTitle = s.groupings.length === 1 ? (s.groupings[0].rationale || '') : '';
   return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #222;padding-left:${indentPx || 0}px;">`
     + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">`
     + `<span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stratBodyId}', this)">▶</span>`
-    + `<span style="font-size:13px;font-weight:700;color:#fff;cursor:pointer;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
+    + `<span title="${esc(stratNameTitle)}" style="font-size:13px;font-weight:700;color:#fff;cursor:pointer;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
     + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
     + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
     + launchRunBtn

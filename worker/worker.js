@@ -5025,7 +5025,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       // generateGrowthStrategy's best-effort AI match is a starting point,
       // not a lock-in.
       if (body.action === "updateStrategySlot") {
-        const { slotId, angle, name, postTypeId, platformIds } = body;
+        const { slotId, angle, name, postTypeId, platformIds, grouping, groupingRationale } = body;
         if (!slotId) return json({ error: "slotId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const props = {};
@@ -5033,6 +5033,11 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         if (name !== undefined && String(name).trim()) props["Name"] = { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] };
         if (postTypeId !== undefined) props["Post Type"] = { relation: postTypeId ? [{ id: dash(postTypeId) }] : [] };
         if (platformIds !== undefined) props["Platforms"] = { relation: (Array.isArray(platformIds) ? platformIds : []).map(id => ({ id: dash(id) })) };
+        // grouping/groupingRationale: renames which grouping a slot belongs
+        // to and/or (re)sets that grouping's hover-tooltip explanation — see
+        // the "Grouping Rationale" naming-convention note below.
+        if (grouping !== undefined) props["Grouping"] = { rich_text: [{ type: "text", text: { content: String(grouping).slice(0, 1990) } }] };
+        if (groupingRationale !== undefined) props["Grouping Rationale"] = { rich_text: [{ type: "text", text: { content: String(groupingRationale).slice(0, 1990) } }] };
         if (!Object.keys(props).length) return json({ error: "nothing to update" }, 400);
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(slotId)}`, {
           method: "PATCH",
@@ -5266,6 +5271,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
               "Growth Strategy": { relation: [{ id: dash(runId) }] },
               "Product": { relation: [{ id: dash(productId) }] },
               "Grouping": { rich_text: [{ type: "text", text: { content: g.name.slice(0, 1990) } }] },
+              "Grouping Rationale": { rich_text: [{ type: "text", text: { content: (g.rationale || '').slice(0, 1990) } }] },
               "Sequence": { number: seq },
               "Angle": { rich_text: [{ type: "text", text: { content: g.titles[i].slice(0, 1990) } }] },
               "Platform": { rich_text: [{ type: "text", text: { content: g.platform.slice(0, 1990) } }] },
@@ -9258,6 +9264,8 @@ ${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? 
 
 ${platformInstruction}
 
+GROUPING NAMING CONVENTION (required): each grouping's "name" must be a short label only — 2-4 words, no subtitle, no colon/em-dash explanation tacked on (e.g. "Tool Stack Teardowns", not "Tool Stack Teardowns — What Small Businesses Are Actually Running (And What It's Costing Them)"). The full explanation of what the grouping is and why it exists goes ONLY in "rationale" — that's what the operator sees on hover, the name is what they see at a glance.
+
 PRODUCT: ${productName}
 Description: ${ptxt('Description')}
 Avatar: ${ptxt('Avatar')}
@@ -9426,6 +9434,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
               "Campaign": { relation: [{ id: dash(campaignId) }] },
               "Product": { relation: [{ id: dash(productId) }] },
               "Grouping": { rich_text: [{ type: "text", text: { content: String(g.name || '').slice(0, 1990) } }] },
+              // Grouping Rationale — the full explanation behind this
+              // grouping, shown as a hover tooltip on its short name in the
+              // panel rather than crammed into the name itself. See the
+              // naming-convention note below.
+              "Grouping Rationale": { rich_text: [{ type: "text", text: { content: String(g.rationale || '').slice(0, 1990) } }] },
               "Sequence": { number: seq },
               "Angle": { rich_text: [{ type: "text", text: { content: String(angle || '').slice(0, 1990) } }] },
               "Platform": { rich_text: [{ type: "text", text: { content: String(g.recommendedPlatform || platformOverride || '').slice(0, 1990) } }] },
@@ -9488,7 +9501,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const parentId = parentResp.id.replace(/-/g, "");
 
         const childResults = await Promise.all(groupings.map(async g => {
-          const childName = `${strategyName} — ${g.name}`.slice(0, 200);
+          // Per operator direction: keep this short — the child is already
+          // nested visually under its parent in the panel, so repeating the
+          // parent strategy's own name here is just redundant verbosity.
+          const childName = String(g.name || 'Untitled').slice(0, 200);
           const childResp = await createStrategyPage({
             name: childName, parentId, summary: g.rationale || '',
             recPlatforms: g.recommendedPlatform ? [g.recommendedPlatform] : [],
@@ -9669,6 +9685,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             id: s.id.replace(/-/g,""),
             name: (s.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Slot",
             grouping: (s.properties?.Grouping?.rich_text || []).map(t => t.plain_text).join(""),
+            groupingRationale: (s.properties?.["Grouping Rationale"]?.rich_text || []).map(t => t.plain_text).join(""),
             sequence: s.properties?.Sequence?.number ?? null,
             angle: (s.properties?.Angle?.rich_text || []).map(t => t.plain_text).join(""),
             methodName: (s.properties?.["Method Name"]?.rich_text || []).map(t => t.plain_text).join(""),
@@ -9751,6 +9768,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
             productName: productId ? (productNameById[productId] || "Untitled Product") : null,
             groupings: groupingOrder.map(g => ({
               name: g,
+              // First slot's value stands in for the whole grouping — every
+              // slot in a grouping is written with the same rationale, same
+              // redundant-per-row convention "Grouping" itself already uses.
+              rationale: byGrouping[g][0]?.groupingRationale || '',
               slots: byGrouping[g],
               filledCount: byGrouping[g].filter(sl => sl.status === "Filled").length,
               totalCount: byGrouping[g].length,
