@@ -10577,7 +10577,7 @@ function renderNextParentLevelGlobal(arr, el) {
   }).join('');
   order.forEach(k => {
     if (order.length === 1) return;
-    const body = el.querySelector('.nx-body[data-key="' + k.replace(/"/g,'&quot;') + '"][data-nested="1"]');
+    const body = el.querySelector('.nx-body[data-key="' + ('parentstrat|' + k).replace(/"/g,'&quot;') + '"][data-nested="1"]');
     if (body) renderNextStrategyLevelGlobal(by[k], body);
   });
 }
@@ -10602,7 +10602,7 @@ function renderNextProductLevelGlobal(arr, el) {
     '</div>';
   }).join('');
   order.forEach(k => {
-    const body = el.querySelector('.nx-body[data-key="' + k.replace(/"/g,'&quot;') + '"][data-nested="1"]');
+    const body = el.querySelector('.nx-body[data-key="' + ('prod|' + k).replace(/"/g,'&quot;') + '"][data-nested="1"]');
     if (body) renderNextParentLevelGlobal(by[k], body);
   });
 }
@@ -10627,7 +10627,7 @@ function renderNextCampaignLevelGlobal(arr, el) {
     '</div>';
   }).join('');
   order.forEach(k => {
-    const body = el.querySelector('.nx-body[data-key="' + k.replace(/"/g,'&quot;') + '"][data-nested="1"]');
+    const body = el.querySelector('.nx-body[data-key="' + ('camp|' + k).replace(/"/g,'&quot;') + '"][data-nested="1"]');
     if (body) renderNextStackLevelGlobal(by[k], body);
   });
 }
@@ -10652,7 +10652,7 @@ function renderNextStackLevelGlobal(arr, el) {
     '</div>';
   }).join('');
   order.forEach(k => {
-    const body = el.querySelector('.nx-body[data-key="' + k.replace(/"/g,'&quot;') + '"][data-nested="1"]');
+    const body = el.querySelector('.nx-body[data-key="' + ('stack|' + k).replace(/"/g,'&quot;') + '"][data-nested="1"]');
     if (body) renderNextProductLevelGlobal(by[k], body);
   });
 }

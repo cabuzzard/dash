@@ -9187,14 +9187,28 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const rtx = (p, k) => (p?.[k]?.rich_text || []).map(x => x.plain_text).join("");
 
-        const assetFilters = [{ property: "Asset Status", select: { equals: "Published" } }];
-        if (campaignId) assetFilters.push({ property: "Campaign", relation: { contains: dash(campaignId) } });
+        // "Publish" and "Published" both count as live — the two are not
+        // reliably distinguished across the ~20 asset-write paths, and the
+        // operator treats a "Publish" asset as done (it's in the Publishing /
+        // Last-30 widgets).
+        const statusOr = { or: [
+          { property: "Asset Status", select: { equals: "Published" } },
+          { property: "Asset Status", select: { equals: "Publish" } },
+        ] };
+        const assetFilter = campaignId
+          ? { and: [statusOr, { property: "Campaign", relation: { contains: dash(campaignId) } }] }
+          : statusOr;
         const slotFilter = campaignId ? { property: "Campaign", relation: { contains: dash(campaignId) } } : undefined;
 
-        const [assets, allSlots] = await Promise.all([
-          notionQuery(ASSETS_DB, { filter: assetFilters.length > 1 ? { and: assetFilters } : assetFilters[0] }),
+        const [assets, allSlots, gsLinkedTitles] = await Promise.all([
+          notionQuery(ASSETS_DB, { filter: assetFilter }),
           notionQuery(STRATEGY_SLOTS_DB, slotFilter ? { filter: slotFilter } : {}),
+          notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Growth Strategy", relation: { is_not_empty: true } } }),
         ]);
+        // Growth Strategies the operator has actually started working (≥1
+        // linked title) — cold-start rows are limited to these, so abandoned
+        // draft strategies don't flood NEXT.
+        const startedGsIds = new Set(gsLinkedTitles.map(t => undash((t.properties["Growth Strategy"]?.relation || [])[0]?.id || "")).filter(Boolean));
         if (!assets.length) return json({ success: true, next: [] });
 
         const slotById = new Map(allSlots.map(s => [undash(s.id), s]));
@@ -9219,15 +9233,22 @@ Return ONLY this JSON object, no other text, no markdown fences:
           const title = titleId && titleById.get(titleId);
           if (!title) continue;
           const gsId = undash((title.properties["Growth Strategy"]?.relation || [])[0]?.id || "");
-          if (!gsId) continue;
-          const open = allSlots.filter(s => undash((s.properties["Growth Strategy"]?.relation || [])[0]?.id || "") === gsId && s.properties.Status?.select?.name === "Open");
-          if (!open.length) continue;
-          open.sort((x, y) => (x.properties.Sequence?.number ?? 1e9) - (y.properties.Sequence?.number ?? 1e9));
-          const wantP = (ap["Platform Name"]?.select?.name || "").toLowerCase();
-          const wantT = (ap["Asset Type"]?.select?.name || "").toLowerCase();
-          const pick = open.find(s => rtx(s.properties, "Platform").toLowerCase() === wantP && rtx(s.properties, "Type").toLowerCase() === wantT)
-            || open.find(s => wantP && rtx(s.properties, "Platform").toLowerCase() === wantP)
-            || open[0];
+          // Preferred anchor: the title's own current Strategy Slot (set by
+          // buildStrategyFromAsset / generateTitleFromSlot). Otherwise pick
+          // the best Open slot in the title's Growth Strategy.
+          const titleSlotId = undash((title.properties["Strategy Slot"]?.relation || [])[0]?.id || "");
+          let pick = titleSlotId ? slotById.get(titleSlotId) : null;
+          if (!pick) {
+            if (!gsId) continue;
+            const open = allSlots.filter(s => undash((s.properties["Growth Strategy"]?.relation || [])[0]?.id || "") === gsId && s.properties.Status?.select?.name === "Open");
+            if (!open.length) continue;
+            open.sort((x, y) => (x.properties.Sequence?.number ?? 1e9) - (y.properties.Sequence?.number ?? 1e9));
+            const wantP = (ap["Platform Name"]?.select?.name || "").toLowerCase();
+            const wantT = (ap["Asset Type"]?.select?.name || "").toLowerCase();
+            pick = open.find(s => rtx(s.properties, "Platform").toLowerCase() === wantP && rtx(s.properties, "Type").toLowerCase() === wantT)
+              || open.find(s => wantP && rtx(s.properties, "Platform").toLowerCase() === wantP)
+              || open[0];
+          }
           if (!pick) continue;
           const hasPubDate = !!ap["Publishing Date"]?.date?.start;
           const pubDay = (a.last_edited_time || new Date().toISOString()).slice(0, 10);
@@ -9248,13 +9269,17 @@ Return ONLY this JSON object, no other text, no markdown fences:
           reconciled++;
         }
 
-        // A "sibling set" = same Growth Strategy + Grouping + Parent Slot.
+        // A "sibling set" = same line + Grouping + Parent Slot. Line = the
+        // slot's Growth Strategy; slots created by buildStrategyFromAsset have
+        // no Growth Strategy, so fall back to Product (they share Product +
+        // Grouping within one line).
         const siblingKey = slot => {
           const p = slot.properties;
-          const gsId = undash((p["Growth Strategy"]?.relation || [])[0]?.id || "none");
+          const gsId = undash((p["Growth Strategy"]?.relation || [])[0]?.id || "");
+          const prodId = undash((p.Product?.relation || [])[0]?.id || "");
           const parentId = undash((p["Parent Slot"]?.relation || [])[0]?.id || "root");
           const grouping = rtx(p, "Grouping");
-          return `${gsId}::${grouping}::${parentId}`;
+          return `${gsId || ('p:' + prodId)}::${grouping}::${parentId}`;
         };
 
         // Group published assets into lines by their slot's sibling set.
@@ -9342,12 +9367,16 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // Cold start — a top-level sibling set that has Open slots but no
         // published asset yet (a freshly planned strategy): surface its
         // lowest-Sequence Open slot as "start here" so brand-new rollouts
-        // aren't invisible until their first publish.
+        // aren't invisible until their first publish. Gated to slots with a
+        // real Product relation — filters out abandoned/orphan test slots.
         const activeKeys = new Set(lines.keys());
         const coldSeen = new Set();
         for (const s of allSlots) {
           if (s.properties.Status?.select?.name !== "Open") continue;
           if (undash((s.properties["Parent Slot"]?.relation || [])[0]?.id || "")) continue; // top-level only
+          if (!(s.properties.Product?.relation || []).length) continue; // real work only
+          const sGs = undash((s.properties["Growth Strategy"]?.relation || [])[0]?.id || "");
+          if (!sGs || !startedGsIds.has(sGs)) continue; // only strategies the operator has started
           const key = siblingKey(s);
           if (activeKeys.has(key) || coldSeen.has(key)) continue;
           coldSeen.add(key);
@@ -9955,6 +9984,22 @@ Return ONLY this JSON object, no other text, no markdown fences:
         await fetch(`https://api.notion.com/v1/pages/${titleId}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "Strategy Slot": { relation: [{ id: dash(currentSlotId) }] } } }),
+        }).catch(() => {});
+
+        // Bind the published asset directly to its current slot and mark the
+        // slot Published + stamp Publishing Date — so getNextSlots sees this
+        // line as active immediately (its frontier logic starts from a
+        // published asset bound to a slot, not from the title).
+        await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: {
+            "Strategy Slot": { relation: [{ id: dash(currentSlotId) }] },
+            ...(ap["Publishing Date"]?.date?.start ? {} : { "Publishing Date": { date: { start: (assetPage.last_edited_time || new Date().toISOString()).slice(0, 10) } } }),
+          } }),
+        }).catch(() => {});
+        await fetch(`https://api.notion.com/v1/pages/${dash(currentSlotId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Asset": { relation: [{ id: dash(assetId) }] }, "Status": { select: { name: "Published" } } } }),
         }).catch(() => {});
 
         // Sequential: pre-create the remaining Open sibling slots so the
