@@ -5268,7 +5268,6 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
               "Grouping": { rich_text: [{ type: "text", text: { content: g.name.slice(0, 1990) } }] },
               "Sequence": { number: seq },
               "Angle": { rich_text: [{ type: "text", text: { content: g.titles[i].slice(0, 1990) } }] },
-              "Method Name": { rich_text: [{ type: "text", text: { content: g.method.slice(0, 1990) } }] },
               "Platform": { rich_text: [{ type: "text", text: { content: g.platform.slice(0, 1990) } }] },
               "Status": { select: { name: "Open" } },
             };
@@ -9224,14 +9223,11 @@ ${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? 
         const researchBlock = ['Keywords', 'Statement', 'Unique Opportunity', 'Key Message', 'Pain Points']
           .map(f => { const v = rt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
 
-        // Ground method recommendations in the FULL method catalog, not just
-        // this product's already-attached ones — per operator direction,
-        // methods are "pulled to the campaign" by strategy generation
-        // itself (attach existing / create new below), not by a prior
-        // manual add step, so the model needs to see everything that
-        // already exists to reuse it instead of proposing a duplicate.
-        const [allMethodRows, allPostTypeRows, allPlatformRows] = await Promise.all([
-          notionQuery(METHODS_DB, {}),
+        // Per operator direction: Method is chosen (existing or new) when a
+        // title is actually created from a slot, never baked into the
+        // strategy/slot itself — a slot only ever carries a Platform. No
+        // method catalog fetch or method recommendation happens here.
+        const [allPostTypeRows, allPlatformRows] = await Promise.all([
           // Logged, not silently swallowed — a query failure here (e.g. the
           // DB not shared with this Worker's Notion integration) should be
           // visible in wrangler tail rather than just quietly returning an
@@ -9239,15 +9235,6 @@ ${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? 
           notionQuery(POST_TYPES_DB, {}).catch(e => { console.error('notionQuery(POST_TYPES_DB) failed:', e.message); return []; }),
           notionQuery(PLATFORMS_DB, {}).catch(() => []),
         ]);
-        const allMethods = allMethodRows.map(m => ({
-          id: m.id.replace(/-/g,""),
-          name: (m.properties?.Name?.title || []).map(t => t.plain_text).join(""),
-          platform: m.properties?.Platform?.select?.name || "",
-          category: (m.properties?.Category?.multi_select || []).map(c => c.name).join(", "),
-        })).filter(m => m.name);
-        const methodCatalogBlock = allMethods.length
-          ? allMethods.map(m => `- ${m.name}${m.platform ? ` (${m.platform})` : ''}${m.category ? ` [${m.category}]` : ''}`).join('\n')
-          : '(none exist yet — every recommendation will be a new method)';
         // Best-effort name lookups for Post Type / Platforms — the AI's
         // freeform "type"/"recommendedPlatform" strings get matched against
         // the standalone catalogs by exact (case-insensitive) name; no
@@ -9267,7 +9254,7 @@ ${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? 
           ? `PLATFORM FOCUS (required): every grouping must target "${platformOverride.trim()}" specifically — do not recommend any other platform.`
           : `No platform override was given — recommend the platform(s) that genuinely fit best per grouping based on the content and audience; they can differ across groupings.`;
 
-        const prompt = `${researchGuidelinesBlock(researchGuidelines)}${seedTitleBlock}You are a growth strategist. Given the ${seedTitleBlock ? 'seed title above, plus the supporting ' : ''}research and positioning below for this product, produce a content growth strategy: a small number (3-6) of thematic title groupings (series/clusters an operator would actually produce together), each with specific title angles, the best content Method, and the best platform. This is a recommendation for a human to review and act on — be concrete and specific, not generic.
+        const prompt = `${researchGuidelinesBlock(researchGuidelines)}${seedTitleBlock}You are a growth strategist. Given the ${seedTitleBlock ? 'seed title above, plus the supporting ' : ''}research and positioning below for this product, produce a content growth strategy: a small number (3-6) of thematic title groupings (series/clusters an operator would actually produce together), each with specific title angles and the best platform. This is a recommendation for a human to review and act on — be concrete and specific, not generic.
 
 ${platformInstruction}
 
@@ -9282,11 +9269,6 @@ CAMPAIGN: ${campaignName}
 CAMPAIGN RESEARCH:
 ${researchBlock || 'Not provided.'}
 
-EXISTING METHOD CATALOG (every method that exists anywhere in this system, any product — prefer recommending one of these BY EXACT NAME when it genuinely fits a grouping's platform and content type, even if it isn't attached to this product yet; attaching it is handled automatically):
-${methodCatalogBlock}
-
-If a grouping's platform genuinely has no suitable existing method above, you may propose a brand-new one instead — it will be created and attached automatically. Only do this when reusing an existing method would be a real mismatch (wrong platform/format), not because a new one is marginally more specific.
-
 For each grouping, also recommend a "recurrence" — how often this grouping's content should actually happen on an ongoing basis (e.g. "Daily", "Weekly", "2x/week", "One-time") — a realistic cadence, not a one-off guess. This is purely about TIMING/frequency, nothing else.
 
 EXISTING POST TYPE CATALOG (the content descriptor for EACH individual title below — what kind of content it is, e.g. an Intro vs. a Feature Benefit vs. a CTA — NOT platform, method, or cadence). Assign one to every title, by exact name from this catalog when it genuinely fits:
@@ -9300,10 +9282,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
   "summary": "2-4 sentences: the overall growth angle and why it fits this positioning",
   "recommendedPlatforms": ["...", "..."],
   "groupings": [
-    { "name": "...", "rationale": "...", "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false } ], "recommendedMethod": "...", "recommendedPlatform": "...", "recurrence": "...", "newMethod": false, "newMethodCategory": "Content|Outreach|Research|SEO|Ecommerce|Video" }
+    { "name": "...", "rationale": "...", "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false } ], "recommendedPlatform": "...", "recurrence": "..." }
   ]
-}
-"recommendedMethod" is either an exact name from the catalog above, or (only when "newMethod" is true) the name of the new method to create. "newMethodCategory" is only needed when "newMethod" is true.`;
+}`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -9324,54 +9305,12 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const groupings = Array.isArray(plan.groupings) ? plan.groupings : [];
         const recommendedPlatforms = Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : [];
 
-        // Resolve every grouping's recommended method against the full
-        // catalog fetched above, attach it to this Product (+ propagate to
-        // every Campaign the Product belongs to) if not already attached,
-        // or create it fresh when the model proposed a genuinely new one —
-        // "pulled to the campaign through strategy development," per
-        // operator direction: no separate manual attach step. Best-effort
-        // per grouping so one bad recommendation never fails the whole
-        // strategy, which has already been generated successfully above.
-        const catalogByName = new Map(allMethods.map(m => [m.name.toLowerCase(), m]));
-        const attachedProductMethodIds = new Set((pp.Methods?.relation || []).map(r => r.id.replace(/-/g,"")));
+        // Per operator direction: Method is chosen (existing or new) at
+        // title-creation time, never here — a strategy/slot only carries a
+        // Platform. Kept as an always-empty array so the UI's existing
+        // "N methods attached" note just degrades to nothing rather than
+        // needing its own change.
         const attachedMethods = [];
-        for (const g of groupings) {
-          const wantName = String(g.recommendedMethod || '').trim();
-          if (!wantName) continue;
-          try {
-            let method = catalogByName.get(wantName.toLowerCase());
-            let isNew = false;
-            if (!method && g.newMethod) {
-              const createProps = { Name: { title: [{ type: "text", text: { content: wantName.slice(0, 200) } }] }, "Status": { select: { name: "Development" } } };
-              if (g.recommendedPlatform) createProps["Platform"] = { select: { name: String(g.recommendedPlatform).slice(0, 100) } };
-              if (g.newMethodCategory) createProps["Category"] = { multi_select: [{ name: String(g.newMethodCategory).slice(0, 100) }] };
-              createProps["Notes"] = { rich_text: [{ type: "text", text: { content: `Proposed by Growth Strategy generation for "${productName}" — ${String(g.rationale || '').slice(0, 1800)}` } }] };
-              const createResp = await fetch("https://api.notion.com/v1/pages", {
-                method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-                body: JSON.stringify({ parent: { database_id: METHODS_DB }, properties: createProps }),
-              });
-              const created = await createResp.json();
-              if (created.id) {
-                method = { id: created.id.replace(/-/g,""), name: wantName, platform: g.recommendedPlatform || "", category: g.newMethodCategory || "" };
-                catalogByName.set(wantName.toLowerCase(), method);
-                isNew = true;
-              }
-            }
-            if (!method) continue; // named something outside the catalog without flagging it as new — skip rather than guess
-            if (!attachedProductMethodIds.has(method.id)) {
-              attachedProductMethodIds.add(method.id);
-              const existingRel = (pp.Methods?.relation || []).map(r => ({ id: r.id }));
-              existingRel.push({ id: dash(method.id) });
-              pp.Methods = { relation: existingRel }; // keep the local copy in sync across loop iterations
-              await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
-                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-                body: JSON.stringify({ properties: { Methods: { relation: existingRel } } }),
-              });
-              await propagateMethodToCampaigns(productId, method.id);
-              attachedMethods.push({ id: method.id, name: method.name, isNew });
-            }
-          } catch (e) { /* best-effort — the strategy itself already succeeded */ }
-        }
 
         const dateLabel = new Date(campPage.last_edited_time || Date.now()).toISOString().slice(0, 10);
         const strategyName = ((strategyTitle || '').trim() || `${productName} Growth Strategy — ${dateLabel}`).slice(0, 200);
@@ -9424,7 +9363,6 @@ Return ONLY this JSON object, no other text, no markdown fences:
               : rtBlock(angle) } });
           });
           out.push({ object: "block", type: "paragraph", paragraph: { rich_text: [
-            { type: "text", text: { content: "Method: " }, annotations: { bold: true } }, { type: "text", text: { content: `${esc3(g.recommendedMethod) || 'Not specified'}  ·  ` } },
             { type: "text", text: { content: "Platform: " }, annotations: { bold: true } }, { type: "text", text: { content: esc3(g.recommendedPlatform) || 'Not specified' } },
           ] } });
           out.push({ object: "block", type: "divider", divider: {} });
@@ -9490,7 +9428,6 @@ Return ONLY this JSON object, no other text, no markdown fences:
               "Grouping": { rich_text: [{ type: "text", text: { content: String(g.name || '').slice(0, 1990) } }] },
               "Sequence": { number: seq },
               "Angle": { rich_text: [{ type: "text", text: { content: String(angle || '').slice(0, 1990) } }] },
-              "Method Name": { rich_text: [{ type: "text", text: { content: String(g.recommendedMethod || '').slice(0, 1990) } }] },
               "Platform": { rich_text: [{ type: "text", text: { content: String(g.recommendedPlatform || platformOverride || '').slice(0, 1990) } }] },
               // "Type" (rich_text) kept in sync with Post Type's name — legacy
               // field some older readouts (runStrategySequenceReminders,
