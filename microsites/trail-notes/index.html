@@ -7640,6 +7640,23 @@ async function backfillStrategyPostTypes(strategyId, btn) {
   }
 }
 
+// Deletes a Growth Strategy (real archive, cascades to sub-strategies and
+// their Strategy Slots — see deleteGrowthStrategy server-side for exactly
+// what does/doesn't get touched). Real titles are never deleted, only
+// unlinked, so this can't silently destroy actual content.
+async function deleteGrowthStrategy(strategyId, strategyName, btn) {
+  if (!confirm(`Delete "${strategyName}"? This archives the strategy and every one of its Strategy Slots (and any sub-strategies). Any real title attached to it is kept, not deleted — it just drops back to Unassigned Planning Titles.`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
+  try {
+    const r = await w('deleteGrowthStrategy', { growthStrategyId: strategyId });
+    if (r.error) throw new Error(r.error);
+    await loadCampaignStrategies();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🗑️ Delete Strategy'; }
+  }
+}
+
 async function loadCampaignStrategies() {
   const el = document.getElementById('strategies-panel');
   if (!el) return;
@@ -7799,6 +7816,7 @@ function renderStrategyBlock(s, indentPx) {
   const backfillBtn = hasUnassignedType
     ? `<button onclick="backfillStrategyPostTypes('${s.id}', this)" title="Assign Post Type to every slot in this strategy that doesn't have one — grounded in this strategy's own Product/Research context, same reasoning as when it was first generated" style="font-size:9px;padding:0 6px;border:1px solid #9f7aea;border-radius:8px;background:transparent;color:#9f7aea;cursor:pointer;flex-shrink:0;line-height:1.6;">🏷️ Assign Types</button>`
     : '';
+  const deleteBtn = `<button onclick="deleteGrowthStrategy('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Delete this strategy — archives it and every one of its Strategy Slots. Any real title attached to it is kept, not deleted, and drops back to Unassigned Planning Titles." style="font-size:9px;padding:0 6px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️ Delete Strategy</button>`;
   return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #222;padding-left:${indentPx || 0}px;">`
     + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">`
     + `<span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stratBodyId}', this)">▶</span>`
@@ -7806,6 +7824,7 @@ function renderStrategyBlock(s, indentPx) {
     + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
     + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
     + backfillBtn
+    + deleteBtn
     + `</div>`
     + `<div id="${stratBodyId}" style="display:none;">`
     + (groupingsHtml || '<div class="empty" style="font-size:11px;">No slots recorded for this strategy.</div>')
@@ -7831,6 +7850,7 @@ function renderStrategyItem(s) {
       + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
       + `<span style="font-size:10px;color:#fff;">${s.children.length} sub-strateg${s.children.length === 1 ? 'y' : 'ies'}</span>`
       + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
+      + `<button onclick="deleteGrowthStrategy('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Delete this strategy AND all ${s.children.length} sub-strategies — archives everything and every Strategy Slot under them. Any real title stays, just drops back to Unassigned Planning Titles." style="font-size:9px;padding:0 6px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️ Delete Strategy</button>`
       + `</div>`
       + `<div id="${parentBodyId}" style="display:none;">${childrenHtml}</div>`
       + `</div>`;

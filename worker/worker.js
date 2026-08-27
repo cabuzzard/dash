@@ -5158,6 +5158,64 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       // Pillar), just run after the fact for strategies created before this
       // system existed. Angles/titles are NOT touched, only Post Type +
       // the Name convention + the legacy Type text mirror.
+      // ── deleteGrowthStrategy ──
+      // Deletes a Growth Strategy (real Notion archive) and cascades
+      // sensibly rather than leaving orphans:
+      // - a divergent-path parent (see generateGrowthStrategy) has no Slots
+      //   of its own, just children — those children get deleted too, since
+      //   they have no independent existence without the parent
+      // - every Strategy Slot under any deleted strategy gets archived
+      // - any real title (Content Strategy row) that pointed at a deleted
+      //   strategy or slot is NOT deleted — its Growth Strategy/Strategy
+      //   Slot relations are just cleared, so it survives and drops back
+      //   into "Unassigned Planning Titles" instead of the panel silently
+      //   losing track of it
+      if (body.action === "deleteGrowthStrategy") {
+        const { growthStrategyId } = body;
+        if (!growthStrategyId) return json({ error: "growthStrategyId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const children = await notionQuery(GROWTH_STRATEGY_DB, { filter: { property: "Parent Strategy", relation: { contains: dash(growthStrategyId) } } }).catch(() => []);
+        const strategyIds = [growthStrategyId, ...children.map(c => c.id.replace(/-/g,""))];
+
+        const slotBatches = await Promise.all(strategyIds.map(sid =>
+          notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(sid) } } }).catch(() => [])
+        ));
+        const slots = slotBatches.flat();
+        const slotIds = slots.map(s => s.id.replace(/-/g,""));
+
+        const [titlesByStrategy, titlesBySlot] = await Promise.all([
+          Promise.all(strategyIds.map(sid => notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(sid) } } }).catch(() => []))).then(r => r.flat()),
+          slotIds.length ? Promise.all(slotIds.map(sid => notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Strategy Slot", relation: { contains: dash(sid) } } }).catch(() => []))).then(r => r.flat()) : Promise.resolve([]),
+        ]);
+        const titleMap = new Map();
+        [...titlesByStrategy, ...titlesBySlot].forEach(t => titleMap.set(t.id, t));
+
+        await Promise.all(Array.from(titleMap.values()).map(t =>
+          fetch(`https://api.notion.com/v1/pages/${t.id}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Growth Strategy": { relation: [] }, "Strategy Slot": { relation: [] } } }),
+          }).catch(() => {})
+        ));
+
+        await Promise.all(slots.map(s =>
+          fetch(`https://api.notion.com/v1/pages/${s.id}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ archived: true }),
+          }).catch(() => {})
+        ));
+
+        await Promise.all(strategyIds.map(sid =>
+          fetch(`https://api.notion.com/v1/pages/${dash(sid)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ archived: true }),
+          }).catch(() => {})
+        ));
+
+        return json({ success: true, strategiesDeleted: strategyIds.length, slotsDeleted: slots.length, titlesUnlinked: titleMap.size });
+      }
+
       if (body.action === "backfillStrategyPostTypes") {
         const { growthStrategyId } = body;
         if (!growthStrategyId) return json({ error: "growthStrategyId required" }, 400);
