@@ -10523,8 +10523,12 @@ function nextRowHtml(n) {
   const micrositeLink = n.microsite
     ? '<a href="' + esc(n.microsite) + '" target="_blank" title="Open this campaign\'s admin page" style="font-size:11px;color:var(--text3);text-decoration:none;flex-shrink:0;">↗</a>'
     : '';
+  const badge = n.isColdStart
+    ? '<span style="font-size:9px;font-weight:700;letter-spacing:.06em;padding:1px 5px;border-radius:8px;background:rgba(125,211,252,.15);color:#7dd3fc;flex-shrink:0;">START</span>'
+    : (n.isRecurring ? '<span style="font-size:9px;font-weight:700;letter-spacing:.06em;padding:1px 5px;border-radius:8px;background:rgba(52,211,153,.15);color:#34d399;flex-shrink:0;">RECUR</span>' : '');
   return '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px 5px 44px;border-bottom:1px solid var(--border);font-size:12px;">' +
-    '<span style="flex:1;min-width:0;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + esc(n.label) + '">' + esc(n.label) + '</span>' +
+    '<span style="flex:1;min-width:0;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + esc(n.label) + (n.guideline ? ' — ' + esc(n.guideline) : '') + '">' + esc(n.label) + '</span>' +
+    badge +
     (n.campaignName ? '<span style="font-size:11px;color:var(--text3);flex-shrink:0;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(n.campaignName) + '</span>' : '') +
     '<span style="font-size:10px;color:var(--text3);flex-shrink:0;">' + esc(n.methodName || n.platform || '') + '</span>' +
     '<span style="font-size:10px;padding:1px 6px;border-radius:8px;' + dueStyle + 'flex-shrink:0;white-space:nowrap;">due ' + esc(n.dueDate) + '</span>' +
@@ -10602,6 +10606,31 @@ function renderNextProductLevelGlobal(arr, el) {
     if (body) renderNextParentLevelGlobal(by[k], body);
   });
 }
+function renderNextCampaignLevelGlobal(arr, el) {
+  const hasCampaign = arr.some(n => n.campaignName);
+  if (!hasCampaign) { renderNextStackLevelGlobal(arr, el); return; }
+  const order = [], by = {};
+  arr.forEach(n => { const k = n.campaignName || '__no_campaign__'; if (!by[k]) { by[k] = []; order.push(k); } by[k].push(n); });
+  order.sort((a, b) => { if (a === '__no_campaign__') return 1; if (b === '__no_campaign__') return -1; return a.localeCompare(b); });
+  if (order.length === 1) { renderNextStackLevelGlobal(arr, el); return; }
+  el.innerHTML = order.map(k => {
+    const items = by[k], name = k === '__no_campaign__' ? 'No Campaign' : k;
+    const stateKey = 'camp|' + k;
+    const isOpen = !!nextGroupsOpen[stateKey];
+    return '<div>' +
+      '<div onclick="toggleNextGroup(\'' + stateKey + '\')" style="display:flex;align-items:center;gap:6px;padding:8px;background:rgba(125,211,252,.1);border-bottom:1px solid rgba(125,211,252,.25);cursor:pointer;user-select:none;">' +
+        '<span class="nx-arrow" data-key="' + stateKey + '" style="font-size:9px;color:#7dd3fc;flex-shrink:0;">' + (isOpen ? '▾' : '▸') + '</span>' +
+        '<span style="flex:1;font-size:12px;color:#7dd3fc;font-weight:700;letter-spacing:.02em;">' + esc(name) + '</span>' +
+        '<span style="font-size:10px;color:var(--text3);">' + items.length + '</span>' +
+      '</div>' +
+      '<div class="nx-body" data-key="' + stateKey + '" data-nested="1" style="display:' + (isOpen ? '' : 'none') + ';"></div>' +
+    '</div>';
+  }).join('');
+  order.forEach(k => {
+    const body = el.querySelector('.nx-body[data-key="' + k.replace(/"/g,'&quot;') + '"][data-nested="1"]');
+    if (body) renderNextStackLevelGlobal(by[k], body);
+  });
+}
 function renderNextStackLevelGlobal(arr, el) {
   const hasStack = arr.some(n => n.productStack);
   if (!hasStack) { renderNextProductLevelGlobal(arr, el); return; }
@@ -10644,11 +10673,11 @@ function renderNextGlobalTree() {
   const el = document.getElementById('nextList');
   if (!el) return;
   if (!_nextItems.length) {
-    el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px 10px;">No active content lines yet — NEXT fills in once a Slot-sourced title is Published, in any campaign.</div>';
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px 10px;">Nothing queued — NEXT fills in from published assets that trace back to a Growth Strategy, plus the first slot of any strategy not yet started.</div>';
     return;
   }
   el.innerHTML = '';
-  renderNextStackLevelGlobal(_nextItems, el);
+  renderNextCampaignLevelGlobal(_nextItems, el);
 }
 
 // ── LAST 30 PUBLISHED ────────────────────────────────────────────────

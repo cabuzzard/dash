@@ -1436,6 +1436,18 @@ function parseRecurrenceDays(text) {
   return 7;
 }
 
+// Strategy Slot "Delay" phrase — the offset from the previous asset's publish
+// to when this slot's asset is due (e.g. "+3d", "1w", "2 weeks", "same day").
+// Distinct from parseRecurrenceDays: an empty/unparseable Delay means "no
+// wait" (0), not a weekly fallback.
+function parseDelayDays(text) {
+  const m = String(text || "").trim().toLowerCase().match(/(\d+)\s*(d|day|w|week|m|month)/);
+  if (!m) return 0; // empty, "same day", "asap", or unparseable → no wait
+  const n = parseInt(m[1], 10);
+  const u = m[2][0];
+  return u === 'd' ? n : u === 'w' ? n * 7 : n * 30;
+}
+
 const researchGuidelinesBlock = g => {
   const t = (g == null ? "" : String(g)).trim();
   if (!t) return "";
@@ -9116,99 +9128,222 @@ Return ONLY this JSON object, no other text, no markdown fences:
       }
 
       // ── getNextSlots ──
-      // Live, read-only counterpart to runStrategySequenceReminders' nightly
-      // Main TD queue, scoped to one campaign for the Development tab's
-      // "NEXT" section: for every content line (Growth Strategy + Grouping)
-      // with at least one Published title tracing back to a Strategy Slot,
-      // works out the next Slot in that line's rollout — same Sequential
-      // (next Open sibling at Sequence+1) / Recurring (same Slot again once
-      // its interval elapses) logic as the cron — but every line is
-      // returned regardless of whether it's due today, so this reads as a
-      // roadmap an operator can browse, not just today's action queue.
-      // Never writes anything (no Main TD side effect) — purely a view.
+      // Live counterpart to runStrategySequenceReminders' nightly Main TD
+      // queue, for the Development tab's "NEXT" section (global) and each
+      // microsite's Titles tab (campaignId-scoped). Every active sibling set's
+      // frontier is returned regardless of due date — a browsable roadmap,
+      // not just today's queue. No Main TD side effect, but it DOES write
+      // back the asset↔slot binding + Publishing Date it reconciles (see
+      // below) so the picture is self-healing.
       if (body.action === "getNextSlots") {
         // campaignId is optional — omit it for a global scan across every
         // campaign (the root dashboard's Development tab); pass it to scope
         // to one campaign (a campaign microsite's own Titles tab).
+        //
+        // ASSET-driven (per operator design): a Strategy Slot is one planned
+        // ASSET; a Title is only the bridge. For every PUBLISHED asset, walk
+        // asset → Content Strategy (title) → its Strategy Slot, then emit the
+        // NEXT slot in that slot's sibling set (same Parent Slot, or both
+        // top-level, within the same Growth Strategy + Grouping): the next
+        // Open Sequence, or the same slot again if it's recurring, or — when
+        // the set is exhausted — the parent set's next slot, else the line is
+        // complete. One frontier row per active sibling set.
+        // Also reconciles in passing: a published asset whose title has a
+        // strategy but which isn't bound to a slot yet is attached to the
+        // best-matching open slot here (and that slot flipped to Published).
         const { campaignId } = body;
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const undash = raw => String(raw || "").replace(/-/g, "");
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rtx = (p, k) => (p?.[k]?.rich_text || []).map(x => x.plain_text).join("");
 
-        const titleFilters = [
-          { or: [{ property: "Status", select: { equals: "Publish" } }, { property: "Status", select: { equals: "Published" } }] },
-          { property: "Strategy Slot", relation: { is_not_empty: true } },
-        ];
+        const assetFilters = [{ property: "Asset Status", select: { equals: "Published" } }];
+        if (campaignId) assetFilters.push({ property: "Campaign", relation: { contains: dash(campaignId) } });
         const slotFilter = campaignId ? { property: "Campaign", relation: { contains: dash(campaignId) } } : undefined;
-        if (campaignId) titleFilters.push({ property: "Campaign", relation: { contains: dash(campaignId) } });
 
-        const [titles, allSlots] = await Promise.all([
-          notionQuery(CONTENT_STRATEGY_DB, { filter: { and: titleFilters } }),
+        const [assets, allSlots] = await Promise.all([
+          notionQuery(ASSETS_DB, { filter: assetFilters.length > 1 ? { and: assetFilters } : assetFilters[0] }),
           notionQuery(STRATEGY_SLOTS_DB, slotFilter ? { filter: slotFilter } : {}),
         ]);
-        if (!titles.length || !allSlots.length) return json({ success: true, next: [] });
+        if (!assets.length) return json({ success: true, next: [] });
 
         const slotById = new Map(allSlots.map(s => [undash(s.id), s]));
-        const slotLineKey = slot => {
+
+        // Resolve each published asset's source Title (Content Strategy rel).
+        const titleIds = [...new Set(assets.map(a => (a.properties["Content Strategy"]?.relation || [])[0]?.id).filter(Boolean).map(undash))];
+        const titlePages = await Promise.all(titleIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)));
+        const titleById = new Map();
+        titlePages.filter(p => p && p.id).forEach(p => titleById.set(undash(p.id), p));
+
+        // Reconcile: bind published-but-unslotted assets to an open slot in
+        // their title's strategy (best platform/type match, else lowest Seq).
+        // Capped per call — a large first-run backlog heals over a few opens
+        // rather than one long blocking write burst; the nightly cron also
+        // reconciles.
+        let reconciled = 0;
+        for (const a of assets) {
+          const ap = a.properties;
+          if ((ap["Strategy Slot"]?.relation || []).length) continue;
+          if (reconciled >= 25) break;
+          const titleId = undash((ap["Content Strategy"]?.relation || [])[0]?.id || "");
+          const title = titleId && titleById.get(titleId);
+          if (!title) continue;
+          const gsId = undash((title.properties["Growth Strategy"]?.relation || [])[0]?.id || "");
+          if (!gsId) continue;
+          const open = allSlots.filter(s => undash((s.properties["Growth Strategy"]?.relation || [])[0]?.id || "") === gsId && s.properties.Status?.select?.name === "Open");
+          if (!open.length) continue;
+          open.sort((x, y) => (x.properties.Sequence?.number ?? 1e9) - (y.properties.Sequence?.number ?? 1e9));
+          const wantP = (ap["Platform Name"]?.select?.name || "").toLowerCase();
+          const wantT = (ap["Asset Type"]?.select?.name || "").toLowerCase();
+          const pick = open.find(s => rtx(s.properties, "Platform").toLowerCase() === wantP && rtx(s.properties, "Type").toLowerCase() === wantT)
+            || open.find(s => wantP && rtx(s.properties, "Platform").toLowerCase() === wantP)
+            || open[0];
+          if (!pick) continue;
+          const hasPubDate = !!ap["Publishing Date"]?.date?.start;
+          const pubDay = (a.last_edited_time || new Date().toISOString()).slice(0, 10);
+          await fetch(`https://api.notion.com/v1/pages/${a.id}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: {
+              "Strategy Slot": { relation: [{ id: dash(undash(pick.id)) }] },
+              ...(hasPubDate ? {} : { "Publishing Date": { date: { start: pubDay } } }),
+            } }),
+          }).catch(() => {});
+          await fetch(`https://api.notion.com/v1/pages/${pick.id}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Asset": { relation: [{ id: dash(undash(a.id)) }] }, "Status": { select: { name: "Published" } } } }),
+          }).catch(() => {});
+          pick.properties.Status = { select: { name: "Published" } };
+          ap["Strategy Slot"] = { relation: [{ id: dash(undash(pick.id)) }] };
+          if (!hasPubDate) ap["Publishing Date"] = { date: { start: pubDay } };
+          reconciled++;
+        }
+
+        // A "sibling set" = same Growth Strategy + Grouping + Parent Slot.
+        const siblingKey = slot => {
           const p = slot.properties;
-          const gsId = (p["Growth Strategy"]?.relation || [])[0]?.id || "none";
-          const grouping = (p.Grouping?.rich_text || []).map(x => x.plain_text).join("");
-          return `${undash(gsId)}::${grouping}`;
+          const gsId = undash((p["Growth Strategy"]?.relation || [])[0]?.id || "none");
+          const parentId = undash((p["Parent Slot"]?.relation || [])[0]?.id || "root");
+          const grouping = rtx(p, "Grouping");
+          return `${gsId}::${grouping}::${parentId}`;
         };
 
+        // Group published assets into lines by their slot's sibling set.
         const lines = new Map();
-        for (const t of titles) {
-          const slotRel = (t.properties["Strategy Slot"]?.relation || [])[0];
-          const slot = slotRel && slotById.get(undash(slotRel.id));
+        for (const a of assets) {
+          const slotId = undash((a.properties["Strategy Slot"]?.relation || [])[0]?.id || "");
+          const slot = slotId && slotById.get(slotId);
           if (!slot) continue;
-          const key = slotLineKey(slot);
+          const pubDate = a.properties["Publishing Date"]?.date?.start || (a.last_edited_time || "").slice(0, 10);
+          const key = siblingKey(slot);
           if (!lines.has(key)) lines.set(key, []);
-          lines.get(key).push({ title: t, slot });
+          lines.get(key).push({ asset: a, slot, pubDate, titleId: undash((a.properties["Content Strategy"]?.relation || [])[0]?.id || "") });
         }
 
         const todayStr = new Date().toISOString().slice(0, 10);
+        const advance = (fromSlot, fromKey, baseDate) => {
+          const seq = fromSlot.properties.Sequence?.number;
+          if (!Number.isFinite(seq)) return null;
+          const nxt = allSlots.find(s => siblingKey(s) === fromKey && s.properties.Sequence?.number === seq + 1 && s.properties.Status?.select?.name === "Open");
+          if (!nxt) return null;
+          const due = new Date(baseDate || todayStr);
+          due.setUTCDate(due.getUTCDate() + parseDelayDays(rtx(nxt.properties, "Delay")));
+          return { slot: nxt, dueDate: due.toISOString().slice(0, 10) };
+        };
+
         const results = [];
         for (const [key, entries] of lines) {
-          entries.sort((a, b) => new Date(b.title.last_edited_time) - new Date(a.title.last_edited_time));
+          entries.sort((a, b) => (b.pubDate || "").localeCompare(a.pubDate || ""));
           const latest = entries[0];
-          const sp = latest.slot.properties;
-          const type = (sp.Type?.rich_text || []).map(x => x.plain_text).join("");
-          const recurrence = (sp.Recurrence?.rich_text || []).map(x => x.plain_text).join("");
-          const sequence = sp.Sequence?.number;
-          const grouping = (sp.Grouping?.rich_text || []).map(x => x.plain_text).join("");
-          const gsId = (sp["Growth Strategy"]?.relation || [])[0]?.id ? undash(sp["Growth Strategy"].relation[0].id) : null;
-          const productId = (sp.Product?.relation || [])[0]?.id ? undash(sp.Product.relation[0].id) : null;
-          const slotCampaignId = (sp.Campaign?.relation || [])[0]?.id ? undash(sp.Campaign.relation[0].id) : null;
+          const cur = latest.slot, cp = cur.properties;
+          const type = rtx(cp, "Type");
+          const recurrence = rtx(cp, "Recurrence");
+          const grouping = rtx(cp, "Grouping");
+          const gsId = undash((cp["Growth Strategy"]?.relation || [])[0]?.id || "") || null;
+          const parentId = undash((cp["Parent Slot"]?.relation || [])[0]?.id || "");
+          const titleProps = titleById.get(latest.titleId)?.properties || {};
+          const productId = undash((cp.Product?.relation || [])[0]?.id || "") || undash((titleProps.product?.relation || [])[0]?.id || "") || null;
+          const slotCampaignId = undash((cp.Campaign?.relation || [])[0]?.id || "") || null;
+          const titleName = (titleProps.Title?.title || []).map(x => x.plain_text).join("");
 
-          let targetSlot = null, dueDate = todayStr, label = "";
-          if (Number.isFinite(sequence)) {
-            targetSlot = allSlots.find(s => slotLineKey(s) === key && s.properties.Sequence?.number === sequence + 1 && s.properties.Status?.select?.name === "Open") || null;
-            if (targetSlot) label = (targetSlot.properties.Angle?.rich_text || []).map(x => x.plain_text).join("") || type || grouping;
-          }
-          if (!targetSlot && recurrence) {
-            const due = new Date(latest.title.last_edited_time);
+          let targetSlot = null, dueDate = todayStr, label = "", targetIsRecurring = false;
+
+          if (recurrence) {
+            const due = new Date(latest.pubDate || todayStr);
             due.setUTCDate(due.getUTCDate() + parseRecurrenceDays(recurrence));
             dueDate = due.toISOString().slice(0, 10);
-            targetSlot = latest.slot;
-            label = type || grouping;
+            targetSlot = cur;
+            targetIsRecurring = true;
+            label = rtx(cp, "Angle") || type || grouping;
           }
-          if (!targetSlot) continue; // fixed sequence exhausted, no recurrence -- line complete
+          if (!targetSlot) {
+            const step = advance(cur, key, latest.pubDate);
+            if (step) { targetSlot = step.slot; dueDate = step.dueDate; label = rtx(targetSlot.properties, "Angle") || rtx(targetSlot.properties, "Type") || grouping; }
+          }
+          if (!targetSlot && parentId) {
+            const parent = slotById.get(parentId);
+            if (parent) {
+              const step = advance(parent, siblingKey(parent), latest.pubDate);
+              if (step) { targetSlot = step.slot; dueDate = step.dueDate; label = rtx(targetSlot.properties, "Angle") || rtx(targetSlot.properties, "Type") || rtx(parent.properties, "Grouping"); }
+            }
+          }
+          if (!targetSlot) continue; // line complete
 
+          const tp = targetSlot.properties;
           results.push({
             slotId: undash(targetSlot.id),
             label: label || 'Untitled',
             grouping,
-            type,
-            recurrence,
-            platform: (targetSlot.properties.Platform?.rich_text || []).map(x => x.plain_text).join(""),
-            methodName: (targetSlot.properties["Method Name"]?.rich_text || []).map(x => x.plain_text).join(""),
+            type: rtx(tp, "Type") || type,
+            recurrence: rtx(tp, "Recurrence"),
+            guideline: rtx(tp, "Guideline"),
+            platform: rtx(tp, "Platform"),
+            methodName: rtx(tp, "Method Name"),
             dueDate,
             isDue: dueDate <= todayStr,
+            isRecurring: targetIsRecurring,
             growthStrategyId: gsId,
             productId,
             campaignId: slotCampaignId,
-            lastPublished: latest.title.last_edited_time,
-            lastPublishedTitle: (latest.title.properties.Title?.title || []).map(x => x.plain_text).join(""),
+            lastPublished: latest.pubDate,
+            lastPublishedTitle: titleName,
+          });
+        }
+
+        // Cold start — a top-level sibling set that has Open slots but no
+        // published asset yet (a freshly planned strategy): surface its
+        // lowest-Sequence Open slot as "start here" so brand-new rollouts
+        // aren't invisible until their first publish.
+        const activeKeys = new Set(lines.keys());
+        const coldSeen = new Set();
+        for (const s of allSlots) {
+          if (s.properties.Status?.select?.name !== "Open") continue;
+          if (undash((s.properties["Parent Slot"]?.relation || [])[0]?.id || "")) continue; // top-level only
+          const key = siblingKey(s);
+          if (activeKeys.has(key) || coldSeen.has(key)) continue;
+          coldSeen.add(key);
+          const first = allSlots
+            .filter(x => siblingKey(x) === key && x.properties.Status?.select?.name === "Open")
+            .sort((a, b) => (a.properties.Sequence?.number ?? 1e9) - (b.properties.Sequence?.number ?? 1e9))[0];
+          if (!first) continue;
+          const fp = first.properties;
+          results.push({
+            slotId: undash(first.id),
+            label: rtx(fp, "Angle") || rtx(fp, "Type") || rtx(fp, "Grouping") || 'Start',
+            grouping: rtx(fp, "Grouping"),
+            type: rtx(fp, "Type"),
+            recurrence: rtx(fp, "Recurrence"),
+            guideline: rtx(fp, "Guideline"),
+            platform: rtx(fp, "Platform"),
+            methodName: rtx(fp, "Method Name"),
+            dueDate: todayStr,
+            isDue: true,
+            isRecurring: false,
+            isColdStart: true,
+            growthStrategyId: undash((fp["Growth Strategy"]?.relation || [])[0]?.id || "") || null,
+            productId: undash((fp.Product?.relation || [])[0]?.id || "") || null,
+            campaignId: undash((fp.Campaign?.relation || [])[0]?.id || "") || null,
+            lastPublished: null,
+            lastPublishedTitle: null,
           });
         }
 
