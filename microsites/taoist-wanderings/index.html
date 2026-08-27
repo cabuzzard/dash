@@ -7978,7 +7978,11 @@ let CTS_SLOT = null; // set only when opened with a preset slot; read by submit 
 
 function ctsFindSlot(slotId) {
   if (!slotId) return null;
-  for (const s of (CAMPAIGN_STRATEGIES_CACHE || [])) {
+  // A divergent-path parent (generateGrowthStrategy) has no groupings/Slots
+  // of its own — only its children do — so every top-level strategy's own
+  // children must be searched too, not just its (possibly empty) groupings.
+  const flatList = (CAMPAIGN_STRATEGIES_CACHE || []).flatMap(s => [s, ...(s.children || [])]);
+  for (const s of flatList) {
     for (const g of (s.groupings || [])) {
       const found = (g.slots || []).find(sl => sl.id === slotId);
       if (found) return { slot: found, groupingName: g.name, strategyName: s.name, strategyId: s.id, productId: s.productId, productName: s.productName };
@@ -8025,7 +8029,7 @@ async function openEditSlotModal(slotId) {
 // already-loaded cache so the new slot inherits it, same as a normal
 // generateGrowthStrategy-created one would.
 async function openInsertSlotModal(growthStrategyId, grouping, atSequence) {
-  const strat = (CAMPAIGN_STRATEGIES_CACHE || []).find(s => s.id === growthStrategyId);
+  const strat = (CAMPAIGN_STRATEGIES_CACHE || []).flatMap(s => [s, ...(s.children || [])]).find(s => s.id === growthStrategyId);
   ES_MODE = 'insert';
   ES_SLOT_ID = null;
   ES_INSERT_CTX = { growthStrategyId, grouping, atSequence, productId: strat ? strat.productId : null, campaignId: CAMPAIGN_ID };
@@ -8200,7 +8204,11 @@ function ctsPopulateSlots(productId, selectedSlotId) {
   if (!productId) { sel.innerHTML = '<option value="">— none —</option>'; sel.disabled = true; sel.value = ''; return; }
   sel.disabled = false;
   const opts = ['<option value="">— none —</option>'];
-  (CAMPAIGN_STRATEGIES_CACHE || []).filter(s => s.productId === productId).forEach(s => {
+  // Same divergent-parent-has-no-groupings-of-its-own gap as ctsFindSlot —
+  // a parent's children each carry their own Product too, so flatten both
+  // levels before filtering rather than missing every divergent strategy's
+  // slots entirely.
+  (CAMPAIGN_STRATEGIES_CACHE || []).flatMap(s => [s, ...(s.children || [])]).filter(s => s.productId === productId).forEach(s => {
     (s.groupings || []).forEach(g => {
       (g.slots || []).forEach(sl => {
         const mark = sl.status === 'Filled' ? '✓' : '○';
