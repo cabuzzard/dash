@@ -5149,6 +5149,147 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         return json({ success: true, id: created.id.replace(/-/g,""), shifted: toShift.length });
       }
 
+      // ── backfillStrategyPostTypes ──
+      // Retroactively assigns Post Type to every slot on an existing Growth
+      // Strategy that doesn't have one yet — same reasoning
+      // generateGrowthStrategy now applies at creation time (grounded in
+      // the strategy's real Product/Positioning/Campaign Research context,
+      // vary across a Sequential grouping's arc, ensure at least one
+      // Pillar), just run after the fact for strategies created before this
+      // system existed. Angles/titles are NOT touched, only Post Type +
+      // the Name convention + the legacy Type text mirror.
+      if (body.action === "backfillStrategyPostTypes") {
+        const { growthStrategyId } = body;
+        if (!growthStrategyId) return json({ error: "growthStrategyId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const stratPage = await fetch(`https://api.notion.com/v1/pages/${dash(growthStrategyId)}`, { headers: hdr }).then(r => r.json());
+        if (!stratPage.properties) return json({ error: stratPage.message || "Growth Strategy not found" }, 404);
+        const productId = (stratPage.properties.Product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+        const campaignId = (stratPage.properties.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+        const stratName = (stratPage.properties["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy";
+
+        const allSlots = await notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(growthStrategyId) } } });
+        const needing = allSlots.filter(s => !(s.properties["Post Type"]?.relation || []).length);
+        if (!needing.length) return json({ success: true, updated: 0 });
+
+        const [allPostTypeRows, productPage, researchRaw, stratRecord] = await Promise.all([
+          // Logged, not silently swallowed — a query failure here (e.g. the
+          // DB not shared with this Worker's Notion integration) should be
+          // visible in wrangler tail rather than just quietly returning an
+          // empty catalog with no clue why.
+          notionQuery(POST_TYPES_DB, {}).catch(e => { console.error('notionQuery(POST_TYPES_DB) failed:', e.message); return []; }),
+          productId ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          campaignId ? fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })) : Promise.resolve({ results: [] }),
+          productId ? findBestProductResearchRecord(hdr, dash(productId)).catch(() => null) : Promise.resolve(null),
+        ]);
+
+        const postTypeIdByName = new Map(allPostTypeRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
+        const postTypesCatalogBlock = allPostTypeRows.length
+          ? allPostTypeRows.map(p => {
+              const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join("");
+              const rt = (p.properties?.Rationale?.rich_text || []).map(t => t.plain_text).join("");
+              return `- ${nm}${rt ? ` — ${rt}` : ''}`;
+            }).join('\n')
+          : '(none exist yet)';
+        const pillarId = postTypeIdByName.get('pillar');
+        const alreadyHasPillar = pillarId ? allSlots.some(s => (s.properties["Post Type"]?.relation || [])[0]?.id?.replace(/-/g,"") === pillarId) : false;
+
+        const pp = productPage?.properties || {};
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+        const strategyBlock = stratRecord
+          ? STRATEGY_FIELDS.map(f => { const v = (stratRecord.properties?.[f]?.rich_text || []).map(t => t.plain_text).join(""); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n')
+          : '';
+        const rt = key => { for (const r of (researchRaw.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const researchBlock = ['Keywords', 'Statement', 'Unique Opportunity', 'Key Message', 'Pain Points']
+          .map(f => { const v = rt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
+
+        const byGrouping = {};
+        needing.forEach(s => {
+          const g = (s.properties.Grouping?.rich_text || []).map(t => t.plain_text).join("") || "Ungrouped";
+          (byGrouping[g] ||= []).push(s);
+        });
+        Object.values(byGrouping).forEach(arr => arr.sort((a, b) => (a.properties.Sequence?.number ?? 0) - (b.properties.Sequence?.number ?? 0)));
+        const groupingsBlock = Object.entries(byGrouping).map(([gname, slots]) => {
+          const recurrence = (slots[0]?.properties?.Recurrence?.rich_text || []).map(t => t.plain_text).join("");
+          const lines = slots.map(s => `  [${s.id.replace(/-/g,"")}] Sequence ${s.properties.Sequence?.number ?? '?'}: ${(s.properties.Angle?.rich_text || []).map(t => t.plain_text).join("") || '(no angle)'}`).join('\n');
+          return `Grouping "${gname}"${recurrence ? ` (Recurring, ${recurrence})` : ' (Sequential)'}:\n${lines}`;
+        }).join('\n\n');
+
+        const prompt = `You are a growth strategist assigning Post Types to an EXISTING content strategy's planned titles — the strategy "${stratName}" was already generated; you are only filling in a gap, never changing the angles/titles themselves.
+
+PRODUCT: ${productName}
+${productDesc ? `Description: ${productDesc}\n` : ''}${strategyBlock ? `POSITIONING STRATEGY:\n${strategyBlock}\n` : ''}${researchBlock ? `CAMPAIGN RESEARCH:\n${researchBlock}\n` : ''}
+POST TYPE CATALOG (assign one to every title below, by exact name when it genuinely fits):
+${postTypesCatalogBlock}
+
+For a Sequential grouping, vary the Post Type across its titles to match where each sits in the arc (early = Intro, middle = Character Development/Teach, late = Feature Benefit/Social Proof/CTA) — ground this in the research above, not a generic template. For a Recurring grouping, it's fine for every title to share one Post Type, or cycle 2-3 that fit the format.
+${alreadyHasPillar ? '' : 'This strategy has no Pillar yet — if one of the titles below is a natural cornerstone/anchor candidate (usually the first one), assign it Pillar. If none genuinely fits, that is fine, do not force it.'}
+
+PLANNED TITLES (grouped by series, each tagged with its Notion page ID in brackets — use that exact ID in your response):
+${groupingsBlock}
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "assignments": [ { "slotId": "the bracketed ID", "postType": "exact name from the catalog, or a new one", "newPostType": false } ] }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let assignments;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+          assignments = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1))).assignments || [];
+        } catch (e) {
+          return json({ error: "Failed to parse assignments JSON: " + e.message }, 500);
+        }
+
+        const slotById = new Map(allSlots.map(s => [s.id.replace(/-/g,""), s]));
+        let updated = 0;
+        for (const a of assignments) {
+          const slot = slotById.get(String(a.slotId || '').replace(/-/g,""));
+          if (!slot) continue;
+          const wantName = String(a.postType || '').trim();
+          if (!wantName) continue;
+          let postTypeId = postTypeIdByName.get(wantName.toLowerCase());
+          if (!postTypeId && a.newPostType) {
+            try {
+              const created = await fetch("https://api.notion.com/v1/pages", {
+                method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ parent: { database_id: POST_TYPES_DB }, properties: { Name: { title: [{ type: "text", text: { content: wantName.slice(0, 200) } }] } } }),
+              }).then(r => r.json());
+              if (created.id) { postTypeId = created.id.replace(/-/g,""); postTypeIdByName.set(wantName.toLowerCase(), postTypeId); }
+            } catch (e) { /* skip */ }
+          }
+          if (!postTypeId) continue;
+          const typeName = Array.from(postTypeIdByName.entries()).find(([, id]) => id === postTypeId)?.[0] || wantName;
+          const displayName = typeName.replace(/\b\w/g, c => c.toUpperCase());
+          const seq = slot.properties.Sequence?.number;
+          const newName = Number.isFinite(seq) ? `${seq} – ${displayName}` : null;
+          const props = {
+            "Post Type": { relation: [{ id: dash(postTypeId) }] },
+            "Type": { rich_text: [{ type: "text", text: { content: displayName.slice(0, 1990) } }] },
+          };
+          if (newName) props["Name"] = { title: [{ type: "text", text: { content: newName.slice(0, 200) } }] };
+          await fetch(`https://api.notion.com/v1/pages/${dash(slot.id.replace(/-/g,""))}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: props }),
+          }).catch(() => {});
+          updated++;
+        }
+        return json({ success: true, updated, total: needing.length });
+      }
+
       if (body.action === "updateCampaignPlatforms") {
         const { campaignId, platformIds } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
@@ -8843,7 +8984,11 @@ ${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? 
         // already exists to reuse it instead of proposing a duplicate.
         const [allMethodRows, allPostTypeRows, allPlatformRows] = await Promise.all([
           notionQuery(METHODS_DB, {}),
-          notionQuery(POST_TYPES_DB, {}).catch(() => []),
+          // Logged, not silently swallowed — a query failure here (e.g. the
+          // DB not shared with this Worker's Notion integration) should be
+          // visible in wrangler tail rather than just quietly returning an
+          // empty catalog with no clue why.
+          notionQuery(POST_TYPES_DB, {}).catch(e => { console.error('notionQuery(POST_TYPES_DB) failed:', e.message); return []; }),
           notionQuery(PLATFORMS_DB, {}).catch(() => []),
         ]);
         const allMethods = allMethodRows.map(m => ({
@@ -9045,7 +9190,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // call so two groupings proposing the same new name don't create two
         // duplicate Post Type pages.
         async function resolvePostTypeId(t) {
-          const wantName = String(t.postType || '').trim();
+          // Defensive: accept a couple of plausible key-name variants in
+          // case the model drifts from the exact "postType" key the prompt
+          // asks for (seen in practice — silently no-oping on every title
+          // is worse than tolerating a synonym).
+          const wantName = String(t.postType || t.type || t.postTypeName || t.post_type || '').trim();
           if (!wantName) return null;
           const existing = postTypeIdByName.get(wantName.toLowerCase());
           if (existing) return existing;
@@ -9110,7 +9259,13 @@ Return ONLY this JSON object, no other text, no markdown fences:
             return fetch("https://api.notion.com/v1/pages", {
               method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
               body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: props }),
-            }).then(r => r.json()).catch(e => ({ error: String(e) }));
+            }).then(r => r.json()).then(r => {
+              // Logged rather than silently swallowed — a rejected slot
+              // create (bad relation ID, schema mismatch, etc.) used to be
+              // invisible; it just quietly counted against slotsCreated.
+              if (r.message && !r.id) console.error('Strategy Slot create failed:', r.message);
+              return r;
+            }).catch(e => ({ error: String(e) }));
           }));
         }
 
@@ -9258,7 +9413,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
           // Small, campaign-agnostic lookup lists — fetched once per call so
           // each slot below can resolve its Post Type / Platforms relations
           // to display names + tooltip text without an N+1 fetch per slot.
-          notionQuery(POST_TYPES_DB, {}).catch(() => []),
+          // Logged, not silently swallowed — a query failure here (e.g. the
+          // DB not shared with this Worker's Notion integration) should be
+          // visible in wrangler tail rather than just quietly returning an
+          // empty catalog with no clue why.
+          notionQuery(POST_TYPES_DB, {}).catch(e => { console.error('notionQuery(POST_TYPES_DB) failed:', e.message); return []; }),
           notionQuery(PLATFORMS_DB, {}).catch(() => []),
         ]);
         const postTypeById = {};

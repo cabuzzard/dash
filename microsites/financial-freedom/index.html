@@ -7624,6 +7624,22 @@ function closeAssetBodyModal() {
 // reuse it without a second round-trip.
 let CAMPAIGN_STRATEGIES_CACHE = [];
 let CAMPAIGN_UNASSIGNED_PLANNING_CACHE = [];
+// Retroactively assigns Post Type to every slot on this strategy that
+// doesn't have one — for strategies generated before Post Type existed, or
+// where generateGrowthStrategy's best-effort match missed. Same
+// research-grounded reasoning as generation time, just run after the fact.
+async function backfillStrategyPostTypes(strategyId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Assigning…'; }
+  try {
+    const r = await w('backfillStrategyPostTypes', { growthStrategyId: strategyId });
+    if (r.error) throw new Error(r.error);
+    await loadCampaignStrategies();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🏷️ Assign Types'; }
+  }
+}
+
 async function loadCampaignStrategies() {
   const el = document.getElementById('strategies-panel');
   if (!el) return;
@@ -7779,12 +7795,17 @@ function renderStrategyBlock(s, indentPx) {
         + `</div>`).join('')
       + `</div>`
     : '';
+  const hasUnassignedType = s.groupings.some(g => g.slots.some(sl => !sl.postType));
+  const backfillBtn = hasUnassignedType
+    ? `<button onclick="backfillStrategyPostTypes('${s.id}', this)" title="Assign Post Type to every slot in this strategy that doesn't have one — grounded in this strategy's own Product/Research context, same reasoning as when it was first generated" style="font-size:9px;padding:0 6px;border:1px solid #9f7aea;border-radius:8px;background:transparent;color:#9f7aea;cursor:pointer;flex-shrink:0;line-height:1.6;">🏷️ Assign Types</button>`
+    : '';
   return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #222;padding-left:${indentPx || 0}px;">`
     + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">`
     + `<span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stratBodyId}', this)">▶</span>`
     + `<span style="font-size:13px;font-weight:700;color:#fff;cursor:pointer;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
     + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
     + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
+    + backfillBtn
     + `</div>`
     + `<div id="${stratBodyId}" style="display:none;">`
     + (groupingsHtml || '<div class="empty" style="font-size:11px;">No slots recorded for this strategy.</div>')
