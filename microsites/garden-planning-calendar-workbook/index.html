@@ -2474,7 +2474,13 @@ async function loadTitles() {
       stratOrder.forEach(sk => {
         const sTitles = byStrat[sk];
         const stratName = sk.split('||')[1];
-        if (stratOrder.length === 1) { renderTitleLevel(sTitles, el, section); return; }
+        // Single-bucket-skip only applies when that one bucket is "No
+        // Strategy" — nothing to name there. A single REAL strategy still
+        // gets its header: which strategy a group of titles belongs to is
+        // exactly the information this level exists to show, and skipping
+        // it made an entire product's titles look unassigned even when
+        // they all share one real strategy (e.g. after a bulk 🔗 Attach).
+        if (stratOrder.length === 1 && sk.startsWith('__none__')) { renderTitleLevel(sTitles, el, section); return; }
         const stateKey = section + '|strat|' + sk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const gHdr = document.createElement('div');
