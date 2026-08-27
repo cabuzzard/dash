@@ -714,9 +714,9 @@
     <div id="nextSection" style="margin-bottom:14px;border:1px solid #3a3a1a;border-radius:6px;overflow:hidden;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(232,255,71,.1);cursor:pointer;user-select:none;" onclick="toggleNextSection()">
         <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#e8ff47;">Next</span>
-        <span id="nextToggleIcon" style="font-size:11px;color:#e8ff47;">▾</span>
+        <span id="nextToggleIcon" style="font-size:11px;color:#e8ff47;">▸</span>
       </div>
-      <div id="nextList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+      <div id="nextList" style="display:none;"></div>
     </div>
     <div id="last30Section" style="margin-bottom:14px;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;cursor:pointer;user-select:none;" onclick="toggleLast30Section()">
@@ -3951,12 +3951,9 @@ function jumpToDev(campId) {
 // instead of sitting on a stale error until you click away and back.
 function loadTabContent(name) {
   if (name === 'products'    && !prodLoaded)      { prodLoaded      = true; loadProducts(); }
-  // 'development' deliberately NOT auto-loaded here — Development Titles is
-  // now default-collapsed, same as Last 30 Published; it fetches only on
-  // expand (toggleDevTitlesSection) or via jumpToDev's deep-link jump. NEXT
-  // is the one exception — default OPEN, loads immediately on tab open,
-  // since surfacing it right away is the whole point of building it.
-  if (name === 'development' && !nextLoaded)      { nextLoaded      = true; loadNextSlotsGlobal(); }
+  // 'development' deliberately NOT auto-loaded here — every widget in this
+  // tab (NEXT, Last 30 Published, Development Titles) is default-collapsed
+  // and fetches only on expand, or via jumpToDev's deep-link jump.
   if (name === 'td'          && !tdTabLoaded)     { tdTabLoaded     = true; loadTdTab(); }
   if (name === 'platforms') { loadPlatformMatrix(); if (!smAccsLoaded) loadSmAccounts(); if (!emailsLoaded) loadEmails(); }
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
@@ -10484,25 +10481,22 @@ async function dsGenerate() {
 }
 
 // ── NEXT (global) ────────────────────────────────────────────────────
-// Development tab, default-OPEN widget (unlike everything else in this
-// tab) sitting above Last 30 Published — a live, read-only roadmap of
-// what's next across EVERY campaign: for each content line (Growth
-// Strategy + Grouping) with at least one Published title, the next Slot
-// in its Sequential/Recurring rollout, same algorithm the per-campaign
-// microsite's own NEXT section and the nightly runStrategySequenceReminders
-// cron use, called here with no campaignId (getNextSlots' global mode).
-// Grouped Product Stack -> Product -> Parent Strategy -> Strategy, each
-// row linking out to its own campaign's microsite (this view spans many
-// campaigns, so that link matters here in a way it doesn't per-campaign).
+// Development tab, DEFAULT-COLLAPSED widget sitting above Last 30 Published
+// — a live roadmap of what asset to make next across EVERY campaign
+// (getNextSlots global mode). Flat SORTABLE table (click any header):
+// each row is one "next asset" — the frontier of a content line, or the
+// first slot of a not-yet-started strategy (START), or a recurring slot
+// due again (RECUR). Lazy-loads on first expand.
 let nextLoaded = false;
 let _nextItems = [];
-let nextGroupsOpen = {}; // session-only collapse state, keyed per group
+let _nextSort = { col: 'due', dir: 1 };
 function toggleNextSection() {
   const list = document.getElementById('nextList');
   const icon = document.getElementById('nextToggleIcon');
   const isOpen = list && list.style.display !== 'none';
   if (list) list.style.display = isOpen ? 'none' : '';
   if (icon) icon.textContent = isOpen ? '▸' : '▾';
+  if (!isOpen && !nextLoaded) { nextLoaded = true; loadNextSlotsGlobal(); }
 }
 async function loadNextSlotsGlobal() {
   const el = document.getElementById('nextList');
@@ -10511,173 +10505,65 @@ async function loadNextSlotsGlobal() {
   try {
     const data = await call('getNextSlots', {});
     _nextItems = data.next || [];
-    renderNextGlobalTree();
+    renderNextTable();
   } catch(e) {
     el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>';
   }
 }
-function nextRowHtml(n) {
-  const dueStyle = n.isDue
-    ? 'background:rgba(232,255,71,.18);color:#e8ff47;'
-    : 'border:1px solid var(--border2);color:var(--text3);';
-  const micrositeLink = n.microsite
-    ? '<a href="' + esc(n.microsite) + '" target="_blank" title="Open this campaign\'s admin page" style="font-size:11px;color:var(--text3);text-decoration:none;flex-shrink:0;">↗</a>'
-    : '';
-  const badge = n.isColdStart
-    ? '<span style="font-size:9px;font-weight:700;letter-spacing:.06em;padding:1px 5px;border-radius:8px;background:rgba(125,211,252,.15);color:#7dd3fc;flex-shrink:0;">START</span>'
-    : (n.isRecurring ? '<span style="font-size:9px;font-weight:700;letter-spacing:.06em;padding:1px 5px;border-radius:8px;background:rgba(52,211,153,.15);color:#34d399;flex-shrink:0;">RECUR</span>' : '');
-  return '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px 5px 44px;border-bottom:1px solid var(--border);font-size:12px;">' +
-    '<span style="flex:1;min-width:0;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + esc(n.label) + (n.guideline ? ' — ' + esc(n.guideline) : '') + '">' + esc(n.label) + '</span>' +
-    badge +
-    (n.campaignName ? '<span style="font-size:11px;color:var(--text3);flex-shrink:0;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(n.campaignName) + '</span>' : '') +
-    '<span style="font-size:10px;color:var(--text3);flex-shrink:0;">' + esc(n.methodName || n.platform || '') + '</span>' +
-    '<span style="font-size:10px;padding:1px 6px;border-radius:8px;' + dueStyle + 'flex-shrink:0;white-space:nowrap;">due ' + esc(n.dueDate) + '</span>' +
-    micrositeLink +
-  '</div>';
+function sortNextBy(col) {
+  if (_nextSort.col === col) _nextSort.dir *= -1;
+  else { _nextSort.col = col; _nextSort.dir = 1; }
+  renderNextTable();
 }
-function renderNextStrategyLevelGlobal(arr, el) {
-  const hasStrategy = arr.some(n => n.strategyId && n.strategyId !== '__none__');
-  if (!hasStrategy) { el.innerHTML = arr.map(nextRowHtml).join(''); return; }
-  const order = [], by = {};
-  arr.forEach(n => { const k = (n.strategyId || '__none__') + '||' + (n.strategyName || 'No Strategy'); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(n); });
-  if (order.length === 1) { el.innerHTML = arr.map(nextRowHtml).join(''); return; }
-  el.innerHTML = order.map(k => {
-    const items = by[k], name = k.split('||')[1];
-    const stateKey = 'strat|' + k;
-    const isOpen = !!nextGroupsOpen[stateKey];
-    return '<div>' +
-      '<div onclick="toggleNextGroup(\'' + stateKey + '\')" style="display:flex;align-items:center;gap:6px;padding:5px 8px 5px 34px;background:var(--surface2);border-bottom:1px solid var(--border2);cursor:pointer;user-select:none;">' +
-        '<span class="nx-arrow" data-key="' + stateKey + '" style="font-size:9px;color:var(--text3);flex-shrink:0;">' + (isOpen ? '▾' : '▸') + '</span>' +
-        '<span style="flex:1;font-size:11px;color:var(--text2);">' + esc(name) + '</span>' +
-        '<span style="font-size:10px;color:var(--text3);">' + items.length + '</span>' +
-      '</div>' +
-      '<div class="nx-body" data-key="' + stateKey + '" style="display:' + (isOpen ? '' : 'none') + ';">' + items.map(nextRowHtml).join('') + '</div>' +
-    '</div>';
-  }).join('');
-}
-function renderNextParentLevelGlobal(arr, el) {
-  const hasParent = arr.some(n => n.parentStrategyId && n.parentStrategyId !== '__none__');
-  if (!hasParent) { renderNextStrategyLevelGlobal(arr, el); return; }
-  const order = [], by = {};
-  arr.forEach(n => { const k = (n.parentStrategyId || '__none__') + '||' + (n.parentStrategyName || 'No Parent Strategy'); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(n); });
-  order.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
-  if (order.length === 1) { renderNextStrategyLevelGlobal(arr, el); return; }
-  el.innerHTML = order.map(k => {
-    const items = by[k], name = k.split('||')[1];
-    const stateKey = 'parentstrat|' + k;
-    const isOpen = !!nextGroupsOpen[stateKey];
-    return '<div>' +
-      '<div onclick="toggleNextGroup(\'' + stateKey + '\')" style="display:flex;align-items:center;gap:6px;padding:5px 8px 5px 26px;background:rgba(232,255,71,.05);border-bottom:1px solid rgba(232,255,71,.15);cursor:pointer;user-select:none;">' +
-        '<span class="nx-arrow" data-key="' + stateKey + '" style="font-size:9px;color:#e8ff47;flex-shrink:0;">' + (isOpen ? '▾' : '▸') + '</span>' +
-        '<span style="flex:1;font-size:11px;color:#e8ff47;font-weight:600;">' + esc(name) + '</span>' +
-        '<span style="font-size:10px;color:var(--text3);">' + items.length + '</span>' +
-      '</div>' +
-      '<div class="nx-body" data-key="' + stateKey + '" data-nested="1" style="display:' + (isOpen ? '' : 'none') + ';"></div>' +
-    '</div>';
-  }).join('');
-  order.forEach(k => {
-    if (order.length === 1) return;
-    const body = el.querySelector('.nx-body[data-key="' + ('parentstrat|' + k).replace(/"/g,'&quot;') + '"][data-nested="1"]');
-    if (body) renderNextStrategyLevelGlobal(by[k], body);
-  });
-}
-function renderNextProductLevelGlobal(arr, el) {
-  const hasProd = arr.some(n => n.productId && n.productId !== '__none__');
-  if (!hasProd) { renderNextParentLevelGlobal(arr, el); return; }
-  const order = [], by = {};
-  arr.forEach(n => { const k = (n.productId || '__none__') + '||' + (n.productName || 'No Product'); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(n); });
-  order.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
-  if (order.length === 1) { renderNextParentLevelGlobal(arr, el); return; }
-  el.innerHTML = order.map(k => {
-    const items = by[k], name = k.split('||')[1];
-    const stateKey = 'prod|' + k;
-    const isOpen = !!nextGroupsOpen[stateKey];
-    return '<div>' +
-      '<div onclick="toggleNextGroup(\'' + stateKey + '\')" style="display:flex;align-items:center;gap:6px;padding:6px 8px 6px 18px;background:var(--surface2);border-bottom:1px solid var(--border2);cursor:pointer;user-select:none;">' +
-        '<span class="nx-arrow" data-key="' + stateKey + '" style="font-size:9px;color:var(--text2);flex-shrink:0;">' + (isOpen ? '▾' : '▸') + '</span>' +
-        '<span style="flex:1;font-size:12px;color:var(--text);font-weight:600;">' + esc(name) + '</span>' +
-        '<span style="font-size:10px;color:var(--text3);">' + items.length + '</span>' +
-      '</div>' +
-      '<div class="nx-body" data-key="' + stateKey + '" data-nested="1" style="display:' + (isOpen ? '' : 'none') + ';"></div>' +
-    '</div>';
-  }).join('');
-  order.forEach(k => {
-    const body = el.querySelector('.nx-body[data-key="' + ('prod|' + k).replace(/"/g,'&quot;') + '"][data-nested="1"]');
-    if (body) renderNextParentLevelGlobal(by[k], body);
-  });
-}
-function renderNextCampaignLevelGlobal(arr, el) {
-  const hasCampaign = arr.some(n => n.campaignName);
-  if (!hasCampaign) { renderNextStackLevelGlobal(arr, el); return; }
-  const order = [], by = {};
-  arr.forEach(n => { const k = n.campaignName || '__no_campaign__'; if (!by[k]) { by[k] = []; order.push(k); } by[k].push(n); });
-  order.sort((a, b) => { if (a === '__no_campaign__') return 1; if (b === '__no_campaign__') return -1; return a.localeCompare(b); });
-  if (order.length === 1) { renderNextStackLevelGlobal(arr, el); return; }
-  el.innerHTML = order.map(k => {
-    const items = by[k], name = k === '__no_campaign__' ? 'No Campaign' : k;
-    const stateKey = 'camp|' + k;
-    const isOpen = !!nextGroupsOpen[stateKey];
-    return '<div>' +
-      '<div onclick="toggleNextGroup(\'' + stateKey + '\')" style="display:flex;align-items:center;gap:6px;padding:8px;background:rgba(125,211,252,.1);border-bottom:1px solid rgba(125,211,252,.25);cursor:pointer;user-select:none;">' +
-        '<span class="nx-arrow" data-key="' + stateKey + '" style="font-size:9px;color:#7dd3fc;flex-shrink:0;">' + (isOpen ? '▾' : '▸') + '</span>' +
-        '<span style="flex:1;font-size:12px;color:#7dd3fc;font-weight:700;letter-spacing:.02em;">' + esc(name) + '</span>' +
-        '<span style="font-size:10px;color:var(--text3);">' + items.length + '</span>' +
-      '</div>' +
-      '<div class="nx-body" data-key="' + stateKey + '" data-nested="1" style="display:' + (isOpen ? '' : 'none') + ';"></div>' +
-    '</div>';
-  }).join('');
-  order.forEach(k => {
-    const body = el.querySelector('.nx-body[data-key="' + ('camp|' + k).replace(/"/g,'&quot;') + '"][data-nested="1"]');
-    if (body) renderNextStackLevelGlobal(by[k], body);
-  });
-}
-function renderNextStackLevelGlobal(arr, el) {
-  const hasStack = arr.some(n => n.productStack);
-  if (!hasStack) { renderNextProductLevelGlobal(arr, el); return; }
-  const order = [], by = {};
-  arr.forEach(n => { const k = n.productStack || '__no_stack__'; if (!by[k]) { by[k] = []; order.push(k); } by[k].push(n); });
-  order.sort((a, b) => { if (a === '__no_stack__') return 1; if (b === '__no_stack__') return -1; return a.localeCompare(b); });
-  if (order.length === 1) { renderNextProductLevelGlobal(arr, el); return; }
-  el.innerHTML = order.map(k => {
-    const items = by[k], name = k === '__no_stack__' ? 'No Stack' : k;
-    const stateKey = 'stack|' + k;
-    const isOpen = !!nextGroupsOpen[stateKey];
-    return '<div>' +
-      '<div onclick="toggleNextGroup(\'' + stateKey + '\')" style="display:flex;align-items:center;gap:6px;padding:7px 8px;background:rgba(167,139,250,.1);border-bottom:1px solid rgba(167,139,250,.2);cursor:pointer;user-select:none;">' +
-        '<span class="nx-arrow" data-key="' + stateKey + '" style="font-size:9px;color:#a78bfa;flex-shrink:0;">' + (isOpen ? '▾' : '▸') + '</span>' +
-        '<span style="flex:1;font-size:12px;color:#a78bfa;font-weight:700;">' + esc(name) + '</span>' +
-        '<span style="font-size:10px;color:var(--text3);">' + items.length + '</span>' +
-      '</div>' +
-      '<div class="nx-body" data-key="' + stateKey + '" data-nested="1" style="display:' + (isOpen ? '' : 'none') + ';"></div>' +
-    '</div>';
-  }).join('');
-  order.forEach(k => {
-    const body = el.querySelector('.nx-body[data-key="' + ('stack|' + k).replace(/"/g,'&quot;') + '"][data-nested="1"]');
-    if (body) renderNextProductLevelGlobal(by[k], body);
-  });
-}
-// Delegated toggle for every nested group level above — each level renders
-// its own children lazily (only the top level's innerHTML is set directly;
-// nested bodies are filled in via querySelector right after, since deeper
-// levels need a real DOM node to recurse into rather than a return string).
-function toggleNextGroup(stateKey) {
-  const body = document.querySelector('.nx-body[data-key="' + stateKey.replace(/"/g,'&quot;') + '"]');
-  const arrow = document.querySelector('.nx-arrow[data-key="' + stateKey.replace(/"/g,'&quot;') + '"]');
-  if (!body) return;
-  const isOpen = body.style.display !== 'none';
-  body.style.display = isOpen ? 'none' : '';
-  if (arrow) arrow.textContent = isOpen ? '▸' : '▾';
-  nextGroupsOpen[stateKey] = !isOpen;
-}
-function renderNextGlobalTree() {
+const NEXT_COLS = [
+  { key: 'label',    label: 'Next asset', flex: '2',        get: n => n.label || '' },
+  { key: 'campaign', label: 'Campaign',   flex: '1',        get: n => n.campaignName || '' },
+  { key: 'product',  label: 'Product',    flex: '1',        get: n => n.productName || '' },
+  { key: 'strategy', label: 'Strategy',   flex: '1',        get: n => n.strategyName || '' },
+  { key: 'type',     label: 'Type',       flex: '0 0 90px', get: n => n.type || '' },
+  { key: 'posttype', label: 'Post Type',  flex: '0 0 84px', get: n => n.postType || '' },
+  { key: 'platform', label: 'Platform',   flex: '0 0 90px', get: n => n.platform || '' },
+  { key: 'method',   label: 'Method',     flex: '0 0 110px',get: n => n.methodName || '' },
+  { key: 'due',      label: 'Due',        flex: '0 0 76px', get: n => n.dueDate || '' },
+];
+function renderNextTable() {
   const el = document.getElementById('nextList');
   if (!el) return;
   if (!_nextItems.length) {
     el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px 10px;">Nothing queued — NEXT fills in from published assets that trace back to a Growth Strategy, plus the first slot of any strategy not yet started.</div>';
     return;
   }
-  el.innerHTML = '';
-  renderNextCampaignLevelGlobal(_nextItems, el);
+  const col = NEXT_COLS.find(c => c.key === _nextSort.col) || NEXT_COLS[NEXT_COLS.length - 1];
+  const rows = [..._nextItems].sort((a, b) => {
+    const av = col.get(a).toLowerCase ? col.get(a).toLowerCase() : col.get(a);
+    const bv = col.get(b).toLowerCase ? col.get(b).toLowerCase() : col.get(b);
+    return (av < bv ? -1 : av > bv ? 1 : 0) * _nextSort.dir;
+  });
+  const hdr = '<div style="display:flex;align-items:center;border-bottom:2px solid var(--border2);">' +
+    NEXT_COLS.map(c => {
+      const active = _nextSort.col === c.key;
+      const arr = active ? (_nextSort.dir === 1 ? ' ↑' : ' ↓') : '';
+      return '<div onclick="sortNextBy(\'' + c.key + '\')" style="flex:' + c.flex + ';min-width:0;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:' + (active ? '#e8ff47' : 'var(--text3)') + ';cursor:pointer;user-select:none;padding:6px 8px;">' + c.label + arr + '</div>';
+    }).join('') +
+    '<div style="width:20px;flex-shrink:0;"></div>' +
+  '</div>';
+  const body = rows.map(n => {
+    const badge = n.isColdStart
+      ? '<span style="font-size:8px;font-weight:700;letter-spacing:.05em;padding:1px 4px;border-radius:7px;background:rgba(125,211,252,.15);color:#7dd3fc;margin-right:5px;flex-shrink:0;">START</span>'
+      : (n.isRecurring ? '<span style="font-size:8px;font-weight:700;letter-spacing:.05em;padding:1px 4px;border-radius:7px;background:rgba(52,211,153,.15);color:#34d399;margin-right:5px;flex-shrink:0;">RECUR</span>' : '');
+    const dueStyle = n.isDue ? 'color:#e8ff47;font-weight:600;' : 'color:var(--text3);';
+    const cell = (c) => {
+      const v = c.get(n);
+      if (c.key === 'label') return '<div style="flex:' + c.flex + ';min-width:0;padding:5px 8px;display:flex;align-items:center;overflow:hidden;">' + badge + '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + esc(n.label) + (n.guideline ? ' — ' + esc(n.guideline) : '') + '">' + esc(v || '—') + '</span></div>';
+      if (c.key === 'due') return '<div style="flex:' + c.flex + ';min-width:0;padding:5px 8px;font-size:11px;white-space:nowrap;' + dueStyle + '">' + esc(v || '—') + '</div>';
+      return '<div style="flex:' + c.flex + ';min-width:0;padding:5px 8px;font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + esc(v) + '">' + esc(v || '—') + '</div>';
+    };
+    return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:30px;">' +
+      NEXT_COLS.map(cell).join('') +
+      '<div style="width:20px;flex-shrink:0;display:flex;justify-content:center;">' + (n.microsite ? '<a href="' + esc(n.microsite) + '" target="_blank" title="Open campaign admin" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' : '') + '</div>' +
+    '</div>';
+  }).join('');
+  el.innerHTML = '<div style="overflow-x:auto;">' + hdr + body + '</div>';
 }
 
 // ── LAST 30 PUBLISHED ────────────────────────────────────────────────
