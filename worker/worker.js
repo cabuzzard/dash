@@ -8543,49 +8543,63 @@ Return ONLY a JSON array — no other text, no markdown fences:
             assetIds:  (props.Assets?.relation || []).map(r => r.id.replace(/-/g,"")),
           };
         });
-        // Resolve product + method + strategy names
+        // Resolve product + method + strategy names — BULK queries (one
+        // notionQuery per DB), never one fetch per referenced id. A large
+        // campaign can easily reference dozens of distinct products/
+        // methods/strategies; individually GETting each one (on top of the
+        // per-title blocks/asset fetches further down) reliably exhausts
+        // Cloudflare's per-invocation subrequest cap. That failure is
+        // silent — no error surfaces to the caller, every fetch past the
+        // cap just throws inside its own try/catch — which is exactly what
+        // emptied the whole Publish Assets section on a 75-title campaign
+        // despite the underlying Notion data being fine (confirmed via a
+        // direct authenticated call + wrangler tail: "Too many subrequests
+        // by single Worker invocation"). Three bulk queries (workspace-wide
+        // per DB, paginated ~100/subrequest) replace what used to be one
+        // GET per referenced id — a 75-title campaign referencing, say, 20
+        // distinct products/methods/strategies dropped from ~20
+        // subrequests to however many pages those three DBs take total,
+        // typically 1-3 each.
         const pIds = [...new Set(titleList.map(t => t.productId).filter(x => x !== '__none__'))];
         const mIds = [...new Set(titleList.map(t => t.methodId).filter(x => x !== '__none__'))];
         const sIds = [...new Set(titleList.map(t => t.strategyId).filter(x => x !== '__none__'))];
         const dashify = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const fetchName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?" }; } catch(e) { return { id, name: "?" }; } };
-        // Growth Strategy's title property is "Strategy Name", not "Name" —
-        // needs its own fetch helper. Also reads "Parent Strategy" so a
-        // title made from a divergent sub-strategy's slot (see
-        // generateGrowthStrategy) can be grouped one level up under its
-        // parent in the Development readout, instead of every sub-strategy
-        // showing as an indistinguishable flat bucket.
-        const fetchStrategyName = async id => { try { const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }); const p = await r.json(); return { id, name: (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "?", parentId: (p.properties?.["Parent Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"") || null }; } catch(e) { return { id, name: "?", parentId: null }; } };
-        // Products also carry a Product Stack (the same Campaign -> Product
-        // Stack -> Product grouping used on the Development tab and the
-        // microsite's own Products section) — fetched alongside the name
-        // rather than via fetchName so the microsite's Development list can
-        // group by it too.
-        const fetchProduct = async id => {
-          try {
-            const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
-            const p = await r.json();
-            return {
-              id,
-              name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?",
-              stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim() || null,
-            };
-          } catch(e) { return { id, name: "?", stack: null }; }
-        };
-        const [prodPages, methPages, stratPages] = await Promise.all([Promise.all(pIds.map(fetchProduct)), Promise.all(mIds.map(fetchName)), Promise.all(sIds.map(fetchStrategyName))]);
-        const pNames = Object.fromEntries(prodPages.map(p => [p.id, p.name]));
-        const pStacks = Object.fromEntries(prodPages.map(p => [p.id, p.stack]));
-        const mNames = Object.fromEntries(methPages.map(p => [p.id, p.name]));
-        const sNames = Object.fromEntries(stratPages.map(p => [p.id, p.name]));
-        const sParentId = Object.fromEntries(stratPages.map(p => [p.id, p.parentId]));
+        const [allProductRows, allMethodRows2, allStrategyRows] = await Promise.all([
+          pIds.length ? notionQuery(PRODUCTS_DB, {}).catch(() => []) : [],
+          mIds.length ? notionQuery(METHODS_DB, {}).catch(() => []) : [],
+          sIds.length ? notionQuery(GROWTH_STRATEGY_DB, {}).catch(() => []) : [],
+        ]);
+        const pNames = {}, pStacks = {};
+        allProductRows.forEach(p => {
+          const id = p.id.replace(/-/g,"");
+          pNames[id] = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?";
+          pStacks[id] = (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim() || null;
+        });
+        const mNames = {};
+        allMethodRows2.forEach(m => { mNames[m.id.replace(/-/g,"")] = (m.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?"; });
+        // Growth Strategy's title property is "Strategy Name", not "Name".
+        // Also reads "Parent Strategy" so a title made from a divergent
+        // sub-strategy's slot (see generateGrowthStrategy) can be grouped
+        // one level up under its parent in the Development readout,
+        // instead of every sub-strategy showing as an indistinguishable
+        // flat bucket.
+        const sNames = {}, sParentId = {};
+        allStrategyRows.forEach(s => {
+          const id = s.id.replace(/-/g,"");
+          sNames[id] = (s.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "?";
+          sParentId[id] = (s.properties?.["Parent Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+        });
         // A title's own Growth Strategy might itself be a divergent
-        // sub-strategy (has a Parent Strategy) — fetch any parent ids not
-        // already covered by sIds above so the Development tree can group
-        // Stack -> Product -> Parent Strategy -> Sub-Strategy -> Title.
+        // sub-strategy whose PARENT wasn't referenced by any title directly
+        // (so it's missing from allStrategyRows above) — a handful of
+        // individual fetches here is fine, this set is normally tiny (one
+        // per distinct parent, not one per title).
         const parentIdsNeeded = [...new Set(Object.values(sParentId).filter(Boolean))].filter(id => !sNames[id]);
         if (parentIdsNeeded.length) {
-          const parentPages = await Promise.all(parentIdsNeeded.map(fetchStrategyName));
-          parentPages.forEach(p => { sNames[p.id] = p.name; });
+          const parentPages = await Promise.all(parentIdsNeeded.map(id =>
+            fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json()).catch(() => null)
+          ));
+          parentPages.filter(Boolean).forEach(p => { sNames[p.id.replace(/-/g,"")] = (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "?"; });
         }
         titleList.forEach(t => {
           t.productName  = t.productId === '__none__' ? 'No Product' : (pNames[t.productId] || '?');
@@ -8628,8 +8642,135 @@ Return ONLY a JSON array — no other text, no markdown fences:
         // to appear anywhere in the UI despite existing correctly in Notion.
         const DEV_FAMILY_STAGES = new Set(["Planning", "Development", "Writing", "Review", "Approved", "Explode"]);
         const titlesHdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        await Promise.all(titleList.map(async t => {
-          if (!DEV_FAMILY_STAGES.has(t.stage)) return;
+        // Chunked, not one flat Promise.all — a wide unthrottled fan of
+        // concurrent Notion page fetches (one per title's blocks below,
+        // one per asset further down) reliably trips Notion's rate limit
+        // on any campaign with enough titles. A 429 gets swallowed by the
+        // existing try/catch and looks EXACTLY like "no pillar"/"no
+        // assets" for every title at once — this is what was silently
+        // emptying the entire Publish Assets section on a 75-title
+        // campaign despite the underlying Notion data being fine. Same
+        // chunking pattern as fetchPagesChunked elsewhere in this file.
+        const runChunked = async (items, size, fn) => {
+          const out = [];
+          for (let i = 0; i < items.length; i += size) {
+            out.push(...await Promise.all(items.slice(i, i + size).map(fn)));
+          }
+          return out;
+        };
+        const devFamilyTitles = titleList.filter(t => DEV_FAMILY_STAGES.has(t.stage));
+        // hasPillar runs LAST now, after asset resolution below — see that
+        // block's comment for why. Default true (no "Write Pillar" nag)
+        // until/unless it actually resolves, so a budget cutoff here degrades
+        // as "button might be missing when it shouldn't be" rather than
+        // "button shows for everything, even titles that already have one."
+        devFamilyTitles.forEach(t => { t.hasPillar = true; });
+        // Builds the asset-row shape from a raw Notion Asset page — shared
+        // by both resolution paths below.
+        const buildAssetRow = (aid, page) => {
+          const p = page.properties || {};
+          return {
+            id: aid,
+            title: p["Asset Title"]?.title?.map(x => x.plain_text).join("") || "Untitled",
+            platform: p["Platform Name"]?.select?.name || "",
+            type: p["Asset Type"]?.select?.name || "",
+            status: p["Asset Status"]?.select?.name || "",
+            designLink: p["Design Link"]?.url || "",
+            assemblyReviewPage: p["Assembly Review Page"]?.url || "",
+            canvaLink: p["Canva Link"]?.url || "",
+            gradeScore: p["Grade Score"]?.number ?? null,
+            gradeStatus: p["Status"]?.select?.name || "",
+            gradeNotes: p["Grade Notes"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            body: p["Body"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            // Publish-ready copy fields — the Publish modal's fields
+            // (renderAssetRow's 📋 Publish button), prefetched here
+            // alongside everything else so opening that modal needs no
+            // extra round-trip.
+            hashtags: p["Hashtags"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            postCaption: p["Post Caption"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            thumbnail: p["Thumbnail"]?.url || "",
+            // The finished deliverable file — t-shirt print file (PDF/
+            // PNG/SVG), or a rendered video's output; same property
+            // video assets already set alongside Design Link.
+            finalMediaFile: p["Final Media File"]?.url || "",
+            // The live product/listing link (Printify createPrintifyTshirtProduct
+            // sets this — the actual Etsy listing URL once sync completes,
+            // falling back to the Printify editor URL until then).
+            productLink: p["Product Link"]?.url || "",
+            // The platform's own title-entry field (YouTube title, SEO
+            // title, LinkedIn Article headline, listing title) — only
+            // ever set when the method/platform genuinely has one;
+            // distinct from "Asset Title" (this record's own display
+            // name) above.
+            platformTitle: p["Platform Title"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            // Listing method fields — Etsy is canonical (title/body
+            // above), these are the derived cross-posts + Etsy's own
+            // tags, plus the accumulated product photos.
+            etsyTags: p["Etsy Tags"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            craigslistListing: p["Craigslist Listing"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            fbMarketplaceListing: p["FB Marketplace Listing"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            listingPhotos: (p["Listing Photos"]?.files || []).map(f => f.external?.url || f.file?.url).filter(Boolean),
+            // T shirt method — the print-ready DALL-E prompt written
+            // alongside the Etsy copy at generation time (generateTshirtAsset),
+            // persisted here so it's still available in the Publish modal
+            // later, not just in that one API response.
+            dallePrompt: p["DALL-E Prompt"]?.rich_text?.map(x => x.plain_text).join("") || "",
+          };
+        };
+        titleList.forEach(t => { t.assets = []; });
+        const totalAssetIds = titleList.reduce((n, t) => n + t.assetIds.length, 0);
+        if (campaignId && totalAssetIds) {
+          // Bulk path — ONE query for every asset in this campaign
+          // (paginated ~100/subrequest) instead of one GET per referenced
+          // asset id. This is the actual fix for the reported failure: 75
+          // titles referencing a couple dozen assets individually blew the
+          // per-invocation subrequest cap (confirmed via a direct
+          // authenticated call + wrangler tail: "Too many subrequests by
+          // single Worker invocation") before even reaching this phase.
+          const campaignAssets = await notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: dashify(campaignId) } } }).catch(() => []);
+          const assetPageById = new Map(campaignAssets.map(a => [a.id.replace(/-/g,""), a]));
+          titleList.forEach(t => {
+            t.assetIds.forEach(aid => {
+              const page = assetPageById.get(aid);
+              // Missing here just means it's outside this campaign (a
+              // stale/cross-campaign relation) — skip rather than guess.
+              // Archived/trashed skip is the same as before: a title's
+              // Assets relation accumulates every asset page ever linked
+              // to it, including ones later archived (e.g. a duplicate
+              // carousel-record upsert that missed the live one and
+              // created a fresh one instead) — rendering those just
+              // buries the current one under dead duplicates.
+              if (!page || page.archived || page.in_trash) return;
+              t.assets.push(buildAssetRow(aid, page));
+            });
+          });
+        } else if (totalAssetIds) {
+          // Fallback for calls with no campaignId to scope a bulk query by
+          // (productId-only or fully-unscoped calls) — chunked individual
+          // fetches, same throttling as the blocks-fetch above. Less
+          // efficient than the bulk path but these calls are rarer and
+          // usually smaller in scope.
+          const assetPairs = titleList.flatMap(t => t.assetIds.map(aid => ({ t, aid })));
+          await runChunked(assetPairs, 6, async ({ t, aid }) => {
+            try {
+              const r = await fetch(`https://api.notion.com/v1/pages/${dashify(aid)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
+              if (!r.ok) return;
+              const page = await r.json();
+              if (page.archived || page.in_trash) return;
+              t.assets.push(buildAssetRow(aid, page));
+            } catch(e) { /* best-effort — one bad asset never blocks the rest */ }
+          });
+        }
+        // hasPillar last, after assets above have already had first claim
+        // on whatever subrequest budget remains — Notion has no bulk
+        // "get blocks for many pages" endpoint, so unlike everything above
+        // this genuinely stays one fetch per title. On a campaign large
+        // enough to still exhaust the budget even after the bulk-ified
+        // resolution above, this is the piece that degrades (defaults to
+        // hasPillar:true, set earlier, so the failure mode is a missing
+        // "Write Pillar" button on a few titles — never an empty Publish
+        // Assets section again).
+        await runChunked(devFamilyTitles, 6, async t => {
           try {
             const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dashify(t.id)}/children?page_size=100`, { headers: titlesHdr }).then(r => r.json());
             const blocks = blocksResp.results || [];
@@ -8642,73 +8783,8 @@ Return ONLY a JSON array — no other text, no markdown fences:
               (b.type === "heading_3" && (b.heading_3?.rich_text || []).map(x => x.plain_text).join("").trim().toLowerCase() === "pillar content") ||
               ((b.type === "paragraph" || b.type === "bulleted_list_item" || b.type === "numbered_list_item") && (b[b.type]?.rich_text || []).map(x => x.plain_text).join("").trim().length > 0)
             );
-          } catch (e) { t.hasPillar = false; }
-        }));
-        await Promise.all(titleList.map(async t => {
-          if (!t.assetIds.length) { t.assets = []; return; }
-          t.assets = (await Promise.all(t.assetIds.map(async aid => {
-            try {
-              const r = await fetch(`https://api.notion.com/v1/pages/${dashify(aid)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
-              if (!r.ok) return null;
-              const page = await r.json();
-              // Skip archived/trashed assets — a title's Assets relation
-              // accumulates every asset page ever linked to it, including
-              // ones later archived (e.g. a duplicate carousel-record
-              // upsert that missed the live one and created a fresh one
-              // instead). Rendering those as rows just buries the current
-              // one under dead duplicates.
-              if (page.archived || page.in_trash) return null;
-              const p = page.properties || {};
-              return {
-                id: aid,
-                title: p["Asset Title"]?.title?.map(x => x.plain_text).join("") || "Untitled",
-                platform: p["Platform Name"]?.select?.name || "",
-                type: p["Asset Type"]?.select?.name || "",
-                status: p["Asset Status"]?.select?.name || "",
-                designLink: p["Design Link"]?.url || "",
-                assemblyReviewPage: p["Assembly Review Page"]?.url || "",
-                canvaLink: p["Canva Link"]?.url || "",
-                gradeScore: p["Grade Score"]?.number ?? null,
-                gradeStatus: p["Status"]?.select?.name || "",
-                gradeNotes: p["Grade Notes"]?.rich_text?.map(x => x.plain_text).join("") || "",
-                body: p["Body"]?.rich_text?.map(x => x.plain_text).join("") || "",
-                // Publish-ready copy fields — the Publish modal's fields
-                // (renderAssetRow's 📋 Publish button), prefetched here
-                // alongside everything else so opening that modal needs no
-                // extra round-trip.
-                hashtags: p["Hashtags"]?.rich_text?.map(x => x.plain_text).join("") || "",
-                postCaption: p["Post Caption"]?.rich_text?.map(x => x.plain_text).join("") || "",
-                thumbnail: p["Thumbnail"]?.url || "",
-                // The finished deliverable file — t-shirt print file (PDF/
-                // PNG/SVG), or a rendered video's output; same property
-                // video assets already set alongside Design Link.
-                finalMediaFile: p["Final Media File"]?.url || "",
-                // The live product/listing link (Printify createPrintifyTshirtProduct
-                // sets this — the actual Etsy listing URL once sync completes,
-                // falling back to the Printify editor URL until then).
-                productLink: p["Product Link"]?.url || "",
-                // The platform's own title-entry field (YouTube title, SEO
-                // title, LinkedIn Article headline, listing title) — only
-                // ever set when the method/platform genuinely has one;
-                // distinct from "Asset Title" (this record's own display
-                // name) above.
-                platformTitle: p["Platform Title"]?.rich_text?.map(x => x.plain_text).join("") || "",
-                // Listing method fields — Etsy is canonical (title/body
-                // above), these are the derived cross-posts + Etsy's own
-                // tags, plus the accumulated product photos.
-                etsyTags: p["Etsy Tags"]?.rich_text?.map(x => x.plain_text).join("") || "",
-                craigslistListing: p["Craigslist Listing"]?.rich_text?.map(x => x.plain_text).join("") || "",
-                fbMarketplaceListing: p["FB Marketplace Listing"]?.rich_text?.map(x => x.plain_text).join("") || "",
-                listingPhotos: (p["Listing Photos"]?.files || []).map(f => f.external?.url || f.file?.url).filter(Boolean),
-                // T shirt method — the print-ready DALL-E prompt written
-                // alongside the Etsy copy at generation time (generateTshirtAsset),
-                // persisted here so it's still available in the Publish modal
-                // later, not just in that one API response.
-                dallePrompt: p["DALL-E Prompt"]?.rich_text?.map(x => x.plain_text).join("") || "",
-              };
-            } catch(e) { return null; }
-          }))).filter(Boolean);
-        }));
+          } catch (e) { /* leave the optimistic default from above */ }
+        });
         return json({ titles: titleList });
       }
 
