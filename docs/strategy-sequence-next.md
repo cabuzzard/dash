@@ -432,11 +432,16 @@ not runnable in this env** — run `cd worker && npx wrangler@4 deploy
 - A text box + mode select (fold-in / replace slot / new strategy) → calls
   `adoptIntoStrategy` on submit.
 
-### Phase 8 — Development "Next" UI
+### Phase 8 — Development "Next" UI — partly done
 
-- `index.html` ~10507: add the Sub-strategy (platform) grouping level between
-  Strategy and the frontier row; render `Delay`-derived due dates and the
-  `Guideline` on hover.
+- DONE: NEXT gained a Campaign grouping level (above Stack), START/RECUR
+  badges, guideline tooltips. Sub-strategy grouping comes free from the
+  existing parent→child strategy resolution.
+- DONE: "Last 30 Published" reworked from a flat sortable table into a
+  nested default-collapsed tree — Campaign → Product Stack → Product →
+  Strategy → rows by publish date desc. `getPublishedAssets` enriched with
+  `productName`/`productStack`/`strategyName`/`publishedDate` (resolved via
+  each asset's Content Strategy title → product + Growth Strategy).
 
 ### Rollout
 

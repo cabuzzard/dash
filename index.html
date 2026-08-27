@@ -10726,63 +10726,74 @@ function sortLast30By(col) {
   }
   renderLast30Table();
 }
+// Nested, default-collapsed tree: Campaign → Product Stack → Product →
+// Strategy → asset rows (newest publish first). Grouping fields come from
+// getPublishedAssets (campaignName / productStack / productName /
+// strategyName / publishedDate).
+const L30_LEVELS = [
+  { key: 'campaignName', none: 'No Campaign', color: '#7dd3fc', weight: 700 },
+  { key: 'productStack', none: 'No Stack',    color: '#a78bfa', weight: 700 },
+  { key: 'productName',  none: 'No Product',  color: 'var(--text)', weight: 600 },
+  { key: 'strategyName', none: 'No Strategy', color: '#e8ff47', weight: 600 },
+];
+let last30GroupsOpen = {};
+function toggleLast30Group(k) {
+  const sel = k.replace(/"/g, '&quot;');
+  const body  = document.querySelector('.l30-body[data-key="' + sel + '"]');
+  const arrow = document.querySelector('.l30-arrow[data-key="' + sel + '"]');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (arrow) arrow.textContent = isOpen ? '▸' : '▾';
+  last30GroupsOpen[k] = !isOpen;
+}
+function last30RowHtml(a) {
+  const d = (a.publishedDate || a.lastEdited || '').slice(0, 10);
+  const safeTitle = (a.title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  return '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px 5px 52px;border-bottom:1px solid var(--border);font-size:12px;">' +
+    '<span style="flex:1;min-width:0;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + esc(a.title) + (a.titleName ? ' — ' + esc(a.titleName) : '') + '">' + esc(a.title || 'Untitled') + '</span>' +
+    (a.type ? '<span style="font-size:10px;color:var(--text3);flex-shrink:0;">' + esc(a.type) + '</span>' : '') +
+    '<span style="font-size:10px;color:var(--text3);flex-shrink:0;white-space:nowrap;">' + esc(d || '—') + '</span>' +
+    '<button onclick="openBuildStrategyModal(\'' + a.id + '\',\'' + safeTitle + '\')" title="Fold this published asset into a strategy — cadence or fixed next steps, attached to its title." style="font-size:10px;padding:1px 7px;border:1px solid #f6ad55;background:transparent;color:#f6ad55;border-radius:9px;cursor:pointer;flex-shrink:0;white-space:nowrap;">🎯</button>' +
+    (a.campaignMicrosite ? '<a href="' + esc(a.campaignMicrosite) + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;flex-shrink:0;">↗</a>' : '') +
+  '</div>';
+}
+function renderLast30Group(items, el, depth, prefix) {
+  if (depth >= L30_LEVELS.length) {
+    const rows = [...items].sort((a, b) => (b.publishedDate || b.lastEdited || '').localeCompare(a.publishedDate || a.lastEdited || ''));
+    el.innerHTML = rows.map(last30RowHtml).join('');
+    return;
+  }
+  const lvl = L30_LEVELS[depth];
+  const order = [], by = {};
+  items.forEach(it => { const k = it[lvl.key] || ('\u0000none'); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(it); });
+  order.sort((a, b) => { const an = a === '\u0000none', bn = b === '\u0000none'; if (an !== bn) return an ? 1 : -1; return a.localeCompare(b); });
+  const pad = 8 + depth * 12;
+  el.innerHTML = order.map((k, i) => {
+    const label = k === '\u0000none' ? lvl.none : k;
+    const sk = prefix + '.' + i;
+    const isOpen = !!last30GroupsOpen[sk];
+    return '<div>' +
+      '<div onclick="toggleLast30Group(\'' + sk + '\')" style="display:flex;align-items:center;gap:6px;padding:6px 8px 6px ' + pad + 'px;background:var(--surface2);border-bottom:1px solid var(--border2);cursor:pointer;user-select:none;">' +
+        '<span class="l30-arrow" data-key="' + sk + '" style="font-size:9px;color:' + lvl.color + ';flex-shrink:0;">' + (isOpen ? '▾' : '▸') + '</span>' +
+        '<span style="flex:1;min-width:0;font-size:' + (12 - depth * 0.5) + 'px;color:' + lvl.color + ';font-weight:' + lvl.weight + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(label) + '</span>' +
+        '<span style="font-size:10px;color:var(--text3);flex-shrink:0;">' + by[k].length + '</span>' +
+      '</div>' +
+      '<div class="l30-body" data-key="' + sk + '" style="display:' + (isOpen ? '' : 'none') + ';"></div>' +
+    '</div>';
+  }).join('');
+  order.forEach((k, i) => {
+    const sk = prefix + '.' + i;
+    const body = el.querySelector('.l30-body[data-key="' + sk + '"]');
+    if (body) renderLast30Group(by[k], body, depth + 1, sk);
+  });
+}
 function renderLast30Table() {
   const el = document.getElementById('last30List');
   if (!el) return;
   if (!_last30Assets.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No published assets yet.</div>'; return; }
-
-  const sorted = [..._last30Assets].sort((a, b) => {
-    let av, bv;
-    if (_last30Sort.col === 'date')          { av = a.lastEdited || ''; bv = b.lastEdited || ''; }
-    else if (_last30Sort.col === 'method')   { av = (a.type || '').toLowerCase(); bv = (b.type || '').toLowerCase(); }
-    else if (_last30Sort.col === 'campaign') { av = (a.campaignName || '').toLowerCase(); bv = (b.campaignName || '').toLowerCase(); }
-    else if (_last30Sort.col === 'titleName'){ av = (a.titleName || '').toLowerCase(); bv = (b.titleName || '').toLowerCase(); }
-    else                                     { av = (a.title || '').toLowerCase(); bv = (b.title || '').toLowerCase(); }
-    return av < bv ? -_last30Sort.dir : av > bv ? _last30Sort.dir : 0;
-  });
-
-  // Same fake-table convention as the Publishing tab's fuller
-  // getPublishedAssets table (renderPublishedTable) — flex columns,
-  // clickable header row + data rows, info listed out to the right of
-  // the asset name rather than stacked underneath it.
-  const colHdr = (key, label, flex) => {
-    const active = _last30Sort.col === key;
-    const arrow  = active ? (_last30Sort.dir === 1 ? ' ↑' : ' ↓') : '';
-    return '<div onclick="sortLast30By(\'' + key + '\')" style="flex:' + flex + ';min-width:0;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + (active ? 'var(--accent)' : 'var(--text3)') + ';cursor:pointer;user-select:none;padding:7px 8px;">' + label + arrow + '</div>';
-  };
-  const hdrRow = '<div style="display:flex;align-items:center;border-bottom:2px solid var(--border2);margin-bottom:2px;">' +
-    colHdr('title',     'Asset',    '2') +
-    colHdr('titleName', 'Title',    '2') +
-    colHdr('method',    'Method',   '0 0 90px') +
-    colHdr('campaign',  'Campaign', '1') +
-    colHdr('date',      'Date',     '0 0 70px') +
-    '<div style="width:24px;flex-shrink:0;"></div>' +
-  '</div>';
-  const rowsHtml = sorted.map(a => {
-    const date = a.lastEdited ? new Date(a.lastEdited).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
-    return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:32px;">' +
-      '<div style="flex:2;min-width:0;padding:6px 8px;overflow:hidden;">' +
-        '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.title || 'Untitled') + '</span>' +
-      '</div>' +
-      '<div style="flex:2;min-width:0;padding:6px 8px;overflow:hidden;">' +
-        '<span style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.titleName || '—') + '</span>' +
-      '</div>' +
-      '<div style="flex:0 0 90px;min-width:0;padding:6px 8px;overflow:hidden;">' +
-        (a.type ? '<span style="font-size:10px;font-weight:600;color:var(--accent);padding:1px 6px;border:1px solid var(--border2);border-radius:4px;white-space:nowrap;">' + esc(a.type) + '</span>' : '<span style="color:var(--text3);font-size:11px;">—</span>') +
-      '</div>' +
-      '<div style="flex:1;min-width:0;padding:6px 8px;overflow:hidden;">' +
-        '<span style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">' + esc(a.campaignName || '—') + '</span>' +
-      '</div>' +
-      '<div style="flex:0 0 70px;min-width:0;padding:6px 8px;">' +
-        '<span style="font-size:11px;color:var(--text3);white-space:nowrap;">' + date + '</span>' +
-      '</div>' +
-      '<div style="width:110px;flex-shrink:0;padding:6px 4px;display:flex;align-items:center;gap:6px;justify-content:flex-end;">' +
-        '<button onclick="openBuildStrategyModal(\'' + a.id + '\',\'' + (a.title || '').replace(/'/g,"\\'").replace(/"/g,'&quot;') + '\')" title="Build a repeatable strategy from this published asset — describe a cadence or a fixed sequence of next steps, and it gets attached to this asset\'s title so the nightly queue knows what\'s next." style="font-size:10px;padding:1px 7px;border:1px solid #f6ad55;background:transparent;color:#f6ad55;border-radius:9px;cursor:pointer;flex-shrink:0;white-space:nowrap;">🎯 Strategy</button>' +
-        (a.campaignMicrosite ? '<a href="' + esc(a.campaignMicrosite) + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;flex-shrink:0;">↗</a>' : '') +
-      '</div>' +
-    '</div>';
-  }).join('');
-  el.innerHTML = '<div style="overflow-x:auto;">' + hdrRow + rowsHtml + '</div>';
+  el.innerHTML = '';
+  renderLast30Group(_last30Assets, el, 0, 'l30');
 }
 
 // ── LAST 30 DEVELOPMENT TITLES ───────────────────────────────────────

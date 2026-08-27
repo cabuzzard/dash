@@ -5163,20 +5163,44 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
             if (tid) titleIdSet.add(tid.replace(/-/g,""));
           });
           const dashify = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+          const notionHdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
           const titlePages = await Promise.all([...titleIdSet].map(async id => {
             try {
-              const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
+              const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: notionHdr });
               const p = await r.json();
-              return { id, name: (p.properties?.Title?.title || []).map(t => t.plain_text).join("") || "" };
-            } catch(e) { return { id, name: "" }; }
+              return {
+                id,
+                name: (p.properties?.Title?.title || []).map(t => t.plain_text).join("") || "",
+                productId: (p.properties?.product?.relation || [])[0]?.id?.replace(/-/g,"") || "",
+                growthStrategyId: (p.properties?.["Growth Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"") || "",
+              };
+            } catch(e) { return { id, name: "", productId: "", growthStrategyId: "" }; }
           }));
-          const titleMap = Object.fromEntries(titlePages.map(t => [t.id, t.name]));
+          const titleMap = Object.fromEntries(titlePages.map(t => [t.id, t]));
+          // Resolve Product (name + Product Stack) and Growth Strategy (name)
+          // for the Development tab's grouped "Last 30 Published" tree
+          // (Campaign → Stack → Product → Strategy → rows by publish date).
+          const prodIds = [...new Set(titlePages.map(t => t.productId).filter(Boolean))];
+          const gsIds   = [...new Set(titlePages.map(t => t.growthStrategyId).filter(Boolean))];
+          const [prodPages, gsPages] = await Promise.all([
+            Promise.all(prodIds.map(id => fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: notionHdr }).then(r => r.json()).catch(() => null))),
+            Promise.all(gsIds.map(id => fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: notionHdr }).then(r => r.json()).catch(() => null))),
+          ]);
+          const prodMap = {};
+          prodPages.filter(Boolean).forEach(p => { prodMap[p.id.replace(/-/g,"")] = {
+            name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "",
+            stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim() || "",
+          }; });
+          const gsMap = {};
+          gsPages.filter(Boolean).forEach(p => { gsMap[p.id.replace(/-/g,"")] = (p.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || ""; });
           const assets = assetRows.map(pg => {
             const p = pg.properties || {};
             const loginId  = (p["Login"]?.relation || [])[0]?.id?.replace(/-/g,"") || "";
             const campId   = (p["Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || "";
             const titleId  = (p["Content Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"") || "";
             const camp = campMap[campId] || { name: "", microsite: null };
+            const tinfo = titleMap[titleId] || {};
+            const prod = prodMap[tinfo.productId] || {};
             return {
               id: pg.id.replace(/-/g,""),
               title: p["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "Untitled",
@@ -5187,7 +5211,13 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
               loginName: loginMap[loginId] || "",
               campaignName: camp.name,
               campaignMicrosite: camp.microsite,
-              titleId, titleName: titleMap[titleId] || "",
+              titleId, titleName: tinfo.name || "",
+              productId: tinfo.productId || "",
+              productName: prod.name || "",
+              productStack: prod.stack || "",
+              growthStrategyId: tinfo.growthStrategyId || "",
+              strategyName: gsMap[tinfo.growthStrategyId] || "",
+              publishedDate: p["Publishing Date"]?.date?.start || (pg.last_edited_time || "").slice(0, 10),
               lastEdited: pg.last_edited_time || "",
             };
           });
