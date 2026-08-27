@@ -10250,7 +10250,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({
             model: "claude-sonnet-4-6", max_tokens: 300,
-            messages: [{ role: "user", content: `Given this content title and its research/keywords, propose 3-5 short Etsy search phrases (2-5 words each, how a real shopper would actually type them) that a t-shirt version of this idea would compete under. Return ONLY a JSON array of strings, no other text.\n\n${groundingText}` }],
+            messages: [{ role: "user", content: `Given this content title and its research/keywords, propose exactly 3 short Etsy search phrases (2-5 words each, how a real shopper would actually type them) that a t-shirt version of this idea would compete under. Return ONLY a JSON array of strings, no other text.\n\n${groundingText}` }],
           }),
         });
         const qData = await qResp.json();
@@ -10259,12 +10259,12 @@ Return ONLY this JSON object, no other text, no markdown fences:
           const raw = qData.content?.[0]?.text || "[]";
           queries = JSON.parse(raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1));
         } catch(e) { queries = [titleName]; }
-        queries = (Array.isArray(queries) ? queries : [titleName]).slice(0, 5);
+        queries = (Array.isArray(queries) ? queries : [titleName]).slice(0, 3);
 
         // Step 2 — scrape each query's live Etsy search results
         const scanResults = await Promise.all(queries.map(async q => {
           try {
-            const items = await callApifyActor(AT, "devcake~etsy-search-scraper", { searchQueries: [q], maxListings: 30, enrichWithDetails: false }, 60);
+            const items = await callApifyActor(AT, "devcake~etsy-search-scraper", { searchQueries: [q], maxListings: 15, enrichWithDetails: false }, 60);
             return { query: q, listings: items };
           } catch(e) { return { query: q, error: e.message }; }
         }));
