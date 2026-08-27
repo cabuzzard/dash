@@ -5044,6 +5044,111 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         return json({ success: true });
       }
 
+      // Renames a slot's Name to the "{sequence} – {Post Type}" convention
+      // if it already followed that pattern (a leading number + " – ") —
+      // used after a renumber so sibling slots stay in sync with their new
+      // position. Slots with an older/manual name are left untouched.
+      function renumberedSlotName(oldName, newSeq) {
+        const m = String(oldName || '').match(/^\d+\s*–\s*(.+)$/);
+        return m ? `${newSeq} – ${m[1]}` : null;
+      }
+
+      // ── removeStrategySlot ──
+      // Deletes a Strategy Slot (real Notion archive) and renumbers every
+      // later sibling in the same Growth Strategy + Grouping down by one —
+      // per operator direction, inserting/removing a slot should shift the
+      // rest of the sequence, not leave gaps. Best-effort per sibling; the
+      // delete itself is the only step that can fail the whole call.
+      if (body.action === "removeStrategySlot") {
+        const { slotId } = body;
+        if (!slotId) return json({ error: "slotId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const page = await fetch(`https://api.notion.com/v1/pages/${dash(slotId)}`, { headers: hdr }).then(r => r.json());
+        if (!page.properties) return json({ error: page.message || "Slot not found" }, 404);
+        const gsId = (page.properties["Growth Strategy"]?.relation || [])[0]?.id || null;
+        const grouping = (page.properties.Grouping?.rich_text || []).map(t => t.plain_text).join("");
+        const removedSeq = page.properties.Sequence?.number;
+        await fetch(`https://api.notion.com/v1/pages/${dash(slotId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        let renumbered = 0;
+        if (gsId && grouping && Number.isFinite(removedSeq)) {
+          const siblings = await notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(gsId) } } }).catch(() => []);
+          const toShift = siblings.filter(s =>
+            (s.properties.Grouping?.rich_text || []).map(t => t.plain_text).join("") === grouping &&
+            (s.properties.Sequence?.number ?? -1) > removedSeq
+          );
+          await Promise.all(toShift.map(async s => {
+            const newSeq = s.properties.Sequence.number - 1;
+            const oldName = (s.properties.Name?.title || []).map(t => t.plain_text).join("");
+            const newName = renumberedSlotName(oldName, newSeq);
+            const props = { Sequence: { number: newSeq } };
+            if (newName) props["Name"] = { title: [{ type: "text", text: { content: newName.slice(0, 200) } }] };
+            await fetch(`https://api.notion.com/v1/pages/${s.id}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: props }),
+            }).catch(() => {});
+          }));
+          renumbered = toShift.length;
+        }
+        return json({ success: true, renumbered });
+      }
+
+      // ── insertStrategySlot ──
+      // Inserts a new Strategy Slot at a specific Sequence position within
+      // an existing Growth Strategy + Grouping, shifting every slot already
+      // at or after that position up by one first — the counterpart to
+      // removeStrategySlot above, for the same reason (operator direction:
+      // the sequence should stay contiguous and correctly numbered).
+      if (body.action === "insertStrategySlot") {
+        const { growthStrategyId, grouping, atSequence, angle, postTypeId, platformIds, productId, campaignId } = body;
+        if (!growthStrategyId || !grouping || !Number.isFinite(atSequence)) return json({ error: "growthStrategyId, grouping, and atSequence required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const siblings = await notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(growthStrategyId) } } }).catch(() => []);
+        const toShift = siblings.filter(s =>
+          (s.properties.Grouping?.rich_text || []).map(t => t.plain_text).join("") === grouping &&
+          (s.properties.Sequence?.number ?? -1) >= atSequence
+        );
+        await Promise.all(toShift.map(async s => {
+          const newSeq = s.properties.Sequence.number + 1;
+          const oldName = (s.properties.Name?.title || []).map(t => t.plain_text).join("");
+          const newName = renumberedSlotName(oldName, newSeq);
+          const props = { Sequence: { number: newSeq } };
+          if (newName) props["Name"] = { title: [{ type: "text", text: { content: newName.slice(0, 200) } }] };
+          await fetch(`https://api.notion.com/v1/pages/${s.id}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: props }),
+          }).catch(() => {});
+        }));
+        let typeName = '';
+        if (postTypeId) {
+          const tp = await fetch(`https://api.notion.com/v1/pages/${dash(postTypeId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          typeName = tp?.properties?.Name?.title?.map(t => t.plain_text).join("") || '';
+        }
+        const name = typeName ? `${atSequence} – ${typeName}` : `${grouping} #${atSequence}`;
+        const props = {
+          "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
+          "Growth Strategy": { relation: [{ id: dash(growthStrategyId) }] },
+          "Grouping": { rich_text: [{ type: "text", text: { content: String(grouping).slice(0, 1990) } }] },
+          "Sequence": { number: atSequence },
+          "Angle": { rich_text: [{ type: "text", text: { content: String(angle || '').slice(0, 1990) } }] },
+          "Status": { select: { name: "Open" } },
+        };
+        if (productId) props["Product"] = { relation: [{ id: dash(productId) }] };
+        if (campaignId) props["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+        if (postTypeId) props["Post Type"] = { relation: [{ id: dash(postTypeId) }] };
+        if (Array.isArray(platformIds) && platformIds.length) props["Platforms"] = { relation: platformIds.map(id => ({ id: dash(id) })) };
+        const created = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: props }),
+        }).then(r => r.json());
+        if (!created.id) return json({ error: created.message || "Failed to create slot" }, 500);
+        return json({ success: true, id: created.id.replace(/-/g,""), shifted: toShift.length });
+      }
+
       if (body.action === "updateCampaignPlatforms") {
         const { campaignId, platformIds } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
@@ -8757,6 +8862,13 @@ ${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? 
         // fixable from the Strategies panel's ✏️ Edit Slot modal.
         const postTypeIdByName = new Map(allPostTypeRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
         const platformIdByName = new Map(allPlatformRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
+        const postTypesCatalogBlock = allPostTypeRows.length
+          ? allPostTypeRows.map(p => {
+              const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join("");
+              const rt = (p.properties?.Rationale?.rich_text || []).map(t => t.plain_text).join("");
+              return `- ${nm}${rt ? ` — ${rt}` : ''}`;
+            }).join('\n')
+          : '(none exist yet — every title will need "newPostType": true)';
 
         const platformInstruction = (platformOverride || '').trim()
           ? `PLATFORM FOCUS (required): every grouping must target "${platformOverride.trim()}" specifically — do not recommend any other platform.`
@@ -8782,16 +8894,20 @@ ${methodCatalogBlock}
 
 If a grouping's platform genuinely has no suitable existing method above, you may propose a brand-new one instead — it will be created and attached automatically. Only do this when reusing an existing method would be a real mismatch (wrong platform/format), not because a new one is marginally more specific.
 
-For each grouping, also recommend a "type" and a "recurrence" — two properties DISTINCT from method/platform:
-- "type": the STRATEGIC content category this grouping represents (e.g. Teach, Take, Story, Relate, Thread, Reply, Behind-the-Scenes, Q&A, Exclusive, Announcement) — describes WHAT KIND of content this is, carries the strategic reasoning, and can apply across different platforms/methods. Never just restate the platform or method name here.
-- "recurrence": how often this type of content should actually happen on an ongoing basis (e.g. "Daily", "Weekly", "2x/week", "One-time") — a realistic cadence, not a one-off guess.
+For each grouping, also recommend a "recurrence" — how often this grouping's content should actually happen on an ongoing basis (e.g. "Daily", "Weekly", "2x/week", "One-time") — a realistic cadence, not a one-off guess. This is purely about TIMING/frequency, nothing else.
+
+EXISTING POST TYPE CATALOG (the content descriptor for EACH individual title below — what kind of content it is, e.g. an Intro vs. a Feature Benefit vs. a CTA — NOT platform, method, or cadence). Assign one to every title, by exact name from this catalog when it genuinely fits:
+${postTypesCatalogBlock}
+If a grouping has a real narrative arc (its titles build on each other — a Sequential grouping), vary the Post Type across the titles to match where each one sits in that arc (e.g. an early title is naturally an Intro, a middle one Character Development or Teach, a late one Feature Benefit, Social Proof, or CTA) — ground this in the actual research/positioning above, not a generic template. If a grouping has no real arc (a Recurring or one-off grouping — the same kind of post repeating, or a single standalone piece), it's fine for every title to share the same Post Type, or for a Recurring grouping to cycle through 2-3 that fit the format. You may propose a genuinely new Post Type (set "newPostType": true) only when nothing in the catalog fits — that's rare, prefer reusing an existing one.
+
+EVERY strategy this call produces must include at least one title with Post Type "Pillar" — the anchor piece the rest of the strategy points back to (if this product had just one piece of content, this would be it — often the real SEO/conversion asset). Every other title's rationale should read as promoting or driving traffic toward that Pillar, not as unrelated standalone content. Put the Pillar early in whichever grouping makes the most sense (usually grouping 1, title/slot 1) rather than burying it.
 
 Return ONLY this JSON object, no other text, no markdown fences:
 {
   "summary": "2-4 sentences: the overall growth angle and why it fits this positioning",
   "recommendedPlatforms": ["...", "..."],
   "groupings": [
-    { "name": "...", "rationale": "...", "titles": ["...", "...", "..."], "recommendedMethod": "...", "recommendedPlatform": "...", "type": "...", "recurrence": "...", "newMethod": false, "newMethodCategory": "Content|Outreach|Research|SEO|Ecommerce|Video" }
+    { "name": "...", "rationale": "...", "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false } ], "recommendedMethod": "...", "recommendedPlatform": "...", "recurrence": "...", "newMethod": false, "newMethodCategory": "Content|Outreach|Research|SEO|Ecommerce|Video" }
   ]
 }
 "recommendedMethod" is either an exact name from the catalog above, or (only when "newMethod" is true) the name of the new method to create. "newMethodCategory" is only needed when "newMethod" is true.`;
@@ -8908,7 +9024,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
           out.push({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(g.name || 'Untitled Grouping') } });
           out.push({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(g.rationale || '') } });
           (Array.isArray(g.titles) ? g.titles : []).forEach(t => {
-            out.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(t) } });
+            const angle = typeof t === 'string' ? t : (t.angle || '');
+            const postType = typeof t === 'string' ? '' : (t.postType || '');
+            out.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: postType
+              ? [{ type: "text", text: { content: `[${postType}] ` }, annotations: { bold: true } }, { type: "text", text: { content: angle } }]
+              : rtBlock(angle) } });
           });
           out.push({ object: "block", type: "paragraph", paragraph: { rich_text: [
             { type: "text", text: { content: "Method: " }, annotations: { bold: true } }, { type: "text", text: { content: `${esc3(g.recommendedMethod) || 'Not specified'}  ·  ` } },
@@ -8918,17 +9038,53 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return out;
         }
 
-        // One Strategy Slot row per grouping angle (e.g. "Behind the Scenes
-        // #1") — the trackable, fillable counterpart to the prose bullets
-        // above. Best-effort: a slot-creation failure doesn't fail the
-        // strategy itself, which already saved successfully.
+        // Resolves one title's postType string to a Post Type page id —
+        // reuses an exact-name match from the catalog fetched above, or (when
+        // the AI flagged newPostType and nothing matched) creates it fresh.
+        // Shared across every grouping in this one generateGrowthStrategy
+        // call so two groupings proposing the same new name don't create two
+        // duplicate Post Type pages.
+        async function resolvePostTypeId(t) {
+          const wantName = String(t.postType || '').trim();
+          if (!wantName) return null;
+          const existing = postTypeIdByName.get(wantName.toLowerCase());
+          if (existing) return existing;
+          if (!t.newPostType) return null; // named something outside the catalog without flagging it as new — skip rather than guess
+          try {
+            const createResp = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                parent: { database_id: POST_TYPES_DB },
+                properties: { Name: { title: [{ type: "text", text: { content: wantName.slice(0, 200) } }] } },
+              }),
+            }).then(r => r.json());
+            if (createResp.id) {
+              const newId = createResp.id.replace(/-/g,"");
+              postTypeIdByName.set(wantName.toLowerCase(), newId);
+              return newId;
+            }
+          } catch (e) { /* best-effort */ }
+          return null;
+        }
+
+        // One Strategy Slot row per grouping angle (e.g. "3 – Feature
+        // Benefit") — the trackable, fillable counterpart to the prose
+        // bullets above. Best-effort: a slot-creation failure doesn't fail
+        // the strategy itself, which already saved successfully.
         function createSlotsFor(strategyIdForSlots, g) {
           const titles = Array.isArray(g.titles) ? g.titles : [];
-          const matchedPostTypeId = postTypeIdByName.get(String(g.type || '').trim().toLowerCase());
           const matchedPlatformId = platformIdByName.get(String(g.recommendedPlatform || platformOverride || '').trim().toLowerCase());
-          return Promise.all(titles.map((angle, i) => {
+          return Promise.all(titles.map(async (t, i) => {
+            // Back-compat: an older/malformed response might still hand us a
+            // plain string instead of {angle, postType, newPostType}.
+            const angle = typeof t === 'string' ? t : (t.angle || '');
+            const titleObj = typeof t === 'string' ? { postType: '' } : t;
             const seq = i + 1;
-            const name = `${g.name || 'Untitled'} #${seq}`;
+            const postTypeId = await resolvePostTypeId(titleObj);
+            const typeName = postTypeId
+              ? (Array.from(postTypeIdByName.entries()).find(([, id]) => id === postTypeId) || [])[0] || ''
+              : '';
+            const name = typeName ? `${seq} – ${typeName.replace(/\b\w/g, c => c.toUpperCase())}` : `${g.name || 'Untitled'} #${seq}`;
             const props = {
               "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
               "Growth Strategy": { relation: [{ id: dash(strategyIdForSlots) }] },
@@ -8939,16 +9095,17 @@ Return ONLY this JSON object, no other text, no markdown fences:
               "Angle": { rich_text: [{ type: "text", text: { content: String(angle || '').slice(0, 1990) } }] },
               "Method Name": { rich_text: [{ type: "text", text: { content: String(g.recommendedMethod || '').slice(0, 1990) } }] },
               "Platform": { rich_text: [{ type: "text", text: { content: String(g.recommendedPlatform || platformOverride || '').slice(0, 1990) } }] },
-              "Type": { rich_text: [{ type: "text", text: { content: String(g.type || '').slice(0, 1990) } }] },
+              // "Type" (rich_text) kept in sync with Post Type's name — legacy
+              // field some older readouts (runStrategySequenceReminders,
+              // buildStrategyFromAsset) still reference by text.
+              "Type": { rich_text: [{ type: "text", text: { content: typeName.slice(0, 1990) } }] },
               "Recurrence": { rich_text: [{ type: "text", text: { content: String(g.recurrence || '').slice(0, 1990) } }] },
               "Status": { select: { name: "Open" } },
             };
-            // Standalone-taxonomy relations — best-effort exact-name match
-            // against the Post Types / Platforms catalogs above. Unmatched
-            // is fine (the AI's freeform strings won't always land on a
-            // canonical name); the operator can set/fix these from the
-            // Strategies panel's ✏️ Edit Slot modal either way.
-            if (matchedPostTypeId) props["Post Type"] = { relation: [{ id: dash(matchedPostTypeId) }] };
+            if (postTypeId) props["Post Type"] = { relation: [{ id: dash(postTypeId) }] };
+            // Best-effort exact-name Platform match against the catalog
+            // fetched above. Unmatched is fine; fixable from the Strategies
+            // panel's ✏️ Edit Slot modal either way.
             if (matchedPlatformId) props["Platforms"] = { relation: [{ id: dash(matchedPlatformId) }] };
             return fetch("https://api.notion.com/v1/pages", {
               method: "POST", headers: { ...hdr, "Content-Type": "application/json" },

@@ -1408,7 +1408,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 <div class="modal-overlay" id="editSlotModal">
   <div class="modal" style="max-width:520px;">
     <div class="modal-head">
-      <div class="modal-title">Edit Strategy Slot</div>
+      <div class="modal-title" id="esModalTitle">Edit Strategy Slot</div>
       <button class="modal-close" onclick="closeEditSlotModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
@@ -7709,7 +7709,15 @@ function renderStrategyBlock(s, indentPx) {
   const stratBodyId = `strat-body-${s.id}`;
   const groupingsHtml = s.groupings.map((g, gi) => {
     const gBodyId = `${stratBodyId}-grp-${gi}`;
-    const slotsHtml = g.slots.map(slot => {
+    // "+ insert" hairline — sits above a slot (or, once, below the last
+    // one) so a new slot can land at ANY position in the sequence, not
+    // just appended. atSequence is that slot's own current Sequence
+    // number (or lastSeq+1 for the trailing one); insertStrategySlot
+    // shifts everything at/after it down before creating the new row.
+    const insertRow = (atSequence) => `<div style="padding:1px 0;">`
+      + `<button onclick="openInsertSlotModal('${s.id}','${esc(g.name).replace(/'/g,"\\'")}',${atSequence})" title="Insert a new slot here — renumbers everything after it" style="font-size:9px;padding:0;border:none;background:transparent;color:#4a5568;cursor:pointer;width:100%;text-align:left;">+ insert</button>`
+      + `</div>`;
+    const slotsHtml = g.slots.map((slot, si) => {
       const titles = slot.titles || (slot.titleId ? [{ id: slot.titleId, name: 'title', stage: '' }] : []);
       // A slot can be filled more than once — once per Method — so this
       // shows every title made from it (each links out to its Notion
@@ -7721,25 +7729,35 @@ function renderStrategyBlock(s, indentPx) {
         : `<span style="font-size:9px;color:#e8ff47;flex-shrink:0;">○ open</span>`;
       const createBtn = `<button onclick="openCreateTitleFromSlotModal({slotId:'${slot.id}',strategyId:'${s.id}'})" title="Create a title from this slot" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">+ title</button>`;
       const editBtn = `<button onclick="openEditSlotModal('${slot.id}')" title="Edit this slot's Proposed Title, Post Type, or Best Platform(s)" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">✏️</button>`;
+      const removeBtn = `<button onclick="removeStrategySlot('${slot.id}')" title="Remove this slot — renumbers everything after it down by one" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️</button>`;
       // Post Type is the primary label now — a run of slot rows down a
       // grouping is meant to read as the strategy's "arc" (e.g. Pillar ->
-      // Sequential -> Sequential -> Recurring) at a glance. Rationale shows
-      // as a native tooltip. Falls back to the slot's own Name when unset
-      // (older slots, or ones the AI's best-effort match at creation missed).
+      // Intro -> Character Development -> Feature Benefit -> CTA) at a
+      // glance. Rationale shows as a native tooltip. Falls back to "no
+      // type" when unset (older slots, or ones the AI's best-effort match
+      // at creation missed).
       const postTypeLabel = slot.postType
         ? `<span title="${esc(slot.postType.rationale || '')}" style="font-size:9px;font-weight:700;padding:1px 6px;border:1px solid #9f7aea;border-radius:8px;color:#9f7aea;flex-shrink:0;white-space:nowrap;">${esc(slot.postType.name)}</span>`
         : `<span title="No Post Type set — click ✏️ to assign one" style="font-size:9px;padding:1px 6px;border:1px dashed #444;border-radius:8px;color:#666;flex-shrink:0;white-space:nowrap;">no type</span>`;
       const platformsLabel = (slot.platforms && slot.platforms.length)
         ? `<span style="font-size:9px;color:#68d391;flex-shrink:0;">${esc(slot.platforms.map(p => p.name).join(', '))}</span>`
         : '';
-      return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
+      const row = `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
         + postTypeLabel
         + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc((slot.angle || '').slice(0, 80)) || esc(slot.name)}</span>`
         + platformsLabel
         + badge
         + editBtn
+        + removeBtn
         + createBtn
         + `</div>`;
+      // Only offer "+ insert" where Sequence is actually meaningful — a
+      // slot with no Sequence (a plain Recurring/one-off row) isn't part
+      // of an ordered run to insert into.
+      const atSeq = Number.isFinite(slot.sequence) ? slot.sequence : null;
+      const before = atSeq !== null ? insertRow(atSeq) : '';
+      const after = (atSeq !== null && si === g.slots.length - 1) ? insertRow(atSeq + 1) : '';
+      return before + row + after;
     }).join('');
     return `<div style="margin:8px 0;">`
       + `<div style="font-size:11px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleStrategyCollapse('${gBodyId}', this.querySelector('.gs-arrow'))">`
@@ -7854,11 +7872,16 @@ function ctsFindSlot(slotId) {
 // exactly. ALL_POST_TYPES is the equivalent cache for Post Type.
 let ALL_POST_TYPES = [];
 let ES_SLOT_ID = null;
+let ES_MODE = 'edit'; // 'edit' | 'insert'
+let ES_INSERT_CTX = null; // { growthStrategyId, grouping, atSequence, productId, campaignId } — insert mode only
 let ES_PLATFORM_IDS = []; // [{id,name}, ...] chips currently selected
 
 async function openEditSlotModal(slotId) {
   const found = ctsFindSlot(slotId);
   if (!found) { alert('Could not find that strategy slot — try refreshing the Strategies tab.'); return; }
+  ES_MODE = 'edit';
+  ES_INSERT_CTX = null;
+  document.getElementById('esModalTitle').textContent = 'Edit Strategy Slot';
   ES_SLOT_ID = slotId;
   document.getElementById('esTitleInput').value = found.slot.angle || '';
   document.getElementById('es-pt-input').value = found.slot.postType ? found.slot.postType.name : '';
@@ -7873,6 +7896,43 @@ async function openEditSlotModal(slotId) {
   if (!ALL_POST_TYPES.length) { try { const r = await w('getPostTypes'); ALL_POST_TYPES = r.postTypes || []; } catch(e) {} }
   if (!ALL_PLATFORMS.length) { try { const r = await w('getPlatforms'); ALL_PLATFORMS = r.platforms || []; } catch(e) {} }
   document.getElementById('editSlotModal').classList.add('open');
+}
+// Opens the same modal in "insert" mode — a new slot at atSequence within
+// growthStrategyId+grouping, shifting every slot already there down by one
+// on save (insertStrategySlot). productId is read off the strategy in the
+// already-loaded cache so the new slot inherits it, same as a normal
+// generateGrowthStrategy-created one would.
+async function openInsertSlotModal(growthStrategyId, grouping, atSequence) {
+  const strat = (CAMPAIGN_STRATEGIES_CACHE || []).find(s => s.id === growthStrategyId);
+  ES_MODE = 'insert';
+  ES_SLOT_ID = null;
+  ES_INSERT_CTX = { growthStrategyId, grouping, atSequence, productId: strat ? strat.productId : null, campaignId: CAMPAIGN_ID };
+  document.getElementById('esModalTitle').textContent = `Insert Slot at Position ${atSequence}`;
+  document.getElementById('esTitleInput').value = '';
+  document.getElementById('es-pt-input').value = '';
+  document.getElementById('es-pt-id').value = '';
+  document.getElementById('es-pt-rationale').textContent = '';
+  ES_PLATFORM_IDS = [];
+  renderEsPlatformChips();
+  document.getElementById('es-plat-input').value = '';
+  document.getElementById('esStatus').textContent = '';
+  const btn = document.getElementById('esSaveBtn');
+  btn.disabled = false; btn.textContent = 'Insert';
+  if (!ALL_POST_TYPES.length) { try { const r = await w('getPostTypes'); ALL_POST_TYPES = r.postTypes || []; } catch(e) {} }
+  if (!ALL_PLATFORMS.length) { try { const r = await w('getPlatforms'); ALL_PLATFORMS = r.platforms || []; } catch(e) {} }
+  document.getElementById('editSlotModal').classList.add('open');
+}
+// Deletes a slot and renumbers everything after it down by one
+// (removeStrategySlot) — confirm() first since this is a real delete.
+async function removeStrategySlot(slotId) {
+  const found = ctsFindSlot(slotId);
+  const label = found ? (found.slot.angle || found.slot.name) : 'this slot';
+  if (!confirm(`Remove "${label}"? Every later slot in its sequence will renumber down by one.`)) return;
+  try {
+    const r = await w('removeStrategySlot', { slotId });
+    if (r.error) throw new Error(r.error);
+    await loadCampaignStrategies();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 function closeEditSlotModal() {
   document.getElementById('editSlotModal').classList.remove('open');
@@ -7973,25 +8033,38 @@ document.addEventListener('click', e => {
 });
 
 async function submitEditSlot() {
-  if (!ES_SLOT_ID) return;
+  if (ES_MODE === 'insert' ? !ES_INSERT_CTX : !ES_SLOT_ID) return;
   const status = document.getElementById('esStatus');
   const btn = document.getElementById('esSaveBtn');
-  btn.disabled = true; btn.textContent = 'Saving…';
-  status.style.color = '#888'; status.textContent = 'Saving…';
+  const busyLabel = ES_MODE === 'insert' ? 'Inserting…' : 'Saving…';
+  const doneLabel = ES_MODE === 'insert' ? 'Insert' : 'Save';
+  btn.disabled = true; btn.textContent = busyLabel;
+  status.style.color = '#888'; status.textContent = busyLabel;
   try {
-    const r = await w('updateStrategySlot', {
-      slotId: ES_SLOT_ID,
-      angle: document.getElementById('esTitleInput').value.trim(),
-      postTypeId: document.getElementById('es-pt-id').value || null,
-      platformIds: ES_PLATFORM_IDS.map(p => p.id),
-    });
+    const r = ES_MODE === 'insert'
+      ? await w('insertStrategySlot', {
+          growthStrategyId: ES_INSERT_CTX.growthStrategyId,
+          grouping: ES_INSERT_CTX.grouping,
+          atSequence: ES_INSERT_CTX.atSequence,
+          productId: ES_INSERT_CTX.productId || undefined,
+          campaignId: ES_INSERT_CTX.campaignId || undefined,
+          angle: document.getElementById('esTitleInput').value.trim(),
+          postTypeId: document.getElementById('es-pt-id').value || null,
+          platformIds: ES_PLATFORM_IDS.map(p => p.id),
+        })
+      : await w('updateStrategySlot', {
+          slotId: ES_SLOT_ID,
+          angle: document.getElementById('esTitleInput').value.trim(),
+          postTypeId: document.getElementById('es-pt-id').value || null,
+          platformIds: ES_PLATFORM_IDS.map(p => p.id),
+        });
     if (r.error) throw new Error(r.error);
     status.style.color = '#68d391'; status.textContent = 'Saved.';
     await loadCampaignStrategies();
     setTimeout(closeEditSlotModal, 500);
   } catch(e) {
     status.style.color = '#ff4444'; status.textContent = e.message;
-    btn.disabled = false; btn.textContent = 'Save';
+    btn.disabled = false; btn.textContent = doneLabel;
   }
 }
 
