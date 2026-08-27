@@ -333,6 +333,7 @@ Live URL pattern: `https://cabuzzard.github.io/dash/microsites/{deploy-path}/`
 | `mountainwize-coaching` | — | ✓ | — | — |
 | `webguy` | — | ✓ | — | — |
 | `garden-planning-calendar-workbook` | ✓ | ✓ | `3981f7d3a4bb81a69924cdc633e96828` | `3981f7d3a4bb815c90c4ef64e4324572` |
+| `buzzard-designs` | ✓ | — | `3c61f7d3a4bb8187a282ed3a66bc22e2` | `3c91f7d3a4bb8156ab38e2c2be62c110` |
 
 ## Security Notes
 
