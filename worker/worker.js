@@ -9269,17 +9269,19 @@ Return ONLY this JSON object, no other text, no markdown fences:
           reconciled++;
         }
 
-        // A "sibling set" = same line + Grouping + Parent Slot. Line = the
-        // slot's Growth Strategy; slots created by buildStrategyFromAsset have
-        // no Growth Strategy, so fall back to Product (they share Product +
-        // Grouping within one line).
+        // A "sibling set" = same Growth Strategy + Product + Grouping + Parent
+        // Slot. Product is always in the key: a shared "T-Shirt Growth Engine"
+        // strategy has one recurring line PER shirt (per product), and each
+        // must be its own frontier. For a single-product strategy
+        // (generateGrowthStrategy) it's a no-op. Slots with no Growth Strategy
+        // (buildStrategyFromAsset) fall back to the product alone.
         const siblingKey = slot => {
           const p = slot.properties;
           const gsId = undash((p["Growth Strategy"]?.relation || [])[0]?.id || "");
           const prodId = undash((p.Product?.relation || [])[0]?.id || "");
           const parentId = undash((p["Parent Slot"]?.relation || [])[0]?.id || "root");
           const grouping = rtx(p, "Grouping");
-          return `${gsId || ('p:' + prodId)}::${grouping}::${parentId}`;
+          return `${gsId || 'nogs'}::${prodId || 'noprod'}::${grouping}::${parentId}`;
         };
 
         // Group published assets into lines by their slot's sibling set.

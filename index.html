@@ -10520,12 +10520,43 @@ const NEXT_COLS = [
   { key: 'campaign', label: 'Campaign',   flex: '1',        get: n => n.campaignName || '' },
   { key: 'product',  label: 'Product',    flex: '1',        get: n => n.productName || '' },
   { key: 'strategy', label: 'Strategy',   flex: '1',        get: n => n.strategyName || '' },
-  { key: 'type',     label: 'Type',       flex: '0 0 90px', get: n => n.type || '' },
+  { key: 'type',     label: 'Type',       flex: '0 0 96px', get: n => n.type || '' },
   { key: 'posttype', label: 'Post Type',  flex: '0 0 84px', get: n => n.postType || '' },
   { key: 'platform', label: 'Platform',   flex: '0 0 90px', get: n => n.platform || '' },
   { key: 'method',   label: 'Method',     flex: '0 0 110px',get: n => n.methodName || '' },
   { key: 'due',      label: 'Due',        flex: '0 0 76px', get: n => n.dueDate || '' },
 ];
+// Hover explanations for the strategic-content-category values a Slot's Type
+// can hold (generateGrowthStrategy / buildStrategyFromAsset produce these).
+// Combined values like "Teach/Relate/Story" are split and each part explained.
+const NEXT_TYPE_INFO = {
+  'teach': 'Teach — explain how something works or walk through a process, so the reader leaves with a concrete, usable skill or insight they didn\'t have before.',
+  'take': 'Take — stake out a clear, often contrarian opinion on something in the space and argue it. Meant to provoke agreement or debate, not to instruct.',
+  'story': 'Story — a first-person narrative from real experience: what happened, what went wrong or right, and what it meant. Builds trust through specifics, not advice.',
+  'relate': 'Relate — name a frustration, tension, or feeling the audience lives with so precisely that they see themselves in it. Connection first, payoff second.',
+  'thread': 'Thread — a multi-part sequential post (X/LinkedIn) that builds one idea step by step, each part earning the next. One argument, many beats.',
+  'reply': 'Reply — a response to a live trend, a customer comment, or another creator\'s post. Timely and reactive; borrows the reach of what it answers.',
+  'behind-the-scenes': 'Behind-the-Scenes — show the unpolished process: the workspace, the draft, the mistake, the tooling. Proof of real work, not a finished result.',
+  'bts': 'Behind-the-Scenes — show the unpolished process: the workspace, the draft, the mistake, the tooling. Proof of real work, not a finished result.',
+  'q&a': 'Q&A — answer real questions from the audience or customers, one per post or batched. Lets the audience set the agenda.',
+  'qa': 'Q&A — answer real questions from the audience or customers, one per post or batched. Lets the audience set the agenda.',
+  'exclusive': 'Exclusive — content, data, or an offer only this audience or segment gets. Rewards following and creates a reason to stay subscribed.',
+  'announcement': 'Announcement — news the audience should act on or note: a launch, a price or feature change, a milestone, an event.',
+  'free teaser': 'Free Teaser — a small, genuinely useful free piece that previews a paid offer, sized to help on its own while making the full thing obvious.',
+  'livestream': 'Livestream — real-time video (teaching, Q&A, building in public). Depth and presence over polish; usually repurposed into clips afterward.',
+};
+function nextTypeTooltip(typeStr) {
+  const parts = String(typeStr || '').split(/[\/,;]+/).map(s => s.trim()).filter(Boolean);
+  const hits = parts.map(p => NEXT_TYPE_INFO[p.toLowerCase()]).filter(Boolean);
+  return hits.length ? hits.join('\n\n') : (typeStr || '');
+}
+const NEXT_POSTTYPE_INFO = {
+  'sequential': 'Sequential — part of a fixed, ordered series; each piece assumes the one before it and there is a defined last piece.',
+  'recurring': 'Recurring — the same kind of piece on an ongoing cadence with no end (e.g. weekly), tracked by interval since the last publish.',
+  'one-off': 'One-off — a standalone piece with no follow-on. Once it publishes, that line is done.',
+  'pillar': 'Pillar — the anchor long-form piece a cluster of smaller assets is cut from and points back to.',
+  'sm post': 'SM Post — a lightweight social post, usually derived from a pillar or a slot rather than planned individually.',
+};
 function renderNextTable() {
   const el = document.getElementById('nextList');
   if (!el) return;
@@ -10545,7 +10576,7 @@ function renderNextTable() {
       const arr = active ? (_nextSort.dir === 1 ? ' ↑' : ' ↓') : '';
       return '<div onclick="sortNextBy(\'' + c.key + '\')" style="flex:' + c.flex + ';min-width:0;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:' + (active ? '#e8ff47' : 'var(--text3)') + ';cursor:pointer;user-select:none;padding:6px 8px;">' + c.label + arr + '</div>';
     }).join('') +
-    '<div style="width:20px;flex-shrink:0;"></div>' +
+    '<div style="width:44px;flex-shrink:0;"></div>' +
   '</div>';
   const body = rows.map(n => {
     const badge = n.isColdStart
@@ -10556,11 +10587,16 @@ function renderNextTable() {
       const v = c.get(n);
       if (c.key === 'label') return '<div style="flex:' + c.flex + ';min-width:0;padding:5px 8px;display:flex;align-items:center;overflow:hidden;">' + badge + '<span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + esc(n.label) + (n.guideline ? ' — ' + esc(n.guideline) : '') + '">' + esc(v || '—') + '</span></div>';
       if (c.key === 'due') return '<div style="flex:' + c.flex + ';min-width:0;padding:5px 8px;font-size:11px;white-space:nowrap;' + dueStyle + '">' + esc(v || '—') + '</div>';
-      return '<div style="flex:' + c.flex + ';min-width:0;padding:5px 8px;font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + esc(v) + '">' + esc(v || '—') + '</div>';
+      let tip = v;
+      if (c.key === 'type') tip = nextTypeTooltip(v);
+      else if (c.key === 'posttype') tip = NEXT_POSTTYPE_INFO[String(v).toLowerCase()] || v;
+      const help = (c.key === 'type' || c.key === 'posttype') && tip && tip !== v;
+      return '<div style="flex:' + c.flex + ';min-width:0;padding:5px 8px;font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' + (help ? 'cursor:help;border-bottom:1px dotted var(--border2);' : '') + '" title="' + esc(tip) + '">' + esc(v || '—') + '</div>';
     };
+    const siteUrl = n.microsite || n.campaignSite || '';
     return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:30px;">' +
       NEXT_COLS.map(cell).join('') +
-      '<div style="width:20px;flex-shrink:0;display:flex;justify-content:center;">' + (n.microsite ? '<a href="' + esc(n.microsite) + '" target="_blank" title="Open campaign admin" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>' : '') + '</div>' +
+      '<div style="width:44px;flex-shrink:0;display:flex;justify-content:center;padding-right:4px;">' + (siteUrl ? '<a href="' + esc(siteUrl) + '" target="_blank" title="Open this campaign\'s microsite" style="font-size:10px;color:var(--text3);text-decoration:none;white-space:nowrap;">site ↗</a>' : '<span style="font-size:10px;color:var(--border2);">—</span>') + '</div>' +
     '</div>';
   }).join('');
   el.innerHTML = '<div style="overflow-x:auto;">' + hdr + body + '</div>';
@@ -10612,74 +10648,53 @@ function sortLast30By(col) {
   }
   renderLast30Table();
 }
-// Nested, default-collapsed tree: Campaign → Product Stack → Product →
-// Strategy → asset rows (newest publish first). Grouping fields come from
-// getPublishedAssets (campaignName / productStack / productName /
-// strategyName / publishedDate).
-const L30_LEVELS = [
-  { key: 'campaignName', none: 'No Campaign', color: '#7dd3fc', weight: 700 },
-  { key: 'productStack', none: 'No Stack',    color: '#a78bfa', weight: 700 },
-  { key: 'productName',  none: 'No Product',  color: 'var(--text)', weight: 600 },
-  { key: 'strategyName', none: 'No Strategy', color: '#e8ff47', weight: 600 },
+// Flat SORTABLE table (click any header), newest publish first by default.
+// Fields from getPublishedAssets: title / titleName / type / campaignName /
+// productName / strategyName / publishedDate. Each row has a Strategy button
+// (label reflects whether a strategy exists yet) + a microsite link.
+const L30_COLS = [
+  { key: 'asset',    label: 'Asset',     flex: '2',        get: a => a.title || '' },
+  { key: 'title',    label: 'Title',     flex: '1.4',      get: a => a.titleName || '' },
+  { key: 'type',     label: 'Type',      flex: '0 0 92px', get: a => a.type || '' },
+  { key: 'campaign', label: 'Campaign',  flex: '1',        get: a => a.campaignName || '' },
+  { key: 'product',  label: 'Product',   flex: '1',        get: a => a.productName || '' },
+  { key: 'strategy', label: 'Strategy',  flex: '1',        get: a => a.strategyName || '' },
+  { key: 'date',     label: 'Published', flex: '0 0 82px', get: a => (a.publishedDate || a.lastEdited || '').slice(0, 10) },
 ];
-let last30GroupsOpen = {};
-function toggleLast30Group(k) {
-  const sel = k.replace(/"/g, '&quot;');
-  const body  = document.querySelector('.l30-body[data-key="' + sel + '"]');
-  const arrow = document.querySelector('.l30-arrow[data-key="' + sel + '"]');
-  if (!body) return;
-  const isOpen = body.style.display !== 'none';
-  body.style.display = isOpen ? 'none' : '';
-  if (arrow) arrow.textContent = isOpen ? '▸' : '▾';
-  last30GroupsOpen[k] = !isOpen;
-}
-function last30RowHtml(a) {
-  const d = (a.publishedDate || a.lastEdited || '').slice(0, 10);
-  const safeTitle = (a.title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-  return '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px 5px 52px;border-bottom:1px solid var(--border);font-size:12px;">' +
-    '<span style="flex:1;min-width:0;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + esc(a.title) + (a.titleName ? ' — ' + esc(a.titleName) : '') + '">' + esc(a.title || 'Untitled') + '</span>' +
-    (a.type ? '<span style="font-size:10px;color:var(--text3);flex-shrink:0;">' + esc(a.type) + '</span>' : '') +
-    '<span style="font-size:10px;color:var(--text3);flex-shrink:0;white-space:nowrap;">' + esc(d || '—') + '</span>' +
-    '<button onclick="openBuildStrategyModal(\'' + a.id + '\',\'' + safeTitle + '\')" title="Fold this published asset into a strategy — cadence or fixed next steps, attached to its title." style="font-size:10px;padding:1px 7px;border:1px solid #f6ad55;background:transparent;color:#f6ad55;border-radius:9px;cursor:pointer;flex-shrink:0;white-space:nowrap;">🎯</button>' +
-    (a.campaignMicrosite ? '<a href="' + esc(a.campaignMicrosite) + '" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none;flex-shrink:0;">↗</a>' : '') +
-  '</div>';
-}
-function renderLast30Group(items, el, depth, prefix) {
-  if (depth >= L30_LEVELS.length) {
-    const rows = [...items].sort((a, b) => (b.publishedDate || b.lastEdited || '').localeCompare(a.publishedDate || a.lastEdited || ''));
-    el.innerHTML = rows.map(last30RowHtml).join('');
-    return;
-  }
-  const lvl = L30_LEVELS[depth];
-  const order = [], by = {};
-  items.forEach(it => { const k = it[lvl.key] || ('\u0000none'); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(it); });
-  order.sort((a, b) => { const an = a === '\u0000none', bn = b === '\u0000none'; if (an !== bn) return an ? 1 : -1; return a.localeCompare(b); });
-  const pad = 8 + depth * 12;
-  el.innerHTML = order.map((k, i) => {
-    const label = k === '\u0000none' ? lvl.none : k;
-    const sk = prefix + '.' + i;
-    const isOpen = !!last30GroupsOpen[sk];
-    return '<div>' +
-      '<div onclick="toggleLast30Group(\'' + sk + '\')" style="display:flex;align-items:center;gap:6px;padding:6px 8px 6px ' + pad + 'px;background:var(--surface2);border-bottom:1px solid var(--border2);cursor:pointer;user-select:none;">' +
-        '<span class="l30-arrow" data-key="' + sk + '" style="font-size:9px;color:' + lvl.color + ';flex-shrink:0;">' + (isOpen ? '▾' : '▸') + '</span>' +
-        '<span style="flex:1;min-width:0;font-size:' + (12 - depth * 0.5) + 'px;color:' + lvl.color + ';font-weight:' + lvl.weight + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(label) + '</span>' +
-        '<span style="font-size:10px;color:var(--text3);flex-shrink:0;">' + by[k].length + '</span>' +
-      '</div>' +
-      '<div class="l30-body" data-key="' + sk + '" style="display:' + (isOpen ? '' : 'none') + ';"></div>' +
-    '</div>';
-  }).join('');
-  order.forEach((k, i) => {
-    const sk = prefix + '.' + i;
-    const body = el.querySelector('.l30-body[data-key="' + sk + '"]');
-    if (body) renderLast30Group(by[k], body, depth + 1, sk);
-  });
-}
 function renderLast30Table() {
   const el = document.getElementById('last30List');
   if (!el) return;
   if (!_last30Assets.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No published assets yet.</div>'; return; }
-  el.innerHTML = '';
-  renderLast30Group(_last30Assets, el, 0, 'l30');
+  const col = L30_COLS.find(c => c.key === _last30Sort.col) || L30_COLS[L30_COLS.length - 1];
+  const rows = [..._last30Assets].sort((a, b) => {
+    const av = String(col.get(a)).toLowerCase(), bv = String(col.get(b)).toLowerCase();
+    return (av < bv ? -1 : av > bv ? 1 : 0) * _last30Sort.dir;
+  });
+  const hdr = '<div style="display:flex;align-items:center;border-bottom:2px solid var(--border2);">' +
+    L30_COLS.map(c => {
+      const active = _last30Sort.col === c.key;
+      const arr = active ? (_last30Sort.dir === 1 ? ' ↑' : ' ↓') : '';
+      return '<div onclick="sortLast30By(\'' + c.key + '\')" style="flex:' + c.flex + ';min-width:0;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:' + (active ? 'var(--accent)' : 'var(--text3)') + ';cursor:pointer;user-select:none;padding:6px 8px;">' + c.label + arr + '</div>';
+    }).join('') +
+    '<div style="width:120px;flex-shrink:0;"></div>' +
+  '</div>';
+  const body = rows.map(a => {
+    const safeTitle = (a.title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const hasStrat = !!(a.strategyName || a.growthStrategyId);
+    const stratBtn = '<button onclick="openBuildStrategyModal(\'' + a.id + '\',\'' + safeTitle + '\')" title="' + (hasStrat ? esc('Strategy: ' + (a.strategyName || 'attached') + ' — click to add another line') : 'No strategy yet — fold this asset into one (cadence or fixed next steps)') + '" style="font-size:9px;font-weight:600;padding:1px 6px;border:1px solid ' + (hasStrat ? 'var(--border2)' : '#f6ad55') + ';background:transparent;color:' + (hasStrat ? 'var(--text3)' : '#f6ad55') + ';border-radius:9px;cursor:pointer;flex-shrink:0;white-space:nowrap;">' + (hasStrat ? 'Strategy' : 'No Strategy') + '</button>';
+    const cell = (c) => {
+      const v = c.get(a);
+      if (c.key === 'asset') return '<div style="flex:' + c.flex + ';min-width:0;padding:5px 8px;"><span style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;" title="' + esc(a.title) + '">' + esc(v || '—') + '</span></div>';
+      return '<div style="flex:' + c.flex + ';min-width:0;padding:5px 8px;font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + esc(v) + '">' + esc(v || '—') + '</div>';
+    };
+    return '<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:30px;">' +
+      L30_COLS.map(cell).join('') +
+      '<div style="width:120px;flex-shrink:0;display:flex;align-items:center;gap:6px;justify-content:flex-end;padding-right:6px;">' + stratBtn +
+        (a.campaignMicrosite ? '<a href="' + esc(a.campaignMicrosite) + '" target="_blank" title="Open this campaign\'s microsite" style="font-size:10px;color:var(--text3);text-decoration:none;white-space:nowrap;">site ↗</a>' : '<span style="font-size:10px;color:var(--border2);">—</span>') +
+      '</div>' +
+    '</div>';
+  }).join('');
+  el.innerHTML = '<div style="overflow-x:auto;">' + hdr + body + '</div>';
 }
 
 // ── LAST 30 DEVELOPMENT TITLES ───────────────────────────────────────
