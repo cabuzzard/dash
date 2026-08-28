@@ -739,6 +739,7 @@
     <div id="devContent" style="display:none;">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
+    <a href="https://app.notion.com/p/3c21f7d3a4bb81119dffef23153e97d7" target="_blank" rel="noopener" style="display:inline-block;margin-top:14px;font-size:12px;font-weight:400;color:var(--text3);text-decoration:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;">Information Flow</a>
   </div>
 
   <div class="tab-panel" id="tabPublishing">
@@ -750,33 +751,7 @@
 
   <div class="tab-panel" id="tabTd">
     <button onclick="openDailyStatusModal()" style="width:100%;margin-bottom:14px;padding:10px 14px;font-size:13px;font-weight:600;border:1px solid #63b3ed;border-radius:6px;background:rgba(99,179,237,.08);color:#63b3ed;cursor:pointer;text-align:left;">📝 Enter Daily Status — run it through Character Arcs into real titles</button>
-    <div id="processesSection" style="margin-bottom:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Processes</span>
-        <button id="processesSaveBtn" onclick="saveProcesses()" style="font-size:11px;font-weight:600;padding:3px 12px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;display:none;">Save</button>
-      </div>
-      <textarea id="processesTextarea" placeholder="Document your processes here…" oninput="document.getElementById('processesSaveBtn').style.display='inline-block'" style="width:100%;min-height:100px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;line-height:1.6;padding:10px 12px;resize:vertical;outline:none;box-sizing:border-box;font-family:inherit;margin-bottom:8px;"></textarea>
-      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;cursor:pointer;" onclick="toggleMethodsList()">
-          <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Methods <span id="methodsToggleIcon" style="opacity:.5;">▶</span></span>
-          <button onclick="event.stopPropagation();openAddMethodPrompt()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
-        </div>
-        <div id="methodsListHeader" style="display:none;padding:4px 10px;border-bottom:1px solid var(--border);align-items:center;gap:8px;">
-          <span onclick="sortMethodsBy('name')" style="flex:1;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);cursor:pointer;">Name <span id="methodsSortNameIcon"></span></span>
-          <span onclick="sortMethodsBy('status')" style="width:110px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);cursor:pointer;">Status <span id="methodsSortStatusIcon"></span></span>
-        </div>
-        <div id="methodsList" style="display:none;"></div>
-      </div>
-      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:8px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;cursor:pointer;" onclick="toggleEtsyShopsList()">
-          <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Etsy Shops <span id="etsyShopsToggleIcon" style="opacity:.5;">▶</span></span>
-          <button onclick="event.stopPropagation();connectEtsyShop()" style="font-size:11px;font-weight:600;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:3px 8px;border-radius:3px;font-family:inherit;">+ Connect</button>
-        </div>
-        <div id="etsyShopsList" style="display:none;"></div>
-      </div>
-    </div>
     <a class="add-link" onclick="openAddTdModal()">+ Add to do item</a>
-    <a href="https://app.notion.com/p/3c21f7d3a4bb81119dffef23153e97d7" target="_blank" rel="noopener" style="display:inline-block;margin-bottom:14px;font-size:12px;font-weight:400;color:var(--text3);text-decoration:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;">Information Flow</a>
     <div id="tdTabContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
@@ -787,24 +762,6 @@
         <span id="todayToggleIcon" style="font-size:11px;color:var(--text3);">▾</span>
       </div>
       <div id="todayList">
-        <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
-      </div>
-    </div>
-
-    <div id="siteTdsSection" style="margin-top:24px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="toggleSiteTdsSection()">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">🌐 Site TDs</span>
-        <span id="siteTdsToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
-      </div>
-      <div id="siteTdsList" style="display:none;"></div>
-    </div>
-
-    <div id="podcastSection" style="margin-top:24px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="togglePodcastSection()">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">🎙 Podcast</span>
-        <span id="podcastToggleIcon" style="font-size:11px;color:var(--text3);">▾</span>
-      </div>
-      <div id="podcastList">
         <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
       </div>
     </div>
@@ -11118,7 +11075,6 @@ async function loadTdTab() {
   } catch(e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
-  loadPodcastItems();
   loadTodayCampaigns();
 }
 
@@ -11227,42 +11183,6 @@ function renderTdTab(items) {
     el.appendChild(hdrRow);
     el.appendChild(body);
   });
-
-  // 4th accordion — Published Assets
-  let pubAssetsLoaded = false;
-  const pubHdr = document.createElement('div');
-  pubHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;user-select:none;margin-top:12px;';
-  const pubChev = document.createElement('span');
-  pubChev.style.cssText = 'font-size:10px;color:var(--text3);transition:transform .2s;';
-  pubChev.textContent = '▶';
-  const pubLeft = document.createElement('span');
-  pubLeft.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#4ade80;';
-  pubLeft.textContent = 'Published Assets';
-  const pubActions = document.createElement('span');
-  pubActions.style.cssText = 'display:flex;align-items:center;gap:10px;margin-left:auto;margin-right:8px;';
-  pubActions.innerHTML = '<button onclick="event.stopPropagation();openNewAssetModal()" style="font-size:11px;font-weight:600;padding:3px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ New Asset</button><span class="refresh-link" onclick="event.stopPropagation();pubAssetsLoaded=false;loadPublishedAssets();">↻ refresh</span>';
-  pubHdr.appendChild(pubLeft);
-  pubHdr.appendChild(pubActions);
-  pubHdr.appendChild(pubChev);
-
-  const pubBody = document.createElement('div');
-  pubBody.style.cssText = 'display:none;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);padding:8px 12px 12px;overflow-x:auto;';
-  const pubInner = document.createElement('div');
-  pubInner.id = 'publishedAssetsList';
-  pubInner.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
-  pubBody.appendChild(pubInner);
-  _pubAssetsEl = pubInner;
-
-  pubHdr.onclick = () => {
-    const open = pubBody.style.display !== 'none';
-    pubBody.style.display = open ? 'none' : 'block';
-    pubChev.style.transform = open ? '' : 'rotate(90deg)';
-    pubHdr.style.borderRadius = open ? 'var(--radius-sm)' : 'var(--radius-sm) var(--radius-sm) 0 0';
-    if (!open && !pubAssetsLoaded) { pubAssetsLoaded = true; loadPublishedAssets(); }
-  };
-
-  el.appendChild(pubHdr);
-  el.appendChild(pubBody);
 }
 
 
