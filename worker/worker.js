@@ -5379,6 +5379,251 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true, runId, runName, groupingCount: groupings.length, slotsCreated });
       }
 
+      // ── addGroupingToStrategy ──
+      // The ➕ Add Grouping button on any top-level strategy header (flat
+      // or a divergent parent). Per operator direction: a plain-text
+      // guidance box describing the arc/platform wanted becomes a whole
+      // new grouping — its own run of Slots — grounded in the same
+      // product/positioning/research context generateGrowthStrategy uses,
+      // PLUS the strategy's own existing groupings (so the new one doesn't
+      // duplicate one already there). Auto-detects which shape the target
+      // strategy already is:
+      //   - a divergent parent (has children via Parent Strategy) → the
+      //     new grouping becomes a brand-new CHILD strategy, exactly the
+      //     same shape its existing siblings already are.
+      //   - a flat strategy (no children) → the new grouping's Slots are
+      //     added directly onto this same strategy record, alongside
+      //     whatever groupings it already has.
+      if (body.action === "addGroupingToStrategy") {
+        const { strategyId, guidance, campaignId: campaignIdParam } = body;
+        if (!strategyId) return json({ error: "strategyId required" }, 400);
+        if (!(guidance || '').trim()) return json({ error: "guidance required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const stratPage = await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, { headers: hdr }).then(r => r.json());
+        if (!stratPage.properties) return json({ error: stratPage.message || "Strategy not found" }, 404);
+        const spx0 = stratPage.properties;
+        const strategyName = (spx0["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy";
+        const productId = (spx0.Product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+        const resolvedCampaignId = (campaignIdParam ? campaignIdParam.replace(/-/g,"") : null)
+          || (spx0.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+
+        const children = await notionQuery(GROWTH_STRATEGY_DB, { filter: { property: "Parent Strategy", relation: { contains: dash(strategyId) } } }).catch(() => []);
+        const isDivergent = children.length > 0;
+
+        // Existing groupings this strategy already covers — either each
+        // child's own name+Summary (divergent case) or this strategy's own
+        // Slots' distinct Grouping+Grouping Rationale pairs (flat case) —
+        // so the new one is told what NOT to duplicate.
+        let existingGroupingsBlock = '(none yet)';
+        if (isDivergent) {
+          existingGroupingsBlock = children.map(c => {
+            const nm = (c.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled";
+            const sm = (c.properties?.Summary?.rich_text || []).map(t => t.plain_text).join("");
+            return `- ${nm}${sm ? `: ${sm}` : ''}`;
+          }).join('\n') || existingGroupingsBlock;
+        } else {
+          const ownSlots = await notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(strategyId) } } }).catch(() => []);
+          const seen = new Map();
+          ownSlots.forEach(s => {
+            const nm = (s.properties?.Grouping?.rich_text || []).map(t => t.plain_text).join("");
+            if (!nm || seen.has(nm)) return;
+            seen.set(nm, (s.properties?.["Grouping Rationale"]?.rich_text || []).map(t => t.plain_text).join(""));
+          });
+          if (seen.size) existingGroupingsBlock = Array.from(seen.entries()).map(([nm, r]) => `- ${nm}${r ? `: ${r}` : ''}`).join('\n');
+        }
+
+        const [productPage, campRes, allPostTypeRows, allPlatformRows] = await Promise.all([
+          productId ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          resolvedCampaignId ? fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(resolvedCampaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })) : Promise.resolve({ results: [] }),
+          notionQuery(POST_TYPES_DB, {}).catch(e => { console.error('notionQuery(POST_TYPES_DB) failed:', e.message); return []; }),
+          notionQuery(PLATFORMS_DB, {}).catch(() => []),
+        ]);
+
+        let productSection = "No product linked to this strategy.";
+        let productName = "Product";
+        if (productId && productPage?.properties) {
+          const stratRecord = await findBestProductResearchRecord(hdr, dash(productId)).catch(() => null);
+          const pp = productPage.properties;
+          const ptxt = key => (pp[key]?.rich_text || []).map(x => x.plain_text).join("") || "";
+          productName = (pp.Name?.title || []).map(x => x.plain_text).join("") || "Product";
+          productSection = `PRODUCT: ${productName}\nDescription: ${ptxt('Description')}\nAvatar: ${ptxt('Avatar')}`;
+          if (stratRecord) {
+            const spx = stratRecord.properties || {};
+            const lines = STRATEGY_FIELDS.map(f => { const v = (spx[f]?.rich_text || []).map(t => t.plain_text).join(""); return v ? `${f}: ${v}` : ''; }).filter(Boolean);
+            if (lines.length) productSection += `\n\nPOSITIONING STRATEGY:\n${lines.join("\n")}`;
+          }
+        }
+        const rt = key => { for (const r of (campRes.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const researchBlock = ['Keywords', 'Statement', 'Unique Opportunity', 'Key Message', 'Pain Points']
+          .map(f => { const v = rt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
+
+        const postTypeIdByName = new Map(allPostTypeRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
+        const postTypesCatalogBlock = allPostTypeRows.length
+          ? allPostTypeRows.map(p => {
+              const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join("");
+              const rat = (p.properties?.Rationale?.rich_text || []).map(t => t.plain_text).join("");
+              return `- ${nm}${rat ? ` — ${rat}` : ''}`;
+            }).join('\n')
+          : '(none exist yet — every title will need "newPostType": true)';
+        const platformIdByName = new Map(allPlatformRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
+
+        const addGroupingPrompt = `You are extending an EXISTING content growth strategy with exactly ONE new grouping (a new thematic title series/cluster) — the rest of the strategy already exists and is not being touched. Ground the new grouping in the product/positioning/research below, and make sure it's genuinely complementary to (not a duplicate of) the groupings that already exist.
+
+${productSection}
+${researchBlock ? `\nCAMPAIGN RESEARCH:\n${researchBlock}\n` : ''}
+STRATEGY: ${strategyName}
+EXISTING GROUPINGS (do not duplicate these — the new one should cover different ground):
+${existingGroupingsBlock}
+
+OPERATOR GUIDANCE (the arc and/or platform requested for this new grouping — this is the primary driver):
+${guidance.trim()}
+
+GROUPING NAMING CONVENTION (required): "name" must be a short label only — 2-4 words, no subtitle, no colon/em-dash explanation tacked on. The full explanation goes ONLY in "rationale".
+
+POST TYPE CATALOG (assign one to every title, by exact name when it genuinely fits):
+${postTypesCatalogBlock}
+Vary the Post Type across the titles to match a real narrative arc if this grouping has one (early = Intro/Story, middle = Teach/Character Development, late = Feature Benefit/Social Proof/CTA); for a Recurring or one-off grouping with no arc, it's fine to share one Post Type or cycle 2-3 that fit. You may set "newPostType": true only when nothing in the catalog genuinely fits.
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{
+  "grouping": {
+    "name": "...",
+    "rationale": "...",
+    "recommendedPlatform": "...",
+    "recurrence": "...",
+    "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false } ]
+  }
+}`;
+
+        const agAiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: addGroupingPrompt }] }),
+        });
+        const agAiData = await agAiResp.json();
+        if (!agAiResp.ok) return json({ error: agAiData.error?.message || "Claude API error" }, 500);
+        let agPlan;
+        try {
+          const raw = agAiData.content?.[0]?.text || "";
+          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+          if (start === -1 || end === -1) throw new Error("No JSON object found");
+          agPlan = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        } catch (e) {
+          return json({ error: "Failed to parse grouping JSON: " + e.message }, 500);
+        }
+        const g = agPlan.grouping || {};
+        const gName = String(g.name || 'New Grouping').slice(0, 200);
+        const gTitles = Array.isArray(g.titles) ? g.titles : [];
+        if (!gTitles.length) return json({ error: "AI returned no titles for the new grouping" }, 500);
+
+        // Same on-the-fly Post Type resolution as generateGrowthStrategy's
+        // resolvePostTypeId — exact-name match against the catalog fetched
+        // above, or create it fresh when flagged newPostType and nothing matched.
+        async function resolvePostTypeId(t) {
+          const wantName = String(t.postType || t.type || '').trim();
+          if (!wantName) return null;
+          const existing = postTypeIdByName.get(wantName.toLowerCase());
+          if (existing) return existing;
+          if (!t.newPostType) return null;
+          try {
+            const createResp = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: POST_TYPES_DB }, properties: { Name: { title: [{ type: "text", text: { content: wantName.slice(0, 200) } }] } } }),
+            }).then(r => r.json());
+            if (createResp.id) { const newId = createResp.id.replace(/-/g,""); postTypeIdByName.set(wantName.toLowerCase(), newId); return newId; }
+          } catch (e) { /* best-effort */ }
+          return null;
+        }
+        const matchedPlatformId = platformIdByName.get(String(g.recommendedPlatform || '').trim().toLowerCase());
+
+        async function createGroupingSlots(strategyIdForSlots, groupingName) {
+          return Promise.all(gTitles.map(async (t, i) => {
+            const seq = i + 1;
+            const postTypeId = await resolvePostTypeId(t);
+            const typeName = postTypeId ? (Array.from(postTypeIdByName.entries()).find(([, id]) => id === postTypeId) || [])[0] || '' : '';
+            const name = typeName ? `${seq} – ${typeName.replace(/\b\w/g, c => c.toUpperCase())}` : `${groupingName} #${seq}`;
+            const props = {
+              "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
+              "Growth Strategy": { relation: [{ id: dash(strategyIdForSlots) }] },
+              "Grouping": { rich_text: [{ type: "text", text: { content: groupingName.slice(0, 1990) } }] },
+              "Grouping Rationale": { rich_text: [{ type: "text", text: { content: String(g.rationale || '').slice(0, 1990) } }] },
+              "Sequence": { number: seq },
+              "Angle": { rich_text: [{ type: "text", text: { content: String(t.angle || '').slice(0, 1990) } }] },
+              "Platform": { rich_text: [{ type: "text", text: { content: String(g.recommendedPlatform || '').slice(0, 1990) } }] },
+              "Type": { rich_text: [{ type: "text", text: { content: typeName.slice(0, 1990) } }] },
+              "Recurrence": { rich_text: [{ type: "text", text: { content: String(g.recurrence || '').slice(0, 1990) } }] },
+              "Status": { select: { name: "Open" } },
+            };
+            if (productId) props["Product"] = { relation: [{ id: dash(productId) }] };
+            if (resolvedCampaignId) props["Campaign"] = { relation: [{ id: dash(resolvedCampaignId) }] };
+            if (postTypeId) props["Post Type"] = { relation: [{ id: dash(postTypeId) }] };
+            if (matchedPlatformId) props["Platforms"] = { relation: [{ id: dash(matchedPlatformId) }] };
+            return fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: props }),
+            }).then(r => r.json()).then(r => {
+              if (r.message && !r.id) console.error('Strategy Slot create failed:', r.message);
+              return r;
+            }).catch(e => ({ error: String(e) }));
+          }));
+        }
+
+        if (isDivergent) {
+          // New grouping = a brand-new child strategy, same shape as its
+          // existing siblings (each one IS a grouping in this design).
+          const esc4 = s => String(s || '');
+          const rtBlock4 = text => [{ type: "text", text: { content: esc4(text) } }];
+          const bodyChildren = [
+            { object: "block", type: "heading_3", heading_3: { rich_text: rtBlock4(gName) } },
+            { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock4(g.rationale || '') } },
+            ...gTitles.map(t => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: t.postType
+              ? [{ type: "text", text: { content: `[${t.postType}] ` }, annotations: { bold: true } }, { type: "text", text: { content: String(t.angle || '') } }]
+              : rtBlock4(t.angle) } })),
+            { object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: "Platform: " }, annotations: { bold: true } }, { type: "text", text: { content: esc4(g.recommendedPlatform) || 'Not specified' } }] } },
+          ];
+          const childProps = {
+            "Strategy Name": { title: [{ text: { content: gName } }] },
+            "Status": { select: { name: "Draft" } },
+            "Summary": { rich_text: rtBlock4(g.rationale || '') },
+            "Recommended Platforms": { multi_select: g.recommendedPlatform ? [{ name: String(g.recommendedPlatform).slice(0, 100) }] : [] },
+            "Grouping Count": { number: 1 },
+            "Parent Strategy": { relation: [{ id: dash(strategyId) }] },
+          };
+          if (productId) childProps["Product"] = { relation: [{ id: dash(productId) }] };
+          if (resolvedCampaignId) childProps["Campaign"] = { relation: [{ id: dash(resolvedCampaignId) }] };
+          const childResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: GROWTH_STRATEGY_DB }, properties: childProps, children: bodyChildren.slice(0, 100) }),
+          }).then(r => r.json());
+          if (!childResp.id) return json({ error: childResp.message || "Failed to create new grouping's strategy" }, 500);
+          const newStrategyId = childResp.id.replace(/-/g,"");
+          const slotResults = await createGroupingSlots(newStrategyId, gName);
+          const slotsCreated = slotResults.filter(r => r && r.id).length;
+          return json({ success: true, mode: "child", newStrategyId, groupingName: gName, slotsCreated });
+        } else {
+          // Flat strategy — add the new grouping's Slots directly onto it,
+          // alongside whatever groupings already exist there.
+          const slotResults = await createGroupingSlots(strategyId, gName);
+          const slotsCreated = slotResults.filter(r => r && r.id).length;
+          // Best-effort bump of Grouping Count to match reality — not
+          // load-bearing for anything, just data hygiene.
+          const curCount = spx0["Grouping Count"]?.number;
+          if (Number.isFinite(curCount)) {
+            fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "Grouping Count": { number: curCount + 1 } } }),
+            }).catch(() => {});
+          }
+          return json({ success: true, mode: "flat", groupingName: gName, slotsCreated });
+        }
+      }
+
       if (body.action === "deleteGrowthStrategy") {
         const { growthStrategyId } = body;
         if (!growthStrategyId) return json({ error: "growthStrategyId required" }, 400);

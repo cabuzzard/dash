@@ -1433,6 +1433,32 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- ADD GROUPING MODAL — ➕ Add Grouping on a top-level strategy header (flat
+     or a divergent parent) asks for a whole new grouping in plain guidance
+     text (arc + platform), grounded in the strategy's own product/research
+     context and its existing groupings (so it doesn't duplicate one). A
+     flat strategy gets the new grouping's Slots added directly onto it; a
+     divergent parent gets it as a brand-new child strategy, same shape as
+     its existing siblings. -->
+<div class="modal-overlay" id="addGroupingModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div class="modal-title">Add Grouping</div>
+      <button class="modal-close" onclick="closeAddGroupingModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="ag-strategy-label" style="font-size:12px;color:#fff;margin-bottom:10px;"></div>
+      <label class="lm-label">Guidance <span style="color:#fff;font-weight:normal;">— describe the arc and/or platform you want (e.g. "a YouTube long-form series doing deep-dive case studies, more in-depth than the Reels")</span></label>
+      <textarea class="modal-ta" id="ag-guidance-input" rows="4" placeholder="What's the new grouping's arc/platform?" style="resize:vertical;"></textarea>
+      <div id="agStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeAddGroupingModal()">Cancel</button>
+      <button class="modal-btn save" id="agSaveBtn" onclick="submitAddGrouping()">Generate</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="editSlotModal">
   <div class="modal" style="max-width:520px;">
     <div class="modal-head">
@@ -7741,6 +7767,43 @@ async function submitLaunchRun() {
   }
 }
 
+let AG_STRATEGY_ID = null;
+function openAddGroupingModal(strategyId, strategyName) {
+  AG_STRATEGY_ID = strategyId;
+  document.getElementById('ag-strategy-label').textContent = 'Strategy: ' + strategyName;
+  document.getElementById('ag-guidance-input').value = '';
+  document.getElementById('agStatus').textContent = '';
+  const btn = document.getElementById('agSaveBtn');
+  btn.disabled = false; btn.textContent = 'Generate';
+  document.getElementById('addGroupingModal').classList.add('open');
+}
+function closeAddGroupingModal() {
+  document.getElementById('addGroupingModal').classList.remove('open');
+  AG_STRATEGY_ID = null;
+}
+document.getElementById('addGroupingModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAddGroupingModal();
+});
+async function submitAddGrouping() {
+  if (!AG_STRATEGY_ID) return;
+  const guidance = document.getElementById('ag-guidance-input').value.trim();
+  if (!guidance) { alert('Describe the arc/platform you want first.'); return; }
+  const status = document.getElementById('agStatus');
+  const btn = document.getElementById('agSaveBtn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  status.style.color = '#888'; status.textContent = 'Writing the new grouping…';
+  try {
+    const r = await w('addGroupingToStrategy', { strategyId: AG_STRATEGY_ID, guidance, campaignId: CAMPAIGN_ID });
+    if (r.error) throw new Error(r.error);
+    status.style.color = '#68d391'; status.textContent = `Added "${r.groupingName}" — ${r.slotsCreated} slot${r.slotsCreated === 1 ? '' : 's'} created.`;
+    await loadCampaignStrategies();
+    setTimeout(closeAddGroupingModal, 1200);
+  } catch (e) {
+    status.style.color = '#ff4444'; status.textContent = e.message;
+    btn.disabled = false; btn.textContent = 'Generate';
+  }
+}
+
 async function loadCampaignStrategies() {
   const el = document.getElementById('strategies-panel');
   if (!el) return;
@@ -7902,6 +7965,13 @@ function renderStrategyBlock(s, indentPx) {
     : '';
   const deleteBtn = `<button onclick="deleteGrowthStrategy('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Delete this strategy — archives it and every one of its Strategy Slots. Any real title attached to it is kept, not deleted, and drops back to Unassigned Planning Titles." style="font-size:9px;padding:0 6px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️ Delete Strategy</button>`;
   const launchRunBtn = `<button onclick="openLaunchRunModal('${s.id}','${esc(s.name).replace(/'/g,"\\'")}')" title="Launch a Run — reuse this strategy as a Guide: pick a Product and create a child strategy with its own fresh Slots, reusing this Guide's groupings/angles as a template." style="font-size:9px;padding:0 6px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;flex-shrink:0;line-height:1.6;">🚀 Launch Run</button>`;
+  // Top-level only (indentPx unset/0) — a rendered CHILD of a divergent
+  // parent is itself a single grouping, so "add a grouping to it" doesn't
+  // apply there; the parent's own header (renderStrategyItem) gets this
+  // button separately.
+  const addGroupingBtn = !indentPx
+    ? `<button onclick="openAddGroupingModal('${s.id}','${esc(s.name).replace(/'/g,"\\'")}')" title="Add a whole new grouping (arc + platform) to this strategy from a plain-text guidance prompt, grounded in its product/research context." style="font-size:9px;padding:0 6px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;flex-shrink:0;line-height:1.6;">➕ Add Grouping</button>`
+    : '';
   // A divergent-path child always has exactly one grouping matching its own
   // short name — reuse that grouping's rationale as the header tooltip too,
   // so the full explanation is one hover away here as well, not just on
@@ -7914,6 +7984,7 @@ function renderStrategyBlock(s, indentPx) {
     + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
     + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
     + launchRunBtn
+    + addGroupingBtn
     + backfillBtn
     + deleteBtn
     + `</div>`
@@ -7941,6 +8012,7 @@ function renderStrategyItem(s) {
       + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
       + `<span style="font-size:10px;color:#fff;">${s.children.length} sub-strateg${s.children.length === 1 ? 'y' : 'ies'}</span>`
       + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
+      + `<button onclick="openAddGroupingModal('${s.id}','${esc(s.name).replace(/'/g,"\\'")}')" title="Add a whole new grouping (arc + platform) to this strategy from a plain-text guidance prompt — becomes its own new child, same as the existing ${s.children.length} sub-strateg${s.children.length === 1 ? 'y' : 'ies'}." style="font-size:9px;padding:0 6px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;flex-shrink:0;line-height:1.6;">➕ Add Grouping</button>`
       + `<button onclick="deleteGrowthStrategy('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Delete this strategy AND all ${s.children.length} sub-strategies — archives everything and every Strategy Slot under them. Any real title stays, just drops back to Unassigned Planning Titles." style="font-size:9px;padding:0 6px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️ Delete Strategy</button>`
       + `</div>`
       + `<div id="${parentBodyId}" style="display:none;">${childrenHtml}</div>`
