@@ -3126,7 +3126,7 @@ async function processSavedPost(env, page) {
 // The registry re-uses the real *_DB constants for IDs so those can't
 // drift out of sync — only the display name/emoji/domain are declared
 // here. Add a row when a new database joins the ecosystem.
-const ECOSYSTEM_GRAPH_KV_KEY = "ecosystem_graph_v2";
+const ECOSYSTEM_GRAPH_KV_KEY = "ecosystem_graph_v3";
 const ECOSYSTEM_DBS = [
   { id: CAMPAIGNS_DB,               name: "Campaigns",                 emoji: "📣", domain: "campaigns" },
   { id: LEADS_DB,                   name: "Leads",                     emoji: "🎯", domain: "campaigns" },
@@ -3167,6 +3167,10 @@ const ECOSYSTEM_DBS = [
   { id: KNOWLEDGE_BRAIN_DB,         name: "Knowledge Brain",           emoji: "🧠", domain: "knowledge" },
   { id: KEYWORD_CLUSTERS_DB,        name: "Keyword Clusters",          emoji: "🗂️", domain: "knowledge" },
   { id: TOOLS_DB,                   name: "Tools",                     emoji: "🧰", domain: "knowledge" },
+  { id: LINK_MINING_DB,            name: "Link Mining",               emoji: "⛏️", domain: "knowledge" },
+  { id: CREATORS_DB,               name: "Creators",                  emoji: "🧑‍🎨", domain: "knowledge" },
+  { id: PODCAST_IDEAS_DB,          name: "Podcast Ideas",             emoji: "🎙️", domain: "knowledge" },
+  { id: METHOD_IDEAS_DB,           name: "Method Ideas",              emoji: "🧪", domain: "knowledge" },
   { id: WORK_EXPERIENCE_DB,         name: "Work Experience",           emoji: "🧑‍💼", domain: "career" },
   { id: EDUCATION_DB,               name: "Education",                 emoji: "🎓", domain: "career" },
   { id: SKILLS_DB,                  name: "Skills",                    emoji: "🛠️", domain: "career" },
@@ -3192,9 +3196,8 @@ const DASH_TABS = [
   { key: "platforms",   label: "Platforms",   dbs: [PLATFORMS_DB, LOGINS_DB, SM_ACCOUNTS_DB, EMAILS_DB] },
   { key: "domains",     label: "Domains",     dbs: [EMAILS_DB, SM_ACCOUNTS_DB] },
   { key: "trades",      label: "Trades",      dbs: [TRADES_DB] },
-  { key: "links",       label: "Links",       dbs: [SAVED_POSTS_DB, KNOWLEDGE_BRAIN_DB] },
-  { key: "tools",       label: "Tools",       dbs: [TOOLS_DB] },
-  { key: "stack",       label: "Stack",       dbs: [PRODUCTS_DB, CAMPAIGNS_DB] },
+  { key: "links",       label: "Links",       dbs: [SAVED_POSTS_DB, LINK_MINING_DB, CREATORS_DB] },
+  { key: "globals",     label: "Globals",     dbs: [TOOLS_DB, PRODUCTS_DB, LINK_MINING_DB, CREATORS_DB, PODCAST_IDEAS_DB, METHOD_IDEAS_DB, SAVED_POSTS_DB, WORK_EXPERIENCE_DB, CAREER_AVATARS_DB, SKILLS_DB, EDUCATION_DB, CHARACTER_ARCS_DB, JOB_BOARDS_DB] },
   { key: "ecosystem",   label: "Ecosystem",   dbs: [] },
 ];
 
@@ -11346,11 +11349,38 @@ Return ONLY this JSON object, no other text, no markdown fences:
         });
         if (!legacyTitles.length) return json({ success: true, created: false, message: "No eligible legacy titles found for this product — every Publish/Published title here already belongs to a Growth Strategy." });
 
-        const [productPage, campPage] = await Promise.all([
+        const [productPage, campPage, allPostTypeRows] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
           fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
+          // Per operator direction: this button should hook into the same
+          // Post Type / no-Method-on-slots conventions the live generation
+          // engine (generateGrowthStrategy) uses, not its own older shape.
+          notionQuery(POST_TYPES_DB, {}).catch(e => { console.error('notionQuery(POST_TYPES_DB) failed:', e.message); return []; }),
         ]);
         const productName = (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product";
+        const postTypeIdByName = new Map(allPostTypeRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
+        const postTypesCatalogBlock = allPostTypeRows.length
+          ? allPostTypeRows.map(p => {
+              const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join("");
+              const rt = (p.properties?.Rationale?.rich_text || []).map(t => t.plain_text).join("");
+              return `- ${nm}${rt ? ` — ${rt}` : ''}`;
+            }).join('\n')
+          : '(none exist yet — every title will need "newPostType": true)';
+        async function resolveBackfillPostTypeId(wantNameRaw, newFlag) {
+          const wantName = String(wantNameRaw || '').trim();
+          if (!wantName) return null;
+          const existing = postTypeIdByName.get(wantName.toLowerCase());
+          if (existing) return existing;
+          if (!newFlag) return null;
+          try {
+            const createResp = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: POST_TYPES_DB }, properties: { Name: { title: [{ type: "text", text: { content: wantName.slice(0, 200) } }] } } }),
+            }).then(r => r.json());
+            if (createResp.id) { const newId = createResp.id.replace(/-/g,""); postTypeIdByName.set(wantName.toLowerCase(), newId); return newId; }
+          } catch (e) { /* best-effort */ }
+          return null;
+        }
 
         // Group by Method — legacy titles with no Method at all fall into
         // one "No Method" bucket rather than being dropped.
@@ -11415,21 +11445,27 @@ Return ONLY this JSON object, no other text, no markdown fences:
             const name = (t.properties.Title?.title || []).map(x => x.plain_text).join("") || "Untitled";
             return `${i + 1}. "${name}" (published ${t.created_time.slice(0, 10)})\n${(bodyCache.get(undash(t.id)) || '').slice(0, 600)}`;
           }).join("\n\n");
-          const prompt = `Below is the FULL chronological list of already-published content for the product "${productName}", method "${mInfo.name}"${mInfo.platform ? ` (platform: ${mInfo.platform})` : ''}. Reverse-engineer what this series has actually been doing, then propose exactly ONE next piece that continues it naturally without repeating ground already covered.
+          const prompt = `Below is the FULL chronological list of already-published content for the product "${productName}", method "${mInfo.name}"${mInfo.platform ? ` (platform: ${mInfo.platform})` : ''}. Reverse-engineer what this series has actually been doing, assign each already-published title the Post Type it actually is, then propose exactly ONE next piece that continues it naturally without repeating ground already covered.
 
 ${listBlock}
+
+POST TYPE CATALOG (assign one to every title below AND to the proposed next piece, by exact name from this catalog when it genuinely fits — this is what kind of content it is, e.g. Teach vs Story vs CTA, not the platform or cadence):
+${postTypesCatalogBlock}
 
 Return ONLY this JSON object, no other text, no markdown fences:
 {
   "summary": "2-4 sentences: what this published series has actually been covering and why, grounded only in the content above",
-  "type": "the strategic content category (e.g. Teach, Take, Story, Behind-the-Scenes) that best describes this series",
   "recurrence": "the realistic cadence implied by the actual publish dates above (e.g. Weekly, 2x/week) — infer from the real gaps between dates, don't guess a default",
-  "nextAngle": "one specific, concrete next title/angle that continues this series — not a repeat of anything already published above"
-}`;
+  "titlePostTypes": [ { "postType": "exact name from the catalog above, or a new one", "newPostType": false } ],
+  "nextAngle": "one specific, concrete next title/angle that continues this series — not a repeat of anything already published above",
+  "nextPostType": "exact name from the catalog above, or a new one",
+  "nextNewPostType": false
+}
+"titlePostTypes" must have exactly one entry per title above, in the same order.`;
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }),
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1600, messages: [{ role: "user", content: prompt }] }),
           });
           const aiData = await aiResp.json();
           if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
@@ -11470,7 +11506,18 @@ Return ONLY this JSON object, no other text, no markdown fences:
           try { analysis = await analyzeGroup(mId, titles); }
           catch (e) { continue; } // one bad group never blocks the rest
 
-          const stratName = divergent ? `${baseName} — ${mInfo.name}` : baseName;
+          // Per operator direction: child strategy names stay short/
+          // procedural (the Method's own name is already that) — no
+          // verbose "{baseName} — {mInfo.name}" concatenation, same fix
+          // already applied to generateGrowthStrategy's divergent split.
+          const stratName = divergent ? mInfo.name : baseName;
+          // Resolve this group's shared Post Types up front — one lookup
+          // per distinct name, reused across every title + the next-piece
+          // slot below rather than re-resolving per title.
+          const titlePostTypeIds = await Promise.all(
+            titles.map((t, i) => resolveBackfillPostTypeId(analysis.titlePostTypes?.[i]?.postType, analysis.titlePostTypes?.[i]?.newPostType))
+          );
+          const nextPostTypeId = await resolveBackfillPostTypeId(analysis.nextPostType, analysis.nextNewPostType);
           const bodyChildren = [
             { object: "block", type: "heading_2", heading_2: { rich_text: rtBlock4(mInfo.name) } },
             { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock4(analysis.summary || '') } },
@@ -11495,27 +11542,28 @@ Return ONLY this JSON object, no other text, no markdown fences:
           for (let i = 0; i < titles.length; i++) {
             const t = titles[i];
             const seq = i + 1;
-            const name = `${mInfo.name} #${seq} (backfilled)`;
+            const postTypeId = titlePostTypeIds[i];
+            const typeName = postTypeId ? (Array.from(postTypeIdByName.entries()).find(([, id]) => id === postTypeId) || [])[0] || '' : '';
+            const name = typeName ? `${seq} – ${typeName.replace(/\b\w/g, c => c.toUpperCase())}` : `${mInfo.name} #${seq} (backfilled)`;
+            const props = {
+              "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
+              "Growth Strategy": { relation: [{ id: dash(stratId) }] },
+              "Campaign": { relation: [{ id: dash(campaignId) }] },
+              "Product": { relation: [{ id: dash(productId) }] },
+              "Grouping": { rich_text: [{ type: "text", text: { content: mInfo.name.slice(0, 1990) } }] },
+              "Grouping Rationale": { rich_text: [{ type: "text", text: { content: (analysis.summary || '').slice(0, 1990) } }] },
+              "Sequence": { number: seq },
+              "Angle": { rich_text: [{ type: "text", text: { content: ((t.properties.Title?.title || []).map(x => x.plain_text).join("") || '').slice(0, 1990) } }] },
+              "Platform": { rich_text: [{ type: "text", text: { content: (mInfo.platform || '').slice(0, 1990) } }] },
+              "Type": { rich_text: [{ type: "text", text: { content: typeName.slice(0, 1990) } }] },
+              "Recurrence": { rich_text: [{ type: "text", text: { content: (analysis.recurrence || '').slice(0, 1990) } }] },
+              "Status": { select: { name: "Filled" } },
+              "Title": { relation: [{ id: dash(undash(t.id)) }] },
+            };
+            if (postTypeId) props["Post Type"] = { relation: [{ id: dash(postTypeId) }] };
             const slotResp = await fetch("https://api.notion.com/v1/pages", {
               method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                parent: { database_id: STRATEGY_SLOTS_DB },
-                properties: {
-                  "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
-                  "Growth Strategy": { relation: [{ id: dash(stratId) }] },
-                  "Campaign": { relation: [{ id: dash(campaignId) }] },
-                  "Product": { relation: [{ id: dash(productId) }] },
-                  "Grouping": { rich_text: [{ type: "text", text: { content: mInfo.name.slice(0, 1990) } }] },
-                  "Sequence": { number: seq },
-                  "Angle": { rich_text: [{ type: "text", text: { content: ((t.properties.Title?.title || []).map(x => x.plain_text).join("") || '').slice(0, 1990) } }] },
-                  "Method Name": { rich_text: [{ type: "text", text: { content: mInfo.name.slice(0, 1990) } }] },
-                  "Platform": { rich_text: [{ type: "text", text: { content: (mInfo.platform || '').slice(0, 1990) } }] },
-                  "Type": { rich_text: [{ type: "text", text: { content: (analysis.type || '').slice(0, 1990) } }] },
-                  "Recurrence": { rich_text: [{ type: "text", text: { content: (analysis.recurrence || '').slice(0, 1990) } }] },
-                  "Status": { select: { name: "Filled" } },
-                  "Title": { relation: [{ id: dash(undash(t.id)) }] },
-                },
-              }),
+              body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: props }),
             }).then(r => r.json()).catch(e => ({ error: String(e) }));
             if (slotResp.id) { seqSlots.push(undash(slotResp.id)); totalSlotsCreated++; }
             // Re-point the legacy title itself so it's picked up by
@@ -11533,24 +11581,28 @@ Return ONLY this JSON object, no other text, no markdown fences:
           }
           // The proposed next piece — one Open Slot at the next Sequence.
           const nextSeq = titles.length + 1;
+          const nextTypeName = nextPostTypeId ? (Array.from(postTypeIdByName.entries()).find(([, id]) => id === nextPostTypeId) || [])[0] || '' : '';
+          const nextName = nextTypeName ? `${nextSeq} – ${nextTypeName.replace(/\b\w/g, c => c.toUpperCase())}` : `${mInfo.name} #${nextSeq}`;
+          const nextProps = {
+            "Name": { title: [{ type: "text", text: { content: nextName.slice(0, 200) } }] },
+            "Growth Strategy": { relation: [{ id: dash(stratId) }] },
+            "Campaign": { relation: [{ id: dash(campaignId) }] },
+            "Product": { relation: [{ id: dash(productId) }] },
+            "Grouping": { rich_text: [{ type: "text", text: { content: mInfo.name.slice(0, 1990) } }] },
+            "Grouping Rationale": { rich_text: [{ type: "text", text: { content: (analysis.summary || '').slice(0, 1990) } }] },
+            "Sequence": { number: nextSeq },
+            "Angle": { rich_text: [{ type: "text", text: { content: (analysis.nextAngle || '').slice(0, 1990) } }] },
+            "Platform": { rich_text: [{ type: "text", text: { content: (mInfo.platform || '').slice(0, 1990) } }] },
+            "Type": { rich_text: [{ type: "text", text: { content: nextTypeName.slice(0, 1990) } }] },
+            "Recurrence": { rich_text: [{ type: "text", text: { content: (analysis.recurrence || '').slice(0, 1990) } }] },
+            "Status": { select: { name: "Open" } },
+          };
+          if (nextPostTypeId) nextProps["Post Type"] = { relation: [{ id: dash(nextPostTypeId) }] };
           await fetch("https://api.notion.com/v1/pages", {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({
               parent: { database_id: STRATEGY_SLOTS_DB },
-              properties: {
-                "Name": { title: [{ type: "text", text: { content: `${mInfo.name} #${nextSeq}`.slice(0, 200) } }] },
-                "Growth Strategy": { relation: [{ id: dash(stratId) }] },
-                "Campaign": { relation: [{ id: dash(campaignId) }] },
-                "Product": { relation: [{ id: dash(productId) }] },
-                "Grouping": { rich_text: [{ type: "text", text: { content: mInfo.name.slice(0, 1990) } }] },
-                "Sequence": { number: nextSeq },
-                "Angle": { rich_text: [{ type: "text", text: { content: (analysis.nextAngle || '').slice(0, 1990) } }] },
-                "Method Name": { rich_text: [{ type: "text", text: { content: mInfo.name.slice(0, 1990) } }] },
-                "Platform": { rich_text: [{ type: "text", text: { content: (mInfo.platform || '').slice(0, 1990) } }] },
-                "Type": { rich_text: [{ type: "text", text: { content: (analysis.type || '').slice(0, 1990) } }] },
-                "Recurrence": { rich_text: [{ type: "text", text: { content: (analysis.recurrence || '').slice(0, 1990) } }] },
-                "Status": { select: { name: "Open" } },
-              },
+              properties: nextProps,
             }),
           }).then(r => r.json()).then(r => { if (r.id) totalSlotsCreated++; }).catch(() => {});
         }
@@ -25439,7 +25491,6 @@ ${assemblyManifest}`;
         const srcPost = (rp["Source Post"]?.relation || [])[0];
         const creatorRel = (rp["Creator"]?.relation || [])[0];
         const dest = (destination || rp.Type?.select?.name || "").toLowerCase().replace(/ /g, "-");
-        const mk = (props) => { const p = { ...props }; return p; };
         const post = (db, props) => fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: db }, properties: props }) }).then(r => r.json());
         let promotedTo = "", merged = false;
         try {
