@@ -1400,6 +1400,63 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- EDIT METHOD MODAL — clicking a Method row in the sidebar opens this now
+     (used to open the generic create-title modal, vestigial since titles
+     come from Strategy Slots instead). Lets an operator actually build out
+     a Method's definition — properties + its full body spec (the Format /
+     Page|Field structure / Porting notes doc a templated method like the
+     BRN/LTE carousels has) — which the bare "+ Add Method" button never
+     gave a way to do; that button still only creates a stub record. -->
+<div class="modal-overlay" id="editMethodModal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div class="modal-title">Edit Method</div>
+      <button class="modal-close" onclick="closeEditMethodModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:75vh;overflow-y:auto;">
+      <label class="lm-label">Name</label>
+      <input class="modal-ta" id="em-name" type="text" style="margin-bottom:10px;">
+
+      <div style="display:flex;gap:10px;margin-bottom:10px;">
+        <div style="flex:1;">
+          <label class="lm-label">Status</label>
+          <select class="modal-ta" id="em-status">
+            <option value="Development">Development</option>
+            <option value="Live">Live</option>
+            <option value="Migrate">Migrate</option>
+            <option value="Delete">Delete</option>
+          </select>
+        </div>
+        <div style="flex:1;">
+          <label class="lm-label">Platform</label>
+          <select class="modal-ta" id="em-platform">
+            <option value="">— none —</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="lm-label">Category</label>
+      <div id="em-category-chips" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;font-size:12px;color:#fff;"></div>
+
+      <label class="lm-label">Template <span style="color:#fff;font-weight:normal;">— the Canva (or other) design link every asset this method produces gets copied onto</span></label>
+      <input class="modal-ta" id="em-template" type="text" placeholder="https://www.canva.com/design/…" style="margin-bottom:10px;">
+
+      <label class="lm-label">Notes</label>
+      <textarea class="modal-ta" id="em-notes" rows="2" style="resize:vertical;margin-bottom:10px;"></textarea>
+
+      <label class="lm-label">Body <span style="color:#fff;font-weight:normal;">— the method's own spec: Format / Page|Field structure / Porting notes, same shape as the BRN/LTE carousel methods. "# "/"## "/"### " = headings, "- " = bullets, blank line = new paragraph.</span></label>
+      <textarea class="modal-ta" id="em-body" rows="16" style="resize:vertical;font-family:monospace;font-size:12px;margin-bottom:6px;"></textarea>
+
+      <div id="emStatus" style="font-size:12px;color:#fff;margin-top:4px;min-height:18px;"></div>
+    </div>
+    <div class="modal-foot">
+      <a id="em-notion-link" href="#" target="_blank" style="font-size:11px;color:#888;align-self:center;margin-right:auto;">Open in Notion ↗</a>
+      <button class="modal-btn cancel" onclick="closeEditMethodModal()">Cancel</button>
+      <button class="modal-btn save" id="emSaveBtn" onclick="submitEditMethod()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- EDIT SLOT MODAL — opened from a Strategy Slot row in the Strategies
      panel (✏️). Lets an operator override the AI's Post Type / Platform
      pick, or edit the slot's Proposed Title (Angle), directly, without
@@ -3604,7 +3661,7 @@ function renderMethods() {
   METHOD_ITEMS.forEach(m => {
     const row = document.createElement('div');
     row.className = 'method-row';
-    row.innerHTML = `<span class="method-name" onclick="openCreateTitleFromSlotModal()" title="Generate a title (method no longer applies until the asset stage)">${m.name}</span><button class="td-del" onclick="removeMethod('${m.id}', this)" title="Remove">✕</button>`;
+    row.innerHTML = `<span class="method-name" onclick="openEditMethodModal('${m.id}')" title="Edit this method's definition — properties + its full body spec">${m.name}</span><button class="td-del" onclick="removeMethod('${m.id}', this)" title="Remove">✕</button>`;
     el.appendChild(row);
   });
 }
@@ -3633,6 +3690,83 @@ async function removeMethod(methodId, btn) {
   } catch(e) {
     btn.disabled = false;
     alert('Error: ' + e.message);
+  }
+}
+
+// ── EDIT METHOD MODAL ──────────────────────────────────────────────────
+// Same enumerated option lists as the Methods DB's own Notion schema
+// (Platform select, Category multi-select) — plain constants since there's
+// no dedicated fetch-schema action, and these lists change rarely.
+const EM_PLATFORM_OPTIONS = ["LinkedIn","Substack","YouTube","X / Twitter","TikTok","Instagram","Reddit","Fiverr","Upwork","Google","Facebook","Email","Etsy","Gumroad","Product Hunt","Podcast","Beehiiv","Craigslist","Locals","Other"];
+const EM_CATEGORY_OPTIONS = ["Content","Outreach","Research","SEO","Ecommerce","Video"];
+let EM_METHOD_ID = null;
+function renderEmCategoryChips(selected) {
+  const wrap = document.getElementById('em-category-chips');
+  wrap.innerHTML = EM_CATEGORY_OPTIONS.map(c => `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" class="em-cat-cb" value="${esc(c)}" ${selected.includes(c) ? 'checked' : ''}> ${esc(c)}</label>`).join('');
+}
+async function openEditMethodModal(methodId) {
+  EM_METHOD_ID = methodId;
+  document.getElementById('em-name').value = 'Loading…';
+  document.getElementById('em-body').value = '';
+  document.getElementById('em-notes').value = '';
+  document.getElementById('em-template').value = '';
+  document.getElementById('em-notion-link').href = `https://www.notion.so/${methodId}`;
+  const platSel = document.getElementById('em-platform');
+  platSel.innerHTML = '<option value="">— none —</option>' + EM_PLATFORM_OPTIONS.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  renderEmCategoryChips([]);
+  const status = document.getElementById('emStatus');
+  status.textContent = ''; status.style.color = '#fff';
+  const btn = document.getElementById('emSaveBtn');
+  btn.disabled = false; btn.textContent = 'Save';
+  document.getElementById('editMethodModal').classList.add('open');
+  try {
+    const r = await w('getMethodDetail', { methodId });
+    if (r.error) throw new Error(r.error);
+    document.getElementById('em-name').value = r.name || '';
+    document.getElementById('em-status').value = r.status || 'Development';
+    platSel.value = r.platform || '';
+    renderEmCategoryChips(r.category || []);
+    document.getElementById('em-template').value = r.template || '';
+    document.getElementById('em-notes').value = r.notes || '';
+    document.getElementById('em-body').value = r.body || '';
+  } catch(e) {
+    document.getElementById('em-name').value = '';
+    status.textContent = 'Error loading: ' + e.message;
+    status.style.color = '#ff4444';
+  }
+}
+function closeEditMethodModal() {
+  document.getElementById('editMethodModal').classList.remove('open');
+  EM_METHOD_ID = null;
+}
+document.getElementById('editMethodModal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditMethodModal();
+});
+async function submitEditMethod() {
+  if (!EM_METHOD_ID) return;
+  const status = document.getElementById('emStatus');
+  const btn = document.getElementById('emSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  status.style.color = '#888'; status.textContent = 'Saving…';
+  const category = Array.from(document.querySelectorAll('.em-cat-cb:checked')).map(cb => cb.value);
+  try {
+    const r = await w('updateMethod', {
+      methodId: EM_METHOD_ID,
+      name: document.getElementById('em-name').value.trim(),
+      status: document.getElementById('em-status').value,
+      platform: document.getElementById('em-platform').value,
+      category,
+      template: document.getElementById('em-template').value.trim(),
+      notes: document.getElementById('em-notes').value,
+      bodyText: document.getElementById('em-body').value,
+    });
+    if (r.error) throw new Error(r.error);
+    status.style.color = '#68d391'; status.textContent = 'Saved ✓';
+    if (typeof loadMethods === 'function') loadMethods();
+    setTimeout(closeEditMethodModal, 700);
+  } catch(e) {
+    status.style.color = '#ff4444'; status.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Save';
   }
 }
 

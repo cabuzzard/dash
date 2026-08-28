@@ -4520,6 +4520,104 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         return json({ success: true, id: result.id.replace(/-/g,""), name: title });
       }
 
+      // ── getMethodDetail / updateMethod ──
+      // Per operator direction: "there is an 'add method' button but it
+      // only just makes a record" — no way to edit a Method's own
+      // definition or build one out afterward. Clicking a Method row used
+      // to open the generic create-title modal (vestigial now that titles
+      // come from Strategy Slots — see generateTitleFromSlot) and has been
+      // repointed at this instead. Mirrors the exact property+body edit
+      // pattern updateGrowthStrategy/getGrowthStrategy already use for the
+      // View Strategy modal — body read via the existing
+      // extractBlocksTextRecursive (already renders "## "/"- " markers),
+      // written back via a small markdown-lite parser below. Known
+      // simplification, same as the Strategy body editor: bold/italic
+      // formatting doesn't round-trip — saving a body re-flattens
+      // everything to heading_1/2/3 + bulleted_list_item + paragraph, no
+      // inline annotations. Acceptable for a spec document meant to be
+      // read, not a polished deliverable.
+      if (body.action === "getMethodDetail") {
+        const { methodId } = body;
+        if (!methodId) return json({ error: "methodId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const page = await fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, { headers: hdr }).then(r => r.json());
+        if (!page.properties) return json({ error: page.message || "Method not found" }, 404);
+        const p = page.properties;
+        const bodyText = await extractBlocksTextRecursive(hdr, dash(methodId)).catch(() => '');
+        return json({
+          success: true, id: methodId, url: page.url,
+          name: (p.Name?.title || []).map(t => t.plain_text).join("") || "Untitled",
+          status: p.Status?.select?.name || "Development",
+          platform: p.Platform?.select?.name || "",
+          category: (p.Category?.multi_select || []).map(o => o.name),
+          template: p.Template?.url || "",
+          notes: (p.Notes?.rich_text || []).map(t => t.plain_text).join(""),
+          body: bodyText,
+        });
+      }
+
+      if (body.action === "updateMethod") {
+        const { methodId, name, status, platform, category, template, notes, bodyText } = body;
+        if (!methodId) return json({ error: "methodId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dashedId = dash(methodId);
+
+        const props = {};
+        if (name !== undefined && String(name).trim()) props["Name"] = { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] };
+        if (status !== undefined && status !== "") props["Status"] = { select: { name: status } };
+        if (platform !== undefined) props["Platform"] = platform ? { select: { name: platform } } : { select: null };
+        if (category !== undefined) props["Category"] = { multi_select: (Array.isArray(category) ? category : []).map(name => ({ name })) };
+        if (template !== undefined) props["Template"] = { url: template || null };
+        if (notes !== undefined) props["Notes"] = { rich_text: notes ? [{ type: "text", text: { content: String(notes).slice(0, 1990) } }] : [] };
+        if (Object.keys(props).length) {
+          const propResp = await fetch(`https://api.notion.com/v1/pages/${dashedId}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: props }),
+          });
+          if (!propResp.ok) { const err = await propResp.json().catch(() => ({})); return json({ error: err.message || "Property update failed" }, propResp.status); }
+        }
+
+        if (bodyText !== undefined) {
+          try {
+            const existing = await fetch(`https://api.notion.com/v1/blocks/${dashedId}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+            for (const b of (existing.results || [])) {
+              await fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: "DELETE", headers: hdr }).catch(() => {});
+            }
+          } catch (e) { /* best-effort — worst case new blocks append after stale ones */ }
+          // Markdown-lite: "# "/"## "/"### " -> heading_1/2/3, "- " ->
+          // bulleted_list_item, everything else (blank-line-separated) ->
+          // paragraph — the inverse of extractBlocksTextRecursive's own
+          // rendering, so a body round-trips through this editor cleanly
+          // (minus inline bold/italic, deliberately not supported here).
+          const heading = (level, text) => ({ object: "block", type: `heading_${level}`, [`heading_${level}`]: { rich_text: [{ type: "text", text: { content: text.slice(0, 1990) } }] } });
+          const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: [{ type: "text", text: { content: text.slice(0, 1990) } }] } });
+          const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: text.slice(0, 1990) } }] } });
+          const children = [];
+          let paraBuf = [];
+          const flushPara = () => { if (paraBuf.length) { children.push(para(paraBuf.join('\n').slice(0, 1990))); paraBuf = []; } };
+          for (const rawLine of String(bodyText).split('\n')) {
+            const line = rawLine.trimEnd();
+            const h = line.match(/^(#{1,3})\s+(.*)$/);
+            const b = line.match(/^-\s+(.*)$/);
+            if (h) { flushPara(); children.push(heading(h[1].length, h[2])); }
+            else if (b) { flushPara(); children.push(bullet(b[1])); }
+            else if (!line.trim()) { flushPara(); }
+            else { paraBuf.push(line); }
+          }
+          flushPara();
+          for (let i = 0; i < children.length; i += 90) {
+            const resp = await fetch(`https://api.notion.com/v1/blocks/${dashedId}/children`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ children: children.slice(i, i + 90) }),
+            });
+            if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Failed to write method body" }, 500); }
+          }
+        }
+        return json({ success: true });
+      }
+
       if (body.action === "createPlatform") {
         const { title, status } = body;
         if (!title) return json({ error: "title required" }, 400);
