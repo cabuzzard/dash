@@ -3465,7 +3465,9 @@ Respond ONLY with JSON: {"matches": [{"type": "method"|"platform"|"toolStack"|"p
 //      mapping backbone — not a review step).
 // Nothing here writes to a real production entity — see
 // [[feedback_dash_standalone_systems_isolation]].
-const mineRT = (s, max = 1900) => [{ type: "text", text: { content: String(s == null ? "" : s).slice(0, max) } }];
+// Full Notion rich_text PROPERTY VALUE (not the bare array) — every caller
+// assigns it straight onto a properties object.
+const mineRT = (s, max = 1900) => ({ rich_text: [{ type: "text", text: { content: String(s == null ? "" : s).slice(0, max) } }] });
 const dash32 = raw => { const s = String(raw || "").replace(/-/g, ""); return s.length === 32 ? `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}` : String(raw || ""); };
 
 async function buildMiningCandidates(hdr) {
@@ -3498,7 +3500,7 @@ async function generateDraftTagsForPost(env, hdr, page) {
   const pageId = page.id;
   const transcript = await extractBlocksTextRecursive(hdr, pageId).catch(() => "");
   if (!transcript.trim()) return;
-  const prompt = `From this saved social post's transcript, list 5-12 short lowercase tags an operator would file it under: named tools/software mentioned, concrete topics, content formats, the creator's subject areas. No generic filler ("video", "content", "tips", "growth"). Comma-separated, nothing else.\n\n${transcript.slice(0, 8000)}`;
+  const prompt = `TRANSCRIPT:\n"""\n${transcript.slice(0, 8000)}\n"""\n\nList 4-10 short lowercase filing tags for the ABOVE transcript only — the specific tools/software named in it, the concrete topics it covers, its content format, the creator's subject area. If the transcript is too thin to tag meaningfully, output exactly: NONE. No generic filler (video, content, tips, growth, engagement). Output only the tags, comma-separated — nothing else, no preamble.`;
   const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -3506,9 +3508,13 @@ async function generateDraftTagsForPost(env, hdr, page) {
   });
   const aiData = await aiResp.json().catch(() => ({}));
   if (!aiResp.ok) { console.error("draftTags AI:", aiData.error?.message); return; }
-  const tags = (aiData.content?.[0]?.text || "")
-    .split(/[,\n]/).map(s => s.trim().toLowerCase().replace(/^[#•\-\s]+/, "").replace(/\.$/, ""))
-    .filter(t => t && t.length <= 40).slice(0, 12);
+  const rawTxt = (aiData.content?.[0]?.text || "").trim();
+  if (/^none\b/i.test(rawTxt)) return;
+  const BAD = /post content|named tools|concrete topic|content format|subject area|transcript|comma-separated|creator's|& guides|filing tag/i;
+  const tags = rawTxt
+    .split(/[,\n]/).map(s => s.trim().toLowerCase().replace(/^[#•\-\s"']+/, "").replace(/["'.]+$/, ""))
+    .filter(t => t && t.length >= 2 && t.length <= 40 && !BAD.test(t) && !t.includes('"'))
+    .slice(0, 12);
   if (!tags.length) return;
   await patchSavedPostPage(pageId, { "Draft Tags": { multi_select: [...new Set(tags)].map(name => ({ name })) } }).catch(e => console.error("draftTags save:", e.message));
 }
@@ -19186,8 +19192,10 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       if (body.action === "getSavedPosts") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         await enrichUnprocessedSavedPosts(env, { limit: 10 });
-        // Eager backstop for the Draft Tags pre-list (cron is the other half).
-        ctx.waitUntil(runDraftTagPass(env, { limit: 6 }).catch(() => {}));
+        // Eager backstop for the Draft Tags pre-list (cron is the other
+        // half). Small limit — this invocation already spent subrequests on
+        // enrichUnprocessedSavedPosts + the query.
+        ctx.waitUntil(runDraftTagPass(env, { limit: 3 }).catch(() => {}));
         const rows = await notionQuery(SAVED_POSTS_DB, {
           // Sort by Notion's own created_time, not the "Date Saved" property
           // — that property is only as reliable as whatever wrote it (the
@@ -25184,6 +25192,21 @@ ${assemblyManifest}`;
           };
         });
         return json({ items });
+      }
+
+      // Clear a post's Mined flag so it re-runs on the next integrate — for
+      // the "re-mine" affordance and for recovering from a bad batch.
+      if (body.action === "resetPostMining") {
+        const { postId, all } = body;
+        if (all === true) {
+          const rows = await notionQuery(SAVED_POSTS_DB, { filter: { property: "Mined", checkbox: { equals: true } } }).catch(() => []);
+          let n = 0;
+          for (const p of rows) { try { await patchSavedPostPage(p.id, { Mined: { checkbox: false } }); n++; } catch (_) {} }
+          return json({ success: true, cleared: n });
+        }
+        if (!postId) return json({ error: "postId or all:true required" }, 400);
+        await patchSavedPostPage(dash32(postId), { Mined: { checkbox: false } });
+        return json({ success: true });
       }
 
       if (body.action === "updateDraftTags") {
