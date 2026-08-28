@@ -853,6 +853,16 @@
     </div>
 
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('trading')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">📊 Trading Strategies <span id="glTradingCount" style="color:var(--text3);font-weight:400;"></span></span>
+        <span id="glTradingIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glTradingBody" style="display:none;padding:0 13px 13px;">
+        <div id="glTradingList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('tools')">
         <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🧰 Tools</span>
         <span id="glToolsIcon" style="font-size:11px;color:var(--text3);">▸</span>
@@ -10292,6 +10302,7 @@ const GL_SECTIONS = {
   creators: { icon: 'glCreatorsIcon', body: 'glCreatorsBody', load: () => loadGlCreators() },
   podcast:  { icon: 'glPodcastIcon',  body: 'glPodcastBody',  load: () => loadGlPodcast() },
   method:   { icon: 'glMethodIcon',   body: 'glMethodBody',   load: () => loadGlMethod() },
+  trading:  { icon: 'glTradingIcon',  body: 'glTradingBody',  load: () => loadGlTrading() },
   tools:    { icon: 'glToolsIcon',    body: 'glToolsBody',    load: () => { if (!toolsLoaded) { toolsLoaded = true; loadToolsList(); } } },
   stack:    { icon: 'glStackIcon',    body: 'glStackBody',    load: () => { if (!stackLoaded) { stackLoaded = true; renderStackTable(); } } },
 };
@@ -10313,8 +10324,8 @@ function loadGlobalsTab() {
 // ── Link Mining review queue ──
 let LM_DATA = [];
 let LM_FILTER = 'New';
-const LM_TYPE_DEST = { 'Tool': 'tool', 'Method': 'method', 'Post Type': 'post-type', 'Podcast Idea': 'podcast-idea' };
-const LM_TYPE_COLOR = { 'Tool': '#63b3ed', 'Method': '#68d391', 'Post Type': '#b794f4', 'Strategy Note': '#f6ad55', 'Growth Strategy Note': '#f6e05e', 'Podcast Idea': '#f687b3', 'Knowledge': '#a0aec0' };
+const LM_TYPE_DEST = { 'Tool': 'tool', 'Method': 'method', 'Post Type': 'post-type', 'Podcast Idea': 'podcast-idea', 'Trading Strategy': 'trading-strategy' };
+const LM_TYPE_COLOR = { 'Tool': '#63b3ed', 'Method': '#68d391', 'Post Type': '#b794f4', 'Strategy Note': '#f6ad55', 'Growth Strategy Note': '#f6e05e', 'Podcast Idea': '#f687b3', 'Trading Strategy': '#38b2ac', 'Knowledge': '#a0aec0' };
 
 async function loadLinkMining(force) {
   const el = document.getElementById('glMiningList');
@@ -10381,6 +10392,7 @@ function lmPromoteOpen(id) {
   let extra = '';
   if (dest === 'tool') extra = '<input id="lmCat_' + id + '" type="text" value="' + esc(i.category || '') + '" placeholder="Tool Stack category" style="' + LM_INPUT + '">';
   else if (dest === 'method') extra = '<input id="lmPlat_' + id + '" type="text" value="' + esc(i.match || '') + '" placeholder="platform / closest method" style="' + LM_INPUT + '">';
+  else if (dest === 'trading-strategy') extra = '<input id="lmThesis_' + id + '" type="text" value="' + esc(i.extract || '') + '" placeholder="thesis / edge" style="' + LM_INPUT + '">';
   box.innerHTML = '<input id="lmName_' + id + '" type="text" value="' + esc(i.name) + '" style="' + LM_INPUT + '">' + extra
     + '<div style="margin-top:6px;display:flex;gap:6px;">'
     + '<button onclick="lmDoPromote(\'' + id + '\')" style="font-size:11px;padding:4px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">Confirm promote</button>'
@@ -10395,6 +10407,7 @@ async function lmDoPromote(id) {
   const body = { id, destination: dest, newName: (document.getElementById('lmName_' + id) || {}).value };
   if (dest === 'tool') body.category = (document.getElementById('lmCat_' + id) || {}).value;
   if (dest === 'method') body.closestMethod = (document.getElementById('lmPlat_' + id) || {}).value;
+  if (dest === 'trading-strategy') body.description = (document.getElementById('lmThesis_' + id) || {}).value;
   const box = document.getElementById('lmPromote_' + id);
   box.innerHTML = '<div style="font-size:11px;color:var(--text3);">Promoting…</div>';
   try {
@@ -10460,6 +10473,25 @@ async function loadGlMethod() {
       + '<div style="font-size:12px;font-weight:600;">' + esc(m.name) + ' <span style="font-size:10px;color:var(--text3);font-weight:400;">' + esc(m.status) + '</span></div>'
       + (m.description ? '<div style="font-size:11px;color:var(--text2);margin-top:3px;line-height:1.4;">' + esc(m.description) + '</div>' : '')
       + '<div style="font-size:10px;color:var(--text3);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap;">' + (m.closestMethod ? '<span>≈ ' + esc(m.closestMethod) + '</span>' : '') + (m.platform ? '<span>' + esc(m.platform) + '</span>' : '') + '</div>'
+      + '</div>'
+    ).join('');
+  } catch (e) { el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>'; }
+}
+async function loadGlTrading() {
+  const el = document.getElementById('glTradingList');
+  try {
+    const data = await call('getTradingStrategies', {});
+    if (data.error) throw new Error(data.error);
+    const items = data.items || [];
+    document.getElementById('glTradingCount').textContent = '· ' + items.length;
+    if (!items.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No trading strategies yet. Promote a Trading Strategy from the Link Mining queue.</div>'; return; }
+    el.innerHTML = items.map(s =>
+      '<div style="padding:9px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface);">'
+      + '<div style="font-size:12px;font-weight:600;">' + esc(s.name) + ' <span style="font-size:10px;color:var(--text3);font-weight:400;">' + esc(s.status) + (s.timeframe ? ' · ' + esc(s.timeframe) : '') + '</span></div>'
+      + (s.thesis ? '<div style="font-size:11px;color:var(--text2);margin-top:3px;line-height:1.4;">' + esc(s.thesis) + '</div>' : '')
+      + (s.entry ? '<div style="font-size:10px;color:var(--text3);margin-top:3px;">Entry: ' + esc(s.entry) + '</div>' : '')
+      + (s.exitRisk ? '<div style="font-size:10px;color:var(--text3);margin-top:2px;">Exit/Risk: ' + esc(s.exitRisk) + '</div>' : '')
+      + (s.instruments.length ? '<div style="font-size:10px;color:var(--text3);margin-top:3px;">' + s.instruments.map(esc).join(' · ') + '</div>' : '')
       + '</div>'
     ).join('');
   } catch (e) { el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>'; }

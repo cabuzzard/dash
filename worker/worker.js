@@ -74,6 +74,7 @@ const LINK_MINING_DB     = "67c1c7af775d4d038d39ab57a7ead44a"; // Name/Type/Extr
 const CREATORS_DB        = "dafa452e816a41daae061590f83bfd39"; // Name/Handles/Platforms/Subject Matter/Notes/URL/Saved Posts — every mined find maps to its creator
 const PODCAST_IDEAS_DB   = "f61c012e75b742cf949c93228bc0328e"; // Name/Angle/Subject Matter/Status/Source Post/Creator
 const METHOD_IDEAS_DB    = "9b094862f32a40c994093610f8696a8c"; // Name/Description/Closest Method/Platform/Subject Matter/Status/Source Post/Creator — holding area, never writes to real METHODS_DB
+const TRADING_STRATEGIES_DB = "49940bac8cdc4310a8f54e10833673f9"; // Name/Thesis/Entry/Exit / Risk/Instruments/Timeframe/Status/Notes/Source Post/Creator — reference library, not wired into runAutoTradeScan yet
 // Resume header — kept in sync by hand with the 📇 Contact Info Notion page
 // (under 🏠 Home); used to print a real contact header on generated resume
 // .docx files (generateJobAsset's docx build).
@@ -3126,7 +3127,7 @@ async function processSavedPost(env, page) {
 // The registry re-uses the real *_DB constants for IDs so those can't
 // drift out of sync — only the display name/emoji/domain are declared
 // here. Add a row when a new database joins the ecosystem.
-const ECOSYSTEM_GRAPH_KV_KEY = "ecosystem_graph_v3";
+const ECOSYSTEM_GRAPH_KV_KEY = "ecosystem_graph_v4";
 const ECOSYSTEM_DBS = [
   { id: CAMPAIGNS_DB,               name: "Campaigns",                 emoji: "📣", domain: "campaigns" },
   { id: LEADS_DB,                   name: "Leads",                     emoji: "🎯", domain: "campaigns" },
@@ -3171,6 +3172,7 @@ const ECOSYSTEM_DBS = [
   { id: CREATORS_DB,               name: "Creators",                  emoji: "🧑‍🎨", domain: "knowledge" },
   { id: PODCAST_IDEAS_DB,          name: "Podcast Ideas",             emoji: "🎙️", domain: "knowledge" },
   { id: METHOD_IDEAS_DB,           name: "Method Ideas",              emoji: "🧪", domain: "knowledge" },
+  { id: TRADING_STRATEGIES_DB,     name: "Trading Strategies",         emoji: "📊", domain: "trades" },
   { id: WORK_EXPERIENCE_DB,         name: "Work Experience",           emoji: "🧑‍💼", domain: "career" },
   { id: EDUCATION_DB,               name: "Education",                 emoji: "🎓", domain: "career" },
   { id: SKILLS_DB,                  name: "Skills",                    emoji: "🛠️", domain: "career" },
@@ -3197,7 +3199,7 @@ const DASH_TABS = [
   { key: "domains",     label: "Domains",     dbs: [EMAILS_DB, SM_ACCOUNTS_DB] },
   { key: "trades",      label: "Trades",      dbs: [TRADES_DB] },
   { key: "links",       label: "Links",       dbs: [SAVED_POSTS_DB, LINK_MINING_DB, CREATORS_DB] },
-  { key: "globals",     label: "Globals",     dbs: [TOOLS_DB, PRODUCTS_DB, LINK_MINING_DB, CREATORS_DB, PODCAST_IDEAS_DB, METHOD_IDEAS_DB, SAVED_POSTS_DB, WORK_EXPERIENCE_DB, CAREER_AVATARS_DB, SKILLS_DB, EDUCATION_DB, CHARACTER_ARCS_DB, JOB_BOARDS_DB] },
+  { key: "globals",     label: "Globals",     dbs: [TOOLS_DB, PRODUCTS_DB, LINK_MINING_DB, CREATORS_DB, PODCAST_IDEAS_DB, METHOD_IDEAS_DB, TRADING_STRATEGIES_DB, SAVED_POSTS_DB, WORK_EXPERIENCE_DB, CAREER_AVATARS_DB, SKILLS_DB, EDUCATION_DB, CHARACTER_ARCS_DB, JOB_BOARDS_DB] },
   { key: "ecosystem",   label: "Ecosystem",   dbs: [] },
 ];
 
@@ -3468,11 +3470,12 @@ const dash32 = raw => { const s = String(raw || "").replace(/-/g, ""); return s.
 
 async function buildMiningCandidates(hdr) {
   const q = (db, body) => notionQuery(db, body).catch(e => { console.error(`buildMiningCandidates ${db}:`, e.message); return []; });
-  const [toolRows, methodRows, postTypeRows, methodIdeaRows, creatorRows] = await Promise.all([
+  const [toolRows, methodRows, postTypeRows, methodIdeaRows, tradeStratRows, creatorRows] = await Promise.all([
     q(TOOLS_DB, {}),
     q(METHODS_DB, { filter: { property: "Status", select: { equals: "Live" } } }),
     q(POST_TYPES_DB, {}),
     q(METHOD_IDEAS_DB, {}),
+    q(TRADING_STRATEGIES_DB, {}),
     q(CREATORS_DB, {}),
   ]);
   const nm = p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
@@ -3482,6 +3485,7 @@ async function buildMiningCandidates(hdr) {
     methods: [...new Set(methodRows.map(nm).filter(Boolean))],
     postTypes: [...new Set(postTypeRows.map(nm).filter(Boolean))],
     methodIdeas: [...new Set(methodIdeaRows.map(nm).filter(Boolean))],
+    tradingStrategies: [...new Set(tradeStratRows.map(nm).filter(Boolean))],
     creators: creatorRows.map(p => ({
       id: p.id.replace(/-/g, ""),
       name: nm(p),
@@ -3576,7 +3580,7 @@ async function upsertCreatorFromMining(hdr, creator, postId, candidates) {
   return created.id;
 }
 
-const MINE_TYPE_LABEL = { "tool": "Tool", "method": "Method", "post-type": "Post Type", "strategy-note": "Strategy Note", "growth-strategy-note": "Growth Strategy Note", "podcast-idea": "Podcast Idea", "knowledge": "Knowledge" };
+const MINE_TYPE_LABEL = { "tool": "Tool", "method": "Method", "post-type": "Post Type", "strategy-note": "Strategy Note", "growth-strategy-note": "Growth Strategy Note", "podcast-idea": "Podcast Idea", "trading-strategy": "Trading Strategy", "knowledge": "Knowledge" };
 
 async function integrateOneSavedPost(env, hdr, page, candidates) {
   const pageId = page.id;
@@ -3592,9 +3596,10 @@ async function integrateOneSavedPost(env, hdr, page, candidates) {
     candidates.methods.length && `Live Methods: ${candidates.methods.join(", ")}`,
     candidates.postTypes.length && `Post Types: ${candidates.postTypes.join(", ")}`,
     candidates.methodIdeas.length && `Existing Method Ideas: ${candidates.methodIdeas.join(", ")}`,
+    candidates.tradingStrategies.length && `Existing Trading Strategies: ${candidates.tradingStrategies.join(", ")}`,
   ].filter(Boolean).join("\n");
 
-  const prompt = `You are mining ONE saved social post's transcript for REUSABLE building blocks for a content-operations system — NOT titles, NOT campaign ideas, NOT assets to produce.
+  const prompt = `You are mining ONE saved social post's transcript for REUSABLE building blocks — NOT titles, NOT campaign ideas, NOT assets to produce. A post is usually about ONE domain (content-ops OR trading OR neither); extract only what genuinely fits.
 
 Extract only concrete, reusable things. Zero to three items is the normal, expected result; most posts yield little. Never invent a name that isn't genuinely in the transcript.
 
@@ -3605,6 +3610,7 @@ Item types:
 - "strategy-note": a concrete strategic observation about a niche / platform / audience worth remembering.
 - "growth-strategy-note": an observation specifically about growth / distribution tactics.
 - "podcast-idea": a podcast episode title or subject.
+- "trading-strategy": a described trading setup / strategy — the edge, an entry trigger, an exit / risk rule, the instrument and timeframe if stated. Match an existing Trading Strategy when close.
 - "knowledge": genuinely useful and none of the above.
 
 # Operator's own draft tags for this post (their filing intent — weight these heavily)
@@ -25162,6 +25168,24 @@ ${assemblyManifest}`;
         return json({ items });
       }
 
+      if (body.action === "getTradingStrategies") {
+        const rows = await notionQuery(TRADING_STRATEGIES_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(e => { console.error("getTradingStrategies:", e.message); return []; });
+        const items = rows.map(p => {
+          const pr = p.properties;
+          return {
+            id: p.id.replace(/-/g, ""),
+            name: (pr.Name?.title || []).map(t => t.plain_text).join(""),
+            thesis: (pr.Thesis?.rich_text || []).map(t => t.plain_text).join(""),
+            entry: (pr.Entry?.rich_text || []).map(t => t.plain_text).join(""),
+            exitRisk: (pr["Exit / Risk"]?.rich_text || []).map(t => t.plain_text).join(""),
+            instruments: (pr.Instruments?.multi_select || []).map(o => o.name),
+            timeframe: pr.Timeframe?.select?.name || "",
+            status: pr.Status?.select?.name || "Idea",
+          };
+        });
+        return json({ items });
+      }
+
       if (body.action === "updateDraftTags") {
         const { postId, tags } = body;
         if (!postId || !Array.isArray(tags)) return json({ error: "postId and tags[] required" }, 400);
@@ -25240,6 +25264,14 @@ ${assemblyManifest}`;
             const c = await post(PODCAST_IDEAS_DB, props);
             if (!c.id) throw new Error(c.message || "podcast idea create failed");
             promotedTo = "Podcast Ideas: " + nm;
+          } else if (dest === "trading-strategy") {
+            const props = { Name: { title: [{ type: "text", text: { content: nm.slice(0, 200) } }] }, Thesis: mineRT(description || extract), Status: { select: { name: "Idea" } } };
+            if (matchTxt) props["Entry"] = mineRT(matchTxt);
+            if (srcPost) props["Source Post"] = { relation: [{ id: srcPost.id }] };
+            if (creatorRel) props["Creator"] = { relation: [{ id: creatorRel.id }] };
+            const c = await post(TRADING_STRATEGIES_DB, props);
+            if (!c.id) throw new Error(c.message || "trading strategy create failed");
+            promotedTo = "Trading Strategies: " + nm;
           } else {
             promotedTo = "kept in queue (no external table for this type)";
             merged = true;
