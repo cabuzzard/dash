@@ -10811,15 +10811,14 @@ Return ONLY this JSON object, no other text, no markdown fences:
         }
         const titleText = String(plan.title || slotName || angle || "Untitled").slice(0, 2000);
 
-        // Status: Planning, not Development — per operator instruction, a
-        // slot filling in is a "pre-title," not a real piece of work landing
-        // in Development yet. It shows up in the Strategies tab (grouped
-        // under its slot) instead, and pillar content is deliberately NOT
-        // written here anymore (was: an automatic writePillarContent call
-        // right after creation) — that's now a separate, explicit "✍️ Write
-        // Pillar" action the operator triggers from the Strategies tab when
-        // they're actually ready to develop it, which is also what promotes
-        // Planning → Development (see writeTitlePillar).
+        // Created at Planning first (same shape as before), then immediately
+        // promoted to Development below by writing its pillar content in
+        // the same call — per operator instruction: "the +title modal
+        // should just erase that step and write the pillar." Reverses the
+        // earlier design (a separate, explicit ✍️ Write Pillar action) —
+        // that button/action still exists for titles created any other way
+        // (Quick Add, etc.), this just stops making it a mandatory second
+        // step for the one flow that already has every input on hand.
         const props = {
           Title:  { title: [{ type: "text", text: { content: titleText } }] },
           Status: { select: { name: "Planning" } },
@@ -10853,7 +10852,42 @@ Return ONLY this JSON object, no other text, no markdown fences:
           }).catch(() => {});
         }
 
-        return json({ success: true, id: newTitleId, title: titleText, pillarWarning });
+        // Write the pillar immediately, grounded in every input this action
+        // already gathered above — not just the generic Research/Product/
+        // Strategy grounding writePillarContent fetches on its own, but the
+        // specific slot this title came from (its Angle/Platform/Content
+        // Type/Recurrence) and the full parent Growth Strategy body, via
+        // extraContext. Best-effort: a failure here leaves the title at
+        // Planning (same as before this change) with a warning rather than
+        // failing the whole call — the title itself already saved.
+        let newStatus = "Planning";
+        const slotContextBlock = [
+          slotId ? `This title was created from a specific planned Strategy Slot — stay consistent with it:` : '',
+          angle ? `PLANNED ANGLE: ${angle}` : '',
+          grouping ? `GROUPING: ${grouping}` : '',
+          platform ? `PLATFORM: ${platform}` : '',
+          slotType ? `CONTENT TYPE: ${slotType}` : '',
+          slotRecurrence ? `RECURRENCE: ${slotRecurrence}` : '',
+          growthStrategyBody ? `\nFULL GROWTH STRATEGY CONTEXT (the arc this slot sits inside):\n${growthStrategyBody}` : '',
+        ].filter(Boolean).join('\n');
+        const pillarResult = await writePillarContent(hdr, env, {
+          titleId: newTitleId, titleText, campaignId, productId,
+          guidance: guidance || undefined,
+          extraContext: slotContextBlock || undefined,
+        }).catch(e => ({ error: e.message }));
+        if (pillarResult?.error) {
+          pillarWarning = `Title saved, but pillar content failed to write: ${pillarResult.error}`;
+        } else if (pillarResult?.skipped) {
+          pillarWarning = `Title saved, but pillar content was skipped: ${pillarResult.reason || 'no grounding available yet'}`;
+        } else {
+          newStatus = "Development";
+          await fetch(`https://api.notion.com/v1/pages/${dash(newTitleId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Status": { select: { name: "Development" } } } }),
+          }).catch(() => { pillarWarning = "Title and pillar saved, but promoting to Development failed — check its Status manually."; newStatus = "Planning"; });
+        }
+
+        return json({ success: true, id: newTitleId, title: titleText, status: newStatus, pillarWarning });
       }
 
       // ── buildStrategyFromAsset ──
@@ -21978,6 +22012,126 @@ TIMING COHERENCE (do not skip): "sceneDurationSec" is not a free guess — it mu
         ];
 
         return json({ success: true, campaignName, shared, assets });
+      }
+
+      // ── ensureCampaignDesignSystem ──
+      // Per operator direction: any image-generation prompt built for this
+      // campaign — including ones handed to a live ChatGPT chat, not just
+      // the carousel/text-video pipeline above — must be grounded in the
+      // SAME locked brand constants, not a one-off improvised style per
+      // generation. Reads getCampaignDesignSystem's three format-agnostic
+      // records (Color Palette / Typography / Visual Style); if the
+      // campaign doesn't have them yet, resolves them once via a small AI
+      // call grounded in the campaign's own positioning/research and
+      // persists them through the exact same create-once findOrCreate
+      // pattern resolveCampaignDesignDefaults uses (so a carousel/
+      // text-video/t-shirt generated later reuses these same records,
+      // never creates a second competing set). Deliberately skips Grid &
+      // Spacing here — that's format-specific (multi-slide/scene layout),
+      // not a general brand constant a single static image prompt needs.
+      // Never overwrites an existing record — same "only promoteAssetDesignToGlobal
+      // may change it after creation" rule as the rest of this system.
+      if (body.action === "ensureCampaignDesignSystem") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rtGet = (page, key) => (page?.properties?.[key]?.rich_text || []).map(t => t.plain_text).join("");
+
+        const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+        if (!campPage.properties) return json({ error: campPage.message || "Campaign not found" }, 404);
+        const campaignName = campPage.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled";
+
+        const findByTitle = async (dbId, titleProp, name) => {
+          const q = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: titleProp, title: { equals: name } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          return (q.results || [])[0] || null;
+        };
+        let [colorPalette, typography, visualStyle] = await Promise.all([
+          findByTitle(COLOR_PALETTES_DB, "Palette Name", `${campaignName} Color Palette`),
+          findByTitle(TYPOGRAPHY_SYSTEMS_DB, "Typography System Name", `${campaignName} Typography System`),
+          findByTitle(VISUAL_STYLE_PROFILES_DB, "Visual Style Name", `${campaignName} Visual Style`),
+        ]);
+
+        let created = false;
+        if (!colorPalette || !typography || !visualStyle) {
+          if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+          const researchQ = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const rt = key => { for (const r of (researchQ.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+          const researchBlock = ['Keywords', 'Statement', 'Unique Opportunity', 'Key Message', 'Pain Points']
+            .map(f => { const v = rt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
+
+          const dsPrompt = `You are defining the locked brand/visual-design constants for a marketing campaign — these get reused across EVERY image this campaign ever generates (quote cards, carousels, ad creative, etc.), so they must be genuinely decisive and specific, not generic placeholders.
+
+CAMPAIGN: ${campaignName}
+${researchBlock ? `CAMPAIGN RESEARCH:\n${researchBlock}\n` : '(No campaign research on file — infer conservatively from the campaign name.)'}
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{
+  "background": "the primary background color, as a real color name PLUS its hex value, e.g. 'warm off-white (#F7F3EC)'",
+  "ink": "the primary text/ink color, name + hex, high contrast against the background",
+  "accent": "one accent color, name + hex, used sparingly",
+  "headlineFont": "font CHARACTER, never a literal font name an image model can't guarantee — e.g. 'bold condensed sans-serif' or 'confident modern serif'",
+  "bodyFont": "font character for body/supporting text, same rule",
+  "iconStyle": "if icons/illustration ever appear, describe the treatment in one phrase — e.g. 'thin single-line outline icons' or 'none — text and photography only'",
+  "notes": "2-3 sentences: the overall visual tone/mood this brand should read as, and any hard rules (e.g. no stock-photo faces, no gradients) — this is what every future image prompt for this campaign should stay true to"
+}`;
+
+          const dsAiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: dsPrompt }] }),
+          });
+          const dsAiData = await dsAiResp.json();
+          if (!dsAiResp.ok) return json({ error: dsAiData.error?.message || "Claude API error" }, 500);
+          let ds;
+          try {
+            const raw = dsAiData.content?.[0]?.text || "";
+            const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+            if (start === -1 || end === -1) throw new Error("No JSON object found");
+            ds = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          } catch (e) {
+            return json({ error: "Failed to parse design system JSON: " + e.message }, 500);
+          }
+
+          const rt1 = v => ({ rich_text: [{ text: { content: String(v || '') } }] });
+          const findOrCreate = async (dbId, titlePropName, name, props) => {
+            const existing = await findByTitle(dbId, titlePropName, name);
+            if (existing) return existing;
+            const createdPage = await fetch(`https://api.notion.com/v1/pages`, {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                parent: { database_id: dbId },
+                properties: { [titlePropName]: { title: [{ text: { content: name } }] }, "Version": rt1("1.0"), "Status": { select: { name: "Active" } }, ...props },
+              }),
+            }).then(r => r.json());
+            return createdPage;
+          };
+          [colorPalette, typography, visualStyle] = await Promise.all([
+            colorPalette || findOrCreate(COLOR_PALETTES_DB, "Palette Name", `${campaignName} Color Palette`, {
+              "Primary Background": rt1(ds.background), "Primary Ink": rt1(ds.ink), "Accent Primary": rt1(ds.accent), "Usage Notes": rt1(ds.notes),
+            }),
+            typography || findOrCreate(TYPOGRAPHY_SYSTEMS_DB, "Typography System Name", `${campaignName} Typography System`, {
+              "Headline Font": rt1(ds.headlineFont), "Body Font": rt1(ds.bodyFont),
+            }),
+            visualStyle || findOrCreate(VISUAL_STYLE_PROFILES_DB, "Visual Style Name", `${campaignName} Visual Style`, {
+              "Icon Style": rt1(ds.iconStyle), "Style Description": rt1(ds.notes),
+            }),
+          ]);
+          created = true;
+        }
+
+        return json({
+          success: true, created, campaignName,
+          colorPalette: { id: colorPalette.id.replace(/-/g,""), background: rtGet(colorPalette, "Primary Background"), ink: rtGet(colorPalette, "Primary Ink"), accent: rtGet(colorPalette, "Accent Primary"), notes: rtGet(colorPalette, "Usage Notes") },
+          typography: { id: typography.id.replace(/-/g,""), headlineFont: rtGet(typography, "Headline Font"), bodyFont: rtGet(typography, "Body Font") },
+          visualStyle: { id: visualStyle.id.replace(/-/g,""), iconStyle: rtGet(visualStyle, "Icon Style"), styleDescription: rtGet(visualStyle, "Style Description") },
+        });
       }
 
       // ── buildCarouselSpecDraft ──

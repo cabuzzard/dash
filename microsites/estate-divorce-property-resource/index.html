@@ -8422,12 +8422,14 @@ async function submitCreateTitleFromSlot() {
   const btn = document.getElementById('ctsGoBtn');
   btn.disabled = true; btn.textContent = 'Generating…';
   status.style.color = '#888';
-  status.textContent = titleOverride ? 'Saving title…' : 'Writing title…';
+  status.textContent = titleOverride ? 'Saving title and writing pillar…' : 'Writing title and pillar…';
   try {
     const data = await w('generateTitleFromSlot', { slotId, productId, growthStrategyId, guidance: guidance || undefined, titleOverride: titleOverride || undefined, campaignId: CAMPAIGN_ID });
     if (data.error) throw new Error(data.error);
-    status.textContent = `✓ Created "${data.title}"`;
-    status.style.color = '#68d391';
+    status.textContent = data.status === 'Development'
+      ? `✓ Created "${data.title}" — in Development`
+      : `✓ Created "${data.title}"${data.pillarWarning ? ' — ' + data.pillarWarning : ' (still in Planning)'}`;
+    status.style.color = data.status === 'Development' ? '#68d391' : '#f0b429';
     btn.textContent = 'Done';
     if (slotId && typeof loadCampaignStrategies === 'function') loadCampaignStrategies();
     if (typeof loadTitles === 'function') loadTitles();
