@@ -3118,7 +3118,7 @@ async function processSavedPost(env, page) {
 // The registry re-uses the real *_DB constants for IDs so those can't
 // drift out of sync — only the display name/emoji/domain are declared
 // here. Add a row when a new database joins the ecosystem.
-const ECOSYSTEM_GRAPH_KV_KEY = "ecosystem_graph_v1";
+const ECOSYSTEM_GRAPH_KV_KEY = "ecosystem_graph_v2";
 const ECOSYSTEM_DBS = [
   { id: CAMPAIGNS_DB,               name: "Campaigns",                 emoji: "📣", domain: "campaigns" },
   { id: LEADS_DB,                   name: "Leads",                     emoji: "🎯", domain: "campaigns" },
@@ -3171,6 +3171,25 @@ const ECOSYSTEM_DBS = [
   { id: DRIVES_DB,                  name: "Drives",                    emoji: "🚗", domain: "misc" },
 ];
 
+// App layer laid over the database graph: the dashboard, its tabs (each
+// wired to the databases that tab reads), and every deployed page —
+// admin microsites + product admin pages + public lead-gen sites, pulled
+// live from the Campaigns/Products records that carry their URLs.
+const DASH_TABS = [
+  { key: "overview",    label: "Overview",    dbs: [CAMPAIGNS_DB, CONTENT_STRATEGY_DB, MAIN_TD_DB] },
+  { key: "products",    label: "Products",    dbs: [PRODUCTS_DB, PRODUCT_RESEARCH_DB, GROWTH_STRATEGY_DB, STRATEGY_SLOTS_DB, RUNS_DB, DRIVES_DB, RESUMES_DB] },
+  { key: "development", label: "Development", dbs: [CONTENT_STRATEGY_DB, ASSETS_DB, METHODS_DB, GROWTH_STRATEGY_DB, STRATEGY_DB] },
+  { key: "td",          label: "TD",          dbs: [MAIN_TD_DB, WEEKLY_PLANNER_DB] },
+  { key: "publishing",  label: "Publishing",  dbs: [ASSETS_DB, CONTENT_STRATEGY_DB, CAROUSEL_SPECS_DB, TEXT_VIDEO_SPECS_DB] },
+  { key: "platforms",   label: "Platforms",   dbs: [PLATFORMS_DB, LOGINS_DB, SM_ACCOUNTS_DB, EMAILS_DB] },
+  { key: "domains",     label: "Domains",     dbs: [EMAILS_DB, SM_ACCOUNTS_DB] },
+  { key: "trades",      label: "Trades",      dbs: [TRADES_DB] },
+  { key: "links",       label: "Links",       dbs: [SAVED_POSTS_DB, KNOWLEDGE_BRAIN_DB] },
+  { key: "tools",       label: "Tools",       dbs: [TOOLS_DB] },
+  { key: "stack",       label: "Stack",       dbs: [PRODUCTS_DB, CAMPAIGNS_DB] },
+  { key: "ecosystem",   label: "Ecosystem",   dbs: [] },
+];
+
 async function buildEcosystemGraph(env) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
   const out = { generatedAt: new Date().toISOString(), nodes: [], links: [], stats: { dbCount: 0, linkCount: 0, errors: [] } };
@@ -3214,7 +3233,7 @@ async function buildEcosystemGraph(env) {
   }
 
   const nodes = dbResults.map(d => ({
-    id: d.key, name: d.name, notionTitle: d.notionTitle || d.name,
+    id: d.key, name: d.name, notionTitle: d.notionTitle || d.name, kind: "db",
     emoji: d.emoji, domain: d.domain, propCount: d.propCount || 0,
     missing: !!d.missing, degree: 0,
   }));
@@ -3241,14 +3260,63 @@ async function buildEcosystemGraph(env) {
     }
   }
 
-  const allNodes = nodes.concat([...externalNodes.values()]);
-  const links = [...linkByPair.values()];
+  // ── App layer: dashboard + tabs + deployed pages ──
+  const appNodes = [];
+  const appLinks = [];
+  const registryHas = k => registryKeys.has(k);
+  appNodes.push({ id: "app:dashboard", name: "Dashboard", notionTitle: "cabuzzard.github.io/dash", emoji: "🖥️", domain: "dashboard", kind: "app", propCount: 0, degree: 0, url: "https://cabuzzard.github.io/dash/" });
+  for (const t of DASH_TABS) {
+    const tid = "tab:" + t.key;
+    appNodes.push({ id: tid, name: t.label + " tab", emoji: "▦", domain: "dashboard", kind: "tab", propCount: 0, degree: 0 });
+    appLinks.push({ source: "app:dashboard", target: tid, dual: false, props: [], appEdge: true });
+    for (const db of t.dbs) {
+      const k = norm(db);
+      if (registryHas(k)) appLinks.push({ source: tid, target: k, dual: false, props: [{ from: tid, name: "reads" }], appEdge: true });
+    }
+  }
+
+  try {
+    const [camps, prods] = await Promise.all([
+      notionQuery(CAMPAIGNS_DB, {}).catch(() => []),
+      notionQuery(PRODUCTS_DB, {}).catch(() => []),
+    ]);
+    const campKey = norm(CAMPAIGNS_DB), prodKey = norm(PRODUCTS_DB), leadsKey = norm(LEADS_DB), researchKey = norm(RESEARCH_DB);
+    const titleOf = p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled";
+    for (const c of camps) {
+      const nm = titleOf(c), ck = norm(c.id);
+      const ms = c.properties?.["microsite"]?.url;
+      const live = c.properties?.["live site"]?.url;
+      if (ms) {
+        const id = "site:ms:" + ck;
+        appNodes.push({ id, name: nm + " — microsite", notionTitle: ms, emoji: "🛠️", domain: "microsite", kind: "microsite", propCount: 0, degree: 0, url: ms });
+        appLinks.push({ source: id, target: campKey, dual: false, props: [{ from: id, name: "admin UI for" }], appEdge: true });
+        if (registryHas(researchKey)) appLinks.push({ source: id, target: researchKey, dual: false, props: [{ from: id, name: "edits" }], appEdge: true });
+      }
+      if (live) {
+        const id = "site:web:" + ck;
+        appNodes.push({ id, name: nm + " — live site", notionTitle: live, emoji: "🌐", domain: "webpage", kind: "webpage", propCount: 0, degree: 0, url: live });
+        appLinks.push({ source: id, target: campKey, dual: false, props: [{ from: id, name: "public page for" }], appEdge: true });
+        if (registryHas(leadsKey)) appLinks.push({ source: id, target: leadsKey, dual: false, props: [{ from: id, name: "submits leads to" }], appEdge: true });
+      }
+    }
+    for (const p of prods) {
+      const purl = p.properties?.["URL"]?.url;
+      if (!purl) continue;
+      const id = "site:ps:" + norm(p.id);
+      appNodes.push({ id, name: titleOf(p) + " — product page", notionTitle: purl, emoji: "📦", domain: "productsite", kind: "productsite", propCount: 0, degree: 0, url: purl });
+      appLinks.push({ source: id, target: prodKey, dual: false, props: [{ from: id, name: "admin UI for" }], appEdge: true });
+    }
+  } catch (e) { out.stats.errors.push(`pages: ${e.message}`); }
+
+  const allNodes = nodes.concat([...externalNodes.values()], appNodes);
+  const links = [...linkByPair.values()].concat(appLinks);
   const byId = new Map(allNodes.map(n => [n.id, n]));
   links.forEach(l => { const a = byId.get(l.source), b = byId.get(l.target); if (a) a.degree++; if (b) b.degree++; });
 
   out.nodes = allNodes;
   out.links = links;
   out.stats.dbCount = nodes.length;
+  out.stats.pageCount = appNodes.filter(n => n.kind === "microsite" || n.kind === "productsite" || n.kind === "webpage").length;
   out.stats.linkCount = links.length;
   return out;
 }

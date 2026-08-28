@@ -10192,17 +10192,21 @@ async function deleteCareerAvatarRow(id, btn) {
 // If the CDN 404s, bump the version in ECO_FG_SRC.
 const ECO_FG_SRC = 'https://cdn.jsdelivr.net/npm/3d-force-graph@1.73/dist/3d-force-graph.min.js';
 const ECO_DOMAINS = {
-  campaigns: { color: '#63b3ed', label: 'Campaigns & leads' },
-  content:   { color: '#68d391', label: 'Content, methods & assets' },
-  products:  { color: '#f6ad55', label: 'Products' },
-  strategy:  { color: '#b794f4', label: 'Research & strategy' },
-  design:    { color: '#f687b3', label: 'Design specs' },
-  career:    { color: '#4fd1c5', label: 'Career / personal' },
-  knowledge: { color: '#f6e05e', label: 'Knowledge & links' },
-  ops:       { color: '#a0aec0', label: 'Ops — logins, platforms, planning' },
-  trades:    { color: '#fc8181', label: 'Trades' },
-  misc:      { color: '#9f7aea', label: 'Misc' },
-  external:  { color: '#556070', label: 'External / unregistered' },
+  dashboard:   { color: '#e2e8f0', label: 'Dashboard & tabs' },
+  microsite:   { color: '#805ad5', label: 'Admin microsites' },
+  webpage:     { color: '#38b2ac', label: 'Public lead-gen sites' },
+  productsite: { color: '#fbd38d', label: 'Product admin pages' },
+  campaigns:   { color: '#63b3ed', label: 'Campaigns & leads' },
+  content:     { color: '#68d391', label: 'Content, methods & assets' },
+  products:    { color: '#f6ad55', label: 'Products' },
+  strategy:    { color: '#b794f4', label: 'Research & strategy' },
+  design:      { color: '#f687b3', label: 'Design specs' },
+  career:      { color: '#4fd1c5', label: 'Career / personal' },
+  knowledge:   { color: '#f6e05e', label: 'Knowledge & links' },
+  ops:         { color: '#a0aec0', label: 'Ops — logins, platforms, planning' },
+  trades:      { color: '#fc8181', label: 'Trades' },
+  misc:        { color: '#9f7aea', label: 'Misc' },
+  external:    { color: '#556070', label: 'External / unregistered' },
 };
 let ECO_DATA = null;
 let ecoFG = null;
@@ -10254,7 +10258,7 @@ async function loadEcosystemGraph(isRefresh) {
     ECO_DATA = data;
     const st = data.stats || {};
     document.getElementById('ecoStats').textContent =
-      (st.dbCount || 0) + ' databases · ' + (st.linkCount || 0) + ' links'
+      (st.dbCount || 0) + ' databases · ' + (st.pageCount || 0) + ' pages · ' + (st.linkCount || 0) + ' links'
       + (st.errors && st.errors.length ? ' · ' + st.errors.length + ' unreadable' : '')
       + (data.generatedAt ? ' · built ' + ecoAgo(data.generatedAt) : '');
     ecoRenderLegend();
@@ -10299,11 +10303,21 @@ function ecoLinkVisible(l) {
 
 function ecoNodeTooltip(n) {
   const d = ECO_DOMAINS[n.domain] || ECO_DOMAINS.misc;
-  return '<div style="font:12px/1.4 system-ui;background:rgba(15,17,21,0.94);border:1px solid ' + d.color + ';padding:7px 10px;border-radius:6px;color:#eee;max-width:230px;">'
+  let line3;
+  if (n.missing) line3 = '<span style="color:#fc8181;">unreadable schema</span>';
+  else if (n.kind === 'db') line3 = n.propCount + ' properties · ' + (n.degree || 0) + ' links';
+  else if (n.kind === 'tab' || n.kind === 'app') line3 = (n.degree || 0) + ' connections';
+  else line3 = (n.notionTitle ? esc(n.notionTitle) : '') + '<br>' + (n.degree || 0) + ' connections';
+  return '<div style="font:12px/1.4 system-ui;background:rgba(15,17,21,0.94);border:1px solid ' + d.color + ';padding:7px 10px;border-radius:6px;color:#eee;max-width:240px;">'
     + '<b>' + esc(n.emoji + ' ' + n.name) + '</b><br>'
-    + '<span style="color:#9aa;">' + esc(d.label) + '</span><br>'
-    + (n.missing ? '<span style="color:#fc8181;">unreadable schema</span>' : (n.propCount + ' properties · ' + (n.degree || 0) + ' links'))
+    + '<span style="color:#9aa;">' + esc(d.label) + '</span><br>' + line3
     + '</div>';
+}
+function ecoNodeVal(n) {
+  if (n.kind === 'app') return 26;
+  if (n.kind === 'tab') return 7;
+  if (n.kind === 'microsite' || n.kind === 'productsite' || n.kind === 'webpage') return 2.5;
+  return Math.max(1.5, 2 + (n.degree || 0) * 1.1);
 }
 function ecoLinkTooltip(l) {
   const s = (typeof l.source === 'object') ? l.source : ecoNodeById(l.source);
@@ -10317,7 +10331,7 @@ function ecoRenderGraph() {
   const el = document.getElementById('ecoGraph');
   const width = el.clientWidth || 900, height = el.clientHeight || 640;
   const graphData = {
-    nodes: (ECO_DATA.nodes || []).map(n => ({ ...n, val: Math.max(1.5, 2 + (n.degree || 0) * 1.1) })),
+    nodes: (ECO_DATA.nodes || []).map(n => ({ ...n, val: ecoNodeVal(n) })),
     links: (ECO_DATA.links || []).map(l => ({ ...l })),
   };
 
@@ -10328,19 +10342,20 @@ function ecoRenderGraph() {
       .nodeRelSize(4)
       .nodeVal('val')
       .nodeColor(n => n.missing ? '#556070' : (ECO_DOMAINS[n.domain] || ECO_DOMAINS.misc).color)
-      .nodeOpacity(0.92)
+      .nodeOpacity(0.95)
       .nodeResolution(14)
       .nodeLabel(ecoNodeTooltip)
-      .linkColor(() => 'rgba(150,162,185,0.26)')
-      .linkWidth(l => Math.min(2.6, 0.35 + (l.props ? l.props.length : 1) * 0.45))
-      .linkCurvature(0.06)
+      .linkColor(l => l.appEdge ? 'rgba(226,232,240,0.34)' : 'rgba(125,200,255,0.62)')
+      .linkOpacity(0.55)
+      .linkWidth(l => l.appEdge ? 0.6 : Math.min(3.2, 0.7 + (l.props ? l.props.length : 1) * 0.6))
+      .linkCurvature(l => l.appEdge ? 0 : 0.06)
       .linkDirectionalParticles(l => l.dual ? 2 : 0)
-      .linkDirectionalParticleWidth(1.5)
+      .linkDirectionalParticleWidth(1.6)
       .linkDirectionalParticleSpeed(0.006)
       .linkLabel(ecoLinkTooltip)
       .onNodeClick(ecoFocusNode)
       .onBackgroundClick(ecoCloseDetail);
-    try { ecoFG.d3Force('charge').strength(-150); } catch (_) {}
+    try { ecoFG.d3Force('charge').strength(-160); } catch (_) {}
 
     el.addEventListener('pointerdown', () => ecoSetSpin(false));
     el.addEventListener('wheel', () => ecoSetSpin(false), { passive: true });
@@ -10401,23 +10416,27 @@ function ecoShowDetail(node) {
     .sort((a, b) => b.props.length - a.props.length);
 
   const d = ECO_DOMAINS[node.domain] || ECO_DOMAINS.misc;
+  const isDb = node.kind === 'db';
+  const kindLabel = { app: 'Application', tab: 'Dashboard tab', microsite: 'Admin microsite', productsite: 'Product admin page', webpage: 'Public lead-gen site' }[node.kind] || d.label;
   let html = '<button onclick="ecoCloseDetail()" style="font-size:11px;color:var(--text3);background:none;border:1px solid var(--border2);border-radius:6px;padding:4px 9px;cursor:pointer;margin-bottom:10px;">✕ close</button>'
-    + '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:4px;">' + esc(d.label) + '</div>'
+    + '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:4px;">' + esc(kindLabel) + '</div>'
     + '<div style="font-size:16px;font-weight:600;margin-bottom:2px;">' + esc(node.emoji + ' ' + node.name) + '</div>';
-  if (node.notionTitle && node.notionTitle !== node.name)
+  if (isDb && node.notionTitle && node.notionTitle !== node.name)
     html += '<div style="font-size:11px;color:var(--text3);margin-bottom:8px;">Notion title: ' + esc(node.notionTitle) + '</div>';
   html += '<div style="display:flex;gap:14px;margin:8px 0 12px;">'
-    + '<div><div style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:600;color:var(--accent);">' + (node.missing ? '—' : node.propCount) + '</div><div style="font-size:10px;color:var(--text3);">properties</div></div>'
-    + '<div><div style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:600;color:var(--accent);">' + conns.length + '</div><div style="font-size:10px;color:var(--text3);">linked databases</div></div>'
+    + (isDb ? '<div><div style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:600;color:var(--accent);">' + (node.missing ? '—' : node.propCount) + '</div><div style="font-size:10px;color:var(--text3);">properties</div></div>' : '')
+    + '<div><div style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:600;color:var(--accent);">' + conns.length + '</div><div style="font-size:10px;color:var(--text3);">connections</div></div>'
     + '</div>';
   if (node.missing)
     html += '<div style="font-size:11px;color:#fc8181;margin-bottom:10px;">Schema could not be read — the integration may not be shared with this database.</div>';
-  if (!node.external)
+  if (isDb && !node.external)
     html += '<a href="https://www.notion.so/' + esc(node.id) + '" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;">Open in Notion ↗</a>';
+  else if (node.url)
+    html += '<a href="' + esc(node.url) + '" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;">Open page ↗</a>';
 
   html += '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin:14px 0 6px;">Connections</div>';
   if (!conns.length) {
-    html += '<div style="font-size:12px;color:var(--text3);">No relation properties link this database to another in the ecosystem.</div>';
+    html += '<div style="font-size:12px;color:var(--text3);">Nothing links to this node.</div>';
   } else {
     html += '<div style="display:flex;flex-direction:column;gap:8px;">' + conns.map(c => {
       const cd = ECO_DOMAINS[c.other.domain] || ECO_DOMAINS.misc;
