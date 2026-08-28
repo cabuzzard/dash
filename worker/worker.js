@@ -19220,6 +19220,10 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
             notionUrl: p.url,
             mined: pr.Mined?.checkbox === true,
             draftTags: (pr["Draft Tags"]?.multi_select || []).map(o => o.name),
+            // Transcription fell back to caption/title only (Apify actor +
+            // ElevenLabs both failed) — the summary is thinner than a real
+            // transcript. Detected from the note processSavedPost leaves.
+            captionOnly: /transcription failed|caption only|title only|tweet text only/i.test((pr.Notes?.rich_text || []).map(t => t.plain_text).join("")),
           };
         });
         return json({ posts });
