@@ -672,8 +672,7 @@
     <div class="tab" onclick="switchTab('domains')">Domains</div>
     <div class="tab" onclick="switchTab('trades')">Trades</div>
     <div class="tab" onclick="switchTab('links')">Links</div>
-    <div class="tab" onclick="switchTab('tools')">Tools</div>
-    <div class="tab" onclick="switchTab('stack')">Stack</div>
+    <div class="tab" onclick="switchTab('globals')">Globals</div>
     <div class="tab" onclick="switchTab('ecosystem')">Ecosystem</div>
   </div>
 
@@ -786,19 +785,119 @@
       </div>
     </div>
 
+  </div>
+
+  <div class="tab-panel" id="tabPlatforms">
+    <div id="platformsContent">
+      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabLinks">
+    <div style="margin-bottom:12px;">
+      <a class="add-link" onclick="loadLinks()">↺ Refresh</a>
+    </div>
+    <div id="linksContent">
+      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+    </div>
+  </div>
+
+  <!-- 🌍 GLOBALS TAB — campaign-agnostic reference data + link-mining triage.
+       Collapsible sections; each lazy-loads on first open (glToggle). Tools,
+       Stack and Personal Research moved here from their own tabs / the TD
+       tab — same IDs so their existing loaders/modals are unchanged. -->
+  <div class="tab-panel" id="tabGlobals">
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('mining')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">⛏️ Link Mining <span id="glMiningCount" style="color:var(--text3);font-weight:400;"></span></span>
+        <span id="glMiningIcon" style="font-size:11px;color:var(--text3);">▾</span>
+      </div>
+      <div id="glMiningBody" style="padding:0 13px 13px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+          <span id="glMiningFilters" style="display:flex;gap:5px;flex-wrap:wrap;"></span>
+          <button onclick="loadLinkMining(true)" style="font-size:11px;padding:3px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↺ Refresh</button>
+        </div>
+        <div id="glMiningList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('creators')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🧑‍🎨 Creators <span id="glCreatorsCount" style="color:var(--text3);font-weight:400;"></span></span>
+        <span id="glCreatorsIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glCreatorsBody" style="display:none;padding:0 13px 13px;">
+        <div id="glCreatorsList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('podcast')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🎙️ Podcast Ideas <span id="glPodcastCount" style="color:var(--text3);font-weight:400;"></span></span>
+        <span id="glPodcastIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glPodcastBody" style="display:none;padding:0 13px 13px;">
+        <div id="glPodcastList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('method')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🧪 Method Ideas <span id="glMethodCount" style="color:var(--text3);font-weight:400;"></span></span>
+        <span id="glMethodIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glMethodBody" style="display:none;padding:0 13px 13px;">
+        <div id="glMethodList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('tools')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🧰 Tools</span>
+        <span id="glToolsIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glToolsBody" style="display:none;padding:0 13px 13px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+          <input id="toolsSearch" type="text" placeholder="Filter by name, category, description…" oninput="renderToolsList()" style="flex:1;min-width:160px;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
+          <button onclick="openAddToolRow()" style="font-size:12px;font-weight:600;padding:7px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:transparent;color:var(--text2);cursor:pointer;white-space:nowrap;">+ Add New Tool</button>
+        </div>
+        <div id="toolsListEl"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('stack')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">📦 Stack <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— GHL Business Suite product stack</span></span>
+        <span id="glStackIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glStackBody" style="display:none;padding:0 13px 13px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+          <input id="stackSearch" type="text" placeholder="Filter by function, option, source, notes…" oninput="renderStackTable()" style="flex:1;min-width:160px;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
+        </div>
+        <div class="stack-table-wrap">
+          <table class="dtable stack-table">
+            <thead><tr>
+              <th class="sortable" id="stackThFunction" onclick="sortStackByFunction()">Function</th>
+              <th>Options</th><th>Source</th><th>Notes</th>
+            </tr></thead>
+            <tbody id="stackTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- PERSONAL RESEARCH — campaign-agnostic, distinct from the per-campaign
-         🔬 Research DB (market/audience/keyword research for one campaign).
-         This is personal-information research: real career history, job
-         board feeds, and topic-tagged character arcs are each one thing,
-         not one per campaign/product, so they live here instead of
-         anywhere per-campaign, and feed resume/Upwork/title generation on
-         every campaign microsite. -->
-    <div id="careerSection" style="margin-top:24px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="toggleCareerSection()">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">🧠 Personal Research</span>
+         🔬 Research DB. Real career history, job board feeds and topic-tagged
+         character arcs are each one thing, not one per campaign, and feed
+         resume/Upwork/title generation on every campaign microsite. Moved
+         here from the TD tab; toggleCareerSection + loaders unchanged. -->
+    <div id="careerSection" style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="toggleCareerSection()">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🧠 Personal Research</span>
         <span id="careerToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
       </div>
-      <div id="careerBody" style="display:none;">
+      <div id="careerBody" style="display:none;padding:0 13px 13px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 6px;">
           <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Work Experience</span>
           <button onclick="openAddWorkExpModal()" style="font-size:13px;line-height:1;background:none;border:1px solid var(--border2);color:var(--text2);cursor:pointer;padding:1px 8px;border-radius:3px;font-family:inherit;">+</button>
@@ -836,62 +935,7 @@
         <div id="jobBoardsListEl"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
       </div>
     </div>
-  </div>
 
-  <div class="tab-panel" id="tabPlatforms">
-    <div id="platformsContent">
-      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
-    </div>
-  </div>
-
-  <div class="tab-panel" id="tabLinks">
-    <div style="margin-bottom:12px;">
-      <a class="add-link" onclick="loadLinks()">↺ Refresh</a>
-    </div>
-    <div id="linksContent">
-      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
-    </div>
-  </div>
-
-  <!-- 🧰 TOOLS TAB — campaign-agnostic global software-tools reference.
-       Category/Description/Link/Affiliate Link are all directly editable
-       inline per-row (save on blur), plus "+ Add New Tool" for a fresh row. -->
-  <div class="tab-panel" id="tabTools">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-      <input id="toolsSearch" type="text" placeholder="Filter by name, category, description…" oninput="renderToolsList()" style="flex:1;min-width:160px;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
-      <button onclick="openAddToolRow()" style="font-size:12px;font-weight:600;padding:7px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:transparent;color:var(--text2);cursor:pointer;white-space:nowrap;">+ Add New Tool</button>
-    </div>
-    <div id="toolsListEl">
-      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
-    </div>
-  </div>
-
-  <!-- 📦 STACK TAB — static reference table of every tool option per function
-       needed to sell/deliver the GHL Business Suite product (website launch,
-       AI Front Desk, full business suite offers). Data is hardcoded in
-       renderStackTable() below, not backend-fetched — this is a fixed
-       reference doc, not an editable dataset like the Tools tab. -->
-  <div class="tab-panel" id="tabStack">
-    <div style="margin-bottom:14px;">
-      <div class="wo-title">Business Suite Product Stack</div>
-      <div style="font-size:12px;color:var(--text3);margin-top:4px;">Every tool option for each function needed to sell and deliver the GHL Business Suite product (website launch, AI Front Desk, full business suite offers).</div>
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-      <input id="stackSearch" type="text" placeholder="Filter by function, option, source, notes…" oninput="renderStackTable()" style="flex:1;min-width:160px;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
-    </div>
-    <div class="stack-table-wrap">
-      <table class="dtable stack-table">
-        <thead>
-          <tr>
-            <th class="sortable" id="stackThFunction" onclick="sortStackByFunction()">Function</th>
-            <th>Options</th>
-            <th>Source</th>
-            <th>Notes</th>
-          </tr>
-        </thead>
-        <tbody id="stackTableBody"></tbody>
-      </table>
-    </div>
   </div>
 
   <!-- 🌐 ECOSYSTEM TAB — 3D force-directed map of the whole Notion data
@@ -3118,7 +3162,7 @@ async function checkPin() {
 function resetLoadFlags() {
   ovLoaded = false; prodLoaded = false; prodTdLoaded = false; devLoaded = false;
   tdTabLoaded = false; linksLoaded = false; toolsLoaded = false; stackLoaded = false;
-  ecoLoaded = false; domTabLoaded = false; smAccsLoaded = false; emailsLoaded = false;
+  ecoLoaded = false; globalsLoaded = false; domTabLoaded = false; smAccsLoaded = false; emailsLoaded = false;
   careerLoaded = false; siteTdsLoaded = false; tradesLoaded = false; last30Loaded = false; last30TitlesLoaded = false;
 }
 function lockApp() {
@@ -3184,6 +3228,7 @@ let linksLoaded = false;
 let toolsLoaded = false;
 let stackLoaded = false;
 let ecoLoaded = false;
+let globalsLoaded = false;
 
 const ASSET_STATUS_CYCLE = ['Publish', 'Published'];
 function assetStatusStyle(status) {
@@ -3957,8 +4002,7 @@ function loadTabContent(name) {
   if (name === 'platforms') { loadPlatformMatrix(); if (!smAccsLoaded) loadSmAccounts(); if (!emailsLoaded) loadEmails(); }
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
   if (name === 'links'     && !linksLoaded)  { linksLoaded  = true; loadLinks(); }
-  if (name === 'tools'     && !toolsLoaded)  { toolsLoaded  = true; loadToolsList(); }
-  if (name === 'stack'     && !stackLoaded)  { stackLoaded  = true; renderStackTable(); }
+  if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
   if (name === 'trades') {
     if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); }
@@ -4012,59 +4056,118 @@ async function loadLinks() {
   }
 }
 
+// Links tab: transcribe → edit the draft-tag list → Integrate into
+// knowledge (mines the transcript into the Globals ⛏️ Link Mining queue).
+// Not titles, not assets — see integrateOneSavedPost in worker.js.
+function linkPill(p) {
+  if (p.status === 'Done') return '<span style="font-size:10px;font-weight:700;color:#4cff4c;">● Transcribed</span>';
+  if (p.status === 'In progress') return '<span style="font-size:10px;font-weight:700;color:#ffb020;">● Transcribing…</span>';
+  return '<span style="font-size:10px;font-weight:700;color:var(--text3);">● Not transcribed</span>';
+}
+function linkDraftTagsHtml(p) {
+  const tags = p.draftTags || [];
+  return '<div style="margin-top:8px;">'
+    + '<div style="font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:4px;">Draft tags <span style="font-weight:400;text-transform:none;letter-spacing:0;">— edit before integrating</span></div>'
+    + '<div id="ltTags_' + p.id + '" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">'
+    +   tags.map(t => '<span style="font-size:10px;padding:2px 6px 2px 8px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);display:inline-flex;align-items:center;gap:4px;">' + esc(t) + '<span onclick="ltRemoveTag(\'' + p.id + '\',\'' + esc(t).replace(/'/g,"\\'") + '\')" style="cursor:pointer;color:var(--text3);">×</span></span>').join('')
+    +   '<input id="ltTagInput_' + p.id + '" type="text" placeholder="+ tag" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ltAddTag(\'' + p.id + '\')}" style="font-size:10px;padding:2px 6px;background:var(--surface);border:1px solid var(--border2);border-radius:999px;color:var(--text);outline:none;width:70px;font-family:inherit;">'
+    + '</div></div>';
+}
 function renderLinks() {
   const el = document.getElementById('linksContent');
   if (!LINKS_POSTS.length) { el.innerHTML = '<div class="empty" style="margin-top:32px;text-align:center;">No saved posts yet.</div>'; return; }
 
-  el.innerHTML = LINKS_POSTS.map(p => {
+  const nUnmined = LINKS_POSTS.filter(p => p.status === 'Done' && !p.mined).length;
+  const bulkBtn = nUnmined > 1
+    ? '<button onclick="integrateAllLinks()" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;margin-left:12px;">✓ Integrate all transcribed (' + nUnmined + ')</button>'
+    : '';
+
+  el.innerHTML = '<div id="ltBulk" style="margin-bottom:10px;font-size:11px;color:var(--text3);">' + nUnmined + ' transcribed, not yet mined' + bulkBtn + '</div>' + LINKS_POSTS.map(p => {
     const dateStr = p.dateSaved ? new Date(p.dateSaved).toLocaleDateString() : '';
-    const errorBlock = p.error
-      ? '<div style="margin-top:6px;font-size:12px;color:#ff6b6b;">⚠ ' + esc(p.error) + '</div>'
-      : '';
-    const notesBlock = p.notes
-      ? '<div style="margin-top:6px;font-size:12px;color:var(--text2);line-height:1.5;">' + esc(p.notes) + '</div>'
-      : '';
-    const savedNoteBlock = p.savedNote
-      ? '<div style="margin-top:6px;font-size:12px;color:var(--text);line-height:1.5;">📌 ' + esc(p.savedNote) + '</div>'
-      : '';
+    const errorBlock = p.error ? '<div style="margin-top:6px;font-size:12px;color:#ff6b6b;">⚠ ' + esc(p.error) + '</div>' : '';
+    const notesBlock = p.notes ? '<div style="margin-top:6px;font-size:12px;color:var(--text2);line-height:1.5;">' + esc(p.notes) + '</div>' : '';
+    const savedNoteBlock = p.savedNote ? '<div style="margin-top:6px;font-size:12px;color:var(--text);line-height:1.5;">📌 ' + esc(p.savedNote) + '</div>' : '';
     const runBtn = (p.status !== 'Done')
-      ? '<button onclick="retryLinkRow(\'' + p.id + '\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">' + (p.error ? '↺ Retry' : '▶ Run') + '</button>'
-      : '';
-    const analyzeBtn = (p.status === 'Done')
-      ? '<button onclick="openAnalyzeModal(\'' + p.id + '\')" title="Cross-reference this transcript against your Methods/Strategy/Research" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">🔍 Analyze</button>'
-      : '';
-    const tagBtn = (p.status === 'Done')
-      ? '<button onclick="openLinkTagModal(\'' + p.id + '\',\'' + esc(p.url || '').replace(/'/g,"\\'") + '\',\'' + esc(p.name || '').replace(/'/g,"\\'") + '\')" title="Read the transcript and tag which Methods/Platforms/Tool Stack/Product Stacks/Keyword Clusters this relates to" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">🏷 Tag</button>'
+      ? '<button onclick="retryLinkRow(\'' + p.id + '\')" style="font-size:11px;padding:3px 9px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:5px;margin-left:8px;">' + (p.error ? '↺ Retry' : '⚡ Transcribe now') + '</button>'
       : '';
     const deleteBtn = '<button onclick="deleteLinkRow(\'' + p.id + '\')" title="Delete" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0 0 0 8px;flex-shrink:0;color:var(--text3);">🗑</button>';
-    const titleBtn = '<button onclick="openLinkTitleModal(\'' + p.id + '\')" title="Create a Content Strategy title from this post" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">✚ title</button>';
     const creatorBtn = p.account
-      ? '<button onclick="openAddCreatorModal(\'' + p.id + '\')" title="Add @' + esc(p.account) + ' to a campaign\'s digest list" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:3px;margin-left:8px;">➕ creator</button>'
+      ? '<button onclick="openAddCreatorModal(\'' + p.id + '\')" title="Add @' + esc(p.account) + ' to a campaign\'s digest list" style="font-size:11px;padding:3px 9px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:5px;margin-left:8px;">➕ digest</button>'
       : '';
     const platformBadge = '<span style="font-size:10px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:10px;flex-shrink:0;' + linksPlatformStyle(p.platform) + '">' + esc(p.platform || 'Unknown') + '</span>';
-    return '' +
-      '<div id="linkRow_' + p.id + '" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface);">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">' +
-          '<div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">' +
-            platformBadge +
-            '<span style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (p.account ? '@' + esc(p.account) : '') + (dateStr ? (p.account ? ' · ' : '') + dateStr : '') + '</span>' +
-          '</div>' +
-          '<div style="display:flex;align-items:center;flex-shrink:0;">' +
-            '<span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:' + linksStatusColor(p.status) + ';">' + esc(p.status) + '</span>' +
-            (p.url ? '<a href="' + esc(p.url.trim()) + '" target="_blank" title="Open original post" style="margin-left:10px;color:var(--text2);text-decoration:none;font-size:11px;white-space:nowrap;">🔗 Original</a>' : '') +
-            (p.notionUrl ? '<a href="' + esc(p.notionUrl) + '" target="_blank" title="Open in Notion" style="margin-left:8px;color:var(--text3);text-decoration:none;font-size:12px;">↗</a>' : '') +
-            titleBtn +
-            creatorBtn +
-            runBtn +
-            analyzeBtn +
-            tagBtn +
-            deleteBtn +
-          '</div>' +
-        '</div>' +
-        '<div style="margin-top:6px;font-size:13px;font-weight:600;color:var(--text);line-height:1.4;">' + esc(p.name) + '</div>' +
-        savedNoteBlock + notesBlock + errorBlock +
-      '</div>';
+
+    let knowledgeBlock = '';
+    if (p.status === 'Done' && !p.mined) {
+      knowledgeBlock = linkDraftTagsHtml(p)
+        + '<div style="margin-top:8px;"><button onclick="ltIntegrate(\'' + p.id + '\')" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">✓ Integrate into knowledge</button></div>';
+    } else if (p.mined) {
+      knowledgeBlock = '<div style="margin-top:8px;font-size:11px;color:#4cff4c;">✓ Mined <span onclick="switchTab(\'globals\')" style="color:var(--accent);cursor:pointer;text-decoration:underline;">— see Link Mining queue</span></div>';
+    }
+
+    return '<div id="linkRow_' + p.id + '" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface);">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">'
+      +   '<div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">'
+      +     platformBadge
+      +     '<span style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (p.account ? '@' + esc(p.account) : '') + (dateStr ? (p.account ? ' · ' : '') + dateStr : '') + '</span>'
+      +   '</div>'
+      +   '<div style="display:flex;align-items:center;flex-shrink:0;">'
+      +     linkPill(p)
+      +     (p.url ? '<a href="' + esc(p.url.trim()) + '" target="_blank" title="Open original post" style="margin-left:10px;color:var(--text2);text-decoration:none;font-size:11px;white-space:nowrap;">🔗 Original</a>' : '')
+      +     (p.notionUrl ? '<a href="' + esc(p.notionUrl) + '" target="_blank" title="Open in Notion" style="margin-left:8px;color:var(--text3);text-decoration:none;font-size:12px;">↗</a>' : '')
+      +     creatorBtn + runBtn + deleteBtn
+      +   '</div>'
+      + '</div>'
+      + '<div style="margin-top:6px;font-size:13px;font-weight:600;color:var(--text);line-height:1.4;">' + esc(p.name) + '</div>'
+      + savedNoteBlock + notesBlock + errorBlock + knowledgeBlock
+      + '</div>';
   }).join('');
+}
+
+async function ltSaveTags(id) {
+  const p = LINKS_POSTS.find(x => x.id === id); if (!p) return;
+  try { await call('updateDraftTags', { postId: id, tags: p.draftTags || [] }); } catch (e) { /* best-effort */ }
+}
+function ltAddTag(id) {
+  const inp = document.getElementById('ltTagInput_' + id); if (!inp) return;
+  const v = inp.value.trim().toLowerCase(); if (!v) return;
+  const p = LINKS_POSTS.find(x => x.id === id); if (!p) return;
+  p.draftTags = p.draftTags || [];
+  if (!p.draftTags.includes(v)) p.draftTags.push(v);
+  renderLinks();
+  ltSaveTags(id);
+  const ni = document.getElementById('ltTagInput_' + id); if (ni) ni.focus();
+}
+function ltRemoveTag(id, tag) {
+  const p = LINKS_POSTS.find(x => x.id === id); if (!p) return;
+  p.draftTags = (p.draftTags || []).filter(t => t !== tag);
+  renderLinks();
+  ltSaveTags(id);
+}
+async function ltIntegrate(id) {
+  const row = document.getElementById('linkRow_' + id);
+  const btn = row && row.querySelector('button[onclick*="ltIntegrate"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Integrating…'; }
+  try {
+    await ltSaveTags(id);
+    const r = await call('integrateLinkKnowledge', { postId: id });
+    if (r.error) throw new Error(r.error);
+    const p = LINKS_POSTS.find(x => x.id === id); if (p) p.mined = true;
+    renderLinks();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Integrate into knowledge'; }
+    alert('Integrate failed: ' + e.message);
+  }
+}
+async function integrateAllLinks() {
+  const bulk = document.getElementById('ltBulk');
+  if (bulk) bulk.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block;"></span> Integrating all transcribed links…';
+  try {
+    const r = await call('integrateAllTranscribed', { limit: 25 });
+    if (r.error) throw new Error(r.error);
+    await loadLinks();
+  } catch (e) {
+    if (bulk) bulk.innerHTML = '<span style="color:#ff6b6b;">' + esc(e.message) + '</span>';
+  }
 }
 
 async function retryLinkRow(id) {
@@ -10176,6 +10279,190 @@ async function deleteCareerAvatarRow(id, btn) {
     alert('Error: ' + e.message);
     btn.disabled = false;
   }
+}
+
+// ── GLOBALS TAB (🌍) — reference data + link-mining triage ──────────────
+// Collapsible sections, each lazy-loaded on first open. Link Mining is the
+// review queue for what integrateLinkKnowledge extracted from transcripts;
+// the operator promotes each row into Tools / Post Types / Method Ideas /
+// Podcast Ideas. Tools / Stack / Personal Research reuse their existing
+// loaders unchanged.
+const GL_SECTIONS = {
+  mining:   { icon: 'glMiningIcon',   body: 'glMiningBody',   load: () => loadLinkMining() },
+  creators: { icon: 'glCreatorsIcon', body: 'glCreatorsBody', load: () => loadGlCreators() },
+  podcast:  { icon: 'glPodcastIcon',  body: 'glPodcastBody',  load: () => loadGlPodcast() },
+  method:   { icon: 'glMethodIcon',   body: 'glMethodBody',   load: () => loadGlMethod() },
+  tools:    { icon: 'glToolsIcon',    body: 'glToolsBody',    load: () => { if (!toolsLoaded) { toolsLoaded = true; loadToolsList(); } } },
+  stack:    { icon: 'glStackIcon',    body: 'glStackBody',    load: () => { if (!stackLoaded) { stackLoaded = true; renderStackTable(); } } },
+};
+const glOpen = { mining: true };
+
+function glToggle(key) {
+  const s = GL_SECTIONS[key]; if (!s) return;
+  glOpen[key] = !glOpen[key];
+  document.getElementById(s.body).style.display = glOpen[key] ? '' : 'none';
+  document.getElementById(s.icon).textContent = glOpen[key] ? '▾' : '▸';
+  if (glOpen[key] && !s._loaded) { s._loaded = true; s.load(); }
+}
+function loadGlobalsTab() {
+  // Link Mining opens by default.
+  GL_SECTIONS.mining._loaded = true;
+  loadLinkMining();
+}
+
+// ── Link Mining review queue ──
+let LM_DATA = [];
+let LM_FILTER = 'New';
+const LM_TYPE_DEST = { 'Tool': 'tool', 'Method': 'method', 'Post Type': 'post-type', 'Podcast Idea': 'podcast-idea' };
+const LM_TYPE_COLOR = { 'Tool': '#63b3ed', 'Method': '#68d391', 'Post Type': '#b794f4', 'Strategy Note': '#f6ad55', 'Growth Strategy Note': '#f6e05e', 'Podcast Idea': '#f687b3', 'Knowledge': '#a0aec0' };
+
+async function loadLinkMining(force) {
+  const el = document.getElementById('glMiningList');
+  if (force || !LM_DATA.length) el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getLinkMining', {});
+    if (data.error) throw new Error(data.error);
+    LM_DATA = data.items || [];
+    document.getElementById('glMiningCount').textContent = '· ' + LM_DATA.filter(i => i.status === 'New').length + ' new';
+    renderLmFilters();
+    renderLinkMining();
+  } catch (e) {
+    el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+function renderLmFilters() {
+  const counts = {};
+  LM_DATA.forEach(i => { counts[i.status] = (counts[i.status] || 0) + 1; });
+  const opts = ['New', 'Promoted', 'Merged', 'Dismissed', 'All'];
+  document.getElementById('glMiningFilters').innerHTML = opts.map(o => {
+    const n = o === 'All' ? LM_DATA.length : (counts[o] || 0);
+    const on = LM_FILTER === o;
+    return '<button onclick="LM_FILTER=\'' + o + '\';renderLmFilters();renderLinkMining()" style="font-size:11px;padding:3px 9px;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border2)') + ';border-radius:999px;background:' + (on ? 'var(--accent)' : 'transparent') + ';color:' + (on ? 'var(--bg)' : 'var(--text2)') + ';cursor:pointer;">' + o + ' ' + n + '</button>';
+  }).join('');
+}
+function renderLinkMining() {
+  const el = document.getElementById('glMiningList');
+  const rows = LM_DATA.filter(i => LM_FILTER === 'All' || i.status === LM_FILTER);
+  if (!rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px 0;">Nothing here. Integrate a transcribed link from the Links tab to populate this.</div>'; return; }
+  const byType = {};
+  rows.forEach(i => { (byType[i.type] = byType[i.type] || []).push(i); });
+  el.innerHTML = Object.keys(byType).map(type => {
+    const color = LM_TYPE_COLOR[type] || 'var(--text3)';
+    return '<div style="margin-bottom:14px;">'
+      + '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:' + color + ';margin-bottom:6px;">' + esc(type) + ' · ' + byType[type].length + '</div>'
+      + byType[type].map(lmRow).join('')
+      + '</div>';
+  }).join('');
+}
+function lmRow(i) {
+  const dest = LM_TYPE_DEST[i.type];
+  const kindBadge = i.matchKind ? '<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);margin-left:6px;">' + esc(i.matchKind) + (i.match ? ' · ' + esc(i.match) : '') + '</span>' : '';
+  const statusBadge = i.status !== 'New' ? '<span style="font-size:9px;color:var(--text3);margin-left:6px;">' + esc(i.status) + (i.promotedTo ? ' → ' + esc(i.promotedTo) : '') + '</span>' : '';
+  const actions = i.status === 'New' ? (
+    (dest ? '<button onclick="lmPromoteOpen(\'' + i.id + '\')" style="font-size:11px;padding:3px 10px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">Promote → ' + esc(i.type) + '</button>' : '<button onclick="lmKeep(\'' + i.id + '\')" style="font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">Keep</button>')
+    + '<button onclick="lmDismiss(\'' + i.id + '\')" style="font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;margin-left:6px;">Dismiss</button>'
+  ) : '';
+  const src = i.sourcePost ? '<a href="' + esc(i.sourceUrl || '#') + '" target="_blank" style="color:var(--text3);text-decoration:none;">🔗 ' + esc(i.sourcePost) + '</a>' : '';
+  return '<div id="lmRow_' + i.id + '" style="padding:9px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface);">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">'
+    +   '<div style="font-size:12px;font-weight:600;">' + esc(i.name) + kindBadge + statusBadge + '</div>'
+    +   '<div style="flex-shrink:0;">' + actions + '</div>'
+    + '</div>'
+    + (i.extract ? '<div style="font-size:11px;color:var(--text2);line-height:1.4;margin-top:4px;">' + esc(i.extract) + '</div>' : '')
+    + (i.snippet ? '<div style="font-size:10px;color:var(--text3);line-height:1.4;margin-top:3px;font-style:italic;">“' + esc(i.snippet) + '”</div>' : '')
+    + '<div style="font-size:10px;color:var(--text3);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;">' + src + (i.creator ? '<span>🧑‍🎨 ' + esc(i.creator) + '</span>' : '') + (i.confidence ? '<span>' + esc(i.confidence) + ' confidence</span>' : '') + '</div>'
+    + '<div id="lmPromote_' + i.id + '" style="display:none;margin-top:8px;padding:8px;background:var(--surface2);border-radius:6px;"></div>'
+    + '</div>';
+}
+function lmPromoteOpen(id) {
+  const i = LM_DATA.find(x => x.id === id); if (!i) return;
+  const box = document.getElementById('lmPromote_' + id);
+  const dest = LM_TYPE_DEST[i.type];
+  let extra = '';
+  if (dest === 'tool') extra = '<input id="lmCat_' + id + '" type="text" value="' + esc(i.category || '') + '" placeholder="Tool Stack category" style="' + LM_INPUT + '">';
+  else if (dest === 'method') extra = '<input id="lmPlat_' + id + '" type="text" value="' + esc(i.match || '') + '" placeholder="platform / closest method" style="' + LM_INPUT + '">';
+  box.innerHTML = '<input id="lmName_' + id + '" type="text" value="' + esc(i.name) + '" style="' + LM_INPUT + '">' + extra
+    + '<div style="margin-top:6px;display:flex;gap:6px;">'
+    + '<button onclick="lmDoPromote(\'' + id + '\')" style="font-size:11px;padding:4px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">Confirm promote</button>'
+    + '<button onclick="document.getElementById(\'lmPromote_' + id + '\').style.display=\'none\'" style="font-size:11px;padding:4px 12px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">Cancel</button>'
+    + '</div>';
+  box.style.display = '';
+}
+const LM_INPUT = 'width:100%;font-size:12px;padding:6px 8px;margin-top:6px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;color:var(--text);outline:none;font-family:inherit;';
+async function lmDoPromote(id) {
+  const i = LM_DATA.find(x => x.id === id); if (!i) return;
+  const dest = LM_TYPE_DEST[i.type];
+  const body = { id, destination: dest, newName: (document.getElementById('lmName_' + id) || {}).value };
+  if (dest === 'tool') body.category = (document.getElementById('lmCat_' + id) || {}).value;
+  if (dest === 'method') body.closestMethod = (document.getElementById('lmPlat_' + id) || {}).value;
+  const box = document.getElementById('lmPromote_' + id);
+  box.innerHTML = '<div style="font-size:11px;color:var(--text3);">Promoting…</div>';
+  try {
+    const r = await call('promoteMinedItem', body);
+    if (r.error) throw new Error(r.error);
+    await loadLinkMining(true);
+  } catch (e) { box.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; }
+}
+async function lmKeep(id) { await lmSetStatus(id, 'promoteMinedItem', { id, destination: 'keep' }); }
+async function lmDismiss(id) { await lmSetStatus(id, 'dismissMinedItem', { id }); }
+async function lmSetStatus(id, action, body) {
+  const row = document.getElementById('lmRow_' + id); if (row) row.style.opacity = '0.5';
+  try { const r = await call(action, body); if (r.error) throw new Error(r.error); await loadLinkMining(true); }
+  catch (e) { if (row) row.style.opacity = '1'; alert('Error: ' + e.message); }
+}
+
+// ── Creators / Podcast Ideas / Method Ideas (read-only lists) ──
+async function loadGlCreators() {
+  const el = document.getElementById('glCreatorsList');
+  try {
+    const data = await call('getCreators', {});
+    if (data.error) throw new Error(data.error);
+    const items = data.items || [];
+    document.getElementById('glCreatorsCount').textContent = '· ' + items.length;
+    if (!items.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No creators yet.</div>'; return; }
+    el.innerHTML = items.map(c =>
+      '<div style="padding:9px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface);">'
+      + '<div style="font-size:12px;font-weight:600;">' + esc(c.name) + (c.url ? ' <a href="' + esc(c.url) + '" target="_blank" style="font-size:10px;color:var(--accent);text-decoration:none;">↗</a>' : '') + ' <span style="font-size:10px;color:var(--text3);font-weight:400;">' + c.postCount + ' post' + (c.postCount === 1 ? '' : 's') + '</span></div>'
+      + (c.handles ? '<div style="font-size:10px;color:var(--text3);margin-top:2px;">' + esc(c.handles) + '</div>' : '')
+      + (c.platforms.length ? '<div style="font-size:10px;color:var(--text3);margin-top:2px;">' + c.platforms.map(esc).join(' · ') + '</div>' : '')
+      + (c.subjectMatter.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">' + c.subjectMatter.map(t => '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);">' + esc(t) + '</span>').join('') + '</div>' : '')
+      + '</div>'
+    ).join('');
+  } catch (e) { el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>'; }
+}
+async function loadGlPodcast() {
+  const el = document.getElementById('glPodcastList');
+  try {
+    const data = await call('getPodcastIdeas', {});
+    if (data.error) throw new Error(data.error);
+    const items = data.items || [];
+    document.getElementById('glPodcastCount').textContent = '· ' + items.length;
+    if (!items.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No podcast ideas yet.</div>'; return; }
+    el.innerHTML = items.map(p =>
+      '<div style="padding:9px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface);">'
+      + '<div style="font-size:12px;font-weight:600;">' + esc(p.name) + ' <span style="font-size:10px;color:var(--text3);font-weight:400;">' + esc(p.status) + '</span></div>'
+      + (p.angle ? '<div style="font-size:11px;color:var(--text2);margin-top:3px;line-height:1.4;">' + esc(p.angle) + '</div>' : '')
+      + (p.subjectMatter.length ? '<div style="font-size:10px;color:var(--text3);margin-top:3px;">' + p.subjectMatter.map(esc).join(' · ') + '</div>' : '')
+      + '</div>'
+    ).join('');
+  } catch (e) { el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>'; }
+}
+async function loadGlMethod() {
+  const el = document.getElementById('glMethodList');
+  try {
+    const data = await call('getMethodIdeas', {});
+    if (data.error) throw new Error(data.error);
+    const items = data.items || [];
+    document.getElementById('glMethodCount').textContent = '· ' + items.length;
+    if (!items.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No method ideas yet.</div>'; return; }
+    el.innerHTML = items.map(m =>
+      '<div style="padding:9px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface);">'
+      + '<div style="font-size:12px;font-weight:600;">' + esc(m.name) + ' <span style="font-size:10px;color:var(--text3);font-weight:400;">' + esc(m.status) + '</span></div>'
+      + (m.description ? '<div style="font-size:11px;color:var(--text2);margin-top:3px;line-height:1.4;">' + esc(m.description) + '</div>' : '')
+      + '<div style="font-size:10px;color:var(--text3);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap;">' + (m.closestMethod ? '<span>≈ ' + esc(m.closestMethod) + '</span>' : '') + (m.platform ? '<span>' + esc(m.platform) + '</span>' : '') + '</div>'
+      + '</div>'
+    ).join('');
+  } catch (e) { el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>'; }
 }
 
 // ── ECOSYSTEM TAB (🌐) — 3D force-directed map of the Notion data ecosystem ─
