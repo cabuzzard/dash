@@ -674,7 +674,7 @@
     <div class="tab" onclick="switchTab('links')">Links</div>
     <div class="tab" onclick="switchTab('tools')">Tools</div>
     <div class="tab" onclick="switchTab('stack')">Stack</div>
-    <div class="tab" onclick="switchTab('knowledge')">Knowledge</div>
+    <div class="tab" onclick="switchTab('ecosystem')">Ecosystem</div>
   </div>
 
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
@@ -894,26 +894,30 @@
     </div>
   </div>
 
-  <!-- 🧠 KNOWLEDGE TAB — node graph of the standalone Knowledge DB (fed by
-       the daily Link Inbox transcription pipeline). Schema is inspired by
-       this ecosystem's real field groups but writes to neither. -->
-  <div class="tab-panel" id="tabKnowledge">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+  <!-- 🌐 ECOSYSTEM TAB — 3D force-directed map of the whole Notion data
+       ecosystem behind the dashboard + microsites. Nodes = databases,
+       lines = relation properties wiring them together. Schema-level
+       (getEcosystemGraph, KV-cached). Replaced the old Knowledge Atlas
+       tab; the getKnowledgeGraph worker action is still there, pending a
+       links/knowledge revisit. -->
+  <div class="tab-panel" id="tabEcosystem">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
       <div>
-        <div class="wo-title">Knowledge Atlas</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:4px;">Categories &amp; keyword clusters extracted from captured links — standalone, not linked to real Campaigns/Products/Methods.</div>
+        <div class="wo-title">Data Ecosystem</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:4px;">Every Notion database behind the dashboard &amp; microsites. Each sphere is a database; each line is a relation property linking two of them. Schema-level map — drag to orbit, scroll to zoom, click a node for detail.</div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button id="knOfferingsBtn" onclick="knSelectOfferings()" style="font-size:11px;font-weight:600;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:transparent;color:var(--text2);cursor:pointer;white-space:nowrap;">🧰 Offerings &amp; Tools · <span id="knOfferingsCount">0</span></button>
-        <button onclick="loadKnowledgeGraph(true)" style="font-size:11px;font-weight:600;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:transparent;color:var(--text2);cursor:pointer;">↺ Refresh</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <span id="ecoStats" style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;white-space:nowrap;"></span>
+        <button id="ecoSpinBtn" onclick="ecoToggleSpin()" style="font-size:11px;font-weight:600;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:transparent;color:var(--text2);cursor:pointer;">⏸ Auto-orbit</button>
+        <button onclick="loadEcosystemGraph(true)" style="font-size:11px;font-weight:600;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:transparent;color:var(--text2);cursor:pointer;">↺ Rebuild</button>
       </div>
     </div>
-    <div id="knStage" style="position:relative;display:flex;gap:14px;min-height:520px;">
-      <div style="flex:1 1 auto;position:relative;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);overflow:hidden;min-width:0;">
-        <svg id="knGraph" viewBox="0 0 1000 640" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;display:block;min-height:520px;"></svg>
-        <div id="knBanner" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:24px;"></div>
+    <div id="ecoLegend" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;font-size:11px;"></div>
+    <div id="ecoStage" style="position:relative;display:flex;gap:14px;">
+      <div id="ecoGraph" style="flex:1 1 auto;position:relative;height:640px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);overflow:hidden;min-width:0;">
+        <div id="ecoBanner" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:24px;z-index:3;"></div>
       </div>
-      <aside id="knDetail" style="display:none;flex:0 0 260px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);padding:16px;overflow-y:auto;max-height:600px;"></aside>
+      <aside id="ecoDetail" style="display:none;flex:0 0 290px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);padding:16px;overflow-y:auto;max-height:640px;"></aside>
     </div>
   </div>
 
@@ -3109,7 +3113,7 @@ async function checkPin() {
 function resetLoadFlags() {
   ovLoaded = false; prodLoaded = false; prodTdLoaded = false; devLoaded = false;
   tdTabLoaded = false; linksLoaded = false; toolsLoaded = false; stackLoaded = false;
-  knLoaded = false; domTabLoaded = false; smAccsLoaded = false; emailsLoaded = false;
+  ecoLoaded = false; domTabLoaded = false; smAccsLoaded = false; emailsLoaded = false;
   careerLoaded = false; siteTdsLoaded = false; tradesLoaded = false; last30Loaded = false; last30TitlesLoaded = false;
 }
 function lockApp() {
@@ -3174,7 +3178,7 @@ function toggleDevTitlesSection() {
 let linksLoaded = false;
 let toolsLoaded = false;
 let stackLoaded = false;
-let knLoaded = false;
+let ecoLoaded = false;
 
 const ASSET_STATUS_CYCLE = ['Publish', 'Published'];
 function assetStatusStyle(status) {
@@ -3950,7 +3954,7 @@ function loadTabContent(name) {
   if (name === 'links'     && !linksLoaded)  { linksLoaded  = true; loadLinks(); }
   if (name === 'tools'     && !toolsLoaded)  { toolsLoaded  = true; loadToolsList(); }
   if (name === 'stack'     && !stackLoaded)  { stackLoaded  = true; renderStackTable(); }
-  if (name === 'knowledge' && !knLoaded)     { knLoaded     = true; loadKnowledgeGraph(); }
+  if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
   if (name === 'trades') {
     if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); }
     startTradesAutoRefresh();
@@ -10169,216 +10173,258 @@ async function deleteCareerAvatarRow(id, btn) {
   }
 }
 
-// ── KNOWLEDGE TAB (🧠) — node graph, standalone Knowledge DB ────────────
-// Renders the same category/cluster/offerings graph as the claude.ai
-// Knowledge Atlas artifact, natively (inline SVG, no iframe — claude.ai
-// artifacts set frame-ancestors 'self' and refuse to be embedded). Reads
-// via a single worker action, getKnowledgeGraph, backed directly by
-// KNOWLEDGE_BRAIN_DB/KEYWORD_CLUSTERS_DB.
-let KN_DATA = null; // { entries: [...], clusters: [...] }
-let knSelectedEl = null;
-const KN_CAT_COLORS = ['#63b3ed', '#68d391', '#f6ad55', '#d6a355', '#b794f4', '#4fd1c5', '#fc8181'];
+// ── ECOSYSTEM TAB (🌐) — 3D force-directed map of the Notion data ecosystem ─
+// Schema-level: one node per Notion database behind the dashboard +
+// microsites, one link per relation property wiring two databases
+// together. Data comes from the worker's getEcosystemGraph (KV-cached,
+// rebuilt by the daily cron; "↺ Rebuild" forces {refresh:true}).
+// Rendered with 3d-force-graph (bundles its own Three.js + d3-force-3d),
+// lazy-loaded from jsDelivr the first time the tab opens — the dashboard
+// ships no other external deps, so it's scoped to this one tab rather
+// than the global <head>. Replaced the old Knowledge Atlas tab; the
+// getKnowledgeGraph worker action still exists, pending a links/knowledge
+// revisit.
+// If the CDN 404s, bump the version in ECO_FG_SRC.
+const ECO_FG_SRC = 'https://cdn.jsdelivr.net/npm/3d-force-graph@1.73/dist/3d-force-graph.min.js';
+const ECO_DOMAINS = {
+  campaigns: { color: '#63b3ed', label: 'Campaigns & leads' },
+  content:   { color: '#68d391', label: 'Content, methods & assets' },
+  products:  { color: '#f6ad55', label: 'Products' },
+  strategy:  { color: '#b794f4', label: 'Research & strategy' },
+  design:    { color: '#f687b3', label: 'Design specs' },
+  career:    { color: '#4fd1c5', label: 'Career / personal' },
+  knowledge: { color: '#f6e05e', label: 'Knowledge & links' },
+  ops:       { color: '#a0aec0', label: 'Ops — logins, platforms, planning' },
+  trades:    { color: '#fc8181', label: 'Trades' },
+  misc:      { color: '#9f7aea', label: 'Misc' },
+  external:  { color: '#556070', label: 'External / unregistered' },
+};
+let ECO_DATA = null;
+let ecoFG = null;
+let ecoLibPromise = null;
+const ecoHidden = new Set();   // domains toggled off in the legend
+let ecoSpin = true;
+let ecoSpinAngle = 0;
+let ecoSpinStarted = false;
+let ecoSpinReady = false;   // held off until the initial zoom-to-fit settles
 
-async function loadKnowledgeGraph(isRefresh) {
-  const banner = document.getElementById('knBanner');
-  const graph = document.getElementById('knGraph');
-  if (!isRefresh) { banner.style.display = 'flex'; banner.innerHTML = knLoadingHtml(); graph.innerHTML = ''; }
-  try {
-    const data = await call('getKnowledgeGraph', {});
-    if (data.error) throw new Error(data.error);
-    KN_DATA = data;
-    const count = (KN_DATA.entries || []).filter(e => e.offering).length;
-    document.getElementById('knOfferingsCount').textContent = count;
-    knRender();
-  } catch (e) {
-    banner.style.display = 'flex';
-    banner.innerHTML = knBannerHtml('Couldn\'t load knowledge graph', esc(e.message));
-  }
+function ecoLoadLib() {
+  if (window.ForceGraph3D) return Promise.resolve();
+  if (ecoLibPromise) return ecoLibPromise;
+  ecoLibPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = ECO_FG_SRC; s.async = true;
+    s.onload = () => window.ForceGraph3D ? resolve() : reject(new Error('3D graph library loaded but ForceGraph3D is undefined'));
+    s.onerror = () => { ecoLibPromise = null; reject(new Error('Could not load the 3D graph library from the CDN (blocked, offline, or bad version)')); };
+    document.head.appendChild(s);
+  });
+  return ecoLibPromise;
 }
 
-function knLoadingHtml() {
-  return '<div style="display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--text3);"><div class="spinner"></div>Loading…</div>';
-}
-function knBannerHtml(title, body) {
-  return '<div style="max-width:360px;text-align:center;padding:20px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);">'
+function ecoBannerHtml(title, body) {
+  return '<div style="max-width:400px;text-align:center;padding:20px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);">'
     + '<div style="font-size:14px;font-weight:600;margin-bottom:6px;">' + esc(title) + '</div>'
     + '<div style="font-size:12px;color:var(--text3);line-height:1.5;">' + body + '</div></div>';
 }
-
-function knBuildGraph() {
-  const entries = KN_DATA.entries || [];
-  const byCategory = {};
-  entries.forEach(e => { if (!e.category) return; (byCategory[e.category] = byCategory[e.category] || []).push(e); });
-  const categoryNodes = Object.keys(byCategory).map(name => ({ name, count: byCategory[name].length, items: byCategory[name] }))
-    .sort((a, b) => b.count - a.count);
-  const clusterNodes = (KN_DATA.clusters || []).map(c => ({ name: c.name, count: c.entryCount, keywords: c.memberKeywords }))
-    .sort((a, b) => b.count - a.count);
-  const uncategorized = entries.filter(e => !e.category).length;
-  return { total: entries.length, categoryNodes, clusterNodes, uncategorized };
+function ecoAgo(iso) {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 90) return 'just now';
+  if (s < 5400) return Math.round(s / 60) + 'm ago';
+  if (s < 172800) return Math.round(s / 3600) + 'h ago';
+  return Math.round(s / 86400) + 'd ago';
 }
+function ecoNodeById(id) { return (ECO_DATA && ECO_DATA.nodes || []).find(n => n.id === id) || null; }
 
-function knRadiusFor(count, minR, maxR, maxCount) {
-  if (maxCount <= 0) return minR;
-  const t = Math.sqrt(count) / Math.sqrt(maxCount);
-  return minR + t * (maxR - minR);
-}
-function knSvgEl(tag, attrs) {
-  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-  for (const k in attrs) el.setAttribute(k, attrs[k]);
-  return el;
-}
-function knWrapLabel(s) { return s.length > 24 ? s.slice(0, 22) + '…' : s; }
-
-function knRender() {
-  const banner = document.getElementById('knBanner');
-  const svg = document.getElementById('knGraph');
-  const g = knBuildGraph();
-  if (g.total === 0) {
+async function loadEcosystemGraph(isRefresh) {
+  const banner = document.getElementById('ecoBanner');
+  banner.style.display = 'flex';
+  banner.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--text3);"><div class="spinner"></div>'
+    + (isRefresh ? 'Rebuilding the map — reading every database schema…' : 'Loading ecosystem…') + '</div>';
+  try {
+    const [data] = await Promise.all([
+      call('getEcosystemGraph', isRefresh ? { refresh: true } : {}),
+      ecoLoadLib(),
+    ]);
+    if (data.error) throw new Error(data.error);
+    ECO_DATA = data;
+    const st = data.stats || {};
+    document.getElementById('ecoStats').textContent =
+      (st.dbCount || 0) + ' databases · ' + (st.linkCount || 0) + ' links'
+      + (st.errors && st.errors.length ? ' · ' + st.errors.length + ' unreadable' : '')
+      + (data.generatedAt ? ' · built ' + ecoAgo(data.generatedAt) : '');
+    ecoRenderLegend();
+    if (!(ECO_DATA.nodes || []).length) {
+      banner.style.display = 'flex';
+      banner.innerHTML = ecoBannerHtml('No databases could be read',
+        'The worker returned an empty graph. Check the Notion integration token and that the databases are shared with it.'
+        + (st.errors && st.errors.length ? '<br><br><span style="font-family:\'DM Mono\',monospace;font-size:10px;">' + esc(st.errors.slice(0, 6).join(' · ')) + '</span>' : ''));
+      return;
+    }
+    ecoRenderGraph();
+    banner.style.display = 'none';
+  } catch (e) {
     banner.style.display = 'flex';
-    banner.innerHTML = knBannerHtml('No knowledge captured yet', 'The daily link pipeline hasn\'t produced any entries yet.');
-    svg.innerHTML = '';
-    return;
-  }
-  banner.style.display = 'none';
-  svg.innerHTML = '';
-
-  const W = 1000, H = 640, cx = W / 2, cy = H / 2 - 10;
-  const maxCat = Math.max(1, ...g.categoryNodes.map(n => n.count));
-  const maxClu = Math.max(1, ...g.clusterNodes.map(n => n.count));
-  const hubR = 42;
-
-  const linksLayer = knSvgEl('g', {});
-  const nodesLayer = knSvgEl('g', {});
-  svg.appendChild(linksLayer);
-  svg.appendChild(nodesLayer);
-
-  const catRingR = 195;
-  const catPositions = g.categoryNodes.map((n, i) => {
-    const angle = (i / g.categoryNodes.length) * Math.PI * 2 - Math.PI / 2;
-    const r = knRadiusFor(n.count, 24, 58, maxCat);
-    return { node: n, x: cx + Math.cos(angle) * catRingR, y: cy + Math.sin(angle) * catRingR, r, color: KN_CAT_COLORS[i % KN_CAT_COLORS.length] };
-  });
-  const cluRingR = 295;
-  const cluPositions = g.clusterNodes.map((n, i) => {
-    const angle = (i / Math.max(g.clusterNodes.length, 1)) * Math.PI * 2 - Math.PI / 2 + 0.35;
-    const r = knRadiusFor(n.count, 18, 42, maxClu);
-    return { node: n, x: cx + Math.cos(angle) * cluRingR, y: cy + Math.sin(angle) * cluRingR, r };
-  });
-
-  catPositions.forEach(p => linksLayer.appendChild(knSvgEl('line', { x1: cx, y1: cy, x2: p.x, y2: p.y, stroke: 'var(--border2)', 'stroke-width': '1.2' })));
-  cluPositions.forEach(p => {
-    let nearest = catPositions[0], bestD = Infinity;
-    catPositions.forEach(cp => { const d = Math.hypot(cp.x - p.x, cp.y - p.y); if (d < bestD) { bestD = d; nearest = cp; } });
-    if (nearest) linksLayer.appendChild(knSvgEl('line', { x1: nearest.x, y1: nearest.y, x2: p.x, y2: p.y, stroke: 'var(--border2)', 'stroke-width': '1', 'stroke-dasharray': '3,4' }));
-  });
-
-  const hubGroup = knSvgEl('g', { style: 'cursor:pointer;' });
-  hubGroup.appendChild(knSvgEl('circle', { cx, cy, r: hubR, fill: 'var(--surface)', stroke: 'var(--accent)', 'stroke-width': '2' }));
-  const hubLabel = knSvgEl('text', { x: cx, y: cy - 4, 'font-size': '11', 'text-anchor': 'middle', fill: 'var(--text)', 'font-weight': '600', 'font-family': "'DM Mono', monospace" });
-  hubLabel.textContent = 'Knowledge';
-  const hubCount = knSvgEl('text', { x: cx, y: cy + 15, 'font-size': '15', 'text-anchor': 'middle', fill: 'var(--text2)', 'font-family': "'DM Mono', monospace" });
-  hubCount.textContent = g.total;
-  hubGroup.appendChild(hubLabel); hubGroup.appendChild(hubCount);
-  hubGroup.addEventListener('click', () => { knSelectHub(g); knSetSelected(hubGroup); });
-  nodesLayer.appendChild(hubGroup);
-
-  catPositions.forEach(p => {
-    const grp = knSvgEl('g', { style: 'cursor:pointer;' });
-    grp.appendChild(knSvgEl('circle', { cx: p.x, cy: p.y, r: p.r, fill: p.color, stroke: 'var(--bg)', 'stroke-width': '2' }));
-    const lbl = knSvgEl('text', { x: p.x, y: p.y + p.r + 15, 'font-size': '11', 'text-anchor': 'middle', fill: 'var(--text2)' });
-    lbl.textContent = knWrapLabel(p.node.name);
-    const cnt = knSvgEl('text', { x: p.x, y: p.y + 5, 'font-size': Math.max(11, p.r * 0.4), 'text-anchor': 'middle', fill: '#0a0a0a', 'font-weight': '700', 'font-family': "'DM Mono', monospace" });
-    cnt.textContent = p.node.count;
-    grp.appendChild(lbl); grp.appendChild(cnt);
-    grp.addEventListener('click', () => { knSelectCategory(p.node, p.color); knSetSelected(grp); });
-    nodesLayer.appendChild(grp);
-  });
-
-  cluPositions.forEach(p => {
-    const grp = knSvgEl('g', { style: 'cursor:pointer;' });
-    grp.appendChild(knSvgEl('circle', { cx: p.x, cy: p.y, r: p.r, fill: 'var(--surface)', stroke: 'var(--text3)', 'stroke-width': '2' }));
-    const lbl = knSvgEl('text', { x: p.x, y: p.y + p.r + 14, 'font-size': '10', 'text-anchor': 'middle', fill: 'var(--text3)' });
-    lbl.textContent = knWrapLabel(p.node.name);
-    const cnt = knSvgEl('text', { x: p.x, y: p.y + 4, 'font-size': Math.max(10, p.r * 0.38), 'text-anchor': 'middle', fill: 'var(--text2)', 'font-family': "'DM Mono', monospace" });
-    cnt.textContent = p.node.count;
-    grp.appendChild(lbl); grp.appendChild(cnt);
-    grp.addEventListener('click', () => { knSelectCluster(p.node); knSetSelected(grp); });
-    nodesLayer.appendChild(grp);
-  });
-
-  if (g.uncategorized > 0) {
-    const note = knSvgEl('text', { x: 14, y: H - 12, 'font-size': '10', fill: 'var(--text3)', 'font-family': "'DM Mono', monospace" });
-    note.textContent = g.uncategorized + ' uncategorized entr' + (g.uncategorized === 1 ? 'y' : 'ies') + ' not shown';
-    svg.appendChild(note);
+    banner.innerHTML = ecoBannerHtml("Couldn't load the ecosystem map", esc(e.message)
+      + '<br><br><button onclick="loadEcosystemGraph(true)" style="font-size:11px;padding:5px 10px;border:1px solid var(--border2);border-radius:6px;background:transparent;color:var(--text2);cursor:pointer;">Retry</button>');
   }
 }
 
-function knSetSelected(el) {
-  if (knSelectedEl) knSelectedEl.style.filter = '';
-  knSelectedEl = el;
-  el.style.filter = 'drop-shadow(0 0 3px var(--accent))';
+function ecoRenderLegend() {
+  const el = document.getElementById('ecoLegend');
+  const present = new Set((ECO_DATA.nodes || []).map(n => n.domain));
+  el.innerHTML = Object.keys(ECO_DOMAINS).filter(k => present.has(k)).map(k => {
+    const d = ECO_DOMAINS[k], off = ecoHidden.has(k);
+    return '<span onclick="ecoToggleDomain(\'' + k + '\')" title="Click to show/hide" '
+      + 'style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:3px 9px;border-radius:999px;border:1px solid var(--border2);opacity:' + (off ? '0.4' : '1') + ';user-select:none;">'
+      + '<span style="width:9px;height:9px;border-radius:2px;background:' + d.color + ';display:inline-block;"></span>'
+      + '<span style="color:var(--text2);">' + esc(d.label) + '</span></span>';
+  }).join('');
+}
+function ecoToggleDomain(k) {
+  if (ecoHidden.has(k)) ecoHidden.delete(k); else ecoHidden.add(k);
+  ecoRenderLegend();
+  if (ecoFG) ecoFG.nodeVisibility(ecoNodeVisible).linkVisibility(ecoLinkVisible);
+}
+function ecoNodeVisible(n) { return !ecoHidden.has(n.domain); }
+function ecoLinkVisible(l) {
+  const s = (typeof l.source === 'object') ? l.source : ecoNodeById(l.source);
+  const t = (typeof l.target === 'object') ? l.target : ecoNodeById(l.target);
+  return !!s && !!t && !ecoHidden.has(s.domain) && !ecoHidden.has(t.domain);
 }
 
-function knDetailShell(kicker, title, statNum, statLabel) {
-  return '<button onclick="knCloseDetail()" style="font-size:11px;color:var(--text3);background:none;border:1px solid var(--border2);border-radius:6px;padding:4px 9px;cursor:pointer;margin-bottom:10px;">✕ close</button>'
-    + '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:4px;">' + esc(kicker) + '</div>'
-    + '<div style="font-size:15px;font-weight:600;margin-bottom:10px;">' + esc(title) + '</div>'
-    + '<div style="font-family:\'DM Mono\',monospace;font-size:22px;font-weight:600;color:var(--accent);">' + statNum + '</div>'
-    + '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;">' + esc(statLabel) + '</div>';
+function ecoNodeTooltip(n) {
+  const d = ECO_DOMAINS[n.domain] || ECO_DOMAINS.misc;
+  return '<div style="font:12px/1.4 system-ui;background:rgba(15,17,21,0.94);border:1px solid ' + d.color + ';padding:7px 10px;border-radius:6px;color:#eee;max-width:230px;">'
+    + '<b>' + esc(n.emoji + ' ' + n.name) + '</b><br>'
+    + '<span style="color:#9aa;">' + esc(d.label) + '</span><br>'
+    + (n.missing ? '<span style="color:#fc8181;">unreadable schema</span>' : (n.propCount + ' properties · ' + (n.degree || 0) + ' links'))
+    + '</div>';
 }
-function knChipList(items) {
-  return '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + items.map(t =>
-    '<span style="font-family:\'DM Mono\',monospace;font-size:10px;padding:3px 8px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);">' + esc(t) + '</span>'
-  ).join('') + '</div>';
+function ecoLinkTooltip(l) {
+  const s = (typeof l.source === 'object') ? l.source : ecoNodeById(l.source);
+  const t = (typeof l.target === 'object') ? l.target : ecoNodeById(l.target);
+  const names = (l.props || []).map(p => '“' + p.name + '”').join(', ');
+  return '<div style="font:11px/1.4 system-ui;background:rgba(15,17,21,0.94);border:1px solid #556;padding:6px 9px;border-radius:6px;color:#ddd;max-width:240px;">'
+    + esc((s ? s.name : '?') + ' ↔ ' + (t ? t.name : '?')) + '<br><span style="color:#9aa;">' + esc(names) + (l.dual ? ' · two-way' : '') + '</span></div>';
 }
-function knSetDetail(html) {
-  const el = document.getElementById('knDetail');
+
+function ecoRenderGraph() {
+  const el = document.getElementById('ecoGraph');
+  const width = el.clientWidth || 900, height = el.clientHeight || 640;
+  const graphData = {
+    nodes: (ECO_DATA.nodes || []).map(n => ({ ...n, val: Math.max(1.5, 2 + (n.degree || 0) * 1.1) })),
+    links: (ECO_DATA.links || []).map(l => ({ ...l })),
+  };
+
+  if (!ecoFG) {
+    ecoFG = ForceGraph3D()(el)
+      .backgroundColor('rgba(0,0,0,0)')
+      .showNavInfo(false)
+      .nodeRelSize(4)
+      .nodeVal('val')
+      .nodeColor(n => n.missing ? '#556070' : (ECO_DOMAINS[n.domain] || ECO_DOMAINS.misc).color)
+      .nodeOpacity(0.92)
+      .nodeResolution(14)
+      .nodeLabel(ecoNodeTooltip)
+      .linkColor(() => 'rgba(150,162,185,0.26)')
+      .linkWidth(l => Math.min(2.6, 0.35 + (l.props ? l.props.length : 1) * 0.45))
+      .linkCurvature(0.06)
+      .linkDirectionalParticles(l => l.dual ? 2 : 0)
+      .linkDirectionalParticleWidth(1.5)
+      .linkDirectionalParticleSpeed(0.006)
+      .linkLabel(ecoLinkTooltip)
+      .onNodeClick(ecoFocusNode)
+      .onBackgroundClick(ecoCloseDetail);
+    try { ecoFG.d3Force('charge').strength(-150); } catch (_) {}
+
+    el.addEventListener('pointerdown', () => ecoSetSpin(false));
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => { if (ecoFG) ecoFG.width(el.clientWidth || 900).height(el.clientHeight || 640); }).observe(el);
+    }
+    if (!ecoSpinStarted) { ecoSpinStarted = true; requestAnimationFrame(ecoSpinTick); }
+  }
+
+  ecoFG.width(width).height(height).graphData(graphData);
+  ecoFG.nodeVisibility(ecoNodeVisible).linkVisibility(ecoLinkVisible);
+  ecoSpinReady = false;
+  setTimeout(() => { if (ecoFG) ecoFG.zoomToFit(600, 60); }, 900);
+  setTimeout(() => { ecoSpinReady = true; }, 1800);
+}
+
+function ecoSpinTick() {
+  if (ecoFG && ecoSpin && ecoSpinReady) {
+    const cp = ecoFG.cameraPosition();
+    const rad = Math.hypot(cp.x, cp.z) || 340;
+    if (!ecoSpinAngle) ecoSpinAngle = Math.atan2(cp.x, cp.z);
+    ecoSpinAngle += 0.0016;
+    ecoFG.cameraPosition({ x: rad * Math.sin(ecoSpinAngle), z: rad * Math.cos(ecoSpinAngle) });
+  }
+  requestAnimationFrame(ecoSpinTick);
+}
+function ecoSetSpin(on) {
+  ecoSpin = on;
+  const b = document.getElementById('ecoSpinBtn');
+  if (b) b.textContent = on ? '⏸ Auto-orbit' : '▶ Auto-orbit';
+}
+function ecoToggleSpin() { ecoSetSpin(!ecoSpin); }
+
+function ecoFocusNode(node) {
+  const dist = 130;
+  const nd = Math.hypot(node.x || 0, node.y || 0, node.z || 0) || 1;
+  const r = 1 + dist / nd;
+  ecoSetSpin(false);
+  ecoFG.cameraPosition({ x: (node.x || 0) * r, y: (node.y || 0) * r, z: (node.z || 0) * r }, node, 1000);
+  ecoShowDetail(node);
+}
+
+function ecoShowDetail(node) {
+  const conns = (ECO_DATA.links || [])
+    .filter(l => l.source === node.id || l.target === node.id)
+    .map(l => {
+      const otherId = l.source === node.id ? l.target : l.source;
+      return { other: ecoNodeById(otherId), dual: l.dual, props: l.props || [] };
+    })
+    .filter(c => c.other)
+    .sort((a, b) => b.props.length - a.props.length);
+
+  const d = ECO_DOMAINS[node.domain] || ECO_DOMAINS.misc;
+  let html = '<button onclick="ecoCloseDetail()" style="font-size:11px;color:var(--text3);background:none;border:1px solid var(--border2);border-radius:6px;padding:4px 9px;cursor:pointer;margin-bottom:10px;">✕ close</button>'
+    + '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:4px;">' + esc(d.label) + '</div>'
+    + '<div style="font-size:16px;font-weight:600;margin-bottom:2px;">' + esc(node.emoji + ' ' + node.name) + '</div>';
+  if (node.notionTitle && node.notionTitle !== node.name)
+    html += '<div style="font-size:11px;color:var(--text3);margin-bottom:8px;">Notion title: ' + esc(node.notionTitle) + '</div>';
+  html += '<div style="display:flex;gap:14px;margin:8px 0 12px;">'
+    + '<div><div style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:600;color:var(--accent);">' + (node.missing ? '—' : node.propCount) + '</div><div style="font-size:10px;color:var(--text3);">properties</div></div>'
+    + '<div><div style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:600;color:var(--accent);">' + conns.length + '</div><div style="font-size:10px;color:var(--text3);">linked databases</div></div>'
+    + '</div>';
+  if (node.missing)
+    html += '<div style="font-size:11px;color:#fc8181;margin-bottom:10px;">Schema could not be read — the integration may not be shared with this database.</div>';
+  if (!node.external)
+    html += '<a href="https://www.notion.so/' + esc(node.id) + '" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;">Open in Notion ↗</a>';
+
+  html += '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin:14px 0 6px;">Connections</div>';
+  if (!conns.length) {
+    html += '<div style="font-size:12px;color:var(--text3);">No relation properties link this database to another in the ecosystem.</div>';
+  } else {
+    html += '<div style="display:flex;flex-direction:column;gap:8px;">' + conns.map(c => {
+      const cd = ECO_DOMAINS[c.other.domain] || ECO_DOMAINS.misc;
+      const props = c.props.map(p => {
+        const outbound = p.from === node.id;
+        return '<span style="font-family:\'DM Mono\',monospace;font-size:10px;padding:2px 7px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);">'
+          + (outbound ? '→ ' : '← ') + esc(p.name) + '</span>';
+      }).join(' ');
+      return '<div style="padding:8px 9px;background:var(--surface2);border-radius:6px;">'
+        + '<div style="font-size:12px;font-weight:600;margin-bottom:4px;"><span style="color:' + cd.color + ';">●</span> ' + esc(c.other.emoji + ' ' + c.other.name) + (c.dual ? ' <span style="font-size:9px;color:var(--text3);">two-way</span>' : '') + '</div>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + props + '</div></div>';
+    }).join('') + '</div>';
+  }
+  const el = document.getElementById('ecoDetail');
   el.innerHTML = html;
   el.style.display = 'block';
 }
-function knCloseDetail() {
-  document.getElementById('knDetail').style.display = 'none';
-  if (knSelectedEl) { knSelectedEl.style.filter = ''; knSelectedEl = null; }
-}
-
-function knSelectHub(g) {
-  let html = knDetailShell('Knowledge Atlas', 'All captured knowledge', g.total, 'total entries');
-  html += knChipList(g.categoryNodes.map(n => n.name + ' · ' + n.count));
-  if (g.clusterNodes.length) {
-    html += '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin:10px 0 4px;">Keyword clusters</div>';
-    html += knChipList(g.clusterNodes.map(n => n.name + ' · ' + n.count));
-  }
-  knSetDetail(html);
-}
-function knSelectCategory(node) {
-  let html = knDetailShell('Knowledge Category', node.name, node.count, 'entries in this category');
-  html += '<div style="display:flex;flex-direction:column;gap:6px;">' + node.items.slice(0, 40).map(it =>
-    '<div style="padding:8px 9px;background:var(--surface2);border-radius:6px;font-size:12px;line-height:1.4;">' + esc(it.name) + '</div>'
-  ).join('') + '</div>';
-  knSetDetail(html);
-}
-function knSelectCluster(node) {
-  let html = knDetailShell('Keyword Cluster', node.name, node.count, 'knowledge entries clustered here');
-  if (node.keywords && node.keywords.length) {
-    html += '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">Member keywords</div>';
-    html += knChipList(node.keywords);
-  }
-  knSetDetail(html);
-}
-function knSelectOfferings() {
-  if (!KN_DATA) return;
-  const offerings = (KN_DATA.entries || []).filter(e => e.offering);
-  let html = knDetailShell('Extracted from links', 'Offerings & Tools', offerings.length, 'product/tool ideas — review & port manually, not linked to the real Products DB');
-  if (!offerings.length) {
-    html += '<div style="font-size:12px;color:var(--text3);line-height:1.5;">None yet. When a captured link clearly describes a specific product, tool, or service, it shows up here.</div>';
-  } else {
-    html += '<div style="display:flex;flex-direction:column;gap:6px;">' + offerings.map(o =>
-      '<div style="padding:8px 9px;background:var(--surface2);border-radius:6px;font-size:12px;line-height:1.4;">' + esc(o.offering)
-      + '<div style="color:var(--text3);font-size:10px;margin-top:2px;">from “' + esc(o.name) + '”</div></div>'
-    ).join('') + '</div>';
-  }
-  if (knSelectedEl) { knSelectedEl.style.filter = ''; knSelectedEl = null; }
-  knSetDetail(html);
+function ecoCloseDetail() {
+  const el = document.getElementById('ecoDetail');
+  if (el) el.style.display = 'none';
 }
 
 // ── DAILY STATUS PIPELINE (📝) ───────────────────────────────────────

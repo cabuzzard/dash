@@ -1095,11 +1095,21 @@ async function genPsTitles(methodId, isDestination, parentMethodId) {
 // ── loadTitles ─────────────────────────────────────────────────────────
 const SC = { Development:'ts-write', Writing:'ts-write', Review:'ts-review', Approved:'ts-appr', Publish:'ts-pub', Published:'ts-done', Done:'ts-done', Explode:'ts-explode' };
 
+// Bumped on every call — loadTitles() is called from well over a dozen
+// places (deletes, status changes, asset generation, ...), any two of
+// which can overlap. Notion round-trip time isn't guaranteed to preserve
+// call order, so without this guard an OLDER call's response can resolve
+// AFTER a newer one and silently overwrite the DOM with a stale snapshot —
+// visibly "resurrecting" titles/assets a more recent call had already
+// correctly removed. Same fix shape as PM_OPEN_TOKEN on the Methods modal.
+let LOAD_TITLES_TOKEN = 0;
 async function loadTitles() {
+  const myToken = ++LOAD_TITLES_TOKEN;
   const devEl = document.getElementById('devTitles');
   const pubEl = document.getElementById('pubTitles');
   try {
     const data = await w('getTitles', { stages: ['Development','Writing','Review','Approved','Publish','Published','Explode','Done'], productId: PRODUCT_ID });
+    if (myToken !== LOAD_TITLES_TOKEN) return; // a newer loadTitles() call has since started — this response is stale, discard it
     const titles = data.titles || [];
     const DEV_ORDER = { Explode:0, Approved:1, Review:2, Writing:3, Development:4 };
     const dev = titles.filter(t => ['Development','Writing','Review','Approved','Explode'].includes(t.stage))
@@ -1152,6 +1162,7 @@ async function loadTitles() {
     if (!pub.length) pubEl.innerHTML = '<div class="empty">No publish titles.</div>';
     else pub.forEach(t => pubEl.appendChild(makeTitleRow(t)));
   } catch(e) {
+    if (myToken !== LOAD_TITLES_TOKEN) return; // superseded — don't show a stale error over a newer render
     devEl.innerHTML = `<div class="empty" style="color:#ff4444">${esc(e.message)}</div>`;
     pubEl.innerHTML = '';
   }
@@ -1656,6 +1667,8 @@ const GA_SKILL_METHODS = [
     hint: 'Writes a faceless reel script (voiceover + on-screen text + shot notes) for this title and sets it to Publish — entirely in-dashboard, same as Carousel. The actual video render (ElevenLabs + Remotion) still needs a Claude Code chat; once the script is ready, use the 🎬 button on the asset row below.' },
   { test: /avatar/i,                workerAction: 'generateAvatarScript', label: 'Avatar Video',
     hint: 'Writes a presenter-to-camera script for this title and sets it to Publish — entirely in-dashboard, same as Carousel. The actual video render (HeyGen + Hyperframes) still needs a Claude Code chat; once the script is ready, use the 🎬 button on the asset row below.' },
+  { test: /t[\s-]?shirt/i,          workerAction: 'generateTshirtAsset', label: 'T Shirt',
+    hint: 'Writes the Etsy listing title/description/alt text plus a social caption + hashtags for one t-shirt design concept, and sets it to Publish — entirely in-dashboard, same as Carousel. The actual print-ready design file (PNG/SVG/PDF) still needs to be attached by hand — the campaign microsite\'s Publish modal has the upload button; this product page doesn\'t yet — then publish through Printify (which pushes to Etsy once connected) and flip status to Published.' },
   { test: /video copy/i,            skill: 'make-video-copy',     label: 'Video Copy — Growth',
     hint: 'Full production skill available — models outlier YouTube videos into an original long-form script, ready to produce.' },
 ];
@@ -1902,17 +1915,29 @@ async function submitGenAssets() {
   if (skillMatch && skillMatch.workerAction) {
     const isAvatarScript = skillMatch.workerAction === 'generateAvatarScript';
     const isTextVideoScript = skillMatch.workerAction === 'generateTextVideoScript';
+    const isTshirt = skillMatch.workerAction === 'generateTshirtAsset';
     const isScriptOnly = isAvatarScript || isTextVideoScript;
-    btn.textContent = isScriptOnly ? 'Writing…' : 'Rendering…';
-    status.textContent = isScriptOnly
+    btn.textContent = isScriptOnly || isTshirt ? 'Writing…' : 'Rendering…';
+    status.textContent = isTshirt
+      ? 'Writing the Etsy listing title/description/alt text plus a social caption + hashtags for this design…'
+      : isScriptOnly
       ? 'Writing the script and saving it to this title. Video rendering is a separate step, after this.'
       : 'Writing slide script (if needed) and rendering 7 slides, one at a time — can take a couple of minutes if Cloudflare rate-limits the render calls. Leave this open.';
     try {
       const carouselType = document.getElementById('gaCarouselTypeInput')?.value || undefined;
       const presenter = document.getElementById('gaAvatarPresenterInput')?.value.trim() || undefined;
-      const r = await w(skillMatch.workerAction, { titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || PRODUCT_CAMPAIGN_ID, carouselType, presenter });
+      const overrideText = document.getElementById('gaDescInput')?.value.trim() || undefined;
+      const r = await w(skillMatch.workerAction, { titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || PRODUCT_CAMPAIGN_ID, carouselType, presenter, overrideText, productId: PRODUCT_ID });
       if (r.error) throw new Error(r.error);
-      if (isAvatarScript) {
+      if (isTshirt) {
+        status.textContent = r.alreadyExisted
+          ? '✓ Listing copy already existed — refreshed it and confirmed the title status.'
+          : '✓ Etsy/social copy written and set to Publish. The print-ready design file still needs uploading by hand — do that from the campaign microsite\'s Publish modal, then publish through Printify.';
+        status.style.color = '#68d391';
+        btn.textContent = 'Done';
+        await loadTitles();
+        setTimeout(closeGenAssetsModal, 3000);
+      } else if (isAvatarScript) {
         // Surface whichever presenter actually got used — if it was
         // Claude's own research-grounded proposal (not something typed
         // in), show it back in the field so the user can see it, keep

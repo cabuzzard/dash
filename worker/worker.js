@@ -3107,6 +3107,152 @@ async function processSavedPost(env, page) {
   }
 }
 
+// ── Data Ecosystem Graph (schema-level) ─────────────────────────────────
+// Powers the dashboard "Ecosystem" tab: every Notion database this worker
+// touches is a node; an edge means one database has a `relation` property
+// pointing at another. Schema-only — no records are read — so it's cheap
+// enough to rebuild whole on the daily cron and cache in KV (env.TRADES,
+// the generic KV binding). A cache miss rebuilds inline (~50 rate-limited
+// schema reads, ~10-15s) behind the tab's spinner; {refresh:true} forces it.
+//
+// The registry re-uses the real *_DB constants for IDs so those can't
+// drift out of sync — only the display name/emoji/domain are declared
+// here. Add a row when a new database joins the ecosystem.
+const ECOSYSTEM_GRAPH_KV_KEY = "ecosystem_graph_v1";
+const ECOSYSTEM_DBS = [
+  { id: CAMPAIGNS_DB,               name: "Campaigns",                 emoji: "📣", domain: "campaigns" },
+  { id: LEADS_DB,                   name: "Leads",                     emoji: "🎯", domain: "campaigns" },
+  { id: RESEARCH_DB,                name: "Research (campaign)",        emoji: "🧪", domain: "strategy" },
+  { id: CONTENT_STRATEGY_DB,        name: "Content Strategy (Titles)",  emoji: "📝", domain: "content" },
+  { id: METHODS_DB,                 name: "Methods",                   emoji: "🎣", domain: "content" },
+  { id: ASSETS_DB,                  name: "Assets",                    emoji: "🎬", domain: "content" },
+  { id: SM_POSTS_DB,                name: "Social Posts",              emoji: "📱", domain: "content" },
+  { id: PRODUCTS_DB,                name: "Products",                  emoji: "📦", domain: "products" },
+  { id: PRODUCT_RESEARCH_DB,        name: "Product Research",          emoji: "🔬", domain: "strategy" },
+  { id: STRATEGY_DB,                name: "Strategy (Method Briefs)",   emoji: "📄", domain: "strategy" },
+  { id: GROWTH_STRATEGY_DB,         name: "Growth Strategy",           emoji: "🚀", domain: "strategy" },
+  { id: STRATEGY_SLOTS_DB,          name: "Strategy Slots",            emoji: "🎰", domain: "strategy" },
+  { id: POST_TYPES_DB,              name: "Post Types",                emoji: "🏷️", domain: "strategy" },
+  { id: MAIN_TD_DB,                 name: "Main TD",                   emoji: "✅", domain: "ops" },
+  { id: WEEKLY_PLANNER_DB,          name: "Weekly Planner",            emoji: "🗓️", domain: "ops" },
+  { id: LOGINS_DB,                  name: "Logins",                    emoji: "🔑", domain: "ops" },
+  { id: PLATFORMS_DB,               name: "Platforms",                 emoji: "🌐", domain: "ops" },
+  { id: SM_ACCOUNTS_DB,             name: "Social Accounts",           emoji: "📇", domain: "ops" },
+  { id: EMAILS_DB,                  name: "Emails",                    emoji: "📧", domain: "ops" },
+  { id: DESIGN_SPECS_DB,            name: "Design Specs",              emoji: "🧬", domain: "design" },
+  { id: COLOR_PALETTES_DB,          name: "Color Palettes",            emoji: "🎨", domain: "design" },
+  { id: TYPOGRAPHY_SYSTEMS_DB,      name: "Typography Systems",        emoji: "🔤", domain: "design" },
+  { id: VISUAL_STYLE_PROFILES_DB,   name: "Visual Style Profiles",     emoji: "🖌️", domain: "design" },
+  { id: GRID_SPACING_SYSTEMS_DB,    name: "Grid & Spacing Systems",    emoji: "📐", domain: "design" },
+  { id: DIAGRAM_TEMPLATES_DB,       name: "Diagram Templates",         emoji: "🔷", domain: "design" },
+  { id: LAYOUT_TEMPLATES_DB,        name: "Layout Templates",          emoji: "🧩", domain: "design" },
+  { id: PLATFORM_EXPORT_PRESETS_DB, name: "Platform & Export Presets", emoji: "📤", domain: "design" },
+  { id: VISUAL_ASSET_LIBRARY_DB,    name: "Visual Asset Library",      emoji: "🖼️", domain: "design" },
+  { id: CAROUSEL_DESIGN_SYSTEMS_DB, name: "Carousel Design Systems",   emoji: "🎠", domain: "design" },
+  { id: CAROUSEL_SPECS_DB,          name: "Carousel Specifications",   emoji: "🎠", domain: "design" },
+  { id: SLIDE_SPECS_DB,             name: "Slide Specifications",      emoji: "🃏", domain: "design" },
+  { id: CAROUSEL_QA_RUNS_DB,        name: "Carousel QA Runs",          emoji: "🔍", domain: "design" },
+  { id: TEXT_VIDEO_SPECS_DB,        name: "Text Video Specs",          emoji: "🎞️", domain: "design" },
+  { id: TEXT_VIDEO_SCENES_DB,       name: "Text Video Scenes",         emoji: "🎞️", domain: "design" },
+  { id: "984754dc18434dd4847e0ac1c05550f8", name: "Deliverables",     emoji: "📬", domain: "design" },
+  { id: SAVED_POSTS_DB,             name: "Saved Posts (Link Inbox)",  emoji: "🔗", domain: "knowledge" },
+  { id: KNOWLEDGE_BRAIN_DB,         name: "Knowledge Brain",           emoji: "🧠", domain: "knowledge" },
+  { id: KEYWORD_CLUSTERS_DB,        name: "Keyword Clusters",          emoji: "🗂️", domain: "knowledge" },
+  { id: TOOLS_DB,                   name: "Tools",                     emoji: "🧰", domain: "knowledge" },
+  { id: WORK_EXPERIENCE_DB,         name: "Work Experience",           emoji: "🧑‍💼", domain: "career" },
+  { id: EDUCATION_DB,               name: "Education",                 emoji: "🎓", domain: "career" },
+  { id: SKILLS_DB,                  name: "Skills",                    emoji: "🛠️", domain: "career" },
+  { id: CHARACTER_ARCS_DB,          name: "Character Arcs",            emoji: "🎭", domain: "career" },
+  { id: CAREER_AVATARS_DB,          name: "Career Avatars",            emoji: "🪪", domain: "career" },
+  { id: RESUMES_DB,                 name: "Resumes",                   emoji: "📃", domain: "career" },
+  { id: JOB_BOARDS_DB,              name: "Job Boards",                emoji: "💼", domain: "career" },
+  { id: TRADES_DB,                  name: "Trades",                    emoji: "📈", domain: "trades" },
+  { id: RUNS_DB,                    name: "Runs",                      emoji: "🏃", domain: "misc" },
+  { id: DRIVES_DB,                  name: "Drives",                    emoji: "🚗", domain: "misc" },
+];
+
+async function buildEcosystemGraph(env) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  const out = { generatedAt: new Date().toISOString(), nodes: [], links: [], stats: { dbCount: 0, linkCount: 0, errors: [] } };
+  if (!NOTION_TOKEN) { out.stats.errors.push("NOTION_TOKEN missing"); return out; }
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const norm = s => String(s || "").replace(/-/g, "");
+
+  const registryKeys = new Set(ECOSYSTEM_DBS.map(d => norm(d.id)));
+  // GET a database schema, retrying once on a 429 (rate limit).
+  const getSchema = async (key) => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const resp = await fetch(`https://api.notion.com/v1/databases/${key}`, { headers: hdr });
+      if (resp.status === 429 && attempt === 0) { await sleep(1100); continue; }
+      return { resp, data: await resp.json().catch(() => ({})) };
+    }
+  };
+  const dbResults = [];
+  const BATCH = 3;
+  for (let i = 0; i < ECOSYSTEM_DBS.length; i += BATCH) {
+    const slice = ECOSYSTEM_DBS.slice(i, i + BATCH);
+    await Promise.all(slice.map(async d => {
+      const key = norm(d.id);
+      try {
+        const { resp, data } = await getSchema(key);
+        if (!resp.ok) { out.stats.errors.push(`${d.name}: ${data.message || resp.status}`); dbResults.push({ ...d, key, missing: true, propCount: 0, relations: [] }); return; }
+        const notionTitle = (data.title || []).map(t => t.plain_text).join("").trim();
+        const props = data.properties || {};
+        const relations = [];
+        for (const [propName, p] of Object.entries(props)) {
+          if (p.type !== "relation" || !p || !p.relation) continue;
+          relations.push({ name: propName, targetId: norm(p.relation.database_id), dual: p.relation.type === "dual_property" });
+        }
+        dbResults.push({ ...d, key, notionTitle: notionTitle || d.name, propCount: Object.keys(props).length, relations });
+      } catch (e) {
+        out.stats.errors.push(`${d.name}: ${e.message}`);
+        dbResults.push({ ...d, key, missing: true, propCount: 0, relations: [] });
+      }
+    }));
+    if (i + BATCH < ECOSYSTEM_DBS.length) await sleep(500);
+  }
+
+  const nodes = dbResults.map(d => ({
+    id: d.key, name: d.name, notionTitle: d.notionTitle || d.name,
+    emoji: d.emoji, domain: d.domain, propCount: d.propCount || 0,
+    missing: !!d.missing, degree: 0,
+  }));
+  const externalNodes = new Map();
+
+  // One link per unordered database pair, listing every connecting property.
+  const linkByPair = new Map();
+  for (const d of dbResults) {
+    for (const rel of (d.relations || [])) {
+      let targetKey = registryKeys.has(rel.targetId) ? rel.targetId : null;
+      if (!targetKey) {
+        targetKey = "ext:" + rel.targetId;
+        if (!externalNodes.has(targetKey)) externalNodes.set(targetKey, {
+          id: targetKey, name: "External / unregistered DB", notionTitle: rel.targetId.slice(0, 8) + "…",
+          emoji: "❓", domain: "external", propCount: 0, missing: true, degree: 0, external: true,
+        });
+      }
+      if (targetKey === d.key) continue; // self-relation
+      const pairKey = [d.key, targetKey].sort().join("::");
+      let link = linkByPair.get(pairKey);
+      if (!link) { link = { source: d.key, target: targetKey, dual: false, props: [] }; linkByPair.set(pairKey, link); }
+      link.props.push({ from: d.key, name: rel.name });
+      if (rel.dual) link.dual = true;
+    }
+  }
+
+  const allNodes = nodes.concat([...externalNodes.values()]);
+  const links = [...linkByPair.values()];
+  const byId = new Map(allNodes.map(n => [n.id, n]));
+  links.forEach(l => { const a = byId.get(l.source), b = byId.get(l.target); if (a) a.degree++; if (b) b.degree++; });
+
+  out.nodes = allNodes;
+  out.links = links;
+  out.stats.dbCount = nodes.length;
+  out.stats.linkCount = links.length;
+  return out;
+}
+
 // ── Knowledge Graph: link saved-post transcripts to real schema entities ──
 // Populates KNOWLEDGE_BRAIN_DB so the Hermes Knowledge tab's node graph is
 // built from the operator's ACTUAL Methods/Platforms/Tool-Stack
@@ -24832,6 +24978,22 @@ ${assemblyManifest}`;
         return json({ entries, clusters });
       }
 
+      // ── getEcosystemGraph ──
+      // Schema-level map of every Notion database in the dash ecosystem
+      // (nodes) and the relation properties that wire them together
+      // (links) — powers the dashboard "Ecosystem" tab. See
+      // buildEcosystemGraph. Served from KV (env.TRADES) and refreshed by
+      // the daily cron; pass {refresh:true} to force a rebuild now.
+      if (body.action === "getEcosystemGraph") {
+        if (!body.refresh) {
+          const cached = await env.TRADES.get(ECOSYSTEM_GRAPH_KV_KEY).catch(() => null);
+          if (cached) { try { return json(JSON.parse(cached)); } catch (_) { /* rebuild */ } }
+        }
+        const graph = await buildEcosystemGraph(env);
+        ctx.waitUntil(env.TRADES.put(ECOSYSTEM_GRAPH_KV_KEY, JSON.stringify(graph), { expirationTtl: 172800 }).catch(() => {}));
+        return json(graph);
+      }
+
       // ── getLinkTagData ──
       // Powers the Links tab's tagging modal: run the transcriber first
       // (existing ▶ Run button), then open this — it hands back the saved
@@ -26956,6 +27118,11 @@ Produce all of this by calling the submit_listing tool — do not include any of
     ctx.waitUntil(deepScan(env).catch(e => console.error('deepScan failed:', e.message)));
     ctx.waitUntil(runAutoTradeScan(env).catch(e => console.error('runAutoTradeScan failed:', e.message)));
     ctx.waitUntil(runKnowledgeGraphAnalysis(env).catch(e => console.error('runKnowledgeGraphAnalysis failed:', e.message)));
+    ctx.waitUntil(
+      buildEcosystemGraph(env)
+        .then(g => env.TRADES.put(ECOSYSTEM_GRAPH_KV_KEY, JSON.stringify(g), { expirationTtl: 172800 }))
+        .catch(e => console.error('buildEcosystemGraph failed:', e.message))
+    );
     ctx.waitUntil(runListingRepostReminders(env).catch(e => console.error('runListingRepostReminders failed:', e.message)));
     ctx.waitUntil(runStrategySequenceReminders(env).catch(e => console.error('runStrategySequenceReminders failed:', e.message)));
   },
