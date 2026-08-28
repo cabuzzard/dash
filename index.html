@@ -908,6 +908,11 @@
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <span id="ecoStats" style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;white-space:nowrap;"></span>
+        <span style="display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden;">
+          <button onclick="ecoZoom(0.8)" title="Zoom in" style="font-size:13px;font-weight:600;padding:5px 10px;border:0;border-right:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;">＋</button>
+          <button onclick="ecoZoom(1.25)" title="Zoom out" style="font-size:13px;font-weight:600;padding:5px 10px;border:0;border-right:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;">－</button>
+          <button onclick="ecoFit()" title="Fit to view" style="font-size:11px;font-weight:600;padding:5px 10px;border:0;background:transparent;color:var(--text2);cursor:pointer;">⊡ Fit</button>
+        </span>
         <button id="ecoSpinBtn" onclick="ecoToggleSpin()" style="font-size:11px;font-weight:600;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:transparent;color:var(--text2);cursor:pointer;">⏸ Auto-orbit</button>
         <button onclick="loadEcosystemGraph(true)" style="font-size:11px;font-weight:600;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:transparent;color:var(--text2);cursor:pointer;">↺ Rebuild</button>
       </div>
@@ -10338,6 +10343,7 @@ function ecoRenderGraph() {
     try { ecoFG.d3Force('charge').strength(-150); } catch (_) {}
 
     el.addEventListener('pointerdown', () => ecoSetSpin(false));
+    el.addEventListener('wheel', () => ecoSetSpin(false), { passive: true });
     if (window.ResizeObserver) {
       new ResizeObserver(() => { if (ecoFG) ecoFG.width(el.clientWidth || 900).height(el.clientHeight || 640); }).observe(el);
     }
@@ -10367,6 +10373,13 @@ function ecoSetSpin(on) {
   if (b) b.textContent = on ? '⏸ Auto-orbit' : '▶ Auto-orbit';
 }
 function ecoToggleSpin() { ecoSetSpin(!ecoSpin); }
+function ecoZoom(factor) {
+  if (!ecoFG) return;
+  ecoSetSpin(false);
+  const cp = ecoFG.cameraPosition();
+  ecoFG.cameraPosition({ x: cp.x * factor, y: cp.y * factor, z: cp.z * factor }, undefined, 260);
+}
+function ecoFit() { if (ecoFG) { ecoSetSpin(false); ecoFG.zoomToFit(500, 60); } }
 
 function ecoFocusNode(node) {
   const dist = 130;
