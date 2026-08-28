@@ -5049,6 +5049,96 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         return json({ success: true });
       }
 
+      // ── rewriteStrategySlot ──
+      // The Edit Slot modal's "✨ Rewrite with AI" button. Distinct from a
+      // manual Angle edit (updateStrategySlot above) — the operator
+      // describes a DEEPER change to the slot's subject (e.g. "I have
+      // direct experience with a contractor, not a dentist — rewrite
+      // around that") and this regenerates the Angle grounded in the full
+      // strategy's context (the grouping's own rationale/arc via the
+      // strategy page body, the product's positioning, this slot's own
+      // Post Type role) so the rewrite stays consistent with everything
+      // around it rather than a blind find/replace on the old text. Only
+      // returns the proposed new Angle for the operator to review (and
+      // edit further) in the modal — never saves on its own; the existing
+      // Save button (updateStrategySlot) still commits it.
+      if (body.action === "rewriteStrategySlot") {
+        const { slotId, guidance } = body;
+        if (!slotId) return json({ error: "slotId required" }, 400);
+        if (!(guidance || '').trim()) return json({ error: "guidance required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const slotPage = await fetch(`https://api.notion.com/v1/pages/${dash(slotId)}`, { headers: hdr }).then(r => r.json());
+        if (!slotPage.properties) return json({ error: slotPage.message || "Strategy Slot not found" }, 404);
+        const sp = slotPage.properties;
+        const currentAngle = (sp.Angle?.rich_text || []).map(t => t.plain_text).join("");
+        const grouping2 = (sp.Grouping?.rich_text || []).map(t => t.plain_text).join("");
+        const platform2 = (sp.Platform?.rich_text || []).map(t => t.plain_text).join("");
+        const sequence2 = sp.Sequence?.number ?? null;
+        const growthStrategyId2 = (sp["Growth Strategy"]?.relation || [])[0]?.id || null;
+        const productId2 = (sp.Product?.relation || [])[0]?.id || null;
+        const postTypeId2 = (sp["Post Type"]?.relation || [])[0]?.id || null;
+
+        const [growthStrategyBody2, productPage2, postTypePage2] = await Promise.all([
+          growthStrategyId2 ? extractBlocksTextRecursive(hdr, growthStrategyId2).catch(() => '') : Promise.resolve(''),
+          productId2 ? fetch(`https://api.notion.com/v1/pages/${productId2}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          postTypeId2 ? fetch(`https://api.notion.com/v1/pages/${postTypeId2}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+        ]);
+
+        let productSection2 = "No product linked to this slot.";
+        if (productId2 && productPage2?.properties) {
+          const stratRecord2 = await findBestProductResearchRecord(hdr, productId2).catch(() => null);
+          const pp2 = productPage2.properties;
+          const ptxt2 = key => (pp2[key]?.rich_text || []).map(x => x.plain_text).join("") || "";
+          const productName2 = (pp2.Name?.title || []).map(x => x.plain_text).join("") || "Unknown Product";
+          productSection2 = `PRODUCT: ${productName2}\nAvatar: ${ptxt2("Avatar")}\nTransformation: ${ptxt2("Transformation")}\nUnique Angle: ${ptxt2("Unique Angle")}`;
+          if (stratRecord2) {
+            const spx2 = stratRecord2.properties || {};
+            const srt2 = key => (spx2[key]?.rich_text || []).map(t => t.plain_text).join("");
+            const lines2 = ["Customer", "Pain Points", "Solution", "Benefits", "Emotions", "Niche", "Unique Opportunity", "Offer Structure", "Transformation", "Proof Points", "Objections"]
+              .map(f => srt2(f) && `${f}: ${srt2(f)}`).filter(Boolean);
+            if (lines2.length) productSection2 += `\n\nPRODUCT STRATEGY (worked-out positioning doc):\n${lines2.join("\n")}`;
+          }
+        }
+        const postTypeName2 = postTypePage2?.properties?.Name?.title?.map(t => t.plain_text).join("") || "";
+        const postTypeRationale2 = (postTypePage2?.properties?.Rationale?.rich_text || []).map(t => t.plain_text).join("");
+
+        const rewritePrompt = `You are revising ONE line of a content growth strategy — a single planned title's Angle — per new operator guidance describing a genuinely different SUBJECT or direction, not a wording tweak. Rewrite it for real; don't just append the guidance onto the old text.
+
+CURRENT ANGLE: ${currentAngle || '(none yet)'}
+GROUPING: ${grouping2 || 'Ungrouped'}${Number.isFinite(sequence2) ? ` (position ${sequence2} in its sequence)` : ''}
+${platform2 ? `PLATFORM: ${platform2}\n` : ''}${postTypeName2 ? `POST TYPE (the strategic role this piece plays — keep the rewrite true to this role): ${postTypeName2}${postTypeRationale2 ? ` — ${postTypeRationale2}` : ''}\n` : ''}
+${productSection2}
+${growthStrategyBody2 ? `\nFULL GROWTH STRATEGY (the arc this slot sits inside — stay consistent with its rationale, the other slots around it, and this grouping's overall shape):\n${growthStrategyBody2}\n` : ''}
+OPERATOR GUIDANCE (the deeper change to apply — this is the primary driver of the rewrite):
+${guidance.trim()}
+
+Rewrite the Angle to genuinely reflect the guidance while keeping this slot's role (Post Type/sequence position) and its place in the broader strategy's arc intact — a reader of the whole strategy should still recognize this as the same slot doing the same job, just about the new subject.
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "angle": "..." }`;
+
+        const rewriteAiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: rewritePrompt }] }),
+        });
+        const rewriteAiData = await rewriteAiResp.json();
+        if (!rewriteAiResp.ok) return json({ error: rewriteAiData.error?.message || "Claude API error" }, 500);
+        let rewriteResult;
+        try {
+          const raw = rewriteAiData.content?.[0]?.text || "";
+          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+          if (start === -1 || end === -1) throw new Error("No JSON object found");
+          rewriteResult = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        } catch (e) {
+          return json({ error: "Failed to parse rewrite JSON: " + e.message }, 500);
+        }
+        return json({ success: true, angle: String(rewriteResult.angle || currentAngle || '').slice(0, 2000) });
+      }
+
       // Renames a slot's Name to the "{sequence} – {Post Type}" convention
       // if it already followed that pattern (a leading number + " – ") —
       // used after a renumber so sibling slots stay in sync with their new

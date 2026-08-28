@@ -1440,6 +1440,13 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeEditSlotModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <div id="es-guidance-wrap">
+        <label class="lm-label">Guidance <span style="color:#fff;font-weight:normal;">— propose a deeper change to this slot's subject (e.g. "I have direct experience with a contractor, not a dentist — rewrite around that") and have it rewritten against the full strategy's arc/context, not just this one line</span></label>
+        <textarea class="modal-ta" id="es-guidance-input" rows="3" placeholder="What should actually change about this slot's subject/angle?" style="resize:vertical;margin-bottom:6px;"></textarea>
+        <button class="modal-btn" id="es-rewrite-btn" onclick="rewriteEsSlot()" style="font-size:11px;padding:5px 10px;margin-bottom:4px;">✨ Rewrite with AI</button>
+        <div id="es-rewrite-status" style="font-size:11px;color:#888;margin-bottom:10px;min-height:14px;"></div>
+      </div>
+
       <label class="lm-label">Proposed Title</label>
       <textarea class="modal-ta" id="esTitleInput" rows="2" placeholder="The angle this slot will become a title from…" style="resize:vertical;margin-bottom:10px;"></textarea>
 
@@ -8012,6 +8019,9 @@ async function openEditSlotModal(slotId) {
   ES_INSERT_CTX = null;
   document.getElementById('esModalTitle').textContent = 'Edit Strategy Slot';
   ES_SLOT_ID = slotId;
+  document.getElementById('es-guidance-wrap').style.display = 'block';
+  document.getElementById('es-guidance-input').value = '';
+  document.getElementById('es-rewrite-status').textContent = '';
   document.getElementById('esTitleInput').value = found.slot.angle || '';
   document.getElementById('es-pt-input').value = found.slot.postType ? found.slot.postType.name : '';
   document.getElementById('es-pt-id').value = found.slot.postType ? found.slot.postType.id : '';
@@ -8037,6 +8047,9 @@ async function openInsertSlotModal(growthStrategyId, grouping, atSequence) {
   ES_SLOT_ID = null;
   ES_INSERT_CTX = { growthStrategyId, grouping, atSequence, productId: strat ? strat.productId : null, campaignId: CAMPAIGN_ID };
   document.getElementById('esModalTitle').textContent = `Insert Slot at Position ${atSequence}`;
+  // AI-rewrite guidance only makes sense against an EXISTING slot's current
+  // angle — nothing to rewrite yet when inserting a brand new one.
+  document.getElementById('es-guidance-wrap').style.display = 'none';
   document.getElementById('esTitleInput').value = '';
   document.getElementById('es-pt-input').value = '';
   document.getElementById('es-pt-id').value = '';
@@ -8194,6 +8207,31 @@ async function submitEditSlot() {
   } catch(e) {
     status.style.color = '#ff4444'; status.textContent = e.message;
     btn.disabled = false; btn.textContent = doneLabel;
+  }
+}
+// Proposes a rewritten Angle for the slot currently open in the Edit modal,
+// grounded in the operator's guidance PLUS the full strategy's context
+// (product/positioning/the grouping's own arc) — not a blind find/replace.
+// Fills the Proposed Title box with the result for review/further editing;
+// does NOT save on its own — the existing Save button still commits it via
+// updateStrategySlot, same as a manual edit would.
+async function rewriteEsSlot() {
+  if (!ES_SLOT_ID) return;
+  const guidance = document.getElementById('es-guidance-input').value.trim();
+  const statusEl = document.getElementById('es-rewrite-status');
+  if (!guidance) { statusEl.style.color = '#ff4444'; statusEl.textContent = 'Enter guidance first.'; return; }
+  const btn = document.getElementById('es-rewrite-btn');
+  btn.disabled = true; btn.textContent = 'Rewriting…';
+  statusEl.style.color = '#888'; statusEl.textContent = 'Rewriting against the strategy…';
+  try {
+    const r = await w('rewriteStrategySlot', { slotId: ES_SLOT_ID, guidance });
+    if (r.error) throw new Error(r.error);
+    document.getElementById('esTitleInput').value = r.angle || '';
+    statusEl.style.color = '#68d391'; statusEl.textContent = 'Rewritten below — review or edit, then Save.';
+  } catch(e) {
+    statusEl.style.color = '#ff4444'; statusEl.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '✨ Rewrite with AI';
   }
 }
 
