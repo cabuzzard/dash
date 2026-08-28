@@ -1450,6 +1450,45 @@
   </div>
 </div>
 
+<!-- Link Mining: Promote modal -->
+<div class="modal-bg" id="lmPromoteModal" onclick="if(event.target===this)lmPromoteModalClose()">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-title" id="lmpTitle">Promote</div>
+    <div class="modal-field">
+      <label class="modal-label">Name</label>
+      <input class="modal-input" id="lmpName" type="text" />
+    </div>
+    <div class="modal-field" id="lmpCtxField"></div>
+    <div class="modal-field" id="lmpTagsField">
+      <label class="modal-label" id="lmpTagsLabel">Tags (comma-separated)</label>
+      <input class="modal-input" id="lmpTags" type="text" placeholder="e.g. options selling, put selling, iv" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="lmpConfirm" onclick="lmPromoteConfirm()">Promote</button>
+      <button class="btn btn-secondary" onclick="lmPromoteModalClose()">Cancel</button>
+    </div>
+    <div id="lmpErr" style="font-size:12px;color:var(--danger);margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
+<!-- Links: Re-mine with instructions modal -->
+<div class="modal-bg" id="remineModal" onclick="if(event.target===this)closeRemineModal()">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-title">Re-run mining</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;" id="remineName"></div>
+    <div class="modal-field">
+      <label class="modal-label">Extra instructions for this run (optional)</label>
+      <textarea class="modal-input" id="remineInstr" rows="4" style="resize:vertical;font-size:13px;" placeholder="e.g. focus on the trading setup and ignore the CTA; the real value is in the numbered steps"></textarea>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">Clears this link's un-promoted queue rows and re-mines the transcript. Promoted / dismissed items are kept.</div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="remineBtn" onclick="runRemine()">Re-run mining</button>
+      <button class="btn btn-secondary" onclick="closeRemineModal()">Cancel</button>
+    </div>
+    <div id="remineErr" style="font-size:12px;color:var(--danger);margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- SM Account Modal -->
 <div class="modal-bg" id="smAccModal" onclick="if(event.target===this)closeSmModal()">
   <div class="modal" style="max-width:480px;">
@@ -4108,12 +4147,15 @@ function renderLinks() {
       : '';
     const platformBadge = '<span style="font-size:10px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:10px;flex-shrink:0;' + linksPlatformStyle(p.platform) + '">' + esc(p.platform || 'Unknown') + '</span>';
 
+    const remineBtn = (p.status === 'Done')
+      ? '<button onclick="openRemineModal(\'' + p.id + '\',\'' + esc(p.name || '').replace(/'/g, "\\'") + '\')" style="font-size:11px;padding:5px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;margin-left:8px;">↻ Re-mine with instructions</button>'
+      : '';
     let knowledgeBlock = '';
     if (p.status === 'Done' && !p.mined) {
       knowledgeBlock = linkDraftTagsHtml(p)
-        + '<div style="margin-top:8px;"><button onclick="ltIntegrate(\'' + p.id + '\')" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">✓ Integrate into knowledge</button></div>';
+        + '<div style="margin-top:8px;"><button onclick="ltIntegrate(\'' + p.id + '\')" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">✓ Integrate into knowledge</button>' + remineBtn + '</div>';
     } else if (p.mined) {
-      knowledgeBlock = '<div style="margin-top:8px;font-size:11px;color:#4cff4c;">✓ Mined <span onclick="switchTab(\'globals\')" style="color:var(--accent);cursor:pointer;text-decoration:underline;">— see Link Mining queue</span></div>';
+      knowledgeBlock = '<div style="margin-top:8px;font-size:11px;color:#4cff4c;">✓ Mined <span onclick="switchTab(\'globals\')" style="color:var(--accent);cursor:pointer;text-decoration:underline;">— see Link Mining queue</span>' + remineBtn + '</div>';
     }
 
     return '<div id="linkRow_' + p.id + '" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface);">'
@@ -4169,6 +4211,28 @@ async function ltIntegrate(id) {
     if (btn) { btn.disabled = false; btn.textContent = '✓ Integrate into knowledge'; }
     alert('Integrate failed: ' + e.message);
   }
+}
+// Re-mine one link with extra instructions (clears its still-New queue
+// rows first). Works whether or not the link was already mined.
+let REMINE_POST = null;
+function openRemineModal(postId, name) {
+  REMINE_POST = postId;
+  document.getElementById('remineName').textContent = name || '';
+  document.getElementById('remineInstr').value = '';
+  document.getElementById('remineErr').textContent = '';
+  document.getElementById('remineModal').classList.add('open');
+}
+function closeRemineModal() { document.getElementById('remineModal').classList.remove('open'); REMINE_POST = null; }
+async function runRemine() {
+  if (!REMINE_POST) return;
+  const btn = document.getElementById('remineBtn'); btn.disabled = true; btn.textContent = 'Re-mining…';
+  try {
+    const r = await call('integrateLinkKnowledge', { postId: REMINE_POST, instructions: document.getElementById('remineInstr').value, remine: true });
+    if (r.error) throw new Error(r.error);
+    closeRemineModal();
+    await loadLinks();
+  } catch (e) { document.getElementById('remineErr').textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = 'Re-run mining'; }
 }
 async function integrateAllLinks() {
   const bulk = document.getElementById('ltBulk');
@@ -10353,70 +10417,89 @@ function renderLmFilters() {
     return '<button onclick="LM_FILTER=\'' + o + '\';renderLmFilters();renderLinkMining()" style="font-size:11px;padding:3px 9px;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border2)') + ';border-radius:999px;background:' + (on ? 'var(--accent)' : 'transparent') + ';color:' + (on ? 'var(--bg)' : 'var(--text2)') + ';cursor:pointer;">' + o + ' ' + n + '</button>';
   }).join('');
 }
+const LM_BTN_A = 'font-size:10px;padding:3px 9px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;';
+const LM_BTN_B = 'font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;';
 function renderLinkMining() {
   const el = document.getElementById('glMiningList');
-  const rows = LM_DATA.filter(i => LM_FILTER === 'All' || i.status === LM_FILTER);
-  if (!rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px 0;">Nothing here. Integrate a transcribed link from the Links tab to populate this.</div>'; return; }
-  const byType = {};
-  rows.forEach(i => { (byType[i.type] = byType[i.type] || []).push(i); });
-  el.innerHTML = Object.keys(byType).map(type => {
-    const color = LM_TYPE_COLOR[type] || 'var(--text3)';
-    return '<div style="margin-bottom:14px;">'
-      + '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:' + color + ';margin-bottom:6px;">' + esc(type) + ' · ' + byType[type].length + '</div>'
-      + byType[type].map(lmRow).join('')
-      + '</div>';
-  }).join('');
+  const rows = LM_DATA.filter(i => LM_FILTER === 'All' || i.status === LM_FILTER)
+    .sort((a, b) => (a.type || '').localeCompare(b.type || '') || (a.name || '').localeCompare(b.name || ''));
+  if (!rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px 0;">Nothing here. Integrate a transcribed link from the Links tab.</div>'; return; }
+  el.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
+    + '<thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.06em;">'
+    + '<th style="padding:5px 8px;">Type</th><th style="padding:5px 8px;">Item</th><th style="padding:5px 8px;">Match</th><th style="padding:5px 8px;">Source</th><th style="padding:5px 8px;">Creator</th><th style="padding:5px 8px;"></th>'
+    + '</tr></thead><tbody>' + rows.map(lmTableRow).join('') + '</tbody></table></div>';
 }
-function lmRow(i) {
+function lmTableRow(i) {
+  const color = LM_TYPE_COLOR[i.type] || 'var(--text3)';
   const dest = LM_TYPE_DEST[i.type];
-  const kindBadge = i.matchKind ? '<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--text3);margin-left:6px;">' + esc(i.matchKind) + (i.match ? ' · ' + esc(i.match) : '') + '</span>' : '';
-  const statusBadge = i.status !== 'New' ? '<span style="font-size:9px;color:var(--text3);margin-left:6px;">' + esc(i.status) + (i.promotedTo ? ' → ' + esc(i.promotedTo) : '') + '</span>' : '';
-  const actions = i.status === 'New' ? (
-    (dest ? '<button onclick="lmPromoteOpen(\'' + i.id + '\')" style="font-size:11px;padding:3px 10px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">Promote → ' + esc(i.type) + '</button>' : '<button onclick="lmKeep(\'' + i.id + '\')" style="font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">Keep</button>')
-    + '<button onclick="lmDismiss(\'' + i.id + '\')" style="font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;margin-left:6px;">Dismiss</button>'
-  ) : '';
-  const src = i.sourcePost ? '<a href="' + esc(i.sourceUrl || '#') + '" target="_blank" style="color:var(--text3);text-decoration:none;">🔗 ' + esc(i.sourcePost) + '</a>' : '';
-  return '<div id="lmRow_' + i.id + '" style="padding:9px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface);">'
-    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">'
-    +   '<div style="font-size:12px;font-weight:600;">' + esc(i.name) + kindBadge + statusBadge + '</div>'
-    +   '<div style="flex-shrink:0;">' + actions + '</div>'
-    + '</div>'
-    + (i.extract ? '<div style="font-size:11px;color:var(--text2);line-height:1.4;margin-top:4px;">' + esc(i.extract) + '</div>' : '')
-    + (i.snippet ? '<div style="font-size:10px;color:var(--text3);line-height:1.4;margin-top:3px;font-style:italic;">“' + esc(i.snippet) + '”</div>' : '')
-    + '<div style="font-size:10px;color:var(--text3);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;">' + src + (i.creator ? '<span>🧑‍🎨 ' + esc(i.creator) + '</span>' : '') + (i.confidence ? '<span>' + esc(i.confidence) + ' confidence</span>' : '') + '</div>'
-    + '<div id="lmPromote_' + i.id + '" style="display:none;margin-top:8px;padding:8px;background:var(--surface2);border-radius:6px;"></div>'
-    + '</div>';
+  const kind = i.matchKind ? '<span style="font-size:9px;color:var(--text3);">' + esc(i.matchKind) + (i.match ? ' · ' + esc(i.match) : '') + '</span>' : '';
+  const actions = i.status === 'New'
+    ? (dest
+        ? '<button onclick="event.stopPropagation();lmPromoteModalOpen(\'' + i.id + '\')" style="' + LM_BTN_A + '">Promote</button>'
+        : '<button onclick="event.stopPropagation();lmKeep(\'' + i.id + '\')" style="' + LM_BTN_B + '">Keep</button>')
+      + '<button onclick="event.stopPropagation();lmDismiss(\'' + i.id + '\')" style="' + LM_BTN_B + 'margin-left:4px;">✕</button>'
+    : '<span style="font-size:10px;color:var(--text3);">' + esc(i.status) + '</span>';
+  return '<tr onclick="lmToggleDetail(\'' + i.id + '\')" style="border-top:1px solid var(--border);cursor:pointer;">'
+    + '<td style="padding:6px 8px;white-space:nowrap;"><span style="color:' + color + ';">●</span> ' + esc(i.type) + '</td>'
+    + '<td style="padding:6px 8px;font-weight:600;">' + esc(i.name) + '</td>'
+    + '<td style="padding:6px 8px;">' + kind + '</td>'
+    + '<td style="padding:6px 8px;color:var(--text3);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(i.sourcePost || '') + '</td>'
+    + '<td style="padding:6px 8px;color:var(--text3);">' + esc(i.creator || '') + '</td>'
+    + '<td style="padding:6px 8px;white-space:nowrap;text-align:right;">' + actions + '</td>'
+    + '</tr>'
+    + '<tr id="lmDet_' + i.id + '" style="display:none;"><td colspan="6" style="padding:2px 12px 10px;background:var(--surface2);">'
+    + (i.extract ? '<div style="font-size:11px;color:var(--text2);line-height:1.5;">' + esc(i.extract) + '</div>' : '')
+    + (i.snippet ? '<div style="font-size:10px;color:var(--text3);font-style:italic;margin-top:3px;">“' + esc(i.snippet) + '”</div>' : '')
+    + '<div style="font-size:10px;color:var(--text3);margin-top:4px;">'
+    +   (i.sourceUrl ? '<a href="' + esc(i.sourceUrl) + '" target="_blank" style="color:var(--accent);">open source ↗</a> · ' : '')
+    +   (i.confidence ? esc(i.confidence) + ' confidence' : '')
+    +   (i.category ? ' · suggested category: ' + esc(i.category) : '')
+    +   (i.promotedTo ? ' · → ' + esc(i.promotedTo) : '')
+    + '</div></td></tr>';
 }
-function lmPromoteOpen(id) {
+function lmToggleDetail(id) {
+  const d = document.getElementById('lmDet_' + id);
+  if (d) d.style.display = d.style.display === 'none' ? '' : 'none';
+}
+
+// Promote modal
+let LM_PROMOTE_ID = null;
+function lmPromoteModalOpen(id) {
   const i = LM_DATA.find(x => x.id === id); if (!i) return;
-  const box = document.getElementById('lmPromote_' + id);
+  LM_PROMOTE_ID = id;
   const dest = LM_TYPE_DEST[i.type];
-  let extra = '';
-  if (dest === 'tool') extra = '<input id="lmCat_' + id + '" type="text" value="' + esc(i.category || '') + '" placeholder="Tool Stack category" style="' + LM_INPUT + '">';
-  else if (dest === 'method') extra = '<input id="lmPlat_' + id + '" type="text" value="' + esc(i.match || '') + '" placeholder="platform / closest method" style="' + LM_INPUT + '">';
-  else if (dest === 'trading-strategy') extra = '<input id="lmThesis_' + id + '" type="text" value="' + esc(i.extract || '') + '" placeholder="thesis / edge" style="' + LM_INPUT + '">';
-  box.innerHTML = '<input id="lmName_' + id + '" type="text" value="' + esc(i.name) + '" style="' + LM_INPUT + '">' + extra
-    + '<div style="margin-top:6px;display:flex;gap:6px;">'
-    + '<button onclick="lmDoPromote(\'' + id + '\')" style="font-size:11px;padding:4px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">Confirm promote</button>'
-    + '<button onclick="document.getElementById(\'lmPromote_' + id + '\').style.display=\'none\'" style="font-size:11px;padding:4px 12px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">Cancel</button>'
-    + '</div>';
-  box.style.display = '';
+  document.getElementById('lmpTitle').textContent = 'Promote → ' + i.type;
+  document.getElementById('lmpName').value = i.name || '';
+  let ctxHtml = '';
+  if (dest === 'tool') ctxHtml = '<label class="modal-label">Tool Stack category</label><input class="modal-input" id="lmpCtx" value="' + esc(i.category || '') + '" placeholder="e.g. AI Agents / Ops">';
+  else if (dest === 'method') ctxHtml = '<label class="modal-label">Closest existing method / platform</label><input class="modal-input" id="lmpCtx" value="' + esc(i.match || '') + '">';
+  else if (dest === 'trading-strategy') ctxHtml = '<label class="modal-label">Thesis / edge</label><input class="modal-input" id="lmpCtx" value="' + esc(i.extract || '') + '">';
+  else if (dest === 'podcast-idea') ctxHtml = '<label class="modal-label">Angle</label><input class="modal-input" id="lmpCtx" value="' + esc(i.extract || '') + '">';
+  document.getElementById('lmpCtxField').innerHTML = ctxHtml;
+  const tagsLabel = dest === 'trading-strategy' ? 'Instruments (comma-separated)' : dest === 'tool' ? 'Keywords (comma-separated)' : 'Subject-matter tags (comma-separated)';
+  document.getElementById('lmpTagsLabel').textContent = tagsLabel;
+  document.getElementById('lmpTags').value = '';
+  document.getElementById('lmpErr').textContent = '';
+  document.getElementById('lmPromoteModal').classList.add('open');
 }
-const LM_INPUT = 'width:100%;font-size:12px;padding:6px 8px;margin-top:6px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;color:var(--text);outline:none;font-family:inherit;';
-async function lmDoPromote(id) {
-  const i = LM_DATA.find(x => x.id === id); if (!i) return;
+function lmPromoteModalClose() { document.getElementById('lmPromoteModal').classList.remove('open'); LM_PROMOTE_ID = null; }
+async function lmPromoteConfirm() {
+  const i = LM_DATA.find(x => x.id === LM_PROMOTE_ID); if (!i) return;
   const dest = LM_TYPE_DEST[i.type];
-  const body = { id, destination: dest, newName: (document.getElementById('lmName_' + id) || {}).value };
-  if (dest === 'tool') body.category = (document.getElementById('lmCat_' + id) || {}).value;
-  if (dest === 'method') body.closestMethod = (document.getElementById('lmPlat_' + id) || {}).value;
-  if (dest === 'trading-strategy') body.description = (document.getElementById('lmThesis_' + id) || {}).value;
-  const box = document.getElementById('lmPromote_' + id);
-  box.innerHTML = '<div style="font-size:11px;color:var(--text3);">Promoting…</div>';
+  const ctx = (document.getElementById('lmpCtx') || {}).value || '';
+  const body = { id: i.id, destination: dest, newName: document.getElementById('lmpName').value, tags: document.getElementById('lmpTags').value };
+  if (dest === 'tool') body.category = ctx;
+  else if (dest === 'method') body.closestMethod = ctx;
+  else if (dest === 'trading-strategy') body.description = ctx;
+  else if (dest === 'podcast-idea') body.angle = ctx;
+  const btn = document.getElementById('lmpConfirm'); btn.disabled = true; btn.textContent = 'Promoting…';
   try {
     const r = await call('promoteMinedItem', body);
     if (r.error) throw new Error(r.error);
+    lmPromoteModalClose();
     await loadLinkMining(true);
-  } catch (e) { box.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; }
+  } catch (e) { document.getElementById('lmpErr').textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = 'Promote'; }
 }
 async function lmKeep(id) { await lmSetStatus(id, 'promoteMinedItem', { id, destination: 'keep' }); }
 async function lmDismiss(id) { await lmSetStatus(id, 'dismissMinedItem', { id }); }

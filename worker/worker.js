@@ -3588,7 +3588,7 @@ async function upsertCreatorFromMining(hdr, creator, postId, candidates) {
 
 const MINE_TYPE_LABEL = { "tool": "Tool", "method": "Method", "post-type": "Post Type", "strategy-note": "Strategy Note", "growth-strategy-note": "Growth Strategy Note", "podcast-idea": "Podcast Idea", "trading-strategy": "Trading Strategy", "knowledge": "Knowledge" };
 
-async function integrateOneSavedPost(env, hdr, page, candidates) {
+async function integrateOneSavedPost(env, hdr, page, candidates, instructions) {
   const pageId = page.id;
   const account = (page.properties?.Account?.rich_text || []).map(t => t.plain_text).join("").trim();
   const platform = page.properties?.Platform?.select?.name || "";
@@ -3619,6 +3619,7 @@ Item types:
 - "trading-strategy": a described trading setup / strategy — the edge, an entry trigger, an exit / risk rule, the instrument and timeframe if stated. Match an existing Trading Strategy when close.
 - "knowledge": genuinely useful and none of the above.
 
+${instructions && instructions.trim() ? `# Operator instructions for THIS run — follow these above all else\n${instructions.trim()}\n` : ""}
 # Operator's own draft tags for this post (their filing intent — weight these heavily)
 ${draftTags.join(", ") || "(none yet)"}
 
@@ -25222,14 +25223,25 @@ ${assemblyManifest}`;
       }
 
       if (body.action === "integrateLinkKnowledge") {
-        const { postId } = body;
+        const { postId, instructions, remine } = body;
         if (!postId) return json({ error: "postId required" }, 400);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        // Re-mine: archive this post's still-New queue rows first, so a
+        // fresh run replaces them rather than piling on duplicates.
+        // Promoted / Dismissed / Merged rows are left alone.
+        if (remine) {
+          const old = await notionQuery(LINK_MINING_DB, { filter: { and: [
+            { property: "Source Post", relation: { contains: dash32(postId) } },
+            { property: "Status", select: { equals: "New" } },
+          ] } }).catch(() => []);
+          for (const r of old) await fetch(`https://api.notion.com/v1/pages/${r.id}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }) }).catch(() => {});
+          await patchSavedPostPage(dash32(postId), { Mined: { checkbox: false } }).catch(() => {});
+        }
         const page = await fetch(`https://api.notion.com/v1/pages/${dash32(postId)}`, { headers: hdr }).then(r => r.json());
         if (!page.id) return json({ error: "post not found" }, 404);
         const candidates = await buildMiningCandidates(hdr);
         try {
-          const res = await integrateOneSavedPost(env, hdr, page, candidates);
+          const res = await integrateOneSavedPost(env, hdr, page, candidates, instructions);
           return json({ success: true, ...res });
         } catch (e) {
           console.error("integrateLinkKnowledge:", e.message);
@@ -25255,13 +25267,20 @@ ${assemblyManifest}`;
         const srcPost = (rp["Source Post"]?.relation || [])[0];
         const creatorRel = (rp["Creator"]?.relation || [])[0];
         const dest = (destination || rp.Type?.select?.name || "").toLowerCase().replace(/ /g, "-");
+        // Comma-separated keywords/tags from the promote modal — applied to
+        // whichever multi_select the destination has (Subject Matter, or
+        // Instruments for a trading strategy).
+        const tagList = (Array.isArray(body.tags) ? body.tags : String(body.tags || "").split(","))
+          .map(t => String(t).trim()).filter(Boolean).slice(0, 25);
+        const tagsMS = tagList.length ? { multi_select: tagList.map(name => ({ name: name.slice(0, 100) })) } : null;
         const post = (db, props) => fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: db }, properties: props }) }).then(r => r.json());
         let promotedTo = "", merged = false;
         try {
           if (dest === "tool") {
             const props = { Name: { title: [{ type: "text", text: { content: nm.slice(0, 200) } }] }, Description: mineRT(extract), Source: { select: { name: "Link Mining" } } };
-            if (category) props["Category"] = { select: { name: String(category).slice(0, 100) } };
+            if (category) props["Category"] = { select: { name: String(category).split(",")[0].trim().slice(0, 100) } };
             if (extract) props["Use Case"] = mineRT(extract);
+            if (tagList.length) props["Notes"] = mineRT("Keywords: " + tagList.join(", "));
             if (srcPost) props["Source Post"] = { relation: [{ id: srcPost.id }] };
             if (alternativeToId) props["Alternative To"] = { relation: [{ id: dash32(alternativeToId) }] };
             const c = await post(TOOLS_DB, props);
@@ -25279,6 +25298,7 @@ ${assemblyManifest}`;
             const props = { Name: { title: [{ type: "text", text: { content: nm.slice(0, 200) } }] }, Description: mineRT(description || extract) };
             if (closestMethod || matchTxt) props["Closest Method"] = mineRT(closestMethod || matchTxt);
             if (platform) props["Platform"] = mineRT(platform);
+            if (tagsMS) props["Subject Matter"] = tagsMS;
             if (srcPost) props["Source Post"] = { relation: [{ id: srcPost.id }] };
             if (creatorRel) props["Creator"] = { relation: [{ id: creatorRel.id }] };
             const c = await post(METHOD_IDEAS_DB, props);
@@ -25286,6 +25306,7 @@ ${assemblyManifest}`;
             promotedTo = "Method Ideas: " + nm;
           } else if (dest === "podcast-idea") {
             const props = { Name: { title: [{ type: "text", text: { content: nm.slice(0, 200) } }] }, Angle: mineRT(angle || extract), Status: { select: { name: "Idea" } } };
+            if (tagsMS) props["Subject Matter"] = tagsMS;
             if (srcPost) props["Source Post"] = { relation: [{ id: srcPost.id }] };
             if (creatorRel) props["Creator"] = { relation: [{ id: creatorRel.id }] };
             const c = await post(PODCAST_IDEAS_DB, props);
@@ -25294,6 +25315,7 @@ ${assemblyManifest}`;
           } else if (dest === "trading-strategy") {
             const props = { Name: { title: [{ type: "text", text: { content: nm.slice(0, 200) } }] }, Thesis: mineRT(description || extract), Status: { select: { name: "Idea" } } };
             if (matchTxt) props["Entry"] = mineRT(matchTxt);
+            if (tagsMS) props["Instruments"] = tagsMS;
             if (srcPost) props["Source Post"] = { relation: [{ id: srcPost.id }] };
             if (creatorRel) props["Creator"] = { relation: [{ id: creatorRel.id }] };
             const c = await post(TRADING_STRATEGIES_DB, props);
