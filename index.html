@@ -751,6 +751,26 @@
 
   <div class="tab-panel" id="tabTd">
     <button onclick="openDailyStatusModal()" style="width:100%;margin-bottom:14px;padding:10px 14px;font-size:13px;font-weight:600;border:1px solid #63b3ed;border-radius:6px;background:rgba(99,179,237,.08);color:#63b3ed;cursor:pointer;text-align:left;">📝 Enter Daily Status — run it through Character Arcs into real titles</button>
+
+    <!-- THIS WEEK — global Weekly Planner, same standalone system as the
+         campaign microsites' "This Week" tab, pooled across every campaign
+         here instead of scoped to one. Open items recur on their assigned
+         weekday every week until marked Done (see wpFetchProjectedItems,
+         worker.js). Manual adds here ask which campaign to attach to,
+         since this view has no single implicit campaign the way a
+         microsite tab does. -->
+    <div id="wpSection" style="margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
+        <span style="display:flex;gap:6px;">
+          <button onclick="wpShiftWeek(-1)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">←</button>
+          <button onclick="wpShiftWeek(0)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">Today</button>
+          <button onclick="wpShiftWeek(1)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">→</button>
+        </span>
+      </div>
+      <div id="wpBoard" style="display:grid;grid-template-columns:repeat(7,minmax(126px,1fr));gap:8px;overflow-x:auto;padding-bottom:4px;"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+    </div>
+
     <a class="add-link" onclick="openAddTdModal()">+ Add to do item</a>
     <div id="tdTabContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
@@ -8159,6 +8179,17 @@ function renderDev() {
           tRow.appendChild(statusBadge);
           tRow.appendChild(pickerWrap);
 
+          // This Week — adds this title to the global Weekly Planner
+          // board, scheduled on demand (not automatic on every status
+          // change). This title's own campaign is already known (camp.campId),
+          // so no picker needed, unlike the board's own ad-hoc manual add.
+          const tdBtn = document.createElement('span');
+          tdBtn.textContent = 'TD';
+          tdBtn.title = 'Add to This Week';
+          tdBtn.style.cssText = 'font-size:9px;font-weight:700;cursor:pointer;flex-shrink:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:4px;';
+          tdBtn.onclick = e => { e.preventDefault(); e.stopPropagation(); addTitleToWeeklyPlanner(t.id, t.title, camp.campId, tdBtn); };
+          tRow.appendChild(tdBtn);
+
           // Delete button — black on white
           const delBtn = document.createElement('span');
           delBtn.textContent = '🗑';
@@ -11076,6 +11107,133 @@ async function loadTdTab() {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
   loadTodayCampaigns();
+  loadWpBoard();
+}
+
+// ── THIS WEEK (global Weekly Planner) ───────────────────────────────────
+// Same standalone system as the campaign microsites' "This Week" tab (see
+// CLAUDE.md) — pooled across every campaign here instead of scoped to
+// one, via the same worker actions with campaignId omitted. Open items
+// recur on their assigned weekday every week until marked Done (per
+// operator direction: "it should become a weekly placement. until the
+// item is finished").
+let wpWeekOffset = 0;
+let wpDragId = null;
+const WP_DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+function wpMonday(offsetWeeks) {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dow = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dow + offsetWeeks * 7);
+  return d;
+}
+function wpIso(d) { return d.toISOString().slice(0, 10); }
+function wpShiftWeek(delta) {
+  wpWeekOffset = delta === 0 ? 0 : wpWeekOffset + delta;
+  loadWpBoard();
+}
+async function loadWpBoard() {
+  const board = document.getElementById('wpBoard');
+  if (!board) return;
+  const monday = wpMonday(wpWeekOffset);
+  const weekStart = wpIso(monday);
+  const sunday = new Date(monday); sunday.setUTCDate(monday.getUTCDate() + 6);
+  const rangeEl = document.getElementById('wpRange');
+  if (rangeEl) rangeEl.textContent = '— ' + monday.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' to ' + sunday.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  try {
+    const r = await call('getWeeklyPlannerItems', { weekStart });
+    renderWpBoard(monday, r.items || []);
+  } catch(e) {
+    board.innerHTML = '<div class="error-msg" style="grid-column:1/-1;">' + esc(e.message) + '</div>';
+  }
+}
+function wpCampaignOptions() {
+  const camps = ovData || [];
+  return '<option value="">— campaign —</option>' + camps.map(c => '<option value="'+c.id+'">'+esc(c.name)+'</option>').join('');
+}
+function renderWpBoard(monday, items) {
+  const board = document.getElementById('wpBoard');
+  const byDay = {};
+  for (let i = 0; i < 7; i++) { const d = new Date(monday); d.setUTCDate(monday.getUTCDate() + i); byDay[wpIso(d)] = []; }
+  items.forEach(it => { if (it.date && byDay[it.date]) byDay[it.date].push(it); });
+  const todayIso = wpIso(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())));
+  board.innerHTML = Object.entries(byDay).map(([dateIso, dayItems], i) => {
+    const d = new Date(dateIso + 'T00:00:00Z');
+    const isToday = dateIso === todayIso;
+    const openCount = dayItems.filter(it => it.status !== 'Done').length;
+    const overCap = openCount > 5;
+    const itemsHtml = dayItems.map(it => `
+      <div draggable="true" ondragstart="wpDragStart(event,'${it.id}')" style="background:${it.status==='Done'?'rgba(0,200,100,.08)':'var(--surface)'};border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:6px;cursor:grab;">
+        <div style="display:flex;align-items:flex-start;gap:6px;">
+          <input type="checkbox" ${it.status==='Done'?'checked':''} onchange="wpToggleDone('${it.id}', this.checked)" style="margin-top:2px;flex-shrink:0;">
+          <span style="flex:1;font-size:12px;color:${it.status==='Done'?'var(--text3)':'var(--text)'};text-decoration:${it.status==='Done'?'line-through':'none'};word-break:break-word;">${esc(it.name)}</span>
+          <button onclick="wpDeleteItem('${it.id}')" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">✕</button>
+        </div>
+        ${it.campaignName ? '<div style="font-size:9px;color:var(--text3);margin-top:2px;margin-left:20px;">'+esc(it.campaignName)+'</div>' : ''}
+        ${it.source === 'Development Title' ? '<div style="font-size:9px;color:#9f7aea;margin-top:2px;margin-left:20px;">from Development</div>' : ''}
+      </div>`).join('');
+    return `<div ondragover="event.preventDefault()" ondrop="wpDrop(event,'${dateIso}')" style="background:${isToday?'rgba(232,255,71,.06)':'transparent'};border:1px solid ${isToday?'var(--accent)':'var(--border)'};border-radius:8px;padding:8px;min-height:120px;">
+      <div style="font-size:11px;font-weight:700;color:${isToday?'var(--accent)':'var(--text)'};margin-bottom:6px;display:flex;justify-content:space-between;">
+        <span>${WP_DAY_NAMES[i]} ${d.getUTCDate()}</span>
+        <span style="color:${overCap?'#ff4444':'var(--text3)'};font-weight:400;">${openCount}${overCap?' ⚠':''}</span>
+      </div>
+      ${itemsHtml}
+      <input type="text" placeholder="+ add…" onkeydown="wpAddInputKey(event,'${dateIso}')" style="width:100%;font-size:11px;padding:3px 5px;border:1px dashed var(--border2);border-radius:4px;background:transparent;color:var(--text);outline:none;margin-top:4px;box-sizing:border-box;">
+      <select class="wp-camp-select" style="width:100%;font-size:10px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text2);margin-top:3px;box-sizing:border-box;">${wpCampaignOptions()}</select>
+    </div>`;
+  }).join('');
+}
+function wpAddInputKey(e, dateIso) {
+  if (e.key !== 'Enter') return;
+  const input = e.target;
+  const select = input.nextElementSibling;
+  const name = input.value.trim();
+  if (!name) return;
+  const campaignId = select ? select.value : '';
+  if (!campaignId) { alert('Pick a campaign for this item first.'); if (select) select.focus(); return; }
+  wpAddItem(dateIso, name, campaignId, input);
+}
+async function wpAddItem(dateIso, name, campaignId, input) {
+  input.disabled = true;
+  try {
+    const r = await call('addWeeklyPlannerItem', { name, day: dateIso, campaignId });
+    if (r.error) throw new Error(r.error);
+    await loadWpBoard();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    input.disabled = false;
+  }
+}
+async function wpToggleDone(itemId, checked) {
+  try { const r = await call('completeWeeklyPlannerItem', { itemId, done: checked }); if (r.error) throw new Error(r.error); await loadWpBoard(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+async function wpDeleteItem(itemId) {
+  try { const r = await call('deleteWeeklyPlannerItem', { itemId }); if (r.error) throw new Error(r.error); await loadWpBoard(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+function wpDragStart(e, itemId) { wpDragId = itemId; e.dataTransfer.effectAllowed = 'move'; }
+async function wpDrop(e, dateIso) {
+  e.preventDefault();
+  if (!wpDragId) return;
+  const id = wpDragId; wpDragId = null;
+  try { const r = await call('moveWeeklyPlannerItem', { itemId: id, day: dateIso }); if (r.error) throw new Error(r.error); await loadWpBoard(); }
+  catch(err) { alert('Error: ' + err.message); }
+}
+// Called from the small "TD" link on a Development Titles row — that
+// title's own campaign is already known, so no picker needed here (only
+// the ad-hoc manual add above, with no inherent campaign context, asks).
+async function addTitleToWeeklyPlanner(titleId, titleName, campaignId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await call('addWeeklyPlannerItem', { name: titleName, source: 'Development Title', sourceTitleId: titleId, campaignId: campaignId || undefined });
+    if (r.error) throw new Error(r.error);
+    if (btn) { btn.textContent = '✓'; setTimeout(() => { btn.disabled = false; btn.textContent = 'TD'; }, 1200); }
+    if (typeof loadWpBoard === 'function') loadWpBoard();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'TD'; }
+  }
 }
 
 function renderTdTab(items) {

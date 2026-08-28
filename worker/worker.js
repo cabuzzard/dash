@@ -617,6 +617,56 @@ async function extractBlocksTextRecursive(hdr, blockId, depth = 0) {
   return parts.filter(Boolean).join("\n");
 }
 
+// Weekly Planner: an Open item recurs on its assigned weekday EVERY week
+// (not just the literal week it was created in) until marked Done — per
+// operator direction: "I dont think a 'this week' placement should be one
+// time it should become a weekly placement. until the item is finished."
+// A Done item is a one-time historical record on the date it was actually
+// completed (does not recur). "Date" on the Notion row is the item's
+// anchor — for Open items only its weekday matters, not the literal
+// week; this projects each Open row onto whichever week is being viewed,
+// skipping weeks before the item's own anchor week (it didn't exist yet).
+// campaignId null/undefined pools every campaign together (the root
+// dashboard's global board); a real campaignId scopes to one (the
+// per-campaign microsite tab).
+async function wpFetchProjectedItems(campaignId, weekStart, hdr) {
+  const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const weekEnd = (() => { const d = new Date(weekStart + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10); })();
+  const campFilter = campaignId ? [{ property: "Campaign", relation: { contains: dash(campaignId) } }] : [];
+  const [openRows, doneRows] = await Promise.all([
+    notionQuery(WEEKLY_PLANNER_DB, { filter: { and: [...campFilter, { property: "Status", select: { equals: "Open" } }] } }).catch(() => []),
+    notionQuery(WEEKLY_PLANNER_DB, { filter: { and: [...campFilter,
+      { property: "Status", select: { equals: "Done" } },
+      { property: "Date", date: { on_or_after: weekStart } },
+      { property: "Date", date: { on_or_before: weekEnd } },
+    ] } }).catch(() => []),
+  ]);
+  const mapRow = r => ({
+    id: r.id.replace(/-/g,""),
+    name: (r.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled",
+    rawDate: r.properties?.Date?.date?.start?.slice(0, 10) || null,
+    order: r.properties?.Order?.number ?? 0,
+    status: r.properties?.Status?.select?.name || "Open",
+    source: r.properties?.Source?.select?.name || "Manual",
+    sourceTitleId: (r.properties?.["Source Title"]?.relation || [])[0]?.id?.replace(/-/g,"") || null,
+    campaignId: (r.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || null,
+  });
+  const items = [];
+  openRows.map(mapRow).forEach(it => {
+    if (!it.rawDate) return;
+    const anchor = new Date(it.rawDate + "T00:00:00Z");
+    const anchorDow = (anchor.getUTCDay() + 6) % 7; // 0 = Monday
+    const anchorMonday = new Date(anchor); anchorMonday.setUTCDate(anchor.getUTCDate() - anchorDow);
+    const anchorMondayIso = anchorMonday.toISOString().slice(0, 10);
+    if (anchorMondayIso > weekStart) return; // didn't exist yet this early — don't project into the past before it existed
+    const displayDate = new Date(weekStart + "T00:00:00Z"); displayDate.setUTCDate(displayDate.getUTCDate() + anchorDow);
+    items.push({ ...it, date: displayDate.toISOString().slice(0, 10) });
+  });
+  doneRows.map(mapRow).forEach(it => { items.push({ ...it, date: it.rawDate }); });
+  items.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.order - b.order));
+  return items;
+}
+
 // Same deployPath resolution generateCarouselPreview/publishCarouselSlides
 // already do inline — factored out here so every call site shares one copy.
 // Module scope (not nested inside any single action's if-block): function
@@ -4638,68 +4688,52 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       // tab and then we will merge the TD tab with it" — this is the
       // prototype, not yet the merge.
       if (body.action === "getWeeklyPlannerItems") {
+        // campaignId omitted -> global pooled view across every campaign
+        // (the root dashboard's board); given -> scoped to one (the
+        // per-campaign microsite tab). Same underlying records either way
+        // — this is a live union view, not a copy, so edits from either
+        // surface land on the real row.
         const { campaignId, weekStart } = body;
-        if (!campaignId || !weekStart) return json({ error: "campaignId and weekStart required" }, 400);
-        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const weekEnd = (() => { const d = new Date(weekStart + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10); })();
-        const rows = await notionQuery(WEEKLY_PLANNER_DB, {
-          filter: { and: [
-            { property: "Campaign", relation: { contains: dash(campaignId) } },
-            { property: "Date", date: { on_or_after: weekStart } },
-            { property: "Date", date: { on_or_before: weekEnd } },
-          ] },
-          sorts: [{ property: "Date", direction: "ascending" }, { property: "Order", direction: "ascending" }],
-        }).catch(() => []);
-        const items = rows.map(r => ({
-          id: r.id.replace(/-/g,""),
-          name: (r.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled",
-          date: r.properties?.Date?.date?.start?.slice(0, 10) || null,
-          order: r.properties?.Order?.number ?? 0,
-          status: r.properties?.Status?.select?.name || "Open",
-          source: r.properties?.Source?.select?.name || "Manual",
-          sourceTitleId: (r.properties?.["Source Title"]?.relation || [])[0]?.id?.replace(/-/g,"") || null,
-        }));
-        return json({ success: true, items });
+        if (!weekStart) return json({ error: "weekStart required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const items = await wpFetchProjectedItems(campaignId || null, weekStart, hdr);
+        let campaignNameById = {};
+        if (!campaignId) {
+          const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+          const campIds = Array.from(new Set(items.map(it => it.campaignId).filter(Boolean)));
+          if (campIds.length) {
+            const pages = await Promise.all(campIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)));
+            pages.filter(Boolean).forEach(p => { campaignNameById[p.id.replace(/-/g,"")] = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled"; });
+          }
+        }
+        return json({ success: true, items: items.map(it => ({ ...it, campaignName: it.campaignId ? (campaignNameById[it.campaignId] || null) : null })) });
       }
 
       if (body.action === "addWeeklyPlannerItem") {
         // day: optional explicit YYYY-MM-DD. Omitted -> auto-spread: pick
         // whichever day in [weekStart, weekStart+6] currently has the
-        // fewest Open items for this campaign, so new items land on the
-        // lightest day instead of always "today" — the whole point per
-        // operator direction ("things that need to be done should get
-        // spread through the week").
+        // fewest Open items (scoped to campaignId if given, else pooled
+        // across every campaign), so new items land on the lightest day
+        // instead of always "today". campaignId itself is optional — a
+        // manual add with no specific campaign in mind just leaves that
+        // relation blank.
         const { campaignId, name, day, weekStart, sourceTitleId, source } = body;
-        if (!campaignId || !(name || '').trim()) return json({ error: "campaignId and name required" }, 400);
+        if (!(name || '').trim()) return json({ error: "name required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
+        const ws = weekStart || (() => { const d = new Date(); const dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow); return d.toISOString().slice(0, 10); })();
+        const projected = await wpFetchProjectedItems(campaignId || null, ws, hdr);
+
         let targetDay = day;
         if (!targetDay) {
-          const ws = weekStart || (() => { const d = new Date(); const dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow); return d.toISOString().slice(0, 10); })();
-          const we = (() => { const d = new Date(ws + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10); })();
-          const weekRows = await notionQuery(WEEKLY_PLANNER_DB, {
-            filter: { and: [
-              { property: "Campaign", relation: { contains: dash(campaignId) } },
-              { property: "Date", date: { on_or_after: ws } },
-              { property: "Date", date: { on_or_before: we } },
-              { property: "Status", select: { equals: "Open" } },
-            ] },
-          }).catch(() => []);
           const counts = {};
           for (let i = 0; i < 7; i++) { const d = new Date(ws + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + i); counts[d.toISOString().slice(0, 10)] = 0; }
-          weekRows.forEach(r => { const dt = r.properties?.Date?.date?.start?.slice(0, 10); if (dt && counts[dt] !== undefined) counts[dt]++; });
+          projected.filter(it => it.status !== 'Done').forEach(it => { if (counts[it.date] !== undefined) counts[it.date]++; });
           targetDay = Object.entries(counts).sort((a, b) => a[1] - b[1])[0][0];
         }
-
-        const orderRows = await notionQuery(WEEKLY_PLANNER_DB, {
-          filter: { and: [
-            { property: "Campaign", relation: { contains: dash(campaignId) } },
-            { property: "Date", date: { equals: targetDay } },
-          ] },
-          sorts: [{ property: "Order", direction: "descending" }],
-        }).catch(() => []);
-        const nextOrder = (orderRows[0]?.properties?.Order?.number ?? -1) + 1;
+        const sameDay = projected.filter(it => it.date === targetDay);
+        const nextOrder = sameDay.length ? Math.max(...sameDay.map(it => it.order)) + 1 : 0;
 
         const props = {
           "Name": { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] },
@@ -4707,8 +4741,8 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           "Order": { number: nextOrder },
           "Status": { select: { name: "Open" } },
           "Source": { select: { name: source === "Development Title" ? "Development Title" : "Manual" } },
-          "Campaign": { relation: [{ id: dash(campaignId) }] },
         };
+        if (campaignId) props["Campaign"] = { relation: [{ id: dash(campaignId) }] };
         if (sourceTitleId) props["Source Title"] = { relation: [{ id: dash(sourceTitleId) }] };
         const created = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
@@ -4737,9 +4771,16 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const { itemId, done } = body;
         if (!itemId) return json({ error: "itemId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const props = { "Status": { select: { name: done === false ? "Open" : "Done" } } };
+        // Marking Done stamps today's date so it shows as a historical
+        // record in the week it was actually finished — not wherever its
+        // recurring weekday anchor happened to be. Un-marking leaves the
+        // date as-is; it becomes Open again and resumes recurring on that
+        // same weekday going forward.
+        if (done !== false) props["Date"] = { date: { start: new Date().toISOString().slice(0, 10) } };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(itemId)}`, {
           method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Status": { select: { name: done === false ? "Open" : "Done" } } } }),
+          body: JSON.stringify({ properties: props }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
