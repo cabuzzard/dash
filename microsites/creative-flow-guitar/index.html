@@ -1467,7 +1467,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
       <div id="es-guidance-wrap">
-        <label class="lm-label">Guidance <span style="color:#fff;font-weight:normal;">— propose a deeper change to this slot's subject (e.g. "I have direct experience with a contractor, not a dentist — rewrite around that") and have it rewritten against the full strategy's arc/context, not just this one line</span></label>
+        <label class="lm-label">Guidance <span id="es-guidance-help" style="color:#fff;font-weight:normal;">— propose a deeper change to this slot's subject (e.g. "I have direct experience with a contractor, not a dentist — rewrite around that") and have it rewritten against the full strategy's arc/context, not just this one line</span></label>
         <textarea class="modal-ta" id="es-guidance-input" rows="3" placeholder="What should actually change about this slot's subject/angle?" style="resize:vertical;margin-bottom:6px;"></textarea>
         <button class="modal-btn" id="es-rewrite-btn" onclick="rewriteEsSlot()" style="font-size:11px;padding:5px 10px;margin-bottom:4px;">✨ Rewrite with AI</button>
         <div id="es-rewrite-status" style="font-size:11px;color:#888;margin-bottom:10px;min-height:14px;"></div>
@@ -8092,6 +8092,8 @@ async function openEditSlotModal(slotId) {
   document.getElementById('esModalTitle').textContent = 'Edit Strategy Slot';
   ES_SLOT_ID = slotId;
   document.getElementById('es-guidance-wrap').style.display = 'block';
+  document.getElementById('es-guidance-help').textContent = ' — propose a deeper change to this slot\'s subject (e.g. "I have direct experience with a contractor, not a dentist — rewrite around that") and have it rewritten against the full strategy\'s arc/context, not just this one line';
+  document.getElementById('es-guidance-input').placeholder = 'What should actually change about this slot\'s subject/angle?';
   document.getElementById('es-guidance-input').value = '';
   document.getElementById('es-rewrite-status').textContent = '';
   document.getElementById('esTitleInput').value = found.slot.angle || '';
@@ -8119,9 +8121,16 @@ async function openInsertSlotModal(growthStrategyId, grouping, atSequence) {
   ES_SLOT_ID = null;
   ES_INSERT_CTX = { growthStrategyId, grouping, atSequence, productId: strat ? strat.productId : null, campaignId: CAMPAIGN_ID };
   document.getElementById('esModalTitle').textContent = `Insert Slot at Position ${atSequence}`;
-  // AI-rewrite guidance only makes sense against an EXISTING slot's current
-  // angle — nothing to rewrite yet when inserting a brand new one.
-  document.getElementById('es-guidance-wrap').style.display = 'none';
+  // Same Guidance box as edit mode, repurposed: a rough title/idea (typed
+  // into Proposed Title below) plus free-text guidance gets morphed by AI
+  // into a properly-fitted Angle for THIS grouping specifically — grounded
+  // in its rationale and the arc its existing sibling slots establish
+  // (proposeInsertedSlotAngle), not created in a vacuum.
+  document.getElementById('es-guidance-wrap').style.display = 'block';
+  document.getElementById('es-guidance-help').textContent = ' — a rough idea and/or guidelines for the new slot; "✨ Rewrite with AI" below shapes it to fit this grouping\'s established arc/voice before you insert it';
+  document.getElementById('es-guidance-input').placeholder = 'Any direction for this new slot — tone, subject, what it should cover…';
+  document.getElementById('es-guidance-input').value = '';
+  document.getElementById('es-rewrite-status').textContent = '';
   document.getElementById('esTitleInput').value = '';
   document.getElementById('es-pt-input').value = '';
   document.getElementById('es-pt-id').value = '';
@@ -8288,11 +8297,42 @@ async function submitEditSlot() {
 // does NOT save on its own — the existing Save button still commits it via
 // updateStrategySlot, same as a manual edit would.
 async function rewriteEsSlot() {
-  if (!ES_SLOT_ID) return;
   const guidance = document.getElementById('es-guidance-input').value.trim();
   const statusEl = document.getElementById('es-rewrite-status');
-  if (!guidance) { statusEl.style.color = '#ff4444'; statusEl.textContent = 'Enter guidance first.'; return; }
   const btn = document.getElementById('es-rewrite-btn');
+
+  if (ES_MODE === 'insert') {
+    if (!ES_INSERT_CTX) return;
+    const rawTitle = document.getElementById('esTitleInput').value.trim();
+    if (!rawTitle && !guidance) { statusEl.style.color = '#ff4444'; statusEl.textContent = 'Give a rough title or some guidance first.'; return; }
+    btn.disabled = true; btn.textContent = 'Shaping…';
+    statusEl.style.color = '#888'; statusEl.textContent = 'Fitting this to the grouping’s arc…';
+    try {
+      const r = await w('proposeInsertedSlotAngle', {
+        growthStrategyId: ES_INSERT_CTX.growthStrategyId, grouping: ES_INSERT_CTX.grouping,
+        rawTitle: rawTitle || undefined, guidance: guidance || undefined,
+        productId: ES_INSERT_CTX.productId || undefined, campaignId: ES_INSERT_CTX.campaignId || undefined,
+      });
+      if (r.error) throw new Error(r.error);
+      document.getElementById('esTitleInput').value = r.angle || '';
+      if (r.postTypeId) {
+        document.getElementById('es-pt-id').value = r.postTypeId;
+        document.getElementById('es-pt-input').value = r.postTypeName || '';
+        const cached = (ALL_POST_TYPES || []).find(p => p.id === r.postTypeId);
+        document.getElementById('es-pt-rationale').textContent = cached ? (cached.rationale || '') : '';
+      }
+      statusEl.style.color = '#68d391'; statusEl.textContent = 'Shaped below — review or edit, then Insert.';
+    } catch(e) {
+      statusEl.style.color = '#ff4444'; statusEl.textContent = 'Error: ' + e.message;
+    } finally {
+      btn.disabled = false; btn.textContent = '✨ Rewrite with AI';
+    }
+    return;
+  }
+
+  // ── edit mode (existing slot) ──
+  if (!ES_SLOT_ID) return;
+  if (!guidance) { statusEl.style.color = '#ff4444'; statusEl.textContent = 'Enter guidance first.'; return; }
   btn.disabled = true; btn.textContent = 'Rewriting…';
   statusEl.style.color = '#888'; statusEl.textContent = 'Rewriting against the strategy…';
   try {

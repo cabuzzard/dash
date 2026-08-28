@@ -5236,12 +5236,121 @@ Return ONLY this JSON object, no other text, no markdown fences:
         if (campaignId) props["Campaign"] = { relation: [{ id: dash(campaignId) }] };
         if (postTypeId) props["Post Type"] = { relation: [{ id: dash(postTypeId) }] };
         if (Array.isArray(platformIds) && platformIds.length) props["Platforms"] = { relation: platformIds.map(id => ({ id: dash(id) })) };
+        // Inherit the grouping's rationale from any existing sibling so the
+        // new slot's tooltip matches the rest of the grouping instead of
+        // coming up blank — same value, just carried forward, not reasked.
+        const inheritedRationale = (siblings.find(s => (s.properties.Grouping?.rich_text || []).map(t => t.plain_text).join("") === grouping)?.properties?.["Grouping Rationale"]?.rich_text || []).map(t => t.plain_text).join("");
+        if (inheritedRationale) props["Grouping Rationale"] = { rich_text: [{ type: "text", text: { content: inheritedRationale.slice(0, 1990) } }] };
         const created = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: props }),
         }).then(r => r.json());
         if (!created.id) return json({ error: created.message || "Failed to create slot" }, 500);
         return json({ success: true, id: created.id.replace(/-/g,""), shifted: toShift.length });
+      }
+
+      // ── proposeInsertedSlotAngle ──
+      // The Insert Slot modal's "✨ Rewrite with AI" button, for the insert
+      // case specifically (rewriteStrategySlot above is the edit-an-
+      // existing-slot counterpart). Per operator direction: a Title field
+      // plus a Guidelines box that "morphs my request to match the
+      // grouping" — the operator's rough idea/title and any guidance get
+      // shaped into a properly-fitted Angle (+ best-fitting Post Type)
+      // grounded in this grouping's own rationale and the arc its existing
+      // sibling slots already establish, not created in a vacuum. Read-only
+      // — returns a proposal for the operator to review in the modal; the
+      // existing Insert button (insertStrategySlot) still creates it.
+      if (body.action === "proposeInsertedSlotAngle") {
+        const { growthStrategyId, grouping, rawTitle, guidance, productId, campaignId } = body;
+        if (!growthStrategyId || !grouping) return json({ error: "growthStrategyId and grouping required" }, 400);
+        if (!(rawTitle || '').trim() && !(guidance || '').trim()) return json({ error: "give a rough title or some guidance first" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const [allSiblings, allPostTypeRows, productPage] = await Promise.all([
+          notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(growthStrategyId) } } }).catch(() => []),
+          notionQuery(POST_TYPES_DB, {}).catch(e => { console.error('notionQuery(POST_TYPES_DB) failed:', e.message); return []; }),
+          productId ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+        ]);
+        const siblings = allSiblings.filter(s => (s.properties.Grouping?.rich_text || []).map(t => t.plain_text).join("") === grouping)
+          .sort((a, b) => (a.properties.Sequence?.number ?? 0) - (b.properties.Sequence?.number ?? 0));
+        const groupingRationale = (siblings[0]?.properties?.["Grouping Rationale"]?.rich_text || []).map(t => t.plain_text).join("");
+        const platform = (siblings[0]?.properties?.Platform?.rich_text || []).map(t => t.plain_text).join("");
+        const siblingLines = siblings.map(s => {
+          const seq = s.properties.Sequence?.number ?? '?';
+          const a = (s.properties.Angle?.rich_text || []).map(t => t.plain_text).join("") || '(no angle yet)';
+          return `  ${seq}: ${a}`;
+        }).join('\n');
+
+        let productSection = "No product linked to this strategy.";
+        if (productId && productPage?.properties) {
+          const pp = productPage.properties;
+          const ptxt = key => (pp[key]?.rich_text || []).map(x => x.plain_text).join("") || "";
+          const productName = (pp.Name?.title || []).map(x => x.plain_text).join("") || "Product";
+          productSection = `PRODUCT: ${productName}\nAvatar: ${ptxt("Avatar")}`;
+        }
+
+        const postTypeIdByName = new Map(allPostTypeRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
+        const postTypesCatalogBlock = allPostTypeRows.length
+          ? allPostTypeRows.map(p => `- ${(p.properties?.Name?.title || []).map(t => t.plain_text).join("")}`).join('\n')
+          : '(none exist yet)';
+
+        const proposePrompt = `You are adding ONE NEW slot to an existing grouping within a content strategy — a new planned title angle that has to fit the grouping it's joining, not stand alone.
+
+GROUPING: ${grouping}
+${groupingRationale ? `GROUPING RATIONALE (why this grouping exists, its arc/voice):\n${groupingRationale}\n` : ''}${platform ? `PLATFORM: ${platform}\n` : ''}
+EXISTING SLOTS ALREADY IN THIS GROUPING (the arc/pattern the new one must sit inside):
+${siblingLines || '(none yet — this would be the first)'}
+
+${productSection}
+
+OPERATOR'S ROUGH IDEA/TITLE FOR THE NEW SLOT: ${(rawTitle || '').trim() || '(none given — work from guidance only)'}
+OPERATOR GUIDANCE: ${(guidance || '').trim() || '(none given)'}
+
+POST TYPE CATALOG:
+${postTypesCatalogBlock}
+
+Shape the operator's idea/guidance into a real, finished Angle that reads like it belongs in this exact grouping — same voice, same level of specificity as the existing slots above, genuinely reflecting what the operator asked for, not a generic restatement of the grouping's theme. Also pick the Post Type that best fits where this would sit relative to the existing slots.
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: proposePrompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let proposal;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+          if (start === -1 || end === -1) throw new Error("No JSON object found");
+          proposal = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+        } catch (e) {
+          return json({ error: "Failed to parse proposal JSON: " + e.message }, 500);
+        }
+
+        // Resolve the proposed Post Type name to an id the client can select
+        // in its picker — creates it fresh only when the model flagged it
+        // genuinely new and nothing matched.
+        const wantName = String(proposal.postType || '').trim();
+        let postTypeId = null, postTypeName = '';
+        if (wantName) {
+          postTypeId = postTypeIdByName.get(wantName.toLowerCase()) || null;
+          postTypeName = postTypeId ? wantName : '';
+          if (!postTypeId && proposal.newPostType) {
+            const createResp = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: POST_TYPES_DB }, properties: { Name: { title: [{ type: "text", text: { content: wantName.slice(0, 200) } }] } } }),
+            }).then(r => r.json());
+            if (createResp.id) { postTypeId = createResp.id.replace(/-/g,""); postTypeName = wantName; }
+          }
+        }
+
+        return json({ success: true, angle: String(proposal.angle || '').slice(0, 2000), postTypeId, postTypeName });
       }
 
       // ── backfillStrategyPostTypes ──
