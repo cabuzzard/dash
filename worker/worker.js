@@ -2843,6 +2843,40 @@ async function transcribeViaElevenLabs(env, mediaUrl) {
   return data.text || "";
 }
 
+// Reads the text off image-carousel slides via Claude vision — the value
+// of a carousel post is usually the words ON the slides, which nothing
+// else here captures. Downloads each image (IG CDN URLs 403 for
+// server-side third parties, so send bytes, not the URL) and asks Claude
+// to transcribe slide by slide.
+async function ocrImagesViaClaude(env, imageUrls) {
+  if (!env.ANTHROPIC_API_KEY || !imageUrls || !imageUrls.length) return "";
+  const parts = [];
+  for (const u of imageUrls.slice(0, 10)) {
+    try {
+      const r = await fetch(u);
+      if (!r.ok) continue;
+      const mt = (r.headers.get("content-type") || "image/jpeg").split(";")[0].trim();
+      if (!/^image\//.test(mt)) continue;
+      const buf = await r.arrayBuffer();
+      if (buf.byteLength > 4_500_000) continue;
+      const bytes = new Uint8Array(buf);
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+      parts.push({ type: "image", source: { type: "base64", media_type: mt, data: btoa(bin) } });
+    } catch (_) { /* skip a bad image */ }
+  }
+  if (!parts.length) throw new Error("no readable images");
+  parts.push({ type: "text", text: "These are the slides of a social-media image carousel, in order. Transcribe every piece of text visible on each slide — headline, body, captions, labels on diagrams — slide by slide, prefixed 'Slide 1:', 'Slide 2:', etc. Output only the transcribed text, no commentary." });
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2500, messages: [{ role: "user", content: parts }] }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error?.message || "vision OCR failed");
+  return (data.content?.[0]?.text || "").trim();
+}
+
 // Scrapes the saved URL via the right Apify actor for its platform, then
 // detects whether the actual post is text or video/speech from the scraped
 // output itself (media attachments / videoUrl field) and transcribes when
@@ -2889,6 +2923,17 @@ async function fetchSavedPostContent(env, platform, url) {
     if (post.videoUrl) {
       try { transcript = await transcribeViaElevenLabs(env, post.videoUrl); }
       catch (e) { note = `Reel/video post — transcription failed (${e.message}), summarized from caption only.`; }
+    } else {
+      // Image post / carousel — the substance is the text ON the slides.
+      const imgs = (Array.isArray(post.images) && post.images.length ? post.images
+        : Array.isArray(post.childPosts) ? post.childPosts.map(c => c.displayUrl || c.imageUrl).filter(Boolean)
+        : (post.displayUrl ? [post.displayUrl] : [])).filter(Boolean);
+      if (imgs.length) {
+        try {
+          const ocr = await ocrImagesViaClaude(env, imgs);
+          if (ocr && ocr.length > 30) { transcript = ocr; note = `Image ${imgs.length > 1 ? `carousel (${imgs.length} slides)` : "post"} — text read via vision OCR.`; }
+        } catch (e) { note = `Image carousel — OCR failed (${e.message}), summarized from caption only.`; }
+      }
     }
     return { text, transcript, author, note };
   }
