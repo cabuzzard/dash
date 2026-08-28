@@ -8,6 +8,12 @@ const CAMPAIGNS_DB       = "087b1163b4e64975bc7a4b686ff801de";
 const CONTENT_STRATEGY_DB = "9fa5f42f010b47e7a82032607e07d6a1";
 const PRODUCTS_DB        = "e92fcfce75fc4f54b553df0b7672ff48";
 const MAIN_TD_DB         = "3471f7d3a4bb80de87c1d9e850f4a426";
+// Standalone prototype for the "This Week" planner (2026-08-28) — per
+// operator direction, kept deliberately separate from MAIN_TD_DB until the
+// real TD tab gets reworked to merge with it later, same isolation
+// discipline as every other new system this project builds standalone
+// first (see CLAUDE.md).
+const WEEKLY_PLANNER_DB  = "269efb2070d64e849d992a07280c2d4f";
 const METHODS_DB         = "285ed0b668be4dad89dfd090350096bc";
 const STRATEGY_DB        = "6f7a8666944746b2ae98d41db0c4e419"; // per-Method Strategy Briefs only now — Method relation always set. Positioning docs (Method used to be empty) live in PRODUCT_RESEARCH_DB below.
 const PRODUCT_RESEARCH_DB = "a412ac1f57f349d3bbac8cfa94737c39"; // 🔬 Product Research — one fixed positioning record per product (Customer/Pain Points/Offer Structure/etc.), split out from STRATEGY_DB so a 1:1 concept isn't sharing a table with a 1:N one. No Method property at all — that's the whole point.
@@ -4615,6 +4621,140 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
             if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Failed to write method body" }, 500); }
           }
         }
+        return json({ success: true });
+      }
+
+      // ── Weekly Planner (standalone prototype, 2026-08-28) ──
+      // Per operator direction: too many items on the Development Titles /
+      // Strategy Slots / TD lists causes "glaze over," not too little
+      // signal. Fix is scarcity, not a smarter ranked feed — a real weekly
+      // board (Mon-Sun) with a hard-ish per-day cap, spreading new items
+      // across whichever days are lightest instead of dumping them all on
+      // one day, plus drag-between-days. Grounded in real research (Ivy
+      // Lee Method's capped ranked daily list; 1-3-5 Rule's hard daily cap;
+      // weekly-planning research on visually spreading load across the
+      // week rather than cramming). Deliberately its own database
+      // (WEEKLY_PLANNER_DB), NOT MAIN_TD_DB — "build something in a new
+      // tab and then we will merge the TD tab with it" — this is the
+      // prototype, not yet the merge.
+      if (body.action === "getWeeklyPlannerItems") {
+        const { campaignId, weekStart } = body;
+        if (!campaignId || !weekStart) return json({ error: "campaignId and weekStart required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const weekEnd = (() => { const d = new Date(weekStart + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10); })();
+        const rows = await notionQuery(WEEKLY_PLANNER_DB, {
+          filter: { and: [
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+            { property: "Date", date: { on_or_after: weekStart } },
+            { property: "Date", date: { on_or_before: weekEnd } },
+          ] },
+          sorts: [{ property: "Date", direction: "ascending" }, { property: "Order", direction: "ascending" }],
+        }).catch(() => []);
+        const items = rows.map(r => ({
+          id: r.id.replace(/-/g,""),
+          name: (r.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled",
+          date: r.properties?.Date?.date?.start?.slice(0, 10) || null,
+          order: r.properties?.Order?.number ?? 0,
+          status: r.properties?.Status?.select?.name || "Open",
+          source: r.properties?.Source?.select?.name || "Manual",
+          sourceTitleId: (r.properties?.["Source Title"]?.relation || [])[0]?.id?.replace(/-/g,"") || null,
+        }));
+        return json({ success: true, items });
+      }
+
+      if (body.action === "addWeeklyPlannerItem") {
+        // day: optional explicit YYYY-MM-DD. Omitted -> auto-spread: pick
+        // whichever day in [weekStart, weekStart+6] currently has the
+        // fewest Open items for this campaign, so new items land on the
+        // lightest day instead of always "today" — the whole point per
+        // operator direction ("things that need to be done should get
+        // spread through the week").
+        const { campaignId, name, day, weekStart, sourceTitleId, source } = body;
+        if (!campaignId || !(name || '').trim()) return json({ error: "campaignId and name required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        let targetDay = day;
+        if (!targetDay) {
+          const ws = weekStart || (() => { const d = new Date(); const dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow); return d.toISOString().slice(0, 10); })();
+          const we = (() => { const d = new Date(ws + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10); })();
+          const weekRows = await notionQuery(WEEKLY_PLANNER_DB, {
+            filter: { and: [
+              { property: "Campaign", relation: { contains: dash(campaignId) } },
+              { property: "Date", date: { on_or_after: ws } },
+              { property: "Date", date: { on_or_before: we } },
+              { property: "Status", select: { equals: "Open" } },
+            ] },
+          }).catch(() => []);
+          const counts = {};
+          for (let i = 0; i < 7; i++) { const d = new Date(ws + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + i); counts[d.toISOString().slice(0, 10)] = 0; }
+          weekRows.forEach(r => { const dt = r.properties?.Date?.date?.start?.slice(0, 10); if (dt && counts[dt] !== undefined) counts[dt]++; });
+          targetDay = Object.entries(counts).sort((a, b) => a[1] - b[1])[0][0];
+        }
+
+        const orderRows = await notionQuery(WEEKLY_PLANNER_DB, {
+          filter: { and: [
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+            { property: "Date", date: { equals: targetDay } },
+          ] },
+          sorts: [{ property: "Order", direction: "descending" }],
+        }).catch(() => []);
+        const nextOrder = (orderRows[0]?.properties?.Order?.number ?? -1) + 1;
+
+        const props = {
+          "Name": { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] },
+          "Date": { date: { start: targetDay } },
+          "Order": { number: nextOrder },
+          "Status": { select: { name: "Open" } },
+          "Source": { select: { name: source === "Development Title" ? "Development Title" : "Manual" } },
+          "Campaign": { relation: [{ id: dash(campaignId) }] },
+        };
+        if (sourceTitleId) props["Source Title"] = { relation: [{ id: dash(sourceTitleId) }] };
+        const created = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: WEEKLY_PLANNER_DB }, properties: props }),
+        }).then(r => r.json());
+        if (!created.id) return json({ error: created.message || "Failed to add item" }, 500);
+        return json({ success: true, id: created.id.replace(/-/g,""), date: targetDay });
+      }
+
+      if (body.action === "moveWeeklyPlannerItem") {
+        const { itemId, day, order } = body;
+        if (!itemId || !day) return json({ error: "itemId and day required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const props = { "Date": { date: { start: day } } };
+        if (Number.isFinite(order)) props["Order"] = { number: order };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(itemId)}`, {
+          method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: props }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Move failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "completeWeeklyPlannerItem") {
+        const { itemId, done } = body;
+        if (!itemId) return json({ error: "itemId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(itemId)}`, {
+          method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Status": { select: { name: done === false ? "Open" : "Done" } } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      if (body.action === "deleteWeeklyPlannerItem") {
+        const { itemId } = body;
+        if (!itemId) return json({ error: "itemId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(itemId)}`, {
+          method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Delete failed" }, resp.status); }
         return json({ success: true });
       }
 

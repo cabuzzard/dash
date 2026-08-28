@@ -230,6 +230,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   <button class="tab-btn" data-tab="tab-titles" onclick="switchTab('tab-titles')">Titles</button>
   <button class="tab-btn" data-tab="tab-research" onclick="switchTab('tab-research')">Research</button>
   <button class="tab-btn" data-tab="tab-growth" onclick="switchTab('tab-growth')">Growth Tools</button>
+  <button class="tab-btn" data-tab="tab-planner" onclick="switchTab('tab-planner')">This Week</button>
 </div>
 
 <div class="tab-page active" id="tab-campaign">
@@ -459,6 +460,30 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div id="r-jobboards"><div class="loading"><div class="spinner"></div>Loading…</div></div>
   </div>
 </div>
+</div>
+
+<!-- THIS WEEK (standalone Weekly Planner prototype, 2026-08-28) — per
+     operator direction: Development Titles / Strategy Slots / TD lists are
+     all too long to actually spur action ("I just glaze over"). Fix is
+     scarcity, not a smarter ranked view — a real Mon-Sun board, new items
+     auto-spread onto whichever day is lightest, drag between days, and
+     nothing else feeding it automatically. Explicitly NOT wired into
+     MAIN_TD_DB yet — "build something in a new tab and then we will merge
+     the TD tab with it" — this is the prototype. -->
+<div class="tab-page" id="tab-planner">
+  <div class="one-col">
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>This Week <span id="wp-range" style="color:#888;font-weight:normal;font-size:12px;"></span></span>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <button onclick="wpShiftWeek(-1)" style="font-size:12px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;">← Prev</button>
+        <button onclick="wpShiftWeek(0)" style="font-size:12px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;">This Week</button>
+        <button onclick="wpShiftWeek(1)" style="font-size:12px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;">Next →</button>
+      </span>
+    </h2>
+    <div class="content">
+      <div id="wp-board" style="display:grid;grid-template-columns:repeat(7,minmax(140px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px;"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
 </div>
 
 
@@ -2556,7 +2581,7 @@ async function loadTitles() {
       // (behind 🧩 Generate Assets) writes the pillar itself, on first run,
       // if this title doesn't have one yet, and promotes Planning →
       // Development the same way the old 📝 Write Pillar button used to.
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc. Writes this title's pillar content first if it doesn't have any yet.">🧩</button><button class="title-status-btn" onclick="openTrendScanModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Scan live Etsy search data for this title's keywords/research — see whether it (or a t-shirt spin of it) would actually sell right now">📈</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc. Writes this title's pillar content first if it doesn't have any yet.">🧩</button><button class="title-status-btn" onclick="openTrendScanModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Scan live Etsy search data for this title's keywords/research — see whether it (or a t-shirt spin of it) would actually sell right now">📈</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="title-status-btn" onclick="addTitleToWeeklyPlanner('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Add to This Week — schedules this title as an action item on whichever day is lightest">TD</button><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       // Assets never render under a Development title row — Method/Asset
       // Type is an ASSET-level concept (Assets DB has no Method relation at
       // all, only its own "Asset Type" select), not a title-level one, and
@@ -5255,6 +5280,121 @@ function init() {
   loadSmPosts();
   loadDesignSpecs();
   loadCampaignStrategies();
+  loadWeeklyPlanner();
+}
+
+// ── THIS WEEK (Weekly Planner, standalone prototype — 2026-08-28) ──────
+// See CLAUDE.md for the full rationale. Grounded in real research (Ivy
+// Lee Method's capped ranked daily list; weekly-planning research on
+// visually spreading load across the week). New items auto-spread onto
+// whichever day currently has the fewest Open items — see
+// addWeeklyPlannerItem (worker.js) — nothing here decides that client-side.
+let WP_WEEK_OFFSET = 0; // 0 = current week, -1 = prev, +1 = next
+let WP_ITEMS_CACHE = [];
+let WP_DRAG_ID = null;
+const WP_DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+function wpMonday(offsetWeeks) {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dow = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dow + offsetWeeks * 7);
+  return d;
+}
+function wpIso(d) { return d.toISOString().slice(0, 10); }
+function wpShiftWeek(delta) {
+  WP_WEEK_OFFSET = delta === 0 ? 0 : WP_WEEK_OFFSET + delta;
+  loadWeeklyPlanner();
+}
+async function loadWeeklyPlanner() {
+  const board = document.getElementById('wp-board');
+  if (!board) return;
+  const monday = wpMonday(WP_WEEK_OFFSET);
+  const weekStart = wpIso(monday);
+  const sunday = new Date(monday); sunday.setUTCDate(monday.getUTCDate() + 6);
+  const rangeEl = document.getElementById('wp-range');
+  if (rangeEl) rangeEl.textContent = `${monday.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${sunday.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+  try {
+    const r = await w('getWeeklyPlannerItems', { campaignId: CAMPAIGN_ID, weekStart });
+    WP_ITEMS_CACHE = r.items || [];
+    renderWeeklyPlanner(monday, WP_ITEMS_CACHE);
+  } catch(e) {
+    board.innerHTML = `<div class="empty" style="grid-column:1/-1;color:#ff4444">${esc(e.message)}</div>`;
+  }
+}
+function renderWeeklyPlanner(monday, items) {
+  const board = document.getElementById('wp-board');
+  const byDay = {};
+  for (let i = 0; i < 7; i++) { const d = new Date(monday); d.setUTCDate(monday.getUTCDate() + i); byDay[wpIso(d)] = []; }
+  items.forEach(it => { if (it.date && byDay[it.date]) byDay[it.date].push(it); });
+  const todayIso = wpIso(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())));
+  board.innerHTML = Object.entries(byDay).map(([dateIso, dayItems], i) => {
+    const d = new Date(dateIso + 'T00:00:00Z');
+    const isToday = dateIso === todayIso;
+    const openCount = dayItems.filter(it => it.status !== 'Done').length;
+    const overCap = openCount > 5;
+    const itemsHtml = dayItems.map(it => `
+      <div class="wp-item" draggable="true" ondragstart="wpDragStart(event,'${it.id}')" style="background:${it.status==='Done'?'#0d2b0d':'#1a1a1a'};border:1px solid ${it.status==='Done'?'#2a5a2a':'#333'};border-radius:6px;padding:6px 8px;margin-bottom:6px;cursor:grab;">
+        <div style="display:flex;align-items:flex-start;gap:6px;">
+          <input type="checkbox" ${it.status==='Done'?'checked':''} onchange="wpToggleDone('${it.id}', this.checked)" style="margin-top:2px;flex-shrink:0;">
+          <span style="flex:1;font-size:12px;color:${it.status==='Done'?'#888':'#fff'};text-decoration:${it.status==='Done'?'line-through':'none'};word-break:break-word;">${esc(it.name)}</span>
+          <button onclick="wpDeleteItem('${it.id}')" title="Remove" style="background:none;border:none;color:#666;cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">✕</button>
+        </div>
+        ${it.source === 'Development Title' ? '<div style="font-size:9px;color:#9f7aea;margin-top:2px;margin-left:20px;">from Development</div>' : ''}
+      </div>`).join('');
+    return `<div class="wp-day" ondragover="event.preventDefault()" ondrop="wpDrop(event,'${dateIso}')" style="background:${isToday?'#1c1f14':'transparent'};border:1px solid ${isToday?'#e8ff47':'#222'};border-radius:8px;padding:8px;min-height:120px;">
+      <div style="font-size:11px;font-weight:700;color:${isToday?'#e8ff47':'#fff'};margin-bottom:6px;display:flex;justify-content:space-between;">
+        <span>${WP_DAY_NAMES[i]} ${d.getUTCDate()}</span>
+        <span style="color:${overCap?'#ff4444':'#666'};font-weight:400;">${openCount}${overCap?' ⚠':''}</span>
+      </div>
+      ${itemsHtml}
+      <input type="text" placeholder="+ add…" onkeydown="if(event.key==='Enter')wpAddItem('${dateIso}', this)" style="width:100%;font-size:11px;padding:3px 5px;border:1px dashed #444;border-radius:4px;background:transparent;color:#fff;outline:none;margin-top:4px;box-sizing:border-box;">
+    </div>`;
+  }).join('');
+}
+async function wpAddItem(dateIso, input) {
+  const name = input.value.trim();
+  if (!name) return;
+  input.disabled = true;
+  try {
+    const r = await w('addWeeklyPlannerItem', { campaignId: CAMPAIGN_ID, name, day: dateIso });
+    if (r.error) throw new Error(r.error);
+    await loadWeeklyPlanner();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    input.disabled = false;
+  }
+}
+async function wpToggleDone(itemId, checked) {
+  try { const r = await w('completeWeeklyPlannerItem', { itemId, done: checked }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+async function wpDeleteItem(itemId) {
+  try { const r = await w('deleteWeeklyPlannerItem', { itemId }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+function wpDragStart(e, itemId) { WP_DRAG_ID = itemId; e.dataTransfer.effectAllowed = 'move'; }
+async function wpDrop(e, dateIso) {
+  e.preventDefault();
+  if (!WP_DRAG_ID) return;
+  const id = WP_DRAG_ID; WP_DRAG_ID = null;
+  try { const r = await w('moveWeeklyPlannerItem', { itemId: id, day: dateIso }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
+  catch(err) { alert('Error: ' + err.message); }
+}
+// Called from the small "TD" link on a Development Titles row — adds that
+// title to This Week on demand. Deliberately NOT automatic on every
+// status change to Development (per operator direction: manual, operator-
+// triggered only, one click when a title genuinely needs to be scheduled).
+async function addTitleToWeeklyPlanner(titleId, titleName, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await w('addWeeklyPlannerItem', { campaignId: CAMPAIGN_ID, name: titleName, source: 'Development Title', sourceTitleId: titleId });
+    if (r.error) throw new Error(r.error);
+    if (btn) { btn.textContent = '✓'; setTimeout(() => { btn.disabled = false; btn.textContent = 'TD'; }, 1200); }
+    if (typeof loadWeeklyPlanner === 'function') loadWeeklyPlanner();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'TD'; }
+  }
 }
 
 // ── DELIVERABLES ─────────────────────────────────────────────────────
