@@ -66,6 +66,14 @@ const TOOLS_DB           = "019e7132eeac48ccb77d805f99b085ea"; // campaign-agnos
 // fully standalone. See docs/methods-titles-assets.md for the distinction.
 const KNOWLEDGE_BRAIN_DB = "4476d83727b145de9f74f3eba17d59cf"; // Name/Insight/Excerpt/Knowledge Category/Keywords/Extracted Offering/Status/Source URL/Source Link
 const KEYWORD_CLUSTERS_DB = "cedc9c6c16b344b0bd858823809f14af"; // Cluster Name/Member Keywords/Knowledge Entries (relation)/Status/Last Updated — emergent themes computed from Knowledge Brain Keywords
+// Link-mining system (Globals tab) — supersedes the old KNOWLEDGE_BRAIN pipeline.
+// Transcripts are mined into typed staging rows the operator promotes into
+// real app-machinery tables. All standalone. DATABASE ids (page url), not
+// collection ids — see [[feedback_dash_new_database_setup]].
+const LINK_MINING_DB     = "67c1c7af775d4d038d39ab57a7ead44a"; // Name/Type/Extract/Snippet/Match/Match Kind/Proposed Category/Confidence/Status/Promoted To/Source Post/Creator
+const CREATORS_DB        = "dafa452e816a41daae061590f83bfd39"; // Name/Handles/Platforms/Subject Matter/Notes/URL/Saved Posts — every mined find maps to its creator
+const PODCAST_IDEAS_DB   = "f61c012e75b742cf949c93228bc0328e"; // Name/Angle/Subject Matter/Status/Source Post/Creator
+const METHOD_IDEAS_DB    = "9b094862f32a40c994093610f8696a8c"; // Name/Description/Closest Method/Platform/Subject Matter/Status/Source Post/Creator — holding area, never writes to real METHODS_DB
 // Resume header — kept in sync by hand with the 📇 Contact Info Notion page
 // (under 🏠 Home); used to print a real contact header on generated resume
 // .docx files (generateJobAsset's docx build).
@@ -3437,6 +3445,240 @@ Respond ONLY with JSON: {"matches": [{"type": "method"|"platform"|"toolStack"|"p
     }).catch(() => {});
   }
   await patchSavedPostPage(pageId, { "Knowledge Analyzed": { checkbox: true } });
+}
+
+// ═══ Link mining ═══════════════════════════════════════════════════════
+// Supersedes runKnowledgeGraphAnalysis. Two stages:
+//   1. runDraftTagPass — cheap Haiku pass over each transcribed post → an
+//      editable "Draft Tags" multi_select on the row (cron + eager on the
+//      Links tab). Never creates anything downstream.
+//   2. integrateOneSavedPost — operator-triggered per post (or bulk). One
+//      Sonnet call classifies the transcript (weighted by the operator's
+//      edited Draft Tags) into typed LINK_MINING_DB rows the operator then
+//      promotes into Tools / Post Types / Method Ideas / Podcast Ideas.
+//      The post's creator is upserted into CREATORS_DB automatically (the
+//      mapping backbone — not a review step).
+// Nothing here writes to a real production entity — see
+// [[feedback_dash_standalone_systems_isolation]].
+const mineRT = (s, max = 1900) => [{ type: "text", text: { content: String(s == null ? "" : s).slice(0, max) } }];
+const dash32 = raw => { const s = String(raw || "").replace(/-/g, ""); return s.length === 32 ? `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}` : String(raw || ""); };
+
+async function buildMiningCandidates(hdr) {
+  const q = (db, body) => notionQuery(db, body).catch(e => { console.error(`buildMiningCandidates ${db}:`, e.message); return []; });
+  const [toolRows, methodRows, postTypeRows, methodIdeaRows, creatorRows] = await Promise.all([
+    q(TOOLS_DB, {}),
+    q(METHODS_DB, { filter: { property: "Status", select: { equals: "Live" } } }),
+    q(POST_TYPES_DB, {}),
+    q(METHOD_IDEAS_DB, {}),
+    q(CREATORS_DB, {}),
+  ]);
+  const nm = p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+  return {
+    tools: toolRows.map(p => ({ name: nm(p), category: p.properties?.Category?.select?.name || "" })).filter(t => t.name),
+    toolCategories: [...new Set(toolRows.map(p => p.properties?.Category?.select?.name).filter(Boolean))],
+    methods: [...new Set(methodRows.map(nm).filter(Boolean))],
+    postTypes: [...new Set(postTypeRows.map(nm).filter(Boolean))],
+    methodIdeas: [...new Set(methodIdeaRows.map(nm).filter(Boolean))],
+    creators: creatorRows.map(p => ({
+      id: p.id.replace(/-/g, ""),
+      name: nm(p),
+      handles: (p.properties?.Handles?.rich_text || []).map(t => t.plain_text).join(""),
+    })).filter(c => c.name),
+  };
+}
+
+async function generateDraftTagsForPost(env, hdr, page) {
+  const pageId = page.id;
+  const transcript = await extractBlocksTextRecursive(hdr, pageId).catch(() => "");
+  if (!transcript.trim()) return;
+  const prompt = `From this saved social post's transcript, list 5-12 short lowercase tags an operator would file it under: named tools/software mentioned, concrete topics, content formats, the creator's subject areas. No generic filler ("video", "content", "tips", "growth"). Comma-separated, nothing else.\n\n${transcript.slice(0, 8000)}`;
+  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 200, messages: [{ role: "user", content: prompt }] }),
+  });
+  const aiData = await aiResp.json().catch(() => ({}));
+  if (!aiResp.ok) { console.error("draftTags AI:", aiData.error?.message); return; }
+  const tags = (aiData.content?.[0]?.text || "")
+    .split(/[,\n]/).map(s => s.trim().toLowerCase().replace(/^[#•\-\s]+/, "").replace(/\.$/, ""))
+    .filter(t => t && t.length <= 40).slice(0, 12);
+  if (!tags.length) return;
+  await patchSavedPostPage(pageId, { "Draft Tags": { multi_select: [...new Set(tags)].map(name => ({ name })) } }).catch(e => console.error("draftTags save:", e.message));
+}
+
+async function runDraftTagPass(env, { limit = 12 } = {}) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  if (!NOTION_TOKEN || !env.ANTHROPIC_API_KEY) return;
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const rows = await notionQuery(SAVED_POSTS_DB, {
+    filter: { and: [
+      { property: "Status", status: { equals: "Done" } },
+      { property: "Mined", checkbox: { equals: false } },
+      { property: "Draft Tags", multi_select: { is_empty: true } },
+    ] },
+    page_size: limit,
+  }).catch(e => { console.error("runDraftTagPass query:", e.message); return []; });
+  for (const page of rows.slice(0, limit)) {
+    try { await generateDraftTagsForPost(env, hdr, page); } catch (e) { console.error("draftTags", page.id, e.message); }
+  }
+}
+
+// Upsert the post's creator into CREATORS_DB (match on handle substring or
+// exact name), merging Subject Matter / Platforms and linking the post.
+async function upsertCreatorFromMining(hdr, creator, postId, candidates) {
+  if (!creator) return null;
+  const rawHandle = String(creator.handle || "").replace(/^@+/, "").toLowerCase().trim();
+  const name = String(creator.name || creator.handle || "").trim();
+  if (!name && !rawHandle) return null;
+  const postRef = { id: dash32(postId) };
+  let match = null;
+  for (const c of candidates.creators) {
+    const cn = (c.name || "").toLowerCase(), ch = (c.handles || "").toLowerCase();
+    if ((rawHandle && ch.includes(rawHandle)) || (name && cn && cn === name.toLowerCase())) { match = c; break; }
+  }
+  const newSubj = (Array.isArray(creator.subjectMatter) ? creator.subjectMatter : []).map(s => String(s).toLowerCase().trim()).filter(Boolean).slice(0, 25);
+  const platforms = (Array.isArray(creator.platforms) ? creator.platforms : []).map(s => String(s).trim()).filter(s => s && s.toLowerCase() !== "unknown").slice(0, 10);
+
+  if (match) {
+    const cur = await fetch(`https://api.notion.com/v1/pages/${dash32(match.id)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+    if (cur && cur.properties) {
+      const curSubj = (cur.properties["Subject Matter"]?.multi_select || []).map(o => o.name);
+      const curPlat = (cur.properties.Platforms?.multi_select || []).map(o => o.name);
+      const curPosts = (cur.properties["Saved Posts"]?.relation || []).map(r => r.id);
+      const props = {};
+      const mSubj = [...new Set([...curSubj, ...newSubj])];
+      if (mSubj.length !== curSubj.length) props["Subject Matter"] = { multi_select: mSubj.map(n => ({ name: n })) };
+      const mPlat = [...new Set([...curPlat, ...platforms])];
+      if (mPlat.length !== curPlat.length) props["Platforms"] = { multi_select: mPlat.map(n => ({ name: n })) };
+      if (!curPosts.some(id => id.replace(/-/g, "") === String(postId).replace(/-/g, "")))
+        props["Saved Posts"] = { relation: [...curPosts.map(id => ({ id })), postRef] };
+      if (Object.keys(props).length)
+        await fetch(`https://api.notion.com/v1/pages/${dash32(match.id)}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) }).catch(() => {});
+    }
+    return match.id;
+  }
+
+  const props = {
+    Name: { title: [{ type: "text", text: { content: (name || rawHandle).slice(0, 200) } }] },
+    "Saved Posts": { relation: [postRef] },
+  };
+  if (creator.handle || rawHandle) props["Handles"] = mineRT(creator.handle || ("@" + rawHandle));
+  if (newSubj.length) props["Subject Matter"] = { multi_select: newSubj.map(n => ({ name: n })) };
+  if (platforms.length) props["Platforms"] = { multi_select: platforms.map(n => ({ name: n })) };
+  if (creator.url) props["URL"] = { url: String(creator.url).slice(0, 700) };
+  const resp = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: CREATORS_DB }, properties: props }) });
+  const created = await resp.json().catch(() => ({}));
+  if (!resp.ok) { console.error("creator create:", created.message); return null; }
+  candidates.creators.push({ id: created.id.replace(/-/g, ""), name, handles: creator.handle || rawHandle });
+  return created.id;
+}
+
+const MINE_TYPE_LABEL = { "tool": "Tool", "method": "Method", "post-type": "Post Type", "strategy-note": "Strategy Note", "growth-strategy-note": "Growth Strategy Note", "podcast-idea": "Podcast Idea", "knowledge": "Knowledge" };
+
+async function integrateOneSavedPost(env, hdr, page, candidates) {
+  const pageId = page.id;
+  const account = (page.properties?.Account?.rich_text || []).map(t => t.plain_text).join("").trim();
+  const platform = page.properties?.Platform?.select?.name || "";
+  const draftTags = (page.properties?.["Draft Tags"]?.multi_select || []).map(o => o.name);
+  const transcript = await extractBlocksTextRecursive(hdr, pageId).catch(() => "");
+  if (!transcript.trim()) { await patchSavedPostPage(pageId, { Mined: { checkbox: true } }).catch(() => {}); return { items: 0, note: "no transcript" }; }
+
+  const candBlock = [
+    candidates.tools.length && `Existing Tools (name — category): ${candidates.tools.map(t => t.name + (t.category ? ` — ${t.category}` : "")).join("; ")}`,
+    candidates.toolCategories.length && `Tool-stack categories: ${candidates.toolCategories.join(", ")}`,
+    candidates.methods.length && `Live Methods: ${candidates.methods.join(", ")}`,
+    candidates.postTypes.length && `Post Types: ${candidates.postTypes.join(", ")}`,
+    candidates.methodIdeas.length && `Existing Method Ideas: ${candidates.methodIdeas.join(", ")}`,
+  ].filter(Boolean).join("\n");
+
+  const prompt = `You are mining ONE saved social post's transcript for REUSABLE building blocks for a content-operations system — NOT titles, NOT campaign ideas, NOT assets to produce.
+
+Extract only concrete, reusable things. Zero to three items is the normal, expected result; most posts yield little. Never invent a name that isn't genuinely in the transcript.
+
+Item types:
+- "tool": a specific named software / app / service. State whether it's the same as an existing tool ("exact"), does the same job as one ("similar" or "alternative"), or is genuinely "new". Give the tool-stack category (reuse an existing one when it fits).
+- "method": a repeatable content method / format / tactic worth trying. Match to a Live Method or existing Method Idea when close.
+- "post-type": a content descriptor (Teach / Story / Contrarian Take / Behind-the-Scenes ...). Match an existing Post Type when close.
+- "strategy-note": a concrete strategic observation about a niche / platform / audience worth remembering.
+- "growth-strategy-note": an observation specifically about growth / distribution tactics.
+- "podcast-idea": a podcast episode title or subject.
+- "knowledge": genuinely useful and none of the above.
+
+# Operator's own draft tags for this post (their filing intent — weight these heavily)
+${draftTags.join(", ") || "(none yet)"}
+
+# Post
+Creator handle: ${account || "unknown"} · Platform: ${platform || "unknown"}
+
+# Transcript
+${transcript.slice(0, 12000)}
+
+# Existing entities — match names EXACTLY as written, never invent one
+${candBlock || "(none on file yet)"}
+
+Respond ONLY with JSON:
+{"creator":{"name":"","handle":"${account}","platforms":["${platform}"],"subjectMatter":["","",""]},
+ "items":[{"type":"tool|method|post-type|strategy-note|growth-strategy-note|podcast-idea|knowledge","name":"short label","extract":"1-2 sentences","snippet":"<=200 chars quoted from the transcript","match":"exact existing name, or empty","matchKind":"exact|similar|alternative|new","category":"tool category or empty","confidence":"high|medium|low"}]}`;
+
+  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2200, messages: [{ role: "user", content: prompt }] }),
+  });
+  const aiData = await aiResp.json();
+  if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+  const raw = (aiData.content?.[0]?.text || "").replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+  const a = raw.indexOf("{"), b = raw.lastIndexOf("}");
+  const parsed = a === -1 || b === -1 ? {} : JSON.parse(sanitizeJsonControlChars(raw.slice(a, b + 1)));
+  const items = Array.isArray(parsed.items) ? parsed.items : [];
+
+  let creatorId = null;
+  try { creatorId = await upsertCreatorFromMining(hdr, parsed.creator || { name: account, handle: account, platforms: [platform] }, pageId, candidates); }
+  catch (e) { console.error("creator upsert:", e.message); }
+
+  const KIND = { exact: "Exact", similar: "Similar", alternative: "Alternative", new: "New" };
+  const CONF = { high: "High", medium: "Medium", low: "Low" };
+  let written = 0;
+  for (const it of items) {
+    const typeLabel = MINE_TYPE_LABEL[String(it.type || "").toLowerCase()];
+    if (!typeLabel || !it.name) continue;
+    const props = {
+      Name: { title: [{ type: "text", text: { content: String(it.name).slice(0, 200) } }] },
+      Type: { select: { name: typeLabel } },
+      Status: { select: { name: "New" } },
+      "Source Post": { relation: [{ id: dash32(pageId) }] },
+    };
+    if (it.extract) props["Extract"] = mineRT(it.extract);
+    if (it.snippet) props["Snippet"] = mineRT(it.snippet);
+    if (it.match) props["Match"] = mineRT(it.match);
+    const kl = KIND[String(it.matchKind || "").toLowerCase()]; if (kl) props["Match Kind"] = { select: { name: kl } };
+    if (it.category) props["Proposed Category"] = mineRT(it.category);
+    const cl = CONF[String(it.confidence || "").toLowerCase()]; if (cl) props["Confidence"] = { select: { name: cl } };
+    if (creatorId) props["Creator"] = { relation: [{ id: dash32(creatorId) }] };
+    const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: LINK_MINING_DB }, properties: props }) });
+    if (r.ok) written++;
+    else console.error("link mining row:", (await r.json().catch(() => ({}))).message);
+  }
+  await patchSavedPostPage(pageId, { Mined: { checkbox: true } }).catch(() => {});
+  return { items: written, creatorId };
+}
+
+async function runLinkMiningBatch(env, { limit = 8 } = {}) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  if (!NOTION_TOKEN || !env.ANTHROPIC_API_KEY) return { done: 0 };
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const rows = await notionQuery(SAVED_POSTS_DB, {
+    filter: { and: [ { property: "Status", status: { equals: "Done" } }, { property: "Mined", checkbox: { equals: false } } ] },
+    page_size: limit,
+  }).catch(e => { console.error("runLinkMiningBatch query:", e.message); return []; });
+  if (!rows.length) return { done: 0 };
+  const candidates = await buildMiningCandidates(hdr);
+  let done = 0;
+  for (const page of rows.slice(0, limit)) {
+    try { await integrateOneSavedPost(env, hdr, page, candidates); done++; }
+    catch (e) { console.error("integrate", page.id, e.message); await patchSavedPostPage(page.id, { Mined: { checkbox: true } }).catch(() => {}); }
+  }
+  return { done };
 }
 
 // ── runListingRepostReminders ──
@@ -7645,7 +7887,16 @@ Return ONLY a JSON array — no other text, no markdown fences:
           Campaigns:   { relation: [{ id: dash(campaignId) }] },
         };
         if (description) props["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
-        if (ecosystemTag) props["Ecosystem"] = { rich_text: [{ type: "text", text: { content: String(ecosystemTag).slice(0, 200) } }] };
+        // Per operator direction: an ecosystem group IS a Product Stack —
+        // it should render as one, not as its own nested sub-grouping
+        // inside a "No Stack" bucket (the strange double-nesting this
+        // caused before). "Ecosystem" is kept too (still used to find/sort
+        // ecosystem siblings by Marketing Phase within the stack), but
+        // Product Stack is what the Products panel actually groups by.
+        if (ecosystemTag) {
+          props["Ecosystem"] = { rich_text: [{ type: "text", text: { content: String(ecosystemTag).slice(0, 200) } }] };
+          props["Product Stack"] = { rich_text: [{ type: "text", text: { content: String(ecosystemTag).slice(0, 200) } }] };
+        }
         // Type = concrete FORMAT (PDF, Email, Quiz, Coaching, Membership...) —
         // this is what matchProductMethod uses to pick a method. Marketing
         // Phase = funnel role (Top of funnel/Lead-in/Core offer/Retention) —
@@ -7672,10 +7923,20 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const { productId, ecosystemTag } = body;
         if (!productId || !ecosystemTag) return json({ error: "productId and ecosystemTag required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        // Same "an ecosystem group IS a Product Stack" fix as
+        // createEcosystemProduct — but this tags an already-EXISTING
+        // product (the seed of a "+ Add Product" run), which might
+        // already carry its own operator-assigned stack, so only fill
+        // Product Stack in when it's genuinely empty rather than
+        // clobbering an intentional assignment.
+        const existing = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+        const hasStack = (existing?.properties?.["Product Stack"]?.rich_text || []).some(t => t.plain_text?.trim());
+        const props = { Ecosystem: { rich_text: [{ type: "text", text: { content: String(ecosystemTag).slice(0, 200) } }] } };
+        if (!hasStack) props["Product Stack"] = { rich_text: [{ type: "text", text: { content: String(ecosystemTag).slice(0, 200) } }] };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { Ecosystem: { rich_text: [{ type: "text", text: { content: String(ecosystemTag).slice(0, 200) } }] } } }),
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: props }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
@@ -19154,6 +19415,8 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       if (body.action === "getSavedPosts") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         await enrichUnprocessedSavedPosts(env, { limit: 10 });
+        // Eager backstop for the Draft Tags pre-list (cron is the other half).
+        ctx.waitUntil(runDraftTagPass(env, { limit: 6 }).catch(() => {}));
         const rows = await notionQuery(SAVED_POSTS_DB, {
           // Sort by Notion's own created_time, not the "Date Saved" property
           // — that property is only as reliable as whatever wrote it (the
@@ -19176,6 +19439,8 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
             savedNote: (pr["Saved Note"]?.rich_text || []).map(t => t.plain_text).join("") || "",
             error: pr["Summary Error"]?.rich_text?.[0]?.plain_text || "",
             notionUrl: p.url,
+            mined: pr.Mined?.checkbox === true,
+            draftTags: (pr["Draft Tags"]?.multi_select || []).map(o => o.name),
           };
         });
         return json({ posts });
@@ -25046,6 +25311,197 @@ ${assemblyManifest}`;
         return json({ entries, clusters });
       }
 
+      // ═══ Link mining — Globals tab ═══════════════════════════════════
+      // getLinkMining: the review queue. getCreators/getPodcastIdeas/
+      // getMethodIdeas: the promote-target reads. updateDraftTags: save the
+      // operator's edited pre-integration tag list. integrateLinkKnowledge
+      // / integrateAllTranscribed: run the mining pass. promoteMinedItem /
+      // dismissMinedItem: act on one queue row. See integrateOneSavedPost.
+      if (body.action === "getLinkMining") {
+        const [rows, postRows, creatorRows] = await Promise.all([
+          notionQuery(LINK_MINING_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(e => { console.error("getLinkMining:", e.message); return []; }),
+          notionQuery(SAVED_POSTS_DB, {}).catch(() => []),
+          notionQuery(CREATORS_DB, {}).catch(() => []),
+        ]);
+        const postById = {}; postRows.forEach(p => { postById[p.id.replace(/-/g, "")] = { name: (p.properties.Name?.title || []).map(t => t.plain_text).join(""), url: p.properties.URL?.url || "" }; });
+        const creatorById = {}; creatorRows.forEach(c => { creatorById[c.id.replace(/-/g, "")] = (c.properties.Name?.title || []).map(t => t.plain_text).join(""); });
+        const rt = v => (v?.rich_text || []).map(t => t.plain_text).join("");
+        const items = rows.map(p => {
+          const pr = p.properties;
+          const spId = (pr["Source Post"]?.relation || [])[0]?.id?.replace(/-/g, "") || "";
+          const crId = (pr["Creator"]?.relation || [])[0]?.id?.replace(/-/g, "") || "";
+          return {
+            id: p.id.replace(/-/g, ""),
+            name: (pr.Name?.title || []).map(t => t.plain_text).join(""),
+            type: pr.Type?.select?.name || "",
+            extract: rt(pr.Extract), snippet: rt(pr.Snippet), match: rt(pr.Match),
+            matchKind: pr["Match Kind"]?.select?.name || "",
+            category: rt(pr["Proposed Category"]),
+            confidence: pr.Confidence?.select?.name || "",
+            status: pr.Status?.select?.name || "New",
+            promotedTo: rt(pr["Promoted To"]),
+            sourcePost: postById[spId]?.name || "", sourcePostId: spId, sourceUrl: postById[spId]?.url || "",
+            creator: creatorById[crId] || "", creatorId: crId,
+          };
+        });
+        return json({ items });
+      }
+
+      if (body.action === "getCreators") {
+        const rows = await notionQuery(CREATORS_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(e => { console.error("getCreators:", e.message); return []; });
+        const items = rows.map(p => {
+          const pr = p.properties;
+          return {
+            id: p.id.replace(/-/g, ""),
+            name: (pr.Name?.title || []).map(t => t.plain_text).join(""),
+            handles: (pr.Handles?.rich_text || []).map(t => t.plain_text).join(""),
+            platforms: (pr.Platforms?.multi_select || []).map(o => o.name),
+            subjectMatter: (pr["Subject Matter"]?.multi_select || []).map(o => o.name),
+            notes: (pr.Notes?.rich_text || []).map(t => t.plain_text).join(""),
+            url: pr.URL?.url || "",
+            postCount: (pr["Saved Posts"]?.relation || []).length,
+          };
+        });
+        return json({ items });
+      }
+
+      if (body.action === "getPodcastIdeas") {
+        const rows = await notionQuery(PODCAST_IDEAS_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(e => { console.error("getPodcastIdeas:", e.message); return []; });
+        const items = rows.map(p => {
+          const pr = p.properties;
+          return {
+            id: p.id.replace(/-/g, ""),
+            name: (pr.Name?.title || []).map(t => t.plain_text).join(""),
+            angle: (pr.Angle?.rich_text || []).map(t => t.plain_text).join(""),
+            subjectMatter: (pr["Subject Matter"]?.multi_select || []).map(o => o.name),
+            status: pr.Status?.select?.name || "Idea",
+          };
+        });
+        return json({ items });
+      }
+
+      if (body.action === "getMethodIdeas") {
+        const rows = await notionQuery(METHOD_IDEAS_DB, { sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(e => { console.error("getMethodIdeas:", e.message); return []; });
+        const items = rows.map(p => {
+          const pr = p.properties;
+          return {
+            id: p.id.replace(/-/g, ""),
+            name: (pr.Name?.title || []).map(t => t.plain_text).join(""),
+            description: (pr.Description?.rich_text || []).map(t => t.plain_text).join(""),
+            closestMethod: (pr["Closest Method"]?.rich_text || []).map(t => t.plain_text).join(""),
+            platform: (pr.Platform?.rich_text || []).map(t => t.plain_text).join(""),
+            subjectMatter: (pr["Subject Matter"]?.multi_select || []).map(o => o.name),
+            status: pr.Status?.select?.name || "Idea",
+          };
+        });
+        return json({ items });
+      }
+
+      if (body.action === "updateDraftTags") {
+        const { postId, tags } = body;
+        if (!postId || !Array.isArray(tags)) return json({ error: "postId and tags[] required" }, 400);
+        const clean = [...new Set(tags.map(t => String(t).trim().toLowerCase()).filter(Boolean))].slice(0, 40);
+        await patchSavedPostPage(dash32(postId), { "Draft Tags": { multi_select: clean.map(name => ({ name: name.slice(0, 60) })) } });
+        return json({ success: true, tags: clean });
+      }
+
+      if (body.action === "integrateLinkKnowledge") {
+        const { postId } = body;
+        if (!postId) return json({ error: "postId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const page = await fetch(`https://api.notion.com/v1/pages/${dash32(postId)}`, { headers: hdr }).then(r => r.json());
+        if (!page.id) return json({ error: "post not found" }, 404);
+        const candidates = await buildMiningCandidates(hdr);
+        try {
+          const res = await integrateOneSavedPost(env, hdr, page, candidates);
+          return json({ success: true, ...res });
+        } catch (e) {
+          console.error("integrateLinkKnowledge:", e.message);
+          return json({ error: e.message }, 500);
+        }
+      }
+
+      if (body.action === "integrateAllTranscribed") {
+        const res = await runLinkMiningBatch(env, { limit: Math.min(25, Math.max(1, body.limit || 12)) });
+        return json({ success: true, ...res });
+      }
+
+      if (body.action === "promoteMinedItem") {
+        const { id, destination, newName, category, alternativeToId, platform, angle, description, closestMethod } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const row = await fetch(`https://api.notion.com/v1/pages/${dash32(id)}`, { headers: hdr }).then(r => r.json());
+        if (!row.id) return json({ error: "mined item not found" }, 404);
+        const rp = row.properties;
+        const nm = (newName || (rp.Name?.title || []).map(t => t.plain_text).join("")).trim();
+        const extract = (rp.Extract?.rich_text || []).map(t => t.plain_text).join("");
+        const matchTxt = (rp.Match?.rich_text || []).map(t => t.plain_text).join("");
+        const srcPost = (rp["Source Post"]?.relation || [])[0];
+        const creatorRel = (rp["Creator"]?.relation || [])[0];
+        const dest = (destination || rp.Type?.select?.name || "").toLowerCase().replace(/ /g, "-");
+        const mk = (props) => { const p = { ...props }; return p; };
+        const post = (db, props) => fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: db }, properties: props }) }).then(r => r.json());
+        let promotedTo = "", merged = false;
+        try {
+          if (dest === "tool") {
+            const props = { Name: { title: [{ type: "text", text: { content: nm.slice(0, 200) } }] }, Description: mineRT(extract), Source: { select: { name: "Link Mining" } } };
+            if (category) props["Category"] = { select: { name: String(category).slice(0, 100) } };
+            if (extract) props["Use Case"] = mineRT(extract);
+            if (srcPost) props["Source Post"] = { relation: [{ id: srcPost.id }] };
+            if (alternativeToId) props["Alternative To"] = { relation: [{ id: dash32(alternativeToId) }] };
+            const c = await post(TOOLS_DB, props);
+            if (!c.id) throw new Error(c.message || "tool create failed");
+            promotedTo = "Tools: " + nm;
+          } else if (dest === "post-type") {
+            const existing = await notionQuery(POST_TYPES_DB, { filter: { property: "Name", title: { equals: nm } } }).catch(() => []);
+            if (existing.length) { promotedTo = "Post Type (existing): " + nm; merged = true; }
+            else {
+              const c = await post(POST_TYPES_DB, { Name: { title: [{ type: "text", text: { content: nm.slice(0, 200) } }] }, Rationale: mineRT(extract) });
+              if (!c.id) throw new Error(c.message || "post type create failed");
+              promotedTo = "Post Types: " + nm;
+            }
+          } else if (dest === "method") {
+            const props = { Name: { title: [{ type: "text", text: { content: nm.slice(0, 200) } }] }, Description: mineRT(description || extract) };
+            if (closestMethod || matchTxt) props["Closest Method"] = mineRT(closestMethod || matchTxt);
+            if (platform) props["Platform"] = mineRT(platform);
+            if (srcPost) props["Source Post"] = { relation: [{ id: srcPost.id }] };
+            if (creatorRel) props["Creator"] = { relation: [{ id: creatorRel.id }] };
+            const c = await post(METHOD_IDEAS_DB, props);
+            if (!c.id) throw new Error(c.message || "method idea create failed");
+            promotedTo = "Method Ideas: " + nm;
+          } else if (dest === "podcast-idea") {
+            const props = { Name: { title: [{ type: "text", text: { content: nm.slice(0, 200) } }] }, Angle: mineRT(angle || extract), Status: { select: { name: "Idea" } } };
+            if (srcPost) props["Source Post"] = { relation: [{ id: srcPost.id }] };
+            if (creatorRel) props["Creator"] = { relation: [{ id: creatorRel.id }] };
+            const c = await post(PODCAST_IDEAS_DB, props);
+            if (!c.id) throw new Error(c.message || "podcast idea create failed");
+            promotedTo = "Podcast Ideas: " + nm;
+          } else {
+            promotedTo = "kept in queue (no external table for this type)";
+            merged = true;
+          }
+        } catch (e) {
+          console.error("promoteMinedItem:", e.message);
+          return json({ error: e.message }, 500);
+        }
+        await fetch(`https://api.notion.com/v1/pages/${dash32(id)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Status: { select: { name: merged ? "Merged" : "Promoted" } }, "Promoted To": mineRT(promotedTo) } }),
+        }).catch(() => {});
+        return json({ success: true, promotedTo, merged });
+      }
+
+      if (body.action === "dismissMinedItem") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await fetch(`https://api.notion.com/v1/pages/${dash32(id)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Status: { select: { name: "Dismissed" } } } }),
+        });
+        return json({ success: true });
+      }
+
       // ── getEcosystemGraph ──
       // Schema-level map of every Notion database in the dash ecosystem
       // (nodes) and the relation properties that wire them together
@@ -27185,7 +27641,10 @@ Produce all of this by calling the submit_listing tool — do not include any of
     }
     ctx.waitUntil(deepScan(env).catch(e => console.error('deepScan failed:', e.message)));
     ctx.waitUntil(runAutoTradeScan(env).catch(e => console.error('runAutoTradeScan failed:', e.message)));
-    ctx.waitUntil(runKnowledgeGraphAnalysis(env).catch(e => console.error('runKnowledgeGraphAnalysis failed:', e.message)));
+    // Link mining replaced runKnowledgeGraphAnalysis: the daily cron only
+    // keeps Draft Tags fresh — the full mining pass is operator-triggered
+    // per post so tags can be edited first (integrateLinkKnowledge).
+    ctx.waitUntil(runDraftTagPass(env, { limit: 20 }).catch(e => console.error('runDraftTagPass failed:', e.message)));
     ctx.waitUntil(
       buildEcosystemGraph(env)
         .then(g => env.TRADES.put(ECOSYSTEM_GRAPH_KV_KEY, JSON.stringify(g), { expirationTtl: 172800 }))

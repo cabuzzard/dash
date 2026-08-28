@@ -4029,28 +4029,19 @@ function renderProducts() {
     const key = p.stack || NO_STACK;
     (stackGroups[key] = stackGroups[key] || []).push(p);
   });
+  // Per operator direction: an ecosystem group IS a Product Stack now
+  // (createEcosystemProduct/tagProductEcosystem write both fields the
+  // same value at creation) — it renders as one, not as its own nested
+  // sub-grouping inside a stack bucket (the strange "No Stack" ->
+  // ecosystem double-nesting this used to produce). Marketing-Phase
+  // ordering (core/umbrella offer first) is still applied so a funnel's
+  // arc stays readable within the stack, just without the extra header.
   const renderMembers = (members, body) => {
-    const ecoGroups = {};
-    const rest = [];
-    members.forEach(p => { if (p.ecosystem) { (ecoGroups[p.ecosystem] = ecoGroups[p.ecosystem] || []).push(p); } else rest.push(p); });
-    Object.keys(ecoGroups).forEach(tag => {
-      const collapsed = COLLAPSED_ECOSYSTEMS.has(tag);
-      const wrap = document.createElement('div');
-      wrap.style.cssText = 'border-left:2px solid #e8ff47;padding-left:8px;margin-bottom:10px;';
-      const ecoMembers = ecoGroups[tag].slice().sort((a, b) => rankMarketingPhase(a.marketingPhase) - rankMarketingPhase(b.marketingPhase));
-      const header = document.createElement('div');
-      header.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#e8ff47;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;';
-      header.innerHTML = `<span style="display:inline-block;width:8px;transform:rotate(${collapsed ? '-90deg' : '0deg'});transition:transform .12s;">▾</span>🧬 ${tag} <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;">(${ecoMembers.length})</span>`;
-      header.onclick = () => toggleEcosystemGroup(tag);
-      wrap.appendChild(header);
-      if (!collapsed) {
-        const inner = document.createElement('div');
-        ecoMembers.forEach(p => inner.appendChild(makeProductRow(p)));
-        wrap.appendChild(inner);
-      }
-      body.appendChild(wrap);
+    const sorted = members.slice().sort((a, b) => {
+      if (!a.ecosystem && !b.ecosystem) return 0;
+      return rankMarketingPhase(a.marketingPhase) - rankMarketingPhase(b.marketingPhase);
     });
-    rest.forEach(p => body.appendChild(makeProductRow(p)));
+    sorted.forEach(p => body.appendChild(makeProductRow(p)));
   };
   const stackKeys = Object.keys(stackGroups).sort((a, b) => {
     if (a === NO_STACK) return 1;
