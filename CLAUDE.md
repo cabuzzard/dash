@@ -355,6 +355,19 @@ Live URL pattern: `https://cabuzzard.github.io/dash/microsites/{deploy-path}/`
 | `garden-planning-calendar-workbook` | ✓ | ✓ | `3981f7d3a4bb81a69924cdc633e96828` | `3981f7d3a4bb815c90c4ef64e4324572` |
 | `buzzard-designs` | ✓ | — | `3c61f7d3a4bb8187a282ed3a66bc22e2` | `3c91f7d3a4bb8156ab38e2c2be62c110` |
 
+## ChatGPT image generation → Asset thumbnail (on-demand, browser-driven)
+
+Per operator direction (2026-08-27): "I generally build my images with ChatGPT. I need an automation that can call it as a chat response and then grab the images it produces." Confirmed OpenAI's raw image API doesn't produce the same results as chat, so this drives the real chatgpt.com chat UI via Claude in Chrome — it's **not** a Cloudflare Worker automation (no browser there) and can't run as a silent background job; it's a repeatable process to run on request, interactively:
+
+1. Navigate to `chatgpt.com` (the operator's own logged-in session/cookies — no separate auth needed).
+2. Type a descriptive image prompt into the chat box (styled to the asset — e.g. for a "Pain Point Cards"-style slot, describe the plain quote-card look and the exact slot Angle text as the on-image copy) and send it.
+3. Wait for generation (~15-20s), then `find` the "Download" button on the generated image (NOT the small icon overlaid on the image itself in the chat feed — that one doesn't reliably trigger a download; the real one lives in the image's own action row/dialog) and click it via its `ref`.
+4. The file lands in the OS Downloads folder as a GUID-named `.tmp` (not renamed to `.png` — this extension's download flow doesn't complete that last rename step) but the bytes are already a complete, valid image — confirmed via magic-byte check (`89 50 4E 47...` for PNG) rather than trusting the extension. Move/rename it out of Downloads once confirmed.
+5. Base64-encode it and POST straight to the existing `uploadAssetThumbnail` worker action (`{assetId, fileName, contentType, fileData}`) — this is the exact same action `publishAssetModal`'s thumbnail upload already uses (`uploadPubThumbnail()` in the microsite), so no new server code is needed for this half; it uploads to GitHub Pages hosting and points the Asset's Thumbnail property at it.
+6. **Stop there.** Per operator direction, this only fills in the thumbnail — it does NOT flip Status to Published. That stays a manual, human-reviewed step in the Publish Asset modal, unchanged.
+
+Verified live 2026-08-27: generated a real quote-card image for the "Pain Point Cards" grouping's first slot ("You answered the phone at 9am. The lead called at 7:58am. They already booked someone else.") end-to-end through steps 1-4 above; step 5 (`uploadAssetThumbnail`) reuses already-proven code, not re-tested against a live asset in this pass since no real Asset existed yet for that slot.
+
 ## Security Notes
 
 - `noindex, nofollow` on all admin microsites
