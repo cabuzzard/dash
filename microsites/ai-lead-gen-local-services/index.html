@@ -3965,34 +3965,17 @@ function makeProductRow(p) {
   // later, at title-development time, not here) — their modal functions
   // still exist elsewhere in this file, just no longer triggered from here.
   const stackEditBtn = `<button class="td-add-btn-inline" onclick="openStackEditModal('${p.id}','${p.name.replace(/'/g,"\\'")}','${(p.stack||'').replace(/'/g,"\\'")}')" title="Set Product Stack" style="${psStyle};background:none;cursor:pointer;color:#a78bfa;">stack</button>`;
-  // Backfill — retroactively brings this product's already-published,
-  // pre-Strategy-Slot legacy titles into the Growth Strategy/Slot system
-  // (grouped by Method), so they start showing up in the Development tab's
-  // NEXT section going forward. Always shown regardless of whether legacy
-  // titles actually exist — same "just try it" convention as 🚀 New
-  // Strategy elsewhere; backfillLegacyStrategy itself reports back when
-  // there's nothing eligible instead of failing.
-  const backfillBtn = `<button class="td-add-btn-inline" onclick="runBackfillLegacyStrategy('${p.id}','${p.name.replace(/'/g,"\\'")}', this)" title="Backfill a Growth Strategy from this product's already-published legacy titles (grouped by Method), with one proposed next piece per method" style="${psStyle};background:none;cursor:pointer;color:#f6ad55;">backfill</button>`;
+  // Strategy — per operator direction, this is now an exact copy of the
+  // Strategies tab's "+" (openAddStrategyModal), just launched with this
+  // row's product already chosen instead of asking via a picker —
+  // openGrowthStrategyModal already existed for exactly this (same modal,
+  // Product shown as a fixed label) but had no caller since a past
+  // operator request removed Growth Strategy generation from this row;
+  // this re-wires it here, replacing the old backfillLegacyStrategy
+  // button (a different, no-longer-used reconstruct-from-history flow).
+  const backfillBtn = `<button class="td-add-btn-inline" onclick="openGrowthStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Generate a new Growth Strategy for this product — same flow as the Strategies tab's + button, just with this product already chosen" style="${psStyle};background:none;cursor:pointer;color:#f6ad55;">🚀 strategy</button>`;
   row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}${stackBadge}${stackEditBtn}${researchLink}${backfillBtn}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
-}
-async function runBackfillLegacyStrategy(productId, productName, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
-  try {
-    const r = await w('backfillLegacyStrategy', { campaignId: CAMPAIGN_ID, productId });
-    if (r.error) throw new Error(r.error);
-    if (!r.created) {
-      alert(r.message || 'No eligible legacy titles found for this product.');
-    } else {
-      alert(`Backfilled ${r.strategiesCreated.length} strateg${r.strategiesCreated.length === 1 ? 'y' : 'ies'} for ${productName}, ${r.slotsCreated} slots (${r.titlesLinked} legacy titles linked), including one proposed next piece per method.`);
-      if (typeof loadCampaignStrategies === 'function') await loadCampaignStrategies();
-      if (typeof loadTitles === 'function') await loadTitles();
-    }
-  } catch (e) {
-    alert('Error: ' + e.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'backfill'; }
-  }
 }
 
 // Which ecosystem/stack groups are collapsed, keyed by tag — persists across
