@@ -5593,7 +5593,7 @@ ${existingGroupingsBlock}
 OPERATOR GUIDANCE (the arc and/or platform requested for this new grouping — this is the primary driver):
 ${guidance.trim()}
 
-GROUPING NAMING CONVENTION (required): "name" must be a short label only — 2-4 words, no subtitle, no colon/em-dash explanation tacked on. The full explanation goes ONLY in "rationale".
+GROUPING NAMING CONVENTION (required): "name" is procedural backend metadata, not public-facing copy — describe WHAT the grouping is (format + subject), the way you'd label an internal folder or category. Do not write it like a catchy content-series title. 2-4 words, no subtitle, no colon/em-dash explanation tacked on. Bad (reads like marketing copy): "Revenue Leak Reels", "Tool Stack Teardowns". Good (plainly descriptive): "Pain Point Reels", "Tool Comparison Posts". The full explanation goes ONLY in "rationale" — that's what the operator sees on hover; the name is a plain label they scan at a glance.
 
 POST TYPE CATALOG (assign one to every title, by exact name when it genuinely fits):
 ${postTypesCatalogBlock}
@@ -9708,7 +9708,7 @@ ${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? 
 
 ${platformInstruction}
 
-GROUPING NAMING CONVENTION (required): each grouping's "name" must be a short label only — 2-4 words, no subtitle, no colon/em-dash explanation tacked on (e.g. "Tool Stack Teardowns", not "Tool Stack Teardowns — What Small Businesses Are Actually Running (And What It's Costing Them)"). The full explanation of what the grouping is and why it exists goes ONLY in "rationale" — that's what the operator sees on hover, the name is what they see at a glance.
+GROUPING NAMING CONVENTION (required): each grouping's "name" is procedural backend metadata, not public-facing copy — describe WHAT the grouping is (format + subject), the way you'd label an internal folder or category, never coin a catchy content-series title for it. 2-4 words, no subtitle, no colon/em-dash explanation tacked on (e.g. "Pain Point Reels", not "Revenue Leak Reels — What Small Businesses Are Actually Running (And What It's Costing Them)" — "Revenue Leak" is copy, "Pain Point" is a plain description of the content). The full explanation of what the grouping is and why it exists goes ONLY in "rationale" — that's what the operator sees on hover, the name is what they see at a glance.
 
 PRODUCT: ${productName}
 Description: ${ptxt('Description')}
