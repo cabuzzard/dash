@@ -4698,22 +4698,43 @@ export default {
           }).catch(() => {});
         }
 
-        // Pillar content should exist on a title shortly after it's created
-        // (Generate Assets reshapes it, doesn't compose from scratch — and
-        // generateTitleAssets self-heals a missing pillar on first run
-        // anyway). This is a Claude call plus research/product/strategy
-        // lookups — 15-40s — so it runs AFTER the response via
-        // ctx.waitUntil rather than blocking the "+ Add title" modal.
-        // skipPillar (the quick-add "Planning" flow): the operator writes
-        // their own notes and runs writeTitlePillar later, on purpose.
-        if (!skipPillar) {
-          ctx.waitUntil(writePillarContent(hdr, env, {
-            titleId: newTitleId, titleText: title, campaignId, productId, methodId,
-            guidance: [description, researchInstructions].filter(Boolean).join(" — ") || undefined,
-          }).catch(e => console.error("createDevTitle pillar write:", e.message)));
-        }
-
+        // Pillar / strategy / research generation is NO LONGER done here —
+        // per operator direction, "+ Add title" just drops an empty title
+        // into Development. The Claude pillar write (+ its research/product
+        // lookups and Strategy auto-generation) is an explicit per-title
+        // action now: the ✍ button on the Development row, or the microsite
+        // Write Pillar button, both -> writeTitlePillar. (skipPillar is kept
+        // as an accepted no-op param so older callers don't break.)
         return json({ success: true, id: newTitleId });
+      }
+
+      // ── createDevTitles (bulk) ──
+      // Drop a list of empty titles into Development in one shot — no AI,
+      // no pillar, no research. The "+ Add titles" modal on the Dev tab.
+      if (body.action === "createDevTitles") {
+        const { titles, campaignId, productId, status, grouping } = body;
+        const names = (Array.isArray(titles) ? titles : String(titles || "").split("\n"))
+          .map(s => String(s).trim()).filter(Boolean).slice(0, 200);
+        if (!names.length) return json({ error: "no titles" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g, ""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const baseProps = { Status: { select: { name: status || "Development" } } };
+        if (grouping) baseProps["Grouping"] = { rich_text: [{ type: "text", text: { content: String(grouping).slice(0, 1990) } }] };
+        if (campaignId) baseProps["Campaign"] = { relation: [{ id: dashId(campaignId) }] };
+        if (productId && productId !== "__none__" && productId !== campaignId) baseProps["product"] = { relation: [{ id: dashId(productId) }] };
+        let created = 0, failed = 0;
+        const ids = [];
+        for (let i = 0; i < names.length; i += 5) {
+          const batch = names.slice(i, i + 5);
+          const results = await Promise.all(batch.map(nm =>
+            fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: hdr,
+              body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: { ...baseProps, Title: { title: [{ type: "text", text: { content: nm.slice(0, 200) } }] } } }),
+            }).then(r => r.json()).catch(() => ({}))
+          ));
+          results.forEach(r => { if (r.id) { created++; ids.push(r.id.replace(/-/g, "")); } else { failed++; console.error("createDevTitles:", r.message); } });
+        }
+        return json({ success: true, created, failed, ids });
       }
 
       // ── writeTitlePillar ──

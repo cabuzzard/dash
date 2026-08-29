@@ -2926,21 +2926,26 @@
   </div>
 </div>
 
-<!-- Add Title Modal -->
+<!-- Add Titles Modal — bulk, empty titles only (no pillar/research) -->
 <div class="modal-bg" id="titleModal" onclick="if(event.target===this)closeTitleModal()">
   <div class="modal">
-    <div class="modal-title">New Development Title</div>
+    <div class="modal-title">Add Development Titles</div>
 
     <div class="modal-field">
-      <label class="modal-label">Title</label>
-      <input class="modal-input" id="titleName" type="text" placeholder="Title name..." />
+      <label class="modal-label">Titles — one per line</label>
+      <textarea class="modal-input" id="titleNames" rows="8" style="resize:vertical;font-size:14px;line-height:1.5;" placeholder="Paste one title per line…"></textarea>
     </div>
 
     <div class="modal-field" style="position:relative;">
-      <label class="modal-label">Campaign</label>
+      <label class="modal-label">Campaign <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></label>
       <input class="modal-input" id="titleCampaignInput" type="text" placeholder="Search campaigns..." autocomplete="off" oninput="filterTitleCampaigns()" onfocus="filterTitleCampaigns()" />
       <input type="hidden" id="titleCampaignId" />
       <div id="titleCampDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">Grouping <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">(optional — applied to all)</span></label>
+      <input class="modal-input" id="titleGrouping" type="text" placeholder="e.g. Week 1, Q2 batch..." />
     </div>
 
     <div class="modal-field">
@@ -2955,10 +2960,13 @@
       </select>
     </div>
 
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">Creates empty titles only. Write pillar / research from the ✍ button on each Development row.</div>
+
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeTitleModal()">Cancel</button>
       <button class="btn btn-primary" id="titleSubmitBtn" onclick="submitTitle()">Create</button>
     </div>
+    <div id="titleModalErr" style="font-size:12px;color:var(--danger);margin-top:8px;min-height:16px;"></div>
   </div>
 </div>
 
@@ -8188,6 +8196,28 @@ function renderDev() {
             claudeBtn.onmouseout  = () => claudeBtn.style.background = '#1a1a2e';
             claudeBtn.onclick = e => { e.preventDefault(); e.stopPropagation(); openClaudeModal(t.title, t.id); };
             tRow.appendChild(claudeBtn);
+
+            // ✍ Write pillar — the research/product/strategy-grounded Claude
+            // pass that createDevTitle used to do inline. On-demand now.
+            const pillarBtn = document.createElement('span');
+            pillarBtn.textContent = '✍';
+            pillarBtn.title = 'Write pillar content (research + product grounded)';
+            pillarBtn.style.cssText = 'font-size:12px;cursor:pointer;flex-shrink:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:4px;';
+            pillarBtn.onclick = async e => {
+              e.preventDefault(); e.stopPropagation();
+              if (pillarBtn.dataset.busy) return;
+              pillarBtn.dataset.busy = '1'; pillarBtn.textContent = '⋯';
+              try {
+                const r = await call('writeTitlePillar', { titleId: t.id });
+                if (r.error) throw new Error(r.error);
+                showToast('Pillar written ✓', 'success');
+                pillarBtn.textContent = '✓'; pillarBtn.style.color = '#4cff4c';
+              } catch (err) {
+                showToast('Pillar failed: ' + err.message, 'error');
+                pillarBtn.textContent = '✍'; delete pillarBtn.dataset.busy;
+              }
+            };
+            tRow.appendChild(pillarBtn);
           }
 
           // Shared helper — apply a status change to this row
@@ -8443,15 +8473,17 @@ document.addEventListener('click', () => {
 
 // ── TITLE MODAL ──────────────────────────────────────────────────────
 function openTitleModal() {
-  document.getElementById('titleName').value = '';
+  document.getElementById('titleNames').value = '';
+  document.getElementById('titleGrouping').value = '';
   document.getElementById('titleCampaignInput').value = '';
   document.getElementById('titleCampaignId').value = '';
   document.getElementById('titleCampDropdown').style.display = 'none';
   document.getElementById('titleStatus').value = 'Development';
+  document.getElementById('titleModalErr').textContent = '';
   document.getElementById('titleSubmitBtn').disabled = false;
   document.getElementById('titleSubmitBtn').textContent = 'Create';
   document.getElementById('titleModal').classList.add('open');
-  setTimeout(() => document.getElementById('titleName').focus(), 280);
+  setTimeout(() => document.getElementById('titleNames').focus(), 280);
 }
 
 function closeTitleModal() {
@@ -8506,17 +8538,19 @@ document.addEventListener('click', e => {
 });
 
 async function submitTitle() {
-  const title      = document.getElementById('titleName').value.trim();
-  const campaignId = document.getElementById('titleCampaignId').value;
-  const status     = document.getElementById('titleStatus').value;
-  if (!title) { document.getElementById('titleName').focus(); return; }
+  const titles = document.getElementById('titleNames').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const campaignId = document.getElementById('titleCampaignId').value || undefined;
+  const grouping = document.getElementById('titleGrouping').value.trim() || undefined;
+  const status = document.getElementById('titleStatus').value;
+  if (!titles.length) { document.getElementById('titleNames').focus(); return; }
 
   const btn = document.getElementById('titleSubmitBtn');
-  btn.disabled = true; btn.textContent = 'Creating...';
+  btn.disabled = true; btn.textContent = 'Creating ' + titles.length + '…';
   try {
-    await call('createDevTitle', { title, campaignId, status });
+    const r = await call('createDevTitles', { titles, campaignId, grouping, status });
+    if (r.error) throw new Error(r.error);
     closeTitleModal();
-    showToast('Title created ✓', 'success');
+    showToast('Created ' + r.created + ' title' + (r.created === 1 ? '' : 's') + ' ✓' + (r.failed ? ' (' + r.failed + ' failed)' : ''), r.failed ? 'error' : 'success');
     devLoaded = true;
     if (devTitlesCollapsed) { devTitlesCollapsed = false; document.getElementById('devContent').style.display = ''; document.getElementById('devTitlesToggleIcon').textContent = '▾'; }
     loadDev();
@@ -8524,7 +8558,7 @@ async function submitTitle() {
     if (last30TitlesCollapsed) { last30TitlesCollapsed = false; document.getElementById('last30TitlesList').style.display = ''; document.getElementById('last30TitlesToggleIcon').textContent = '▾'; }
     loadLast30Titles();
   } catch (e) {
-    showToast('Failed: ' + e.message, 'error');
+    document.getElementById('titleModalErr').textContent = e.message;
     btn.disabled = false; btn.textContent = 'Create';
   }
 }
