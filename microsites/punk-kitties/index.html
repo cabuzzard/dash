@@ -3988,6 +3988,11 @@ function toggleEcosystemGroup(tag) {
   renderProducts();
 }
 let COLLAPSED_STACKS = new Set();
+// Product Stacks render collapsed by default — each stack is auto-added to
+// COLLAPSED_STACKS the first time it's seen (SEEN_STACKS), so a stack added
+// later also starts collapsed, while the operator's own expand/collapse
+// clicks are respected on every render after that.
+const SEEN_STACKS = new Set();
 function toggleStackGroup(stack) {
   if (COLLAPSED_STACKS.has(stack)) COLLAPSED_STACKS.delete(stack);
   else COLLAPSED_STACKS.add(stack);
@@ -4031,6 +4036,8 @@ function renderProducts() {
     if (b === NO_STACK) return -1;
     return a.localeCompare(b);
   });
+  // Default every stack to collapsed the first time it appears.
+  stackKeys.forEach(k => { if (!SEEN_STACKS.has(k)) { SEEN_STACKS.add(k); COLLAPSED_STACKS.add(k); } });
   stackKeys.forEach(stack => {
     const collapsed = COLLAPSED_STACKS.has(stack);
     const wrap = document.createElement('div');
