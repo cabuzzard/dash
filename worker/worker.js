@@ -5071,9 +5071,13 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       }
 
       if (body.action === "createProduct") {
-        const { title, type, description, stack } = body;
+        const { title, type, description, stack, campaignId, status } = body;
         if (!title) return json({ error: "title required" }, 400);
         const createProps = { Name: { title: [{ type: "text", text: { content: title } }] } };
+        if (status) createProps["Status"] = { select: { name: status } };
+        // Attach to a campaign at creation (the Development-tab "+ Add
+        // product" quick-add) — Products relate to campaigns via "Campaigns".
+        if (campaignId) createProps["Campaigns"] = { relation: [{ id: campaignId.replace(/-/g, "").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5") }] };
         // Type = concrete FORMAT (PDF/Email/Quiz/Coaching/Membership/etc.) —
         // set at manual creation so the ecosystem/method pipeline (run right
         // after by the front-end) has a real signal to work from.
@@ -7620,32 +7624,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true, id: result.id.replace(/-/g,""), name });
       }
 
-      if (body.action === "createProduct") {
-        const { title, status, campaignId } = body;
-        if (!title) return json({ error: "title required" }, 400);
-
-        const props = {
-          Name:   { title: [{ type: "text", text: { content: title } }] },
-          Status: { select: { name: status || "Active" } },
-        };
-        if (campaignId) {
-          const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
-          props["Campaigns"] = { relation: [{ id: dashed }] };
-        }
-
-        const resp = await fetch("https://api.notion.com/v1/pages", {
-          method: "POST",
-          headers: {
-            "Authorization":  `Bearer ${NOTION_TOKEN}`,
-            "Notion-Version": NOTION_VERSION,
-            "Content-Type":   "application/json",
-          },
-          body: JSON.stringify({ parent: { database_id: PRODUCTS_DB }, properties: props }),
-        });
-        const result = await resp.json();
-        if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
-        return json({ success: true, id: result.id.replace(/-/g,"") });
-      }
+      // (removed) second, unreachable createProduct handler — the one above
+      // (with campaignId + status support added) is the single source now.
 
       // ── createProductFromTitle ──
       // Spins an existing Content Strategy title into a seed Product: copies the

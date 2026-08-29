@@ -693,6 +693,7 @@
 
   <div class="tab-panel" id="tabDevelopment">
     <a class="add-link" onclick="openTitleModal()">+ Add title</a>
+    <a class="add-link" onclick="openDevProductModal()" style="margin-left:14px;">+ Add product</a>
     <div id="nextSection" style="margin-bottom:14px;border:1px solid #3a3a1a;border-radius:6px;overflow:hidden;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(232,255,71,.1);cursor:pointer;user-select:none;" onclick="toggleNextSection()">
         <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#e8ff47;">Next</span>
@@ -2967,6 +2968,36 @@
       <button class="btn btn-primary" id="titleSubmitBtn" onclick="submitTitle()">Create</button>
     </div>
     <div id="titleModalErr" style="font-size:12px;color:var(--danger);margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
+<!-- Quick Add Product Modal (Development tab) — name + campaign, no scripts -->
+<div class="modal-bg" id="devProductModal" onclick="if(event.target===this)closeDevProductModal()">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-title">Add Product</div>
+    <div class="modal-field">
+      <label class="modal-label">Product name</label>
+      <input class="modal-input" id="devProdName" type="text" placeholder="Product name…" />
+    </div>
+    <div class="modal-field" style="position:relative;">
+      <label class="modal-label">Campaign</label>
+      <input class="modal-input" id="devProdCampInput" type="text" placeholder="Search campaigns…" autocomplete="off" oninput="filterDevProdCampaigns()" onfocus="filterDevProdCampaigns()" />
+      <input type="hidden" id="devProdCampId" />
+      <div id="devProdCampDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Status</label>
+      <select class="modal-select" id="devProdStatus">
+        <option value="In Development">In Development</option>
+        <option value="Active">Active</option>
+        <option value="Research">Research</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeDevProductModal()">Cancel</button>
+      <button class="btn btn-primary" id="devProdSubmitBtn" onclick="submitDevProduct()">Create</button>
+    </div>
+    <div id="devProdErr" style="font-size:12px;color:var(--danger);margin-top:8px;min-height:16px;"></div>
   </div>
 </div>
 
@@ -8535,7 +8566,64 @@ document.addEventListener('click', e => {
     const dd = document.getElementById('titleCampDropdown');
     if (dd) dd.style.display = 'none';
   }
+  if (!e.target.closest('#devProdCampInput') && !e.target.closest('#devProdCampDropdown')) {
+    const dd = document.getElementById('devProdCampDropdown');
+    if (dd) dd.style.display = 'none';
+  }
 });
+
+// ── Quick Add Product (Development tab) ──────────────────────────────
+function openDevProductModal() {
+  document.getElementById('devProdName').value = '';
+  document.getElementById('devProdCampInput').value = '';
+  document.getElementById('devProdCampId').value = '';
+  document.getElementById('devProdCampDropdown').style.display = 'none';
+  document.getElementById('devProdStatus').value = 'In Development';
+  document.getElementById('devProdErr').textContent = '';
+  document.getElementById('devProdSubmitBtn').disabled = false;
+  document.getElementById('devProdSubmitBtn').textContent = 'Create';
+  document.getElementById('devProductModal').classList.add('open');
+  setTimeout(() => document.getElementById('devProdName').focus(), 280);
+}
+function closeDevProductModal() {
+  document.getElementById('devProductModal').classList.remove('open');
+  document.getElementById('devProdCampDropdown').style.display = 'none';
+}
+function filterDevProdCampaigns() {
+  const query = document.getElementById('devProdCampInput').value.trim().toLowerCase();
+  const dd = document.getElementById('devProdCampDropdown');
+  dd.innerHTML = '';
+  (ovData || []).filter(c => !query || c.name.toLowerCase().includes(query)).slice(0, 8).forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'camp-option';
+    div.textContent = c.name + (c.site ? ' (' + c.site + ')' : '');
+    div.onmousedown = () => {
+      document.getElementById('devProdCampInput').value = c.name;
+      document.getElementById('devProdCampId').value = c.id;
+      dd.style.display = 'none';
+    };
+    dd.appendChild(div);
+  });
+  dd.style.display = dd.children.length ? 'block' : 'none';
+}
+async function submitDevProduct() {
+  const title = document.getElementById('devProdName').value.trim();
+  const campaignId = document.getElementById('devProdCampId').value || undefined;
+  const status = document.getElementById('devProdStatus').value;
+  if (!title) { document.getElementById('devProdName').focus(); return; }
+  const btn = document.getElementById('devProdSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const r = await call('createProduct', { title, campaignId, status });
+    if (r.error) throw new Error(r.error);
+    closeDevProductModal();
+    showToast('Product created ✓', 'success');
+    prodLoaded = false; prodTdLoaded = false;
+  } catch (e) {
+    document.getElementById('devProdErr').textContent = e.message;
+    btn.disabled = false; btn.textContent = 'Create';
+  }
+}
 
 async function submitTitle() {
   const titles = document.getElementById('titleNames').value.split('\n').map(s => s.trim()).filter(Boolean);
