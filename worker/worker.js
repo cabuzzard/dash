@@ -4698,21 +4698,22 @@ export default {
           }).catch(() => {});
         }
 
-        // Pillar content should exist on a title the moment it's created —
-        // Generate Assets reshapes this, it doesn't compose from scratch.
-        // Best-effort: must not fail title creation, which already saved.
-        // skipPillar (the quick-add "Planning" flow, per operator request):
-        // the operator writes their own notes and runs writeTitlePillar
-        // later, on purpose — don't burn an AI call before they're ready.
-        let pillarWarning;
+        // Pillar content should exist on a title shortly after it's created
+        // (Generate Assets reshapes it, doesn't compose from scratch — and
+        // generateTitleAssets self-heals a missing pillar on first run
+        // anyway). This is a Claude call plus research/product/strategy
+        // lookups — 15-40s — so it runs AFTER the response via
+        // ctx.waitUntil rather than blocking the "+ Add title" modal.
+        // skipPillar (the quick-add "Planning" flow): the operator writes
+        // their own notes and runs writeTitlePillar later, on purpose.
         if (!skipPillar) {
-          await writePillarContent(hdr, env, {
+          ctx.waitUntil(writePillarContent(hdr, env, {
             titleId: newTitleId, titleText: title, campaignId, productId, methodId,
             guidance: [description, researchInstructions].filter(Boolean).join(" — ") || undefined,
-          }).catch(e => { pillarWarning = e.message; });
+          }).catch(e => console.error("createDevTitle pillar write:", e.message)));
         }
 
-        return json({ success: true, id: newTitleId, pillarWarning });
+        return json({ success: true, id: newTitleId });
       }
 
       // ── writeTitlePillar ──
