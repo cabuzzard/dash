@@ -9914,6 +9914,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
             id:        page.id.replace(/-/g, ""),
             title:     props.Title?.title?.map(t => t.plain_text).join("") || "Untitled",
             stage:     props.Status?.select?.name || "",
+            created:   page.created_time || "",
             _rawGrouping: props.Grouping?.rich_text?.map(t => t.plain_text).join("") || "",
             sequence:  props["Sequence Order"]?.number || 999,
             scheduled: props["Scheduled Date"]?.date?.start || "",
