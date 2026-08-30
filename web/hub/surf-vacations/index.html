@@ -18,6 +18,7 @@
    DESIGN TOKENS — EDIT PER HUB
    Change colour / type / logo here. Everything below this block
    is shared layout and must stay identical across every hub.
+   Also swap the Google Fonts <link> above to match --font-*.
    ============================================================ */
 :root{
   --bg:        #f3efe4;   /* warm foam / wet sand */
@@ -35,8 +36,8 @@
   --font-body:    "Hanken Grotesk", system-ui, sans-serif;
   --font-mono:    "Space Mono", ui-monospace, monospace;
 
-  --logo-text: "Surf Vacations";   /* used when --logo-img is none */
-  --logo-img:  none;               /* e.g. url("logo.svg") */
+  --logo-text: "Surf Vacations";
+  --logo-img:  none;
 }
 
 /* ============================================================
@@ -55,7 +56,6 @@ a{color:inherit}
 
 .wrap{width:min(1120px,100% - 2.5rem);margin-inline:auto}
 
-/* eyebrow / forecast-readout label — the recurring structural device */
 .eyebrow{
   font-family:var(--font-mono);font-weight:700;
   font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;
@@ -64,7 +64,6 @@ a{color:inherit}
 
 h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em}
 
-/* ---- header ---- */
 .site-head{
   position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);
   backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
@@ -82,7 +81,6 @@ h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter
 .nav-cta:hover{background:var(--ink);color:var(--bg)}
 .nav-toggle{display:none}
 
-/* ---- ribbon (signature): a static forecast readout ---- */
 .ribbon{border-bottom:1px solid var(--line);overflow:hidden}
 .ribbon-track{
   display:flex;flex-wrap:wrap;gap:.5rem 2.25rem;padding:.6rem 0;
@@ -91,7 +89,6 @@ h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter
 .ribbon-track span{display:inline-flex;align-items:center;gap:.55rem;white-space:nowrap}
 .ribbon-track span::before{content:"";width:6px;height:6px;background:var(--sea);border-radius:1px;transform:rotate(45deg);flex:none}
 
-/* ---- hero ---- */
 .hero{padding:clamp(3.5rem,9vw,7rem) 0 clamp(3rem,7vw,5rem)}
 .hero .eyebrow{display:block;margin-bottom:1.4rem}
 .hero h1{font-size:clamp(2.6rem,6.2vw,4.8rem);max-width:16ch}
@@ -107,14 +104,12 @@ h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter
 .btn-ghost{background:none;color:var(--ink);border:1px solid var(--line);padding:.95rem 1.5rem}
 .btn-ghost:hover{border-color:var(--ink)}
 
-/* ---- section frame ---- */
 .sec{padding:clamp(3rem,6vw,4.5rem) 0;border-top:1px solid var(--line)}
 .sec-head{display:flex;align-items:baseline;gap:1rem;margin-bottom:2rem}
 .sec-head h2{font-size:clamp(1.5rem,3vw,2rem)}
 .sec-head .eyebrow{flex:none}
 .sec-note{color:var(--ink-soft);max-width:42ch;margin-left:auto;text-align:right;font-size:.95rem}
 
-/* ---- card grids ---- */
 .grid{display:grid;gap:1.25rem}
 .grid.cols-3{grid-template-columns:repeat(3,1fr)}
 .grid.cols-2{grid-template-columns:repeat(2,1fr)}
@@ -130,7 +125,6 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
 .card p{font-size:.95rem;color:var(--ink-soft)}
 .card .more{margin-top:auto;font-family:var(--font-mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}
 
-/* ---- news list ---- */
 .dispatch{border-top:1px solid var(--line)}
 .dispatch li{list-style:none;border-bottom:1px solid var(--line)}
 .dispatch a{display:grid;grid-template-columns:5.5rem 1fr auto;gap:1.25rem;align-items:baseline;padding:1.1rem 0;text-decoration:none}
@@ -139,16 +133,14 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
 .dispatch .d-title{font-family:var(--font-display);font-size:1.1rem;font-weight:500}
 .dispatch .d-src{font-family:var(--font-mono);font-size:.72rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em}
 
-/* ---- empty state ---- */
 .empty{
   border:1px dashed var(--line);border-radius:14px;padding:2.25rem 1.75rem;
   color:var(--ink-soft);font-size:1rem;max-width:52ch;
 }
 .empty strong{display:block;font-family:var(--font-display);font-weight:600;color:var(--ink);font-size:1.05rem;margin-bottom:.4rem}
 
-/* ---- newsletter band (the one loud moment) ---- */
 .report{background:var(--deep);color:var(--deep-ink);border:none}
-.report .eyebrow{color:#7fd4d0}
+.report .eyebrow{color:color-mix(in srgb,#ffffff 60%,var(--sea))}
 .report h2{color:#fff;max-width:18ch}
 .report p{color:var(--deep-ink);max-width:44ch;margin-top:1rem}
 .signup{margin-top:2rem;display:flex;flex-wrap:wrap;gap:.75rem;max-width:520px}
@@ -159,11 +151,13 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
 .signup input[type=email]::placeholder{color:rgba(255,255,255,.5)}
 .signup .btn{flex:0 0 auto}
 .signup-note{margin-top:.9rem;font-size:.82rem;color:rgba(255,255,255,.55)}
+.report-link{margin-top:.7rem}
+.report-link a{color:#fff;font-family:var(--font-mono);font-size:.78rem;letter-spacing:.05em;text-decoration:none;border-bottom:1px solid rgba(255,255,255,.4);padding-bottom:1px}
+.report-link a:hover{border-color:#fff}
 .form-msg{margin-top:1rem;font-family:var(--font-mono);font-size:.8rem;letter-spacing:.04em}
 .form-msg.ok{color:#8fe3b0}.form-msg.err{color:#ff9b7a}
 .cf-turnstile{margin-top:.25rem}
 
-/* ---- social ---- */
 .elsewhere .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:1rem 2rem}
 .elsewhere .eyebrow{flex:none}
 .social-row{display:flex;flex-wrap:wrap;gap:.6rem}
@@ -173,20 +167,17 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
 }
 .social-row a:hover{border-color:var(--ink);color:var(--ink)}
 
-/* ---- footer ---- */
 .site-foot{border-top:1px solid var(--line);padding:2.5rem 0 3.5rem}
 .site-foot .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:1rem;align-items:baseline}
 .site-foot .f-brand{font-family:var(--font-display);font-weight:700}
 .site-foot small{color:var(--ink-soft);font-size:.85rem;display:block;margin-top:.3rem;max-width:40ch}
 .site-foot .f-legal{font-family:var(--font-mono);font-size:.72rem;color:var(--ink-soft);letter-spacing:.05em}
 
-/* ---- motion / reveal ---- */
 @media (prefers-reduced-motion:no-preference){
   .reveal{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
   .reveal.in{opacity:1;transform:none}
 }
 
-/* ---- responsive ---- */
 @media (max-width:860px){
   .grid.cols-3{grid-template-columns:1fr 1fr}
   .sec-note{display:none}
@@ -226,9 +217,36 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
       <h1 id="heroHeadline"></h1>
       <p id="heroSub"></p>
       <div class="hero-actions">
-        <a class="btn" href="#report" id="heroCta"></a>
-        <a class="btn btn-ghost" href="#trips">See the trips</a>
+        <a class="btn" id="heroCta"></a>
+        <a class="btn btn-ghost" id="heroCta2"></a>
       </div>
+    </div>
+  </section>
+
+  <section class="sec" id="trips">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow" id="tripsLabel"></span>
+        <h2 id="tripsTitle"></h2>
+        <p class="sec-note" id="tripsNote"></p>
+      </div>
+      <div id="tripsBody"></div>
+    </div>
+  </section>
+
+  <section class="sec report" id="report">
+    <div class="wrap">
+      <span class="eyebrow" id="reportLabel"></span>
+      <h2 id="reportTitle"></h2>
+      <p id="reportBlurb"></p>
+      <form class="signup" id="signupForm" novalidate>
+        <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
+        <button class="btn" type="submit" id="signupBtn">Subscribe</button>
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-callback="hubTsOk" data-theme="dark"></div>
+      </form>
+      <p class="signup-note" id="reportNote"></p>
+      <p class="report-link" id="reportLink" hidden></p>
+      <p class="form-msg" id="formMsg" role="status"></p>
     </div>
   </section>
 
@@ -254,32 +272,6 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
     </div>
   </section>
 
-  <section class="sec report" id="report">
-    <div class="wrap">
-      <span class="eyebrow" id="reportLabel"></span>
-      <h2 id="reportTitle"></h2>
-      <p id="reportBlurb"></p>
-      <form class="signup" id="signupForm" novalidate>
-        <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
-        <button class="btn" type="submit" id="signupBtn">Subscribe</button>
-        <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-callback="hubTsOk" data-theme="dark"></div>
-      </form>
-      <p class="signup-note" id="reportNote"></p>
-      <p class="form-msg" id="formMsg" role="status"></p>
-    </div>
-  </section>
-
-  <section class="sec" id="trips">
-    <div class="wrap">
-      <div class="sec-head">
-        <span class="eyebrow" id="tripsLabel"></span>
-        <h2 id="tripsTitle"></h2>
-        <p class="sec-note" id="tripsNote"></p>
-      </div>
-      <div id="tripsBody"></div>
-    </div>
-  </section>
-
   <section class="sec elsewhere" id="elsewhere">
     <div class="wrap">
       <span class="eyebrow" id="elsewhereLabel"></span>
@@ -302,47 +294,50 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
 <script>
 /* ============================================================
    CONTENT — EDIT PER HUB
-   Fill the arrays as content is produced. Empty arrays render a
-   designed "coming soon" state — the section still shows.
-   Source: campaign Research record "Diving Vacations"
-   (Keywords + Product Ideas) → Campaign "Surfing Vacations".
+   One object holds every string and list on the page. Fill the
+   `items` arrays as content is produced; an empty array renders
+   a designed "coming soon" state and the section still shows.
+
+   To spin up a new hub:
+   1. Copy this file to  web/hub/{slug}/index.html
+   2. Edit the DESIGN TOKENS block (colour / type / logo) + the
+      Google Fonts <link> to match.
+   3. Fill this HUB object. Seed hero/keywords/products from a
+      campaign Research record or a Product; leave the rest empty.
+   4. Set `slug` and `campaignTag`.
+   5. Push. Set the Campaign's "live site" property to
+      https://cabuzzard.github.io/dash/web/hub/{slug}/
    ============================================================ */
 const HUB = {
   slug: "surf-vacations",
-  campaignTag: "hub-surf-vacations",   // lands on the lead record for routing
+  campaignTag: "hub-surf-vacations",
 
   brand: "Surf Vacations",
-  logoImg: null,                       // "logo.svg" to use an image instead of text
+  logoImg: null,
 
   nav: [
+    { label: "Trips",    href: "#trips" },
     { label: "Journal",  href: "#journal" },
     { label: "Dispatch", href: "#news" },
-    { label: "Trips",    href: "#trips" },
   ],
 
   ribbon: [
-    "Swell 6–8ft",
-    "Period 14s",
-    "Wind offshore",
-    "Tide pushing",
-    "Water 82°F",
-    "Season: Apr–Oct",
+    "Swell 6–8ft", "Period 14s", "Wind offshore", "Tide pushing", "Water 82°F", "Season: Apr–Oct",
   ],
 
   hero: {
     eyebrow: "Surf travel, planned around the forecast",
     headline: "Where the swell is, and how to get there.",
     sub: "Trip reports, break guides, and charter logistics for surfers who book around a swell window instead of a calendar.",
-    ctaLabel: "Get the weekly report",
+    ctaPrimary:   { label: "Get the weekly report", href: "#report" },
+    ctaSecondary: { label: "See the trips",         href: "#trips" },
   },
 
   journal: {
     label: "Journal",
     title: "Trip reports & break guides",
     note: "Long-form field notes from specific breaks and specific seasons.",
-    items: [
-      // { kicker:"Indonesia", title:"...", excerpt:"...", url:"..." }
-    ],
+    items: [],
     empty: {
       heading: "The journal opens soon.",
       body: "First pieces cover picking your season between Indonesia and Central America, what a liveaboard charter actually costs, and beginner-friendly breaks that stay uncrowded.",
@@ -353,9 +348,7 @@ const HUB = {
     label: "Dispatch",
     title: "Conditions, closures & deals worth knowing",
     note: "Short, dated notes — swell events, new charter routes, price drops.",
-    items: [
-      // { date:"2026", title:"...", source:"...", url:"..." }
-    ],
+    items: [],
     empty: {
       heading: "No dispatches yet.",
       body: "Subscribe to the report and the first ones land in your inbox before they land here.",
@@ -367,13 +360,14 @@ const HUB = {
     title: "One email a week. Where to go, and when.",
     blurb: "A short read every Thursday: the swell windows opening in the next 60 days, one break worth the flight, and any charter or lodging deal we'd actually book.",
     note: "No spam. Unsubscribe in one click. We never share your address.",
+    buttonLabel: "Subscribe",
+    link: null,
   },
 
   trips: {
     label: "Trips",
     title: "Ways to go",
     note: "Packages and planning tools, from budget beach camps to private charters.",
-    // Seeded from the Research record's Product Ideas. url:"#" until each has a real page.
     items: [
       { kicker:"Planning",   title:"Surf Trip Planner Guide", excerpt:"A digital guide matching skill level to the right global destination, with cost breakdowns and season timing.", url:"#" },
       { kicker:"Charter",    title:"Luxury Liveaboard Charter", excerpt:"All-inclusive boat accommodation with pro instructors, meals, and access to exclusive Central America breaks.", url:"#" },
@@ -426,7 +420,10 @@ function renderHero() {
   $("heroEyebrow").textContent = HUB.hero.eyebrow;
   $("heroHeadline").textContent = HUB.hero.headline;
   $("heroSub").textContent = HUB.hero.sub;
-  $("heroCta").textContent = HUB.hero.ctaLabel;
+  const p = HUB.hero.ctaPrimary, s = HUB.hero.ctaSecondary, c1 = $("heroCta"), c2 = $("heroCta2");
+  c1.textContent = p.label; c1.href = p.href;
+  if (s && s.label) { c2.textContent = s.label; c2.href = s.href; c2.hidden = false; }
+  else { c2.hidden = true; }
 }
 
 function emptyState(e) {
@@ -474,6 +471,10 @@ function renderReport() {
   $("reportTitle").textContent = HUB.report.title;
   $("reportBlurb").textContent = HUB.report.blurb;
   $("reportNote").textContent = HUB.report.note;
+  $("signupBtn").textContent = HUB.report.buttonLabel || "Subscribe";
+  const rl = $("reportLink"), lk = HUB.report.link;
+  if (lk && lk.label) { rl.innerHTML = `<a href="${esc(lk.url)}">${esc(lk.label)} →</a>`; rl.hidden = false; }
+  else { rl.hidden = true; }
 }
 
 function renderSocial() {
@@ -523,13 +524,13 @@ $("signupForm").addEventListener("submit", async (e) => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Something went wrong.");
     e.target.reset();
-    msg.textContent = "You're on the list. First report lands Thursday.";
+    msg.textContent = "You're on the list.";
     msg.className = "form-msg ok";
   } catch (err) {
     msg.textContent = err.message + " Try again in a minute.";
     msg.className = "form-msg err";
   } finally {
-    btn.disabled = false; btn.textContent = "Subscribe";
+    btn.disabled = false; btn.textContent = HUB.report.buttonLabel || "Subscribe";
     hubTsToken = "";
     if (window.turnstile) window.turnstile.reset();
   }
