@@ -2450,125 +2450,72 @@ async function loadTitles() {
         + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
       return ar;
     }
-    // Renders the Publish/Assets section: Stack -> Product -> Title -> Type,
-    // each level indented one step deeper (10/20/30/40px), asset rows
-    // innermost at 50px. "Type" here is each asset's own Asset Type
-    // (t shirt/carousel/listing/etc.) — the closest thing an ASSET has to a
-    // method; a title stays in Development regardless of how many of its
-    // assets have published, so titles never disappear from there, and this
-    // reads every title's assets regardless of the title's own stage,
-    // gating purely on each asset's own status. Same Campaign -> Product
-    // Stack -> Product convention as the Development list above and the
-    // microsite's own Products section — "No Stack" always sorts last.
+    // Renders the Publish/Assets section with the EXACT same grouping as the
+    // Development list above — Stack -> Product -> Parent Strategy -> Strategy
+    // -> Title — and then, one level deeper than a Development title row, each
+    // title's own published assets grouped by Asset Type. Achieved by running
+    // the publishable-asset titles straight through renderTitlesNested(…,'pub'),
+    // the same nested grouping functions Development uses; only the leaf
+    // differs — renderTitleLevel branches on section === 'pub' to call
+    // renderPubTitleGroup instead of makeTitleRow. Gating is per-asset on
+    // status (Publish/Published), never on the title's own stage, so a title
+    // never disappears from Development just because one of its assets
+    // published. "No Stack"/"No Product"/"No Strategy" all sort last, same
+    // convention as Development.
+    let PUB_ITEMS = {};
+    // Innermost Publish level — an asset's own type (Assets DB "Asset Type",
+    // e.g. "t shirt"/"carousel"/"listing" — the closest thing this schema has
+    // to "method" at the asset level). Same single-bucket-skip pattern as
+    // every other level.
+    function renderMethodGroup(titleId, items, body, productId) {
+      const typeOrder = [], byType = {};
+      items.forEach(a => {
+        const tk = a.type || 'No Type';
+        if (!byType[tk]) { byType[tk] = []; typeOrder.push(tk); }
+        byType[tk].push(a);
+      });
+      if (typeOrder.length === 1) { items.forEach(a => body.appendChild(renderAssetRow(a, titleId, productId))); return; }
+      typeOrder.forEach(tk => {
+        const tItems = byType[tk];
+        const stateKey = 'pub|type|' + titleId + '|' + tk;
+        const isOpen = !!titleGroupsOpen[stateKey];
+        const tHdr = document.createElement('div');
+        tHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 50px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;user-select:none;';
+        const tArrow = document.createElement('span'); tArrow.textContent = isOpen ? '▾' : '▶'; tArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
+        const tLabel = document.createElement('span'); tLabel.style.cssText = 'flex:1;font-size:11px;color:#fff;'; tLabel.textContent = tk;
+        const tCount = document.createElement('span'); tCount.style.cssText = 'font-size:10px;color:#fff;'; tCount.textContent = tItems.length;
+        tHdr.appendChild(tArrow); tHdr.appendChild(tLabel); tHdr.appendChild(tCount);
+        const tBody = document.createElement('div'); tBody.style.display = isOpen ? 'block' : 'none';
+        tItems.forEach(a => tBody.appendChild(renderAssetRow(a, titleId, productId)));
+        tHdr.onclick = () => { const o = tBody.style.display !== 'none'; tBody.style.display = o ? 'none' : 'block'; tArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+        body.appendChild(tHdr); body.appendChild(tBody);
+      });
+    }
+    // Publish leaf — stands in for the plain Development title row
+    // (makeTitleRow) when renderTitleLevel runs with section 'pub'. Each title
+    // gets a header (same 🧩 Generate Assets entry point as a Development row)
+    // then its published assets one level deeper, grouped by Asset Type.
+    function renderPubTitleGroup(titleObjs, body) {
+      titleObjs.forEach(t => {
+        const items = PUB_ITEMS[t.id] || [];
+        if (!items.length) return;
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px 6px 40px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);';
+        hdr.innerHTML = `<span style="flex:1;font-size:12px;color:#fff;font-weight:600;">${esc(t.title)}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate more assets from this title — a different method, or another pass at the same one">🧩</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><span style="font-size:10px;color:#fff;">${items.length}</span>`;
+        body.appendChild(hdr);
+        renderMethodGroup(t.id, items, body, t.productId);
+      });
+    }
     function renderPublishedAssets(titles, container) {
       container.innerHTML = '';
-      const flat = titles.flatMap(t => (t.assets || [])
-        .filter(a => PUBLISH_GATE.includes(a.status))
-        .map(a => ({ asset: a, titleId: t.id, titleName: t.title, productId: t.productId, productName: t.productName, productStack: t.productStack })));
-      if (!flat.length) { container.innerHTML = '<div class="empty">None.</div>'; return; }
-      const titleOrder = [], byTitleId = {};
-      flat.forEach(f => {
-        if (!byTitleId[f.titleId]) { byTitleId[f.titleId] = { name: f.titleName, productId: f.productId, productName: f.productName, productStack: f.productStack, items: [] }; titleOrder.push(f.titleId); }
-        byTitleId[f.titleId].items.push(f.asset);
+      PUB_ITEMS = {};
+      const pubTitles = [];
+      titles.forEach(t => {
+        const items = (t.assets || []).filter(a => PUBLISH_GATE.includes(a.status));
+        if (items.length) { PUB_ITEMS[t.id] = items; pubTitles.push(t); }
       });
-      // Innermost Publish level — an asset's own type (Assets DB "Asset
-      // Type", e.g. "t shirt"/"carousel"/"listing" — the closest thing this
-      // schema has to "method" at the asset level; titles have no meaningful
-      // method of their own for sorting purposes, see makeTitleRow). Same
-      // single-bucket-skip pattern as every other level.
-      function renderMethodGroup(titleId, items, body) {
-        const typeOrder = [], byType = {};
-        items.forEach(a => {
-          const tk = a.type || 'No Type';
-          if (!byType[tk]) { byType[tk] = []; typeOrder.push(tk); }
-          byType[tk].push(a);
-        });
-        if (typeOrder.length === 1) { items.forEach(a => body.appendChild(renderAssetRow(a, titleId, byTitleId[titleId].productId))); return; }
-        typeOrder.forEach(tk => {
-          const tItems = byType[tk];
-          const stateKey = 'pub|type|' + titleId + '|' + tk;
-          const isOpen = !!titleGroupsOpen[stateKey];
-          const tHdr = document.createElement('div');
-          tHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 40px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;user-select:none;';
-          const tArrow = document.createElement('span'); tArrow.textContent = isOpen ? '▾' : '▶'; tArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
-          const tLabel = document.createElement('span'); tLabel.style.cssText = 'flex:1;font-size:11px;color:#fff;'; tLabel.textContent = tk;
-          const tCount = document.createElement('span'); tCount.style.cssText = 'font-size:10px;color:#fff;'; tCount.textContent = tItems.length;
-          tHdr.appendChild(tArrow); tHdr.appendChild(tLabel); tHdr.appendChild(tCount);
-          const tBody = document.createElement('div'); tBody.style.display = isOpen ? 'block' : 'none';
-          tItems.forEach(a => tBody.appendChild(renderAssetRow(a, titleId, byTitleId[titleId].productId)));
-          tHdr.onclick = () => { const o = tBody.style.display !== 'none'; tBody.style.display = o ? 'none' : 'block'; tArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
-          body.appendChild(tHdr); body.appendChild(tBody);
-        });
-      }
-      function renderTitleGroup(titleIds, body) {
-        titleIds.forEach(titleId => {
-          const group = byTitleId[titleId];
-          const hdr = document.createElement('div');
-          hdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px 6px 30px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);';
-          // Same 🧩 Generate Assets entry point as a Development title row —
-          // an operator finding a title here (already publishing) still
-          // needs to spin up more assets from it: a different method, or
-          // another pass at the same method.
-          hdr.innerHTML = `<span style="flex:1;font-size:12px;color:#fff;font-weight:600;">${esc(group.name)}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${titleId}')" title="Generate more assets from this title — a different method, or another pass at the same one">🧩</button><a class="title-link" href="https://www.notion.so/${titleId}" target="_blank">↗</a><span style="font-size:10px;color:#fff;">${group.items.length}</span>`;
-          body.appendChild(hdr);
-          renderMethodGroup(titleId, group.items, body);
-        });
-      }
-      function renderProductGroup(titleIds, body) {
-        const hasProd = titleIds.some(tid => byTitleId[tid].productId && byTitleId[tid].productId !== '__none__');
-        if (!hasProd) { renderTitleGroup(titleIds, body); return; }
-        const prodOrder = [], byProd = {};
-        titleIds.forEach(tid => {
-          const g = byTitleId[tid];
-          const pk = (g.productId || '__none__') + '||' + (g.productName || 'No Product');
-          if (!byProd[pk]) { byProd[pk] = []; prodOrder.push(pk); }
-          byProd[pk].push(tid);
-        });
-        prodOrder.sort((a, b) => { const aN = a.startsWith('__none__'), bN = b.startsWith('__none__'); return aN === bN ? 0 : aN ? 1 : -1; });
-        if (prodOrder.length === 1) { renderTitleGroup(titleIds, body); return; }
-        prodOrder.forEach(pk => {
-          const tids = byProd[pk];
-          const prodName = pk.split('||')[1];
-          const stateKey = 'pub|prod|' + pk;
-          const isOpen = !!titleGroupsOpen[stateKey];
-          const pHdr = document.createElement('div');
-          pHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px 6px 20px;background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;user-select:none;';
-          const pArrow = document.createElement('span'); pArrow.textContent = isOpen ? '▾' : '▶'; pArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
-          const pLabel = document.createElement('span'); pLabel.style.cssText = 'flex:1;font-size:12px;color:#fff;font-weight:600;'; pLabel.textContent = prodName;
-          const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:#fff;'; pCount.textContent = tids.reduce((n, tid) => n + byTitleId[tid].items.length, 0);
-          pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
-          const pBody = document.createElement('div'); pBody.style.display = isOpen ? 'block' : 'none';
-          renderTitleGroup(tids, pBody);
-          pHdr.onclick = () => { const o = pBody.style.display !== 'none'; pBody.style.display = o ? 'none' : 'block'; pArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
-          body.appendChild(pHdr); body.appendChild(pBody);
-        });
-      }
-      const hasStack = titleOrder.some(tid => byTitleId[tid].productStack);
-      if (!hasStack) { renderProductGroup(titleOrder, container); return; }
-      const stackOrder = [], byStack = {};
-      titleOrder.forEach(tid => {
-        const sk = byTitleId[tid].productStack || NO_STACK_KEY;
-        if (!byStack[sk]) { byStack[sk] = []; stackOrder.push(sk); }
-        byStack[sk].push(tid);
-      });
-      stackOrder.sort((a, b) => { if (a === NO_STACK_KEY) return 1; if (b === NO_STACK_KEY) return -1; return a.localeCompare(b); });
-      if (stackOrder.length === 1) { renderProductGroup(titleOrder, container); return; }
-      stackOrder.forEach(sk => {
-        const tids = byStack[sk];
-        const stackName = sk === NO_STACK_KEY ? 'No Stack' : sk;
-        const stateKey = 'pub|stack|' + sk;
-        const isOpen = !!titleGroupsOpen[stateKey];
-        const sHdr = document.createElement('div');
-        sHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:7px 10px;background:rgba(167,139,250,.1);border-bottom:1px solid rgba(167,139,250,.2);cursor:pointer;user-select:none;';
-        const sArrow = document.createElement('span'); sArrow.textContent = isOpen ? '▾' : '▶'; sArrow.style.cssText = 'font-size:8px;color:#a78bfa;flex-shrink:0;';
-        const sLabel = document.createElement('span'); sLabel.style.cssText = 'flex:1;font-size:12px;color:#a78bfa;font-weight:700;'; sLabel.textContent = stackName;
-        const sCount = document.createElement('span'); sCount.style.cssText = 'font-size:10px;color:#fff;'; sCount.textContent = tids.reduce((n, tid) => n + byTitleId[tid].items.length, 0);
-        sHdr.appendChild(sArrow); sHdr.appendChild(sLabel); sHdr.appendChild(sCount);
-        const sBody = document.createElement('div'); sBody.style.display = isOpen ? 'block' : 'none';
-        renderProductGroup(tids, sBody);
-        sHdr.onclick = () => { const o = sBody.style.display !== 'none'; sBody.style.display = o ? 'none' : 'block'; sArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
-        container.appendChild(sHdr); container.appendChild(sBody);
-      });
+      if (!pubTitles.length) { container.innerHTML = '<div class="empty">None.</div>'; return; }
+      renderTitlesNested(pubTitles, container, 'pub');
     }
     function makeTitleRow(t, section) {
       // Cached so the Generate Assets modal can show "existing assets for
@@ -2595,6 +2542,9 @@ async function loadTitles() {
     // or legacy concepts, not title-level ones) — just a flat list of title
     // rows within whichever Strategy bucket contains them.
     function renderTitleLevel(titles, container, section) {
+      // Publish reuses this whole grouping tree but renders each title's
+      // assets (grouped by Asset Type) instead of a Development title row.
+      if (section === 'pub') { renderPubTitleGroup(titles, container); return; }
       titles.forEach(t => container.appendChild(makeTitleRow(t, section)));
     }
     // Strategy level — nested inside Product, one step deeper than it. Which
@@ -2627,9 +2577,11 @@ async function loadTitles() {
         const stateKey = section + '|strat|' + sk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const gHdr = document.createElement('div');
-        gHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 30px;background:rgba(255,255,255,.045);border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;user-select:none;';
-        const gArrow = document.createElement('span'); gArrow.textContent = isOpen ? '▾' : '▶'; gArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
-        const gLabel = document.createElement('span'); gLabel.style.cssText = 'flex:1;font-size:11px;color:#fff;'; gLabel.textContent = stratName;
+        // Sub-strategy — green family (strategy side). Lighter/less bold than
+        // the parent-strategy header above it so depth still reads.
+        gHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 30px;background:rgba(104,211,145,.06);border-bottom:1px solid rgba(104,211,145,.15);cursor:pointer;user-select:none;';
+        const gArrow = document.createElement('span'); gArrow.textContent = isOpen ? '▾' : '▶'; gArrow.style.cssText = 'font-size:8px;color:#9ae6b4;flex-shrink:0;';
+        const gLabel = document.createElement('span'); gLabel.style.cssText = 'flex:1;font-size:11px;color:#9ae6b4;font-weight:600;'; gLabel.textContent = stratName;
         const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:#fff;'; gCount.textContent = sTitles.length;
         gHdr.appendChild(gArrow); gHdr.appendChild(gLabel); gHdr.appendChild(gCount);
         const gBody = document.createElement('div'); gBody.style.display = isOpen ? 'block' : 'none';
@@ -2657,9 +2609,11 @@ async function loadTitles() {
         const stateKey = section + '|prod|' + pk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const pHdr = document.createElement('div');
-        pHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px 6px 20px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);cursor:pointer;user-select:none;';
-        const pArrow = document.createElement('span'); pArrow.textContent = isOpen ? '▾' : '▶'; pArrow.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
-        const pLabel = document.createElement('span'); pLabel.style.cssText = 'flex:1;font-size:12px;color:#fff;font-weight:600;'; pLabel.textContent = prodName;
+        // Product — purple family (product side), lighter than the Stack
+        // header above it so the two stay distinct by shade + indent.
+        pHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px 6px 20px;background:rgba(167,139,250,.06);border-bottom:1px solid rgba(167,139,250,.15);cursor:pointer;user-select:none;';
+        const pArrow = document.createElement('span'); pArrow.textContent = isOpen ? '▾' : '▶'; pArrow.style.cssText = 'font-size:8px;color:#c4b5fd;flex-shrink:0;';
+        const pLabel = document.createElement('span'); pLabel.style.cssText = 'flex:1;font-size:12px;color:#c4b5fd;font-weight:600;'; pLabel.textContent = prodName;
         const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:#fff;'; pCount.textContent = pTitles.length;
         pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
         const pBody = document.createElement('div'); pBody.style.display = isOpen ? 'block' : 'none';
@@ -2694,9 +2648,11 @@ async function loadTitles() {
         const stateKey = section + '|parentstrat|' + pk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const gHdr = document.createElement('div');
-        gHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 25px;background:rgba(232,255,71,.06);border-bottom:1px solid rgba(232,255,71,.15);cursor:pointer;user-select:none;';
-        const gArrow = document.createElement('span'); gArrow.textContent = isOpen ? '▾' : '▶'; gArrow.style.cssText = 'font-size:8px;color:#e8ff47;flex-shrink:0;';
-        const gLabel = document.createElement('span'); gLabel.style.cssText = 'flex:1;font-size:11px;color:#e8ff47;font-weight:600;'; gLabel.textContent = parentName;
+        // Parent strategy — green family (strategy side), brighter/bolder than
+        // the sub-strategy header nested under it.
+        gHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 25px;background:rgba(104,211,145,.12);border-bottom:1px solid rgba(104,211,145,.22);cursor:pointer;user-select:none;';
+        const gArrow = document.createElement('span'); gArrow.textContent = isOpen ? '▾' : '▶'; gArrow.style.cssText = 'font-size:8px;color:#68d391;flex-shrink:0;';
+        const gLabel = document.createElement('span'); gLabel.style.cssText = 'flex:1;font-size:11px;color:#68d391;font-weight:700;'; gLabel.textContent = parentName;
         const gCount = document.createElement('span'); gCount.style.cssText = 'font-size:10px;color:#fff;'; gCount.textContent = pTitles.length;
         gHdr.appendChild(gArrow); gHdr.appendChild(gLabel); gHdr.appendChild(gCount);
         const gBody = document.createElement('div'); gBody.style.display = isOpen ? 'block' : 'none';
@@ -2819,9 +2775,9 @@ function renderNextStrategyLevel(arr, el) {
     const stateKey = 'next|strat|' + k;
     const isOpen = !!titleGroupsOpen[stateKey];
     const h = document.createElement('div');
-    h.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 30px;background:rgba(255,255,255,.045);border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;user-select:none;';
-    const a = document.createElement('span'); a.textContent = isOpen ? '▾' : '▶'; a.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
-    const l = document.createElement('span'); l.style.cssText = 'flex:1;font-size:11px;color:#fff;'; l.textContent = name;
+    h.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 30px;background:rgba(104,211,145,.06);border-bottom:1px solid rgba(104,211,145,.15);cursor:pointer;user-select:none;';
+    const a = document.createElement('span'); a.textContent = isOpen ? '▾' : '▶'; a.style.cssText = 'font-size:8px;color:#9ae6b4;flex-shrink:0;';
+    const l = document.createElement('span'); l.style.cssText = 'flex:1;font-size:11px;color:#9ae6b4;font-weight:600;'; l.textContent = name;
     const c = document.createElement('span'); c.style.cssText = 'font-size:10px;color:#fff;'; c.textContent = items.length;
     h.appendChild(a); h.appendChild(l); h.appendChild(c);
     const b = document.createElement('div'); b.style.display = isOpen ? 'block' : 'none';
@@ -2842,9 +2798,9 @@ function renderNextParentLevel(arr, el) {
     const stateKey = 'next|parentstrat|' + k;
     const isOpen = !!titleGroupsOpen[stateKey];
     const h = document.createElement('div');
-    h.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 25px;background:rgba(232,255,71,.06);border-bottom:1px solid rgba(232,255,71,.15);cursor:pointer;user-select:none;';
-    const a = document.createElement('span'); a.textContent = isOpen ? '▾' : '▶'; a.style.cssText = 'font-size:8px;color:#e8ff47;flex-shrink:0;';
-    const l = document.createElement('span'); l.style.cssText = 'flex:1;font-size:11px;color:#e8ff47;font-weight:600;'; l.textContent = name;
+    h.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 25px;background:rgba(104,211,145,.12);border-bottom:1px solid rgba(104,211,145,.22);cursor:pointer;user-select:none;';
+    const a = document.createElement('span'); a.textContent = isOpen ? '▾' : '▶'; a.style.cssText = 'font-size:8px;color:#68d391;flex-shrink:0;';
+    const l = document.createElement('span'); l.style.cssText = 'flex:1;font-size:11px;color:#68d391;font-weight:700;'; l.textContent = name;
     const c = document.createElement('span'); c.style.cssText = 'font-size:10px;color:#fff;'; c.textContent = items.length;
     h.appendChild(a); h.appendChild(l); h.appendChild(c);
     const b = document.createElement('div'); b.style.display = isOpen ? 'block' : 'none';
@@ -2865,9 +2821,9 @@ function renderNextProductLevel(arr, el) {
     const stateKey = 'next|prod|' + k;
     const isOpen = !!titleGroupsOpen[stateKey];
     const h = document.createElement('div');
-    h.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px 6px 20px;background:rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.1);cursor:pointer;user-select:none;';
-    const a = document.createElement('span'); a.textContent = isOpen ? '▾' : '▶'; a.style.cssText = 'font-size:8px;color:#fff;flex-shrink:0;';
-    const l = document.createElement('span'); l.style.cssText = 'flex:1;font-size:12px;color:#fff;font-weight:600;'; l.textContent = name;
+    h.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px 6px 20px;background:rgba(167,139,250,.06);border-bottom:1px solid rgba(167,139,250,.15);cursor:pointer;user-select:none;';
+    const a = document.createElement('span'); a.textContent = isOpen ? '▾' : '▶'; a.style.cssText = 'font-size:8px;color:#c4b5fd;flex-shrink:0;';
+    const l = document.createElement('span'); l.style.cssText = 'flex:1;font-size:12px;color:#c4b5fd;font-weight:600;'; l.textContent = name;
     const c = document.createElement('span'); c.style.cssText = 'font-size:10px;color:#fff;'; c.textContent = items.length;
     h.appendChild(a); h.appendChild(l); h.appendChild(c);
     const b = document.createElement('div'); b.style.display = isOpen ? 'block' : 'none';
@@ -4011,7 +3967,7 @@ function renderProducts() {
   // within a stack bucket, ecosystem siblings still group and label together
   // (ordered by Marketing Phase, core/umbrella offer first) so the funnel
   // stays visible, but it never overrides which stack a product lives under.
-  const NO_STACK = ' __no_stack__'; // sorts first by localeCompare; special-cased to render last instead
+  const NO_STACK = '__no_stack__'; // sorts first by localeCompare; special-cased to render last instead
   const stackGroups = {};
   PRODUCT_ITEMS.forEach(p => {
     const key = p.stack || NO_STACK;
@@ -5113,31 +5069,55 @@ document.getElementById('statusModal').addEventListener('click', function(e) {
 // strategy list when the title has no product (listGrowthStrategies now
 // accepts either productId or campaignId).
 let tsModalTitleId = null;
+let tsModalOrigStrategyId = '';
+let tsModalOrigProductId = '';
 function openTitleStrategyModal(id, title, currentStrategyId, productId) {
   tsModalTitleId = id;
+  tsModalOrigStrategyId = (currentStrategyId && currentStrategyId !== '__none__') ? currentStrategyId : '';
+  tsModalOrigProductId  = (productId && productId !== '__none__') ? productId : '';
   document.getElementById('titleStrategyModalHint').textContent = title;
   document.getElementById('titleStrategyModalStatus').textContent = '';
   document.getElementById('titleStrategyModalStatus').className = 'modal-status';
   const sel = document.getElementById('titleStrategySelect');
   sel.innerHTML = '<option value="">— none —</option>';
   sel.disabled = true;
+  sel.removeAttribute('data-loaded');
   const prodSel = document.getElementById('titleProductSelect');
   prodSel.innerHTML = '<option value="">— none —</option>';
   prodSel.disabled = true;
+  prodSel.removeAttribute('data-loaded');
+  // Save stays disabled until BOTH pickers have loaded — otherwise a quick
+  // Save on the still-empty selects would send growthStrategyId '' /
+  // productId '__none__', which the worker reads as "clear both", silently
+  // detaching the title from its product+strategy and dropping it into the
+  // collapsed "No Product / No Strategy" bucket at the bottom of the list.
+  const saveBtn = document.getElementById('titleStrategySaveBtn');
+  saveBtn.disabled = true;
+  let pending = 2;
+  const settle = () => { if (--pending <= 0) saveBtn.disabled = false; };
   document.getElementById('titleStrategyModal').classList.add('open');
   const query = (productId && productId !== '__none__') ? { productId } : { campaignId: CAMPAIGN_ID };
   w('listGrowthStrategies', query).then(r => {
     const strategies = r.strategies || [];
     sel.innerHTML = '<option value="">— none —</option>' + strategies.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
-    sel.value = (currentStrategyId && currentStrategyId !== '__none__') ? currentStrategyId : '';
+    sel.value = tsModalOrigStrategyId;
     sel.disabled = false;
-  }).catch(() => { sel.disabled = false; });
+    sel.dataset.loaded = '1';
+  }).catch(() => { sel.disabled = false; }).finally(settle);
   w('getCampaignProducts', { campaignId: CAMPAIGN_ID }).then(r => {
     const products = r.products || [];
     prodSel.innerHTML = '<option value="">— none —</option>' + products.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-    prodSel.value = (productId && productId !== '__none__') ? productId : '';
+    // If the title's current product isn't in this campaign's product list
+    // the option won't exist — add it so selecting it back is possible and
+    // the value doesn't silently reset to "" (another way the product got
+    // wiped on Save).
+    if (tsModalOrigProductId && !products.some(p => p.id === tsModalOrigProductId)) {
+      prodSel.innerHTML += `<option value="${tsModalOrigProductId}">(current product)</option>`;
+    }
+    prodSel.value = tsModalOrigProductId;
     prodSel.disabled = false;
-  }).catch(() => { prodSel.disabled = false; });
+    prodSel.dataset.loaded = '1';
+  }).catch(() => { prodSel.disabled = false; }).finally(settle);
 }
 function closeTitleStrategyModal() {
   document.getElementById('titleStrategyModal').classList.remove('open');
@@ -5149,13 +5129,28 @@ document.getElementById('titleStrategyModal').addEventListener('click', function
 async function applyTitleStrategyChange() {
   const status = document.getElementById('titleStrategyModalStatus');
   const btn = document.getElementById('titleStrategySaveBtn');
-  const growthStrategyId = document.getElementById('titleStrategySelect').value || undefined;
-  const productId = document.getElementById('titleProductSelect').value || '__none__';
+  const sel = document.getElementById('titleStrategySelect');
+  const prodSel = document.getElementById('titleProductSelect');
+  // Only send a field the operator actually changed. An unloaded picker, or
+  // one whose value still matches what we opened with, is left out entirely
+  // so the worker never mistakes "didn't touch it" for "clear it".
+  const payload = { titleId: tsModalTitleId };
+  if (sel.dataset.loaded === '1' && (sel.value || '') !== (tsModalOrigStrategyId || '')) {
+    payload.growthStrategyId = sel.value || '__none__';
+  }
+  if (prodSel.dataset.loaded === '1' && (prodSel.value || '') !== (tsModalOrigProductId || '')) {
+    payload.productId = prodSel.value || '__none__';
+  }
+  if (payload.growthStrategyId === undefined && payload.productId === undefined) {
+    status.textContent = 'Nothing changed.';
+    status.className = 'modal-status';
+    return;
+  }
   btn.disabled = true;
   status.textContent = 'Saving…';
   status.className = 'modal-status';
   try {
-    await w('updateTitleStrategy', { titleId: tsModalTitleId, growthStrategyId, productId });
+    await w('updateTitleStrategy', payload);
     status.textContent = 'Updated ✓';
     status.className = 'modal-status ok';
     setTimeout(async () => { closeTitleStrategyModal(); await loadTitles(); }, 700);

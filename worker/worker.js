@@ -16656,8 +16656,17 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         const { titleId, growthStrategyId, productId } = body;
         if (!titleId) return json({ error: "titleId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-        const clear = !growthStrategyId || growthStrategyId === '__none__';
-        const props = { "Growth Strategy": { relation: clear ? [] : [{ id: dash(growthStrategyId) }] } };
+        const props = {};
+        // growthStrategyId is only touched when the caller actually sends it
+        // ('' or '__none__' = clear the link; a real id = set it). Omitting it
+        // must be a no-op — the Set Strategy modal now sends only the field the
+        // operator changed, and an earlier version that always wrote this
+        // relation silently detached titles whose modal was saved before its
+        // pickers finished loading.
+        if (growthStrategyId !== undefined) {
+          const clear = !growthStrategyId || growthStrategyId === '__none__';
+          props["Growth Strategy"] = { relation: clear ? [] : [{ id: dash(growthStrategyId) }] };
+        }
         // productId is optional — the Set Strategy modal's Product field,
         // reassigning this title to a different existing product from the
         // campaign (or clearing it). Only touched when the caller actually
@@ -16667,6 +16676,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
           const clearProduct = !productId || productId === '__none__';
           props["product"] = { relation: clearProduct ? [] : [{ id: dash(productId) }] };
         }
+        if (!Object.keys(props).length) return json({ success: true, noop: true });
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
