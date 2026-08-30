@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sunflower Acres — a wheelchair-accessible flower farm in Concord, California</title>
+<meta name="description" content="Step-free into and through the fields. Accessible parking and restrooms, loaner wheelchairs on site, companions free. Come cut your own flowers in Concord, CA.">
+<meta property="og:title" content="Sunflower Acres">
+<meta property="og:description" content="A wheelchair-accessible flower farm in Concord, California. The same day at the farm, for everyone.">
+<meta property="og:type" content="website">
+<meta name="robots" content="index,follow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+/* ============================================================
+   DESIGN TOKENS — EDIT PER HUB
+   Change colour / type / logo here. Everything below this block
+   is shared layout and must stay identical across every hub.
+   Also swap the Google Fonts <link> above to match --font-*.
+   ============================================================ */
+:root{
+  --bg:        #eef1e1;   /* pale field green */
+  --surface:   #f8faee;   /* raised card */
+  --ink:       #212b1a;   /* deep field green-black */
+  --ink-soft:  #566349;   /* secondary text */
+  --line:      #d7dcc2;   /* hairline */
+  --sea:       #3d6b2b;   /* primary — field green */
+  --deep:      #253619;   /* dark green band */
+  --deep-ink:  #e9edd6;   /* text on --deep */
+  --accent:    #efa100;   /* sunflower gold — used once, loudly */
+  --paper:     #ffffff;
+
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body:    "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono:    "Space Mono", ui-monospace, monospace;
+
+  --logo-text: "Sunflower Acres";
+  --logo-img:  none;
+}
+
+/* ============================================================
+   SHARED LAYOUT — do not edit per hub
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:var(--font-body);font-size:1.0625rem;line-height:1.62;
+  font-weight:400;-webkit-font-smoothing:antialiased;
+}
+img{max-width:100%;display:block}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--sea);outline-offset:3px;border-radius:2px}
+
+.wrap{width:min(1120px,100% - 2.5rem);margin-inline:auto}
+
+.eyebrow{
+  font-family:var(--font-mono);font-weight:700;
+  font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--sea);
+}
+
+h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em}
+
+.site-head{
+  position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+}
+.site-head .wrap{display:flex;align-items:center;gap:1.5rem;height:64px}
+.brand{font-family:var(--font-display);font-weight:700;font-size:1.15rem;letter-spacing:-.02em;text-decoration:none;white-space:nowrap}
+.brand .brand-mark{height:26px;width:auto}
+.nav{margin-left:auto;display:flex;gap:1.6rem}
+.nav a{font-family:var(--font-mono);font-size:.75rem;letter-spacing:.09em;text-transform:uppercase;text-decoration:none;color:var(--ink-soft)}
+.nav a:hover{color:var(--ink)}
+.nav-cta{
+  font-family:var(--font-mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;
+  text-decoration:none;padding:.5rem .85rem;border:1px solid var(--ink);border-radius:999px;color:var(--ink);
+}
+.nav-cta:hover{background:var(--ink);color:var(--bg)}
+.nav-toggle{display:none}
+
+.ribbon{border-bottom:1px solid var(--line);overflow:hidden}
+.ribbon-track{
+  display:flex;flex-wrap:wrap;gap:.5rem 2.25rem;padding:.6rem 0;
+  font-family:var(--font-mono);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);
+}
+.ribbon-track span{display:inline-flex;align-items:center;gap:.55rem;white-space:nowrap}
+.ribbon-track span::before{content:"";width:6px;height:6px;background:var(--sea);border-radius:1px;transform:rotate(45deg);flex:none}
+
+.hero{padding:clamp(3.5rem,9vw,7rem) 0 clamp(3rem,7vw,5rem)}
+.hero .eyebrow{display:block;margin-bottom:1.4rem}
+.hero h1{font-size:clamp(2.6rem,6.2vw,4.8rem);max-width:16ch}
+.hero p{margin-top:1.5rem;max-width:46ch;font-size:1.15rem;color:var(--ink-soft)}
+.hero-actions{margin-top:2.4rem;display:flex;flex-wrap:wrap;gap:1rem;align-items:center}
+.btn{
+  font-family:var(--font-mono);font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;
+  text-decoration:none;cursor:pointer;border:none;
+  padding:.95rem 1.5rem;border-radius:999px;background:var(--accent);color:#fff;
+  transition:transform .12s ease;
+}
+.btn:hover{transform:translateY(-2px)}
+.btn-ghost{background:none;color:var(--ink);border:1px solid var(--line);padding:.95rem 1.5rem}
+.btn-ghost:hover{border-color:var(--ink)}
+
+.sec{padding:clamp(3rem,6vw,4.5rem) 0;border-top:1px solid var(--line)}
+.sec-head{display:flex;align-items:baseline;gap:1rem;margin-bottom:2rem}
+.sec-head h2{font-size:clamp(1.5rem,3vw,2rem)}
+.sec-head .eyebrow{flex:none}
+.sec-note{color:var(--ink-soft);max-width:42ch;margin-left:auto;text-align:right;font-size:.95rem}
+
+.grid{display:grid;gap:1.25rem}
+.grid.cols-3{grid-template-columns:repeat(3,1fr)}
+.grid.cols-2{grid-template-columns:repeat(2,1fr)}
+
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;
+  padding:1.5rem;display:flex;flex-direction:column;gap:.65rem;text-decoration:none;color:inherit;
+  transition:border-color .15s ease,transform .15s ease;
+}
+a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
+.card .kicker{font-family:var(--font-mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sea)}
+.card h3{font-size:1.22rem;font-weight:600}
+.card p{font-size:.95rem;color:var(--ink-soft)}
+.card .more{margin-top:auto;font-family:var(--font-mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}
+
+.dispatch{border-top:1px solid var(--line)}
+.dispatch li{list-style:none;border-bottom:1px solid var(--line)}
+.dispatch a{display:grid;grid-template-columns:5.5rem 1fr auto;gap:1.25rem;align-items:baseline;padding:1.1rem 0;text-decoration:none}
+.dispatch a:hover .d-title{color:var(--sea)}
+.dispatch .d-date{font-family:var(--font-mono);font-size:.78rem;color:var(--ink-soft)}
+.dispatch .d-title{font-family:var(--font-display);font-size:1.1rem;font-weight:500}
+.dispatch .d-src{font-family:var(--font-mono);font-size:.72rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em}
+
+.empty{
+  border:1px dashed var(--line);border-radius:14px;padding:2.25rem 1.75rem;
+  color:var(--ink-soft);font-size:1rem;max-width:52ch;
+}
+.empty strong{display:block;font-family:var(--font-display);font-weight:600;color:var(--ink);font-size:1.05rem;margin-bottom:.4rem}
+
+.report{background:var(--deep);color:var(--deep-ink);border:none}
+.report .eyebrow{color:#8fb4ff}
+.report h2{color:#fff;max-width:18ch}
+.report p{color:var(--deep-ink);max-width:44ch;margin-top:1rem}
+.signup{margin-top:2rem;display:flex;flex-wrap:wrap;gap:.75rem;max-width:520px}
+.signup input[type=email]{
+  flex:1 1 240px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.22);
+  color:#fff;font:inherit;padding:.95rem 1.1rem;border-radius:999px;
+}
+.signup input[type=email]::placeholder{color:rgba(255,255,255,.5)}
+.signup .btn{flex:0 0 auto}
+.signup-note{margin-top:.9rem;font-size:.82rem;color:rgba(255,255,255,.55)}
+.form-msg{margin-top:1rem;font-family:var(--font-mono);font-size:.8rem;letter-spacing:.04em}
+.form-msg.ok{color:#8fe3b0}.form-msg.err{color:#ff9b7a}
+.cf-turnstile{margin-top:.25rem}
+
+.elsewhere .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:1rem 2rem}
+.elsewhere .eyebrow{flex:none}
+.social-row{display:flex;flex-wrap:wrap;gap:.6rem}
+.social-row a{
+  font-family:var(--font-mono);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;
+  text-decoration:none;padding:.55rem 1rem;border:1px solid var(--line);border-radius:999px;color:var(--ink-soft);
+}
+.social-row a:hover{border-color:var(--ink);color:var(--ink)}
+
+.site-foot{border-top:1px solid var(--line);padding:2.5rem 0 3.5rem}
+.site-foot .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:1rem;align-items:baseline}
+.site-foot .f-brand{font-family:var(--font-display);font-weight:700}
+.site-foot small{color:var(--ink-soft);font-size:.85rem;display:block;margin-top:.3rem;max-width:40ch}
+.site-foot .f-legal{font-family:var(--font-mono);font-size:.72rem;color:var(--ink-soft);letter-spacing:.05em}
+
+@media (prefers-reduced-motion:no-preference){
+  .reveal{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
+  .reveal.in{opacity:1;transform:none}
+}
+
+@media (max-width:860px){
+  .grid.cols-3{grid-template-columns:1fr 1fr}
+  .sec-note{display:none}
+}
+@media (max-width:640px){
+  body{font-size:1rem}
+  .nav{display:none;position:absolute;top:64px;left:0;right:0;flex-direction:column;gap:0;background:var(--bg);border-bottom:1px solid var(--line);margin:0}
+  .nav.open{display:flex}
+  .nav a{padding:1rem 1.25rem;border-top:1px solid var(--line)}
+  .site-head .wrap{gap:.75rem}
+  .nav-cta{order:2;margin-left:auto}
+  .nav-toggle{order:3;display:inline-flex;background:none;border:1px solid var(--line);border-radius:8px;width:38px;height:38px;align-items:center;justify-content:center;cursor:pointer;font-size:1.1rem}
+  .grid.cols-3,.grid.cols-2{grid-template-columns:1fr}
+  .dispatch a{grid-template-columns:1fr;gap:.3rem}
+  .dispatch .d-src{display:none}
+}
+</style>
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap">
+    <a class="brand" href="#top" id="brand"></a>
+    <button class="nav-toggle" aria-label="Menu" aria-expanded="false" id="navToggle">☰</button>
+    <nav class="nav" id="nav"></nav>
+    <a class="nav-cta" href="#report">Bloom report</a>
+  </div>
+</header>
+
+<div class="ribbon" aria-hidden="true"><div class="wrap"><div class="ribbon-track" id="ribbon"></div></div></div>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="wrap">
+      <span class="eyebrow" id="heroEyebrow"></span>
+      <h1 id="heroHeadline"></h1>
+      <p id="heroSub"></p>
+      <div class="hero-actions">
+        <a class="btn" href="#report" id="heroCta"></a>
+        <a class="btn btn-ghost" href="#trips" id="heroCta2">Plan a visit</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="journal">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow" id="journalLabel"></span>
+        <h2 id="journalTitle"></h2>
+        <p class="sec-note" id="journalNote"></p>
+      </div>
+      <div id="journalBody"></div>
+    </div>
+  </section>
+
+  <section class="sec" id="news">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow" id="newsLabel"></span>
+        <h2 id="newsTitle"></h2>
+        <p class="sec-note" id="newsNote"></p>
+      </div>
+      <div id="newsBody"></div>
+    </div>
+  </section>
+
+  <section class="sec report" id="report">
+    <div class="wrap">
+      <span class="eyebrow" id="reportLabel"></span>
+      <h2 id="reportTitle"></h2>
+      <p id="reportBlurb"></p>
+      <form class="signup" id="signupForm" novalidate>
+        <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
+        <button class="btn" type="submit" id="signupBtn">Subscribe</button>
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-callback="hubTsOk" data-theme="dark"></div>
+      </form>
+      <p class="signup-note" id="reportNote"></p>
+      <p class="form-msg" id="formMsg" role="status"></p>
+    </div>
+  </section>
+
+  <section class="sec" id="trips">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow" id="tripsLabel"></span>
+        <h2 id="tripsTitle"></h2>
+        <p class="sec-note" id="tripsNote"></p>
+      </div>
+      <div id="tripsBody"></div>
+    </div>
+  </section>
+
+  <section class="sec elsewhere" id="elsewhere">
+    <div class="wrap">
+      <span class="eyebrow" id="elsewhereLabel"></span>
+      <div class="social-row" id="socialRow"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div>
+      <div class="f-brand" id="footBrand"></div>
+      <small id="footTagline"></small>
+    </div>
+    <div class="f-legal" id="footLegal"></div>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   CONTENT — EDIT PER HUB
+   One object holds every string and list on the page. Fill the
+   `items` arrays as content is produced; an empty array renders
+   a designed "coming soon" state and the section still shows.
+
+   To spin up a new hub:
+   1. Copy this file to  web/hub/{slug}/index.html
+   2. Edit the DESIGN TOKENS block (colour / type / logo) + the
+      Google Fonts <link> to match.
+   3. Fill this HUB object. Seed hero/keywords/products from a
+      campaign Research record or a Product; leave the rest empty.
+   4. Set `slug` and `campaignTag`.
+   5. Push. Set the Campaign's "live site" property to
+      https://cabuzzard.github.io/dash/web/hub/{slug}/
+   ============================================================ */
+const HUB = {
+  slug: "sunflower-acres",
+  campaignTag: "hub-sunflower-acres",   // lands on the lead record for routing
+
+  brand: "Sunflower Acres",
+  logoImg: null,                        // drop logo.svg in this folder, then set the filename here
+
+  nav: [
+    { label: "Visit",       href: "#trips" },
+    { label: "Journal",     href: "#journal" },
+    { label: "What's open", href: "#news" },
+  ],
+
+  // The signature strip reads as an access readout, not a marketing banner.
+  ribbon: [
+    "Step-free throughout",
+    "Accessible parking & restrooms",
+    "Loaner wheelchairs on site",
+    "Companion enters free",
+    "Sensory-friendly hours",
+    "Concord, CA",
+  ],
+
+  hero: {
+    eyebrow: "A wheelchair-accessible flower farm · Concord, California",
+    headline: "The same day at the farm, for everyone.",
+    sub: "Step-free into and through the fields. Accessible parking and restrooms, loaner wheelchairs on site, and whoever comes with you gets in free. Come cut your own flowers.",
+    ctaLabel: "Get the bloom report",
+  },
+
+  journal: {
+    label: "Journal",
+    title: "Guides & field notes",
+    note: "Planning an accessible visit, what's in bloom, and making cut flowers last.",
+    items: [
+      // { kicker:"Access", title:"...", excerpt:"...", url:"..." }
+    ],
+    empty: {
+      heading: "First guides are being written.",
+      body: "They'll cover what to check before any accessible farm visit, the Concord bloom calendar, and setting up to arrange flowers from a wheelchair.",
+    },
+  },
+
+  news: {
+    label: "What's open",
+    title: "Hours, blooms & closures",
+    note: "Short dated notes — what's flowering now, gate hours, and weather calls.",
+    items: [
+      // { date:"2026", title:"...", source:"", url:"" }
+    ],
+    empty: {
+      heading: "Season updates land here.",
+      body: "Subscribe to the bloom report and you'll get them by email first.",
+    },
+  },
+
+  report: {
+    label: "The Bloom Report",
+    title: "Know when to come.",
+    blurb: "A short email every couple of weeks: what's flowering now, when the fields open next, workshop dates, and any access notes. Written so you can plan a trip that actually works.",
+    note: "No spam. Unsubscribe in one click. We never share your address.",
+  },
+
+  trips: {
+    label: "Visit & shop",
+    title: "Ways to come, and what to take home",
+    note: "Everything caps attendance so the fields aren't picked over.",
+    // From the campaign Research (Product Ideas) + existing products. url:"#" until each has a page.
+    items: [
+      { kicker:"Visit",     title:"Timed U-Pick Admission", excerpt:"Book a window, get a vessel, cut your own from the rows. Companions free.", url:"#" },
+      { kicker:"Shop",      title:"Market Bouquets", excerpt:"Cut and wrapped that morning — grab-and-go from the farm stand.", url:"#" },
+      { kicker:"Subscribe", title:"Flower Subscription", excerpt:"A fresh bunch every week or month. Farm pickup or East Bay delivery.", url:"#" },
+      { kicker:"Shop",      title:"Dried Arrangements", excerpt:"Cardoon, strawflower and grasses — arrangements and wreaths that last for years.", url:"#" },
+      { kicker:"Learn",     title:"Floral Design Workshops", excerpt:"Small seated classes at the farm. Leave with an arrangement and the skills to redo it.", url:"#" },
+      { kicker:"Groups",    title:"Private Field Bookings", excerpt:"Care programs, schools, day programs, and celebrations. Priced per group.", url:"#" },
+    ],
+    empty: {
+      heading: "Ways to visit are being set up.",
+      body: "They come from the farm's product list — u-pick, bouquets, subscriptions, workshops, and group bookings.",
+    },
+  },
+
+  social: {
+    label: "Follow",
+    items: [
+      { label: "Facebook",  url: "#" },
+      { label: "Instagram", url: "#" },
+    ],
+  },
+
+  footer: {
+    tagline: "A working flower farm in Concord, California, built step-free so everyone gets the same day out.",
+    legal: "© 2026 Sunflower Acres · Concord, CA",
+  },
+};
+
+/* ============================================================
+   RENDER — shared, do not edit per hub
+   ============================================================ */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+function renderChrome() {
+  document.title = HUB.brand + " — " + HUB.hero.headline.replace(/\.$/, "");
+  const brand = $("brand");
+  brand.innerHTML = HUB.logoImg
+    ? `<img class="brand-mark" src="${esc(HUB.logoImg)}" alt="${esc(HUB.brand)}">`
+    : esc(HUB.brand);
+  $("nav").innerHTML = HUB.nav.map((n) => `<a href="${esc(n.href)}">${esc(n.label)}</a>`).join("");
+  $("ribbon").innerHTML = HUB.ribbon.map((r) => `<span>${esc(r)}</span>`).join("");
+  $("footBrand").textContent = HUB.brand;
+  $("footTagline").textContent = HUB.footer.tagline;
+  $("footLegal").textContent = HUB.footer.legal;
+}
+
+function renderHero() {
+  $("heroEyebrow").textContent = HUB.hero.eyebrow;
+  $("heroHeadline").textContent = HUB.hero.headline;
+  $("heroSub").textContent = HUB.hero.sub;
+  $("heroCta").textContent = HUB.hero.ctaLabel;
+}
+
+function emptyState(e) {
+  return `<div class="empty"><strong>${esc(e.heading)}</strong>${esc(e.body)}</div>`;
+}
+
+function renderCards(sec, bodyId, labelId, titleId, noteId) {
+  $(labelId).textContent = sec.label;
+  $(titleId).textContent = sec.title;
+  $(noteId).textContent = sec.note || "";
+  const body = $(bodyId);
+  if (!sec.items || !sec.items.length) { body.innerHTML = emptyState(sec.empty); return; }
+  body.innerHTML = `<div class="grid cols-3">` + sec.items.map((it) => {
+    const tag = it.url && it.url !== "#" ? "a" : "div";
+    const href = tag === "a" ? ` href="${esc(it.url)}"` : "";
+    return `<${tag} class="card"${href}>
+      ${it.kicker ? `<span class="kicker">${esc(it.kicker)}</span>` : ""}
+      <h3>${esc(it.title)}</h3>
+      ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
+      ${tag === "a" ? `<span class="more">Read →</span>` : `<span class="more">Coming soon</span>`}
+    </${tag}>`;
+  }).join("") + `</div>`;
+}
+
+function renderNews() {
+  const s = HUB.news;
+  $("newsLabel").textContent = s.label;
+  $("newsTitle").textContent = s.title;
+  $("newsNote").textContent = s.note || "";
+  const body = $("newsBody");
+  if (!s.items || !s.items.length) { body.innerHTML = emptyState(s.empty); return; }
+  body.innerHTML = `<ul class="dispatch">` + s.items.map((it) => {
+    const tag = it.url ? "a" : "span";
+    const href = it.url ? ` href="${esc(it.url)}"` : "";
+    return `<li><${tag}${href}>
+      <span class="d-date">${esc(it.date)}</span>
+      <span class="d-title">${esc(it.title)}</span>
+      <span class="d-src">${esc(it.source || "")}</span>
+    </${tag}></li>`;
+  }).join("") + `</ul>`;
+}
+
+function renderReport() {
+  $("reportLabel").textContent = HUB.report.label;
+  $("reportTitle").textContent = HUB.report.title;
+  $("reportBlurb").textContent = HUB.report.blurb;
+  $("reportNote").textContent = HUB.report.note;
+}
+
+function renderSocial() {
+  $("elsewhereLabel").textContent = HUB.social.label;
+  $("socialRow").innerHTML = HUB.social.items
+    .map((s) => `<a href="${esc(s.url)}"${s.url === "#" ? "" : ' target="_blank" rel="noopener"'}>${esc(s.label)}</a>`)
+    .join("");
+}
+
+/* ---- newsletter form ---- */
+const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+let hubTsToken = "";
+window.hubTsOk = (t) => { hubTsToken = t; };
+
+$("signupForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = $("formMsg");
+  const btn = $("signupBtn");
+  const email = e.target.email.value.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    msg.textContent = "That email doesn't look right — check it and try again.";
+    msg.className = "form-msg err";
+    return;
+  }
+  if (!hubTsToken) {
+    msg.textContent = "Finish the checkbox above, then subscribe.";
+    msg.className = "form-msg err";
+    return;
+  }
+  btn.disabled = true; btn.textContent = "Sending…";
+  msg.textContent = ""; msg.className = "form-msg";
+  try {
+    // v1: rides the existing public submitLead path (Turnstile-gated, CORS-allowed).
+    // TODO: swap to a dedicated subscribeHub worker action + subscriber list.
+    const res = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "submitLead",
+        campaign: HUB.campaignTag,
+        email,
+        fraudType: "Other",
+        note: "Newsletter signup — " + HUB.brand + " hub",
+        tsToken: hubTsToken,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Something went wrong.");
+    e.target.reset();
+    msg.textContent = "You're on the list.";
+    msg.className = "form-msg ok";
+  } catch (err) {
+    msg.textContent = err.message + " Try again in a minute.";
+    msg.className = "form-msg err";
+  } finally {
+    btn.disabled = false; btn.textContent = "Subscribe";
+    hubTsToken = "";
+    if (window.turnstile) window.turnstile.reset();
+  }
+});
+
+/* ---- nav toggle ---- */
+$("navToggle").addEventListener("click", (e) => {
+  const nav = $("nav");
+  const open = nav.classList.toggle("open");
+  e.currentTarget.setAttribute("aria-expanded", String(open));
+});
+
+/* ---- scroll reveal ---- */
+function reveal() {
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); } });
+  }, { rootMargin: "0px 0px -8% 0px" });
+  document.querySelectorAll(".card, .empty, .dispatch, .hero p, .hero-actions").forEach((el) => {
+    el.classList.add("reveal"); io.observe(el);
+  });
+}
+
+renderChrome();
+renderHero();
+renderCards(HUB.journal, "journalBody", "journalLabel", "journalTitle", "journalNote");
+renderNews();
+renderReport();
+renderCards(HUB.trips, "tripsBody", "tripsLabel", "tripsTitle", "tripsNote");
+renderSocial();
+if (!window.matchMedia || !window.matchMedia("(prefers-reduced-motion: reduce)").matches) reveal();
+</script>
+</body>
+</html>
