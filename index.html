@@ -761,6 +761,14 @@
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
 
+    <div id="hubSitesSection" style="margin-top:24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="toggleHubSites()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Content Hubs <span id="hubSitesCount" style="font-weight:400;"></span></span>
+        <span id="hubSitesToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="hubSitesList" style="display:none;"></div>
+    </div>
+
     <div id="todaySection" style="margin-top:24px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="toggleTodaySection()">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);" id="todaySectionLabel">Today</span>
@@ -9562,6 +9570,48 @@ function toggleTodaySection() {
   document.getElementById('todayToggleIcon').textContent = todayCollapsed ? '▸' : '▾';
 }
 
+// ── Content Hubs (web/hub/{slug}/) — collapsed reference list in the TD tab.
+// Add a row here when a new hub ships. Collapsed by default; state persisted.
+const HUB_SITES = [
+  { name: "Surf Vacations",  slug: "surf-vacations",  campaign: "Surfing Vacations" },
+  { name: "Sunflower Acres", slug: "sunflower-acres", campaign: "Sunflower Acres" },
+  { name: "Owner's Rep",     slug: "owners-rep",      campaign: "Construction Project Management Consulting" },
+  { name: "Home Services",   slug: "home-services",   campaign: "Home Services" },
+];
+let hubSitesCollapsed = true;
+try { hubSitesCollapsed = localStorage.getItem('hubSitesCollapsed') !== 'false'; } catch(e) {}
+function toggleHubSites() {
+  hubSitesCollapsed = !hubSitesCollapsed;
+  try { localStorage.setItem('hubSitesCollapsed', String(hubSitesCollapsed)); } catch(e) {}
+  applyHubSitesCollapse();
+}
+function applyHubSitesCollapse() {
+  const list = document.getElementById('hubSitesList');
+  const icon = document.getElementById('hubSitesToggleIcon');
+  if (list) list.style.display = hubSitesCollapsed ? 'none' : '';
+  if (icon) icon.textContent = hubSitesCollapsed ? '▸' : '▾';
+}
+function renderHubSites() {
+  const el = document.getElementById('hubSitesList');
+  if (!el) return;
+  const base = 'https://cabuzzard.github.io/dash/web/hub/';
+  const cnt = document.getElementById('hubSitesCount');
+  if (cnt) cnt.textContent = HUB_SITES.length;
+  el.innerHTML = '<div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;">' +
+    HUB_SITES.map((h, i) => {
+      const url = base + h.slug + '/';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg);${i ? 'border-top:1px solid var(--border);' : ''}">
+        <span style="flex:1;min-width:0;overflow:hidden;">
+          <a href="${url}" target="_blank" rel="noopener" style="font-size:13px;color:var(--text);text-decoration:none;font-weight:500;">${esc(h.name)}</a>
+          ${h.campaign ? `<span style="font-size:10px;color:var(--text3);margin-left:8px;">${esc(h.campaign)}</span>` : ''}
+        </span>
+        <button onclick="navigator.clipboard&&navigator.clipboard.writeText('${url}');this.textContent='copied';setTimeout(()=>{this.textContent='copy';},1200);" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;flex-shrink:0;">copy</button>
+        <a href="${url}" target="_blank" rel="noopener" title="Open" style="font-size:12px;color:var(--text3);text-decoration:none;flex-shrink:0;">↗</a>
+      </div>`;
+    }).join('') + '</div>';
+  applyHubSitesCollapse();
+}
+
 async function loadTodayCampaigns() {
   const el = document.getElementById('todayList');
   const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
@@ -11629,6 +11679,7 @@ async function loadTdTab() {
   } catch(e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
+  renderHubSites();
   loadTodayCampaigns();
   loadWpBoard();
 }
