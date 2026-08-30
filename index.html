@@ -746,6 +746,8 @@
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
         <span style="display:flex;gap:6px;">
+          <button onclick="wpSetAllGroups(true)" title="Expand all campaigns" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▾ all</button>
+          <button onclick="wpSetAllGroups(false)" title="Collapse all campaigns" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▶ all</button>
           <button onclick="wpShiftWeek(-1)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">←</button>
           <button onclick="wpShiftWeek(0)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">Today</button>
           <button onclick="wpShiftWeek(1)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">→</button>
@@ -11641,6 +11643,23 @@ async function loadTdTab() {
 let wpWeekOffset = 0;
 let wpDragId = null;
 const WP_DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+// Per-campaign collapse state for the day columns, persisted. Missing key
+// = collapsed (the board opens tidy; expand the campaigns you're working).
+let wpGroupsOpen = {};
+try { wpGroupsOpen = JSON.parse(localStorage.getItem('wpGroupsOpen') || '{}'); } catch(e) {}
+function wpSaveGroupsOpen() { try { localStorage.setItem('wpGroupsOpen', JSON.stringify(wpGroupsOpen)); } catch(e) {} }
+let wpLastRender = null;
+function wpToggleGroup(key) {
+  wpGroupsOpen[key] = !wpGroupsOpen[key];
+  wpSaveGroupsOpen();
+  if (wpLastRender) renderWpBoard(wpLastRender.monday, wpLastRender.items);
+}
+function wpSetAllGroups(open) {
+  if (!wpLastRender) return;
+  new Set(wpLastRender.items.map(it => it.campaignName || '—')).forEach(n => { wpGroupsOpen[n] = open; });
+  wpSaveGroupsOpen();
+  renderWpBoard(wpLastRender.monday, wpLastRender.items);
+}
 function wpMonday(offsetWeeks) {
   const now = new Date();
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -11673,32 +11692,56 @@ function wpCampaignOptions() {
   return '<option value="">— campaign —</option>' + camps.map(c => '<option value="'+c.id+'">'+esc(c.name)+'</option>').join('');
 }
 function renderWpBoard(monday, items) {
+  wpLastRender = { monday, items };
   const board = document.getElementById('wpBoard');
   const byDay = {};
   for (let i = 0; i < 7; i++) { const d = new Date(monday); d.setUTCDate(monday.getUTCDate() + i); byDay[wpIso(d)] = []; }
   items.forEach(it => { if (it.date && byDay[it.date]) byDay[it.date].push(it); });
   const todayIso = wpIso(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())));
-  board.innerHTML = Object.entries(byDay).map(([dateIso, dayItems], i) => {
-    const d = new Date(dateIso + 'T00:00:00Z');
-    const isToday = dateIso === todayIso;
-    const openCount = dayItems.filter(it => it.status !== 'Done').length;
-    const overCap = openCount > 5;
-    const itemsHtml = dayItems.map(it => `
+
+  const NO_CAMP = '—';
+  const itemCard = it => `
       <div draggable="true" ondragstart="wpDragStart(event,'${it.id}')" style="background:${it.status==='Done'?'rgba(0,200,100,.08)':'var(--surface)'};border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:6px;cursor:grab;">
         <div style="display:flex;align-items:flex-start;gap:6px;">
           <input type="checkbox" ${it.status==='Done'?'checked':''} onchange="wpToggleDone('${it.id}', this.checked)" style="margin-top:2px;flex-shrink:0;">
           <span style="flex:1;font-size:12px;color:${it.status==='Done'?'var(--text3)':'var(--text)'};text-decoration:${it.status==='Done'?'line-through':'none'};word-break:break-word;">${esc(it.name)}</span>
           <button onclick="wpDeleteItem('${it.id}')" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">✕</button>
         </div>
-        ${it.campaignName ? '<div style="font-size:9px;color:var(--text3);margin-top:2px;margin-left:20px;">'+esc(it.campaignName)+'</div>' : ''}
         ${it.source === 'Development Title' ? '<div style="font-size:9px;color:#9f7aea;margin-top:2px;margin-left:20px;">from Development</div>' : ''}
-      </div>`).join('');
+      </div>`;
+
+  board.innerHTML = Object.entries(byDay).map(([dateIso, dayItems], i) => {
+    const d = new Date(dateIso + 'T00:00:00Z');
+    const isToday = dateIso === todayIso;
+    const openCount = dayItems.filter(it => it.status !== 'Done').length;
+    const overCap = openCount > 5;
+
+    // Collapsed grouping by campaign. State (wpGroupsOpen) is keyed by
+    // campaign name and shared across every day, so expanding a campaign
+    // once shows it everywhere it appears this week.
+    const groups = {};
+    dayItems.forEach(it => { const k = it.campaignName || NO_CAMP; (groups[k] = groups[k] || []).push(it); });
+    const groupKeys = Object.keys(groups).sort((a, b) => a === NO_CAMP ? 1 : b === NO_CAMP ? -1 : a.localeCompare(b));
+    const groupsHtml = groupKeys.map(k => {
+      const gi = groups[k];
+      const gOpen = wpGroupsOpen[k] === true;
+      const gOpenCount = gi.filter(it => it.status !== 'Done').length;
+      return `<div style="margin-bottom:4px;">
+        <div data-gk="${esc(k)}" onclick="wpToggleGroup(this.dataset.gk)" style="display:flex;align-items:center;gap:4px;padding:3px 5px;background:var(--surface);border:1px solid var(--border);border-radius:4px;cursor:pointer;user-select:none;">
+          <span style="font-size:8px;color:var(--text3);flex-shrink:0;">${gOpen ? '▾' : '▶'}</span>
+          <span style="flex:1;font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(k)}</span>
+          <span style="font-size:9px;color:${gOpenCount ? 'var(--text3)' : '#3ba55d'};flex-shrink:0;">${gOpenCount || '✓'}</span>
+        </div>
+        <div style="display:${gOpen ? 'block' : 'none'};padding-top:4px;">${gi.map(itemCard).join('')}</div>
+      </div>`;
+    }).join('');
+
     return `<div ondragover="event.preventDefault()" ondrop="wpDrop(event,'${dateIso}')" style="background:${isToday?'rgba(232,255,71,.06)':'transparent'};border:1px solid ${isToday?'var(--accent)':'var(--border)'};border-radius:8px;padding:8px;min-height:120px;">
       <div style="font-size:11px;font-weight:700;color:${isToday?'var(--accent)':'var(--text)'};margin-bottom:6px;display:flex;justify-content:space-between;">
         <span>${WP_DAY_NAMES[i]} ${d.getUTCDate()}</span>
         <span style="color:${overCap?'#ff4444':'var(--text3)'};font-weight:400;">${openCount}${overCap?' ⚠':''}</span>
       </div>
-      ${itemsHtml}
+      ${groupsHtml}
       <input type="text" placeholder="+ add…" onkeydown="wpAddInputKey(event,'${dateIso}')" style="width:100%;font-size:11px;padding:3px 5px;border:1px dashed var(--border2);border-radius:4px;background:transparent;color:var(--text);outline:none;margin-top:4px;box-sizing:border-box;">
       <select class="wp-camp-select" style="width:100%;font-size:10px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text2);margin-top:3px;box-sizing:border-box;">${wpCampaignOptions()}</select>
     </div>`;
