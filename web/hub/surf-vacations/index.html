@@ -311,6 +311,7 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
 const HUB = {
   slug: "surf-vacations",
   campaignTag: "hub-surf-vacations",
+  campaignId: "3b51f7d3a4bb81ae94b3c9fe6dc63770",              // campaign whose Logins feed the social links
 
   brand: "Surf Vacations",
   logoImg: null,
@@ -477,11 +478,26 @@ function renderReport() {
   else { rl.hidden = true; }
 }
 
-function renderSocial() {
+async function renderSocial() {
   $("elsewhereLabel").textContent = HUB.social.label;
-  $("socialRow").innerHTML = HUB.social.items
-    .map((s) => `<a href="${esc(s.url)}"${s.url === "#" ? "" : ' target="_blank" rel="noopener"'}>${esc(s.label)}</a>`)
-    .join("");
+  const paint = (items) => {
+    $("socialRow").innerHTML = (items || [])
+      .map((s) => `<a href="${esc(s.url)}"${s.url === "#" ? "" : ' target="_blank" rel="noopener"'}>${esc(s.label)}</a>`)
+      .join("");
+  };
+  paint(HUB.social.items);            // instant, static fallback
+  if (!HUB.campaignId) return;
+  try {
+    // Live social links: the campaign's Logins (Account URL) become the
+    // links here. Add/point a Login in Notion and it shows up on the hub.
+    const res = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "getHubSocials", campaignId: HUB.campaignId }),
+    });
+    const data = await res.json();
+    if (res.ok && Array.isArray(data.socials) && data.socials.length) paint(data.socials);
+  } catch (e) { /* keep the HUB.social.items fallback */ }
 }
 
 /* ---- newsletter form ---- */

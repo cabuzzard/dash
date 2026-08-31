@@ -4337,6 +4337,44 @@ export default {
       return json({ success: true });
     }
 
+    // ── getHubSocials ── public, no token. A content hub calls this on load
+    // with its campaignId; every Active Login on that campaign that has an
+    // "Account URL" becomes a social link on the published hub page (labelled
+    // by its Platform, or the Login name). One per platform, first wins.
+    if (body.action === "getHubSocials") {
+      const raw = String(body.campaignId || "").replace(/-/g, "");
+      if (raw.length !== 32) return json({ socials: [] });
+      const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+      try {
+        const [logins, platforms] = await Promise.all([
+          notionQuery(LOGINS_DB, { filter: { property: "Campaign", relation: { contains: dash(raw) } } }),
+          notionQuery(PLATFORMS_DB, {}).catch(() => []),
+        ]);
+        const platName = {};
+        platforms.forEach(p => { platName[p.id.replace(/-/g,"")] = (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); });
+        const seen = new Set();
+        const socials = [];
+        logins.forEach(l => {
+          const p = l.properties;
+          const url = (p["Account URL"]?.url || "").trim();
+          if (!url) return;
+          const status = p.Status?.select?.name || "";
+          if (status && status !== "Active") return;
+          const platIds = (p.Platform?.relation || []).map(r => r.id.replace(/-/g,""));
+          const label = (platIds.map(id => platName[id]).find(Boolean)
+            || (p.Name?.title || []).map(t => t.plain_text).join("").trim()
+            || "Link");
+          const key = label.toLowerCase();
+          if (seen.has(key)) return;
+          seen.add(key);
+          socials.push({ label, url });
+        });
+        return json({ socials });
+      } catch (e) {
+        return json({ socials: [], error: e.message });
+      }
+    }
+
     // â"€â"€ All other actions require a valid session token â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     if (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET))) {
       return json({ error: "Unauthorized" }, 401);

@@ -311,6 +311,7 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
 const HUB = {
   slug: "content-hub",
   campaignTag: "hub-content-hub",
+  campaignId: null,              // campaign whose Logins feed the social links
 
   brand: "Content Hub",
   logoImg: null,
@@ -478,11 +479,26 @@ function renderReport() {
   else { rl.hidden = true; }
 }
 
-function renderSocial() {
+async function renderSocial() {
   $("elsewhereLabel").textContent = HUB.social.label;
-  $("socialRow").innerHTML = HUB.social.items
-    .map((s) => `<a href="${esc(s.url)}"${s.url === "#" ? "" : ' target="_blank" rel="noopener"'}>${esc(s.label)}</a>`)
-    .join("");
+  const paint = (items) => {
+    $("socialRow").innerHTML = (items || [])
+      .map((s) => `<a href="${esc(s.url)}"${s.url === "#" ? "" : ' target="_blank" rel="noopener"'}>${esc(s.label)}</a>`)
+      .join("");
+  };
+  paint(HUB.social.items);            // instant, static fallback
+  if (!HUB.campaignId) return;
+  try {
+    // Live social links: the campaign's Logins (Account URL) become the
+    // links here. Add/point a Login in Notion and it shows up on the hub.
+    const res = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "getHubSocials", campaignId: HUB.campaignId }),
+    });
+    const data = await res.json();
+    if (res.ok && Array.isArray(data.socials) && data.socials.length) paint(data.socials);
+  } catch (e) { /* keep the HUB.social.items fallback */ }
 }
 
 /* ---- newsletter form ---- */

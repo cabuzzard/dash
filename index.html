@@ -9583,33 +9583,35 @@ function toggleTodaySection() {
 // launch-readiness board in the Content Hubs tab (renderHubsTab).
 // Add a row here when a new hub ships. `microsite` is the campaign admin
 // microsite deploy-path (microsites/{microsite}/), for the cross-link.
+// products = # of campaign products chosen to feature on the hub.
+// blogPosts = # of journal/blog posts written & published on the hub.
+// domain / contact = the hub's public domain and contact email (— until set).
+// Social links on the published hub come from the campaign's Logins
+// (Account URL) via the worker's getHubSocials — nothing to set here.
 const HUB_SITES = [
-  { name: "Surf Vacations",  slug: "surf-vacations",  campaign: "Surfing Vacations", microsite: "diving-vacations" },
-  { name: "Sunflower Acres", slug: "sunflower-acres", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff" },
-  { name: "Build Watcher",   slug: "owners-rep",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting" },
-  { name: "Home Services",   slug: "home-services",   campaign: "Home Services",     microsite: "home-services" },
+  { name: "Surf Vacations",  slug: "surf-vacations",  campaign: "Surfing Vacations", microsite: "diving-vacations",                        domain: null, contact: null, products: 0, blogPosts: 0 },
+  { name: "Sunflower Acres", slug: "sunflower-acres", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff",                domain: null, contact: null, products: 0, blogPosts: 0 },
+  { name: "Build Watcher",   slug: "owners-rep",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting", domain: null, contact: null, products: 0, blogPosts: 0 },
+  { name: "Home Services",   slug: "home-services",   campaign: "Home Services",     microsite: "home-services",                           domain: null, contact: null, products: 0, blogPosts: 0 },
 ];
 
-// The bar a hub has to clear to count as launched & active. Each column in
-// the Content Hubs readiness table. `crit:true` = counts toward the LIVE
-// badge (the rest are polish that can come after launch).
+// Yes/no checklist columns. `crit:true` = blocks the LIVE badge; the rest
+// are polish. (Products & Blog are shown as COUNT columns, not here.)
 const HUB_CHECKLIST = [
-  { key: 'name',       label: 'Name',    crit: true,  hint: 'Brand name set (HUB.brand / --logo-text), not a placeholder' },
-  { key: 'logo',       label: 'Logo',    crit: true,  hint: 'Real logo file wired to HUB.logoImg + --logo-img (not "none")' },
-  { key: 'hero',       label: 'Hero',    crit: true,  hint: 'Headline, sub, and both CTAs finalized' },
-  { key: 'products',   label: 'Products',crit: true,  hint: 'Service/offer cards link to real product or checkout URLs (no "#")' },
-  { key: 'leadmag',    label: 'Lead mag',crit: true,  hint: 'The intro offer (checklist / guide) actually exists and is delivered on signup' },
-  { key: 'newsletter', label: 'Signup',  crit: true,  hint: 'Newsletter form tested end-to-end incl. Turnstile; lands in Leads/list' },
-  { key: 'blog',       label: 'Blog',    crit: false, hint: '≥3 journal posts published with real URLs' },
-  { key: 'news',       label: 'News',    crit: false, hint: '≥1 briefing item, or deliberately marked N/A' },
-  { key: 'social',     label: 'Social',  crit: true,  hint: 'Social links point to real profiles (no "#")' },
-  { key: 'seo',        label: 'SEO',     crit: true,  hint: 'Title, meta description, OG tags, robots=index' },
-  { key: 'livesite',   label: 'Campaign',crit: true,  hint: 'Notion campaign "live site" property set to the hub URL' },
+  { key: 'name',       label: 'Name',     crit: true,  hint: 'Brand name finalized (HUB.brand / --logo-text), not a placeholder or pending-trademark working name' },
+  { key: 'logo',       label: 'Logo',     crit: true,  hint: 'Real logo file wired to HUB.logoImg + --logo-img (not "none")' },
+  { key: 'hero',       label: 'Hero',     crit: true,  hint: 'Headline, sub, and both CTAs finalized' },
+  { key: 'prodwired',  label: 'Offers',   crit: true,  hint: 'The chosen products link to real product / checkout URLs on the hub (no "#")' },
+  { key: 'leadmag',    label: 'Lead mag', crit: true,  hint: 'The intro offer (checklist / guide) actually exists and is delivered on signup' },
+  { key: 'newsletter', label: 'Signup',   crit: true,  hint: 'Newsletter form tested end-to-end incl. Turnstile; lands in Leads / list' },
+  { key: 'social',     label: 'Social',   crit: true,  hint: 'Social links resolve to real profiles — from the campaign Logins (Account URL) or the HUB.social fallback' },
+  { key: 'seo',        label: 'SEO',      crit: true,  hint: 'Title, meta description, OG tags, robots=index' },
+  { key: 'livesite',   label: 'Campaign', crit: true,  hint: 'Notion campaign "live site" property set to the hub URL' },
   { key: 'analytics',  label: 'Analytics',crit: false, hint: 'Traffic analytics installed and reporting' },
 ];
 
-// Best current read of each hub's state (2026-08-31). localStorage overrides
-// per cell once you start ticking things off in the table.
+// Best current read of each hub's yes/no state (2026-08-31). localStorage
+// overrides per cell once you start ticking things off.
 const HUB_READY_SEED = {
   'surf-vacations':  { name: true, hero: true, seo: true },
   'sunflower-acres': { name: true, hero: true, seo: true, livesite: true },
@@ -9630,10 +9632,33 @@ function hubReadyToggle(slug, key) {
   try { localStorage.setItem('hubReady:v1', JSON.stringify(all)); } catch(e) {}
   renderHubsTab();
 }
-function hubBadge(state) {
-  const critDone = HUB_CHECKLIST.filter(c => c.crit).every(c => state[c.key]);
-  const allDone  = HUB_CHECKLIST.every(c => state[c.key]);
-  const anyDone  = HUB_CHECKLIST.some(c => state[c.key]);
+// Editable value fields (domain / contact / products / blogPosts): HUB_SITES
+// holds the seed, localStorage holds your edits.
+function hubMeta(h) {
+  let stored = {};
+  try { stored = JSON.parse(localStorage.getItem('hubMeta:v1') || '{}')[h.slug] || {}; } catch(e) {}
+  return Object.assign({ domain: h.domain, contact: h.contact, products: h.products, blogPosts: h.blogPosts }, stored);
+}
+function hubMetaEdit(slug, key, kind) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const cur = hubMeta(h)[key];
+  const label = { domain: 'Domain', contact: 'Contact email', products: 'Products chosen (count)', blogPosts: 'Blog posts written (count)' }[key];
+  const raw = prompt(label + ' — ' + h.name, cur == null ? '' : String(cur));
+  if (raw === null) return;
+  let val = raw.trim();
+  if (kind === 'num') val = val === '' ? 0 : Math.max(0, parseInt(val, 10) || 0);
+  else if (val === '') val = null;
+  let all = {};
+  try { all = JSON.parse(localStorage.getItem('hubMeta:v1') || '{}'); } catch(e) {}
+  all[slug] = Object.assign({}, all[slug] || {}, { [key]: val });
+  try { localStorage.setItem('hubMeta:v1', JSON.stringify(all)); } catch(e) {}
+  renderHubsTab();
+}
+function hubBadge(state, meta) {
+  const critChecks = HUB_CHECKLIST.filter(c => c.crit).every(c => state[c.key]);
+  const critDone   = critChecks && (meta.products || 0) > 0;
+  const allDone    = HUB_CHECKLIST.every(c => state[c.key]) && (meta.products || 0) > 0 && (meta.blogPosts || 0) > 0;
+  const anyDone    = HUB_CHECKLIST.some(c => state[c.key]) || (meta.products || 0) > 0;
   if (allDone)  return { text: 'ACTIVE',   color: '#4cff4c', bg: 'rgba(76,255,76,.12)' };
   if (critDone) return { text: 'LIVE',     color: '#63b3ed', bg: 'rgba(99,179,237,.12)' };
   if (anyDone)  return { text: 'BUILDING', color: '#ffb020', bg: 'rgba(255,176,32,.12)' };
@@ -9645,25 +9670,37 @@ function renderHubsTab() {
   if (!el) return;
   const hubBase = 'https://cabuzzard.github.io/dash/web/hub/';
   const msBase  = 'https://cabuzzard.github.io/dash/microsites/';
+  const totalCrit = HUB_CHECKLIST.filter(c => c.crit).length + 1; // + products>0
+
+  const valCol = (v, dim) => v == null || v === '' ? `<span style="color:var(--text3);">—</span>` : `<span style="color:${dim ? 'var(--text2)' : 'var(--text)'};">${esc(String(v))}</span>`;
 
   const head = '<thead><tr>'
     + '<th style="text-align:left;position:sticky;left:0;background:var(--surface);z-index:2;">Hub</th>'
     + '<th>Links</th>'
     + '<th style="text-align:left;">Campaign</th>'
+    + '<th style="text-align:left;">Domain</th>'
+    + '<th style="text-align:left;">Contact</th>'
+    + '<th title="Campaign products chosen to feature on the hub — click to set">Prod</th>'
+    + '<th title="Blog / journal posts written & published on the hub — click to set">Blog</th>'
     + HUB_CHECKLIST.map(c => `<th title="${esc(c.hint)}" style="white-space:nowrap;text-align:center;padding:6px 8px;${c.crit ? '' : 'opacity:.65;'}">${esc(c.label)}${c.crit ? '' : ' *'}</th>`).join('')
     + '<th>Ready</th><th>Status</th></tr></thead>';
 
   const rows = HUB_SITES.map(h => {
     const state = hubReadyState(h.slug);
+    const meta  = hubMeta(h);
     const hubUrl = hubBase + h.slug + '/';
     const msUrl  = h.microsite ? msBase + h.microsite + '/' : '';
-    const badge  = hubBadge(state);
-    const done   = HUB_CHECKLIST.filter(c => state[c.key]).length;
+    const badge  = hubBadge(state, meta);
+    const doneCrit = HUB_CHECKLIST.filter(c => c.crit && state[c.key]).length + ((meta.products || 0) > 0 ? 1 : 0);
     const cells  = HUB_CHECKLIST.map(c => {
       const on = !!state[c.key];
       return `<td onclick="hubReadyToggle('${h.slug}','${c.key}')" title="${esc(c.label)} — ${esc(c.hint)} · click to toggle"
         style="text-align:center;padding:6px 8px;cursor:pointer;user-select:none;font-size:13px;color:${on ? '#4cff4c' : 'var(--text3)'};">${on ? '✓' : '○'}</td>`;
     }).join('');
+    const numCell = (key) => {
+      const n = meta[key] || 0;
+      return `<td onclick="hubMetaEdit('${h.slug}','${key}','num')" title="Click to set" style="text-align:center;padding:6px 8px;cursor:pointer;font-size:12px;color:${n > 0 ? '#4cff4c' : 'var(--text3)'};">${n}</td>`;
+    };
     return `<tr>
       <td style="text-align:left;position:sticky;left:0;background:var(--bg);z-index:1;font-weight:600;">
         <a href="${hubUrl}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(h.name)}</a>
@@ -9675,22 +9712,30 @@ function renderHubsTab() {
         <button onclick="navigator.clipboard&&navigator.clipboard.writeText('${hubUrl}');this.textContent='✓';setTimeout(()=>{this.textContent='copy';},1200);" style="margin-left:6px;font-size:9px;padding:1px 6px;border:1px solid var(--border2);border-radius:3px;background:transparent;color:var(--text3);cursor:pointer;">copy</button>
       </td>
       <td style="text-align:left;font-size:11px;color:var(--text3);">${esc(h.campaign || '')}</td>
+      <td onclick="hubMetaEdit('${h.slug}','domain','text')" title="Click to set the hub's public domain" style="text-align:left;font-size:11px;cursor:pointer;">${valCol(meta.domain)}</td>
+      <td onclick="hubMetaEdit('${h.slug}','contact','text')" title="Click to set the hub's contact email" style="text-align:left;font-size:11px;cursor:pointer;">${valCol(meta.contact)}</td>
+      ${numCell('products')}
+      ${numCell('blogPosts')}
       ${cells}
-      <td style="text-align:center;font-size:11px;color:var(--text3);white-space:nowrap;">${done}/${HUB_CHECKLIST.length}</td>
+      <td style="text-align:center;font-size:11px;color:var(--text3);white-space:nowrap;">${doneCrit}/${totalCrit}</td>
       <td style="text-align:center;"><span style="font-size:10px;font-weight:700;letter-spacing:.05em;padding:2px 7px;border-radius:4px;color:${badge.color};background:${badge.bg};">${badge.text}</span></td>
     </tr>`;
   }).join('');
 
   const legend = '<div style="margin-top:14px;font-size:11px;color:var(--text3);line-height:1.7;">'
-    + '<div style="font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;">Checklist</div>'
+    + '<div style="font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;">What a launched hub needs</div>'
+    + '<div><span style="color:var(--text2);font-weight:600;">Domain / Contact</span> — public domain and contact email (click a cell to set)</div>'
+    + '<div><span style="color:var(--text2);font-weight:600;">Prod</span> — # of campaign products chosen to feature on the hub · counts toward LIVE when &gt; 0</div>'
+    + '<div><span style="font-weight:600;">Blog</span> — # of posts written &amp; published on the hub (polish)</div>'
     + HUB_CHECKLIST.map(c => `<div><span style="color:${c.crit ? 'var(--text2)' : 'var(--text3)'};font-weight:600;">${esc(c.label)}${c.crit ? '' : ' *'}</span> — ${esc(c.hint)}</div>`).join('')
     + '<div style="margin-top:6px;">* = polish, doesn\'t block the LIVE badge. '
-    + '<b style="color:#63b3ed;">LIVE</b> = every non-* item done · <b style="color:#4cff4c;">ACTIVE</b> = all done · '
+    + '<b style="color:#63b3ed;">LIVE</b> = every non-* item + ≥1 product · <b style="color:#4cff4c;">ACTIVE</b> = everything incl. a blog post · '
     + '<b style="color:#ffb020;">BUILDING</b> = some done · <b>SCAFFOLD</b> = page exists only.</div>'
-    + '<div style="margin-top:6px;">Cells are click-to-toggle; your ticks are saved in this browser.</div>'
+    + '<div style="margin-top:6px;">Every cell is click-to-edit; changes are saved in this browser (localStorage). '
+    + 'Social links on the published hub come from the campaign\'s Logins — set an Account URL on a Login and it appears on the hub.</div>'
     + '</div>';
 
-  el.innerHTML = '<div style="overflow-x:auto;"><table class="dtable" style="min-width:900px;">'
+  el.innerHTML = '<div style="overflow-x:auto;"><table class="dtable" style="min-width:1040px;">'
     + head + '<tbody>' + rows + '</tbody></table></div>' + legend;
 }
 let hubSitesCollapsed = true;
