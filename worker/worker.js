@@ -1107,16 +1107,27 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
 
     // Job Board Listings — same real, curated-postings search the manual
     // "🔄 search" button in Product Research runs (getProductJobBoardListings),
-    // now also run automatically at product-creation time alongside the rest
-    // of the research, per operator direction: "run that with all the other
-    // research when the product is created." Merges these fresh Keywords
-    // with the campaign's own (buildJobSearchContext — same merge
-    // generateJobAsset/researchJobListingTitles use) so a brand-new product
-    // already has real postings ready to pick from in Generate Assets,
-    // instead of the operator having to remember to run the search by hand
-    // first. Fire-and-forget best-effort: a zero-result or failed search
-    // here should never block the Strategy fields below.
-    if (productKeywords) {
+    // run automatically alongside the rest of the research — but ONLY for
+    // products that actually sell into a job search (a Method named like
+    // resume / CV / upwork / proposal), the same signal researchJobListingTitles
+    // routes on. Without this gate every product across every campaign —
+    // music, books, services — got a dump of remote-job postings on its
+    // first pillar. Manual runs (the 🔄 button) are unaffected.
+    // Fire-and-forget best-effort: a zero-result or failed search here
+    // never blocks the Strategy fields below.
+    let isJobProduct = false;
+    try {
+      const methodIds = (pp.Methods?.relation || []).map(r => r.id).slice(0, 8);
+      if (methodIds.length) {
+        const methodNames = await Promise.all(methodIds.map(id =>
+          fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdr }).then(r => r.json())
+            .then(m => (m.properties?.Name?.title || []).map(t => t.plain_text).join("")).catch(() => "")
+        ));
+        isJobProduct = methodNames.some(n => /resume|\bcv\b|upwork|proposal|job\s*(search|board|listing|application)/i.test(n));
+      }
+    } catch (e) { /* can't tell → treat as not a job product (safer) */ }
+
+    if (isJobProduct && productKeywords) {
       try {
         const jobCtx = await buildJobSearchContext(hdr, { campaignId, productKeywords, productPositionText: productKeywords, researchInstructions: '', isResume: true });
         const jobSearchTerms = jobCtx.searchTerms;
