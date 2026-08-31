@@ -650,6 +650,7 @@
     <div class="tab active" onclick="switchTab('overview')">Overview</div>
     <div class="tab"        onclick="switchTab('products')">Products</div>
     <div class="tab"        onclick="switchTab('development')">Development</div>
+    <div class="tab"        onclick="switchTab('contenthubs')">Content Hubs</div>
     <div class="tab"        onclick="switchTab('td')">TD</div>
     <div class="tab" id="tabBtnPublishing" onclick="switchTab('publishing')">Publishing</div>
     <div class="tab" onclick="switchTab('platforms')">Platforms</div>
@@ -779,6 +780,12 @@
       </div>
     </div>
 
+  </div>
+
+  <div class="tab-panel" id="tabContenthubs">
+    <div id="hubsTabContent">
+      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+    </div>
   </div>
 
   <div class="tab-panel" id="tabPlatforms">
@@ -3310,6 +3317,7 @@ let toolsLoaded = false;
 let stackLoaded = false;
 let ecoLoaded = false;
 let globalsLoaded = false;
+let hubsTabLoaded = false;
 
 const ASSET_STATUS_CYCLE = ['Publish', 'Published'];
 function assetStatusStyle(status) {
@@ -4084,6 +4092,7 @@ function loadTabContent(name) {
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
   if (name === 'links'     && !linksLoaded)  { linksLoaded  = true; loadLinks(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
+  if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
   if (name === 'trades') {
     if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); }
@@ -9570,14 +9579,120 @@ function toggleTodaySection() {
   document.getElementById('todayToggleIcon').textContent = todayCollapsed ? '▸' : '▾';
 }
 
-// ── Content Hubs (web/hub/{slug}/) — collapsed reference list in the TD tab.
-// Add a row here when a new hub ships. Collapsed by default; state persisted.
+// ── Content Hubs (web/hub/{slug}/) — quick list in the TD tab + the full
+// launch-readiness board in the Content Hubs tab (renderHubsTab).
+// Add a row here when a new hub ships. `microsite` is the campaign admin
+// microsite deploy-path (microsites/{microsite}/), for the cross-link.
 const HUB_SITES = [
-  { name: "Surf Vacations",  slug: "surf-vacations",  campaign: "Surfing Vacations" },
-  { name: "Sunflower Acres", slug: "sunflower-acres", campaign: "Sunflower Acres" },
-  { name: "Build Watcher",   slug: "owners-rep",      campaign: "Build Watcher" },
-  { name: "Home Services",   slug: "home-services",   campaign: "Home Services" },
+  { name: "Surf Vacations",  slug: "surf-vacations",  campaign: "Surfing Vacations", microsite: "diving-vacations" },
+  { name: "Sunflower Acres", slug: "sunflower-acres", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff" },
+  { name: "Build Watcher",   slug: "owners-rep",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting" },
+  { name: "Home Services",   slug: "home-services",   campaign: "Home Services",     microsite: "home-services" },
 ];
+
+// The bar a hub has to clear to count as launched & active. Each column in
+// the Content Hubs readiness table. `crit:true` = counts toward the LIVE
+// badge (the rest are polish that can come after launch).
+const HUB_CHECKLIST = [
+  { key: 'name',       label: 'Name',    crit: true,  hint: 'Brand name set (HUB.brand / --logo-text), not a placeholder' },
+  { key: 'logo',       label: 'Logo',    crit: true,  hint: 'Real logo file wired to HUB.logoImg + --logo-img (not "none")' },
+  { key: 'hero',       label: 'Hero',    crit: true,  hint: 'Headline, sub, and both CTAs finalized' },
+  { key: 'products',   label: 'Products',crit: true,  hint: 'Service/offer cards link to real product or checkout URLs (no "#")' },
+  { key: 'leadmag',    label: 'Lead mag',crit: true,  hint: 'The intro offer (checklist / guide) actually exists and is delivered on signup' },
+  { key: 'newsletter', label: 'Signup',  crit: true,  hint: 'Newsletter form tested end-to-end incl. Turnstile; lands in Leads/list' },
+  { key: 'blog',       label: 'Blog',    crit: false, hint: '≥3 journal posts published with real URLs' },
+  { key: 'news',       label: 'News',    crit: false, hint: '≥1 briefing item, or deliberately marked N/A' },
+  { key: 'social',     label: 'Social',  crit: true,  hint: 'Social links point to real profiles (no "#")' },
+  { key: 'seo',        label: 'SEO',     crit: true,  hint: 'Title, meta description, OG tags, robots=index' },
+  { key: 'livesite',   label: 'Campaign',crit: true,  hint: 'Notion campaign "live site" property set to the hub URL' },
+  { key: 'analytics',  label: 'Analytics',crit: false, hint: 'Traffic analytics installed and reporting' },
+];
+
+// Best current read of each hub's state (2026-08-31). localStorage overrides
+// per cell once you start ticking things off in the table.
+const HUB_READY_SEED = {
+  'surf-vacations':  { name: true, hero: true, seo: true },
+  'sunflower-acres': { name: true, hero: true, seo: true, livesite: true },
+  'owners-rep':      { name: true, hero: true, seo: true, livesite: true },
+  'home-services':   { name: true, hero: true, seo: true, livesite: true },
+};
+
+function hubReadyState(slug) {
+  let stored = {};
+  try { stored = JSON.parse(localStorage.getItem('hubReady:v1') || '{}')[slug] || {}; } catch(e) {}
+  return Object.assign({}, HUB_READY_SEED[slug] || {}, stored);
+}
+function hubReadyToggle(slug, key) {
+  let all = {};
+  try { all = JSON.parse(localStorage.getItem('hubReady:v1') || '{}'); } catch(e) {}
+  const cur = hubReadyState(slug);
+  all[slug] = Object.assign({}, all[slug] || {}, { [key]: !cur[key] });
+  try { localStorage.setItem('hubReady:v1', JSON.stringify(all)); } catch(e) {}
+  renderHubsTab();
+}
+function hubBadge(state) {
+  const critDone = HUB_CHECKLIST.filter(c => c.crit).every(c => state[c.key]);
+  const allDone  = HUB_CHECKLIST.every(c => state[c.key]);
+  const anyDone  = HUB_CHECKLIST.some(c => state[c.key]);
+  if (allDone)  return { text: 'ACTIVE',   color: '#4cff4c', bg: 'rgba(76,255,76,.12)' };
+  if (critDone) return { text: 'LIVE',     color: '#63b3ed', bg: 'rgba(99,179,237,.12)' };
+  if (anyDone)  return { text: 'BUILDING', color: '#ffb020', bg: 'rgba(255,176,32,.12)' };
+  return { text: 'SCAFFOLD', color: 'var(--text3)', bg: 'var(--surface2)' };
+}
+
+function renderHubsTab() {
+  const el = document.getElementById('hubsTabContent');
+  if (!el) return;
+  const hubBase = 'https://cabuzzard.github.io/dash/web/hub/';
+  const msBase  = 'https://cabuzzard.github.io/dash/microsites/';
+
+  const head = '<thead><tr>'
+    + '<th style="text-align:left;position:sticky;left:0;background:var(--surface);z-index:2;">Hub</th>'
+    + '<th>Links</th>'
+    + '<th style="text-align:left;">Campaign</th>'
+    + HUB_CHECKLIST.map(c => `<th title="${esc(c.hint)}" style="white-space:nowrap;text-align:center;padding:6px 8px;${c.crit ? '' : 'opacity:.65;'}">${esc(c.label)}${c.crit ? '' : ' *'}</th>`).join('')
+    + '<th>Ready</th><th>Status</th></tr></thead>';
+
+  const rows = HUB_SITES.map(h => {
+    const state = hubReadyState(h.slug);
+    const hubUrl = hubBase + h.slug + '/';
+    const msUrl  = h.microsite ? msBase + h.microsite + '/' : '';
+    const badge  = hubBadge(state);
+    const done   = HUB_CHECKLIST.filter(c => state[c.key]).length;
+    const cells  = HUB_CHECKLIST.map(c => {
+      const on = !!state[c.key];
+      return `<td onclick="hubReadyToggle('${h.slug}','${c.key}')" title="${esc(c.label)} — ${esc(c.hint)} · click to toggle"
+        style="text-align:center;padding:6px 8px;cursor:pointer;user-select:none;font-size:13px;color:${on ? '#4cff4c' : 'var(--text3)'};">${on ? '✓' : '○'}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="text-align:left;position:sticky;left:0;background:var(--bg);z-index:1;font-weight:600;">
+        <a href="${hubUrl}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(h.name)}</a>
+      </td>
+      <td style="white-space:nowrap;">
+        <a href="${hubUrl}" target="_blank" rel="noopener" title="Open public hub" style="color:var(--accent);text-decoration:none;font-size:11px;">hub ↗</a>
+        <span style="color:var(--border2);"> · </span>
+        ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" title="Open campaign admin microsite" style="color:var(--text3);text-decoration:none;font-size:11px;">microsite ↗</a>` : '<span style="color:var(--text3);font-size:11px;">no microsite</span>'}
+        <button onclick="navigator.clipboard&&navigator.clipboard.writeText('${hubUrl}');this.textContent='✓';setTimeout(()=>{this.textContent='copy';},1200);" style="margin-left:6px;font-size:9px;padding:1px 6px;border:1px solid var(--border2);border-radius:3px;background:transparent;color:var(--text3);cursor:pointer;">copy</button>
+      </td>
+      <td style="text-align:left;font-size:11px;color:var(--text3);">${esc(h.campaign || '')}</td>
+      ${cells}
+      <td style="text-align:center;font-size:11px;color:var(--text3);white-space:nowrap;">${done}/${HUB_CHECKLIST.length}</td>
+      <td style="text-align:center;"><span style="font-size:10px;font-weight:700;letter-spacing:.05em;padding:2px 7px;border-radius:4px;color:${badge.color};background:${badge.bg};">${badge.text}</span></td>
+    </tr>`;
+  }).join('');
+
+  const legend = '<div style="margin-top:14px;font-size:11px;color:var(--text3);line-height:1.7;">'
+    + '<div style="font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;">Checklist</div>'
+    + HUB_CHECKLIST.map(c => `<div><span style="color:${c.crit ? 'var(--text2)' : 'var(--text3)'};font-weight:600;">${esc(c.label)}${c.crit ? '' : ' *'}</span> — ${esc(c.hint)}</div>`).join('')
+    + '<div style="margin-top:6px;">* = polish, doesn\'t block the LIVE badge. '
+    + '<b style="color:#63b3ed;">LIVE</b> = every non-* item done · <b style="color:#4cff4c;">ACTIVE</b> = all done · '
+    + '<b style="color:#ffb020;">BUILDING</b> = some done · <b>SCAFFOLD</b> = page exists only.</div>'
+    + '<div style="margin-top:6px;">Cells are click-to-toggle; your ticks are saved in this browser.</div>'
+    + '</div>';
+
+  el.innerHTML = '<div style="overflow-x:auto;"><table class="dtable" style="min-width:900px;">'
+    + head + '<tbody>' + rows + '</tbody></table></div>' + legend;
+}
 let hubSitesCollapsed = true;
 try { hubSitesCollapsed = localStorage.getItem('hubSitesCollapsed') !== 'false'; } catch(e) {}
 function toggleHubSites() {
