@@ -9955,11 +9955,12 @@ Return ONLY a JSON array — no other text, no markdown fences:
           mIds.length ? notionQuery(METHODS_DB, {}).catch(() => []) : [],
           sIds.length ? notionQuery(GROWTH_STRATEGY_DB, {}).catch(() => []) : [],
         ]);
-        const pNames = {}, pStacks = {};
+        const pNames = {}, pStacks = {}, pTiers = {};
         allProductRows.forEach(p => {
           const id = p.id.replace(/-/g,"");
           pNames[id] = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?";
           pStacks[id] = (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim() || null;
+          pTiers[id] = (p.properties?.["Product Tier"]?.rich_text || []).map(t => t.plain_text).join("").trim() || null;
         });
         const mNames = {};
         allMethodRows2.forEach(m => { mNames[m.id.replace(/-/g,"")] = (m.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?"; });
@@ -9990,6 +9991,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
         titleList.forEach(t => {
           t.productName  = t.productId === '__none__' ? 'No Product' : (pNames[t.productId] || '?');
           t.productStack = t.productId === '__none__' ? null : (pStacks[t.productId] || null); // null = No Stack
+          t.productTier  = t.productId === '__none__' ? null : (pTiers[t.productId] || null); // null = No Tier (sub-stack level)
           t.methodName   = t.methodId  === '__none__' ? 'No Method'  : (mNames[t.methodId]  || '?');
           t.strategyName = t.strategyId === '__none__' ? 'No Strategy' : (sNames[t.strategyId] || '?');
           const parentStrategyId = t.strategyId === '__none__' ? null : (sParentId[t.strategyId] || null);

@@ -2578,8 +2578,44 @@ async function loadTitles() {
         el.appendChild(gHdr); el.appendChild(gBody);
       });
     }
-    // Product level — nested inside the Stack level below it. Same collapse/
-    // expand + single-bucket-skip pattern as the Stack level above it.
+    // Sub-stack (Product Tier) level — nested between Stack and Product.
+    // A product's "Product Tier" free-text value (e.g. "Productized One-Offs",
+    // "Retainers") groups the products within one stack into funnel tiers.
+    // "No Tier" sorts last, same convention as "No Stack"/"No Product". Same
+    // collapse/expand + single-bucket-skip pattern as every other level.
+    const NO_TIER_KEY = '__no_tier__';
+    function renderSubStackLevel(arr, el, section) {
+      const hasTier = arr.some(t => t.productTier);
+      if (!hasTier) { renderProductLevel(arr, el, section); return; }
+      const tierOrder = [], byTier = {};
+      arr.forEach(t => {
+        const tk = t.productTier || NO_TIER_KEY;
+        if (!byTier[tk]) { byTier[tk] = []; tierOrder.push(tk); }
+        byTier[tk].push(t);
+      });
+      tierOrder.sort((a, b) => { if (a === NO_TIER_KEY) return 1; if (b === NO_TIER_KEY) return -1; return a.localeCompare(b); });
+      tierOrder.forEach(tk => {
+        const tTitles = byTier[tk];
+        const tierName = tk === NO_TIER_KEY ? 'No Tier' : tk;
+        if (tierOrder.length === 1) { renderProductLevel(tTitles, el, section); return; }
+        const stateKey = section + '|tier|' + tk;
+        const isOpen = !!titleGroupsOpen[stateKey];
+        const tHdr = document.createElement('div');
+        // Sub-stack — purple family (product side), between the Stack header
+        // above it and the Product header below it in shade + indent.
+        tHdr.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px 6px 15px;background:rgba(167,139,250,.08);border-bottom:1px solid rgba(167,139,250,.17);cursor:pointer;user-select:none;';
+        const tArrow = document.createElement('span'); tArrow.textContent = isOpen ? '▾' : '▶'; tArrow.style.cssText = 'font-size:8px;color:#b3a0fa;flex-shrink:0;';
+        const tLabel = document.createElement('span'); tLabel.style.cssText = 'flex:1;font-size:12px;color:#b3a0fa;font-weight:700;'; tLabel.textContent = tierName;
+        const tCount = document.createElement('span'); tCount.style.cssText = 'font-size:10px;color:#fff;'; tCount.textContent = tTitles.length;
+        tHdr.appendChild(tArrow); tHdr.appendChild(tLabel); tHdr.appendChild(tCount);
+        const tBody = document.createElement('div'); tBody.style.display = isOpen ? 'block' : 'none';
+        renderProductLevel(tTitles, tBody, section);
+        tHdr.onclick = () => { const o = tBody.style.display !== 'none'; tBody.style.display = o ? 'none' : 'block'; tArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
+        el.appendChild(tHdr); el.appendChild(tBody);
+      });
+    }
+    // Product level — nested inside the Sub-stack (Tier) level above it. Same
+    // collapse/expand + single-bucket-skip pattern as the levels around it.
     function renderProductLevel(arr, el, section) {
       const hasProd = arr.some(t => t.productId && t.productId !== '__none__');
       if (!hasProd) { renderParentStrategyLevel(arr, el, section); return; }
@@ -2660,7 +2696,7 @@ async function loadTitles() {
       el.innerHTML = '';
       if (!arr.length) { el.innerHTML = '<div class="empty">None.</div>'; return; }
       const hasStack = arr.some(t => t.productStack);
-      if (!hasStack) { renderProductLevel(arr, el, section); return; }
+      if (!hasStack) { renderSubStackLevel(arr, el, section); return; }
       const stackOrder = [], byStack = {};
       arr.forEach(t => {
         const sk = t.productStack || NO_STACK_KEY;
@@ -2671,7 +2707,7 @@ async function loadTitles() {
       stackOrder.forEach(sk => {
         const sTitles = byStack[sk];
         const stackName = sk === NO_STACK_KEY ? 'No Stack' : sk;
-        if (stackOrder.length === 1) { renderProductLevel(sTitles, el, section); return; }
+        if (stackOrder.length === 1) { renderSubStackLevel(sTitles, el, section); return; }
         const stateKey = section + '|stack|' + sk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const sHdr = document.createElement('div');
