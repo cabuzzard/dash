@@ -5241,15 +5241,20 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const items = await wpFetchProjectedItems(campaignId || null, weekStart, hdr);
         let campaignNameById = {};
+        let campaignSiteById = {};
         if (!campaignId) {
           const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
           const campIds = Array.from(new Set(items.map(it => it.campaignId).filter(Boolean)));
           if (campIds.length) {
             const pages = await Promise.all(campIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)));
-            pages.filter(Boolean).forEach(p => { campaignNameById[p.id.replace(/-/g,"")] = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled"; });
+            pages.filter(Boolean).forEach(p => {
+              const key = p.id.replace(/-/g,"");
+              campaignNameById[key] = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled";
+              campaignSiteById[key] = p.properties?.["microsite"]?.url || null;
+            });
           }
         }
-        return json({ success: true, items: items.map(it => ({ ...it, campaignName: it.campaignId ? (campaignNameById[it.campaignId] || null) : null })) });
+        return json({ success: true, items: items.map(it => ({ ...it, campaignName: it.campaignId ? (campaignNameById[it.campaignId] || null) : null, campaignSite: it.campaignId ? (campaignSiteById[it.campaignId] || null) : null })) });
       }
 
       if (body.action === "addWeeklyPlannerItem") {

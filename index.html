@@ -11777,10 +11777,15 @@ function renderWpBoard(monday, items) {
       const gi = groups[k];
       const gOpen = wpGroupsOpen[k] === true;
       const gOpenCount = gi.filter(it => it.status !== 'Done').length;
+      const gSite = (gi.find(it => it.campaignSite) || {}).campaignSite || '';
+      const gSiteLink = (k !== NO_CAMP && gSite)
+        ? `<a href="${esc(gSite)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open microsite" style="font-size:10px;line-height:1;color:var(--accent);text-decoration:none;flex-shrink:0;">↗</a>`
+        : '';
       return `<div style="margin-bottom:4px;">
         <div data-gk="${esc(k)}" onclick="wpToggleGroup(this.dataset.gk)" style="display:flex;align-items:center;gap:4px;padding:3px 5px;background:var(--surface);border:1px solid var(--border);border-radius:4px;cursor:pointer;user-select:none;">
           <span style="font-size:8px;color:var(--text3);flex-shrink:0;">${gOpen ? '▾' : '▶'}</span>
           <span style="flex:1;font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(k)}</span>
+          ${gSiteLink}
           <span style="font-size:9px;color:${gOpenCount ? 'var(--text3)' : '#3ba55d'};flex-shrink:0;">${gOpenCount || '✓'}</span>
         </div>
         <div style="display:${gOpen ? 'block' : 'none'};padding-top:4px;">${gi.map(itemCard).join('')}</div>
