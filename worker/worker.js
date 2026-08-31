@@ -4338,9 +4338,10 @@ export default {
     }
 
     // ── getHubSocials ── public, no token. A content hub calls this on load
-    // with its campaignId; every Active Login on that campaign that has an
-    // "Account URL" becomes a social link on the published hub page (labelled
-    // by its Platform, or the Login name). One per platform, first wins.
+    // with its campaignId; every Active Login on that campaign that has a
+    // "Profile Link" (the PUBLIC social profile URL — distinct from the
+    // "Account URL" login/admin page) becomes a social link on the published
+    // hub, labelled by its Platform (or the Login name). One per label.
     if (body.action === "getHubSocials") {
       const raw = String(body.campaignId || "").replace(/-/g, "");
       if (raw.length !== 32) return json({ socials: [] });
@@ -4356,8 +4357,9 @@ export default {
         const socials = [];
         logins.forEach(l => {
           const p = l.properties;
-          const url = (p["Account URL"]?.url || "").trim();
+          let url = (p["Profile Link"]?.url || "").trim();
           if (!url) return;
+          if (!/^https?:\/\//i.test(url)) url = "https://" + url.replace(/^\/+/, "");
           const status = p.Status?.select?.name || "";
           if (status && status !== "Active") return;
           const platIds = (p.Platform?.relation || []).map(r => r.id.replace(/-/g,""));
@@ -17470,6 +17472,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
             category:    p.Category?.select?.name || "",
             usr:         p.Usr?.rich_text?.map(t=>t.plain_text).join("") || "",
             accountUrl:  p["Account URL"]?.url || "",
+            profileLink: p["Profile Link"]?.url || "",
             headline:    p.Headline?.rich_text?.map(t=>t.plain_text).join("") || "",
             bio:         p.Bio?.rich_text?.map(t=>t.plain_text).join("") || "",
             title:       p.Title?.rich_text?.map(t=>t.plain_text).join("") || "",
@@ -17537,7 +17540,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       }
 
       if (body.action === "createLoginFull") {
-        const { name, campaignId, platformId, category, status, usr, accountUrl, smAccountIds, smAccountId, printifyStoreId } = body;
+        const { name, campaignId, platformId, category, status, usr, accountUrl, profileLink, smAccountIds, smAccountId, printifyStoreId } = body;
         if (!name) return json({ error: "name required" }, 400);
         const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const props = {
@@ -17547,6 +17550,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         if (category)    props.Category          = { select: { name: category } };
         if (usr)         props.Usr               = { rich_text: [{ type:"text", text:{ content: usr } }] };
         if (accountUrl)  props["Account URL"]    = { url: accountUrl };
+        if (profileLink) props["Profile Link"]   = { url: profileLink };
         if (campaignId)  props.Campaign          = { relation: [{ id: dash(campaignId) }] };
         if (platformId)  props.Platform          = { relation: [{ id: dash(platformId) }] };
         if (smAccountIds && smAccountIds.length) props["SM Account"] = { relation: smAccountIds.map(id => ({ id: dash(id) })) };
@@ -17574,7 +17578,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         const newId = result.id.replace(/-/g,"");
         return json({ success: true, login: {
           id: newId, name, status: status||"Planning", category: category||"",
-          usr: usr||"", accountUrl: accountUrl||"", headline:"", bio:"",
+          usr: usr||"", accountUrl: accountUrl||"", profileLink: profileLink||"", headline:"", bio:"",
           campaignIds:  campaignId ? [campaignId] : [],
           platformIds:  platformId ? [platformId] : [],
           smAccountIds: smAccountIds || [],
@@ -17597,7 +17601,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       }
 
       if (body.action === "updateLoginFull") {
-        const { loginId, name, category, status, usr, accountUrl, headline, bio, title, profilePic, banner, loginType, platformId, smAccountIds, smAccountId, printifyStoreId } = body;
+        const { loginId, name, category, status, usr, accountUrl, profileLink, headline, bio, title, profilePic, banner, loginType, platformId, smAccountIds, smAccountId, printifyStoreId } = body;
         if (!loginId) return json({ error: "loginId required" }, 400);
         const dash = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const props = {};
@@ -17606,6 +17610,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         if (category !== undefined) props.Category = category ? { select: { name: category } } : { select: null };
         if (usr !== undefined)      props.Usr      = { rich_text: usr ? [{ type:"text", text:{ content: usr } }] : [] };
         if (accountUrl !== undefined) props["Account URL"] = accountUrl ? { url: accountUrl } : { url: null };
+        if (profileLink !== undefined) props["Profile Link"] = profileLink ? { url: profileLink } : { url: null };
         if (headline !== undefined) props.Headline = { rich_text: headline ? [{ type:"text", text:{ content: headline } }] : [] };
         if (bio !== undefined)      props.Bio      = { rich_text: bio ? [{ type:"text", text:{ content: bio } }] : [] };
         if (title !== undefined)    props.Title    = { rich_text: title ? [{ type:"text", text:{ content: title } }] : [] };

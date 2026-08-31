@@ -490,7 +490,7 @@ async function renderSocial() {
   paint(HUB.social.items);            // instant, static fallback
   if (!HUB.campaignId) return;
   try {
-    // Live social links: the campaign's Logins (Account URL) become the
+    // Live social links: the campaign's Logins (Profile Link field) become the
     // links here. Add/point a Login in Notion and it shows up on the hub.
     const res = await fetch(WORKER_URL, {
       method: "POST",

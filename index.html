@@ -2445,7 +2445,11 @@
         </div>
         <div class="modal-field">
           <label class="modal-label">Account URL</label>
-          <input class="modal-input" id="lcUrl" type="text" placeholder="https://..." />
+          <input class="modal-input" id="lcUrl" type="text" placeholder="https://... (login / admin page)" />
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">Profile Link</label>
+          <input class="modal-input" id="lcProfileLink" type="text" placeholder="https://instagram.com/handle — public profile, shown on content hubs" />
         </div>
         <div class="modal-actions">
           <button class="btn btn-secondary" onclick="hideLoginCellForm()">Cancel</button>
@@ -2529,7 +2533,11 @@
     </div>
     <div class="modal-field">
       <label class="modal-label">Account URL</label>
-      <input class="modal-input" id="leUrl" type="text" placeholder="https://..." />
+      <input class="modal-input" id="leUrl" type="text" placeholder="https://... (login / admin page)" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Profile Link</label>
+      <input class="modal-input" id="leProfileLink" type="text" placeholder="https://instagram.com/handle — public profile, shown on content hubs" />
     </div>
     <div class="modal-field">
       <label class="modal-label">Headline</label>
@@ -6157,6 +6165,7 @@ async function saveLoginCell() {
       status:     document.getElementById('lcStatus').value,
       usr:        document.getElementById('lcUsr').value.trim(),
       accountUrl: document.getElementById('lcUrl').value.trim(),
+      profileLink: document.getElementById('lcProfileLink').value.trim(),
     });
     // Update index
     if (!platLoginIndex[lcCampId]) platLoginIndex[lcCampId] = {};
@@ -6302,6 +6311,7 @@ function openLoginEditModal(login) {
   document.getElementById('leStatus').value   = login.status || 'Planning';
   document.getElementById('leUsr').value      = login.usr || '';
   document.getElementById('leUrl').value      = login.accountUrl || '';
+  document.getElementById('leProfileLink').value = login.profileLink || '';
   document.getElementById('leHeadline').value = login.headline || '';
   document.getElementById('leBio').value      = login.bio || '';
   document.getElementById('leNotionLink').href = 'https://www.notion.so/' + login.id;
@@ -6425,6 +6435,7 @@ async function saveLoginEdit() {
       status:     document.getElementById('leStatus').value,
       usr:        document.getElementById('leUsr').value.trim(),
       accountUrl: document.getElementById('leUrl').value.trim(),
+      profileLink: document.getElementById('leProfileLink').value.trim(),
       headline:   document.getElementById('leHeadline').value.trim(),
       bio:        document.getElementById('leBio').value.trim(),
     };
@@ -9587,7 +9598,7 @@ function toggleTodaySection() {
 // blogPosts = # of journal/blog posts written & published on the hub.
 // domain / contact = the hub's public domain and contact email (— until set).
 // Social links on the published hub come from the campaign's Logins
-// (Account URL) via the worker's getHubSocials — nothing to set here.
+// ("Profile Link" field) via the worker's getHubSocials — nothing to set here.
 const HUB_SITES = [
   { name: "Surf Vacations",  slug: "surf-vacations",  campaign: "Surfing Vacations", microsite: "diving-vacations",                        domain: null, contact: null, products: 0, blogPosts: 0 },
   { name: "Sunflower Acres", slug: "sunflower-acres", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff",                domain: null, contact: null, products: 0, blogPosts: 0 },
@@ -9604,7 +9615,7 @@ const HUB_CHECKLIST = [
   { key: 'prodwired',  label: 'Offers',   crit: true,  hint: 'The chosen products link to real product / checkout URLs on the hub (no "#")' },
   { key: 'leadmag',    label: 'Lead mag', crit: true,  hint: 'The intro offer (checklist / guide) actually exists and is delivered on signup' },
   { key: 'newsletter', label: 'Signup',   crit: true,  hint: 'Newsletter form tested end-to-end incl. Turnstile; lands in Leads / list' },
-  { key: 'social',     label: 'Social',   crit: true,  hint: 'Social links resolve to real profiles — from the campaign Logins (Account URL) or the HUB.social fallback' },
+  { key: 'social',     label: 'Social',   crit: true,  hint: 'Social links resolve to real profiles — from the campaign Logins ("Profile Link" field) or the HUB.social fallback' },
   { key: 'seo',        label: 'SEO',      crit: true,  hint: 'Title, meta description, OG tags, robots=index' },
   { key: 'livesite',   label: 'Campaign', crit: true,  hint: 'Notion campaign "live site" property set to the hub URL' },
   { key: 'analytics',  label: 'Analytics',crit: false, hint: 'Traffic analytics installed and reporting' },
@@ -9732,7 +9743,7 @@ function renderHubsTab() {
     + '<b style="color:#63b3ed;">LIVE</b> = every non-* item + ≥1 product · <b style="color:#4cff4c;">ACTIVE</b> = everything incl. a blog post · '
     + '<b style="color:#ffb020;">BUILDING</b> = some done · <b>SCAFFOLD</b> = page exists only.</div>'
     + '<div style="margin-top:6px;">Every cell is click-to-edit; changes are saved in this browser (localStorage). '
-    + 'Social links on the published hub come from the campaign\'s Logins — set an Account URL on a Login and it appears on the hub.</div>'
+    + 'Social links on the published hub come from the campaign\'s Active Logins — fill the "Profile Link" field on a Login and it appears on the hub, labelled by its Platform.</div>'
     + '</div>';
 
   el.innerHTML = '<div style="overflow-x:auto;"><table class="dtable" style="min-width:1040px;">'
