@@ -11474,7 +11474,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
-        let slotName = '', grouping = '', angle = '', platform = '', slotType = '', slotRecurrence = '', growthStrategyId = null, productId = productIdParam ? dash(productIdParam) : null, campaignId = campaignIdParam ? dash(campaignIdParam) : null, existingTitleIds = [];
+        let slotName = '', grouping = '', angle = '', platform = '', slotType = '', slotRecurrence = '', slotSequence = null, growthStrategyId = null, productId = productIdParam ? dash(productIdParam) : null, campaignId = campaignIdParam ? dash(campaignIdParam) : null, existingTitleIds = [];
         if (slotId) {
           const slotPage = await fetch(`https://api.notion.com/v1/pages/${dash(slotId)}`, { headers: hdr }).then(r => r.json());
           if (!slotPage.properties) return json({ error: slotPage.message || "Strategy Slot not found" }, 404);
@@ -11485,6 +11485,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           platform = (sp.Platform?.rich_text || []).map(t => t.plain_text).join("");
           slotType = (sp.Type?.rich_text || []).map(t => t.plain_text).join("");
           slotRecurrence = (sp.Recurrence?.rich_text || []).map(t => t.plain_text).join("");
+          slotSequence = (typeof sp.Sequence?.number === "number") ? sp.Sequence.number : null;
           growthStrategyId = (sp["Growth Strategy"]?.relation || [])[0]?.id || null; // already dashed (from Notion) — the slot's own strategy always wins over a client-passed one
           productId = (sp.Product?.relation || [])[0]?.id || productId;             // already dashed — slot's own relation wins if both given
           campaignId = (sp.Campaign?.relation || [])[0]?.id || campaignId;
@@ -11532,7 +11533,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
 
           const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist. Write ONE specific, concrete deliverable title${slotId ? ' for a specific planned content angle' : ''} — a thing to produce, not a content-post headline. Do not write any script, slides, or body content — only the title. Its actual content is written separately, method-agnostically, right after this.
 
-${grokBlock}${slotId ? `SLOT: ${slotName} (grouping: "${grouping}")\nPLANNED ANGLE: ${angle}\n` : ''}${platform ? `PLATFORM: ${platform}\n` : ''}${slotType ? `CONTENT TYPE: ${slotType} (the strategic category this title must clearly execute)\n` : ''}${slotRecurrence ? `RECURRENCE: ${slotRecurrence} — this is a recurring slot type, so this specific instance should feel fresh, not interchangeable with a prior fill of the same slot\n` : ''}
+${grokBlock}${slotId ? `SLOT: ${slotName} (grouping: "${grouping}")\nPLANNED ANGLE: ${angle}\n` : ''}${slotSequence != null ? `SEQUENCE POSITION: #${slotSequence} in this grouping's arc — write it so it reads as that step, not a standalone one-off\n` : ''}${platform ? `PLATFORM: ${platform}\n` : ''}${slotType ? `CONTENT TYPE: ${slotType} (the strategic category this title must clearly execute)\n` : ''}${slotRecurrence ? `RECURRENCE: ${slotRecurrence} — this is a recurring slot type, so this specific instance should feel fresh, not interchangeable with a prior fill of the same slot\n` : ''}
 ${productSection}
 ${growthStrategyBody ? `\nGROWTH STRATEGY (full context this slot was planned under — stay consistent with its rationale/platform):\n${growthStrategyBody}\n` : ''}${(guidance || '').trim() ? `\nOPERATOR GUIDANCE (overrides/refines how the strategy above should be applied to this specific title — follow this over the strategy's general direction wherever they conflict):\n${guidance.trim()}\n` : `\n(No operator guidance given — write strictly from ${slotId ? 'the strategy and angle above' : 'the product context above'}.)\n`}
 ${slotId ? 'Refine/sharpen the planned angle above into a real title — don\'t just restate it verbatim.' : 'Ground the title in the product context and any guidance above.'}${grokBlock ? ' Where a current trending topic above genuinely fits, use it — but never force one in.' : ''}
@@ -11572,6 +11573,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         };
         if (grouping) props["Grouping"] = { rich_text: [{ type: "text", text: { content: grouping.slice(0, 1990) } }] };
         if (slotType) props["Type"] = { rich_text: [{ type: "text", text: { content: slotType.slice(0, 1990) } }] };
+        if (slotSequence != null) props["Sequence Order"] = { number: slotSequence }; // carry the slot's position in the arc onto the title
         if (slotId) props["Strategy Slot"] = { relation: [{ id: dash(slotId) }] };
         if (campaignId) props["Campaign"] = { relation: [{ id: campaignId }] };
         if (productId) props["product"] = { relation: [{ id: productId }] };
@@ -11611,6 +11613,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const slotContextBlock = [
           slotId ? `This title was created from a specific planned Strategy Slot — stay consistent with it:` : '',
           angle ? `PLANNED ANGLE: ${angle}` : '',
+          slotSequence != null ? `SEQUENCE POSITION: #${slotSequence} in this grouping's arc` : '',
           grouping ? `GROUPING: ${grouping}` : '',
           platform ? `PLATFORM: ${platform}` : '',
           slotType ? `CONTENT TYPE: ${slotType}` : '',

@@ -1394,24 +1394,35 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <button class="modal-close" onclick="closeCreateTitleFromSlotModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
-      <label class="lm-label">Product <span style="color:#fff;font-weight:normal;">— optional</span></label>
-      <select class="modal-ta" id="ctsProduct" onchange="ctsOnProductChange()" style="margin-bottom:10px;">
-        <option value="">— none —</option>
-      </select>
+      <!-- SLOT MODE — opened from "+ title" on a Strategy Slot. The slot
+           already fixes the product, the Growth Strategy, and the position
+           in the arc; nothing to ask. Read-only context only. -->
+      <div id="ctsFixedSlot" style="display:none;margin-bottom:12px;padding:10px 12px;border:1px solid #4a5568;border-radius:8px;background:rgba(159,122,234,.06);">
+        <div style="font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#9f7aea;margin-bottom:5px;">Writing from this slot</div>
+        <div id="ctsFixedSlotBody" style="font-size:12px;color:#e2e8f0;line-height:1.55;"></div>
+      </div>
 
-      <label class="lm-label">Strategy Slot <span style="color:#fff;font-weight:normal;">— optional; a planned angle from this product's Growth Strategy</span></label>
-      <select class="modal-ta" id="ctsSlot" onchange="ctsOnSlotChange()" disabled style="margin-bottom:8px;">
-        <option value="">— none —</option>
-      </select>
-      <div class="modal-hint" id="ctsSlotContext" style="display:none;margin-bottom:10px;"></div>
+      <!-- PICKER MODE — opened from the bare "+" (a one-off title). -->
+      <div id="ctsPickers">
+        <label class="lm-label">Product <span style="color:#fff;font-weight:normal;">— optional</span></label>
+        <select class="modal-ta" id="ctsProduct" onchange="ctsOnProductChange()" style="margin-bottom:10px;">
+          <option value="">— none —</option>
+        </select>
+
+        <label class="lm-label">Strategy Slot <span style="color:#fff;font-weight:normal;">— optional; a planned angle from this product's Growth Strategy</span></label>
+        <select class="modal-ta" id="ctsSlot" onchange="ctsOnSlotChange()" disabled style="margin-bottom:8px;">
+          <option value="">— none —</option>
+        </select>
+        <div class="modal-hint" id="ctsSlotContext" style="display:none;margin-bottom:10px;"></div>
+
+        <label class="lm-label">Strategy <span style="color:#fff;font-weight:normal;">— optional; pick one to attribute this one-off title to an overall Growth Strategy</span></label>
+        <select class="modal-ta" id="ctsStrategy" disabled style="margin-bottom:10px;">
+          <option value="">— none —</option>
+        </select>
+      </div>
 
       <label class="lm-label">Title <span style="color:#fff;font-weight:normal;">— pre-filled from the slot's planned angle; edit it or leave it, or clear it to have AI write one</span></label>
       <input class="modal-ta" id="ctsTitleInput" type="text" placeholder="Leave blank to have AI write one" style="margin-bottom:10px;">
-
-      <label class="lm-label">Strategy <span style="color:#fff;font-weight:normal;">— optional; locked to the picked Slot's strategy, or pick one directly for a one-off title (e.g. a "tool guide") still grouped under an overall strategy</span></label>
-      <select class="modal-ta" id="ctsStrategy" disabled style="margin-bottom:10px;">
-        <option value="">— none —</option>
-      </select>
 
       <label class="lm-label">Guidance <span style="color:#fff;font-weight:normal;">— optional; steers how the strategy is applied for this specific title/pillar content. Left blank, the strategy alone drives it.</span></label>
       <textarea class="modal-ta" id="ctsGuidance" rows="3" placeholder="Any specific angle, tone, or instruction for this title…" style="resize:vertical;"></textarea>
@@ -8550,20 +8561,38 @@ function ctsOnSlotChange() {
 function openCreateTitleFromSlotModal(opts) {
   opts = opts || {};
   CTS_SLOT = null;
-  let presetProductId = '', presetSlotId = '';
+  const pickers = document.getElementById('ctsPickers');
+  const fixed = document.getElementById('ctsFixedSlot');
+  const titleInput = document.getElementById('ctsTitleInput');
 
-  if (opts.slotId && opts.strategyId) {
+  if (opts.slotId) {
+    // Slot mode — no questions. The slot fixes the product, the Growth
+    // Strategy, and the position in the arc; the worker
+    // (generateTitleFromSlot) reads all of that straight off the slot and
+    // carries it onto the new title. We only need a title + guidance.
     const found = ctsFindSlot(opts.slotId);
-    if (!found || found.strategyId !== opts.strategyId) { alert('Could not find that strategy slot — try refreshing the Strategies tab.'); return; }
-    CTS_SLOT = { id: opts.slotId, strategyId: opts.strategyId };
-    presetProductId = found.productId || '';
-    presetSlotId = opts.slotId;
+    if (!found) { alert('Could not find that strategy slot — refresh the Strategies tab.'); return; }
+    CTS_SLOT = { id: opts.slotId, strategyId: found.strategyId };
+    pickers.style.display = 'none';
+    fixed.style.display = 'block';
+    const seq = Number.isFinite(found.slot.sequence) ? `#${found.slot.sequence} · ` : '';
+    const pt = found.slot.postType ? ` <span style="color:#9f7aea;">· ${esc(found.slot.postType.name)}</span>` : '';
+    document.getElementById('ctsFixedSlotBody').innerHTML =
+      `<strong style="color:#9ae6b4;">${esc(found.strategyName)}</strong> → ${esc(found.groupingName)}<br>`
+      + `<span style="color:#a0aec0;">${seq}${esc(found.slot.name || 'slot')}${pt}</span>`
+      + (found.slot.angle ? `<br><span style="color:#fff;">Planned angle: ${esc(found.slot.angle)}</span>` : '');
+    titleInput.value = found.slot.angle || '';
+  } else {
+    // One-off title — the full picker flow (product → optional slot →
+    // optional strategy).
+    pickers.style.display = '';
+    fixed.style.display = 'none';
+    ctsPopulateProducts('');
+    ctsPopulateSlots('', '');
+    ctsUpdateSlotContext();
+    ctsSyncStrategyForSlot();
+    titleInput.value = '';
   }
-
-  ctsPopulateProducts(presetProductId);
-  ctsPopulateSlots(presetProductId, presetSlotId);
-  ctsUpdateSlotContext();
-  ctsSyncStrategyForSlot();
 
   document.getElementById('ctsGuidance').value = '';
   document.getElementById('ctsStatus').textContent = '';
@@ -8580,9 +8609,12 @@ document.getElementById('ctsModal').addEventListener('click', function(e) {
 });
 async function submitCreateTitleFromSlot() {
   const status = document.getElementById('ctsStatus');
-  const slotId = document.getElementById('ctsSlot').value || undefined;
-  const productId = document.getElementById('ctsProduct').value || undefined;
-  const growthStrategyId = document.getElementById('ctsStrategy').value || undefined;
+  const slotMode = !!CTS_SLOT;
+  // In slot mode the worker derives product + Growth Strategy + arc
+  // position straight from the slot — don't send (or ask for) them.
+  const slotId = slotMode ? CTS_SLOT.id : (document.getElementById('ctsSlot').value || undefined);
+  const productId = slotMode ? undefined : (document.getElementById('ctsProduct').value || undefined);
+  const growthStrategyId = slotMode ? undefined : (document.getElementById('ctsStrategy').value || undefined);
   const guidance = document.getElementById('ctsGuidance').value.trim();
   const titleOverride = document.getElementById('ctsTitleInput').value.trim();
   const btn = document.getElementById('ctsGoBtn');
