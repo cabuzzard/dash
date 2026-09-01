@@ -23,23 +23,42 @@ jobs:
           ssh-keyscan -H "${{ secrets.BLUEHOST_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Deploy each mapped site
+        env:
+          BH_USER: ${{ secrets.BLUEHOST_USER }}
+          BH_HOST: ${{ secrets.BLUEHOST_HOST }}
         run: |
-          SSH='ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o BatchMode=yes'
+          SSH='ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20'
+
+          # Fail loudly and early if the connection/auth itself is broken —
+          # that's a real problem, distinct from a hub folder not existing yet.
+          if ! $SSH "$BH_USER@$BH_HOST" 'echo connected as $(whoami) in $(pwd)'; then
+            echo "::error::cannot SSH to Bluehost — check BLUEHOST_SSH_KEY / _USER / _HOST secrets and that SSH is enabled on the account"
+            exit 1
+          fi
+
           failed=""
           while IFS=$'\t' read -r local remote || [ -n "$local" ]; do
             local="${local%$'\r'}"; remote="${remote%$'\r'}"
             [ -z "$local" ] && continue
             case "$local" in \#*) continue ;; esac
-            [ -d "$local" ] || { echo "skip: $local (no such dir)"; continue; }
+            [ -d "$local" ] || { echo "skip: $local (no such local dir)"; continue; }
+
+            # The remote dir may not exist yet — a hub folder before its addon
+            # domain / subdomain is set up in cPanel. Try to create it; if that
+            # fails (shared-host permissions), soft-skip so the working sites
+            # still deploy and this one lights up once cPanel makes the folder.
+            if ! $SSH "$BH_USER@$BH_HOST" "mkdir -p '$remote' && test -w '$remote'"; then
+              echo "::warning::skip $local -> $remote (remote dir missing/not writable — create it in cPanel)"
+              continue
+            fi
+
             echo "Deploying $local -> $remote"
-            # --rsync-path mkdir -p: the remote dir may not exist yet (a hub folder
-            # before its addon domain is set up in cPanel). Create it, then sync.
-            if rsync -avz --rsync-path="mkdir -p '$remote' && rsync" -e "$SSH" \
-                 "$local/" "${{ secrets.BLUEHOST_USER }}@${{ secrets.BLUEHOST_HOST }}:$remote/"; then
+            if rsync -rlvz -e "$SSH" "$local/" "$BH_USER@$BH_HOST:$remote/"; then
               echo "  ok"
             else
-              echo "  FAILED: $local -> $remote"
+              echo "::error::rsync failed: $local -> $remote"
               failed="$failed $local"
             fi
           done < .github/bluehost-sites.tsv
+
           if [ -n "$failed" ]; then echo "Failed mappings:$failed"; exit 1; fi
