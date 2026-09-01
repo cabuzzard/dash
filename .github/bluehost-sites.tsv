@@ -1,35 +1,26 @@
 # local_path	remote_path (relative to the Bluehost SSH home dir, /home3/evraymon)
-# One line per live site under web/{campaign}/ or web/hub/{slug}/.
 # Same Bluehost account/SSH key for all. rsync has no --delete — it only
 # adds/updates, never removes files already on the server.
 #
-# CONTENT HUBS: deploy straight into the folder Bluehost auto-creates for the
-# domain at registration — /home3/evraymon/<domain>/ — NOT a hand-made
-# public_html/hub-* dir. So the remote_path for a hub is just its domain name.
-# Then the only manual step is a one-time "connect this domain to the hosting
-# plan" in the Bluehost account (Domains → <domain> → Overview → Connections);
-# Bluehost uses that same folder as the doc root, so the hub is already in place.
-# Hubs are also always served from GitHub Pages at
-# https://cabuzzard.github.io/dash/web/hub/{slug}/ (the origin/staging URL).
-# Still required per hub: worker.js HUB_ORIGINS (apex + www) and index.html
-# HUB_SITES[].domain. See CLAUDE.md "Content Hubs".
+# CONTENT HUBS — publishing policy:
+# A hub is ALWAYS served from GitHub Pages at
+#   https://cabuzzard.github.io/dash/web/hub/{slug}/
+# That is the home of every "pre-domain" (not-yet-connected) hub — do not try to
+# route those to Bluehost. Add a `web/hub/{slug}  <domain>` line here ONLY once
+# that hub's domain is actually connected to this hosting account and serving.
 #
-# Routing status (2026-09-01): only creative-flow-guitar (creativeflowguitar.com)
-# is actually serving its hub — it was connected the old way. Every other domain
-# hits Bluehost's auto-"WordPress service" park: registering a domain silently
-# connects it to a placeholder WordPress service that parks it (root A record →
-# 204.11.56.246, not the hosting IP 162.241.218.154). cPanel addon-domain
-# creation, doc-root edits, and DNS A-record edits all fail or get overridden
-# while that's attached. The deploy still fills /home3/evraymon/<domain>/ for
-# every hub, so once the placeholder WordPress service is disconnected (Bluehost
-# account → Domains → <domain> → Overview → Connected Services → Manage) or
-# Bluehost support repoints the domain at the cPanel account, the hub serves
-# with no further steps.
+# The Bluehost target for a hub is /home3/evraymon/<domain>/ — the folder
+# Bluehost auto-creates for the domain at registration and uses as the doc root
+# once the domain is connected. So remote_path is just the domain name.
+# Per hub, also: worker.js HUB_ORIGINS (apex + www) + index.html HUB_SITES[].domain.
+# See CLAUDE.md "Content Hubs".
+#
+# Status 2026-09-01: creativeflowguitar.com is connected and serving. The other
+# six hub domains are stuck behind Bluehost's auto-"WordPress service" park
+# (root A record → 204.11.56.246, not the hosting IP 162.241.218.154) — they
+# stay GitHub-Pages-only until that placeholder service is disconnected
+# (Bluehost account → Domains → <domain> → Overview → Connected Services → Manage)
+# or Bluehost support repoints the domain at the cPanel account. Add each one's
+# line below when it's live.
 web/sm-business-software-tools	public_html/webguyleadgeneration
-web/hub/ai-implementation	aisystemimplementation.com
 web/hub/creative-flow-guitar	creativeflowguitar.com
-web/hub/owners-rep	homestructionconsulting.com
-web/hub/home-services	generalservices2020.com
-web/hub/sunflower-acres	accessiblefarms.com
-web/hub/surf-vacations	outsidesessions.com
-web/hub/care-gap	stablehomefoundation.com

@@ -337,16 +337,20 @@ Content-marketing home pages (blog / news / newsletter / social / product links)
 at `web/hub/{slug}/index.html` — one per campaign or product, all sharing the
 `web/hub/hub-template.html` layout. See `web/hub/README.md` for how to build one.
 
-**Publishing (as of 2026-09-01): every hub is dual-deployed.**
+**Publishing policy (as of 2026-09-01):**
 - **GitHub Pages** — `https://cabuzzard.github.io/dash/web/hub/{slug}/`, live on
-  push, no build step. This is the always-on origin / staging URL.
-- **Bluehost** — `.github/bluehost-sites.tsv` maps `web/hub/{slug}` straight to
-  the domain's own folder, `/home3/evraymon/<domain>/` (remote_path is just the
-  domain name). rsync over SSH, no `--delete`. This is the folder Bluehost
-  auto-creates for a domain at registration **and** uses as the doc root once the
-  domain is connected to the hosting plan — so we deploy into it directly instead
-  of a hand-made `public_html/hub-*` dir (which the SSH user also can't create
-  under `public_html` anyway — home-dir folders it can).
+  push, no build step. **This is the home of every hub, and the only home of a
+  pre-domain (not-yet-connected) hub.**
+- **Bluehost** — a hub gets a line in `.github/bluehost-sites.tsv` (`web/hub/{slug}
+  <domain>`, remote_path is just the domain name → `/home3/evraymon/<domain>/`)
+  **only once its domain is actually connected to this hosting account and
+  serving.** `/home3/evraymon/<domain>/` is the folder Bluehost auto-creates for a
+  domain at registration and uses as the doc root once connected — deploy into it
+  directly, not a hand-made `public_html/hub-*` dir (the SSH user can't create
+  dirs under `public_html` anyway; home-dir folders it can). rsync, no `--delete`.
+
+Only `creative-flow-guitar` is in the tsv today. Add a hub's line when its domain
+comes online.
 
 The hub pages are self-contained (relative/anchor links, Google Fonts, one
 absolute `WORKER_URL` fetch) so they serve correctly from a domain root — no
@@ -354,15 +358,15 @@ per-host path rewriting needed.
 
 ### Point a custom domain at a hub
 
-1. `.github/bluehost-sites.tsv` — `web/hub/{slug}` → `<domain>` (all current hubs
-   listed). The deploy populates `/home3/evraymon/<domain>/` on the next push.
-2. **Bluehost account → Domains → `<domain>` → Overview → "Connections" →
-   connect it to the hosting plan** (or Bluehost support). Newly-registered
-   domains sit "registered but not connected" — they serve a parked page and
-   cPanel "Create A New Domain" errors on them. Connecting sets the doc root to
-   the same `/home3/evraymon/<domain>/` folder the deploy already filled, and
-   provisions SSL. (`aisystemimplementation.com` + `creativeflowguitar.com` were
-   connected via cPanel doc-root edits before this was understood — they work.)
+1. **Bluehost account → Domains → `<domain>` → Overview → Connected Services →
+   disconnect the placeholder "WordPress service"** (or Bluehost support — "point
+   this domain at my cPanel hosting account"). A newly-registered domain is
+   auto-parked by that service (see below); disconnecting it lets the domain
+   reach the hosting account, which uses `/home3/evraymon/<domain>/` as the doc
+   root and provisions SSL. (`creativeflowguitar.com` predates this and was
+   connected the old way.)
+2. `.github/bluehost-sites.tsv` — add `web/hub/{slug}` → `<domain>`. Next push
+   deploys the hub to `/home3/evraymon/<domain>/`.
 3. `worker/worker.js` → add the domain **apex + www, `https://`** to the
    `HUB_ORIGINS` set, then deploy the worker. The hub's JS calls the worker
    (`getHubSocials` on load, `submitLead` on newsletter signup); served from a

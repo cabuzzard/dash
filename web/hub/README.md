@@ -15,23 +15,23 @@ web/hub/
 Origin URL: `https://cabuzzard.github.io/dash/web/hub/{slug}/`
 (GitHub Pages, live on push — no build step.)
 
-**Every hub is also published to Bluehost** — `.github/bluehost-sites.tsv` maps
-`web/hub/{slug}` straight into the domain's own folder `/home3/evraymon/<domain>/`
-(remote_path is just the domain name), rsynced on every push to `main` that
-touches `web/**`. That's the folder Bluehost auto-creates at registration and
-uses as the doc root once the domain is connected, so we deploy into it directly.
-The GitHub Pages copy stays as the always-on origin/staging URL.
+**A hub is published to Bluehost only once its domain is connected.** Pre-domain
+hubs live on GitHub Pages (`cabuzzard.github.io/dash/web/hub/{slug}/`) and that's
+it. When a domain comes online, add `web/hub/{slug} → <domain>` to
+`.github/bluehost-sites.tsv`; the deploy then rsyncs the hub into
+`/home3/evraymon/<domain>/` (the folder Bluehost auto-creates at registration and
+uses as the doc root once connected). Only `creative-flow-guitar` is in the tsv today.
 
 ### Point a custom domain at a hub
 
 1. Own the domain (Bluehost Domains tab → it shows up in the dashboard Domains list).
-2. `.github/bluehost-sites.tsv` — confirm the `web/hub/{slug} → <domain>` line
-   exists (all current hubs are listed). Push; the deploy fills `~/<domain>/`.
-3. **Bluehost account → Domains → `<domain>` → Overview → "Connections" → connect
-   it to the hosting plan** (or Bluehost support). A freshly-registered domain
-   serves a parked page until this is done, and cPanel "Create A New Domain"
-   errors on it. Connecting points the doc root at `~/<domain>/` (already filled)
-   and provisions SSL — hub live immediately.
+2. **Bluehost account → Domains → `<domain>` → Overview → Connected Services →
+   disconnect the placeholder "WordPress service"** (or Bluehost support — "point
+   this domain at my cPanel hosting account"). A freshly-registered domain is
+   auto-parked by that service; disconnecting lets it reach the hosting account,
+   which uses `/home3/evraymon/<domain>/` as the doc root and provisions SSL.
+3. `.github/bluehost-sites.tsv` — add `web/hub/{slug} → <domain>`. Push; the
+   deploy fills `~/<domain>/` and the hub is live.
 4. `worker/worker.js` → add the domain, **apex + www, https**, to `HUB_ORIGINS`,
    then deploy the worker. Without this the newsletter form and social links break
    with a CORS error when the page is served from the custom domain.

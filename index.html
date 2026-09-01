@@ -9606,39 +9606,44 @@ function toggleTodaySection() {
 // that plausibly fit this hub — shown as a dropdown in the Domain column.
 // Repeats across hubs are fine. "＋ type another…" falls back to free text.
 //
-// routing / routingNote = is the domain actually pointed at the hub's Bluehost
-// folder? "ok" = serving. "error" = attempted / blocked (routingNote has detail).
+// routing / routingNote = is the domain pointed at this hub on Bluehost yet?
+// "ok" = serving on its own domain. "error" = blocked (routingNote has detail).
+//
+// PUBLISHING POLICY: a hub always lives on GitHub Pages at
+//   https://cabuzzard.github.io/dash/web/hub/{slug}/
+// That is the home of every pre-domain (not-yet-connected) hub. A hub only gets
+// a line in .github/bluehost-sites.tsv — and starts publishing to Bluehost —
+// once its domain is actually connected to this hosting account and serving.
+//
 // THE COMMON BLOCKER (diagnosed 2026-09-01): registering a domain on Bluehost
 // auto-connects it to a placeholder "WordPress service" (consumes a website slot)
 // and parks it — its root A record points at 204.11.56.246 (parking), not the
-// hosting server 162.241.218.154. The deploy still fills /home3/evraymon/<domain>/
-// (bluehost-sites.tsv), and cPanel doc roots can be pointed there, but the domain
-// won't reach the hosting account's Apache until that WordPress service is
-// disconnected (Domains → <domain> → Overview → Connected Services → Manage) or
-// Bluehost support repoints the domain at the cPanel account. cPanel "Create A
-// New Domain" and the DNS A-record editor both error on the parked state.
-// creativeflowguitar.com works because it was connected the old way, pre-auto-WP.
+// hosting server 162.241.218.154. Until that WordPress service is disconnected
+// (Domains → <domain> → Overview → Connected Services → Manage) or Bluehost
+// support repoints the domain at the cPanel account, cPanel "Create A New
+// Domain", cPanel doc-root edits, and the DNS A-record editor all error or get
+// overridden. creativeflowguitar.com works — connected the old way, pre-auto-WP.
 const HUB_SITES = [
   { name: "Surf Vacations",  slug: "surf-vacations",  campaign: "Surfing Vacations", microsite: "diving-vacations",                        domain: "outsidesessions.com", contact: null, products: 0, blogPosts: 0,
-    routing: "error", routingNote: "Blocked by the common WordPress-service park (see the comment above HUB_SITES). Hub is deployed to /home3/evraymon/outsidesessions.com/ and waiting. Disconnect outsidesessions.com's placeholder WordPress service (Domains → outsidesessions.com → Overview → Connected Services → Manage), or have Bluehost support point the domain at the cPanel hosting account.",
+    routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/surf-vacations/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect outsidesessions.com's placeholder WordPress service (Domains → outsidesessions.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
     domainOptions: ["outsidesessions.com", "liketotallydude.com", "rad80schild.com", "barefoothike.com", "bestoutdoorsandals.com", "accessyourpassion.com"] },
   { name: "Sunflower Acres", slug: "sunflower-acres", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff",                domain: "accessiblefarms.com", contact: null, products: 0, blogPosts: 0,
-    routing: "error", routingNote: "Blocked by the common WordPress-service park (see the comment above HUB_SITES). Hub is deployed to /home3/evraymon/accessiblefarms.com/ and waiting. Disconnect accessiblefarms.com's placeholder WordPress service (Domains → accessiblefarms.com → Overview → Connected Services → Manage), or have Bluehost support point the domain at the cPanel hosting account.",
+    routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/sunflower-acres/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect accessiblefarms.com's placeholder WordPress service (Domains → accessiblefarms.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
     domainOptions: ["accessiblefarms.com", "modernactivehome.com", "sustainableaquarium.com", "homepondaquarium.com", "naturebasedcoach.com", "naturewellnesscoach.com"] },
   { name: "Build Watcher",   slug: "owners-rep",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting", domain: "homestructionconsulting.com", contact: null, products: 0, blogPosts: 0,
-    routing: "error", routingNote: "Blocked by the common WordPress-service park (see the comment above HUB_SITES). Hub is deployed to /home3/evraymon/homestructionconsulting.com/ and waiting. Disconnect homestructionconsulting.com's placeholder WordPress service (Domains → homestructionconsulting.com → Overview → Connected Services → Manage), or have Bluehost support point the domain at the cPanel hosting account.",
+    routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/owners-rep/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect homestructionconsulting.com's placeholder WordPress service (Domains → homestructionconsulting.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
     domainOptions: ["homestructionconsulting.com", "buildtosuitinvestment.com", "stablehomefoundation.com", "foundationfuturesllc.com", "generalservices2020.com", "roi-systems.com", "bestrealestateliquidation.com"] },
   { name: "Home Services",   slug: "home-services",   campaign: "Home Services",     microsite: "home-services",                           domain: "generalservices2020.com", contact: null, products: 0, blogPosts: 0,
-    routing: "error", routingNote: "Blocked by the common WordPress-service park (see the comment above HUB_SITES) — same fix: disconnect generalservices2020.com's placeholder WordPress service, or Bluehost support. Hub deploys to /home3/evraymon/generalservices2020.com/. NOTE: generalservice2020.com (singular) is a DIFFERENT domain, used by the Dream Home Build campaign — this hub uses the plural.",
+    routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/home-services/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect generalservices2020.com's placeholder WordPress service, or Bluehost support. Then add its line to bluehost-sites.tsv. NOTE: generalservice2020.com (singular) is a DIFFERENT domain, used by the Dream Home Build campaign — this hub uses the plural.",
     domainOptions: ["generalservices2020.com", "generalservice2020.com", "modernactivehome.com", "homestructionconsulting.com", "stablehomefoundation.com", "webguyleadgeneration.com"] },
   { name: "Creative Flow Guitar", slug: "creative-flow-guitar", campaign: "Creative Flow Guitar — Weekly Sessions", microsite: "creative-flow-guitar", domain: "creativeflowguitar.com", contact: null, products: 0, blogPosts: 0,
     routing: "ok", routingNote: "Connected & serving the hub over https (verified 2026-09-01). Doc root moved to /home3/evraymon/creativeflowguitar.com/ (the deploy target); the old WordPress install stays at public_html/creativeflowguitar untouched. Works because this domain was connected the old way, before Bluehost's auto-WordPress-service parking.",
     domainOptions: ["creativeflowguitar.com", "bayareaoriginalmusic.com", "outsidesessions.com", "rockrgear.com", "petrichorpodcast.com"] },
   { name: "AI Implementation", slug: "ai-implementation", campaign: "Sm business software tools", microsite: "sm-business-software-tools", domain: "aisystemimplementation.com", contact: null, products: 0, blogPosts: 0,
-    routing: "error", routingNote: "cPanel addon domain + doc root set to /home3/evraymon/aisystemimplementation.com/ (deploy fills it), but the domain still serves a parked page — it's hit the same auto-WordPress-service park as the others (root A → 204.11.56.246). Needs the same fix: disconnect the placeholder WordPress service, or Bluehost support. (Served the hub briefly right after the addon was created, before the park took over.)",
+    routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/ai-implementation/). A cPanel addon domain + doc root (~/aisystemimplementation.com) are set and it served the hub briefly, but the auto-WordPress-service park (root A → 204.11.56.246) took back over. Same fix: disconnect the placeholder WordPress service, or Bluehost support; then add its line to bluehost-sites.tsv.",
     domainOptions: ["aisystemimplementation.com", "aisystemimplementation.online", "roi-systems.com", "facttracking.com", "webguyleadgeneration.com"] },
   { name: "The Care Gap", slug: "care-gap", campaign: "Fundraising Caregivers - Stable Home", microsite: "mobility-mentor-fundraising", domain: "stablehomefoundation.com", contact: "flipoclock@gmail.com", products: 0, blogPosts: 0,
-    routing: "error", routingNote: "Blocked by the common WordPress-service park (see the comment above HUB_SITES). Hub is deployed to /home3/evraymon/stablehomefoundation.com/ and waiting. Disconnect stablehomefoundation.com's placeholder WordPress service (Domains → stablehomefoundation.com → Overview → Connected Services → Manage), or have Bluehost support point the domain at the cPanel hosting account.",
+    routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/care-gap/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect stablehomefoundation.com's placeholder WordPress service (Domains → stablehomefoundation.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
     domainOptions: ["stablehomefoundation.com", "stablehomefoundation.online", "foundationfuturesllc.com"] },
 ];
 
