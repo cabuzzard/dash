@@ -150,6 +150,8 @@ const HUB_ORIGINS = new Set([
   "https://creativeflowguitar.com",        "https://www.creativeflowguitar.com",
   "https://accessiblefarms.com",           "https://www.accessiblefarms.com",
   "https://stablehomefoundation.com",      "https://www.stablehomefoundation.com",
+  "https://stablehomefoundation.online",   "https://www.stablehomefoundation.online",
+  "https://foundationfuturesllc.com",      "https://www.foundationfuturesllc.com",
   "https://homestructionconsulting.com",   "https://www.homestructionconsulting.com",
   "https://generalservices2020.com",       "https://www.generalservices2020.com",
   "https://outsidesessions.com",           "https://www.outsidesessions.com",
