@@ -63,8 +63,13 @@ one supplies the seed content.
    - `brand`, `logoImg`, `nav`, `ribbon`
    - `hero` — write real copy from the Research `Statement` / `Unique Opportunity`
      / `Key Message`, or the Product's `Description` / `Transformation`
-   - `journal.items` / `news.items` — leave `[]` until posts exist; the empty
-     state renders and the section still shows
+   - `journal.items` — leave `[]` until posts exist; the empty state renders.
+   - `news.items` — the **static fallback**. When `campaignId` is set, the news
+     section is **live-fed**: the worker's `getHubNews` reads the campaign's
+     Research record "News Feed" field, parses it (headlines, and a source /
+     year where the item carries one — no URLs), and replaces `news.items` on
+     load. Re-running research in Notion refreshes the hub. Leave `items: []`
+     and write a good `empty` state for hubs whose research has no News Feed yet.
    - `trips.items` — seed from Research `Product Ideas` or the campaign's real
      Products (`{kicker, title, excerpt, url}`; `url:"#"` shows "Coming soon")
    - `social.items` — real profile URLs, or `"#"` placeholders

@@ -180,6 +180,44 @@ function json(data, status = 200) {
   });
 }
 
+// The Research DB "News Feed" field is LLM-generated free text with no fixed
+// shape — either "HEADLINE: ..." blocks separated by blank lines, or a
+// "1. ... (source.com)" numbered list. Pull best-effort { title, source, date }
+// rows for a hub's news/signal section. No URLs are ever present in the source;
+// a date only where an item happens to carry a trailing "(2026)" or "— Src, Feb 2026".
+function parseNewsFeed(text) {
+  if (!text) return [];
+  const hasHeadline = /^\s*HEADLINE\s*:/im.test(text);
+  const chunks = hasHeadline
+    ? text.split(/(?:\r?\n){2,}/).map(s => s.replace(/^\s*HEADLINE\s*:\s*/i, "").trim())
+    : text.split(/\r?\n(?=\s*\d+[.)]\s)/).map(s => s.replace(/^\s*\d+[.)]\s*/, "").trim());
+  const MONTH = "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\.?";
+  const out = [];
+  for (let c of chunks) {
+    c = c.replace(/\s+/g, " ").trim();
+    if (c.length < 10) continue;
+    let source = "", date = "";
+    // trailing "(…)" — a bare domain, a year, or a source phrase
+    const paren = c.match(/\s*\(([^()]{2,60})\)\s*$/);
+    if (paren) {
+      const v = paren[1].trim();
+      if (/^\S+\.[a-z]{2,}$/i.test(v)) source = v;
+      else if (/^\s*(?:19|20)\d{2}\s*$/.test(v)) date = v;
+      else source = v;
+      c = c.slice(0, paren.index).trim();
+    }
+    // trailing " — Source, Feb 2026" (foreclosure-style)
+    if (!date) {
+      const tail = c.match(new RegExp("\\s+[\\u2014\\u2013-]\\s+([^,]{2,40},?\\s*(?:" + MONTH + "\\s*)?(?:19|20)\\d{2})\\s*$"));
+      if (tail) { date = tail[1].trim(); c = c.slice(0, tail.index).trim(); }
+    }
+    c = c.replace(/[—–-]\s*$/, "").replace(/[.\s]+$/, "").trim();
+    if (c.length < 10) continue;
+    out.push({ title: c, source, date });
+  }
+  return out;
+}
+
 // Some Apify actors (e.g. the YouTube transcripts one) return captions with
 // raw HTML entities instead of real characters (&#39;s instead of 's).
 const HTML_ENTITIES = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&apos;": "'", "&nbsp;": " " };
@@ -4503,6 +4541,33 @@ export default {
         return json({ socials });
       } catch (e) {
         return json({ socials: [], error: e.message });
+      }
+    }
+
+    // ── getHubNews ── public, no token. A content hub calls this on load with
+    // its campaignId. Reads the campaign's Research record "News Feed" field
+    // (LLM-generated "top ~15 news items matching campaign keywords") and parses
+    // the free text into { title, source, date } rows for the hub's news /
+    // signal section. Prefers a "Current" Research record, else the newest.
+    // Best-effort and silent-safe — an empty result just leaves the hub's
+    // static HUB.news.items fallback in place.
+    if (body.action === "getHubNews") {
+      const raw = String(body.campaignId || "").replace(/-/g, "");
+      if (raw.length !== 32) return json({ news: [] });
+      const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+      const lim = Math.max(1, Math.min(15, Number(body.limit) || 8));
+      try {
+        const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(raw) } } });
+        const pick = rows.slice().sort((a, b) => {
+          const ra = (a.properties?.Status?.select?.name === "Current") ? 0 : 1;
+          const rb = (b.properties?.Status?.select?.name === "Current") ? 0 : 1;
+          if (ra !== rb) return ra - rb;
+          return new Date(b.created_time || 0) - new Date(a.created_time || 0);
+        })[0];
+        const feed = (pick?.properties?.["News Feed"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+        return json({ news: parseNewsFeed(feed).slice(0, lim) });
+      } catch (e) {
+        return json({ news: [], error: e.message });
       }
     }
 

@@ -450,22 +450,37 @@ function renderCards(sec, bodyId, labelId, titleId, noteId) {
   }).join("") + `</div>`;
 }
 
-function renderNews() {
+async function renderNews() {
   const s = HUB.news;
   $("newsLabel").textContent = s.label;
   $("newsTitle").textContent = s.title;
   $("newsNote").textContent = s.note || "";
   const body = $("newsBody");
-  if (!s.items || !s.items.length) { body.innerHTML = emptyState(s.empty); return; }
-  body.innerHTML = `<ul class="dispatch">` + s.items.map((it) => {
-    const tag = it.url ? "a" : "span";
-    const href = it.url ? ` href="${esc(it.url)}"` : "";
-    return `<li><${tag}${href}>
-      <span class="d-date">${esc(it.date)}</span>
-      <span class="d-title">${esc(it.title)}</span>
-      <span class="d-src">${esc(it.source || "")}</span>
-    </${tag}></li>`;
-  }).join("") + `</ul>`;
+  const paint = (items) => {
+    if (!items || !items.length) { body.innerHTML = emptyState(s.empty); return; }
+    body.innerHTML = `<ul class="dispatch">` + items.map((it) => {
+      const tag = it.url ? "a" : "span";
+      const href = it.url ? ` href="${esc(it.url)}"` : "";
+      return `<li><${tag}${href}>
+        <span class="d-date">${esc(it.date || "")}</span>
+        <span class="d-title">${esc(it.title)}</span>
+        <span class="d-src">${esc(it.source || "")}</span>
+      </${tag}></li>`;
+    }).join("") + `</ul>`;
+  };
+  paint(s.items);                                     // static fallback, instant
+  if (!HUB.campaignId) return;
+  try {
+    // Live news: the campaign Research record "News Feed" field, parsed by the
+    // worker (getHubNews). Refreshes whenever research is re-run in Notion.
+    const res = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "getHubNews", campaignId: HUB.campaignId }),
+    });
+    const data = await res.json();
+    if (res.ok && Array.isArray(data.news) && data.news.length) paint(data.news);
+  } catch (e) { /* keep the static fallback */ }
 }
 
 function renderReport() {
