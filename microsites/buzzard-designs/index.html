@@ -1464,6 +1464,9 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <label class="lm-label">Payoff <span style="color:#fff;font-weight:normal;">— the emotional after-state the product delivers</span></label>
       <select class="modal-ta" id="vgPayoff" style="margin-bottom:10px;"><option value="">— loading from product —</option></select>
 
+      <label class="lm-label">Told through <span style="color:#fff;font-weight:normal;">— optional; narrate the arc as a recurring audience character</span></label>
+      <select class="modal-ta" id="vgCharacter" onchange="vgOnCharacterChange()" style="margin-bottom:10px;"><option value="">— direct "you" post —</option></select>
+
       <label class="lm-label">Guidance <span style="color:#fff;font-weight:normal;">— optional; a specific story, angle, or instruction</span></label>
       <textarea class="modal-ta" id="vgGuidance" rows="2" placeholder="e.g. tell it as a client story; lean sarcastic; open on a specific moment…" style="resize:vertical;"></textarea>
 
@@ -8695,7 +8698,7 @@ function vgSetOptions(id, arr, placeholder) {
 async function openViralGenModal(opts) {
   const found = ctsFindSlot(opts.slotId);
   if (!found) { alert('Could not find that slot — refresh the Strategies tab.'); return; }
-  VG_SLOT = { id: opts.slotId, productId: found.productId || '' };
+  VG_SLOT = { id: opts.slotId, productId: found.productId || '', productName: found.productName || 'this product' };
   const seq = Number.isFinite(found.slot.sequence) ? `#${found.slot.sequence} · ` : '';
   const pt = found.slot.postType ? ` <span style="color:#9f7aea;">· ${esc(found.slot.postType.name)}</span>` : '';
   document.getElementById('vgSlotCtx').innerHTML =
@@ -8708,7 +8711,10 @@ async function openViralGenModal(opts) {
   const btn = document.getElementById('vgGoBtn'); btn.disabled = false; btn.textContent = 'Generate pillar';
   document.getElementById('vgHook').innerHTML = '<option value="">— loading hooks —</option>';
   ['vgObstacle','vgTurn','vgPayoff'].forEach(id => document.getElementById(id).innerHTML = '<option value="">— loading from product —</option>');
+  document.getElementById('vgCharacter').innerHTML = '<option value="">— direct "you" post —</option>';
   document.getElementById('vgModal').classList.add('open');
+
+  vgLoadCharacters();
 
   try {
     const hk = await w('getViralHooks', { campaignId: CAMPAIGN_ID });
@@ -8733,6 +8739,50 @@ async function openViralGenModal(opts) {
     ['vgObstacle','vgTurn','vgPayoff'].forEach(id => document.getElementById(id).innerHTML = `<option value="">(${esc(e.message)})</option>`);
   }
 }
+async function vgLoadCharacters(selectValue) {
+  const sel = document.getElementById('vgCharacter');
+  let campaign = [], product = [];
+  try {
+    const r = await w('getCharacters', { campaignId: CAMPAIGN_ID, productId: VG_SLOT.productId || undefined });
+    campaign = r.campaign || []; product = r.product || [];
+  } catch(e) {}
+  const grp = (label, arr) => arr.length
+    ? `<optgroup label="${esc(label)}">` + arr.map(c => `<option value="${esc(c.block)}">${esc(c.name)}</option>`).join('') + `</optgroup>`
+    : '';
+  let html = '<option value="">— direct "you" post —</option>';
+  html += grp('Campaign cast', campaign);
+  if (VG_SLOT.productId) html += grp('From ' + VG_SLOT.productName, product);
+  html += '<optgroup label="Generate">'
+    + '<option value="__gen_campaign__">⚡ Generate campaign cast from research</option>'
+    + (VG_SLOT.productId ? '<option value="__gen_product__">⚡ Generate cast from this product\'s research</option>' : '')
+    + '</optgroup>';
+  sel.innerHTML = html;
+  sel.value = selectValue || '';
+}
+async function vgOnCharacterChange() {
+  const sel = document.getElementById('vgCharacter');
+  const v = sel.value;
+  if (v !== '__gen_campaign__' && v !== '__gen_product__') return;
+  const status = document.getElementById('vgStatus');
+  sel.disabled = true;
+  status.style.color = '#888';
+  status.textContent = v === '__gen_campaign__' ? 'Generating the campaign cast…' : 'Generating this product\'s cast…';
+  try {
+    const action = v === '__gen_campaign__' ? 'generateCampaignCharacters' : 'generateProductCharacters';
+    const args = v === '__gen_campaign__' ? { campaignId: CAMPAIGN_ID } : { productId: VG_SLOT.productId };
+    const r = await w(action, args);
+    if (r.error) throw new Error(r.error);
+    await vgLoadCharacters((r.characters && r.characters[0] && r.characters[0].block) || '');
+    status.style.color = '#68d391';
+    status.textContent = `✓ ${(r.characters || []).length} characters generated — pick one`;
+  } catch(e) {
+    status.style.color = '#fc8181';
+    status.textContent = 'Error: ' + e.message;
+    sel.value = '';
+  } finally {
+    sel.disabled = false;
+  }
+}
 function closeViralGenModal() {
   document.getElementById('vgModal').classList.remove('open');
   VG_SLOT = null;
@@ -8746,6 +8796,8 @@ async function submitViralGen() {
   const obstacle = document.getElementById('vgObstacle').value;
   const turn = document.getElementById('vgTurn').value;
   const payoff = document.getElementById('vgPayoff').value;
+  const charVal = document.getElementById('vgCharacter').value;
+  const character = (charVal && charVal.indexOf('__gen_') !== 0) ? charVal : undefined;
   const guidance = document.getElementById('vgGuidance').value.trim();
   if (!hook) { status.textContent = 'Pick a hook first.'; status.style.color = '#fc8181'; return; }
   const btn = document.getElementById('vgGoBtn');
@@ -8755,6 +8807,7 @@ async function submitViralGen() {
     const data = await w('generateViralPillar', {
       slotId: VG_SLOT.id, hook,
       obstacle: obstacle || undefined, turn: turn || undefined, payoff: payoff || undefined,
+      character: character || undefined,
       guidance: guidance || undefined,
     });
     if (data.error) throw new Error(data.error);

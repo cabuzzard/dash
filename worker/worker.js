@@ -1582,6 +1582,44 @@ const VIRAL_HOOKS = [
   { id: "tf2", category: "Timeframe / challenge", template: "Give me {short time} and I'll change how you think about {topic}." },
 ];
 
+// ── Audience characters ──
+// A recurring cast of audience-avatar characters — fictional-but-grounded
+// people who each embody a slice of the target customer, so content can be
+// told THROUGH a protagonist the audience recognizes. One cast per campaign
+// (on the Research record's "Characters" field) + optional per-product
+// casts (Products "Characters" field), all generated from research. Served
+// to the Viral Generator's "Told through" dropdown by getCharacters.
+// Stored as plain-text blocks separated by a line of ===, each starting
+// with a NAME: line — readable in Notion, parseable here.
+const CHAR_PROMPT_FORMAT = `Format each character EXACTLY like this, blocks separated by a line containing only ===:
+
+NAME: <First Last> — <age>, <one-phrase current situation>
+IDENTITY: <one sentence: who they are, which slice of the audience they stand for>
+BELIEF: "<the specific false belief or objection keeping them stuck, in their own words>"
+WANTS: <what they actually want — the outcome, stated plainly>
+VOICE: <how this person and people like them talk — tone, what they say, what they'd never say>
+ARC: <before state -> the shift that changes them -> after state>
+
+Return ONLY the character blocks and the === separators, nothing else.`;
+
+function parseCharacterBlocks(text) {
+  return String(text || "").split(/\n\s*={2,}\s*\n/).map(b => b.trim()).filter(Boolean).map(block => {
+    const nameLine = (block.match(/^\s*NAME:\s*(.+)$/mi) || [])[1] || block.split("\n")[0] || "Character";
+    const name = String(nameLine).split(/\s+[—–-]\s+/)[0].replace(/^NAME:\s*/i, "").trim().slice(0, 60) || "Character";
+    return { name, block };
+  });
+}
+async function callCharacterModel(env, prompt) {
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }] }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error?.message || "Claude API error");
+  return (data.content?.[0]?.text || "").trim();
+}
+
 // Best-effort real-time topic research via xAI's Grok API (grok-4.6,
 // api.x.ai — OpenAI-compatible chat completions), used to ground X/Twitter
 // title generation in what's ACTUALLY trending right now, which Claude has
@@ -11783,9 +11821,10 @@ Every entry: ONE line, concrete, second-person or neutral, no product name, writ
       // agnostic: the arc becomes carousels / short posts later at Generate
       // Assets. Happens BEFORE method in the flow, on purpose.
       if (body.action === "generateViralPillar") {
-        const { slotId, hook, obstacle, turn, payoff, guidance } = body;
+        const { slotId, hook, obstacle, turn, payoff, guidance, character } = body;
         if (!slotId) return json({ error: "slotId required" }, 400);
         if (!hook || !String(hook).trim()) return json({ error: "hook required" }, 400);
+        const characterBlock = (character && String(character).trim()) ? String(character).trim().slice(0, 900) : "";
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
@@ -11831,6 +11870,7 @@ Every entry: ONE line, concrete, second-person or neutral, no product name, writ
           obstacle ? `OBSTACLE (the villain): ${obstacle}` : "",
           turn ? `THE TURN (the reframe that earns the share): ${turn}` : "",
           payoff ? `PAYOFF (the emotional after-state): ${payoff}` : "",
+          characterBlock ? `TOLD THROUGH THIS CHARACTER (a recurring audience avatar — narrate the arc as their story: their belief is the obstacle, their want is the payoff; write so people like them see themselves, not necessarily in their literal voice):\n${characterBlock}` : "",
         ].filter(Boolean).join("\n");
 
         // 1. Title — short, scroll-stopping, built from the hook pattern.
@@ -11890,10 +11930,10 @@ Fill the hook pattern's {…} slots with specifics from the context above. Keep 
         // 4. Pillar content, written as the viral story arc.
         const arcBlock = `Write this pillar as a SHORT-FORM VIRAL STORY ARC (Instagram / Reels style — NOT a long-form essay). First a labeled skeleton, then the actual post copy. It is method-agnostic raw material a carousel or a short post gets cut from later — do not format it as slides, a thread, or a script yet.
 
-VIRAL STORY ARC:
+${characterBlock ? `TOLD THROUGH THIS CHARACTER — a recurring audience avatar. Narrate the whole arc as this person's story; their BELIEF is the obstacle to overcome and their WANT is the payoff. Write so people like them recognize themselves. Keep the name consistent if this character has appeared before.\n${characterBlock}\n\n` : ""}VIRAL STORY ARC:
 - HOOK: ${hook}
    Open with a filled-in, specific version of this pattern. The first line has to stop the scroll on its own.
-- AUDIENCE CALLOUT: name the exact person this is for so they feel seen${customerText || nicheText ? ` (they are: ${[customerText, nicheText].filter(Boolean).join(" / ")})` : ""}.
+- ${characterBlock ? "OPEN ON THE CHARACTER: drop us into a specific moment in their story" : `AUDIENCE CALLOUT: name the exact person this is for so they feel seen${customerText || nicheText ? ` (they are: ${[customerText, nicheText].filter(Boolean).join(" / ")})` : ""}`}.
 ${obstacle ? `- OBSTACLE: ${obstacle}\n   Make it vivid and specific — the villain, the thing in their way right now.\n` : "- OBSTACLE: the sharpest frustration from the product context — the villain of the story.\n"}- STAKES: what it costs them to leave that obstacle unsolved (the darker read of the pain).
 ${turn ? `- THE TURN: ${turn}\n   This is the beat that earns the share — the reframe/insight/mechanism, the "I never saw it that way".\n` : "- THE TURN: the reframe from the product's Unique Angle / Unique Opportunity — the share-worthy insight.\n"}${payoff ? `- PAYOFF: ${payoff}\n   Show the emotional after-state, don't just assert it.\n` : "- PAYOFF: the emotional after-state from Benefits / Emotions / Transformation — shown, not stated.\n"}- PROOF: one concrete receipt if the research has one (a number, a result). Skip the line entirely if there's none — never invent one.
 - LOOP / CTA: a closing line that invites a save, a comment, or a share, matched to the payoff.
@@ -11921,6 +11961,135 @@ ${growthStrategyBody ? `\nFULL GROWTH STRATEGY CONTEXT (stay consistent with its
         }
 
         return json({ success: true, id: newTitleId, title: titleText, status: newStatus, pillarWarning });
+      }
+
+      // ── getCharacters ──
+      // Fills the Viral Generator's "Told through" dropdown: the campaign's
+      // cast (Research "Characters") plus the slot's product's cast
+      // (Products "Characters"), each parsed into { name, block }.
+      if (body.action === "getCharacters") {
+        const { campaignId, productId } = body;
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        let campaign = [], product = [];
+        const cid = String(campaignId || "").replace(/-/g, "");
+        const pid = String(productId || "").replace(/-/g, "");
+        if (cid.length === 32) {
+          try {
+            const rr = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(cid) } } }),
+            }).then(r => r.json()).catch(() => ({ results: [] }));
+            const t = ((rr.results || [])[0]?.properties?.Characters?.rich_text || []).map(x => x.plain_text).join("");
+            campaign = parseCharacterBlocks(t);
+          } catch (e) {}
+        }
+        if (pid.length === 32) {
+          try {
+            const pg = await fetch(`https://api.notion.com/v1/pages/${dash(pid)}`, { headers: hdr }).then(r => r.json());
+            const t = (pg.properties?.Characters?.rich_text || []).map(x => x.plain_text).join("");
+            product = parseCharacterBlocks(t);
+          } catch (e) {}
+        }
+        return json({ campaign, product });
+      }
+
+      // ── generateCampaignCharacters ──
+      // The "Generate campaign cast" option in the Viral Generator's
+      // dropdown. One Claude call over the campaign + its Research →
+      // 4 audience-avatar characters → written to Research "Characters".
+      if (body.action === "generateCampaignCharacters") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const cid = dash(campaignId);
+        const [campPage, rr] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${cid}`, { headers: hdr }).then(r => r.json()).catch(() => null),
+          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: cid } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })),
+        ]);
+        const cp = campPage?.properties || {};
+        const ctxt = k => (cp[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const campaignName = (cp.Name?.title || []).map(t => t.plain_text).join("") || "this campaign";
+        const research = (rr.results || [])[0];
+        const rp = research?.properties || {};
+        const rtxt = k => (rp[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const ctx = [
+          `CAMPAIGN: ${campaignName}`,
+          ctxt("Target Audience") && `Target audience: ${ctxt("Target Audience")}`,
+          ctxt("Pain Points") && `Pain points: ${ctxt("Pain Points")}`,
+          ctxt("Key Message") && `Key message: ${ctxt("Key Message")}`,
+          rtxt("Statement") && `Statement: ${rtxt("Statement")}`,
+          rtxt("Unique Opportunity") && `Unique opportunity: ${rtxt("Unique Opportunity")}`,
+        ].filter(Boolean).join("\n");
+        if (!research) return json({ error: "This campaign has no Research record yet — create one first." }, 400);
+
+        const prompt = `You are a content strategist. Invent a small RECURRING CAST of audience-avatar characters for this campaign's content — fictional but grounded people who each embody a real slice of the target customer, so posts can be told through them and the audience recognizes themselves.
+
+${ctx}
+
+Return 4 characters. Each must embody a DIFFERENT slice — different pain intensity, life stage, objection, or level of awareness. Real first + last name, a believable current situation. No two alike.
+
+${CHAR_PROMPT_FORMAT}`;
+        let text;
+        try { text = await callCharacterModel(env, prompt); } catch (e) { return json({ error: e.message }, 500); }
+        const parsed = parseCharacterBlocks(text);
+        if (!parsed.length) return json({ error: "The model didn't return usable character blocks — try again." }, 500);
+        await fetch(`https://api.notion.com/v1/pages/${research.id}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Characters": { rich_text: [{ type: "text", text: { content: text.slice(0, 1990) } }] } } }),
+        }).catch(() => {});
+        return json({ success: true, characters: parsed });
+      }
+
+      // ── generateProductCharacters ──
+      // The "Generate cast from <product> research" option. One Claude call
+      // over the product + its Product Research → 3 characters → written to
+      // the Product's "Characters" field.
+      if (body.action === "generateProductCharacters") {
+        const { productId } = body;
+        if (!productId) return json({ error: "productId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const pid = dash(productId);
+        const [prodPage, rec] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${pid}`, { headers: hdr }).then(r => r.json()).catch(() => null),
+          findBestProductResearchRecord(hdr, pid).catch(() => null),
+        ]);
+        const pp = prodPage?.properties || {};
+        const ptxt = k => (pp[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "this product";
+        let ctx = `PRODUCT: ${productName}\nDescription: ${ptxt("Description") || "(none)"}\nUnique Angle: ${ptxt("Unique Angle") || "(none)"}\nTransformation: ${ptxt("Transformation") || "(none)"}`;
+        if (rec) {
+          const s = rec.properties || {};
+          const srt = k => (s[k]?.rich_text || []).map(t => t.plain_text).join("");
+          const lines = ["Customer","Niche","Pain Points","Emotions","Solution","Benefits","Unique Opportunity","Transformation","Objections"]
+            .map(f => srt(f) && `${f}: ${srt(f)}`).filter(Boolean);
+          if (lines.length) ctx += `\n\nPRODUCT RESEARCH:\n${lines.join("\n")}`;
+        }
+        if (!rec && !ptxt("Description")) return json({ error: `"${productName}" has no research to build characters from — run Product Research first.` }, 400);
+
+        const prompt = `You are a content strategist. Invent 3 audience-avatar characters specific to this PRODUCT — fictional but grounded people who each embody a real slice of its buyer, so content can be told through them.
+
+${ctx}
+
+Each of the 3 embodies a DIFFERENT slice — different objection, awareness level, or urgency. Real first + last name, believable situation. No two alike.
+
+${CHAR_PROMPT_FORMAT}`;
+        let text;
+        try { text = await callCharacterModel(env, prompt); } catch (e) { return json({ error: e.message }, 500); }
+        const parsed = parseCharacterBlocks(text);
+        if (!parsed.length) return json({ error: "The model didn't return usable character blocks — try again." }, 500);
+        await fetch(`https://api.notion.com/v1/pages/${pid}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Characters": { rich_text: [{ type: "text", text: { content: text.slice(0, 1990) } }] } } }),
+        }).catch(() => {});
+        return json({ success: true, characters: parsed });
       }
 
       // ── buildStrategyFromAsset ──
