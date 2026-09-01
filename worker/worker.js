@@ -188,9 +188,21 @@ function json(data, status = 200) {
 function parseNewsFeed(text) {
   if (!text) return [];
   const hasHeadline = /^\s*HEADLINE\s*:/im.test(text);
-  const chunks = hasHeadline
-    ? text.split(/(?:\r?\n){2,}/).map(s => s.replace(/^\s*HEADLINE\s*:\s*/i, "").trim())
-    : text.split(/\r?\n(?=\s*\d+[.)]\s)/).map(s => s.replace(/^\s*\d+[.)]\s*/, "").trim());
+  const hasNumbered = /(^|\n)\s*\d+[.)]\s/.test(text);
+  let chunks;
+  if (hasHeadline) {
+    chunks = text.split(/(?:\r?\n){2,}/).map(s => s.replace(/^\s*HEADLINE\s*:\s*/i, "").trim());
+  } else if (hasNumbered) {
+    chunks = text.split(/\r?\n(?=\s*\d+[.)]\s)/).map(s => s.replace(/^\s*\d+[.)]\s*/, "").trim());
+  } else {
+    // Prose format — one paragraph of run-together items, each usually ending
+    // "(Source Year)". Split on sentence boundaries before a capital letter.
+    chunks = text.replace(/\s+/g, " ").split(/(?<=[.)])\s+(?=[A-Z0-9])/);
+  }
+  // Fell through to a single mega-chunk? Force the prose split.
+  if (chunks.filter(c => c.trim().length > 20).length < 2) {
+    chunks = text.replace(/\s+/g, " ").split(/(?<=[.)])\s+(?=[A-Z0-9])/);
+  }
   const MONTH = "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\.?";
   const out = [];
   for (let c of chunks) {
