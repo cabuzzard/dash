@@ -361,10 +361,16 @@ per-host path rewriting needed.
 1. **Bluehost account → Domains → `<domain>` → Overview → Connected Services →
    disconnect the placeholder "WordPress service"** (or Bluehost support — "point
    this domain at my cPanel hosting account"). A newly-registered domain is
-   auto-parked by that service (see below); disconnecting it lets the domain
-   reach the hosting account, which uses `/home3/evraymon/<domain>/` as the doc
-   root and provisions SSL. (`creativeflowguitar.com` predates this and was
-   connected the old way.)
+   auto-parked by that service (see below); disconnecting it resets the zone to
+   Bluehost defaults (hosting A record + MX/email + everything) and lets the
+   domain reach the hosting account, which uses `/home3/evraymon/<domain>/` as
+   the doc root and provisions SSL. (`creativeflowguitar.com` predates this and
+   was connected the old way.)
+   - If `/home3/evraymon/<domain>/` ends up with a placeholder `index.php` /
+     `index.html` (a WP stub), **rename it** (`index.php` → `_index.php.bak`) so
+     the deployed hub's `index.html` serves. Apache's DirectoryIndex usually
+     prefers `index.html` first anyway, so this is belt-and-braces. As of
+     2026-09-01 all six pre-domain folders were empty.
 2. `.github/bluehost-sites.tsv` — add `web/hub/{slug}` → `<domain>`. Next push
    deploys the hub to `/home3/evraymon/<domain>/`.
 3. `worker/worker.js` → add the domain **apex + www, `https://`** to the

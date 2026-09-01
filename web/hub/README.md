@@ -28,8 +28,11 @@ uses as the doc root once connected). Only `creative-flow-guitar` is in the tsv 
 2. **Bluehost account → Domains → `<domain>` → Overview → Connected Services →
    disconnect the placeholder "WordPress service"** (or Bluehost support — "point
    this domain at my cPanel hosting account"). A freshly-registered domain is
-   auto-parked by that service; disconnecting lets it reach the hosting account,
-   which uses `/home3/evraymon/<domain>/` as the doc root and provisions SSL.
+   auto-parked by that service; disconnecting resets the zone to Bluehost
+   defaults (hosting + email) and lets it reach the hosting account, which uses
+   `/home3/evraymon/<domain>/` as the doc root and provisions SSL.
+   - If that folder has a placeholder `index.php` / `index.html`, rename it
+     (`index.php` → `_index.php.bak`) so the hub's `index.html` serves.
 3. `.github/bluehost-sites.tsv` — add `web/hub/{slug} → <domain>`. Push; the
    deploy fills `~/<domain>/` and the hub is live.
 4. `worker/worker.js` → add the domain, **apex + www, https**, to `HUB_ORIGINS`,
