@@ -368,19 +368,37 @@ per-host path rewriting needed.
 
 ### Current hub → domain routing
 
-| Hub slug | Campaign | Domain | cPanel assigned? |
+| Hub slug | Campaign | Domain | Routing |
 |---|---|---|---|
-| `ai-implementation` | Sm business software tools | `aisystemimplementation.com` | ✅ done (docroot `public_html/hub-ai-implementation`) |
-| `sunflower-acres` | Sunflower Acres | `accessiblefarms.com` | ⚠️ cPanel "unknown error" — retry Create Domain → `public_html/hub-sunflower-acres` |
-| `creative-flow-guitar` | Creative Flow Guitar — Weekly Sessions | `creativeflowguitar.com` | ✅ done (docroot repointed from `public_html/creativeflowguitar` → `public_html/hub-creative-flow-guitar`; old folder left in place) |
-| `care-gap` | Fundraising Caregivers - Stable Home | `stablehomefoundation.com` | ⚠️ cPanel "unknown error" — retry Create Domain → `public_html/hub-care-gap` |
-| `owners-rep` (Build Watcher) | Build Watcher | — | — |
-| `home-services` | Home Services | — | — |
-| `surf-vacations` | Surfing Vacations | — | — |
+| `ai-implementation` | Sm business software tools | `aisystemimplementation.com` | ✅ routed — cPanel addon domain, docroot `public_html/hub-ai-implementation` |
+| `creative-flow-guitar` | Creative Flow Guitar — Weekly Sessions | `creativeflowguitar.com` | ✅ routed — docroot repointed `public_html/creativeflowguitar` → `public_html/hub-creative-flow-guitar` (old folder kept) |
+| `sunflower-acres` | Sunflower Acres | `accessiblefarms.com` | ⚠️ blocked — see below |
+| `care-gap` | Fundraising Caregivers - Stable Home | `stablehomefoundation.com` | ⚠️ blocked — see below |
+| `owners-rep` (Build Watcher) | Build Watcher | `homestructionconsulting.com` | ⚠️ blocked — see below (also collides with home-services) |
+| `home-services` | Home Services | `homestructionconsulting.com` | ⚠️ pick a different domain (collides with owners-rep) |
+| `surf-vacations` | Surfing Vacations | `outsidesessions.com` | ⚠️ blocked — see below |
 
-`aisystemimplementation.online` (free with the `.com`) and `accessiblefarms.com`
-+ the two `.com`s were registered 2026-09-01, all on the Bluehost account (owner
-contact `renewableartistry.com`, acct `54027470`), expiring 09/01/2027.
+The domains were chosen via the Content Hubs tab's Domain dropdown (which only
+saves to browser localStorage) and are now persisted in `HUB_SITES`. The dash
+tab has a **Routing** column next to Domain showing this status (`hubRoutingCell`,
+`HUB_SITES[].routing` / `.routingNote`).
+
+**Why 4 of 5 are blocked (diagnosed 2026-09-01):** Bluehost auto-creates an empty
+`/home3/evraymon/<domain>/` folder for every registered domain (confirmed: all
+five exist), but the domain stays **registered-but-not-connected** — it serves a
+parked ad page even though its nameservers are `NS1/NS2.BLUEHOST.COM`. cPanel
+"Create A New Domain" then fails with a bare "An unknown error occurred" on that
+half-provisioned state. `aisystemimplementation.com` only worked because the
+addon was created before Bluehost parked it. **Fix per domain:** Bluehost account
+→ Domains → `<domain>` → connect it to the hosting plan (Overview tab's
+"Connections" / assign-to-hosting), or ask Bluehost support; then set the doc
+root to `public_html/hub-<slug>`. Once an Apache vhost exists for the domain, the
+`deploy-bluehost.yml` job syncs the hub on the next push automatically.
+
+`aisystemimplementation.com` + `.online` (free) and `accessiblefarms.com` were
+registered 2026-09-01; `stablehomefoundation.com`, `outsidesessions.com`,
+`homestructionconsulting.com` are older. All on Bluehost acct `54027470` (owner
+contact `renewableartistry.com`), hosting cPanel user `evraymon` / `box5572`.
 
 ## Admin Microsites
 
