@@ -381,31 +381,40 @@ Deploy target for every hub is now `/home3/evraymon/<domain>/`.
 
 | Hub slug | Campaign | Domain | Routing |
 |---|---|---|---|
-| `ai-implementation` | Sm business software tools | `aisystemimplementation.com` | ✅ connected & serving (doc root moved to `~/aisystemimplementation.com`) |
-| `creative-flow-guitar` | Creative Flow Guitar — Weekly Sessions | `creativeflowguitar.com` | ✅ connected & serving (doc root moved to `~/creativeflowguitar.com`; old WP install stays at `public_html/creativeflowguitar`) |
-| `sunflower-acres` | Sunflower Acres | `accessiblefarms.com` | ⚠️ needs the connect step — see below |
-| `care-gap` | Fundraising Caregivers - Stable Home | `stablehomefoundation.com` | ⚠️ needs the connect step — see below |
-| `owners-rep` (Build Watcher) | Build Watcher | `homestructionconsulting.com` | ⚠️ needs the connect step; also collides with home-services |
-| `home-services` | Home Services | *(none — pick one, collides with owners-rep)* | ⚠️ no domain / not in the tsv yet |
-| `surf-vacations` | Surfing Vacations | `outsidesessions.com` | ⚠️ needs the connect step — see below |
+| `creative-flow-guitar` | Creative Flow Guitar — Weekly Sessions | `creativeflowguitar.com` | ✅ serving over https (doc root `~/creativeflowguitar.com`; old WP install stays at `public_html/creativeflowguitar`) |
+| `ai-implementation` | Sm business software tools | `aisystemimplementation.com` | ⚠️ cPanel addon + doc root set, but hit the WP-service park — parked page |
+| `sunflower-acres` | Sunflower Acres | `accessiblefarms.com` | ⚠️ WP-service park — see below |
+| `care-gap` | Fundraising Caregivers - Stable Home | `stablehomefoundation.com` | ⚠️ WP-service park — see below |
+| `owners-rep` (Build Watcher) | Build Watcher | `homestructionconsulting.com` | ⚠️ WP-service park — see below |
+| `home-services` | Home Services | `generalservices2020.com` | ⚠️ WP-service park — see below |
+| `surf-vacations` | Surfing Vacations | `outsidesessions.com` | ⚠️ WP-service park — see below |
 
 The domains were chosen via the Content Hubs tab's Domain dropdown (which only
 saves to browser localStorage) and are now persisted in `HUB_SITES`. The dash
 tab has a **Routing** column next to Domain showing this status (`hubRoutingCell`,
 `HUB_SITES[].routing` / `.routingNote`).
 
-**Why the 4 need a connect step (diagnosed 2026-09-01):** Bluehost auto-creates
-an empty `/home3/evraymon/<domain>/` folder for every registered domain
-(confirmed: all five exist), but a newly-registered domain stays
-**registered-but-not-connected** — it serves a parked ad page even though its
-nameservers are `NS1/NS2.BLUEHOST.COM`. cPanel "Create A New Domain" fails with a
-bare "An unknown error occurred" on that half-provisioned state.
-`aisystemimplementation.com` only worked because the addon was created before
-Bluehost parked it. **Fix per domain:** Bluehost account → Domains → `<domain>` →
-Overview → "Connections" → connect it to the hosting plan (or Bluehost support).
-That sets the doc root to `/home3/evraymon/<domain>/` — the same folder the
-`deploy-bluehost.yml` job already fills on every push — and provisions SSL, so
-the hub is live immediately with no further steps.
+**The blocker — Bluehost's auto-"WordPress service" park (diagnosed 2026-09-01):**
+Registering a domain on Bluehost silently connects it to a placeholder
+"WordPress service" (Domains → `<domain>` → Overview → Connected Services) and
+**parks** it — the root `@` A record points at `204.11.56.246` (a parking IP),
+not the hosting server `162.241.218.154` (the domain's own `autoconfig` /
+`autodiscover` records use the real hosting IP; only `@` is mis-set). While that
+service is attached: cPanel "Create A New Domain" errors ("An unknown error
+occurred"), cPanel doc-root edits succeed but the domain still parks, and the
+account DNS editor rejects an `@` A-record edit ("contained duplicates…").
+Bluehost also creates an empty `/home3/evraymon/<domain>/` folder at
+registration — the deploy fills that for every hub regardless.
+
+**Fix per domain (operator / Bluehost support — potentially destructive, don't
+do unilaterally):** disconnect the placeholder WordPress service
+(Domains → `<domain>` → Overview → Connected Services → Manage → disconnect), or
+ask Bluehost support to point the domain at the cPanel hosting account. Then the
+already-deployed hub at `/home3/evraymon/<domain>/` serves. `creativeflowguitar.com`
+works because it was connected the old way, before this auto-WP behavior existed.
+
+The **Routing** column in the Content Hubs tab shows per-hub status; the shared
+diagnosis is a comment above `HUB_SITES` in `index.html`.
 
 `aisystemimplementation.com` + `.online` (free) and `accessiblefarms.com` were
 registered 2026-09-01; `stablehomefoundation.com`, `outsidesessions.com`,

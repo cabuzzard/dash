@@ -14,15 +14,22 @@
 # Still required per hub: worker.js HUB_ORIGINS (apex + www) and index.html
 # HUB_SITES[].domain. See CLAUDE.md "Content Hubs".
 #
-# Routing status (2026-09-01): ai-implementation + creative-flow-guitar are
-# connected and serving; the other four domains are registered but not yet
-# connected to hosting (serve a parked page) — deploy still populates their
-# folders now, ready for the connect step. home-services has no domain yet
-# (its pick collided with owners-rep).
+# Routing status (2026-09-01): only creative-flow-guitar (creativeflowguitar.com)
+# is actually serving its hub — it was connected the old way. Every other domain
+# hits Bluehost's auto-"WordPress service" park: registering a domain silently
+# connects it to a placeholder WordPress service that parks it (root A record →
+# 204.11.56.246, not the hosting IP 162.241.218.154). cPanel addon-domain
+# creation, doc-root edits, and DNS A-record edits all fail or get overridden
+# while that's attached. The deploy still fills /home3/evraymon/<domain>/ for
+# every hub, so once the placeholder WordPress service is disconnected (Bluehost
+# account → Domains → <domain> → Overview → Connected Services → Manage) or
+# Bluehost support repoints the domain at the cPanel account, the hub serves
+# with no further steps.
 web/sm-business-software-tools	public_html/webguyleadgeneration
 web/hub/ai-implementation	aisystemimplementation.com
 web/hub/creative-flow-guitar	creativeflowguitar.com
 web/hub/owners-rep	homestructionconsulting.com
+web/hub/home-services	generalservices2020.com
 web/hub/sunflower-acres	accessiblefarms.com
 web/hub/surf-vacations	outsidesessions.com
 web/hub/care-gap	stablehomefoundation.com
