@@ -9609,16 +9609,20 @@ const HUB_SITES = [
   { name: "Surf Vacations",  slug: "surf-vacations",  campaign: "Surfing Vacations", microsite: "diving-vacations",                        domain: null, contact: null, products: 0, blogPosts: 0,
     domainOptions: ["outsidesessions.com", "liketotallydude.com", "rad80schild.com", "barefoothike.com", "bestoutdoorsandals.com", "accessyourpassion.com"] },
   { name: "Sunflower Acres", slug: "sunflower-acres", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff",                domain: "accessiblefarms.com", contact: null, products: 0, blogPosts: 0,
+    routing: "error", routingNote: "cPanel Create Domain → “An unknown error occurred” (2 attempts, 2026-09-01). Not a plan limit. Likely the domain’s nameservers aren’t pointed at the hosting box — check Bluehost → Domains → accessiblefarms.com → Nameservers, or ask Bluehost support to add the addon domain with docroot public_html/hub-sunflower-acres.",
     domainOptions: ["accessiblefarms.com", "modernactivehome.com", "sustainableaquarium.com", "homepondaquarium.com", "naturebasedcoach.com", "naturewellnesscoach.com"] },
   { name: "Build Watcher",   slug: "owners-rep",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting", domain: null, contact: null, products: 0, blogPosts: 0,
     domainOptions: ["homestructionconsulting.com", "buildtosuitinvestment.com", "stablehomefoundation.com", "foundationfuturesllc.com", "generalservices2020.com", "roi-systems.com", "bestrealestateliquidation.com"] },
   { name: "Home Services",   slug: "home-services",   campaign: "Home Services",     microsite: "home-services",                           domain: null, contact: null, products: 0, blogPosts: 0,
     domainOptions: ["generalservices2020.com", "generalservice2020.com", "modernactivehome.com", "homestructionconsulting.com", "stablehomefoundation.com", "webguyleadgeneration.com"] },
   { name: "Creative Flow Guitar", slug: "creative-flow-guitar", campaign: "Creative Flow Guitar — Weekly Sessions", microsite: "creative-flow-guitar", domain: "creativeflowguitar.com", contact: null, products: 0, blogPosts: 0,
+    routing: "ok", routingNote: "cPanel document root repointed public_html/creativeflowguitar → public_html/hub-creative-flow-guitar (2026-09-01, old folder left in place). Serving the hub over https.",
     domainOptions: ["creativeflowguitar.com", "bayareaoriginalmusic.com", "outsidesessions.com", "rockrgear.com", "petrichorpodcast.com"] },
   { name: "AI Implementation", slug: "ai-implementation", campaign: "Sm business software tools", microsite: "sm-business-software-tools", domain: "aisystemimplementation.com", contact: null, products: 0, blogPosts: 0,
+    routing: "ok", routingNote: "cPanel addon domain created → docroot public_html/hub-ai-implementation (2026-09-01). Serving the hub. https cert (Bluehost AutoSSL) provisions automatically — may briefly be http-only.",
     domainOptions: ["aisystemimplementation.com", "aisystemimplementation.online", "roi-systems.com", "facttracking.com", "webguyleadgeneration.com"] },
   { name: "The Care Gap", slug: "care-gap", campaign: "Fundraising Caregivers - Stable Home", microsite: "mobility-mentor-fundraising", domain: "stablehomefoundation.com", contact: "flipoclock@gmail.com", products: 0, blogPosts: 0,
+    routing: "error", routingNote: "cPanel Create Domain → “An unknown error occurred” (2 attempts, 2026-09-01). Not a plan limit. Same failure as accessiblefarms.com — likely a nameserver / DNS-zone issue on stablehomefoundation.com. Check Bluehost → Domains → Nameservers, or ask support to add the addon domain with docroot public_html/hub-care-gap.",
     domainOptions: ["stablehomefoundation.com", "stablehomefoundation.online", "foundationfuturesllc.com"] },
 ];
 
@@ -9707,6 +9711,21 @@ function hubDomainCell(h, meta) {
     <option value="__custom__">＋ type another…</option>
   </select>`;
 }
+// Routing = is the domain actually pointed at the hub's Bluehost folder?
+// h.routing: "ok" (successfully routed) | "error" (attempted, failed) | undefined (no domain / not attempted).
+// h.routingNote carries the detail (shown on hover + in the legend).
+function hubRoutingCell(h) {
+  const note = h.routingNote ? esc(h.routingNote) : '';
+  if (h.routing === 'ok') {
+    return `<span title="${note}" style="color:#4cff4c;white-space:nowrap;">✓ routed</span>`;
+  }
+  if (h.routing === 'error') {
+    const short = h.routingNote ? esc(h.routingNote.split('.')[0]) : 'routing failed';
+    return `<span title="${note}" style="color:#ff6b6b;cursor:help;">⚠ ${short}</span>`;
+  }
+  if (!h.domain) return `<span style="color:var(--text3);">— no domain</span>`;
+  return `<span style="color:var(--text3);" title="Domain set but not yet pointed at the hub folder in cPanel">not routed yet</span>`;
+}
 function hubBadge(state, meta) {
   const critChecks = HUB_CHECKLIST.filter(c => c.crit).every(c => state[c.key]);
   const critDone   = critChecks && (meta.products || 0) > 0;
@@ -9732,6 +9751,7 @@ function renderHubsTab() {
     + '<th>Links</th>'
     + '<th style="text-align:left;">Campaign</th>'
     + '<th style="text-align:left;">Domain</th>'
+    + '<th style="text-align:left;" title="Is the domain actually pointed at the hub\'s Bluehost folder (cPanel doc root)?">Routing</th>'
     + '<th style="text-align:left;">Contact</th>'
     + '<th title="Campaign products chosen to feature on the hub — click to set">Prod</th>'
     + '<th title="Blog / journal posts written & published on the hub — click to set">Blog</th>'
@@ -9766,6 +9786,7 @@ function renderHubsTab() {
       </td>
       <td style="text-align:left;font-size:11px;color:var(--text3);">${esc(h.campaign || '')}</td>
       <td style="text-align:left;font-size:11px;">${hubDomainCell(h, meta)}</td>
+      <td style="text-align:left;font-size:11px;">${hubRoutingCell(h)}</td>
       <td onclick="hubMetaEdit('${h.slug}','contact','text')" title="Click to set the hub's contact email" style="text-align:left;font-size:11px;cursor:pointer;">${valCol(meta.contact)}</td>
       ${numCell('products')}
       ${numCell('blogPosts')}
@@ -9778,6 +9799,7 @@ function renderHubsTab() {
   const legend = '<div style="margin-top:14px;font-size:11px;color:var(--text3);line-height:1.7;">'
     + '<div style="font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;">What a launched hub needs</div>'
     + '<div><span style="color:var(--text2);font-weight:600;">Domain</span> — pick from a shortlist of the domains you already own that fit this hub, or ＋ type another. <span style="font-weight:600;">Contact</span> — click to set the contact email.</div>'
+    + '<div><span style="color:var(--text2);font-weight:600;">Routing</span> — is the domain pointed at the hub\'s Bluehost folder yet (cPanel document root → <code>public_html/hub-{slug}</code>)? <span style="color:#4cff4c;font-weight:600;">✓ routed</span> = done · <span style="color:#ff6b6b;font-weight:600;">⚠</span> = attempted, hover for the error · <span style="color:var(--text3);">— no domain</span> / not routed yet = still to do. Once routed, the deploy syncs the hub there on every push automatically.</div>'
     + '<div><span style="color:var(--text2);font-weight:600;">Prod</span> — # of campaign products chosen to feature on the hub · counts toward LIVE when &gt; 0</div>'
     + '<div><span style="font-weight:600;">Blog</span> — # of posts written &amp; published on the hub (polish)</div>'
     + HUB_CHECKLIST.map(c => `<div><span style="color:${c.crit ? 'var(--text2)' : 'var(--text3)'};font-weight:600;">${esc(c.label)}${c.crit ? '' : ' *'}</span> — ${esc(c.hint)}</div>`).join('')
