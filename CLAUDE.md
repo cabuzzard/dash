@@ -373,7 +373,7 @@ per-host path rewriting needed.
 | `ai-implementation` | Sm business software tools | `aisystemimplementation.com` | pending |
 | `sunflower-acres` | Sunflower Acres | `accessiblefarms.com` | pending |
 | `creative-flow-guitar` | Creative Flow Guitar — Weekly Sessions | `creativeflowguitar.com` | pending |
-| `care-gap` | Fundraising Caregivers - Stable Home | — (shortlist: `stablehomefoundation.com`) | — |
+| `care-gap` | Fundraising Caregivers - Stable Home | `stablehomefoundation.com` | pending |
 | `owners-rep` (Build Watcher) | Build Watcher | — | — |
 | `home-services` | Home Services | — | — |
 | `surf-vacations` | Surfing Vacations | — | — |
