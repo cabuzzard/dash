@@ -1423,6 +1423,30 @@
   </div>
 </div>
 
+<!-- Hub Design Brief Modal -->
+<div class="modal-bg" id="hubBriefModal" onclick="if(event.target===this)closeHubBriefModal()">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-title" id="hubBriefTitle">Design brief</div>
+    <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:10px;">
+      Generate the design card in ChatGPT with this prompt (paste your campaign
+      context into it first). Then paste ChatGPT's <b>SPEC</b> block back to Claude
+      and it updates the hub's tokens, the fonts link, and <code>DESIGN.md</code>
+      in one commit.
+    </div>
+    <textarea id="hubBriefPrompt" readonly wrap="soft"
+      style="width:100%;height:260px;font-family:var(--mono,monospace);font-size:11px;line-height:1.5;padding:10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text2);resize:vertical;"></textarea>
+    <div style="display:flex;gap:10px;margin-top:10px;align-items:center;">
+      <button class="modal-btn" id="hubBriefCopyBtn" onclick="copyHubBriefPrompt()" style="flex:0 0 auto;">📋 Copy prompt</button>
+      <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="hubBriefBuilt" onchange="toggleHubBriefBuilt()" style="cursor:pointer;">
+        Brief built (DESIGN.md exists)
+      </label>
+      <button class="modal-btn" onclick="closeHubBriefModal()" style="margin-left:auto;background:transparent;border-color:var(--border2);color:var(--text3);">Close</button>
+    </div>
+    <div id="hubBriefMsg" style="font-size:12px;color:#4cff4c;margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- Google Account / Channel Modal -->
 <div class="modal-bg" id="gaccModal" onclick="if(event.target===this)closeGaccModal()">
   <div class="modal" style="max-width:420px;">
@@ -9689,6 +9713,106 @@ function hubReadyToggle(slug, key) {
   try { localStorage.setItem('hubReady:v1', JSON.stringify(all)); } catch(e) {}
   renderHubsTab();
 }
+
+// ── Hub design-brief modal (opened from the Brief column) ────────────────
+let hubBriefSlug = null;
+function buildHubBriefPrompt(h) {
+  const hubUrl = 'https://cabuzzard.github.io/dash/web/hub/' + h.slug + '/';
+  return [
+`You are the design lead at a studio known for giving every client a visual`,
+`identity that could not be mistaken for anyone else's.`,
+``,
+`BRIEF FOR: ${h.name} — a content-marketing hub site.`,
+`Campaign: ${h.campaign || '(unset)'}`,
+`Hub URL: ${hubUrl}`,
+``,
+`>>> Before you start, paste the campaign context here: target audience, key`,
+`message, pain points, the offer / product ladder. If this is a REVISION, also`,
+`paste the current DESIGN.md and what you want changed. <<<`,
+`[ PASTE CONTEXT ]`,
+``,
+`PRINCIPLES`,
+`- The hero is a thesis: open with the most characteristic thing in this`,
+`  subject's world, not a big-number-and-label template.`,
+`- Typography carries the personality. Pair a characterful display face with a`,
+`  clean body face and a utility/mono face; make the type itself memorable.`,
+`- Structure is information: numbering / eyebrows / dividers must encode`,
+`  something true about the content, not decorate.`,
+`- Take exactly ONE real aesthetic risk you can justify. Keep everything else quiet.`,
+`- AVOID the three AI-generated defaults: (1) warm cream ground + high-contrast`,
+`  serif + terracotta accent; (2) near-black ground + one bright acid accent;`,
+`  (3) broadsheet — hairline rules everywhere, zero radius, newspaper columns.`,
+`  If a free axis lands on one of these, change it and say why.`,
+``,
+`DELIVERABLES`,
+``,
+`1) The design card — your usual one-page style frame (theme name, palette`,
+`   swatches with hex, type hierarchy sample, style/icon samples, a hero mockup`,
+`   with real copy).`,
+``,
+`2) The SPEC, in EXACTLY this format so it drops straight into code:`,
+``,
+`THEME NAME: <short name>`,
+``,
+`COLORS`,
+`bg: #......         page ground`,
+`surface: #......    card / panel, a step off bg`,
+`ink: #......        body text`,
+`ink-soft: #......   secondary / muted text`,
+`line: rgba(...)     hairlines & borders`,
+`primary: #......    structural accent — eyebrows, links, kickers, focus ring`,
+`deep: #......       the one contrast band (email capture) — dark if the hub is`,
+`                    light, a touch off-bg if the hub is dark`,
+`deep-ink: #......   text on deep`,
+`accent: #......     the LOUD accent — used ONCE, on the primary CTA button only`,
+`(contrast must pass: accent vs white >= 4.5:1; ink & ink-soft on bg; deep-ink on deep)`,
+``,
+`TYPE  (all three must be Google Fonts)`,
+`display: "Family" | weights a,b | h1/h2/h3`,
+`body: "Family" | weights a,b,c | everything else`,
+`mono: "Family" | weights a,b | eyebrows, nav, ribbon, kickers, button text, dates`,
+``,
+`IDENTITY`,
+`wordmark: "..."`,
+`nav button label: "..."   (the one header text that varies per hub)`,
+``,
+`BRIEF  (one line each)`,
+`subject:`,
+`audience:`,
+`the page's one job:`,
+`layout concept:`,
+`signature element (the one memorable thing):`,
+`the one risk taken + why:`,
+`AI defaults deliberately avoided:`,
+  ].join('\n');
+}
+function openHubBriefModal(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  hubBriefSlug = slug;
+  document.getElementById('hubBriefTitle').textContent = 'Design brief — ' + h.name;
+  document.getElementById('hubBriefPrompt').value = buildHubBriefPrompt(h);
+  document.getElementById('hubBriefBuilt').checked = !!hubReadyState(slug).designbrief;
+  document.getElementById('hubBriefMsg').textContent = '';
+  document.getElementById('hubBriefCopyBtn').textContent = '📋 Copy prompt';
+  document.getElementById('hubBriefModal').classList.add('open');
+}
+function closeHubBriefModal() { document.getElementById('hubBriefModal').classList.remove('open'); }
+function copyHubBriefPrompt() {
+  const ta = document.getElementById('hubBriefPrompt');
+  const done = () => {
+    document.getElementById('hubBriefCopyBtn').textContent = '✓ Copied';
+    document.getElementById('hubBriefMsg').textContent = 'Prompt on the clipboard — paste it into a fresh ChatGPT chat (or your Visual Director project).';
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(ta.value).then(done).catch(() => { ta.select(); document.execCommand('copy'); done(); });
+  } else { ta.select(); document.execCommand('copy'); done(); }
+}
+function toggleHubBriefBuilt() {
+  if (!hubBriefSlug) return;
+  const want = document.getElementById('hubBriefBuilt').checked;
+  const cur = !!hubReadyState(hubBriefSlug).designbrief;
+  if (want !== cur) hubReadyToggle(hubBriefSlug, 'designbrief');
+}
 // Editable value fields (domain / contact / products / blogPosts): HUB_SITES
 // holds the seed, localStorage holds your edits.
 function hubMeta(h) {
@@ -9789,6 +9913,11 @@ function renderHubsTab() {
     const doneCrit = HUB_CHECKLIST.filter(c => c.crit && state[c.key]).length + ((meta.products || 0) > 0 ? 1 : 0);
     const cells  = HUB_CHECKLIST.map(c => {
       const on = !!state[c.key];
+      // Brief cell opens the design-brief modal (copy-prompt + built toggle) instead of a bare toggle.
+      if (c.key === 'designbrief') {
+        return `<td onclick="openHubBriefModal('${h.slug}')" title="Design brief — open the ChatGPT prompt / mark it built"
+          style="text-align:center;padding:6px 8px;cursor:pointer;user-select:none;font-size:13px;color:${on ? '#4cff4c' : 'var(--accent)'};">${on ? '✓' : '✎'}</td>`;
+      }
       return `<td onclick="hubReadyToggle('${h.slug}','${c.key}')" title="${esc(c.label)} — ${esc(c.hint)} · click to toggle"
         style="text-align:center;padding:6px 8px;cursor:pointer;user-select:none;font-size:13px;color:${on ? '#4cff4c' : 'var(--text3)'};">${on ? '✓' : '○'}</td>`;
     }).join('');
