@@ -10,6 +10,10 @@
 #   2. worker.js → add the domain (apex + www, https) to HUB_ORIGINS, deploy
 #   3. index.html → set `domain:` on the hub's HUB_SITES entry
 # See CLAUDE.md "Content Hubs" for the full checklist.
+#
+# cPanel docroot assigned: ai-implementation (aisystemimplementation.com),
+# creative-flow-guitar (creativeflowguitar.com). Pending: sunflower-acres,
+# care-gap (cPanel "Create Domain" returned "unknown error" — retry).
 web/sm-business-software-tools	public_html/webguyleadgeneration
 web/hub/ai-implementation	public_html/hub-ai-implementation
 web/hub/creative-flow-guitar	public_html/hub-creative-flow-guitar

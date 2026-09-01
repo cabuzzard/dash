@@ -370,10 +370,10 @@ per-host path rewriting needed.
 
 | Hub slug | Campaign | Domain | cPanel assigned? |
 |---|---|---|---|
-| `ai-implementation` | Sm business software tools | `aisystemimplementation.com` | pending |
-| `sunflower-acres` | Sunflower Acres | `accessiblefarms.com` | pending |
-| `creative-flow-guitar` | Creative Flow Guitar — Weekly Sessions | `creativeflowguitar.com` | pending |
-| `care-gap` | Fundraising Caregivers - Stable Home | `stablehomefoundation.com` | pending |
+| `ai-implementation` | Sm business software tools | `aisystemimplementation.com` | ✅ done (docroot `public_html/hub-ai-implementation`) |
+| `sunflower-acres` | Sunflower Acres | `accessiblefarms.com` | ⚠️ cPanel "unknown error" — retry Create Domain → `public_html/hub-sunflower-acres` |
+| `creative-flow-guitar` | Creative Flow Guitar — Weekly Sessions | `creativeflowguitar.com` | ✅ done (docroot repointed from `public_html/creativeflowguitar` → `public_html/hub-creative-flow-guitar`; old folder left in place) |
+| `care-gap` | Fundraising Caregivers - Stable Home | `stablehomefoundation.com` | ⚠️ cPanel "unknown error" — retry Create Domain → `public_html/hub-care-gap` |
 | `owners-rep` (Build Watcher) | Build Watcher | — | — |
 | `home-services` | Home Services | — | — |
 | `surf-vacations` | Surfing Vacations | — | — |
