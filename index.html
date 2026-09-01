@@ -4744,13 +4744,16 @@ function domToggle(bodyId, arrowId) {
 function initDomainsTab() {
   const today = new Date(); today.setHours(0,0,0,0);
   const domains = [
+    ['accessiblefarms.com','09/01/2027','Bluehost','Steven Richardson'],
     ['accessyourpassion.com','10/07/2026','Bluehost','Steven Richardson'],
+    ['aisystemimplementation.com','09/01/2027','Bluehost','Steven Richardson'],
+    ['aisystemimplementation.online','09/01/2027','Bluehost','Steven Richardson'],
     ['barefoothike.com','10/12/2026','GreenGeeks','Evan Raymond'],
     ['bayareaoriginalmusic.com','11/18/2026','Bluehost','Steven Richardson'],
     ['bestoutdoorsandals.com','12/10/2026','Bluehost','Steven Richardson'],
     ['bestrealestateliquidation.com','02/16/2027','Bluehost','Steven Richardson'],
-    ['blankslatebranding.site','09/06/2026','Bluehost','Steven Richardson'],
-    ['brandingminicourse.com','09/06/2026','Bluehost','Steven Richardson'],
+    ['blankslatebranding.site','09/06/2027','Bluehost','Steven Richardson'],
+    ['brandingminicourse.com','09/06/2027','Bluehost','Steven Richardson'],
     ['buildtosuitinvestment.com','10/31/2026','Bluehost','Steven Richardson'],
     ['buildtosuitinvestment.online','10/31/2026','Bluehost','Steven Richardson'],
     ['cabuzzard.com','10/06/2026','Bluehost','Steven Richardson'],
@@ -9604,17 +9607,17 @@ function toggleTodaySection() {
 // Repeats across hubs are fine. "＋ type another…" falls back to free text.
 const HUB_SITES = [
   { name: "Surf Vacations",  slug: "surf-vacations",  campaign: "Surfing Vacations", microsite: "diving-vacations",                        domain: null, contact: null, products: 0, blogPosts: 0,
-    domainOptions: ["outsidesessions.com", "barefoothike.com", "bestoutdoorsandals.com", "accessyourpassion.com"] },
-  { name: "Sunflower Acres", slug: "sunflower-acres", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff",                domain: null, contact: null, products: 0, blogPosts: 0,
-    domainOptions: ["modernactivehome.com", "accessyourpassion.com", "naturebasedcoach.com", "naturewellnesscoach.com", "outsidesessions.com", "foundationfuturesllc.com"] },
+    domainOptions: ["outsidesessions.com", "liketotallydude.com", "rad80schild.com", "barefoothike.com", "bestoutdoorsandals.com", "accessyourpassion.com"] },
+  { name: "Sunflower Acres", slug: "sunflower-acres", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff",                domain: "accessiblefarms.com", contact: null, products: 0, blogPosts: 0,
+    domainOptions: ["accessiblefarms.com", "modernactivehome.com", "sustainableaquarium.com", "homepondaquarium.com", "naturebasedcoach.com", "naturewellnesscoach.com"] },
   { name: "Build Watcher",   slug: "owners-rep",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting", domain: null, contact: null, products: 0, blogPosts: 0,
-    domainOptions: ["homestructionconsulting.com", "buildtosuitinvestment.com", "stablehomefoundation.com", "foundationfuturesllc.com", "modernactivehome.com", "generalservices2020.com", "roi-systems.com"] },
+    domainOptions: ["homestructionconsulting.com", "buildtosuitinvestment.com", "stablehomefoundation.com", "foundationfuturesllc.com", "generalservices2020.com", "roi-systems.com", "bestrealestateliquidation.com"] },
   { name: "Home Services",   slug: "home-services",   campaign: "Home Services",     microsite: "home-services",                           domain: null, contact: null, products: 0, blogPosts: 0,
-    domainOptions: ["generalservices2020.com", "generalservice2020.com", "modernactivehome.com", "homestructionconsulting.com", "stablehomefoundation.com"] },
+    domainOptions: ["generalservices2020.com", "generalservice2020.com", "modernactivehome.com", "homestructionconsulting.com", "stablehomefoundation.com", "webguyleadgeneration.com"] },
   { name: "Creative Flow Guitar", slug: "creative-flow-guitar", campaign: "Creative Flow Guitar — Weekly Sessions", microsite: "creative-flow-guitar", domain: "creativeflowguitar.com", contact: null, products: 0, blogPosts: 0,
     domainOptions: ["creativeflowguitar.com", "bayareaoriginalmusic.com", "outsidesessions.com", "rockrgear.com", "petrichorpodcast.com"] },
-  { name: "AI Implementation", slug: "ai-implementation", campaign: "Sm business software tools", microsite: "sm-business-software-tools", domain: null, contact: null, products: 0, blogPosts: 0,
-    domainOptions: ["roi-systems.com", "facttracking.com", "webguyleadgeneration.com", "generalservices2020.com"] },
+  { name: "AI Implementation", slug: "ai-implementation", campaign: "Sm business software tools", microsite: "sm-business-software-tools", domain: "aisystemimplementation.com", contact: null, products: 0, blogPosts: 0,
+    domainOptions: ["aisystemimplementation.com", "aisystemimplementation.online", "roi-systems.com", "facttracking.com", "webguyleadgeneration.com"] },
 ];
 
 // Yes/no checklist columns. `crit:true` = blocks the LIVE badge; the rest
@@ -9629,6 +9632,7 @@ const HUB_CHECKLIST = [
   { key: 'social',     label: 'Social',   crit: true,  hint: 'Social links resolve to real profiles — from the campaign Logins ("Profile Link" field) or the HUB.social fallback' },
   { key: 'seo',        label: 'SEO',      crit: true,  hint: 'Title, meta description, OG tags, robots=index' },
   { key: 'livesite',   label: 'Campaign', crit: true,  hint: 'Notion campaign "live site" property set to the hub URL' },
+  { key: 'domainlive', label: 'Domain',   crit: false, hint: 'Custom domain resolves to the hub: web/hub/{slug} in bluehost-sites.tsv, cPanel docroot assigned, domain added to worker HUB_ORIGINS' },
   { key: 'analytics',  label: 'Analytics',crit: false, hint: 'Traffic analytics installed and reporting' },
 ];
 

@@ -12,9 +12,27 @@ web/hub/
                                #   Research record (surf keywords + product ideas)
 ```
 
-Live URL: `https://cabuzzard.github.io/dash/web/hub/{slug}/`
-(GitHub Pages, live on push — no build step. Deploys to Bluehost only if the
-`web/hub/{slug}` path is added to `.github/bluehost-sites.tsv`.)
+Origin URL: `https://cabuzzard.github.io/dash/web/hub/{slug}/`
+(GitHub Pages, live on push — no build step.)
+
+**Every hub is also published to Bluehost** — `.github/bluehost-sites.tsv` maps
+`web/hub/{slug} → public_html/hub-{slug}`, rsynced on every push to `main` that
+touches `web/**`. The Bluehost copy is what a custom domain points at; the
+GitHub Pages copy stays as the always-on origin/staging URL.
+
+### Point a custom domain at a hub
+
+1. Own the domain (Bluehost Domains tab → it shows up in the dashboard Domains list).
+2. `.github/bluehost-sites.tsv` — confirm the `web/hub/{slug} → public_html/hub-{slug}`
+   line exists (all six current hubs are already listed).
+3. **cPanel** → Domains → assign the domain's document root to `public_html/hub-{slug}`.
+   (This is the one manual step — DNS/rsync can't do it.)
+4. `worker/worker.js` → add the domain, **apex + www, https**, to `HUB_ORIGINS`,
+   then deploy the worker. Without this the newsletter form and social links break
+   with a CORS error when the page is served from the custom domain.
+5. `index.html` → set `domain:` on the hub's `HUB_SITES` entry, and tick the
+   **Domain** checklist cell in the Content Hubs tab.
+6. Set the Campaign's **`live site`** property to the custom-domain URL.
 
 ## Make a new hub
 
@@ -50,9 +68,11 @@ apology.
 ## Newsletter
 
 The signup form posts to the existing public `submitLead` worker action
-(Turnstile-gated, CORS-allowed for `cabuzzard.github.io`) with
-`fraudType: "Other"` and `note: "Newsletter signup — {brand} hub"`. Signups land
-in the **Leads** DB tagged with `campaignTag`.
+(Turnstile-gated) with `fraudType: "Other"` and
+`note: "Newsletter signup — {brand} hub"`. Signups land in the **Leads** DB
+tagged with `campaignTag`. CORS: allowed for `cabuzzard.github.io` plus every
+origin in the worker's `HUB_ORIGINS` set — add a hub's custom domain there
+before serving the hub from it (see "Point a custom domain at a hub" above).
 
 **Upgrade path:** a dedicated `subscribeHub` worker action writing to a real
 subscriber list would be cleaner — see the `TODO` in the form handler. Not built

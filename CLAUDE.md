@@ -331,6 +331,56 @@ Live URL pattern: `https://cabuzzard.github.io/dash/web/{deploy-path}/`
 - `fraudType` value must be in the worker's `validFraudTypes` allowlist
 - Set the `"live site"` URL property on the Campaign record in Notion — this feeds the **LVE** column in the overview
 
+## Content Hubs
+
+Content-marketing home pages (blog / news / newsletter / social / product links)
+at `web/hub/{slug}/index.html` — one per campaign or product, all sharing the
+`web/hub/hub-template.html` layout. See `web/hub/README.md` for how to build one.
+
+**Publishing (as of 2026-09-01): every hub is dual-deployed.**
+- **GitHub Pages** — `https://cabuzzard.github.io/dash/web/hub/{slug}/`, live on
+  push, no build step. This is the always-on origin / staging URL.
+- **Bluehost** — `.github/bluehost-sites.tsv` maps `web/hub/{slug} →
+  public_html/hub-{slug}` (rsync over SSH, same job as the campaign sites, no
+  `--delete`). The Bluehost copy is what a **custom domain** points at.
+
+The hub pages are self-contained (relative/anchor links, Google Fonts, one
+absolute `WORKER_URL` fetch) so they serve correctly from a domain root — no
+per-host path rewriting needed.
+
+### Point a custom domain at a hub
+
+1. `.github/bluehost-sites.tsv` — the `web/hub/{slug}` line (all six current hubs
+   are listed).
+2. **cPanel → Domains → assign the domain's document root to
+   `public_html/hub-{slug}`.** The only manual step; DNS + rsync can't do it.
+3. `worker/worker.js` → add the domain **apex + www, `https://`** to the
+   `HUB_ORIGINS` set, then deploy the worker. The hub's JS calls the worker
+   (`getHubSocials` on load, `submitLead` on newsletter signup); served from a
+   domain not in `HUB_ORIGINS` those calls fail CORS silently. `CORS`'s
+   `Access-Control-Allow-Origin` is now set per-request via `resolveOrigin()`
+   (reflects the request Origin if allow-listed, else `cabuzzard.github.io`),
+   mutated in `fetch()` right after `NOTION_TOKEN` — same per-request-module-
+   mutable convention. `Vary: Origin` is set so caches don't cross-contaminate.
+4. `index.html` → set `domain:` on the hub's `HUB_SITES` entry; tick the
+   **Domain** checklist cell in the Content Hubs tab (`domainlive` key, non-crit).
+5. Campaign's `"live site"` property → the custom-domain URL.
+
+### Current hub → domain routing
+
+| Hub slug | Campaign | Domain | cPanel assigned? |
+|---|---|---|---|
+| `ai-implementation` | Sm business software tools | `aisystemimplementation.com` | pending |
+| `sunflower-acres` | Sunflower Acres | `accessiblefarms.com` | pending |
+| `creative-flow-guitar` | Creative Flow Guitar — Weekly Sessions | `creativeflowguitar.com` | pending |
+| `owners-rep` (Build Watcher) | Build Watcher | — | — |
+| `home-services` | Home Services | — | — |
+| `surf-vacations` | Surfing Vacations | — | — |
+
+`aisystemimplementation.online` (free with the `.com`) and `accessiblefarms.com`
++ the two `.com`s were registered 2026-09-01, all on the Bluehost account (owner
+contact `renewableartistry.com`, acct `54027470`), expiring 09/01/2027.
+
 ## Admin Microsites
 
 Admin-only pages at `microsites/{deploy-path}/index.html`.

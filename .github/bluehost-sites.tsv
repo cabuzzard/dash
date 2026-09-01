@@ -1,3 +1,19 @@
 # local_path	remote_path (relative to Bluehost home dir)
-# Add one line per live site under web/{campaign}/. Same Bluehost account/SSH key for all.
+# Add one line per live site under web/{campaign}/ or web/hub/{slug}/.
+# Same Bluehost account/SSH key for all. rsync has no --delete, so it only
+# adds/updates — it never removes files already on the server.
+#
+# Content hubs (web/hub/*) are ALSO served from GitHub Pages at
+# https://cabuzzard.github.io/dash/web/hub/{slug}/ — the Bluehost copy is what a
+# custom domain points at. After adding a hub here you must also:
+#   1. cPanel → assign the domain's document root to the remote_path below
+#   2. worker.js → add the domain (apex + www, https) to HUB_ORIGINS, deploy
+#   3. index.html → set `domain:` on the hub's HUB_SITES entry
+# See CLAUDE.md "Content Hubs" for the full checklist.
 web/sm-business-software-tools	public_html/webguyleadgeneration
+web/hub/ai-implementation	public_html/hub-ai-implementation
+web/hub/creative-flow-guitar	public_html/hub-creative-flow-guitar
+web/hub/owners-rep	public_html/hub-owners-rep
+web/hub/home-services	public_html/hub-home-services
+web/hub/sunflower-acres	public_html/hub-sunflower-acres
+web/hub/surf-vacations	public_html/hub-surf-vacations

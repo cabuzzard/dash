@@ -137,10 +137,35 @@ async function findBestProductResearchRecord(hdr, productId) {
   const filledCount = r => STRATEGY_FIELDS.reduce((n, f) => n + ((r.properties?.[f]?.rich_text || []).length ? 1 : 0), 0);
   return results.reduce((best, r) => filledCount(r) > filledCount(best) ? r : best, results[0]);
 }
+// The dashboard + microsites are served from cabuzzard.github.io. Content hubs
+// (web/hub/*) are additionally served from their own custom domains on Bluehost,
+// and their page JS calls this worker (getHubSocials on load, submitLead on
+// newsletter signup) — so those origins must pass CORS too. Keep this in sync
+// with the domains actually pointed at web/hub/* folders: .github/bluehost-sites.tsv
+// (folder mapping) and the Content Hubs tab HUB_SITES[].domain (the live domain).
+const DEFAULT_ORIGIN = "https://cabuzzard.github.io";
+const HUB_ORIGINS = new Set([
+  "https://aisystemimplementation.com",    "https://www.aisystemimplementation.com",
+  "https://aisystemimplementation.online", "https://www.aisystemimplementation.online",
+  "https://creativeflowguitar.com",        "https://www.creativeflowguitar.com",
+  "https://accessiblefarms.com",           "https://www.accessiblefarms.com",
+  "https://stablehomefoundation.com",      "https://www.stablehomefoundation.com",
+  "https://homestructionconsulting.com",   "https://www.homestructionconsulting.com",
+  "https://generalservices2020.com",       "https://www.generalservices2020.com",
+  "https://outsidesessions.com",           "https://www.outsidesessions.com",
+]);
+function resolveOrigin(request) {
+  const o = request.headers.get("Origin") || "";
+  return HUB_ORIGINS.has(o) ? o : DEFAULT_ORIGIN;
+}
+
+// Mutated per request in fetch() (same convention as NOTION_TOKEN below) so the
+// spread in json()/OPTIONS picks up the right Access-Control-Allow-Origin.
 const CORS = {
-  "Access-Control-Allow-Origin":  "https://cabuzzard.github.io",
+  "Access-Control-Allow-Origin":  DEFAULT_ORIGIN,
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
+  "Vary":                         "Origin",
   "X-Content-Type-Options":       "nosniff",
   "X-Frame-Options":              "DENY",
   "Referrer-Policy":              "strict-origin-when-cross-origin",
@@ -4179,6 +4204,7 @@ export default {
     // Load secrets from environment on every request (.trim() guards against
     // trailing newlines that piped input (e.g. PowerShell) can introduce)
     NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+    CORS["Access-Control-Allow-Origin"] = resolveOrigin(request);
     const PIN_VAL        = (env.PIN             || "").trim();
     const HMAC_SECRET    = (env.HMAC_SECRET     || "").trim();
     const TS_SECRET      = (env.TURNSTILE_SECRET|| "1x0000000000000000000000000000000AA").trim();
@@ -4196,7 +4222,8 @@ export default {
           headers: {
             "Content-Type": meta.metadata?.mime || "image/jpeg",
             "Cache-Control": "public, max-age=31536000",
-            "Access-Control-Allow-Origin": "https://cabuzzard.github.io",
+            "Access-Control-Allow-Origin": resolveOrigin(request),
+            "Vary": "Origin",
           },
         });
       }
