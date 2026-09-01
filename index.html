@@ -9651,6 +9651,7 @@ const HUB_SITES = [
 // are polish. (Products & Blog are shown as COUNT columns, not here.)
 const HUB_CHECKLIST = [
   { key: 'name',       label: 'Name',     crit: true,  hint: 'Brand name finalized (HUB.brand / --logo-text), not a placeholder or pending-trademark working name' },
+  { key: 'designbrief',label: 'Brief',    crit: false, hint: 'A written design brief exists for this hub — web/hub/{slug}/DESIGN.md: subject + audience + the page\'s one job, the resolved token system (palette hex, type pairing + roles, layout concept), the signature element, the one aesthetic risk taken, and the AI defaults deliberately avoided' },
   { key: 'logo',       label: 'Logo',     crit: true,  hint: 'Real logo file wired to HUB.logoImg + --logo-img (not "none")' },
   { key: 'hero',       label: 'Hero',     crit: true,  hint: 'Headline, sub, and both CTAs finalized' },
   { key: 'prodwired',  label: 'Offers',   crit: true,  hint: 'The chosen products link to real product / checkout URLs on the hub (no "#")' },
@@ -9671,7 +9672,7 @@ const HUB_READY_SEED = {
   'owners-rep':      { name: true, hero: true, seo: true, livesite: true },
   'home-services':   { name: true, hero: true, seo: true, livesite: true },
   'creative-flow-guitar': { name: true, hero: true, seo: true, social: true, livesite: true },
-  'ai-implementation':     { name: true, hero: true, seo: true },
+  'ai-implementation':     { name: true, hero: true, seo: true, designbrief: true },
   'care-gap':              { name: true, hero: true, seo: true },
 };
 

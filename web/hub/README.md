@@ -47,6 +47,11 @@ uses as the doc root once connected). Only `creative-flow-guitar` is in the tsv 
 A hub can be built from **a campaign Research record** or **a Product** — either
 one supplies the seed content.
 
+0. **Write `{slug}/DESIGN.md` first** — the design brief: subject + audience + the
+   page's one job, the resolved token system (palette hex, type pairing + roles,
+   layout concept), the signature element, the one aesthetic risk taken, and the
+   AI defaults deliberately avoided. See `web/hub/ai-implementation/DESIGN.md` for
+   the shape. Ticks the **Brief** column in the Content Hubs tab.
 1. `cp hub-template.html {slug}/index.html`
 2. **Design tokens** — edit the `:root` block at the top of `<style>` (marked
    `EDIT PER HUB`): `--bg / --surface / --ink / --line / --sea / --deep /
