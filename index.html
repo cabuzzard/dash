@@ -9606,14 +9606,15 @@ function toggleTodaySection() {
 // that plausibly fit this hub — shown as a dropdown in the Domain column.
 // Repeats across hubs are fine. "＋ type another…" falls back to free text.
 const HUB_SITES = [
-  { name: "Surf Vacations",  slug: "surf-vacations",  campaign: "Surfing Vacations", microsite: "diving-vacations",                        domain: null, contact: null, products: 0, blogPosts: 0,
+  { name: "Surf Vacations",  slug: "surf-vacations",  campaign: "Surfing Vacations", microsite: "diving-vacations",                        domain: "outsidesessions.com", contact: null, products: 0, blogPosts: 0,
     domainOptions: ["outsidesessions.com", "liketotallydude.com", "rad80schild.com", "barefoothike.com", "bestoutdoorsandals.com", "accessyourpassion.com"] },
   { name: "Sunflower Acres", slug: "sunflower-acres", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff",                domain: "accessiblefarms.com", contact: null, products: 0, blogPosts: 0,
     routing: "error", routingNote: "cPanel Create Domain → “An unknown error occurred” (2 attempts, 2026-09-01). Not a plan limit. Likely the domain’s nameservers aren’t pointed at the hosting box — check Bluehost → Domains → accessiblefarms.com → Nameservers, or ask Bluehost support to add the addon domain with docroot public_html/hub-sunflower-acres.",
     domainOptions: ["accessiblefarms.com", "modernactivehome.com", "sustainableaquarium.com", "homepondaquarium.com", "naturebasedcoach.com", "naturewellnesscoach.com"] },
-  { name: "Build Watcher",   slug: "owners-rep",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting", domain: null, contact: null, products: 0, blogPosts: 0,
+  { name: "Build Watcher",   slug: "owners-rep",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting", domain: "homestructionconsulting.com", contact: null, products: 0, blogPosts: 0,
     domainOptions: ["homestructionconsulting.com", "buildtosuitinvestment.com", "stablehomefoundation.com", "foundationfuturesllc.com", "generalservices2020.com", "roi-systems.com", "bestrealestateliquidation.com"] },
-  { name: "Home Services",   slug: "home-services",   campaign: "Home Services",     microsite: "home-services",                           domain: null, contact: null, products: 0, blogPosts: 0,
+  { name: "Home Services",   slug: "home-services",   campaign: "Home Services",     microsite: "home-services",                           domain: "homestructionconsulting.com", contact: null, products: 0, blogPosts: 0,
+    routing: "error", routingNote: "Domain collision: homestructionconsulting.com is also picked for Build Watcher, and one domain can only point at one hub folder. Pick a different domain for one of them (Home Services → generalservices2020.com fits) before routing.",
     domainOptions: ["generalservices2020.com", "generalservice2020.com", "modernactivehome.com", "homestructionconsulting.com", "stablehomefoundation.com", "webguyleadgeneration.com"] },
   { name: "Creative Flow Guitar", slug: "creative-flow-guitar", campaign: "Creative Flow Guitar — Weekly Sessions", microsite: "creative-flow-guitar", domain: "creativeflowguitar.com", contact: null, products: 0, blogPosts: 0,
     routing: "ok", routingNote: "cPanel document root repointed public_html/creativeflowguitar → public_html/hub-creative-flow-guitar (2026-09-01, old folder left in place). Serving the hub over https.",
