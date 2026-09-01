@@ -340,9 +340,13 @@ at `web/hub/{slug}/index.html` — one per campaign or product, all sharing the
 **Publishing (as of 2026-09-01): every hub is dual-deployed.**
 - **GitHub Pages** — `https://cabuzzard.github.io/dash/web/hub/{slug}/`, live on
   push, no build step. This is the always-on origin / staging URL.
-- **Bluehost** — `.github/bluehost-sites.tsv` maps `web/hub/{slug} →
-  public_html/hub-{slug}` (rsync over SSH, same job as the campaign sites, no
-  `--delete`). The Bluehost copy is what a **custom domain** points at.
+- **Bluehost** — `.github/bluehost-sites.tsv` maps `web/hub/{slug}` straight to
+  the domain's own folder, `/home3/evraymon/<domain>/` (remote_path is just the
+  domain name). rsync over SSH, no `--delete`. This is the folder Bluehost
+  auto-creates for a domain at registration **and** uses as the doc root once the
+  domain is connected to the hosting plan — so we deploy into it directly instead
+  of a hand-made `public_html/hub-*` dir (which the SSH user also can't create
+  under `public_html` anyway — home-dir folders it can).
 
 The hub pages are self-contained (relative/anchor links, Google Fonts, one
 absolute `WORKER_URL` fetch) so they serve correctly from a domain root — no
@@ -350,10 +354,15 @@ per-host path rewriting needed.
 
 ### Point a custom domain at a hub
 
-1. `.github/bluehost-sites.tsv` — the `web/hub/{slug}` line (all six current hubs
-   are listed).
-2. **cPanel → Domains → assign the domain's document root to
-   `public_html/hub-{slug}`.** The only manual step; DNS + rsync can't do it.
+1. `.github/bluehost-sites.tsv` — `web/hub/{slug}` → `<domain>` (all current hubs
+   listed). The deploy populates `/home3/evraymon/<domain>/` on the next push.
+2. **Bluehost account → Domains → `<domain>` → Overview → "Connections" →
+   connect it to the hosting plan** (or Bluehost support). Newly-registered
+   domains sit "registered but not connected" — they serve a parked page and
+   cPanel "Create A New Domain" errors on them. Connecting sets the doc root to
+   the same `/home3/evraymon/<domain>/` folder the deploy already filled, and
+   provisions SSL. (`aisystemimplementation.com` + `creativeflowguitar.com` were
+   connected via cPanel doc-root edits before this was understood — they work.)
 3. `worker/worker.js` → add the domain **apex + www, `https://`** to the
    `HUB_ORIGINS` set, then deploy the worker. The hub's JS calls the worker
    (`getHubSocials` on load, `submitLead` on newsletter signup); served from a
@@ -368,32 +377,35 @@ per-host path rewriting needed.
 
 ### Current hub → domain routing
 
+Deploy target for every hub is now `/home3/evraymon/<domain>/`.
+
 | Hub slug | Campaign | Domain | Routing |
 |---|---|---|---|
-| `ai-implementation` | Sm business software tools | `aisystemimplementation.com` | ✅ routed — cPanel addon domain, docroot `public_html/hub-ai-implementation` |
-| `creative-flow-guitar` | Creative Flow Guitar — Weekly Sessions | `creativeflowguitar.com` | ✅ routed — docroot repointed `public_html/creativeflowguitar` → `public_html/hub-creative-flow-guitar` (old folder kept) |
-| `sunflower-acres` | Sunflower Acres | `accessiblefarms.com` | ⚠️ blocked — see below |
-| `care-gap` | Fundraising Caregivers - Stable Home | `stablehomefoundation.com` | ⚠️ blocked — see below |
-| `owners-rep` (Build Watcher) | Build Watcher | `homestructionconsulting.com` | ⚠️ blocked — see below (also collides with home-services) |
-| `home-services` | Home Services | `homestructionconsulting.com` | ⚠️ pick a different domain (collides with owners-rep) |
-| `surf-vacations` | Surfing Vacations | `outsidesessions.com` | ⚠️ blocked — see below |
+| `ai-implementation` | Sm business software tools | `aisystemimplementation.com` | ✅ connected & serving (doc root moved to `~/aisystemimplementation.com`) |
+| `creative-flow-guitar` | Creative Flow Guitar — Weekly Sessions | `creativeflowguitar.com` | ✅ connected & serving (doc root moved to `~/creativeflowguitar.com`; old WP install stays at `public_html/creativeflowguitar`) |
+| `sunflower-acres` | Sunflower Acres | `accessiblefarms.com` | ⚠️ needs the connect step — see below |
+| `care-gap` | Fundraising Caregivers - Stable Home | `stablehomefoundation.com` | ⚠️ needs the connect step — see below |
+| `owners-rep` (Build Watcher) | Build Watcher | `homestructionconsulting.com` | ⚠️ needs the connect step; also collides with home-services |
+| `home-services` | Home Services | *(none — pick one, collides with owners-rep)* | ⚠️ no domain / not in the tsv yet |
+| `surf-vacations` | Surfing Vacations | `outsidesessions.com` | ⚠️ needs the connect step — see below |
 
 The domains were chosen via the Content Hubs tab's Domain dropdown (which only
 saves to browser localStorage) and are now persisted in `HUB_SITES`. The dash
 tab has a **Routing** column next to Domain showing this status (`hubRoutingCell`,
 `HUB_SITES[].routing` / `.routingNote`).
 
-**Why 4 of 5 are blocked (diagnosed 2026-09-01):** Bluehost auto-creates an empty
-`/home3/evraymon/<domain>/` folder for every registered domain (confirmed: all
-five exist), but the domain stays **registered-but-not-connected** — it serves a
-parked ad page even though its nameservers are `NS1/NS2.BLUEHOST.COM`. cPanel
-"Create A New Domain" then fails with a bare "An unknown error occurred" on that
-half-provisioned state. `aisystemimplementation.com` only worked because the
-addon was created before Bluehost parked it. **Fix per domain:** Bluehost account
-→ Domains → `<domain>` → connect it to the hosting plan (Overview tab's
-"Connections" / assign-to-hosting), or ask Bluehost support; then set the doc
-root to `public_html/hub-<slug>`. Once an Apache vhost exists for the domain, the
-`deploy-bluehost.yml` job syncs the hub on the next push automatically.
+**Why the 4 need a connect step (diagnosed 2026-09-01):** Bluehost auto-creates
+an empty `/home3/evraymon/<domain>/` folder for every registered domain
+(confirmed: all five exist), but a newly-registered domain stays
+**registered-but-not-connected** — it serves a parked ad page even though its
+nameservers are `NS1/NS2.BLUEHOST.COM`. cPanel "Create A New Domain" fails with a
+bare "An unknown error occurred" on that half-provisioned state.
+`aisystemimplementation.com` only worked because the addon was created before
+Bluehost parked it. **Fix per domain:** Bluehost account → Domains → `<domain>` →
+Overview → "Connections" → connect it to the hosting plan (or Bluehost support).
+That sets the doc root to `/home3/evraymon/<domain>/` — the same folder the
+`deploy-bluehost.yml` job already fills on every push — and provisions SSL, so
+the hub is live immediately with no further steps.
 
 `aisystemimplementation.com` + `.online` (free) and `accessiblefarms.com` were
 registered 2026-09-01; `stablehomefoundation.com`, `outsidesessions.com`,

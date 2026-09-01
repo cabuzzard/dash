@@ -1,24 +1,28 @@
-# local_path	remote_path (relative to Bluehost home dir)
-# Add one line per live site under web/{campaign}/ or web/hub/{slug}/.
-# Same Bluehost account/SSH key for all. rsync has no --delete, so it only
-# adds/updates — it never removes files already on the server.
+# local_path	remote_path (relative to the Bluehost SSH home dir, /home3/evraymon)
+# One line per live site under web/{campaign}/ or web/hub/{slug}/.
+# Same Bluehost account/SSH key for all. rsync has no --delete — it only
+# adds/updates, never removes files already on the server.
 #
-# Content hubs (web/hub/*) are ALSO served from GitHub Pages at
-# https://cabuzzard.github.io/dash/web/hub/{slug}/ — the Bluehost copy is what a
-# custom domain points at. After adding a hub here you must also:
-#   1. cPanel → assign the domain's document root to the remote_path below
-#   2. worker.js → add the domain (apex + www, https) to HUB_ORIGINS, deploy
-#   3. index.html → set `domain:` on the hub's HUB_SITES entry
-# See CLAUDE.md "Content Hubs" for the full checklist.
+# CONTENT HUBS: deploy straight into the folder Bluehost auto-creates for the
+# domain at registration — /home3/evraymon/<domain>/ — NOT a hand-made
+# public_html/hub-* dir. So the remote_path for a hub is just its domain name.
+# Then the only manual step is a one-time "connect this domain to the hosting
+# plan" in the Bluehost account (Domains → <domain> → Overview → Connections);
+# Bluehost uses that same folder as the doc root, so the hub is already in place.
+# Hubs are also always served from GitHub Pages at
+# https://cabuzzard.github.io/dash/web/hub/{slug}/ (the origin/staging URL).
+# Still required per hub: worker.js HUB_ORIGINS (apex + www) and index.html
+# HUB_SITES[].domain. See CLAUDE.md "Content Hubs".
 #
-# cPanel docroot assigned: ai-implementation (aisystemimplementation.com),
-# creative-flow-guitar (creativeflowguitar.com). Pending: sunflower-acres,
-# care-gap (cPanel "Create Domain" returned "unknown error" — retry).
+# Routing status (2026-09-01): ai-implementation + creative-flow-guitar are
+# connected and serving; the other four domains are registered but not yet
+# connected to hosting (serve a parked page) — deploy still populates their
+# folders now, ready for the connect step. home-services has no domain yet
+# (its pick collided with owners-rep).
 web/sm-business-software-tools	public_html/webguyleadgeneration
-web/hub/ai-implementation	public_html/hub-ai-implementation
-web/hub/creative-flow-guitar	public_html/hub-creative-flow-guitar
-web/hub/owners-rep	public_html/hub-owners-rep
-web/hub/home-services	public_html/hub-home-services
-web/hub/sunflower-acres	public_html/hub-sunflower-acres
-web/hub/surf-vacations	public_html/hub-surf-vacations
-web/hub/care-gap	public_html/hub-care-gap
+web/hub/ai-implementation	aisystemimplementation.com
+web/hub/creative-flow-guitar	creativeflowguitar.com
+web/hub/owners-rep	homestructionconsulting.com
+web/hub/sunflower-acres	accessiblefarms.com
+web/hub/surf-vacations	outsidesessions.com
+web/hub/care-gap	stablehomefoundation.com
