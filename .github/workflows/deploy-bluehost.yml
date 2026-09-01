@@ -23,11 +23,22 @@ jobs:
 
       - name: Deploy each mapped site
         run: |
-          set -e
-          while IFS=$'\t' read -r local remote; do
+          SSH='ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o BatchMode=yes'
+          failed=""
+          while IFS=$'\t' read -r local remote || [ -n "$local" ]; do
+            local="${local%$'\r'}"; remote="${remote%$'\r'}"
             [ -z "$local" ] && continue
             case "$local" in \#*) continue ;; esac
+            [ -d "$local" ] || { echo "skip: $local (no such dir)"; continue; }
             echo "Deploying $local -> $remote"
-            rsync -avz -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o BatchMode=yes" \
-              "$local/" "${{ secrets.BLUEHOST_USER }}@${{ secrets.BLUEHOST_HOST }}:$remote/"
+            # --rsync-path mkdir -p: the remote dir may not exist yet (a hub folder
+            # before its addon domain is set up in cPanel). Create it, then sync.
+            if rsync -avz --rsync-path="mkdir -p '$remote' && rsync" -e "$SSH" \
+                 "$local/" "${{ secrets.BLUEHOST_USER }}@${{ secrets.BLUEHOST_HOST }}:$remote/"; then
+              echo "  ok"
+            else
+              echo "  FAILED: $local -> $remote"
+              failed="$failed $local"
+            fi
           done < .github/bluehost-sites.tsv
+          if [ -n "$failed" ]; then echo "Failed mappings:$failed"; exit 1; fi
