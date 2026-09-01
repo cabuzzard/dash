@@ -1531,6 +1531,57 @@ const researchGuidelinesBlock = g => {
   return `OPERATOR RESEARCH GUIDELINES (standing routing recommendations from the user — apply them when choosing sources, angles, framing, and routing; where they conflict with the default approach below, the guidelines win):\n${t.slice(0, 1500)}\n\n`;
 };
 
+// ── Viral hook library ──
+// A global, curated set of proven short-form (Instagram/Reels/TikTok-style)
+// hook patterns for the Viral Generator — the ⚡ modal on a Strategy Slot.
+// Each `template` carries {…} slots the AI fills from the product + slot
+// context. Grouped by the kind of scroll-stop they create. Edit here; a
+// Notion-DB version can replace this later if the operator wants to curate
+// hooks in the workspace. Served by getViralHooks (global) alongside any
+// campaign-tailored lines in the Research record's "Hooks" field.
+const VIRAL_HOOKS = [
+  { id: "cg1", category: "Curiosity gap", template: "Nobody tells you what actually happens when {situation}." },
+  { id: "cg2", category: "Curiosity gap", template: "Here's the part of {topic} they leave out." },
+  { id: "cg3", category: "Curiosity gap", template: "I wish someone had told me this before {decision}." },
+  { id: "cg4", category: "Curiosity gap", template: "The real reason {recurring bad outcome} keeps happening." },
+  { id: "cg5", category: "Curiosity gap", template: "There's a reason {frustrating pattern} — and it's not what you think." },
+  { id: "co1", category: "Contrarian", template: "Everything you've been told about {topic} is backwards." },
+  { id: "co2", category: "Contrarian", template: "Stop {common advice}. Do this instead." },
+  { id: "co3", category: "Contrarian", template: "{Popular approach} is quietly costing you {hidden cost}." },
+  { id: "co4", category: "Contrarian", template: "Unpopular opinion: {contrarian claim}." },
+  { id: "co5", category: "Contrarian", template: "The advice everyone gives about {topic} only works if {unstated condition}." },
+  { id: "ca1", category: "Callout", template: "If you've ever {specific painful moment}, this is for you." },
+  { id: "ca2", category: "Callout", template: "You're not {negative label}. You just {kinder reframe}." },
+  { id: "ca3", category: "Callout", template: "This is your sign to stop {self-defeating behavior}." },
+  { id: "ca4", category: "Callout", template: "POV: you {relatable situation} and you're done pretending it's fine." },
+  { id: "ca5", category: "Callout", template: "To the {audience} who {quiet struggle}: read this." },
+  { id: "rp1", category: "Result / proof", template: "{Result} in {timeframe} — here's exactly how." },
+  { id: "rp2", category: "Result / proof", template: "{Number} {clients/people} later, here's what actually moves the needle." },
+  { id: "rp3", category: "Result / proof", template: "One change took {metric} from {before} to {after}." },
+  { id: "rp4", category: "Result / proof", template: "I've watched {number} {people} try this. The ones who won all did {one thing}." },
+  { id: "wa1", category: "Warning", template: "Don't {action} until you've {overlooked step}." },
+  { id: "wa2", category: "Warning", template: "{Number} signs {bad thing} is already happening — and what to do about each." },
+  { id: "wa3", category: "Warning", template: "If your {thing} does this, stop and fix it now." },
+  { id: "wa4", category: "Warning", template: "The {mistake} that looks harmless until {consequence}." },
+  { id: "cf1", category: "Confession / story", template: "I almost {bad outcome}. Here's what saved it." },
+  { id: "cf2", category: "Confession / story", template: "The mistake that cost me {cost} — so you never make it." },
+  { id: "cf3", category: "Confession / story", template: "A year ago I {low point}. Here's the shift that changed it." },
+  { id: "cf4", category: "Confession / story", template: "I used to think {old belief}. Then {turning point}." },
+  { id: "ba1", category: "Before / after", template: "From {before state} to {after state} — the actual steps." },
+  { id: "ba2", category: "Before / after", template: "What {situation} looks like once you finally {solution}." },
+  { id: "li1", category: "Listicle", template: "{Number} things I'd do differently if I started {process} over." },
+  { id: "li2", category: "Listicle", template: "{Number} things nobody warns you about {experience}." },
+  { id: "li3", category: "Listicle", template: "{Number} questions to ask before you {commitment}." },
+  { id: "qu1", category: "Question", template: "What if the reason for {problem} isn't {assumed cause}?" },
+  { id: "qu2", category: "Question", template: "Why does {frustration} always hit right when {moment}?" },
+  { id: "ut1", category: "Us vs. them", template: "{Expert group} won't say this out loud: {claim}." },
+  { id: "ut2", category: "Us vs. them", template: "The difference between people who {succeed} and people who {stay stuck} is one thing." },
+  { id: "mi1", category: "Reframe the blame", template: "You're doing {task} right. The {other party / system} is the problem." },
+  { id: "mi2", category: "Reframe the blame", template: "It's not that you {tried and failed}. It's that {real reason} nobody named." },
+  { id: "tf1", category: "Timeframe / challenge", template: "I tried {approach} for {duration}. Here's what happened." },
+  { id: "tf2", category: "Timeframe / challenge", template: "Give me {short time} and I'll change how you think about {topic}." },
+];
+
 // Best-effort real-time topic research via xAI's Grok API (grok-4.6,
 // api.x.ai — OpenAI-compatible chat completions), used to ground X/Twitter
 // title generation in what's ACTUALLY trending right now, which Claude has
@@ -11629,6 +11680,238 @@ Return ONLY this JSON object, no other text, no markdown fences:
           pillarWarning = `Title saved, but pillar content failed to write: ${pillarResult.error}`;
         } else if (pillarResult?.skipped) {
           pillarWarning = `Title saved, but pillar content was skipped: ${pillarResult.reason || 'no grounding available yet'}`;
+        } else {
+          newStatus = "Development";
+          await fetch(`https://api.notion.com/v1/pages/${dash(newTitleId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Status": { select: { name: "Development" } } } }),
+          }).catch(() => { pillarWarning = "Title and pillar saved, but promoting to Development failed — check its Status manually."; newStatus = "Planning"; });
+        }
+
+        return json({ success: true, id: newTitleId, title: titleText, status: newStatus, pillarWarning });
+      }
+
+      // ── getViralHooks ──
+      // The Hook dropdown in the Viral Generator (⚡ on a Strategy Slot).
+      // Returns the global VIRAL_HOOKS library, plus — if campaignId is
+      // given and the campaign's Research record has a "Hooks" text field —
+      // that campaign's own tailored lines first, tagged "This campaign".
+      if (body.action === "getViralHooks") {
+        const out = [];
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (cid.length === 32) {
+          try {
+            const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+            const rr = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+              body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(cid) } } }),
+            }).then(r => r.json()).catch(() => ({ results: [] }));
+            const hooksText = ((rr.results || [])[0]?.properties?.Hooks?.rich_text || []).map(t => t.plain_text).join("\n");
+            hooksText.split("\n").map(l => l.replace(/^[-*\d.)\s]+/, "").trim()).filter(Boolean)
+              .forEach((l, i) => out.push({ id: `camp${i}`, category: "This campaign", template: l }));
+          } catch (e) { /* campaign hooks are optional — fall through to global */ }
+        }
+        return json({ hooks: [...out, ...VIRAL_HOOKS] });
+      }
+
+      // ── getViralArcOptions ──
+      // The Obstacle / Turn / Payoff dropdowns in the Viral Generator. One
+      // Claude call reads the slot's product (+ its Product Research) and
+      // returns 6 short options for each — the frustration (obstacle), the
+      // reframe/mechanism (turn), and the emotional after-state (payoff).
+      if (body.action === "getViralArcOptions") {
+        const { productId, campaignId } = body;
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        if (!productId) return json({ error: "This slot has no product — pick a hook and write the arc from guidance instead." }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const pid = dash(productId);
+        const [prodPage, rec] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${pid}`, { headers: hdr }).then(r => r.json()).catch(() => null),
+          findBestProductResearchRecord(hdr, pid).catch(() => null),
+        ]);
+        const pp = prodPage?.properties || {};
+        const ptxt = k => (pp[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "the product";
+        let ctx = `PRODUCT: ${productName}\nDescription: ${ptxt("Description") || "(none)"}\nUnique Angle: ${ptxt("Unique Angle") || "(none)"}\nTransformation: ${ptxt("Transformation") || "(none)"}`;
+        if (rec) {
+          const s = rec.properties || {};
+          const srt = k => (s[k]?.rich_text || []).map(t => t.plain_text).join("");
+          const lines = ["Customer","Niche","Pain Points","Emotions","Solution","Benefits","Unique Opportunity","Transformation","Proof Points","Objections"]
+            .map(f => srt(f) && `${f}: ${srt(f)}`).filter(Boolean);
+          if (lines.length) ctx += `\n\nPRODUCT RESEARCH:\n${lines.join("\n")}`;
+        }
+        if (!rec && !ptxt("Description")) return json({ error: `"${productName}" has no research to build a story arc from — run Product Research on it first.` }, 400);
+
+        const prompt = `From the product context below, produce raw material for a short-form (Instagram/Reels-style) viral story arc.
+
+${ctx}
+
+Return ONLY this JSON object, no markdown fences:
+{
+  "obstacles": ["6 short, specific phrasings of the frustration or thing standing in this customer's way — the villain of the story, drawn from Pain Points / Objections"],
+  "turns": ["6 short phrasings of the insight, reframe, or mechanism that changes everything — the 'oh, I never saw it that way' beat that earns a share, drawn from Solution / Unique Opportunity / Unique Angle"],
+  "payoffs": ["6 short phrasings of the emotional after-state this product delivers — how it feels once the obstacle is gone, drawn from Benefits / Emotions / Transformation"]
+}
+Every entry: ONE line, concrete, second-person or neutral, no product name, written so it could be the spine of a post.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1400, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf("{"), end = raw.lastIndexOf("}");
+          const parsed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          const clean = a => Array.isArray(a) ? a.map(x => String(x || "").trim()).filter(Boolean).slice(0, 8) : [];
+          return json({ obstacles: clean(parsed.obstacles), turns: clean(parsed.turns), payoffs: clean(parsed.payoffs) });
+        } catch (e) {
+          return json({ error: "Failed to parse arc options: " + e.message }, 500);
+        }
+      }
+
+      // ── generateViralPillar ──
+      // The Viral Generator's Generate button. Same slot-reading + carry-
+      // everything-onto-the-title behaviour as generateTitleFromSlot, but
+      // the pillar is written as a short-form VIRAL STORY ARC — hook,
+      // audience callout, obstacle, stakes, the turn, payoff, proof, loop —
+      // from the operator's picked hook / obstacle / turn / payoff. Method-
+      // agnostic: the arc becomes carousels / short posts later at Generate
+      // Assets. Happens BEFORE method in the flow, on purpose.
+      if (body.action === "generateViralPillar") {
+        const { slotId, hook, obstacle, turn, payoff, guidance } = body;
+        if (!slotId) return json({ error: "slotId required" }, 400);
+        if (!hook || !String(hook).trim()) return json({ error: "hook required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const slotPage = await fetch(`https://api.notion.com/v1/pages/${dash(slotId)}`, { headers: hdr }).then(r => r.json());
+        if (!slotPage.properties) return json({ error: slotPage.message || "Strategy Slot not found" }, 404);
+        const sp = slotPage.properties;
+        const slotName = (sp.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Slot";
+        const grouping = (sp.Grouping?.rich_text || []).map(t => t.plain_text).join("");
+        const angle = (sp.Angle?.rich_text || []).map(t => t.plain_text).join("");
+        const platform = (sp.Platform?.rich_text || []).map(t => t.plain_text).join("");
+        const slotType = (sp.Type?.rich_text || []).map(t => t.plain_text).join("");
+        const slotSequence = (typeof sp.Sequence?.number === "number") ? sp.Sequence.number : null;
+        const growthStrategyId = (sp["Growth Strategy"]?.relation || [])[0]?.id || null;
+        const productId = (sp.Product?.relation || [])[0]?.id || null;
+        const campaignId = (sp.Campaign?.relation || [])[0]?.id || null;
+        const existingTitleIds = (sp.Title?.relation || []).map(r => r.id.replace(/-/g, ""));
+
+        const [growthStrategyBody, productPage] = await Promise.all([
+          growthStrategyId ? extractBlocksTextRecursive(hdr, growthStrategyId).catch(() => "") : Promise.resolve(""),
+          productId ? fetch(`https://api.notion.com/v1/pages/${productId}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+        ]);
+        let productSection = "No product linked to this slot.";
+        let nicheText = "", customerText = "";
+        if (productId && productPage?.properties) {
+          const stratRecord = await findBestProductResearchRecord(hdr, productId).catch(() => null);
+          const pp = productPage.properties;
+          const ptxt = key => (pp[key]?.rich_text || []).map(x => x.plain_text).join("") || "";
+          const productName = (pp.Name?.title || []).map(x => x.plain_text).join("") || "Unknown Product";
+          productSection = `PRODUCT: ${productName}\nAvatar: ${ptxt("Avatar")}\nTransformation: ${ptxt("Transformation")}\nUnique Angle: ${ptxt("Unique Angle")}`;
+          if (stratRecord) {
+            const spx = stratRecord.properties || {};
+            const srt = key => (spx[key]?.rich_text || []).map(t => t.plain_text).join("");
+            nicheText = srt("Niche"); customerText = srt("Customer");
+            const lines = ["Customer","Pain Points","Solution","Benefits","Emotions","Niche","Unique Opportunity","Transformation","Proof Points","Objections"]
+              .map(f => srt(f) && `${f}: ${srt(f)}`).filter(Boolean);
+            if (lines.length) productSection += `\n\nPRODUCT STRATEGY (worked-out positioning doc):\n${lines.join("\n")}`;
+          }
+        }
+
+        const arcSpec = [
+          `HOOK PATTERN: ${hook}`,
+          obstacle ? `OBSTACLE (the villain): ${obstacle}` : "",
+          turn ? `THE TURN (the reframe that earns the share): ${turn}` : "",
+          payoff ? `PAYOFF (the emotional after-state): ${payoff}` : "",
+        ].filter(Boolean).join("\n");
+
+        // 1. Title — short, scroll-stopping, built from the hook pattern.
+        const titlePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}Write ONE short, scroll-stopping title for a short-form (Instagram/Reels-style) viral post. It is the spine of the post, not an article headline. No script or body — only the title.
+
+${arcSpec}
+${angle ? `PLANNED ANGLE: ${angle}\n` : ""}${slotSequence != null ? `This is #${slotSequence} in an arc.\n` : ""}${platform ? `PLATFORM: ${platform}\n` : ""}
+${productSection}
+${(guidance || "").trim() ? `OPERATOR GUIDANCE (wins over the rest): ${guidance.trim()}\n` : ""}
+Fill the hook pattern's {…} slots with specifics from the context above. Keep it under ~95 characters. Return ONLY this JSON: { "title": "..." }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 400, messages: [{ role: "user", content: titlePrompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let titleText;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf("{"), end = raw.lastIndexOf("}");
+          titleText = String(JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1))).title || "").trim();
+        } catch (e) { titleText = ""; }
+        titleText = (titleText || angle || slotName || "Untitled").slice(0, 2000);
+
+        // 2. Create the title (Planning → Development after the pillar writes).
+        const props = {
+          Title:  { title: [{ type: "text", text: { content: titleText } }] },
+          Status: { select: { name: "Planning" } },
+          Format: { select: { name: "Short Form" } },
+          Cohort: { select: { name: "Pillar" } },
+        };
+        if (grouping) props["Grouping"] = { rich_text: [{ type: "text", text: { content: grouping.slice(0, 1990) } }] };
+        if (slotType) props["Type"] = { rich_text: [{ type: "text", text: { content: slotType.slice(0, 1990) } }] };
+        if (slotSequence != null) props["Sequence Order"] = { number: slotSequence };
+        props["Strategy Slot"] = { relation: [{ id: dash(slotId) }] };
+        if (campaignId) props["Campaign"] = { relation: [{ id: campaignId }] };
+        if (productId) props["product"] = { relation: [{ id: productId }] };
+        if (growthStrategyId) props["Growth Strategy"] = { relation: [{ id: growthStrategyId }] };
+
+        const createResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props }),
+        });
+        const created = await createResp.json();
+        if (!createResp.ok || !created.id) return json({ error: created.message || "Failed to create title" }, createResp.status || 500);
+        const newTitleId = created.id.replace(/-/g, "");
+
+        // 3. Mark the slot Filled + append this title (never replace).
+        const mergedIds = Array.from(new Set([...existingTitleIds, newTitleId]));
+        await fetch(`https://api.notion.com/v1/pages/${dash(slotId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Status": { select: { name: "Filled" } }, "Title": { relation: mergedIds.map(id => ({ id: dash(id) })) } } }),
+        }).catch(() => {});
+
+        // 4. Pillar content, written as the viral story arc.
+        const arcBlock = `Write this pillar as a SHORT-FORM VIRAL STORY ARC (Instagram / Reels style — NOT a long-form essay). First a labeled skeleton, then the actual post copy. It is method-agnostic raw material a carousel or a short post gets cut from later — do not format it as slides, a thread, or a script yet.
+
+VIRAL STORY ARC:
+- HOOK: ${hook}
+   Open with a filled-in, specific version of this pattern. The first line has to stop the scroll on its own.
+- AUDIENCE CALLOUT: name the exact person this is for so they feel seen${customerText || nicheText ? ` (they are: ${[customerText, nicheText].filter(Boolean).join(" / ")})` : ""}.
+${obstacle ? `- OBSTACLE: ${obstacle}\n   Make it vivid and specific — the villain, the thing in their way right now.\n` : "- OBSTACLE: the sharpest frustration from the product context — the villain of the story.\n"}- STAKES: what it costs them to leave that obstacle unsolved (the darker read of the pain).
+${turn ? `- THE TURN: ${turn}\n   This is the beat that earns the share — the reframe/insight/mechanism, the "I never saw it that way".\n` : "- THE TURN: the reframe from the product's Unique Angle / Unique Opportunity — the share-worthy insight.\n"}${payoff ? `- PAYOFF: ${payoff}\n   Show the emotional after-state, don't just assert it.\n` : "- PAYOFF: the emotional after-state from Benefits / Emotions / Transformation — shown, not stated.\n"}- PROOF: one concrete receipt if the research has one (a number, a result). Skip the line entirely if there's none — never invent one.
+- LOOP / CTA: a closing line that invites a save, a comment, or a share, matched to the payoff.
+
+Then write the post copy: 3–6 short paragraphs / lines in that order — plain, punchy, second person, no corporate voice.
+${slotSequence != null ? `\nThis is #${slotSequence} in the grouping's arc — it should read as that step, not a standalone.` : ""}
+${growthStrategyBody ? `\nFULL GROWTH STRATEGY CONTEXT (stay consistent with its rationale/platform):\n${growthStrategyBody}` : ""}`;
+
+        let newStatus = "Planning", pillarWarning;
+        const pillarResult = await writePillarContent(hdr, env, {
+          titleId: newTitleId, titleText, campaignId, productId,
+          guidance: guidance || undefined,
+          extraContext: arcBlock,
+        }).catch(e => ({ error: e.message }));
+        if (pillarResult?.error) {
+          pillarWarning = `Title saved, but the viral pillar failed to write: ${pillarResult.error}`;
+        } else if (pillarResult?.skipped) {
+          pillarWarning = `Title saved, but the pillar was skipped: ${pillarResult.reason || "no grounding available yet"}`;
         } else {
           newStatus = "Development";
           await fetch(`https://api.notion.com/v1/pages/${dash(newTitleId)}`, {
