@@ -13928,6 +13928,7 @@ Produce all of this by calling the submit_table tool — do not include any of i
 
           const assetProps = {
             "Asset Title":      { title: [{ type: "text", text: { content: String(title).slice(0, 200) } }] },
+            "Platform Title":   { rich_text: [{ type: "text", text: { content: String(title).slice(0, 1990) } }] },
             "Asset Status":     { select: { name: "Publish" } },
             "Asset Type":       { select: { name: String(assetType).slice(0, 100) } },
             "Body":             { rich_text: [{ type: "text", text: { content: markdownTable.slice(0, 1990) } }] },
@@ -13967,7 +13968,31 @@ Produce all of this by calling the submit_table tool — do not include any of i
             }).catch(() => {});
           }
 
-          return json({ success: true, created: 1, assets: [{ id: assetId, title }], rowCount: rows.length, canvaTemplateLink: canvaTemplateLink || undefined });
+          // Canva-port handoff — the second (and unavoidable) step: the
+          // Worker can't drive Canva, so hand a fresh Claude chat a spelled-
+          // out prompt to copy the linked template, fill every page from the
+          // table just written, and save the finished design URL back onto
+          // this asset's Design Link. Mirrors buildCanvaPortPrompt in the
+          // microsite (the "📋 Copy Canva prompt" button) so both entry
+          // points stay identical. Only offered when the method actually has
+          // a template on file.
+          let canvaPromptUrl;
+          if (canvaTemplateLink) {
+            const portText = `Port this asset's table content into its linked Canva template.\n\n`
+              + `Asset page: https://www.notion.so/${assetId}\n`
+              + `Title page: https://www.notion.so/${dsDash(titleId).replace(/-/g,"")}\n`
+              + `Canva template: ${canvaTemplateLink}\n\n`
+              + `Process:\n`
+              + `1. Read the Asset page in Notion — its page body is a Page | Field | Content table (grouped by page under heading_3 sections).\n`
+              + `2. Read the Canva template via the Canva MCP (read-design) to see every text field, its position, and its size constraints.\n`
+              + `3. Use copy-design to duplicate the template into a new design — NEVER edit the original template directly.\n`
+              + `4. Rename the copy (update_title) to the Asset page's own "Asset Title" property value.\n`
+              + `5. Map each table row to the matching field on the copy by page/position and populate it via edit-design. Verify each page's thumbnail; if a field overflows its box, shorten/reformat rather than letting it run over.\n`
+              + `6. Commit the transaction once every page looks right.\n`
+              + `7. Save the resulting copy's URL onto the Asset's "Design Link" property in Notion — that is what makes the finished design appear in the dashboard's Publish Assets section.`;
+            canvaPromptUrl = `https://claude.ai/new?q=${encodeURIComponent(portText)}`;
+          }
+          return json({ success: true, created: 1, assets: [{ id: assetId, title }], rowCount: rows.length, canvaTemplateLink: canvaTemplateLink || undefined, canvaPromptUrl });
         }
 
         // design spec: explicit modal pick wins, else campaign default →

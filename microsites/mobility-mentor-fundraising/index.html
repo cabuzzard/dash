@@ -9405,6 +9405,22 @@ async function submitGenAssets() {
       platformName: document.getElementById('gaPlatformInput')?.value ? document.getElementById('gaPlatformInput').selectedOptions[0].textContent : undefined,
     });
     gaAutoAttachMethod(method.id);
+    if (r.rowCount != null) {
+      // Template CSV Export-style method: the content table + caption +
+      // hashtags are written and the asset's on Publish. Step 2 — porting
+      // that table into the method's Canva template and writing Design Link
+      // back — can't run in the Worker, so hand it to a Claude chat.
+      const portNote = r.canvaPromptUrl
+        ? ' Opening a Claude chat to copy the Canva template and fill it — hit Send there, and it writes the Design Link back.'
+        : ' Add a Canva template link to this method (its "Template" property) to enable the one-click Canva port.';
+      status.innerHTML = `✓ Wrote the ${r.rowCount}-row carousel table + caption + hashtags — asset is on Publish.${portNote}`;
+      status.style.color = '#68d391';
+      btn.textContent = 'Done';
+      await loadTitles();
+      if (r.canvaPromptUrl) window.open(r.canvaPromptUrl, '_blank');
+      setTimeout(closeGenAssetsModal, 2600);
+      return;
+    }
     if (r.sectionCount != null) {
       const bannerNote = r.canvaPromptUrl
         ? ' Thumbnail rendered — opening a Claude tab to finish the Canva design for Design Link, hit Send there.'
