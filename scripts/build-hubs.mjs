@@ -4,7 +4,8 @@
 //
 //   node scripts/build-hubs.mjs            apply the spec (writes files)
 //   node scripts/build-hubs.mjs --check    verify only; exit 1 if any hub has drifted
-//   node scripts/build-hubs.mjs --deck PATH  also sync a Hub Deck artifact html
+//   node scripts/build-hubs.mjs --deck PATH    also sync a Hub Deck artifact
+//   node scripts/build-hubs.mjs --editor PATH  also sync the Hub Colour Editor artifact
 //
 // Only three regions of each hub are ever rewritten: the <head> meta (title +
 // description + og:*), the Google Fonts <link>, and the :root DESIGN TOKENS
@@ -20,6 +21,7 @@ const HUB_DIR = path.join(ROOT, "web/hub");
 const args = process.argv.slice(2);
 const CHECK = args.includes("--check");
 const deckPath = args.includes("--deck") ? args[args.indexOf("--deck") + 1] : null;
+const editorPath = args.includes("--editor") ? args[args.indexOf("--editor") + 1] : null;
 
 const spec = JSON.parse(fs.readFileSync(SPEC, "utf8"));
 const TOKENS = ["bg", "surface", "ink", "ink-head", "ink-soft", "line", "sea", "deep", "deep-ink", "accent", "paper"];
@@ -165,6 +167,33 @@ if (deckPath) {
     fs.writeFileSync(deckFile, deck);
     console.log(`  ✎ deck: ${path.basename(deckFile)}`);
   }
+}
+
+/* ---------- optional: sync the Hub Colour Editor artifact ---------- */
+if (editorPath && !CHECK) {
+  const ef = path.resolve(editorPath);
+  let ed = fs.readFileSync(ef, "utf8");
+  const hubs = {}, blob = {};
+  for (const slug of slugs) {
+    const h = spec.hubs[slug];
+    let html = fs.readFileSync(path.join(HUB_DIR, slug, "index.html"), "utf8");
+    html = html.replace(/<script src="https:\/\/challenges\.cloudflare\.com\/turnstile[^>]*><\/script>\s*/, "");
+    blob[slug] = Buffer.from(html, "utf8").toString("base64");
+    hubs[slug] = {
+      title: h.meta.title.split(" — ")[0],
+      subject: h.design?.subject || "",
+      fonts: h.fonts, tokens: h.tokens, notes: h.tokenNotes || {},
+    };
+  }
+  const data = JSON.stringify({ hubs, blob }).replace(/</g, "\\u003c");
+  ed = ed.replace(
+    /(<script id="hub-data" type="application\/json">)[\s\S]*?(<\/script>)/,
+    (_m, a, b) => a + data + b
+  );
+  fs.writeFileSync(ef, ed);
+  console.log(`  ✎ editor: ${path.basename(ef)}`);
+} else if (editorPath) {
+  console.log("  (--editor ignored under --check)");
 }
 
 if (CHECK && drift) {
