@@ -437,22 +437,22 @@
         "ogDescription": "Trip reports, break guides, and charter logistics for surfers who plan around forecasts, not calendars."
       },
       "fonts": {
-        "display": "Bricolage Grotesque",
+        "display": "Fraunces",
         "body": "Hanken Grotesk",
         "mono": "Space Mono"
       },
       "logoText": "Surf Vacations",
       "tokens": {
-        "bg": "#f5f0e8",
+        "bg": "#f5fafa",
         "surface": "#ffffff",
-        "ink": "#1c2b1a",
-        "ink-head": "#0d3d2b",
-        "ink-soft": "#536a50",
-        "line": "#c8d5c0",
-        "sea": "#1a6b5a",
-        "deep": "#0a2e20",
-        "deep-ink": "#e8f5e0",
-        "accent": "#bc590e",
+        "ink": "#0d2b35",
+        "ink-head": "#0a3d52",
+        "ink-soft": "#4a7a8a",
+        "line": "#c2dde3",
+        "sea": "#0077a8",
+        "deep": "#003a52",
+        "deep-ink": "#e8f7fc",
+        "accent": "#da3c13",
         "paper": "#ffffff"
       },
       "tokenNotes": {
