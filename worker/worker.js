@@ -4598,11 +4598,40 @@ export default {
       // text); saveHubPalette stores it as a campaign spec (the "Hub Palette"
       // rich-text field); pushHubPalette commits it into hubs.design.json AND the
       // hub's index.html so GitHub Pages redeploys.
+      // ── Palette & Fonts are RESEARCH FIELDS ──────────────────────────
+      // They live on the Research record (the "Palette" / "Fonts" text
+      // properties) and are generated from the campaign's keywords + research
+      // exactly like Trend Intelligence or the News Feed. Each field is a short
+      // readable rationale that ENDS with one machine-readable JSON line, so the
+      // research modals show prose and pushHubPalette can parse the spec.
+      //   generateResearchPalette / generateResearchFonts  — research the field
+      //   getHubPalette   — read the current Palette + Fonts off Research
+      //   pushHubPalette  — commit them into hubs.design.json + the hub HTML
+      //   generateHubPalette / saveHubPalette  — kept as thin aliases
       if (body.action === "getHubPalette" || body.action === "generateHubPalette" ||
-          body.action === "saveHubPalette" || body.action === "pushHubPalette") {
+          body.action === "saveHubPalette" || body.action === "pushHubPalette" ||
+          body.action === "generateResearchPalette" || body.action === "generateResearchFonts") {
         const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const PKEYS = ["bg","surface","ink","ink-head","ink-soft","line","sea","deep","deep-ink","accent"];
+        const FONT_REG = {
+          "Space Grotesk":{q:"Space+Grotesk:wght@400;500;600;700",f:"system-ui, sans-serif"},
+          "Inter":{q:"Inter:wght@400;500;600",f:"system-ui, sans-serif"},
+          "JetBrains Mono":{q:"JetBrains+Mono:wght@400;700",f:"ui-monospace, monospace"},
+          "IBM Plex Sans":{q:"IBM+Plex+Sans:wght@400;500;600",f:"system-ui, sans-serif"},
+          "IBM Plex Mono":{q:"IBM+Plex+Mono:wght@400;700",f:"ui-monospace, monospace"},
+          "Newsreader":{q:"Newsreader:opsz,wght@6..72,500;6..72,600",f:"Georgia, serif"},
+          "DM Serif Display":{q:"DM+Serif+Display:ital@0;1",f:"Georgia, serif"},
+          "Hanken Grotesk":{q:"Hanken+Grotesk:wght@400;500;600",f:"system-ui, sans-serif"},
+          "Space Mono":{q:"Space+Mono:wght@400;700",f:"ui-monospace, monospace"},
+          "Familjen Grotesk":{q:"Familjen+Grotesk:wght@500;600;700",f:"system-ui, sans-serif"},
+          "Bitter":{q:"Bitter:wght@500;600;700",f:"Georgia, serif"},
+          "Archivo":{q:"Archivo:wght@500;600;700",f:"system-ui, sans-serif"},
+          "Fraunces":{q:"Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700",f:"Georgia, serif"},
+          "Bricolage Grotesque":{q:"Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700",f:"system-ui, sans-serif"},
+        };
+        const fontQuery = fam => (FONT_REG[fam]?.q) || (String(fam).trim().replace(/\s+/g,"+") + ":wght@400;500;600;700");
+        const fontFallback = fam => (FONT_REG[fam]?.f) || "system-ui, sans-serif";
 
         // ---- colour maths (WCAG contrast clamp) ----
         const _h2 = n => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
@@ -4635,89 +4664,160 @@ export default {
         };
 
         const HUB_SLUGS = ["ai-implementation","care-gap","creative-flow-guitar","home-services","mountainwize","owners-rep","sunflower-acres","surf-vacations"];
-
-        // ---- getHubPalette : the saved campaign spec (if any) ----
-        if (body.action === "getHubPalette") {
-          const id = dash(body.campaignId);
-          try {
-            const pg = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdr }).then(r => r.json());
-            const raw = (pg?.properties?.["Hub Palette"]?.rich_text || []).map(t => t.plain_text).join("").trim();
-            let palette = null;
-            if (raw) { try { palette = safePalette(JSON.parse(raw)); } catch (_) {} }
-            return json({ palette });
-          } catch (e) { return json({ palette: null, error: e.message }); }
-        }
-
-        // ---- saveHubPalette : store as a campaign spec ----
-        if (body.action === "saveHubPalette") {
-          const id = dash(body.campaignId);
-          const palette = safePalette(body.palette);
-          const r = await fetch(`https://api.notion.com/v1/pages/${id}`, {
-            method: "PATCH", headers: hdr,
-            body: JSON.stringify({ properties: { "Hub Palette": { rich_text: [{ text: { content: JSON.stringify(palette) } }] } } }),
+        const rtOf = (props, key) => (props?.[key]?.rich_text || props?.[key]?.title || []).map(t => t.plain_text).join("").trim();
+        const parseJsonTail = (txt) => {                       // last {...} in the field that has a "bg" / "display"
+          const ms = String(txt || "").match(/\{[^{}]*\}/g) || [];
+          for (let i = ms.length - 1; i >= 0; i--) { try { const o = JSON.parse(ms[i]); if (o && (o.bg || o.display)) return o; } catch (_) {} }
+          return null;
+        };
+        // Resolve a Research record id from either a researchId or a campaignId.
+        const resolveResearch = async () => {
+          if (body.researchId) {
+            const rid = dash(body.researchId);
+            const pg = await fetch(`https://api.notion.com/v1/pages/${rid}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+            return { rid, props: pg?.properties || {}, campProps: {} };
+          }
+          const cid = dash(body.campaignId);
+          const camp = await fetch(`https://api.notion.com/v1/pages/${cid}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: cid } } }).catch(() => []);
+          const score = r => ["Statement","Unique Opportunity","Content Topics","Trend Intelligence","Keywords"].reduce((n, k) => n + rtOf(r.properties, k).length, 0);
+          const best = rows.slice().sort((a, b) => score(b) - score(a))[0];
+          return { rid: best ? best.id.replace(/-/g, "") : null, props: best?.properties || {}, campProps: camp?.properties || {} };
+        };
+        const researchBrief = (props, campProps) => [
+          rtOf(props, "Name") && `Campaign: ${rtOf(props, "Name")}`,
+          rtOf(campProps, "Target Audience") && `Audience: ${rtOf(campProps, "Target Audience")}`,
+          rtOf(campProps, "Pain Points") && `Pain points: ${rtOf(campProps, "Pain Points")}`,
+          rtOf(props, "Statement") && `Positioning: ${rtOf(props, "Statement")}`,
+          (rtOf(props, "Key Message") || rtOf(campProps, "Key Message")) && `Key message: ${rtOf(props, "Key Message") || rtOf(campProps, "Key Message")}`,
+          rtOf(props, "Unique Opportunity") && `Unique opportunity: ${rtOf(props, "Unique Opportunity")}`,
+          rtOf(props, "Content Topics") && `Content topics: ${rtOf(props, "Content Topics").slice(0, 1200)}`,
+          rtOf(props, "Trend Intelligence") && `Trends: ${rtOf(props, "Trend Intelligence").slice(0, 1200)}`,
+          `Keywords: ${body.kwOverride || rtOf(props, "Keywords") || rtOf(campProps, "Keywords") || "(none on file)"}`,
+        ].filter(Boolean).join("\n");
+        const claude = async (parts, maxTok) => {
+          const r = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTok || 1100, messages: [{ role: "user", content: parts }] }),
           });
-          if (!r.ok) { const e = await r.json().catch(() => ({})); return json({ error: e.message || "Notion save failed" }, 502); }
-          return json({ ok: true, palette });
-        }
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error?.message || "generation failed");
+          return (d.content?.[0]?.text || "").trim();
+        };
+        const writeResearchField = async (rid, field, text) => {
+          const chunks = [];
+          for (let i = 0; i < Math.max(text.length, 1); i += 2000) chunks.push({ type: "text", text: { content: text.slice(i, i + 2000) } });
+          const r = await fetch(`https://api.notion.com/v1/pages/${dash(rid)}`, {
+            method: "PATCH", headers: hdr,
+            body: JSON.stringify({ properties: { [field]: { rich_text: chunks } } }),
+          });
+          if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || "Notion write failed"); }
+        };
 
-        // ---- generateHubPalette : derive from research (+ image + instructions) ----
-        if (body.action === "generateHubPalette") {
+        // ---- generateResearchPalette : research a palette from keywords + brief ----
+        if (body.action === "generateResearchPalette" || body.action === "generateHubPalette") {
           if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not set" }, 400);
-          const id = dash(body.campaignId);
-          let ctx = "";
-          try {
-            const pg = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdr }).then(r => r.json());
-            const p = pg?.properties || {};
-            const txt = k => (p[k]?.rich_text || p[k]?.title || []).map(t => t.plain_text).join("").trim();
-            ctx = [
-              `Campaign: ${txt("Name") || body.campaignName || ""}`,
-              txt("Target Audience") && `Audience: ${txt("Target Audience")}`,
-              txt("Pain Points") && `Pain points: ${txt("Pain Points")}`,
-              txt("Key Message") && `Key message: ${txt("Key Message")}`,
-              txt("Keywords") && `Keywords: ${txt("Keywords")}`,
-            ].filter(Boolean).join("\n");
-            if (ctx.split("\n").length < 3) {
-              const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: id } } }).catch(() => []);
-              const rp = rows[0]?.properties || {};
-              const rt = k => (rp[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
-              ctx += "\n" + [rt("Statement") && `Positioning: ${rt("Statement")}`, rt("Unique Opportunity") && `Opportunity: ${rt("Unique Opportunity")}`, rt("Keywords") && `Keywords: ${rt("Keywords")}`].filter(Boolean).join("\n");
-            }
-          } catch (_) {}
-
-          const roleDoc = "bg = page background; surface = raised card background; ink = body text; ink-head = headings (h1-h3); ink-soft = muted/secondary text; line = hairlines & outlines; sea = primary — links, eyebrows, focus; deep = the one dark band; deep-ink = text on that dark band; accent = the CTA button (white label sits on it).";
-          const rules = "Constraints: body text >= 7:1 on bg; headings and primary >= 4.5:1 on bg; deep-ink >= 7:1 on deep; white must clear 4.4:1 on accent (so accent is fairly deep). Pick a coherent, audience-appropriate scheme — a real point of view, not a generic template. One ground (light or dark), one primary, accent used once.";
+          const { rid, props, campProps } = await resolveResearch();
+          if (!rid) return json({ error: "no Research record for this campaign — create one first" }, 400);
           const parts = [];
           if (body.image && /^data:image\//.test(body.image)) {
             const m = body.image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
             if (m && m[2].length < 6_000_000) parts.push({ type: "image", source: { type: "base64", media_type: m[1], data: m[2] } });
           }
           parts.push({ type: "text", text:
-            `You are the design lead setting the colour palette for a content-marketing hub page.\n\n${ctx || "(no research on file — infer from the campaign name)"}\n\n` +
-            (parts.length ? "A reference image is attached — derive the palette from its dominant colours, adapted to the audience.\n\n" : "") +
-            (body.instructions ? `Override instructions: ${body.instructions}\n\n` : "") +
-            `Roles: ${roleDoc}\n${rules}\n\n` +
-            `Return ONLY minified JSON: {"bg":"#..","surface":"#..","ink":"#..","ink-head":"#..","ink-soft":"#..","line":"#..","sea":"#..","deep":"#..","deep-ink":"#..","accent":"#..","note":"one sentence on the choice"}`
-          });
-          const ai = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 900, messages: [{ role: "user", content: parts }] }),
-          });
-          const data = await ai.json();
-          if (!ai.ok) return json({ error: data.error?.message || "generation failed" }, 502);
-          const raw = (data.content?.[0]?.text || "").trim();
-          let parsed; try { parsed = JSON.parse(raw.replace(/^```(json)?/i, "").replace(/```$/, "").trim()); } catch (e) { return json({ error: "model did not return valid JSON", raw }, 502); }
+`You are researching the COLOUR PALETTE for a content-marketing hub page, from this campaign's research. Treat it as research: the keywords and audience point to a colour world; pick the one that fits, with a real point of view.
+
+${researchBrief(props, campProps)}
+${parts.length ? "\nA reference image is attached — pull the palette from its dominant colours, adapted to the audience.\n" : ""}${body.instructions ? `\nOverride: ${body.instructions}\n` : ""}
+Roles: bg = page background; surface = raised card; ink = body text; ink-head = headings; ink-soft = muted text; line = hairlines; sea = primary (links, eyebrows, focus); deep = the one dark band; deep-ink = text on it; accent = the CTA button (white label on it).
+Constraints: ink >= 7:1 on bg; ink-head & sea >= 4.5:1 on bg; deep-ink >= 7:1 on deep; white >= 4.4:1 on accent. One committed ground (light or dark). One primary. Accent used once. Avoid the AI-default looks (cream+serif+terracotta / near-black+acid / broadsheet hairlines).
+
+Output: 2-3 sentences on the choice and why it fits the research, then a blank line, then ONE minified JSON line and nothing after it:
+{"bg":"#..","surface":"#..","ink":"#..","ink-head":"#..","ink-soft":"#..","line":"#..","sea":"#..","deep":"#..","deep-ink":"#..","accent":"#.."}` });
+          let out;
+          try { out = await claude(parts, 900); } catch (e) { return json({ error: e.message }, 502); }
+          const parsed = parseJsonTail(out);
+          if (!parsed) return json({ error: "model did not return a JSON palette line", raw: out }, 502);
           const palette = safePalette(parsed);
-          return json({ palette, note: String(parsed.note || "").slice(0, 200) });
+          const rationale = out.replace(/\{[^{}]*\}\s*$/, "").trim();
+          const strip = PKEYS.map(k => `${k} ${palette[k]}`).join(" · ");
+          const field = `${rationale}\n\n${strip}\n\n${JSON.stringify(palette)}`;
+          try { await writeResearchField(rid, "Palette", field); } catch (e) { return json({ error: e.message }, 502); }
+          return json({ ok: true, palette, text: field, researchId: rid, note: rationale.slice(0, 200) });
         }
 
-        // ---- pushHubPalette : commit into hubs.design.json + the hub HTML ----
+        // ---- generateResearchFonts : research a type pairing from the brief ----
+        if (body.action === "generateResearchFonts") {
+          if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not set" }, 400);
+          const { rid, props, campProps } = await resolveResearch();
+          if (!rid) return json({ error: "no Research record for this campaign — create one first" }, 400);
+          const known = Object.keys(FONT_REG).join(", ");
+          let out;
+          try {
+            out = await claude([{ type: "text", text:
+`You are researching the TYPE PAIRING for a content-marketing hub page, from this campaign's research.
+
+${researchBrief(props, campProps)}
+
+Pick three Google Fonts: display (headings + wordmark — the characterful face), body (everything else — legible, quiet), mono (eyebrows, nav, labels, button text, dates).
+Reuse from this list if one fits: ${known}. Only pick outside it if nothing fits.
+
+Output: one line per role — "Display: <Family> — why it fits the audience" / "Body: ..." / "Mono: ..." — then a blank line, then ONE minified JSON line and nothing after:
+{"display":"<Family>","body":"<Family>","mono":"<Family>"}` }], 500);
+          } catch (e) { return json({ error: e.message }, 502); }
+          const parsed = parseJsonTail(out);
+          if (!parsed || !parsed.display) return json({ error: "model did not return a JSON fonts line", raw: out }, 502);
+          const fonts = { display: String(parsed.display).trim(), body: String(parsed.body || "Inter").trim(), mono: String(parsed.mono || "Space Mono").trim() };
+          const field = `${out.replace(/\{[^{}]*\}\s*$/, "").trim()}\n\n${JSON.stringify(fonts)}`;
+          try { await writeResearchField(rid, "Fonts", field); } catch (e) { return json({ error: e.message }, 502); }
+          return json({ ok: true, fonts, text: field, researchId: rid });
+        }
+
+        // ---- getHubPalette : read Palette + Fonts off the Research record ----
+        if (body.action === "getHubPalette") {
+          try {
+            const { rid, props } = await resolveResearch();
+            const pal = parseJsonTail(rtOf(props, "Palette"));
+            const fnt = parseJsonTail(rtOf(props, "Fonts"));
+            return json({
+              palette: pal ? safePalette(pal) : null,
+              fonts: (fnt && fnt.display) ? fnt : null,
+              paletteText: rtOf(props, "Palette"),
+              fontsText: rtOf(props, "Fonts"),
+              researchId: rid,
+            });
+          } catch (e) { return json({ palette: null, fonts: null, error: e.message }); }
+        }
+
+        // ---- saveHubPalette : (compat) write a palette straight to the field ----
+        if (body.action === "saveHubPalette") {
+          try {
+            const { rid } = await resolveResearch();
+            if (!rid) return json({ error: "no Research record" }, 400);
+            const palette = safePalette(body.palette);
+            const strip = PKEYS.map(k => `${k} ${palette[k]}`).join(" · ");
+            await writeResearchField(rid, "Palette", `Saved from the Content Hubs tab.\n\n${strip}\n\n${JSON.stringify(palette)}`);
+            return json({ ok: true, palette });
+          } catch (e) { return json({ error: e.message }, 502); }
+        }
+
+        // ---- pushHubPalette : commit the Research Palette + Fonts into the hub ----
         if (body.action === "pushHubPalette") {
           const GT = (env.GITHUB_TOKEN || "").trim();
           if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
           const slug = String(body.slug || "").trim();
           if (!HUB_SLUGS.includes(slug)) return json({ error: `unknown hub "${slug}"` }, 400);
-          const palette = safePalette(body.palette);
+
+          // pull palette + fonts from the campaign's Research record (unless passed in)
+          let palette = body.palette ? safePalette(body.palette) : null;
+          let fonts = (body.fonts && body.fonts.display) ? body.fonts : null;
+          if (!palette || !fonts) {
+            const { props } = await resolveResearch();
+            if (!palette) { const p = parseJsonTail(rtOf(props, "Palette")); if (p) palette = safePalette(p); }
+            if (!fonts)   { const f = parseJsonTail(rtOf(props, "Fonts"));   if (f && f.display) fonts = f; }
+          }
+          if (!palette) return json({ error: "no Palette on the Research record — Regenerate it first" }, 400);
 
           const REPO = "cabuzzard/dash", BRANCH = "main";
           const gh = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
@@ -4727,18 +4827,28 @@ export default {
           const putFile = async (path, text, message, sha) => { const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify({ message, content: toB64(text), branch: BRANCH, ...(sha ? { sha } : {}) }) }); if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `commit failed: ${path}`); } };
 
           try {
-            // 1. hubs.design.json — merge the 10 values (+ paper = surface)
+            const stamp = new Date().toISOString().slice(0, 10);
+
+            // 1. hubs.design.json — tokens (+ paper) and, if researched, fonts + registry
             const specF = await getFile("web/hub/hubs.design.json");
             if (!specF.text) return json({ error: "could not read hubs.design.json" }, 502);
             const spec = JSON.parse(specF.text);
             if (!spec.hubs?.[slug]) return json({ error: `no "${slug}" in hubs.design.json` }, 502);
+            if (spec.hubs[slug].bespoke) return json({ error: `${slug} is a hand-designed hub — edit its file directly` }, 400);
             for (const k of PKEYS) spec.hubs[slug].tokens[k] = palette[k];
             spec.hubs[slug].tokens.paper = palette.surface;
+            if (fonts) {
+              spec.hubs[slug].fonts = { display: fonts.display, body: fonts.body, mono: fonts.mono };
+              spec.fontRegistry = spec.fontRegistry || {};
+              for (const fam of [fonts.display, fonts.body, fonts.mono]) {
+                if (!spec.fontRegistry[fam]) spec.fontRegistry[fam] = { query: fontQuery(fam), fallback: fontFallback(fam) };
+              }
+            }
             spec.hubs[slug].tokenNotes = spec.hubs[slug].tokenNotes || {};
-            spec.hubs[slug].tokenNotes.bg = `pushed from the Content Hubs tab (${new Date().toISOString().slice(0,10)})`;
-            await putFile("web/hub/hubs.design.json", JSON.stringify(spec, null, 2) + "\n", `hub palette: ${slug} — spec`, specF.sha);
+            spec.hubs[slug].tokenNotes.bg = `researched palette, pushed ${stamp}`;
+            await putFile("web/hub/hubs.design.json", JSON.stringify(spec, null, 2) + "\n", `hub design: ${slug} — spec (research)`, specF.sha);
 
-            // 2. the hub's index.html — targeted value swap on each --token line
+            // 2. the hub's index.html — :root values, --font-* vars, and the fonts <link>
             const htmlPath = `web/hub/${slug}/index.html`;
             const htmlF = await getFile(htmlPath);
             if (!htmlF.text) return json({ error: `could not read ${htmlPath}` }, 502);
@@ -4747,9 +4857,16 @@ export default {
               const val = k === "paper" ? palette.surface : palette[k];
               html = html.replace(new RegExp(`(--${k}:\\s*)[^;]+;`), `$1${val};`);
             }
-            await putFile(htmlPath, html, `hub palette: ${slug} — live`, htmlF.sha);
+            if (fonts) {
+              html = html.replace(/(--font-display:\s*)"[^"]*"[^;]*;/, `$1"${fonts.display}", ${fontFallback(fonts.display)};`);
+              html = html.replace(/(--font-body:\s*)"[^"]*"[^;]*;/, `$1"${fonts.body}", ${fontFallback(fonts.body)};`);
+              html = html.replace(/(--font-mono:\s*)"[^"]*"[^;]*;/, `$1"${fonts.mono}", ${fontFallback(fonts.mono)};`);
+              const link = `<link href="https://fonts.googleapis.com/css2?family=${fontQuery(fonts.display)}&family=${fontQuery(fonts.body)}&family=${fontQuery(fonts.mono)}&display=swap" rel="stylesheet">`;
+              html = html.replace(/<link href="https:\/\/fonts\.googleapis\.com\/css2\?[^"]*" rel="stylesheet">/, link);
+            }
+            await putFile(htmlPath, html, `hub design: ${slug} — live (research)`, htmlF.sha);
 
-            return json({ ok: true, palette, note: "committed — GitHub Pages redeploys in ~1 min" });
+            return json({ ok: true, palette, fonts, note: "committed — GitHub Pages redeploys in ~1 min" });
           } catch (e) { return json({ error: e.message }, 502); }
         }
       }
@@ -15778,6 +15895,8 @@ Return ONLY a JSON object with these exact keys:
             webPageUrl:        url(null, "Web Page URL"),
             statement:         rt(null, "Statement"),
             uniqueOpportunity: rt(null, "Unique Opportunity"),
+            palette:           rt(null, "Palette"),
+            fonts:             rt(null, "Fonts"),
             campaignGoal:      cp["Campaign Goal"]?.rich_text?.map(t => t.plain_text).join("") || "",
             painPoints:        cp["Pain Points"]?.rich_text?.map(t => t.plain_text).join("") || "",
             campaignKeyMessage:cp["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
@@ -16180,6 +16299,8 @@ Rules:
           thoughts:          "Thoughts",
           uniqueOpportunity: "Unique Opportunity",
           statement:         "Statement",
+          palette:           "Palette",
+          fonts:             "Fonts",
         };
         const notionField = fieldMap[field];
         if (!notionField) return json({ error: "Unknown field: " + field }, 400);

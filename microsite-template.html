@@ -140,6 +140,22 @@
   </div>
 </div>
 
+<!-- SEC 5b: two col — palette / fonts (design research) -->
+<div class="two-col">
+  <div class="col">
+    <h2 class="editable" onclick="openModal('palette')">Palette <button onclick="event.stopPropagation();regenDesign('palette')" style="font:inherit;font-size:11px;padding:2px 8px;margin-left:8px;border:1px solid #444;border-radius:4px;background:#1c1c1c;color:#ccc;cursor:pointer;">↻ Research</button></h2>
+    <div class="content">
+      <div class="body-text" id="r-palette"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <h2 class="editable" onclick="openModal('fonts')">Fonts <button onclick="event.stopPropagation();regenDesign('fonts')" style="font:inherit;font-size:11px;padding:2px 8px;margin-left:8px;border:1px solid #444;border-radius:4px;background:#1c1c1c;color:#ccc;cursor:pointer;">↻ Research</button></h2>
+    <div class="content">
+      <div class="body-text" id="r-fonts"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+  </div>
+</div>
+
 <!-- SEC 6: two col — development titles / publish titles -->
 <div class="two-col">
   <div class="col">
@@ -310,7 +326,7 @@ async function loadResearch() {
     const r = data.research;
     if (!r) {
       document.getElementById('r-name').textContent = 'No research record — add one in Notion to populate this page.';
-      ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+      ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok','r-palette','r-fonts'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = '<p style="color:#2a2a2a;font-style:italic;">No data yet.</p>';
       });
@@ -327,6 +343,14 @@ async function loadResearch() {
     document.getElementById('r-date').textContent = r.lastUpdated || '—';
     const kmEl = document.getElementById('r-camp-keymessage');
     if (kmEl) { kmEl.textContent = r.campaignKeyMessage || '—'; kmEl.style.color = r.campaignKeyMessage ? '' : '#aaa'; }
+
+    // Design research — palette & fonts (shown raw; the machine JSON line is fine to see)
+    const rp = document.getElementById('r-palette');
+    if (rp) rp.innerHTML = r.palette ? `<pre style="white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px;line-height:1.5;color:#ccc;">${(r.palette||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</pre>` : '<p style="color:#666;font-style:italic;">Not researched yet — hit ↻ Research.</p>';
+    const rf = document.getElementById('r-fonts');
+    if (rf) rf.innerHTML = r.fonts ? `<pre style="white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px;line-height:1.5;color:#ccc;">${(r.fonts||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</pre>` : '<p style="color:#666;font-style:italic;">Not researched yet — hit ↻ Research.</p>';
+    RAW.palette = r.palette || '';
+    RAW.fonts = r.fonts || '';
 
     // Store raw values for editing
     RESEARCH_ID_LIVE = r.id || '';
@@ -350,7 +374,7 @@ async function loadResearch() {
     }
     // Condense all fields in parallel via Claude
     const loading = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-    ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok'].forEach(id => {
+    ['r-problem','r-keymessage','r-products','r-actions','r-platforms','r-methods','r-news','r-tiktok','r-palette','r-fonts'].forEach(id => {
       document.getElementById(id).innerHTML = loading;
     });
 
@@ -434,7 +458,28 @@ const MODAL_CFG = {
   actions:      { title: 'Recommended Actions',  hint: 'ROI-ranked actions and next steps', target: 'research', field: 'notes' },
   platforms:    { title: 'Platforms',            hint: 'Active and planned platforms for this campaign', target: 'research', field: 'platforms', combined: true },
   methods:      { title: 'Methods',              hint: 'Active and planned methods for this campaign', target: 'research', field: 'platforms', combined: true },
+  palette:      { title: 'Palette',              hint: 'Design research — rationale then one JSON line: {"bg":"#..",...}. ↻ Research regenerates it from the keywords.', target: 'research', field: 'palette' },
+  fonts:        { title: 'Fonts',                hint: 'Design research — role notes then one JSON line: {"display":"..","body":"..","mono":".."}. ↻ Research regenerates it.', target: 'research', field: 'fonts' },
 };
+
+// Regenerate a design-research field (palette / fonts) from the campaign keywords.
+async function regenDesign(kind) {
+  if (!RESEARCH_ID_LIVE) { alert('No research record yet.'); return; }
+  const id = kind === 'palette' ? 'r-palette' : 'r-fonts';
+  const el = document.getElementById(id);
+  const prev = el.innerHTML;
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Researching…</div>';
+  try {
+    const action = kind === 'palette' ? 'generateResearchPalette' : 'generateResearchFonts';
+    const res = await w(action, { researchId: RESEARCH_ID_LIVE });
+    const txt = res.text || '';
+    RAW[kind] = txt;
+    el.innerHTML = `<pre style="white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px;line-height:1.5;color:#ccc;">${txt.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</pre>`;
+  } catch (e) {
+    el.innerHTML = prev;
+    alert('Research failed: ' + e.message);
+  }
+}
 
 let activeField = null;
 
@@ -457,6 +502,8 @@ function openModal(field) {
   if (field === 'actions')      val = RAW.notes || '';
   if (field === 'platforms')    val = RAW.rawPlatforms || '';
   if (field === 'methods')      val = RAW.rawMethods || '';
+  if (field === 'palette')      val = RAW.palette || '';
+  if (field === 'fonts')        val = RAW.fonts || '';
   document.getElementById('modalTa').value = val;
 
   document.getElementById('editModal').classList.add('open');

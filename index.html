@@ -9917,6 +9917,8 @@ let _hubIdx = 0;
 try { _hubIdx = Math.max(0, Math.min(8, parseInt(localStorage.getItem('hubDeckIdx') || '0', 10) || 0)); } catch (e) {}
 let _hpWork = {};             // slug -> palette generated/saved but not pushed
 let _hpNote = {};             // slug -> last status line
+let _hpFonts = {};            // slug -> researched {display,body,mono} not yet pushed
+let _hpFetched = {};          // slug -> already pulled getHubPalette this session
 let _hf = {};                 // field-modal state
 
 function fetchHubSpec() {
@@ -9945,24 +9947,36 @@ async function hpGen(slug) {
       image = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('could not read that image')); r.readAsDataURL(f); });
     }
     const instructions = (document.getElementById('hpInstr').value || '').trim() || undefined;
-    const r = await call('generateHubPalette', { campaignId: h.campaignId, campaignName: h.campaign, image, instructions });
-    _hpWork[slug] = r.palette; _hpNote[slug] = r.note || 'Generated — review, then Save or Push.';
+    // palette is a research field — this generates it and writes it to the Research record
+    const r = await call('generateResearchPalette', { campaignId: h.campaignId, image, instructions });
+    _hpWork[slug] = r.palette; _hpNote[slug] = (r.note || 'Researched — review, then Push.') + ' → Research › Palette';
     renderHubsTab();
   } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; btn.disabled = false; btn.textContent = '↻ Regenerate palette'; }
 }
+async function hpGenFonts(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const btn = document.getElementById('hpGenFonts'), msg = document.getElementById('hpMsg');
+  btn.disabled = true; btn.textContent = 'Researching…'; msg.style.color = 'var(--text3)'; msg.textContent = 'Researching a type pairing…';
+  try {
+    const r = await call('generateResearchFonts', { campaignId: h.campaignId });
+    _hpFonts[slug] = r.fonts; _hpNote[slug] = 'Fonts researched: ' + [r.fonts.display, r.fonts.body, r.fonts.mono].join(' · ') + ' → Research › Fonts';
+    renderHubsTab();
+  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; btn.disabled = false; btn.textContent = '↻ Regenerate fonts'; }
+}
 async function hpSave(slug) {
   const h = HUB_SITES.find(x => x.slug === slug), msg = document.getElementById('hpMsg');
-  try { await call('saveHubPalette', { campaignId: h.campaignId, palette: hpPalette(slug) }); msg.style.color = '#4cff4c'; msg.textContent = 'Saved to the campaign (Hub Palette field).'; }
+  try { await call('saveHubPalette', { campaignId: h.campaignId, palette: hpPalette(slug) }); msg.style.color = '#4cff4c'; msg.textContent = 'Saved to Research › Palette.'; }
   catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
 }
 async function hpPush(slug) {
   const msg = document.getElementById('hpMsg');
-  if (!confirm('Push this palette to the live "' + slug + '" hub? It commits to hubs.design.json + the hub HTML and redeploys (~1 min).')) return;
+  if (!confirm('Push the researched palette + fonts to the live "' + slug + '" hub? Commits to hubs.design.json + the hub HTML and redeploys (~1 min).')) return;
   const btn = document.getElementById('hpPush'); btn.disabled = true; btn.textContent = 'Pushing…';
   try {
-    const r = await call('pushHubPalette', { slug, palette: hpPalette(slug) });
+    const r = await call('pushHubPalette', { slug, palette: hpPalette(slug), fonts: _hpFonts[slug] || undefined });
     if (r.palette && HUB_SPEC[slug]) HUB_SPEC[slug].tokens = r.palette;
-    delete _hpWork[slug];
+    if (r.fonts && HUB_SPEC[slug]) HUB_SPEC[slug].fonts = r.fonts;
+    delete _hpWork[slug]; delete _hpFonts[slug];
     _hpNote[slug] = 'Pushed — live in ~1 min (reload the preview below to see it).';
     renderHubsTab();
   } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; btn.disabled = false; btn.textContent = 'Push to hub'; }
@@ -10031,6 +10045,16 @@ function renderHubsTab() {
   fetchHubSpec();
   if (_hubIdx >= HUB_SITES.length) _hubIdx = 0;
   const h = HUB_SITES[_hubIdx], slug = h.slug;
+  // pull the researched Palette + Fonts off the Research record (once per hub per session)
+  if (h.campaignId && !_hpFetched[slug]) {
+    _hpFetched[slug] = true;
+    call('getHubPalette', { campaignId: h.campaignId }).then(r => {
+      let touched = false;
+      if (r && r.palette && !_hpWork[slug]) { _hpWork[slug] = r.palette; touched = true; }
+      if (r && r.fonts && !_hpFonts[slug]) { _hpFonts[slug] = r.fonts; touched = true; }
+      if (touched) { _hpNote[slug] = _hpNote[slug] || 'From Research — Push to make it live.'; if (HUB_SITES[_hubIdx].slug === slug) renderHubsTab(); }
+    }).catch(() => {});
+  }
   const meta = hubMeta(h), state = hubReadyState(slug), badge = hubBadge(state, meta);
   const spec = HUB_SPEC[slug] || {}, design = spec.design || {}, fonts = spec.fonts || {}, pal = hpPalette(slug);
   const hubUrl = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/';
@@ -10081,17 +10105,18 @@ function renderHubsTab() {
     </div>
 
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);">
-      <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Palette — regenerate from research + an optional reference photo</div>
+      <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Palette &amp; Fonts — research fields (stored on the campaign's Research record)</div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
         <div style="flex:1;min-width:250px;">
           <input id="hpImg" type="file" accept="image/*" style="font-size:11px;display:block;margin-bottom:8px;max-width:100%;">
           <input id="hpInstr" class="modal-input" type="text" placeholder="override: keep it dark · primary a deep teal · no orange" style="font-size:11px;margin-bottom:8px;">
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button id="hpGen" onclick="hpGen('${slug}')" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate palette</button>
-            <button onclick="hpSave('${slug}')" ${pal ? '' : 'disabled'} style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">Save to palettes</button>
+            <button id="hpGenFonts" onclick="hpGenFonts('${slug}')" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate fonts</button>
             <button id="hpPush" onclick="hpPush('${slug}')" ${pal ? '' : 'disabled'} style="font-size:11px;padding:6px 11px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#0b0b0b;font-weight:600;cursor:pointer;">Push to hub</button>
           </div>
           <div id="hpMsg" style="font-size:11px;margin-top:8px;min-height:14px;color:var(--text3);">${esc(_hpNote[slug] || '')}${_hpWork[slug] ? ' <span style="color:#ffb020;">(unsaved)</span>' : ''}</div>
+          <div style="font-size:10px;margin-top:6px;color:var(--text3);">Fonts: ${esc((_hpFonts[slug] && [_hpFonts[slug].display,_hpFonts[slug].body,_hpFonts[slug].mono].join(' · ')) || (fonts.display ? [fonts.display,fonts.body,fonts.mono].join(' · ') : '—'))}</div>
         </div>
         <div style="flex:0 0 auto;">
           <span style="display:inline-flex;border:1px solid var(--border2);border-radius:4px;overflow:hidden;">${swStrip}</span>
