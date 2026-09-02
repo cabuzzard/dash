@@ -48,6 +48,23 @@ Content Hubs tab) is a visual way to do the colour part — assign each role fro
 the palette or a picker with a live preview, then copy the `tokens` block back
 into this file.
 
+### From a photo / reference image
+
+`scripts/palette-from-photo.mjs` turns a handful of reference colours into a
+hub's full token set (contrast-checked) and writes it into `hubs.design.json`:
+
+```
+node scripts/palette-from-photo.mjs sunflower-acres "#c98b2e,#f0e6cf,#4a6d3a,#2b2016" --light --build
+```
+
+Pull 4–6 dominant colours off the photo (list them most-prominent first),
+pass `--light` or `--dark` for the ground, `--build` to push straight into the
+HTML. The reference colours are an *input* — the derived tokens still drive the
+whole page, and you refine them in `hubs.design.json` or the editor afterward.
+The palette **is** the hub's look: `--bg` is the page, `--ink-head` the
+headings, `--ink` the body, `--sea` the links, `--accent` the buttons,
+`--deep` the dark band.
+
 **A hub is published to Bluehost only once its domain is connected.** Pre-domain
 hubs live on GitHub Pages (`cabuzzard.github.io/dash/web/hub/{slug}/`) and that's
 it. When a domain comes online, add `web/hub/{slug} → <domain>` to
