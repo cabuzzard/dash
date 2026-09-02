@@ -4670,31 +4670,70 @@ export default {
           for (let i = ms.length - 1; i >= 0; i--) { try { const o = JSON.parse(ms[i]); if (o && (o.bg || o.display)) return o; } catch (_) {} }
           return null;
         };
-        // Resolve a Research record id from either a researchId or a campaignId.
-        const resolveResearch = async () => {
+        // Resolve where Palette/Fonts research is read + written:
+        //   body.productId  → the Product page (its own fields; campaign research as fallback context)
+        //   body.researchId → that Research record
+        //   body.campaignId → the campaign's richest Research record
+        // Returns { pageId, kind, props, campProps } — pageId is what writeResearchField patches.
+        const resolveTarget = async () => {
+          if (body.productId) {
+            const pid = dash(body.productId);
+            const pg = await fetch(`https://api.notion.com/v1/pages/${pid}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+            const props = pg?.properties || {};
+            const campId = (props.Campaigns?.relation || [])[0]?.id;
+            let campProps = {}, resProps = {};
+            if (campId) {
+              const camp = await fetch(`https://api.notion.com/v1/pages/${campId}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+              campProps = camp?.properties || {};
+              const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: campId } } }).catch(() => []);
+              resProps = rows[0]?.properties || {};
+            }
+            return { pageId: pid, kind: "product", props, campProps, resProps };
+          }
           if (body.researchId) {
             const rid = dash(body.researchId);
             const pg = await fetch(`https://api.notion.com/v1/pages/${rid}`, { headers: hdr }).then(r => r.json()).catch(() => null);
-            return { rid, props: pg?.properties || {}, campProps: {} };
+            return { pageId: rid, kind: "research", props: pg?.properties || {}, campProps: {}, resProps: pg?.properties || {} };
           }
           const cid = dash(body.campaignId);
           const camp = await fetch(`https://api.notion.com/v1/pages/${cid}`, { headers: hdr }).then(r => r.json()).catch(() => null);
           const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: cid } } }).catch(() => []);
           const score = r => ["Statement","Unique Opportunity","Content Topics","Trend Intelligence","Keywords"].reduce((n, k) => n + rtOf(r.properties, k).length, 0);
           const best = rows.slice().sort((a, b) => score(b) - score(a))[0];
-          return { rid: best ? best.id.replace(/-/g, "") : null, props: best?.properties || {}, campProps: camp?.properties || {} };
+          return { pageId: best ? best.id.replace(/-/g, "") : null, kind: "research", props: best?.properties || {}, campProps: camp?.properties || {}, resProps: best?.properties || {} };
         };
-        const researchBrief = (props, campProps) => [
-          rtOf(props, "Name") && `Campaign: ${rtOf(props, "Name")}`,
-          rtOf(campProps, "Target Audience") && `Audience: ${rtOf(campProps, "Target Audience")}`,
-          rtOf(campProps, "Pain Points") && `Pain points: ${rtOf(campProps, "Pain Points")}`,
-          rtOf(props, "Statement") && `Positioning: ${rtOf(props, "Statement")}`,
-          (rtOf(props, "Key Message") || rtOf(campProps, "Key Message")) && `Key message: ${rtOf(props, "Key Message") || rtOf(campProps, "Key Message")}`,
-          rtOf(props, "Unique Opportunity") && `Unique opportunity: ${rtOf(props, "Unique Opportunity")}`,
-          rtOf(props, "Content Topics") && `Content topics: ${rtOf(props, "Content Topics").slice(0, 1200)}`,
-          rtOf(props, "Trend Intelligence") && `Trends: ${rtOf(props, "Trend Intelligence").slice(0, 1200)}`,
-          `Keywords: ${body.kwOverride || rtOf(props, "Keywords") || rtOf(campProps, "Keywords") || "(none on file)"}`,
-        ].filter(Boolean).join("\n");
+        // back-compat name used further down
+        const resolveResearch = async () => { const t = await resolveTarget(); return { rid: t.pageId, props: t.resProps, campProps: t.campProps }; };
+        const briefFor = (t) => {
+          const p = t.props, c = t.campProps, r = t.resProps;
+          if (t.kind === "product") {
+            return [
+              rtOf(p, "Name") && `Product: ${rtOf(p, "Name")}`,
+              rtOf(p, "Description") && `What it is: ${rtOf(p, "Description")}`,
+              rtOf(p, "Avatar") && `Buyer: ${rtOf(p, "Avatar")}`,
+              rtOf(p, "Transformation") && `Transformation: ${rtOf(p, "Transformation")}`,
+              rtOf(p, "Unique Angle") && `Unique angle: ${rtOf(p, "Unique Angle")}`,
+              rtOf(p, "Offer Structure") && `Offer: ${rtOf(p, "Offer Structure")}`,
+              rtOf(p, "Proof Points") && `Proof: ${rtOf(p, "Proof Points")}`,
+              rtOf(p, "Product Tier") && `Tier: ${rtOf(p, "Product Tier")}`,
+              rtOf(c, "Name") && `Parent campaign: ${rtOf(c, "Name")}`,
+              rtOf(c, "Target Audience") && `Campaign audience: ${rtOf(c, "Target Audience")}`,
+              rtOf(r, "Statement") && `Campaign positioning: ${rtOf(r, "Statement").slice(0, 600)}`,
+              `Keywords: ${body.kwOverride || rtOf(p, "Keywords") || rtOf(c, "Keywords") || rtOf(r, "Keywords") || "(none on file)"}`,
+            ].filter(Boolean).join("\n");
+          }
+          return [
+            rtOf(r, "Name") && `Campaign: ${rtOf(r, "Name")}`,
+            rtOf(c, "Target Audience") && `Audience: ${rtOf(c, "Target Audience")}`,
+            rtOf(c, "Pain Points") && `Pain points: ${rtOf(c, "Pain Points")}`,
+            rtOf(r, "Statement") && `Positioning: ${rtOf(r, "Statement")}`,
+            (rtOf(r, "Key Message") || rtOf(c, "Key Message")) && `Key message: ${rtOf(r, "Key Message") || rtOf(c, "Key Message")}`,
+            rtOf(r, "Unique Opportunity") && `Unique opportunity: ${rtOf(r, "Unique Opportunity")}`,
+            rtOf(r, "Content Topics") && `Content topics: ${rtOf(r, "Content Topics").slice(0, 1200)}`,
+            rtOf(r, "Trend Intelligence") && `Trends: ${rtOf(r, "Trend Intelligence").slice(0, 1200)}`,
+            `Keywords: ${body.kwOverride || rtOf(r, "Keywords") || rtOf(c, "Keywords") || "(none on file)"}`,
+          ].filter(Boolean).join("\n");
+        };
         const claude = async (parts, maxTok) => {
           const r = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
@@ -4715,25 +4754,28 @@ export default {
           if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || "Notion write failed"); }
         };
 
-        // ---- generateResearchPalette : research a palette from keywords + brief ----
+        const scopeWord = t => t.kind === "product" ? "product" : "campaign";
+
+        // ---- generateResearchPalette : research a palette from the brief ----
+        // Target: body.productId → the Product's own Palette; else the campaign's Research › Palette.
         if (body.action === "generateResearchPalette" || body.action === "generateHubPalette") {
           if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not set" }, 400);
-          const { rid, props, campProps } = await resolveResearch();
-          if (!rid) return json({ error: "no Research record for this campaign — create one first" }, 400);
+          const t = await resolveTarget();
+          if (!t.pageId) return json({ error: "no Research record for this campaign — create one first" }, 400);
           const parts = [];
           if (body.image && /^data:image\//.test(body.image)) {
             const m = body.image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
             if (m && m[2].length < 6_000_000) parts.push({ type: "image", source: { type: "base64", media_type: m[1], data: m[2] } });
           }
           parts.push({ type: "text", text:
-`You are researching the COLOUR PALETTE for a content-marketing hub page, from this campaign's research. Treat it as research: the keywords and audience point to a colour world; pick the one that fits, with a real point of view.
+`You are researching the COLOUR PALETTE for a ${scopeWord(t)}, from its research below. Treat it as research: the keywords and audience point to a colour world; pick the one that fits, with a real point of view.
 
-${researchBrief(props, campProps)}
+${briefFor(t)}
 ${parts.length ? "\nA reference image is attached — pull the palette from its dominant colours, adapted to the audience.\n" : ""}${body.instructions ? `\nOverride: ${body.instructions}\n` : ""}
 Roles: bg = page background; surface = raised card; ink = body text; ink-head = headings; ink-soft = muted text; line = hairlines; sea = primary (links, eyebrows, focus); deep = the one dark band; deep-ink = text on it; accent = the CTA button (white label on it).
 Constraints: ink >= 7:1 on bg; ink-head & sea >= 4.5:1 on bg; deep-ink >= 7:1 on deep; white >= 4.4:1 on accent. One committed ground (light or dark). One primary. Accent used once. Avoid the AI-default looks (cream+serif+terracotta / near-black+acid / broadsheet hairlines).
 
-Output: 2-3 sentences on the choice and why it fits the research, then a blank line, then ONE minified JSON line and nothing after it:
+Output: 2-3 sentences on the choice and why it fits, then a blank line, then ONE minified JSON line and nothing after it:
 {"bg":"#..","surface":"#..","ink":"#..","ink-head":"#..","ink-soft":"#..","line":"#..","sea":"#..","deep":"#..","deep-ink":"#..","accent":"#.."}` });
           let out;
           try { out = await claude(parts, 900); } catch (e) { return json({ error: e.message }, 502); }
@@ -4743,22 +4785,22 @@ Output: 2-3 sentences on the choice and why it fits the research, then a blank l
           const rationale = out.replace(/\{[^{}]*\}\s*$/, "").trim();
           const strip = PKEYS.map(k => `${k} ${palette[k]}`).join(" · ");
           const field = `${rationale}\n\n${strip}\n\n${JSON.stringify(palette)}`;
-          try { await writeResearchField(rid, "Palette", field); } catch (e) { return json({ error: e.message }, 502); }
-          return json({ ok: true, palette, text: field, researchId: rid, note: rationale.slice(0, 200) });
+          try { await writeResearchField(t.pageId, "Palette", field); } catch (e) { return json({ error: e.message }, 502); }
+          return json({ ok: true, palette, text: field, scope: t.kind, researchId: t.kind === "research" ? t.pageId : undefined, note: rationale.slice(0, 200) });
         }
 
         // ---- generateResearchFonts : research a type pairing from the brief ----
         if (body.action === "generateResearchFonts") {
           if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not set" }, 400);
-          const { rid, props, campProps } = await resolveResearch();
-          if (!rid) return json({ error: "no Research record for this campaign — create one first" }, 400);
+          const t = await resolveTarget();
+          if (!t.pageId) return json({ error: "no Research record for this campaign — create one first" }, 400);
           const known = Object.keys(FONT_REG).join(", ");
           let out;
           try {
             out = await claude([{ type: "text", text:
-`You are researching the TYPE PAIRING for a content-marketing hub page, from this campaign's research.
+`You are researching the TYPE PAIRING for a ${scopeWord(t)}, from its research below.
 
-${researchBrief(props, campProps)}
+${briefFor(t)}
 
 Pick three Google Fonts: display (headings + wordmark — the characterful face), body (everything else — legible, quiet), mono (eyebrows, nav, labels, button text, dates).
 Reuse from this list if one fits: ${known}. Only pick outside it if nothing fits.
@@ -4770,35 +4812,47 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
           if (!parsed || !parsed.display) return json({ error: "model did not return a JSON fonts line", raw: out }, 502);
           const fonts = { display: String(parsed.display).trim(), body: String(parsed.body || "Inter").trim(), mono: String(parsed.mono || "Space Mono").trim() };
           const field = `${out.replace(/\{[^{}]*\}\s*$/, "").trim()}\n\n${JSON.stringify(fonts)}`;
-          try { await writeResearchField(rid, "Fonts", field); } catch (e) { return json({ error: e.message }, 502); }
-          return json({ ok: true, fonts, text: field, researchId: rid });
+          try { await writeResearchField(t.pageId, "Fonts", field); } catch (e) { return json({ error: e.message }, 502); }
+          return json({ ok: true, fonts, text: field, scope: t.kind });
         }
 
-        // ---- getHubPalette : read Palette + Fonts off the Research record ----
+        // ---- getHubPalette : product override else campaign default ----
+        // Returns the effective palette + fonts, and where each came from.
         if (body.action === "getHubPalette") {
           try {
-            const { rid, props } = await resolveResearch();
-            const pal = parseJsonTail(rtOf(props, "Palette"));
-            const fnt = parseJsonTail(rtOf(props, "Fonts"));
+            const t = await resolveTarget();
+            const pick = (key) => {
+              if (t.kind === "product") {
+                const own = parseJsonTail(rtOf(t.props, key));
+                if (own && (own.bg || own.display)) return { val: own, source: "product" };
+                const camp = parseJsonTail(rtOf(t.resProps, key));
+                return camp && (camp.bg || camp.display) ? { val: camp, source: "campaign" } : { val: null, source: null };
+              }
+              const v = parseJsonTail(rtOf(t.props, key));
+              return v && (v.bg || v.display) ? { val: v, source: "campaign" } : { val: null, source: null };
+            };
+            const P = pick("Palette"), F = pick("Fonts");
             return json({
-              palette: pal ? safePalette(pal) : null,
-              fonts: (fnt && fnt.display) ? fnt : null,
-              paletteText: rtOf(props, "Palette"),
-              fontsText: rtOf(props, "Fonts"),
-              researchId: rid,
+              palette: P.val ? safePalette(P.val) : null,
+              fonts: (F.val && F.val.display) ? F.val : null,
+              paletteSource: P.source, fontsSource: F.source,
+              paletteText: rtOf(t.props, "Palette") || rtOf(t.resProps, "Palette"),
+              fontsText: rtOf(t.props, "Fonts") || rtOf(t.resProps, "Fonts"),
+              scope: t.kind,
+              researchId: t.kind === "research" ? t.pageId : undefined,
             });
           } catch (e) { return json({ palette: null, fonts: null, error: e.message }); }
         }
 
-        // ---- saveHubPalette : (compat) write a palette straight to the field ----
+        // ---- saveHubPalette : (compat) write a palette straight to the target's field ----
         if (body.action === "saveHubPalette") {
           try {
-            const { rid } = await resolveResearch();
-            if (!rid) return json({ error: "no Research record" }, 400);
+            const t = await resolveTarget();
+            if (!t.pageId) return json({ error: "no target to save to" }, 400);
             const palette = safePalette(body.palette);
             const strip = PKEYS.map(k => `${k} ${palette[k]}`).join(" · ");
-            await writeResearchField(rid, "Palette", `Saved from the Content Hubs tab.\n\n${strip}\n\n${JSON.stringify(palette)}`);
-            return json({ ok: true, palette });
+            await writeResearchField(t.pageId, "Palette", `Saved manually.\n\n${strip}\n\n${JSON.stringify(palette)}`);
+            return json({ ok: true, palette, scope: t.kind });
           } catch (e) { return json({ error: e.message }, 502); }
         }
 
@@ -15603,6 +15657,8 @@ Write only the content itself. No preamble, no meta-commentary, no "Here's the c
           uniqueAngle:    txt("Unique Angle"),
           description:    txt("Description"),
           notes:          txt("Notes"),
+          palette:        txt("Palette"),   // this product's own design research (blank = inherit the campaign's)
+          fonts:          txt("Fonts"),
         });
       }
 
@@ -16335,6 +16391,8 @@ Rules:
           proofPoints:    "Proof Points",
           objections:     "Objections",
           uniqueAngle:    "Unique Angle",
+          palette:        "Palette",
+          fonts:          "Fonts",
         };
         const notionField = fieldMap[field];
         if (!notionField) return json({ error: "Unknown field: " + field }, 400);
