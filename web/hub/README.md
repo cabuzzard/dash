@@ -48,7 +48,20 @@ Content Hubs tab) is a visual way to do the colour part — assign each role fro
 the palette or a picker with a live preview, then copy the `tokens` block back
 into this file.
 
-### From a photo / reference image
+### From the Content Hubs tab (Regenerate / Save to palettes / Push to hub)
+
+Each hub row has a **palette** cell → a modal:
+- **Regenerate** — worker (`generateHubPalette`) derives the 10 tokens from the
+  campaign's research, plus an optional reference image and optional override
+  text. Contrast-clamped server-side.
+- **Save to palettes** — stores the palette as a campaign spec (the `Hub Palette`
+  rich-text field on the Campaigns DB).
+- **Push to hub** — worker (`pushHubPalette`) commits the tokens into
+  `hubs.design.json` **and** the hub's `index.html` via the GitHub API; Pages
+  redeploys in ~1 min. This is the same result as editing the spec and running
+  `build-hubs.mjs`, just from the dashboard.
+
+### From a photo / reference image (local)
 
 `scripts/palette-from-photo.mjs` turns a handful of reference colours into a
 hub's full token set (contrast-checked) and writes it into `hubs.design.json`:
