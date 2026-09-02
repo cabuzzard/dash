@@ -13766,6 +13766,161 @@ Return ONLY this JSON object, no other text, no markdown fences:
           });
         }
 
+        // ── Offer asset type: turns one product into ONE finished,
+        // publish-ready OFFER — how the offer is presented on a content hub /
+        // sales page, not N concept options. Always product-tied (an offer is
+        // an offer OF something). Grounds in the product's 🔬 Product Research
+        // (STRATEGY_FIELDS — Offer Structure / Proof Points / Objections /
+        // Transformation / Benefits / Customer / Pain Points), the product
+        // page's own fields (Description / Transformation / Offer Structure /
+        // Price / URL / Unique Angle), and the attached "Offer" Method's own
+        // framework (its Notion page body — nothing offer-specific hardcoded
+        // here). Writes a machine-readable OFFER CARD json block first — for a
+        // later hub-publish step to read verbatim into a {kicker,title,
+        // excerpt,url} card — then the full pitch below it. Published
+        // immediately (an offer is a finished deliverable, like SEO Post /
+        // LinkedIn Post); source title set to Publish too.
+        if (/\boffers?\b/i.test(assetType)) {
+          if (!hasProduct) return json({ error: "The Offer asset type needs a product — an offer is always an offer OF something. Attach a Product to this title, then Generate again." }, 400);
+          const hasMethod = methodId && methodId !== "__none__";
+          const [prodPage, researchRec, methodFrameworkText, pillarContent] = await Promise.all([
+            fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null),
+            findBestProductResearchRecord(dsHdr, productId).catch(() => null),
+            hasMethod ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
+            extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
+          ]);
+          const rtp = (props, key) => (props?.[key]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          const pp = prodPage?.properties || {};
+          const productName = (pp.Name?.title || []).map(t => t.plain_text).join("").trim() || "this product";
+          const productUrl = (pp["URL"]?.url || "").trim();
+          const productLines = [
+            rtp(pp, "Description")     && `Description: ${rtp(pp, "Description")}`,
+            rtp(pp, "Transformation")  && `Transformation: ${rtp(pp, "Transformation")}`,
+            rtp(pp, "Offer Structure") && `Offer Structure: ${rtp(pp, "Offer Structure")}`,
+            rtp(pp, "Proof Points")    && `Proof Points: ${rtp(pp, "Proof Points")}`,
+            rtp(pp, "Objections")      && `Objections: ${rtp(pp, "Objections")}`,
+            rtp(pp, "Unique Angle")    && `Unique Angle: ${rtp(pp, "Unique Angle")}`,
+            rtp(pp, "Avatar")          && `Avatar: ${rtp(pp, "Avatar")}`,
+            rtp(pp, "Price")           && `Price: ${rtp(pp, "Price")}`,
+            rtp(pp, "Product Tier")    && `Product Tier (ladder rung): ${rtp(pp, "Product Tier")}`,
+            productUrl                 && `Product URL: ${productUrl}`,
+          ].filter(Boolean).join("\n");
+          const researchLines = researchRec?.properties
+            ? STRATEGY_FIELDS.map(f => rtp(researchRec.properties, f) && `${f}: ${rtp(researchRec.properties, f)}`).filter(Boolean).join("\n")
+            : "";
+          let campaignLines = "";
+          if (campaignId) {
+            const cp = await fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null);
+            const cpp = cp?.properties || {};
+            campaignLines = [
+              rtp(cpp, "Key Message")     && `Campaign Key Message: ${rtp(cpp, "Key Message")}`,
+              rtp(cpp, "Pain Points")     && `Campaign Pain Points: ${rtp(cpp, "Pain Points")}`,
+              rtp(cpp, "Target Audience") && `Campaign Target Audience: ${rtp(cpp, "Target Audience")}`,
+            ].filter(Boolean).join("\n");
+          }
+
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are writing ONE finished, publish-ready OFFER for a product — the way that offer is presented on a content hub or sales page. Not N options, not a brief: the actual offer, ready to drop in.
+
+PRODUCT: ${productName}
+WORKING TITLE / ANGLE FOR THIS OFFER: ${title}${description ? `\nOPERATOR NOTES: ${description}` : ""}${researchInstructions ? `\nRESEARCH INSTRUCTIONS: ${researchInstructions}` : ""}
+
+${methodFrameworkText ? `OFFER METHOD FRAMEWORK (how this operator wants offers structured — follow it):\n${methodFrameworkText}\n\n` : ""}PRODUCT PAGE FIELDS:
+${productLines || "(sparse — infer from the research and title)"}
+
+${researchLines ? `PRODUCT RESEARCH (🔬 positioning doc):\n${researchLines}\n\n` : ""}${campaignLines ? `${campaignLines}\n\n` : ""}${pillarContent ? `TITLE'S PILLAR CONTENT (context, not to be reproduced):\n${pillarContent.slice(0, 3000)}\n\n` : ""}RULES
+- Speak to the buyer, in their words. Name what they get and where they end up, not how it's built.
+- "included" is what they actually receive — pull from Offer Structure, make each bullet concrete.
+- "objection" states the real hesitation this buyer has and answers it in one or two sentences.
+- "promise" is ONE line — the transformation, specific, no hype. This becomes the hub card's excerpt.
+- "kicker" is the offer's shape at a glance: type + price/terms, e.g. "Fixed-fee review · $850", "Free", "Membership · $95/mo", "Retainer".
+- If there's no real price/URL in the inputs, leave ctaUrl "" and put the terms you do know in "terms" — never invent a number or a link.
+
+Return ONLY this JSON object:
+{
+  "offerName": "the offer's public name (short)",
+  "kicker": "type + price/terms at a glance",
+  "promise": "one line — the transformation, specific",
+  "forWho": "one short phrase naming the buyer",
+  "included": ["concrete thing they get", "..."],
+  "whyItWorks": "1-2 sentences, proof woven in",
+  "objection": "the hesitation + the answer, 1-2 sentences",
+  "terms": "price / guarantee / delivery / timeline — whatever is real",
+  "ctaLabel": "button text",
+  "ctaUrl": "${productUrl || ""}"
+}`;
+
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+          let offer;
+          try {
+            const raw = aiData.content?.[0]?.text || "";
+            const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+            if (start === -1 || end === -1 || end < start) throw new Error("No JSON object found");
+            offer = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          } catch (e) {
+            return json({ error: "Failed to parse offer JSON: " + e.message }, 502);
+          }
+          const included = (Array.isArray(offer.included) ? offer.included : []).map(s => String(s).trim()).filter(Boolean);
+          const ctaUrl = String(offer.ctaUrl || productUrl || "").trim();
+
+          const assetProps = {
+            "Asset Title":  { title: [{ text: { content: String(title).slice(0, 200) } }] },
+            "Asset Status": { select: { name: "Publish" } },
+            "Asset Type":   { select: { name: String(assetType).slice(0, 100) } },
+            "Body":         { rich_text: [{ text: { content: String(offer.promise || "").slice(0, 2000) } }] },
+            "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+          };
+          if (offer.offerName) assetProps["Platform Title"] = { rich_text: [{ text: { content: String(offer.offerName).slice(0, 200) } }] };
+          if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          if (ctaUrl) assetProps["Content URL"] = { url: ctaUrl };
+          const assetResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+          });
+          const assetResult = await assetResp.json();
+          if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create Offer asset" }, 502);
+          const assetId = assetResult.id.replace(/-/g, "");
+
+          const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+          const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
+          const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+          const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
+          const card = JSON.stringify({ kicker: offer.kicker || "", name: offer.offerName || title, promise: offer.promise || "", ctaLabel: offer.ctaLabel || "", ctaUrl }, null, 0);
+          const children = [
+            { object: "block", type: "code", code: { language: "json", rich_text: rtBlock(card) } },
+            offer.forWho ? para(`For ${offer.forWho}.`) : null,
+            offer.promise ? para(offer.promise) : null,
+            included.length ? heading2("What's included") : null,
+            ...included.map(bullet),
+            offer.whyItWorks ? heading2("Why it works") : null,
+            offer.whyItWorks ? para(offer.whyItWorks) : null,
+            offer.objection ? heading2("The objection it answers") : null,
+            offer.objection ? para(offer.objection) : null,
+            offer.terms ? heading2("Terms") : null,
+            offer.terms ? para(offer.terms) : null,
+            heading2("Call to action"),
+            para(`${offer.ctaLabel || "Get started"}${ctaUrl ? ` — ${ctaUrl}` : " — (no checkout URL on the product yet)"}`),
+          ].filter(Boolean);
+          const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dsDash(assetId)}/children`, {
+            method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children }),
+          });
+          if (!blocksResp.ok) { const r = await blocksResp.json(); return json({ error: r.message || "Offer asset created but failed to write its body" }, 502); }
+
+          await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
+            method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+          }).catch(() => {});
+
+          return json({ success: true, created: 1, assets: [{ id: assetId, title }], offer: { name: offer.offerName || title, kicker: offer.kicker || "", hasUrl: !!ctaUrl } });
+        }
+
         // ── LinkedIn Post asset type: reshapes the title's own pillar
         // content into ONE finished, publish-ready LinkedIn Article — not N
         // options. Framework (length, headline/hook/structure/voice/CTA
