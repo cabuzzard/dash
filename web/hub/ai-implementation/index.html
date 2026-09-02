@@ -590,12 +590,48 @@ function reveal() {
   });
 }
 
+async function renderHubProducts() {
+  // Products section: same card grid as renderCards, but live — published
+  // "Offer – Content Hub" assets for this hub (getHubProducts) replace the
+  // static HUB.trips.items, which stay as the instant fallback. Mirrors
+  // renderNews / getHubNews exactly.
+  const s = HUB.trips;
+  $("tripsLabel").textContent = s.label;
+  $("tripsTitle").textContent = s.title;
+  $("tripsNote").textContent = s.note || "";
+  const body = $("tripsBody");
+  const paint = (items) => {
+    if (!items || !items.length) { body.innerHTML = emptyState(s.empty); return; }
+    body.innerHTML = `<div class="grid cols-3">` + items.map((it) => {
+      const tag = it.url && it.url !== "#" ? "a" : "div";
+      const href = tag === "a" ? ` href="${esc(it.url)}"` : "";
+      return `<${tag} class="card"${href}>
+        ${it.kicker ? `<span class="kicker">${esc(it.kicker)}</span>` : ""}
+        <h3>${esc(it.title)}</h3>
+        ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
+        ${tag === "a" ? `<span class="more">Read →</span>` : `<span class="more">Coming soon</span>`}
+      </${tag}>`;
+    }).join("") + `</div>`;
+  };
+  paint(s.items);                                     // static fallback, instant
+  if (!HUB.campaignId) return;
+  try {
+    const res = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "getHubProducts", campaignId: HUB.campaignId, slug: HUB.slug }),
+    });
+    const data = await res.json();
+    if (res.ok && Array.isArray(data.products) && data.products.length) paint(data.products);
+  } catch (e) { /* keep the static fallback */ }
+}
+
 renderChrome();
 renderHero();
 renderCards(HUB.journal, "journalBody", "journalLabel", "journalTitle", "journalNote");
 renderNews();
 renderReport();
-renderCards(HUB.trips, "tripsBody", "tripsLabel", "tripsTitle", "tripsNote");
+renderHubProducts();
 renderSocial();
 if (!window.matchMedia || !window.matchMedia("(prefers-reduced-motion: reduce)").matches) reveal();
 </script>

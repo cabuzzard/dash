@@ -162,6 +162,21 @@ function resolveOrigin(request) {
   return HUB_ORIGINS.has(o) ? o : DEFAULT_ORIGIN;
 }
 
+// slug ↔ campaign ↔ display name for the 8 content hubs — the worker-side
+// mirror of index.html's HUB_SITES (keep in sync when a hub ships). Feeds
+// getContentHubs (the Publish modal's Content Hub picker for an
+// "Offer – Content Hub" asset) and getHubProducts (resolve slug ⇄ campaign).
+const HUB_SITES = [
+  { slug: "surf-vacations",       name: "Surf Vacations",       campaignId: "3b51f7d3a4bb81ae94b3c9fe6dc63770" },
+  { slug: "sunflower-acres",      name: "Sunflower Acres",      campaignId: "3871f7d3a4bb814997e5f3400fc3ff57" },
+  { slug: "owners-rep",           name: "Build Watcher",        campaignId: "3cb1f7d3a4bb819cb6d1eac7cf629961" },
+  { slug: "home-services",        name: "Home Services",        campaignId: "3951f7d3a4bb81659af8dc82fb56f92a" },
+  { slug: "care-gap",             name: "Care Gap",             campaignId: "34b1f7d3a4bb81b6a8a8fee04df94807" },
+  { slug: "ai-implementation",    name: "AI Implementation",    campaignId: "3b51f7d3a4bb811e8086fa1f5f7d3597" },
+  { slug: "creative-flow-guitar", name: "Creative Flow Guitar", campaignId: "34b1f7d3a4bb8154b0c5e0abcaae272a" },
+  { slug: "mountainwize",         name: "Mountainwize",         campaignId: "3921f7d3a4bb81d7a061e31ebc2ddef1" },
+];
+
 // Mutated per request in fetch() (same convention as NOTION_TOKEN below) so the
 // spread in json()/OPTIONS picks up the right Access-Control-Allow-Origin.
 const CORS = {
@@ -4581,6 +4596,71 @@ export default {
         return json({ news: parseNewsFeed(feed).slice(0, lim) });
       } catch (e) {
         return json({ news: [], error: e.message });
+      }
+    }
+
+    // ── getContentHubs ── public, no token. Feeds the Publish modal's
+    // "Content Hub" picker for an "Offer – Content Hub" asset — the modal
+    // filters this list down to the hub(s) on the asset's own campaign.
+    if (body.action === "getContentHubs") {
+      return json({ hubs: HUB_SITES.map(h => ({ slug: h.slug, name: h.name, campaignId: h.campaignId })) });
+    }
+
+    // ── getHubProducts ── public, no token. A content hub calls this on load
+    // with { campaignId, slug }. Returns the campaign's published
+    // "Offer – Content Hub" assets whose Content Hub is this slug (or unset),
+    // each parsed from its OFFER CARD json block into a
+    // { kicker, title, excerpt, url } card for the hub's Products section.
+    // Best-effort and silent-safe — an empty result leaves the hub's static
+    // HUB.trips.items fallback in place, exactly like getHubNews.
+    if (body.action === "getHubProducts") {
+      const raw = String(body.campaignId || "").replace(/-/g, "");
+      if (raw.length !== 32) return json({ products: [] });
+      const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+      const slug = String(body.slug || "").trim();
+      const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+      try {
+        const rows = await notionQuery(ASSETS_DB, {
+          filter: { and: [
+            { property: "Campaign", relation: { contains: dash(raw) } },
+            { or: [
+              { property: "Asset Status", select: { equals: "Publish" } },
+              { property: "Asset Status", select: { equals: "Published" } },
+            ] },
+          ] },
+        });
+        // Match the asset type loosely (dash/spacing drift tolerant) and honour
+        // the per-asset Content Hub tag: an asset with no tag shows on its
+        // campaign's hub; a tagged one only on the hub it names.
+        const wanted = rows.filter(r => {
+          const at = r.properties?.["Asset Type"]?.select?.name || "";
+          if (!/offer\b.*content hub/i.test(at)) return false;
+          const h = r.properties?.["Content Hub"]?.select?.name || "";
+          return !slug || !h || h === slug;
+        });
+        const cards = [];
+        for (const r of wanted) {
+          const p = r.properties || {};
+          const assetTitle    = (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
+          const platformTitle = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          const bodyProp      = (p["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          const contentUrl    = (p["Content URL"]?.url || "").trim();
+          let card = null;
+          try {
+            const kids = await fetch(`https://api.notion.com/v1/blocks/${r.id.replace(/-/g,"")}/children?page_size=25`, { headers: hdr }).then(x => x.json());
+            const codeBlock = (kids.results || []).find(b => b.type === "code");
+            if (codeBlock) card = JSON.parse((codeBlock.code?.rich_text || []).map(t => t.plain_text).join(""));
+          } catch (e) { /* fall back to properties below */ }
+          cards.push({
+            kicker:  String(card?.kicker || "").trim(),
+            title:   String(card?.name || platformTitle || assetTitle || "Untitled").trim(),
+            excerpt: String(card?.promise || bodyProp || "").trim(),
+            url:     String(card?.ctaUrl || contentUrl || "").trim(),
+          });
+        }
+        return json({ products: cards });
+      } catch (e) {
+        return json({ products: [], error: e.message });
       }
     }
 
@@ -10684,6 +10764,10 @@ Return ONLY a JSON array — no other text, no markdown fences:
             // persisted here so it's still available in the Publish modal
             // later, not just in that one API response.
             dallePrompt: p["DALL-E Prompt"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            // "Offer – Content Hub" publish target — which hub this offer
+            // asset renders on (set in the Publish modal). Empty = not yet
+            // chosen (shows on the asset's own campaign hub by default).
+            contentHub: p["Content Hub"]?.select?.name || "",
           };
         };
         titleList.forEach(t => { t.assets = []; });
@@ -14212,6 +14296,10 @@ Return ONLY this JSON object:
           };
           if (offer.offerName) assetProps["Platform Title"] = { rich_text: [{ text: { content: String(offer.offerName).slice(0, 200) } }] };
           if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          // Attach the Product too — an Offer is always an offer OF something,
+          // and the "Offer – Content Hub" variant + getHubProducts want the
+          // asset tied to campaign + product + (at publish time) hub.
+          if (productId) assetProps["Product"] = { relation: [{ id: dsDash(productId) }] };
           if (ctaUrl) assetProps["Content URL"] = { url: ctaUrl };
           const assetResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
@@ -17893,7 +17981,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       // of leaving the modal to use the main dashboard's status badge —
       // same "Asset Status" select property, same allowed values.
       if (body.action === "updatePublishFields") {
-        const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing } = body;
+        const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing, contentHub } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
@@ -17917,6 +18005,13 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         }
         if (hashtags !== undefined) props["Hashtags"] = { rich_text: hashtags ? chunkRT(hashtags) : [] };
         if (postCaption !== undefined) props["Post Caption"] = { rich_text: postCaption ? chunkRT(postCaption) : [] };
+        // Content Hub — the "Offer – Content Hub" publish target. A slug from
+        // HUB_SITES, or "" to clear. getHubProducts reads this to decide which
+        // hub an offer asset renders on.
+        if (contentHub !== undefined) {
+          const okHub = HUB_SITES.some(h => h.slug === contentHub);
+          props["Content Hub"] = { select: (contentHub && okHub) ? { name: contentHub } : null };
+        }
         if (status !== undefined && status !== "") {
           const validStatus = ["Publish", "Published"];
           if (!validStatus.includes(status)) return json({ error: "Invalid status: " + status }, 400);

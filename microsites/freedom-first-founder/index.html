@@ -1072,6 +1072,13 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <input class="modal-ta" id="pubPlatformTitle" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="No platform title for this asset type" />
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubPlatformTitle', this)">📋</button>
       </div>
+      <div id="pubHubWrap" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid #3a4a2f;background:rgba(126,211,33,.06);border-radius:4px;">
+        <label class="lm-label" for="pubContentHub" style="margin-bottom:2px;">📍 Content Hub <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— publishing this offer sends its card to this hub's Products section. Leave on the campaign's own hub unless you mean to route it elsewhere.</span></label>
+        <select class="modal-ta" id="pubContentHub" style="height:32px;padding:0 8px;width:100%;background:#1e1e1e;color:#fff;border:1px solid #333;margin-top:4px;">
+          <option value="">— none (won't show on any hub) —</option>
+        </select>
+        <div class="modal-status" id="pubContentHubStatus" style="margin:4px 0 0;"></div>
+      </div>
       <div id="pubListingWrap" style="display:none;">
         <label class="lm-label" style="margin-top:10px;">Listing Photos <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(real product photos, multiple — this listing can't go to Published without at least one. Run through Canva Pro's Background Remover first if you want a clean background; that's a manual step, not done here.)</span></label>
         <div id="pubListingPhotosGrid" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;padding:6px;border:1px solid #333;border-radius:4px;background:#141414;min-height:44px;align-items:center;">
@@ -2463,7 +2470,7 @@ async function loadTitles() {
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
-      PUB_ASSET_CACHE[a.id] = { title: a.title || '', platformTitle: a.platformTitle || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish', etsyTags: a.etsyTags || '', craigslistListing: a.craigslistListing || '', fbMarketplaceListing: a.fbMarketplaceListing || '', listingPhotos: a.listingPhotos || [], dallePrompt: a.dallePrompt || '' };
+      PUB_ASSET_CACHE[a.id] = { title: a.title || '', platformTitle: a.platformTitle || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish', etsyTags: a.etsyTags || '', craigslistListing: a.craigslistListing || '', fbMarketplaceListing: a.fbMarketplaceListing || '', listingPhotos: a.listingPhotos || [], dallePrompt: a.dallePrompt || '', contentHub: a.contentHub || '' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 50px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -6953,6 +6960,12 @@ function openPublishAssetModal(btn) {
   printifyWrap.style.display = data.type === 't shirt' ? 'block' : 'none';
   document.getElementById('pubPrintifyStatus').textContent = '';
   if (data.type === 't shirt') { pubLoadTshirtColors(); document.getElementById('pubDallePrompt').value = data.dallePrompt || ''; }
+  // Offer – Content Hub: the hub picker. Publishing the asset with a hub
+  // selected sends its OFFER CARD to that hub's Products section (getHubProducts).
+  const hubWrap = document.getElementById('pubHubWrap');
+  const isHubOffer = /offer\b.*content hub/i.test(data.type || '');
+  hubWrap.style.display = isHubOffer ? 'block' : 'none';
+  if (isHubOffer) { document.getElementById('pubContentHubStatus').textContent = ''; pubLoadContentHubs(data.contentHub || ''); }
   document.getElementById('pubThumbnail').value = data.thumbnail || '';
   renderPubThumbnailPreview(data.thumbnail || '');
   document.getElementById('pubThumbnailStatus').textContent = '';
@@ -6976,6 +6989,24 @@ function openPublishAssetModal(btn) {
     if (d.text) document.getElementById('pubPostBody').value = d.text;
     else if (!ASSET_SCRIPT_CACHE[assetId]) document.getElementById('pubPostBody').value = '';
   }).catch(() => { if (myToken === PUB_OPEN_TOKEN && !ASSET_SCRIPT_CACHE[assetId]) document.getElementById('pubPostBody').value = ''; });
+}
+// Content Hub picker (Offer – Content Hub assets). getContentHubs is public
+// and campaign-agnostic; we filter to this microsite's own campaign so the
+// operator normally sees just their one hub, and preselect it.
+let PUB_CONTENT_HUBS = null;
+async function pubLoadContentHubs(current) {
+  const sel = document.getElementById('pubContentHub');
+  const norm = s => String(s || '').replace(/-/g, '');
+  try {
+    if (!PUB_CONTENT_HUBS) { const r = await w('getContentHubs', {}); PUB_CONTENT_HUBS = r.hubs || []; }
+    const mine = PUB_CONTENT_HUBS.filter(h => norm(h.campaignId) === norm(CAMPAIGN_ID));
+    const list = mine.length ? mine : PUB_CONTENT_HUBS;
+    sel.innerHTML = `<option value="">— none (won't show on any hub) —</option>` +
+      list.map(h => `<option value="${h.slug}">${h.name} (${h.slug})</option>`).join('');
+    sel.value = current || (mine.length === 1 ? mine[0].slug : '');
+  } catch (e) {
+    document.getElementById('pubContentHubStatus').textContent = 'Could not load hubs: ' + e.message;
+  }
 }
 function renderPubThumbnailPreview(url) {
   const img = document.getElementById('pubThumbnailPreview');
@@ -7294,6 +7325,11 @@ async function savePublishAssetFields() {
     craigslistListing: document.getElementById('pubCraigslist').value.trim(),
     fbMarketplaceListing: document.getElementById('pubFbMarketplace').value.trim(),
   };
+  // Only send contentHub for an Offer – Content Hub asset (the wrap is shown) —
+  // otherwise every save would blank the Content Hub on unrelated asset types.
+  if (document.getElementById('pubHubWrap').style.display !== 'none') {
+    fields.contentHub = document.getElementById('pubContentHub').value;
+  }
   btn.disabled = true;
   status.textContent = 'Saving…';
   status.className = 'modal-status';
