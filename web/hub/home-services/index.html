@@ -24,6 +24,7 @@
   --bg:        #f4f2ec;   /* primed drywall — a clean job, warm white */
   --surface:   #ffffff;   /* raised card */
   --ink:       #22201c;   /* asphalt near-black */
+  --ink-head:  #22201c;   /* headings (h1-h3) — defaults to --ink */
   --ink-soft:  #605c53;   /* secondary text */
   --line:      #e2ded3;   /* hairline */
   --sea:       #35526b;   /* primary — worksite slate-blue */
@@ -62,7 +63,7 @@ a{color:inherit}
   color:var(--sea);
 }
 
-h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em;color:var(--ink-head)}
 
 .site-head{
   position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);

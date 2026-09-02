@@ -24,6 +24,7 @@
   --bg:        #e9efee;   /* cool sea-mist — a tide chart, not a resort */
   --surface:   #ffffff;   /* raised card */
   --ink:       #0c2327;   /* deep spruce ink */
+  --ink-head:  #0c2327;   /* headings (h1-h3) — defaults to --ink */
   --ink-soft:  #4a625f;   /* secondary text */
   --line:      #d2dedb;   /* hairline */
   --sea:       #0d6d7c;   /* primary — mid ocean */
@@ -62,7 +63,7 @@ a{color:inherit}
   color:var(--sea);
 }
 
-h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em;color:var(--ink-head)}
 
 .site-head{
   position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);

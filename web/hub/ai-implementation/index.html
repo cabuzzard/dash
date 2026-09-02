@@ -24,6 +24,7 @@
   --bg:        #f7f9f8;   /* clean daylight — not a dev console */
   --surface:   #ffffff;   /* raised card */
   --ink:       #182a24;   /* deep pine, near-black */
+  --ink-head:  #182a24;   /* headings (h1-h3) — defaults to --ink */
   --ink-soft:  #566a62;   /* calm grey-green */
   --line:      #e2e9e5;   /* soft hairline */
   --sea:       #0f7d64;   /* primary — "it's working" green */
@@ -62,7 +63,7 @@ a{color:inherit}
   color:var(--sea);
 }
 
-h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em;color:var(--ink-head)}
 
 .site-head{
   position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);

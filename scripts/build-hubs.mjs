@@ -22,7 +22,7 @@ const CHECK = args.includes("--check");
 const deckPath = args.includes("--deck") ? args[args.indexOf("--deck") + 1] : null;
 
 const spec = JSON.parse(fs.readFileSync(SPEC, "utf8"));
-const TOKENS = ["bg", "surface", "ink", "ink-soft", "line", "sea", "deep", "deep-ink", "accent", "paper"];
+const TOKENS = ["bg", "surface", "ink", "ink-head", "ink-soft", "line", "sea", "deep", "deep-ink", "accent", "paper"];
 
 /* ---------- helpers ---------------------------------------------------- */
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");

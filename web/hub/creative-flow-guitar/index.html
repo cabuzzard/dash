@@ -24,6 +24,7 @@
   --bg:        #1a1512;   /* walnut / record-black — an after-dark listening room */
   --surface:   #241d18;   /* raised warm panel */
   --ink:       #f1e8d9;   /* warm lamplight cream */
+  --ink-head:  #f1e8d9;   /* headings (h1-h3) — defaults to --ink */
   --ink-soft:  #b3a488;   /* dim warm grey */
   --line:      rgba(241,232,217,.14);
   --sea:       #e0913f;   /* primary — tube-amp amber glow */
@@ -62,7 +63,7 @@ a{color:inherit}
   color:var(--sea);
 }
 
-h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em;color:var(--ink-head)}
 
 .site-head{
   position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);

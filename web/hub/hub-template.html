@@ -24,6 +24,7 @@
   --bg:        #ffffff;
   --surface:   #f7f7f8;
   --ink:       #16181d;
+  --ink-head:  #16181d;   /* headings — defaults to --ink; set apart per hub */
   --ink-soft:  #5b616e;
   --line:      #e3e4e8;
   --sea:       #2f5fd0;   /* primary */
@@ -62,7 +63,7 @@ a{color:inherit}
   color:var(--sea);
 }
 
-h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em;color:var(--ink-head)}
 
 .site-head{
   position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);

@@ -24,6 +24,7 @@
   --bg:        #0e1b25;   /* deep cyanotype — a night jobsite, watched */
   --surface:   #15242f;   /* raised instrument panel */
   --ink:       #e3edf2;   /* blueprint white */
+  --ink-head:  #e3edf2;   /* headings (h1-h3) — defaults to --ink */
   --ink-soft:  #8ba0ac;   /* dimmed slate */
   --line:      rgba(120,170,200,.18);
   --sea:       #4c9cc4;   /* primary — drafting cyan */
@@ -62,7 +63,7 @@ a{color:inherit}
   color:var(--sea);
 }
 
-h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter-spacing:-.015em;color:var(--ink-head)}
 
 .site-head{
   position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);

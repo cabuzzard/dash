@@ -76,6 +76,7 @@
         "bg": "#f7f9f8",
         "surface": "#ffffff",
         "ink": "#182a24",
+        "ink-head": "#182a24",
         "ink-soft": "#566a62",
         "line": "#e2e9e5",
         "sea": "#0f7d64",
@@ -93,7 +94,8 @@
         "sea": "primary — \"it's working\" green",
         "deep": "deep pine band",
         "deep-ink": "text on --deep",
-        "accent": "deep persimmon — the one CTA (white text reads)"
+        "accent": "deep persimmon — the one CTA (white text reads)",
+        "ink-head": "headings (h1-h3) — defaults to --ink"
       },
       "design": {
         "subject": "A field guide for a small business that bought AI and is still waiting on results — a map of where a rollout breaks between the impressive demo and the version that runs the business. Not a vendor, not a hype site.",
@@ -129,6 +131,7 @@
         "bg": "#eceef2",
         "surface": "#ffffff",
         "ink": "#191b1f",
+        "ink-head": "#191b1f",
         "ink-soft": "#585d66",
         "line": "rgba(25,27,31,.13)",
         "sea": "#23506e",
@@ -145,7 +148,8 @@
         "sea": "steady institutional blue — primary",
         "deep": "black back-cover band",
         "deep-ink": "text on --deep",
-        "accent": "data-red — the crisis figure; used once, loudly"
+        "accent": "data-red — the crisis figure; used once, loudly",
+        "ink-head": "headings (h1-h3) — defaults to --ink"
       },
       "design": {
         "subject": "A philanthropist's briefing on the direct-care workforce crisis, from the Mobility Mentor Foundation — the crisis in named numbers (9.7M openings by 2034, median wage under $26K, 59% on public assistance) and the four funded pillars that move them.",
@@ -179,6 +183,7 @@
         "bg": "#1a1512",
         "surface": "#241d18",
         "ink": "#f1e8d9",
+        "ink-head": "#f1e8d9",
         "ink-soft": "#b3a488",
         "line": "rgba(241,232,217,.14)",
         "sea": "#e0913f",
@@ -195,7 +200,8 @@
         "sea": "primary — tube-amp amber glow",
         "deep": "deepest band",
         "deep-ink": "text on --deep",
-        "accent": "worn label red — used once, loudly"
+        "accent": "worn label red — used once, loudly",
+        "ink-head": "headings (h1-h3) — defaults to --ink"
       },
       "design": {
         "subject": "A weekly guitar session, recorded raw — the tone, the room, the take left as it happened. Download the MP3 and the live recording, study it, play along.",
@@ -229,6 +235,7 @@
         "bg": "#f4f2ec",
         "surface": "#ffffff",
         "ink": "#22201c",
+        "ink-head": "#22201c",
         "ink-soft": "#605c53",
         "line": "#e2ded3",
         "sea": "#35526b",
@@ -246,7 +253,8 @@
         "sea": "primary — worksite slate-blue",
         "deep": "asphalt band",
         "deep-ink": "text on --deep",
-        "accent": "burnt safety-orange — used once, loudly"
+        "accent": "burnt safety-orange — used once, loudly",
+        "ink-head": "headings (h1-h3) — defaults to --ink"
       },
       "design": {
         "subject": "One reliable person for the house stuff in Northern California: small repairs under the ~$1,000 licensing threshold, honey-do lists, seasonal yard work — plus house, pet, and property care while you travel. Paid, work-trade, or a mix.",
@@ -280,6 +288,7 @@
         "bg": "#edf0f0",
         "surface": "#f9fbfb",
         "ink": "#191d21",
+        "ink-head": "#191d21",
         "ink-soft": "#555c63",
         "line": "rgba(25,29,33,.13)",
         "sea": "#2f5266",
@@ -296,7 +305,8 @@
         "sea": "primary — deep alpine slate-blue (altitude, shadow)",
         "deep": "granite — the one dark band",
         "deep-ink": "text on --deep",
-        "accent": "the route line — used once, on the CTA"
+        "accent": "the route line — used once, on the CTA",
+        "ink-head": "headings (h1-h3) — defaults to --ink"
       },
       "design": {
         "subject": "Purpose coaching for men over 40 who did everything right — career, family, money — and still feel the gap where a reason should be. The coach is Evan, 'the mountain man'; his credibility is lived, consequence-earned experience, not a certification.",
@@ -331,6 +341,7 @@
         "bg": "#0e1b25",
         "surface": "#15242f",
         "ink": "#e3edf2",
+        "ink-head": "#e3edf2",
         "ink-soft": "#8ba0ac",
         "line": "rgba(120,170,200,.18)",
         "sea": "#4c9cc4",
@@ -347,7 +358,8 @@
         "sea": "primary — drafting cyan",
         "deep": "darkest band",
         "deep-ink": "text on --deep",
-        "accent": "redline / markup orange — used once, loudly"
+        "accent": "redline / markup orange — used once, loudly",
+        "ink-head": "headings (h1-h3) — defaults to --ink"
       },
       "design": {
         "subject": "An owner's representative for a construction project — the one party at the table working only for the owner. Manages budget, schedule, scope and risk from feasibility through closeout, separate from the architect and the GC.",
@@ -381,6 +393,7 @@
         "bg": "#fdfaf0",
         "surface": "#ffffff",
         "ink": "#29230f",
+        "ink-head": "#29230f",
         "ink-soft": "#675e44",
         "line": "#e6dfc8",
         "sea": "#3c6b30",
@@ -398,7 +411,8 @@
         "sea": "primary — leaf green",
         "deep": "dark leaf band",
         "deep-ink": "text on --deep",
-        "accent": "deep seed-head gold — carries white button text; used once, loudly"
+        "accent": "deep seed-head gold — carries white button text; used once, loudly",
+        "ink-head": "headings (h1-h3) — defaults to --ink"
       },
       "design": {
         "subject": "A wheelchair-accessible flower farm in Concord, California — step-free paths into and through the fields, accessible parking and restrooms, loaner wheelchairs on site, companions admitted free. U-pick, bouquets, dried arrangements, subscriptions, workshops, private group bookings.",
@@ -432,6 +446,7 @@
         "bg": "#e9efee",
         "surface": "#ffffff",
         "ink": "#0c2327",
+        "ink-head": "#0c2327",
         "ink-soft": "#4a625f",
         "line": "#d2dedb",
         "sea": "#0d6d7c",
@@ -449,7 +464,8 @@
         "sea": "primary — mid ocean",
         "deep": "deep-water band",
         "deep-ink": "text on --deep",
-        "accent": "buoy orange — used once, loudly"
+        "accent": "buoy orange — used once, loudly",
+        "ink-head": "headings (h1-h3) — defaults to --ink"
       },
       "design": {
         "subject": "Trip reports, break intel, and charter logistics for surfers who plan around the forecast, not the calendar — where the swell is, season timing, honest charter costs, uncrowded breaks.",
