@@ -23,7 +23,8 @@ type, and `<head>` meta. Edit values there, then push them into the hub HTML:
 ```
 node scripts/build-hubs.mjs           # apply the spec (rewrites the 8 hub files)
 node scripts/build-hubs.mjs --check    # verify only — exit 1 if any hub drifted (use in CI / pre-commit)
-node scripts/build-hubs.mjs --deck <path/to/hub-deck.html>   # also re-sync the Hub Deck artifact
+node scripts/build-hubs.mjs --deck <hub-deck.html>       # also re-sync the Hub Deck artifact
+node scripts/build-hubs.mjs --editor <hub-editor.html>   # also re-sync the Hub Colour Editor artifact
 ```
 
 It only ever rewrites three regions of `{slug}/index.html`: the `<title>` +
@@ -42,7 +43,10 @@ The Hub Deck reads the same `tokens` so each card wears its hub's own palette.
 
 To **iterate a design**: change the values in `hubs.design.json`, run
 `build-hubs.mjs`, eyeball the diff, commit, push. It's a config change, not a
-hand-edit of eight files.
+hand-edit of eight files. The **Hub Colour Editor** artifact (linked from the
+Content Hubs tab) is a visual way to do the colour part — assign each role from
+the palette or a picker with a live preview, then copy the `tokens` block back
+into this file.
 
 **A hub is published to Bluehost only once its domain is connected.** Pre-domain
 hubs live on GitHub Pages (`cabuzzard.github.io/dash/web/hub/{slug}/`) and that's
