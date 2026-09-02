@@ -15,6 +15,32 @@ web/hub/
 Origin URL: `https://cabuzzard.github.io/dash/web/hub/{slug}/`
 (GitHub Pages, live on push — no build step.)
 
+## Design spec — the master (`hubs.design.json`)
+
+`web/hub/hubs.design.json` is the single source of truth for every hub's colour,
+type, and `<head>` meta. Edit values there, then push them into the hub HTML:
+
+```
+node scripts/build-hubs.mjs           # apply the spec (rewrites the 8 hub files)
+node scripts/build-hubs.mjs --check    # verify only — exit 1 if any hub drifted (use in CI / pre-commit)
+node scripts/build-hubs.mjs --deck <path/to/hub-deck.html>   # also re-sync the Hub Deck artifact
+```
+
+It only ever rewrites three regions of `{slug}/index.html`: the `<title>` +
+`description` + `og:*` meta, the Google Fonts `<link>`, and the `:root` DESIGN
+TOKENS block. `SHARED LAYOUT` and the `RENDER` script are never touched. The
+build also runs a WCAG contrast check and warns (it does not block).
+
+Per hub the spec holds: `meta` (title/description/ogTitle/ogDescription),
+`fonts` (display/body/mono — family names that must exist in `fontRegistry`),
+`logoText`, `tokens` (the 10 `--*` values), `tokenNotes` (the `/* … */`
+comments), and a free-text `rationale`. The Hub Deck reads the same tokens so
+each card wears its hub's own palette.
+
+To **iterate a design**: change the values in `hubs.design.json`, run
+`build-hubs.mjs`, eyeball the diff, commit, push. It's a config change, not a
+hand-edit of eight files.
+
 **A hub is published to Bluehost only once its domain is connected.** Pre-domain
 hubs live on GitHub Pages (`cabuzzard.github.io/dash/web/hub/{slug}/`) and that's
 it. When a domain comes online, add `web/hub/{slug} → <domain>` to
@@ -53,10 +79,10 @@ one supplies the seed content.
    AI defaults deliberately avoided. See `web/hub/ai-implementation/DESIGN.md` for
    the shape. Ticks the **Brief** column in the Content Hubs tab.
 1. `cp hub-template.html {slug}/index.html`
-2. **Design tokens** — edit the `:root` block at the top of `<style>` (marked
-   `EDIT PER HUB`): `--bg / --surface / --ink / --line / --sea / --deep /
-   --accent`, the three `--font-*` faces, and `--logo-*`. Update the Google
-   Fonts `<link>` in `<head>` to match the fonts you chose.
+2. **Design tokens + `<head>` meta + fonts `<link>` are generated — do not
+   hand-edit them.** Add the hub to `web/hub/hubs.design.json` (see next
+   section) and run `node scripts/build-hubs.mjs`. For a brand-new font, add
+   one line to that file's `fontRegistry` first.
 3. **Content** — edit the `HUB` object in the bottom `<script>` (marked
    `EDIT PER HUB`):
    - `slug`, `campaignTag` (`campaignTag` lands on each newsletter lead for routing)

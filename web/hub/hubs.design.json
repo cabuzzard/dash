@@ -1,0 +1,363 @@
+{
+  "_README": "Design spec for the 8 content hubs. Edit values here, then run:  node scripts/build-hubs.mjs   (rewrites only the <head> meta, the fonts <link>, and the :root token block of each web/hub/<slug>/index.html). Add --check to verify without writing, --deck <path> to also sync the Hub Deck artifact. Shared layout + render JS are never touched.",
+  "fontRegistry": {
+    "Space Grotesk": {
+      "query": "Space+Grotesk:wght@400;500;600;700",
+      "fallback": "system-ui, sans-serif"
+    },
+    "Inter": {
+      "query": "Inter:wght@400;500;600",
+      "fallback": "system-ui, sans-serif"
+    },
+    "JetBrains Mono": {
+      "query": "JetBrains+Mono:wght@400;700",
+      "fallback": "ui-monospace, monospace"
+    },
+    "IBM Plex Sans": {
+      "query": "IBM+Plex+Sans:wght@400;500;600",
+      "fallback": "system-ui, sans-serif"
+    },
+    "IBM Plex Mono": {
+      "query": "IBM+Plex+Mono:wght@400;700",
+      "fallback": "ui-monospace, monospace"
+    },
+    "Newsreader": {
+      "query": "Newsreader:opsz,wght@6..72,500;6..72,600",
+      "fallback": "Georgia, serif"
+    },
+    "DM Serif Display": {
+      "query": "DM+Serif+Display:ital@0;1",
+      "fallback": "Georgia, serif"
+    },
+    "Hanken Grotesk": {
+      "query": "Hanken+Grotesk:wght@400;500;600",
+      "fallback": "system-ui, sans-serif"
+    },
+    "Space Mono": {
+      "query": "Space+Mono:wght@400;700",
+      "fallback": "ui-monospace, monospace"
+    },
+    "Familjen Grotesk": {
+      "query": "Familjen+Grotesk:wght@500;600;700",
+      "fallback": "system-ui, sans-serif"
+    },
+    "Bitter": {
+      "query": "Bitter:wght@500;600;700",
+      "fallback": "Georgia, serif"
+    },
+    "Archivo": {
+      "query": "Archivo:wght@500;600;700",
+      "fallback": "system-ui, sans-serif"
+    },
+    "Fraunces": {
+      "query": "Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700",
+      "fallback": "Georgia, serif"
+    },
+    "Bricolage Grotesque": {
+      "query": "Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700",
+      "fallback": "system-ui, sans-serif"
+    }
+  },
+  "hubs": {
+    "ai-implementation": {
+      "meta": {
+        "title": "AI Implementation — where small-business AI projects stall, and how to get them shipped",
+        "description": "Most AI projects don't fail — they stall. The nine places a small-business AI rollout breaks between the demo and production, and what to do about each.",
+        "ogTitle": "AI Implementation",
+        "ogDescription": "Where small-business AI projects stall — failed pilots, hallucinations, no adoption, broken integrations — and how to get them shipped."
+      },
+      "fonts": {
+        "display": "Space Grotesk",
+        "body": "Inter",
+        "mono": "JetBrains Mono"
+      },
+      "logoText": "AI Implementation",
+      "tokens": {
+        "bg": "#f7f9f8",
+        "surface": "#ffffff",
+        "ink": "#182a24",
+        "ink-soft": "#566a62",
+        "line": "#e2e9e5",
+        "sea": "#0f7d64",
+        "deep": "#0d2a22",
+        "deep-ink": "#d6e7df",
+        "accent": "#cc4e1e",
+        "paper": "#ffffff"
+      },
+      "tokenNotes": {
+        "bg": "clean daylight — not a dev console",
+        "surface": "raised card",
+        "ink": "deep pine, near-black",
+        "ink-soft": "calm grey-green",
+        "line": "soft hairline",
+        "sea": "primary — \"it's working\" green",
+        "deep": "deep pine band",
+        "deep-ink": "text on --deep",
+        "accent": "deep persimmon — the one CTA (white text reads)"
+      },
+      "rationale": "Audience: non-technical small-business owners mid-rollout, often burned by a vendor. Daylight white + a calm working-green reads plain and finished — the opposite of the console-navy/cyan look of the tools that overpromised. Persimmon spent once, on the teardown CTA."
+    },
+    "care-gap": {
+      "meta": {
+        "title": "The Care Gap — a philanthropist's briefing on the caregiver workforce crisis",
+        "description": "9.7 million direct-care jobs open by 2034 at a median wage under $26,000. The Care Gap is the Mobility Mentor Foundation's brief for funders: the crisis in named numbers, and the four pillars that move them.",
+        "ogTitle": "The Care Gap",
+        "ogDescription": "A documented care-workforce crisis, an underserved philanthropic space, and impact you can report against an ESG framework. The briefing for foundation officers and impact investors."
+      },
+      "fonts": {
+        "display": "Newsreader",
+        "body": "IBM Plex Sans",
+        "mono": "IBM Plex Mono"
+      },
+      "logoText": "The Care Gap",
+      "tokens": {
+        "bg": "#eceef2",
+        "surface": "#ffffff",
+        "ink": "#191b1f",
+        "ink-soft": "#585d66",
+        "line": "rgba(25,27,31,.13)",
+        "sea": "#23506e",
+        "deep": "#14171b",
+        "deep-ink": "#d2d6dd",
+        "accent": "#b23a2e",
+        "paper": "#ffffff"
+      },
+      "tokenNotes": {
+        "bg": "cool report-cover grey — a policy brief, not a folder",
+        "surface": "raised card",
+        "ink": "near-black",
+        "ink-soft": "cool institutional grey",
+        "sea": "steady institutional blue — primary",
+        "deep": "black back-cover band",
+        "deep-ink": "text on --deep",
+        "accent": "data-red — the crisis figure; used once, loudly"
+      },
+      "rationale": "Audience: foundation officers and impact investors. Cool institutional grey + a steady blue + a single data-red reads as a policy brief / annual report, not a cozy manila folder. The red marks the crisis figure, used once."
+    },
+    "creative-flow-guitar": {
+      "meta": {
+        "title": "Creative Flow Guitar — a new guitar session every week",
+        "description": "One guitar session a week, recorded raw — the tone, the room, the take left as it happened. Download the MP3 and the live recording, study it, play along.",
+        "ogTitle": "Creative Flow Guitar",
+        "ogDescription": "A new guitar session every week. Real playing, real feel — MP3s and live recordings you can own, study, and play along with."
+      },
+      "fonts": {
+        "display": "DM Serif Display",
+        "body": "Hanken Grotesk",
+        "mono": "Space Mono"
+      },
+      "logoText": "Creative Flow Guitar",
+      "tokens": {
+        "bg": "#1a1512",
+        "surface": "#241d18",
+        "ink": "#f1e8d9",
+        "ink-soft": "#b3a488",
+        "line": "rgba(241,232,217,.14)",
+        "sea": "#e0913f",
+        "deep": "#120e0b",
+        "deep-ink": "#e9dcc7",
+        "accent": "#c4472f",
+        "paper": "#241d18"
+      },
+      "tokenNotes": {
+        "bg": "walnut / record-black — an after-dark listening room",
+        "surface": "raised warm panel",
+        "ink": "warm lamplight cream",
+        "ink-soft": "dim warm grey",
+        "sea": "primary — tube-amp amber glow",
+        "deep": "deepest band",
+        "deep-ink": "text on --deep",
+        "accent": "worn label red — used once, loudly"
+      },
+      "rationale": "A dark walnut listening room after hours. Tube-amp amber is the primary; a worn label-red is the accent. DM Serif Display for liner-note contrast. Built for the vinyl / authentic-sound audience in the research."
+    },
+    "home-services": {
+      "meta": {
+        "title": "Home Services — one person for repairs, the yard, the pets, and the house while you're away (Northern California)",
+        "description": "Small repairs a contractor won't come for, seasonal yard work, pet and property care, and house-sitting while you travel — from one reliable person. Paid, work-trade, or a mix. Northern California.",
+        "ogTitle": "Home Services",
+        "ogDescription": "One person for the house stuff — small repairs, the yard, the pets, and watching the place while you're away. Northern California."
+      },
+      "fonts": {
+        "display": "Familjen Grotesk",
+        "body": "Hanken Grotesk",
+        "mono": "Space Mono"
+      },
+      "logoText": "Home Services",
+      "tokens": {
+        "bg": "#f4f2ec",
+        "surface": "#ffffff",
+        "ink": "#22201c",
+        "ink-soft": "#605c53",
+        "line": "#e2ded3",
+        "sea": "#35526b",
+        "deep": "#20242a",
+        "deep-ink": "#dee3e4",
+        "accent": "#c9531f",
+        "paper": "#ffffff"
+      },
+      "tokenNotes": {
+        "bg": "primed drywall — a clean job, warm white",
+        "surface": "raised card",
+        "ink": "asphalt near-black",
+        "ink-soft": "secondary text",
+        "line": "hairline",
+        "sea": "primary — worksite slate-blue",
+        "deep": "asphalt band",
+        "deep-ink": "text on --deep",
+        "accent": "burnt safety-orange — used once, loudly"
+      },
+      "rationale": "One reliable person for the house stuff, Northern California. Primed-drywall white + worksite slate-blue + safety orange — a service van and a clipboard, not a farmhouse."
+    },
+    "mountainwize": {
+      "meta": {
+        "title": "Mountainwize — purpose coaching for men who got everything right",
+        "description": "Therapy got you functional. This is the part after. Structured purpose coaching for men over 40, run by someone who has actually been lost, actually lost the money, and actually found the way through.",
+        "ogTitle": "Mountainwize",
+        "ogDescription": "Purpose coaching for men over 40 who did everything right and still feel the gap. Lived, consequence-earned — not another framework from someone who's never risked anything."
+      },
+      "fonts": {
+        "display": "Bitter",
+        "body": "Inter",
+        "mono": "Space Mono"
+      },
+      "logoText": "Mountainwize",
+      "tokens": {
+        "bg": "#edf0f0",
+        "surface": "#f9fbfb",
+        "ink": "#191d21",
+        "ink-soft": "#555c63",
+        "line": "rgba(25,29,33,.13)",
+        "sea": "#2f5266",
+        "deep": "#13171a",
+        "deep-ink": "#d5dadd",
+        "accent": "#b0402f",
+        "paper": "#f9fbfb"
+      },
+      "tokenNotes": {
+        "bg": "cold high-altitude morning light, blue-grey",
+        "surface": "raised card",
+        "ink": "cold graphite",
+        "ink-soft": "stone grey",
+        "sea": "primary — deep alpine slate-blue (altitude, shadow)",
+        "deep": "granite — the one dark band",
+        "deep-ink": "text on --deep",
+        "accent": "the route line — used once, on the CTA"
+      },
+      "rationale": "Purpose coaching for men 40+ who did everything right. Cold high-altitude blue-grey (per the hub DESIGN.md: if revisited, go colder), alpine slate-blue primary, a single brick-red route line on the CTA. Zero imagery."
+    },
+    "owners-rep": {
+      "meta": {
+        "title": "Build Watcher — independent owner's representation for construction projects",
+        "description": "Your architect manages design; your GC manages their margin. Build Watcher manages the budget, schedule, scope and risk for the owner, from feasibility through closeout.",
+        "ogTitle": "Build Watcher",
+        "ogDescription": "Independent owner's representation for construction projects. Someone watching the build for you — and only you."
+      },
+      "fonts": {
+        "display": "Archivo",
+        "body": "Hanken Grotesk",
+        "mono": "Space Mono"
+      },
+      "logoText": "Build Watcher",
+      "tokens": {
+        "bg": "#0e1b25",
+        "surface": "#15242f",
+        "ink": "#e3edf2",
+        "ink-soft": "#8ba0ac",
+        "line": "rgba(120,170,200,.18)",
+        "sea": "#4c9cc4",
+        "deep": "#0a141c",
+        "deep-ink": "#cbdce4",
+        "accent": "#cc501c",
+        "paper": "#15242f"
+      },
+      "tokenNotes": {
+        "bg": "deep cyanotype — a night jobsite, watched",
+        "surface": "raised instrument panel",
+        "ink": "blueprint white",
+        "ink-soft": "dimmed slate",
+        "sea": "primary — drafting cyan",
+        "deep": "darkest band",
+        "deep-ink": "text on --deep",
+        "accent": "redline / markup orange — used once, loudly"
+      },
+      "rationale": "Owner’s representative — construction oversight. Deep cyanotype night-jobsite + drafting cyan + redline orange. An instrument panel: precise, watched."
+    },
+    "sunflower-acres": {
+      "meta": {
+        "title": "Sunflower Acres — a wheelchair-accessible flower farm in Concord, California",
+        "description": "Step-free into and through the fields. Accessible parking and restrooms, loaner wheelchairs on site, companions free. Come cut your own flowers in Concord, CA.",
+        "ogTitle": "Sunflower Acres",
+        "ogDescription": "A wheelchair-accessible flower farm in Concord, California. The same day at the farm, for everyone."
+      },
+      "fonts": {
+        "display": "Fraunces",
+        "body": "Hanken Grotesk",
+        "mono": "Space Mono"
+      },
+      "logoText": "Sunflower Acres",
+      "tokens": {
+        "bg": "#fdfaf0",
+        "surface": "#ffffff",
+        "ink": "#29230f",
+        "ink-soft": "#675e44",
+        "line": "#e6dfc8",
+        "sea": "#3c6b30",
+        "deep": "#21301a",
+        "deep-ink": "#e9edd6",
+        "accent": "#a86011",
+        "paper": "#ffffff"
+      },
+      "tokenNotes": {
+        "bg": "warm sunlight on a clear day",
+        "surface": "raised card",
+        "ink": "rich soil brown-black — high contrast on purpose",
+        "ink-soft": "secondary text",
+        "line": "hairline",
+        "sea": "primary — leaf green",
+        "deep": "dark leaf band",
+        "deep-ink": "text on --deep",
+        "accent": "deep seed-head gold — carries white button text; used once, loudly"
+      },
+      "rationale": "Wheelchair-accessible flower farm, Concord CA. Warm sunlight ground, deliberately deep soil-brown ink for contrast (low-vision visitors), leaf green + a deep seed-head gold. Accessibility is the brand, so the palette leads with clarity and warmth."
+    },
+    "surf-vacations": {
+      "meta": {
+        "title": "Surf Vacations — trip reports, break intel, charter logistics",
+        "description": "Where the swell is and how to get there. Season timing, honest charter costs, and uncrowded breaks for surfers who plan around the forecast.",
+        "ogTitle": "Surf Vacations",
+        "ogDescription": "Trip reports, break guides, and charter logistics for surfers who plan around forecasts, not calendars."
+      },
+      "fonts": {
+        "display": "Bricolage Grotesque",
+        "body": "Hanken Grotesk",
+        "mono": "Space Mono"
+      },
+      "logoText": "Surf Vacations",
+      "tokens": {
+        "bg": "#e9efee",
+        "surface": "#ffffff",
+        "ink": "#0c2327",
+        "ink-soft": "#4a625f",
+        "line": "#d2dedb",
+        "sea": "#0d6d7c",
+        "deep": "#08252c",
+        "deep-ink": "#d8e7e4",
+        "accent": "#cf4a1c",
+        "paper": "#ffffff"
+      },
+      "tokenNotes": {
+        "bg": "cool sea-mist — a tide chart, not a resort",
+        "surface": "raised card",
+        "ink": "deep spruce ink",
+        "ink-soft": "secondary text",
+        "line": "hairline",
+        "sea": "primary — mid ocean",
+        "deep": "deep-water band",
+        "deep-ink": "text on --deep",
+        "accent": "buoy orange — used once, loudly"
+      },
+      "rationale": "Trip reports, break intel, charter logistics for surfers who plan around the forecast. Cool sea-mist ground reads like a tide chart / almanac rather than a resort brochure; ocean teal primary, buoy orange accent."
+    }
+  }
+}
