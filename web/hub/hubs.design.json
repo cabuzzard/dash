@@ -338,17 +338,17 @@
       },
       "logoText": "Build Watcher",
       "tokens": {
-        "bg": "#0e1b25",
-        "surface": "#15242f",
-        "ink": "#e3edf2",
-        "ink-head": "#e3edf2",
-        "ink-soft": "#8ba0ac",
-        "line": "rgba(120,170,200,.18)",
-        "sea": "#4c9cc4",
-        "deep": "#0a141c",
-        "deep-ink": "#cbdce4",
-        "accent": "#cc501c",
-        "paper": "#15242f"
+        "bg": "#f5f3ee",
+        "surface": "#ffffff",
+        "ink": "#1c1713",
+        "ink-head": "#1c1713",
+        "ink-soft": "#6b6158",
+        "line": "#ddd9d2",
+        "sea": "#8a6a1f",
+        "deep": "#1e1409",
+        "deep-ink": "#f5f3ee",
+        "accent": "#97701e",
+        "paper": "#ffffff"
       },
       "tokenNotes": {
         "bg": "deep cyanotype — a night jobsite, watched",
