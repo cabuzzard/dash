@@ -34,8 +34,11 @@ build also runs a WCAG contrast check and warns (it does not block).
 Per hub the spec holds: `meta` (title/description/ogTitle/ogDescription),
 `fonts` (display/body/mono — family names that must exist in `fontRegistry`),
 `logoText`, `tokens` (the 10 `--*` values), `tokenNotes` (the `/* … */`
-comments), and a free-text `rationale`. The Hub Deck reads the same tokens so
-each card wears its hub's own palette.
+comments), and a `design` block — the written brief for the hub (subject,
+audience, the page's one job, the type reasoning, the signature element, the one
+aesthetic risk, what was deliberately avoided, and the superseded palette). The
+`design` block replaces the old per-hub `DESIGN.md` files: one spec, no drift.
+The Hub Deck reads the same `tokens` so each card wears its hub's own palette.
 
 To **iterate a design**: change the values in `hubs.design.json`, run
 `build-hubs.mjs`, eyeball the diff, commit, push. It's a config change, not a
@@ -73,16 +76,15 @@ uses as the doc root once connected). Only `creative-flow-guitar` is in the tsv 
 A hub can be built from **a campaign Research record** or **a Product** — either
 one supplies the seed content.
 
-0. **Write `{slug}/DESIGN.md` first** — the design brief: subject + audience + the
-   page's one job, the resolved token system (palette hex, type pairing + roles,
-   layout concept), the signature element, the one aesthetic risk taken, and the
-   AI defaults deliberately avoided. See `web/hub/ai-implementation/DESIGN.md` for
-   the shape. Ticks the **Brief** column in the Content Hubs tab.
+0. **Add the hub to `web/hub/hubs.design.json`** — a `hubs.<slug>` entry with
+   `meta`, `fonts`, `logoText`, `tokens`, `tokenNotes`, and a `design` block
+   (subject / audience / job / type / signature / risk / avoided / superseded).
+   The `design` block is the brief — write it before the colours, and update it
+   whenever the research gets better. It's fine to start thin and refine.
 1. `cp hub-template.html {slug}/index.html`
-2. **Design tokens + `<head>` meta + fonts `<link>` are generated — do not
-   hand-edit them.** Add the hub to `web/hub/hubs.design.json` (see next
-   section) and run `node scripts/build-hubs.mjs`. For a brand-new font, add
-   one line to that file's `fontRegistry` first.
+2. **`node scripts/build-hubs.mjs`** — this writes the `<head>` meta, the fonts
+   `<link>`, and the `:root` token block from the spec. Never hand-edit those in
+   the HTML. For a brand-new font, add one line to `fontRegistry` first.
 3. **Content** — edit the `HUB` object in the bottom `<script>` (marked
    `EDIT PER HUB`):
    - `slug`, `campaignTag` (`campaignTag` lands on each newsletter lead for routing)

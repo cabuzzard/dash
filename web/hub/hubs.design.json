@@ -95,7 +95,22 @@
         "deep-ink": "text on --deep",
         "accent": "deep persimmon — the one CTA (white text reads)"
       },
-      "rationale": "Audience: non-technical small-business owners mid-rollout, often burned by a vendor. Daylight white + a calm working-green reads plain and finished — the opposite of the console-navy/cyan look of the tools that overpromised. Persimmon spent once, on the teardown CTA."
+      "design": {
+        "subject": "A field guide for a small business that bought AI and is still waiting on results — a map of where a rollout breaks between the impressive demo and the version that runs the business. Not a vendor, not a hype site.",
+        "audience": "SMB owner/operator mid-rollout — skeptical, often already burned by an agency that overpromised, reading for the failure that sounds like their project. Campaign keywords also reach earlier-stage 'no coding / for beginners' searchers.",
+        "job": "Request the free stalled-pilot teardown (email capture in the report band). The deeper paid reviews start from it.",
+        "type": "Space Grotesk (600) display — geometric, reads as engineering not editorial. Inter body for dense failure-mode copy. JetBrains Mono on every label, so the page reads as a status readout.",
+        "signature": "The ribbon is an implementation status readout — mono stat-chips under the hero showing the vitals of a rollout that's actually shipping (pilot-to-production stall rate, time-to-value target, rollback plan, named owner, adoption cadence). The 01-09 card numbering is a real sequence: the order a rollout tends to break in.",
+        "risk": "Daylight white + a green primary + mono labels is close to 'well-made SaaS onboarding' with no strong point of view. The mono status-readout treatment (ribbon, 01-09 numbering, code-type labels) is what keeps it specific. If it drifts bland, push the postmortem idea: red-thread margin annotations, timestamps, a reviewed/open/fixed state per failure mode.",
+        "avoided": [
+          "The warm-cream + high-contrast serif + terracotta cluster",
+          "The broadsheet look — hairlines everywhere, zero radius, newspaper columns",
+          "Any 'AI' imagery — glowing brains, circuit traces, robot hands, particle fields. Zero images; the ribbon stats are the visual",
+          "Marketing voice — every label names what a person controls ('Rollback plan', 'Owner', 'Adoption'), not how the system is built",
+          "Console-navy + cyan (the original palette) — the exact look of the vendors this audience already distrusts"
+        ],
+        "superseded": "2026-09-01 to 09-02: --bg #080c14 console navy / --sea #60a5fa signal blue / --accent #06b6d4 cyan (type unchanged). Dropped because navy+cyan is the vendors' palette and leaned on the near-black-plus-acid-accent AI default."
+      }
     },
     "care-gap": {
       "meta": {
@@ -132,7 +147,20 @@
         "deep-ink": "text on --deep",
         "accent": "data-red — the crisis figure; used once, loudly"
       },
-      "rationale": "Audience: foundation officers and impact investors. Cool institutional grey + a steady blue + a single data-red reads as a policy brief / annual report, not a cozy manila folder. The red marks the crisis figure, used once."
+      "design": {
+        "subject": "A philanthropist's briefing on the direct-care workforce crisis, from the Mobility Mentor Foundation — the crisis in named numbers (9.7M openings by 2034, median wage under $26K, 59% on public assistance) and the four funded pillars that move them.",
+        "audience": "Foundation officers and impact investors under ESG/DEI reporting pressure, looking for a documented, trackable social outcome in a space with less donor competition than hunger or education.",
+        "job": "Book a 15-minute call, or download the briefing (email capture).",
+        "type": "Newsreader (500/600) display — a text-face serif that reads as a policy journal, not a brand. IBM Plex Sans body; IBM Plex Mono for figures and labels — an institutional, government-adjacent register.",
+        "signature": "The vitals ribbon — the crisis stated as a strip of hard figures before any prose. The four pillars are framed as 'measurable lines the Foundation reports on', each mapped to a grant-committee metric rather than a feel-good theme.",
+        "risk": "Cool grey + institutional blue + a lone data-red is deliberately close to a real annual report — that's the point, but it risks reading dry. The single red figure and the Newsreader serif carry the gravity; if it flattens, set one number per section large.",
+        "avoided": [
+          "The manila-folder / cozy-nonprofit warm palette (the previous version)",
+          "Charity imagery — hands, faces, care-recipient photos",
+          "Advocacy-poster urgency (all-caps, exclamation, colour blocks) — the audience allocates capital, it doesn't sign petitions"
+        ],
+        "superseded": "Was manila #f4efe4 + evergreen #2f5d4f + burnt-ochre #a85f22 (Newsreader / IBM Plex kept)."
+      }
     },
     "creative-flow-guitar": {
       "meta": {
@@ -169,7 +197,20 @@
         "deep-ink": "text on --deep",
         "accent": "worn label red — used once, loudly"
       },
-      "rationale": "A dark walnut listening room after hours. Tube-amp amber is the primary; a worn label-red is the accent. DM Serif Display for liner-note contrast. Built for the vinyl / authentic-sound audience in the research."
+      "design": {
+        "subject": "A weekly guitar session, recorded raw — the tone, the room, the take left as it happened. Download the MP3 and the live recording, study it, play along.",
+        "audience": "Players and listeners who care about authentic sound — the acoustic / instrumental / country-rock crossover, the vinyl-resurgence and classic-rock-radio audience. High intent, tired of over-produced tutorials.",
+        "job": "Get this week's session (download), or join the weekly (email capture).",
+        "type": "DM Serif Display — high-contrast, poster-ish, reads like a record sleeve / liner note. Hanken Grotesk body. Space Mono for session data — key, tuning, BPM, length.",
+        "signature": "The session-vitals ribbon — key, tuning, BPM, take length, format — set in mono like the back of a record. The whole page is an after-dark listening room: one dark walnut ground, a single tube-amp amber as primary, a worn label-red used once.",
+        "risk": "Dark walnut + amber + a display serif can tip into 'craft coffee / whiskey brand' pastiche. It stays a music page by leading with the session data and the raw-recording promise, not mood.",
+        "avoided": [
+          "The warm-linen 'studio daylight' light palette (the previous version)",
+          "Guitar-hero imagery — stage lights, silhouettes, close-ups of hands on a fretboard",
+          "Streaming-service UI — play buttons, waveforms, gradient cover art"
+        ],
+        "superseded": "Was warm linen #e9e5dd + oxblood #6e2231 + brass-gold #c9a13c, Newsreader display."
+      }
     },
     "home-services": {
       "meta": {
@@ -207,7 +248,20 @@
         "deep-ink": "text on --deep",
         "accent": "burnt safety-orange — used once, loudly"
       },
-      "rationale": "One reliable person for the house stuff, Northern California. Primed-drywall white + worksite slate-blue + safety orange — a service van and a clipboard, not a farmhouse."
+      "design": {
+        "subject": "One reliable person for the house stuff in Northern California: small repairs under the ~$1,000 licensing threshold, honey-do lists, seasonal yard work — plus house, pet, and property care while you travel. Paid, work-trade, or a mix.",
+        "audience": "NorCal homeowners who can't get a licensed contractor to call back for a small job, and who juggle a separate pet sitter, dog walker, and house-checker when they travel. Ranges from ordinary households to owners of second homes and estates (the premium tier).",
+        "job": "Get on the schedule — an enquiry for a job, or for house / pet / property sitting.",
+        "type": "Familjen Grotesk display — a sturdy, plainspoken grotesk. Hanken Grotesk body. Space Mono for the service list and terms.",
+        "signature": "The scope ribbon states the boundary out loud — 'under the licensing threshold, no permit required, one person not a rotating cast, keys you hand over and stop thinking about.' The offer cards are the actual jobs, priced plainly.",
+        "risk": "Slate-blue + safety-orange on drywall-white can read as a generic trades-directory template. The plain-spoken 'one person for the house stuff' voice and the honest scope boundary keep it specific.",
+        "avoided": [
+          "The manila + hunter-green 'farmhouse' palette (the previous version)",
+          "Tool close-ups, hard-hat stock photos, before/after grids",
+          "Handyman-app aesthetics — star ratings, dispatch maps, surge-style urgency"
+        ],
+        "superseded": "Was manila #eae6dc + hunter-green #3f5e4c + barn-red #c14b2a."
+      }
     },
     "mountainwize": {
       "meta": {
@@ -244,7 +298,21 @@
         "deep-ink": "text on --deep",
         "accent": "the route line — used once, on the CTA"
       },
-      "rationale": "Purpose coaching for men 40+ who did everything right. Cold high-altitude blue-grey (per the hub DESIGN.md: if revisited, go colder), alpine slate-blue primary, a single brick-red route line on the CTA. Zero imagery."
+      "design": {
+        "subject": "Purpose coaching for men over 40 who did everything right — career, family, money — and still feel the gap where a reason should be. The coach is Evan, 'the mountain man'; his credibility is lived, consequence-earned experience, not a certification.",
+        "audience": "Men 38-60 who've tried therapy, journaling, meditation and found them insufficient. Skeptical of the coaching industry. Ready to buy a structured path, not read more.",
+        "job": "Take the free assessment (email capture) — it sorts what they're actually dealing with and points them to the right route.",
+        "type": "Bitter (500/600/700) display — a slab serif with spine, reads as a field guide written by someone who did it, not wellness-soft. Inter body. Space Mono for route data — session length, price, weeks, terms.",
+        "signature": "The route. The page is structured and named like a climb — the ribbon is 'route beta' (a conditions strip), and the offer section is four routes graded by where you are (Recon free, 4-week Reset, flagship climb, group rope team), not sorted by price. Hero: 'Therapy got you functional. This is the part after.'",
+        "risk": "Slab serif + paper + brick-red can drift toward a generic 'rugged outdoors brand' (REI-adjacent). Mitigation: precise and quiet — zero images, no mountain silhouettes or textures; the route language does the work. If revisited: drop the warm accent for a high-altitude ice-blue and lean harder on the topo/elevation motif as a drawn element.",
+        "avoided": [
+          "The wellness cluster: soft sans, sage/blush, gradient blobs, lowercase, 'journey' language — the exact aesthetic the campaign positions against",
+          "The biohacking / tech-dark cluster: near-black ground, neon accent, data UI",
+          "The three AI defaults (cream+serif+terracotta / near-black+acid / broadsheet hairlines)",
+          "Any photograph of a mountain, a pensive man at a view, or a summit"
+        ],
+        "superseded": "2026-09-02: --bg was #f3f0e8 warm topo paper; pulled cold to #edf0f0, --deep deepened, per the risk note above."
+      }
     },
     "owners-rep": {
       "meta": {
@@ -281,7 +349,20 @@
         "deep-ink": "text on --deep",
         "accent": "redline / markup orange — used once, loudly"
       },
-      "rationale": "Owner’s representative — construction oversight. Deep cyanotype night-jobsite + drafting cyan + redline orange. An instrument panel: precise, watched."
+      "design": {
+        "subject": "An owner's representative for a construction project — the one party at the table working only for the owner. Manages budget, schedule, scope and risk from feasibility through closeout, separate from the architect and the GC.",
+        "audience": "An owner about to build, or mid-build, who senses the architect manages design and the GC manages their own margin, and no one is minding the owner's exposure.",
+        "job": "Get the free owner's checklist (email capture), or book a project review.",
+        "type": "Archivo display — a structural grotesk with tight caps, reads as drafting / spec. Hanken Grotesk body. Space Mono for the checklist and figures.",
+        "signature": "A cyanotype night-jobsite — the page is a dark instrument panel with drafting-cyan linework and a single redline-orange for the markup. The free 'checklist' is framed as the 18 things an owner should have locked before a shovel moves — the same review the paid engagements start from.",
+        "risk": "Dark blue + cyan + orange is close to a generic 'construction-tech' dashboard. The redline-markup language and the owner's-side-of-the-table framing keep it from being SaaS.",
+        "avoided": [
+          "The pale blueprint-paper palette (the previous version)",
+          "Hero shots of cranes, hard hats, or finished buildings",
+          "Contractor-marketing warmth — family photos, 'your dream home'"
+        ],
+        "superseded": "Was blueprint paper #eceef1 + navy #22436e + redline-orange #c2410c (Archivo kept)."
+      }
     },
     "sunflower-acres": {
       "meta": {
@@ -319,7 +400,20 @@
         "deep-ink": "text on --deep",
         "accent": "deep seed-head gold — carries white button text; used once, loudly"
       },
-      "rationale": "Wheelchair-accessible flower farm, Concord CA. Warm sunlight ground, deliberately deep soil-brown ink for contrast (low-vision visitors), leaf green + a deep seed-head gold. Accessibility is the brand, so the palette leads with clarity and warmth."
+      "design": {
+        "subject": "A wheelchair-accessible flower farm in Concord, California — step-free paths into and through the fields, accessible parking and restrooms, loaner wheelchairs on site, companions admitted free. U-pick, bouquets, dried arrangements, subscriptions, workshops, private group bookings.",
+        "audience": "Bay Area adults planning an outing for a group that includes a wheelchair user or someone with limited mobility — often an adult child planning for a parent, or a parent of a disabled kid — plus East Bay flower lovers and care / day-program coordinators within about an hour of Concord.",
+        "job": "Book a visit, or get the free accessible-visit guide (email capture).",
+        "type": "Fraunces display — a soft optical serif, warm and human, made by people not a chain. Hanken Grotesk body. Space Mono for hours, prices, and access details.",
+        "signature": "Accessibility stated plainly and first — the ribbon is the access facts (step-free paths, accessible parking + restrooms, loaner chairs, companions free), because every competitor makes you call ahead and guess. Ink-on-ground contrast is deliberately high for low-vision visitors.",
+        "risk": "Warm sun-white + leaf-green + gold is the one hub that stays in warm-light territory. It differentiates on being unambiguously the sunny, accessible one — and on access-first content — rather than on palette novelty.",
+        "avoided": [
+          "The pale-field-green wash (the previous version) — not enough contrast for the audience",
+          "Rustic farm-stand clutter — chalkboards, burlap, mason jars",
+          "Inspiration-porn disability imagery"
+        ],
+        "superseded": "Was pale field-green #eef1e1 + field-green #3d6b2b + bright gold #efa100; ground warmed, ink deepened for contrast, accent darkened to a seed-head gold that carries white button text."
+      }
     },
     "surf-vacations": {
       "meta": {
@@ -357,7 +451,20 @@
         "deep-ink": "text on --deep",
         "accent": "buoy orange — used once, loudly"
       },
-      "rationale": "Trip reports, break intel, charter logistics for surfers who plan around the forecast. Cool sea-mist ground reads like a tide chart / almanac rather than a resort brochure; ocean teal primary, buoy orange accent."
+      "design": {
+        "subject": "Trip reports, break intel, and charter logistics for surfers who plan around the forecast, not the calendar — where the swell is, season timing, honest charter costs, uncrowded breaks.",
+        "audience": "Surfers who read swell models and book around a window — not beginners looking for a resort package (though a beginner tier exists).",
+        "job": "Get the weekly report (email capture), or browse the trips.",
+        "type": "Bricolage Grotesque display — a lively contemporary grotesk with optical sizing. Hanken Grotesk body. Space Mono for dates, costs, and swell data.",
+        "signature": "The conditions ribbon reads like a forecast strip. The whole page is a cool tide-chart / almanac, not a travel brochure — sea-mist ground, ocean-teal primary, a buoy-orange hazard accent used once.",
+        "risk": "Cool mist + teal + orange is a restrained, chart-like palette; the risk is it reads under-designed. The forecast-strip framing and the honest-cost copy are what make it deliberate.",
+        "avoided": [
+          "The warm-sand 'beach resort' palette (the previous version)",
+          "Drone barrel shots, sunset silhouettes, palm trees",
+          "Booking-engine UI — price sliders, calendar grids, 'only 2 left'"
+        ],
+        "superseded": "Was warm sand #f3efe4 + ocean-teal #0e6e7d + sunset-orange #e4572e (Bricolage kept)."
+      }
     }
   }
 }

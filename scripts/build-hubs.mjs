@@ -116,6 +116,9 @@ for (const slug of slugs) {
 
   const w = auditContrast(slug, hub.tokens);
   if (w.length) console.warn(`  ⚠ ${slug}: ${w.join("; ")}`);
+  const d = hub.design || {};
+  const missing = ["subject", "audience", "job"].filter((k) => !d[k]);
+  if (missing.length) console.warn(`  ⚠ ${slug}: design block missing ${missing.join(", ")}`);
 
   if (out === src) {
     console.log(`  = ${slug}`);
