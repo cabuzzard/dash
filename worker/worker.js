@@ -4844,8 +4844,7 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
                 if (!spec.fontRegistry[fam]) spec.fontRegistry[fam] = { query: fontQuery(fam), fallback: fontFallback(fam) };
               }
             }
-            spec.hubs[slug].tokenNotes = spec.hubs[slug].tokenNotes || {};
-            spec.hubs[slug].tokenNotes.bg = `researched palette, pushed ${stamp}`;
+            // leave tokenNotes alone so build-hubs.mjs --check stays clean
             await putFile("web/hub/hubs.design.json", JSON.stringify(spec, null, 2) + "\n", `hub design: ${slug} — spec (research)`, specF.sha);
 
             // 2. the hub's index.html — :root values, --font-* vars, and the fonts <link>
