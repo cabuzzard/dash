@@ -18,22 +18,29 @@ between the impressive demo and the version that actually runs the business.
 
 ## Token system
 
-### Color — a console at rest
+### Color — daylight, not a dev console
+
+*(Revised 2026-09-02. The original console-navy palette is at the bottom of this
+file under "Superseded".)*
 
 | Token | Hex | Role |
 |---|---|---|
-| `--bg` | `#080c14` | deep console navy — the page ground |
-| `--surface` | `#0f1626` | raised panel / card |
-| `--ink` | `#e7eefb` | near-white body |
-| `--ink-soft` | `#93a3bd` | muted slate — secondary text |
-| `--line` | `rgba(96,165,250,.16)` | faint blue hairline |
-| `--sea` | `#60a5fa` | **primary** — signal blue (eyebrows, kickers, links, focus) |
-| `--deep` | `#0b111d` | report band, a touch off-bg |
-| `--deep-ink` | `#c6d3ea` | text on `--deep` |
-| `--accent` | `#06b6d4` | **cyan — used once, loudly** (the primary CTA only) |
+| `--bg` | `#f7f9f8` | clean daylight white, a hair of green — the page ground |
+| `--surface` | `#ffffff` | raised card |
+| `--ink` | `#182a24` | deep pine, near-black body |
+| `--ink-soft` | `#566a62` | calm grey-green — secondary text |
+| `--line` | `#e2e9e5` | soft hairline |
+| `--sea` | `#0f7d64` | **primary** — a "this is working" green (eyebrows, kickers, links, focus) |
+| `--deep` | `#0d2a22` | deep-pine report band — the one inverted block |
+| `--deep-ink` | `#d6e7df` | text on `--deep` |
+| `--accent` | `#cc4e1e` | **deep persimmon — used once, loudly** (the primary CTA only; darkened so the shared white button label clears 4.5:1) |
 
-Signal blue does the structural work; cyan is spent in exactly one place (the
-"Send me the teardown" button). Nothing glows, nothing gradients.
+The audience was burned by a vendor whose product *looked* like console-navy and
+glowing cyan. Wearing that same palette works against the "we're not another hype
+tool" message. Daylight white + a calm working green reads as plain, finished,
+trustworthy — the opposite of the demo that impressed everyone and then stalled.
+Green does the structural work; persimmon is spent in exactly one place (the
+"Send me the teardown" button).
 
 ### Type — spec-sheet, not marketing
 
@@ -74,16 +81,21 @@ projects don't fail. They stall."*
 
 ## The one risk
 
-Console-navy + a single bright cyan accent is **close to one of the three
-AI-default looks** the frontend-design skill flags (near-black ground, one acid
-accent). It's taken deliberately here: the subject *is* systems, observability,
-terminals and status pages — the palette is the customer's own working
-environment, not a studio default. But it's a lean on a default, and it's the
-first thing a revision should question.
+Daylight white + a green primary + a mono label set is closer to the "well-made
+SaaS onboarding" look than to anything with a strong point of view. The
+mono-forward status-readout treatment (the ribbon, the 01–09 card numbering, the
+code-type labels) is what keeps it from being generic — it still reads as a
+status page, just a calm one on paper rather than a dark one. If it drifts toward
+bland, push the postmortem idea further: red-thread margin annotations,
+timestamps, a visible "reviewed / open / fixed" state on each failure mode.
 
-If revisited: push toward an **incident-report / postmortem** aesthetic —
-mono-forward, an off-white "printed doc" ground, red-thread margin annotations,
-timestamps. Same "we take this seriously" message, further from the cluster.
+## Superseded — the original console palette (2026-09-01 → 2026-09-02)
+
+`--bg #080c14` deep console navy · `--surface #0f1626` · `--ink #e7eefb` ·
+`--ink-soft #93a3bd` · `--sea #60a5fa` signal blue · `--deep #0b111d` ·
+`--accent #06b6d4` cyan. Space Grotesk / Inter / JetBrains Mono (type kept).
+Dropped because navy + cyan is the exact palette of the vendors this audience
+already distrusts, and it leaned on the near-black-plus-acid-accent AI default.
 
 ## Deliberately avoided
 

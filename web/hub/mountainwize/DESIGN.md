@@ -27,15 +27,15 @@ made and lost, an actual rebuild. He has been where the reader is.
 
 | Token | Hex | Role |
 |---|---|---|
-| `--bg` | `#f3f0e8` | weathered topo-map paper — cool-warm, not spa-cream |
-| `--surface` | `#fbf9f3` | raised card |
-| `--ink` | `#1f2328` | cold graphite |
-| `--ink-soft` | `#5f6670` | stone grey |
-| `--line` | `rgba(31,35,40,.14)` | hairline |
-| `--sea` (primary) | `#2e5266` | deep alpine slate-blue — altitude, shadow, depth. Eyebrows, links, kickers, focus ring |
-| `--deep` | `#1c2024` | granite — the one dark band (where the assessment sits) |
-| `--deep-ink` | `#d8dce0` | text on `--deep` |
-| `--accent` | `#a83c30` | **the route line** — brick red, used once, on the primary CTA |
+| `--bg` | `#edf0f0` | cold high-altitude morning light, blue-grey — *(2026-09-02: was `#f3f0e8` warm topo paper; pulled cold per "the one risk" below)* |
+| `--surface` | `#f9fbfb` | raised card |
+| `--ink` | `#191d21` | cold graphite |
+| `--ink-soft` | `#555c63` | stone grey |
+| `--line` | `rgba(25,29,33,.13)` | hairline |
+| `--sea` (primary) | `#2f5266` | deep alpine slate-blue — altitude, shadow, depth. Eyebrows, links, kickers, focus ring |
+| `--deep` | `#13171a` | granite — the one dark band (where the assessment sits); deepened for more separation from the colder ground |
+| `--deep-ink` | `#d5dadd` | text on `--deep` |
+| `--accent` | `#b0402f` | **the route line** — brick red, used once, on the primary CTA |
 
 The field is deliberately **cool**: graphite ink, slate-blue primary. The single
 warm hit (`--accent`) is the CTA — "the red line on the map, the way through,"
