@@ -4590,6 +4590,170 @@ export default {
     }
 
     try {
+      // ── Hub palette (Content Hubs tab: Regenerate / Save to palettes / Push to hub) ──
+      // The palette IS the hub's whole look: 10 CSS tokens (bg / surface / ink /
+      // ink-head / ink-soft / line / sea / deep / deep-ink / accent) that drive
+      // web/hub/<slug>/index.html. generateHubPalette derives one from the
+      // campaign's research (+ an optional reference image + optional override
+      // text); saveHubPalette stores it as a campaign spec (the "Hub Palette"
+      // rich-text field); pushHubPalette commits it into hubs.design.json AND the
+      // hub's index.html so GitHub Pages redeploys.
+      if (body.action === "getHubPalette" || body.action === "generateHubPalette" ||
+          body.action === "saveHubPalette" || body.action === "pushHubPalette") {
+        const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const PKEYS = ["bg","surface","ink","ink-head","ink-soft","line","sea","deep","deep-ink","accent"];
+
+        // ---- colour maths (WCAG contrast clamp) ----
+        const _h2 = n => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+        const hex2rgb = h => { h = String(h).trim().replace(/^#/, ""); if (h.length === 3) h = h.split("").map(c => c + c).join(""); return { r: parseInt(h.slice(0,2),16), g: parseInt(h.slice(2,4),16), b: parseInt(h.slice(4,6),16) }; };
+        const rgb2hex = c => "#" + _h2(c.r) + _h2(c.g) + _h2(c.b);
+        const rgb2hsl = ({ r, g, b }) => { r/=255; g/=255; b/=255; const mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn; let h=0; if (d){ if (mx===r) h=((g-b)/d)%6; else if (mx===g) h=(b-r)/d+2; else h=(r-g)/d+4; h*=60; if (h<0) h+=360; } const l=(mx+mn)/2, s=d?d/(1-Math.abs(2*l-1)):0; return { h, s, l }; };
+        const hsl2rgb = ({ h, s, l }) => { h=((h%360)+360)%360; const c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2; let r=0,g=0,b=0; if (h<60){r=c;g=x;} else if (h<120){r=x;g=c;} else if (h<180){g=c;b=x;} else if (h<240){g=x;b=c;} else if (h<300){r=x;b=c;} else {r=c;b=x;} return { r:(r+m)*255, g:(g+m)*255, b:(b+m)*255 }; };
+        const _lin = v => { v/=255; return v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); };
+        const lum = c => 0.2126*_lin(c.r) + 0.7152*_lin(c.g) + 0.0722*_lin(c.b);
+        const ratio = (a, b) => { const x = lum(hex2rgb(a)), y = lum(hex2rgb(b)); return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05); };
+        const clampContrast = (fg, bg, min, maxR) => {
+          let c = hex2rgb(fg); const bgL = lum(hex2rgb(bg));
+          const dir = bgL > 0.4 ? -1 : 1;            // ground light → push fg darker, else lighter
+          for (let k = 0; k < 40 && ratio(rgb2hex(c), bg) < min; k++) { const h = rgb2hsl(c); h.l = Math.max(0.03, Math.min(0.97, h.l + dir*0.02)); c = hsl2rgb(h); }
+          if (maxR) for (let k = 0; k < 20 && ratio(rgb2hex(c), bg) > maxR; k++) { const h = rgb2hsl(c); h.l = Math.max(0.03, Math.min(0.97, h.l - dir*0.02)); c = hsl2rgb(h); }
+          return rgb2hex(c);
+        };
+        const normHex = v => { const m = String(v || "").match(/#?[0-9a-fA-F]{6}|#?[0-9a-fA-F]{3}/); return m ? "#" + m[0].replace(/^#/, "").replace(/^(.)(.)(.)$/, "$1$1$2$2$3$3").toLowerCase() : null; };
+        const safePalette = p => {
+          const o = {};
+          for (const k of PKEYS) o[k] = normHex(p && p[k]) || (k === "bg" ? "#f4f2ec" : k === "surface" ? "#ffffff" : k === "ink" || k === "ink-head" ? "#1c1c1c" : k === "deep" ? "#1a1a1a" : k === "deep-ink" ? "#e6e6e6" : k === "line" ? "#e2e2e2" : "#7a7a7a");
+          o.surface = o.surface; o.bg = o.bg;
+          o.ink       = clampContrast(o.ink, o.bg, 7);
+          o["ink-head"] = clampContrast(o["ink-head"], o.bg, 4.5);
+          o["ink-soft"] = clampContrast(o["ink-soft"], o.bg, 3.0, 5.6);
+          o.sea       = clampContrast(o.sea, o.bg, 4.5);
+          o["deep-ink"] = clampContrast(o["deep-ink"], o.deep, 7);
+          for (let k = 0; k < 40 && ratio("#ffffff", o.accent) < 4.4; k++) { const h = rgb2hsl(hex2rgb(o.accent)); h.l = Math.max(0.05, h.l - 0.02); h.s = Math.min(1, h.s + 0.01); o.accent = rgb2hex(hsl2rgb(h)); }
+          return o;
+        };
+
+        const HUB_SLUGS = ["ai-implementation","care-gap","creative-flow-guitar","home-services","mountainwize","owners-rep","sunflower-acres","surf-vacations"];
+
+        // ---- getHubPalette : the saved campaign spec (if any) ----
+        if (body.action === "getHubPalette") {
+          const id = dash(body.campaignId);
+          try {
+            const pg = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdr }).then(r => r.json());
+            const raw = (pg?.properties?.["Hub Palette"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+            let palette = null;
+            if (raw) { try { palette = safePalette(JSON.parse(raw)); } catch (_) {} }
+            return json({ palette });
+          } catch (e) { return json({ palette: null, error: e.message }); }
+        }
+
+        // ---- saveHubPalette : store as a campaign spec ----
+        if (body.action === "saveHubPalette") {
+          const id = dash(body.campaignId);
+          const palette = safePalette(body.palette);
+          const r = await fetch(`https://api.notion.com/v1/pages/${id}`, {
+            method: "PATCH", headers: hdr,
+            body: JSON.stringify({ properties: { "Hub Palette": { rich_text: [{ text: { content: JSON.stringify(palette) } }] } } }),
+          });
+          if (!r.ok) { const e = await r.json().catch(() => ({})); return json({ error: e.message || "Notion save failed" }, 502); }
+          return json({ ok: true, palette });
+        }
+
+        // ---- generateHubPalette : derive from research (+ image + instructions) ----
+        if (body.action === "generateHubPalette") {
+          if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not set" }, 400);
+          const id = dash(body.campaignId);
+          let ctx = "";
+          try {
+            const pg = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdr }).then(r => r.json());
+            const p = pg?.properties || {};
+            const txt = k => (p[k]?.rich_text || p[k]?.title || []).map(t => t.plain_text).join("").trim();
+            ctx = [
+              `Campaign: ${txt("Name") || body.campaignName || ""}`,
+              txt("Target Audience") && `Audience: ${txt("Target Audience")}`,
+              txt("Pain Points") && `Pain points: ${txt("Pain Points")}`,
+              txt("Key Message") && `Key message: ${txt("Key Message")}`,
+              txt("Keywords") && `Keywords: ${txt("Keywords")}`,
+            ].filter(Boolean).join("\n");
+            if (ctx.split("\n").length < 3) {
+              const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: id } } }).catch(() => []);
+              const rp = rows[0]?.properties || {};
+              const rt = k => (rp[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+              ctx += "\n" + [rt("Statement") && `Positioning: ${rt("Statement")}`, rt("Unique Opportunity") && `Opportunity: ${rt("Unique Opportunity")}`, rt("Keywords") && `Keywords: ${rt("Keywords")}`].filter(Boolean).join("\n");
+            }
+          } catch (_) {}
+
+          const roleDoc = "bg = page background; surface = raised card background; ink = body text; ink-head = headings (h1-h3); ink-soft = muted/secondary text; line = hairlines & outlines; sea = primary — links, eyebrows, focus; deep = the one dark band; deep-ink = text on that dark band; accent = the CTA button (white label sits on it).";
+          const rules = "Constraints: body text >= 7:1 on bg; headings and primary >= 4.5:1 on bg; deep-ink >= 7:1 on deep; white must clear 4.4:1 on accent (so accent is fairly deep). Pick a coherent, audience-appropriate scheme — a real point of view, not a generic template. One ground (light or dark), one primary, accent used once.";
+          const parts = [];
+          if (body.image && /^data:image\//.test(body.image)) {
+            const m = body.image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+            if (m && m[2].length < 6_000_000) parts.push({ type: "image", source: { type: "base64", media_type: m[1], data: m[2] } });
+          }
+          parts.push({ type: "text", text:
+            `You are the design lead setting the colour palette for a content-marketing hub page.\n\n${ctx || "(no research on file — infer from the campaign name)"}\n\n` +
+            (parts.length ? "A reference image is attached — derive the palette from its dominant colours, adapted to the audience.\n\n" : "") +
+            (body.instructions ? `Override instructions: ${body.instructions}\n\n` : "") +
+            `Roles: ${roleDoc}\n${rules}\n\n` +
+            `Return ONLY minified JSON: {"bg":"#..","surface":"#..","ink":"#..","ink-head":"#..","ink-soft":"#..","line":"#..","sea":"#..","deep":"#..","deep-ink":"#..","accent":"#..","note":"one sentence on the choice"}`
+          });
+          const ai = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 900, messages: [{ role: "user", content: parts }] }),
+          });
+          const data = await ai.json();
+          if (!ai.ok) return json({ error: data.error?.message || "generation failed" }, 502);
+          const raw = (data.content?.[0]?.text || "").trim();
+          let parsed; try { parsed = JSON.parse(raw.replace(/^```(json)?/i, "").replace(/```$/, "").trim()); } catch (e) { return json({ error: "model did not return valid JSON", raw }, 502); }
+          const palette = safePalette(parsed);
+          return json({ palette, note: String(parsed.note || "").slice(0, 200) });
+        }
+
+        // ---- pushHubPalette : commit into hubs.design.json + the hub HTML ----
+        if (body.action === "pushHubPalette") {
+          const GT = (env.GITHUB_TOKEN || "").trim();
+          if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
+          const slug = String(body.slug || "").trim();
+          if (!HUB_SLUGS.includes(slug)) return json({ error: `unknown hub "${slug}"` }, 400);
+          const palette = safePalette(body.palette);
+
+          const REPO = "cabuzzard/dash", BRANCH = "main";
+          const gh = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
+          const toB64 = str => { const b = new TextEncoder().encode(str); let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); };
+          const fromB64 = b => new TextDecoder().decode(Uint8Array.from(atob(String(b).replace(/\n/g, "")), c => c.charCodeAt(0)));
+          const getFile = async path => { const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh }); if (!r.ok) return {}; const j = await r.json().catch(() => ({})); return { sha: j.sha, text: j.content ? fromB64(j.content) : null }; };
+          const putFile = async (path, text, message, sha) => { const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify({ message, content: toB64(text), branch: BRANCH, ...(sha ? { sha } : {}) }) }); if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `commit failed: ${path}`); } };
+
+          try {
+            // 1. hubs.design.json — merge the 10 values (+ paper = surface)
+            const specF = await getFile("web/hub/hubs.design.json");
+            if (!specF.text) return json({ error: "could not read hubs.design.json" }, 502);
+            const spec = JSON.parse(specF.text);
+            if (!spec.hubs?.[slug]) return json({ error: `no "${slug}" in hubs.design.json` }, 502);
+            for (const k of PKEYS) spec.hubs[slug].tokens[k] = palette[k];
+            spec.hubs[slug].tokens.paper = palette.surface;
+            spec.hubs[slug].tokenNotes = spec.hubs[slug].tokenNotes || {};
+            spec.hubs[slug].tokenNotes.bg = `pushed from the Content Hubs tab (${new Date().toISOString().slice(0,10)})`;
+            await putFile("web/hub/hubs.design.json", JSON.stringify(spec, null, 2) + "\n", `hub palette: ${slug} — spec`, specF.sha);
+
+            // 2. the hub's index.html — targeted value swap on each --token line
+            const htmlPath = `web/hub/${slug}/index.html`;
+            const htmlF = await getFile(htmlPath);
+            if (!htmlF.text) return json({ error: `could not read ${htmlPath}` }, 502);
+            let html = htmlF.text;
+            for (const k of [...PKEYS, "paper"]) {
+              const val = k === "paper" ? palette.surface : palette[k];
+              html = html.replace(new RegExp(`(--${k}:\\s*)[^;]+;`), `$1${val};`);
+            }
+            await putFile(htmlPath, html, `hub palette: ${slug} — live`, htmlF.sha);
+
+            return json({ ok: true, palette, note: "committed — GitHub Pages redeploys in ~1 min" });
+          } catch (e) { return json({ error: e.message }, 502); }
+        }
+      }
+
       // ── getContentOutputStats ──
       // Weekly Reel-vs-Carousel output from the 📝 Content Strategy DB, for the
       // dashboard's "Weekly Content Output" card. "Output" = items whose

@@ -1455,6 +1455,35 @@
   </div>
 </div>
 
+<!-- Hub Palette Modal — regenerate a hub's colour palette from research (+ image + instructions), save it to the campaign, or push it live -->
+<div class="modal-bg" id="hubPaletteModal" onclick="if(event.target===this)closeHubPaletteModal()">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title" id="hpTitle">Palette</div>
+    <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:10px;">
+      The palette is the hub's whole look — background, headings, body, links, buttons, the dark band.
+      <b>Regenerate</b> derives one from the campaign's research; attach a reference image and/or add
+      instructions to steer it. <b>Save to palettes</b> stores it as a campaign spec; <b>Push to hub</b>
+      commits it to the live site (GitHub Pages redeploys in ~1&nbsp;min).
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Reference image (optional)</label>
+      <input class="modal-input" id="hpImage" type="file" accept="image/*" style="padding:6px;font-size:12px;">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Override instructions (optional)</label>
+      <textarea class="modal-input" id="hpInstr" rows="2" placeholder="e.g. keep it dark · primary a deep teal · no orange"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 12px;">
+      <button class="modal-btn" id="hpGenBtn" onclick="hpGenerate()">↻ Regenerate</button>
+      <button class="modal-btn" id="hpSaveBtn" onclick="hpSave()" disabled>Save to palettes</button>
+      <button class="modal-btn" id="hpPushBtn" onclick="hpPush()" disabled style="background:var(--accent);border-color:var(--accent);color:#0b0b0b;font-weight:600;">Push to hub</button>
+    </div>
+    <div id="hpSwatches" style="display:flex;flex-direction:column;gap:4px;"></div>
+    <div id="hpMsg" style="font-size:12px;margin-top:10px;min-height:16px;color:var(--text3);"></div>
+    <button class="modal-btn" onclick="closeHubPaletteModal()" style="margin-top:10px;background:transparent;border-color:var(--border2);color:var(--text3);">Close</button>
+  </div>
+</div>
+
 <!-- Google Account / Channel Modal -->
 <div class="modal-bg" id="gaccModal" onclick="if(event.target===this)closeGaccModal()">
   <div class="modal" style="max-width:420px;">
@@ -9656,27 +9685,27 @@ function toggleTodaySection() {
 // Domain", cPanel doc-root edits, and the DNS A-record editor all error or get
 // overridden. creativeflowguitar.com works — connected the old way, pre-auto-WP.
 const HUB_SITES = [
-  { name: "Surf Vacations",  slug: "surf-vacations",  campaign: "Surfing Vacations", microsite: "diving-vacations",                        domain: "outsidesessions.com", contact: null, products: 0, blogPosts: 0,
+  { name: "Surf Vacations",  slug: "surf-vacations", campaignId: "3b51f7d3a4bb81ae94b3c9fe6dc63770",  campaign: "Surfing Vacations", microsite: "diving-vacations",                        domain: "outsidesessions.com", contact: null, products: 0, blogPosts: 0,
     routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/surf-vacations/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect outsidesessions.com's placeholder WordPress service (Domains → outsidesessions.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
     domainOptions: ["outsidesessions.com", "liketotallydude.com", "rad80schild.com", "barefoothike.com", "bestoutdoorsandals.com", "accessyourpassion.com"] },
-  { name: "Sunflower Acres", slug: "sunflower-acres", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff",                domain: "accessiblefarms.com", contact: null, products: 0, blogPosts: 0,
+  { name: "Sunflower Acres", slug: "sunflower-acres", campaignId: "3871f7d3a4bb814997e5f3400fc3ff57", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff",                domain: "accessiblefarms.com", contact: null, products: 0, blogPosts: 0,
     routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/sunflower-acres/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect accessiblefarms.com's placeholder WordPress service (Domains → accessiblefarms.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
     domainOptions: ["accessiblefarms.com", "modernactivehome.com", "sustainableaquarium.com", "homepondaquarium.com", "naturebasedcoach.com", "naturewellnesscoach.com"] },
-  { name: "Build Watcher",   slug: "owners-rep",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting", domain: "homestructionconsulting.com", contact: null, products: 0, blogPosts: 0,
+  { name: "Build Watcher",   slug: "owners-rep", campaignId: "3cb1f7d3a4bb819cb6d1eac7cf629961",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting", domain: "homestructionconsulting.com", contact: null, products: 0, blogPosts: 0,
     routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/owners-rep/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect homestructionconsulting.com's placeholder WordPress service (Domains → homestructionconsulting.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
     domainOptions: ["homestructionconsulting.com", "buildtosuitinvestment.com", "stablehomefoundation.com", "foundationfuturesllc.com", "generalservices2020.com", "roi-systems.com", "bestrealestateliquidation.com"] },
-  { name: "Home Services",   slug: "home-services",   campaign: "Home Services",     microsite: "home-services",                           domain: "generalservices2020.com", contact: null, products: 0, blogPosts: 0,
+  { name: "Home Services",   slug: "home-services", campaignId: "3951f7d3a4bb81659af8dc82fb56f92a",   campaign: "Home Services",     microsite: "home-services",                           domain: "generalservices2020.com", contact: null, products: 0, blogPosts: 0,
     routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/home-services/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect generalservices2020.com's placeholder WordPress service, or Bluehost support. Then add its line to bluehost-sites.tsv. NOTE: generalservice2020.com (singular) is a DIFFERENT domain, used by the Dream Home Build campaign — this hub uses the plural.",
     domainOptions: ["generalservices2020.com", "generalservice2020.com", "modernactivehome.com", "homestructionconsulting.com", "stablehomefoundation.com", "webguyleadgeneration.com"] },
-  { name: "Creative Flow Guitar", slug: "creative-flow-guitar", campaign: "Creative Flow Guitar — Weekly Sessions", microsite: "creative-flow-guitar", domain: "creativeflowguitar.com", contact: null, products: 0, blogPosts: 0,
+  { name: "Creative Flow Guitar", slug: "creative-flow-guitar", campaignId: "34b1f7d3a4bb8154b0c5e0abcaae272a", campaign: "Creative Flow Guitar — Weekly Sessions", microsite: "creative-flow-guitar", domain: "creativeflowguitar.com", contact: null, products: 0, blogPosts: 0,
     routing: "ok", routingNote: "Connected & serving the hub over https (verified 2026-09-01). Doc root moved to /home3/evraymon/creativeflowguitar.com/ (the deploy target); the old WordPress install stays at public_html/creativeflowguitar untouched. Works because this domain was connected the old way, before Bluehost's auto-WordPress-service parking.",
     domainOptions: ["creativeflowguitar.com", "bayareaoriginalmusic.com", "outsidesessions.com", "rockrgear.com", "petrichorpodcast.com"] },
-  { name: "AI Implementation", slug: "ai-implementation", campaign: "Sm business software tools", microsite: "sm-business-software-tools", domain: "aisystemimplementation.com", contact: null, products: 0, blogPosts: 0,
+  { name: "AI Implementation", slug: "ai-implementation", campaignId: "3b51f7d3a4bb811e8086fa1f5f7d3597", campaign: "Sm business software tools", microsite: "sm-business-software-tools", domain: "aisystemimplementation.com", contact: null, products: 0, blogPosts: 0,
     routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/ai-implementation/). A cPanel addon domain + doc root (~/aisystemimplementation.com) are set and it served the hub briefly, but the auto-WordPress-service park (root A → 204.11.56.246) took back over. Same fix: disconnect the placeholder WordPress service, or Bluehost support; then add its line to bluehost-sites.tsv.",
     domainOptions: ["aisystemimplementation.com", "aisystemimplementation.online", "roi-systems.com", "facttracking.com", "webguyleadgeneration.com"] },
-  { name: "Mountainwize", slug: "mountainwize", campaign: "🏔️ Mountainwize Coaching — Purpose", microsite: "mountainwize-coaching-purpose", domain: null, contact: null, products: 0, blogPosts: 0,
+  { name: "Mountainwize", slug: "mountainwize", campaignId: "3921f7d3a4bb81d7a061e31ebc2ddef1", campaign: "🏔️ Mountainwize Coaching — Purpose", microsite: "mountainwize-coaching-purpose", domain: null, contact: null, products: 0, blogPosts: 0,
     domainOptions: ["mountainwize.com", "intentionwarrior.com", "thirdpathcoaching.com", "growthcoachmindset.com", "naturebasedcoach.com"] },
-  { name: "The Care Gap", slug: "care-gap", campaign: "Fundraising Caregivers - Stable Home", microsite: "mobility-mentor-fundraising", domain: "stablehomefoundation.com", contact: "flipoclock@gmail.com", products: 0, blogPosts: 0,
+  { name: "The Care Gap", slug: "care-gap", campaignId: "34b1f7d3a4bb81b6a8a8fee04df94807", campaign: "Fundraising Caregivers - Stable Home", microsite: "mobility-mentor-fundraising", domain: "stablehomefoundation.com", contact: "flipoclock@gmail.com", products: 0, blogPosts: 0,
     routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/care-gap/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect stablehomefoundation.com's placeholder WordPress service (Domains → stablehomefoundation.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
     domainOptions: ["stablehomefoundation.com", "stablehomefoundation.online", "foundationfuturesllc.com"] },
 ];
@@ -9894,9 +9923,108 @@ function hubBadge(state, meta) {
   return { text: 'SCAFFOLD', color: 'var(--text3)', bg: 'var(--surface2)' };
 }
 
+// ── Hub palette (Content Hubs tab: Regenerate / Save to palettes / Push to hub) ──
+// The live palettes are the tokens in web/hub/hubs.design.json, fetched once from
+// GitHub raw for the swatch strips. The modal talks to the worker's
+// generate/save/pushHubPalette actions.
+let HUB_LIVE_PALETTES = {};
+let _hubPalettesFetched = false;
+function fetchHubPalettes() {
+  if (_hubPalettesFetched) return;
+  _hubPalettesFetched = true;
+  fetch('https://raw.githubusercontent.com/cabuzzard/dash/main/web/hub/hubs.design.json?t=' + Date.now())
+    .then(r => r.json())
+    .then(j => { for (const [s, h] of Object.entries(j.hubs || {})) HUB_LIVE_PALETTES[s] = h.tokens; renderHubsTab(); })
+    .catch(() => {});
+}
+const HP_ROLES = [['bg','Background'],['surface','Card'],['ink','Body text'],['ink-head','Headings'],['ink-soft','Muted text'],['line','Outlines'],['sea','Primary / links'],['deep','Dark band'],['deep-ink','Text on dark'],['accent','Accent / button']];
+let _hp = { slug: null, campaignId: null, palette: null };
+
+function hubPaletteCell(h) {
+  const p = HUB_LIVE_PALETTES[h.slug];
+  const strip = p
+    ? ['bg','ink','ink-head','sea','deep','accent'].map(k => `<span style="width:9px;height:16px;display:inline-block;background:${esc(p[k] || '#888')};"></span>`).join('')
+    : '<span style="color:var(--text3);font-size:10px;padding:0 4px;">…</span>';
+  return `<td onclick="openHubPaletteModal('${h.slug}')" title="Regenerate / push this hub's palette" style="cursor:pointer;white-space:nowrap;padding:4px 6px;text-align:center;">`
+    + `<span style="display:inline-flex;border:1px solid var(--border2);border-radius:3px;overflow:hidden;vertical-align:middle;">${strip}</span></td>`;
+}
+
+function openHubPaletteModal(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug);
+  if (!h) return;
+  _hp = { slug, campaignId: h.campaignId, palette: HUB_LIVE_PALETTES[slug] ? { ...HUB_LIVE_PALETTES[slug] } : null };
+  document.getElementById('hpTitle').textContent = h.name + ' — palette';
+  document.getElementById('hpImage').value = '';
+  document.getElementById('hpInstr').value = '';
+  const msg = document.getElementById('hpMsg'); msg.style.color = 'var(--text3)'; msg.textContent = _hp.palette ? 'Showing the live palette. Regenerate to make a new one.' : '';
+  hpRenderSwatches();
+  document.getElementById('hpSaveBtn').disabled = !_hp.palette;
+  document.getElementById('hpPushBtn').disabled = !_hp.palette;
+  document.getElementById('hubPaletteModal').classList.add('open');
+  call('getHubPalette', { campaignId: _hp.campaignId }).then(r => {
+    if (r && r.palette) {
+      _hp.palette = r.palette; hpRenderSwatches();
+      document.getElementById('hpSaveBtn').disabled = false;
+      document.getElementById('hpPushBtn').disabled = false;
+      msg.textContent = 'Showing the saved campaign palette (not yet pushed).';
+    }
+  }).catch(() => {});
+}
+function closeHubPaletteModal() { document.getElementById('hubPaletteModal').classList.remove('open'); }
+
+function hpRenderSwatches() {
+  const p = _hp.palette, el = document.getElementById('hpSwatches');
+  if (!p) { el.innerHTML = '<div style="font-size:11px;color:var(--text3);">No palette yet — hit Regenerate.</div>'; return; }
+  el.innerHTML = HP_ROLES.map(([k, label]) => `<div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+    <span style="width:22px;height:22px;border-radius:4px;border:1px solid var(--border2);background:${esc(p[k] || '#888')};flex:0 0 auto;"></span>
+    <span style="width:100px;color:var(--text2);">${label}</span>
+    <span style="font-family:var(--mono,monospace);color:var(--text3);">${esc(p[k] || '')}</span>
+  </div>`).join('');
+}
+
+async function hpGenerate() {
+  const btn = document.getElementById('hpGenBtn'), msg = document.getElementById('hpMsg');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  msg.style.color = 'var(--text3)'; msg.textContent = 'Reading the research…';
+  try {
+    let image = null;
+    const f = document.getElementById('hpImage').files[0];
+    if (f) {
+      if (f.size > 4_000_000) throw new Error('Image too large — keep it under 4 MB');
+      image = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('could not read image')); r.readAsDataURL(f); });
+    }
+    const instructions = document.getElementById('hpInstr').value.trim() || undefined;
+    const h = HUB_SITES.find(x => x.slug === _hp.slug) || {};
+    const r = await call('generateHubPalette', { campaignId: _hp.campaignId, campaignName: h.campaign, image, instructions });
+    _hp.palette = r.palette; hpRenderSwatches();
+    document.getElementById('hpSaveBtn').disabled = false;
+    document.getElementById('hpPushBtn').disabled = false;
+    msg.style.color = '#4cff4c'; msg.textContent = r.note || 'Generated — review, then Save or Push.';
+  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+  btn.disabled = false; btn.textContent = '↻ Regenerate';
+}
+async function hpSave() {
+  const msg = document.getElementById('hpMsg');
+  try { await call('saveHubPalette', { campaignId: _hp.campaignId, palette: _hp.palette }); msg.style.color = '#4cff4c'; msg.textContent = 'Saved to the campaign (Hub Palette field).'; }
+  catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+}
+async function hpPush() {
+  const msg = document.getElementById('hpMsg');
+  if (!confirm('Push this palette to the live "' + _hp.slug + '" hub? It commits to hubs.design.json + the hub HTML and redeploys.')) return;
+  const btn = document.getElementById('hpPushBtn'); btn.disabled = true; btn.textContent = 'Pushing…';
+  try {
+    const r = await call('pushHubPalette', { slug: _hp.slug, palette: _hp.palette });
+    if (r.palette) HUB_LIVE_PALETTES[_hp.slug] = r.palette;
+    msg.style.color = '#4cff4c'; msg.textContent = r.note || 'Pushed — live in ~1 min.';
+    renderHubsTab();
+  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+  btn.disabled = false; btn.textContent = 'Push to hub';
+}
+
 function renderHubsTab() {
   const el = document.getElementById('hubsTabContent');
   if (!el) return;
+  fetchHubPalettes();
   const hubBase = 'https://cabuzzard.github.io/dash/web/hub/';
   const msBase  = 'https://cabuzzard.github.io/dash/microsites/';
   const totalCrit = HUB_CHECKLIST.filter(c => c.crit).length + 1; // + products>0
@@ -9912,6 +10040,7 @@ function renderHubsTab() {
     + '<th style="text-align:left;">Contact</th>'
     + '<th title="Campaign products chosen to feature on the hub — click to set">Prod</th>'
     + '<th title="Blog / journal posts written & published on the hub — click to set">Blog</th>'
+    + '<th title="Colour palette — click to regenerate from research / push to the live hub">Palette</th>'
     + HUB_CHECKLIST.map(c => `<th title="${esc(c.hint)}" style="white-space:nowrap;text-align:center;padding:6px 8px;${c.crit ? '' : 'opacity:.65;'}">${esc(c.label)}${c.crit ? '' : ' *'}</th>`).join('')
     + '<th>Ready</th><th>Status</th></tr></thead>';
 
@@ -9952,6 +10081,7 @@ function renderHubsTab() {
       <td onclick="hubMetaEdit('${h.slug}','contact','text')" title="Click to set the hub's contact email" style="text-align:left;font-size:11px;cursor:pointer;">${valCol(meta.contact)}</td>
       ${numCell('products')}
       ${numCell('blogPosts')}
+      ${hubPaletteCell(h)}
       ${cells}
       <td style="text-align:center;font-size:11px;color:var(--text3);white-space:nowrap;">${doneCrit}/${totalCrit}</td>
       <td style="text-align:center;"><span style="font-size:10px;font-weight:700;letter-spacing:.05em;padding:2px 7px;border-radius:4px;color:${badge.color};background:${badge.bg};">${badge.text}</span></td>
