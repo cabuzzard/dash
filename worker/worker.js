@@ -897,6 +897,143 @@ ${posts.map(p => `<li><a href="./${esc(p.slug)}/index.html">${esc(p.title)}</a><
   return { published: true, liveUrl: `https://cabuzzard.github.io/dash/${basePath}/${slug}/` };
 }
 
+// Publishes a Landing Page asset as its own standalone static page at
+// web/landing/{slug}/index.html — deliberately NOT under a campaign's own
+// web/{deployPath} site or a content hub. Per the operator's ad-supported
+// hub vs. traffic-supported landing-page split: a hub earns by being
+// visited and needs to compound SEO value, so it stays on its own durable
+// domain; a landing page earns nothing by being visited — it only converts
+// traffic sent to it — so it lives in a disposable shared namespace that's
+// cheap to add to or kill per product, with zero SEO investment. Only four
+// elements on the page: headline, click-to-call, one-field email form
+// (Turnstile-protected, submits to the existing submitLead action), and
+// social proof below the form. Phone number is hardcoded to the operator's
+// own number for now — no call-tracking service wired up yet.
+const LANDING_PAGE_PHONE_DISPLAY = "(831) 818-5680";
+const LANDING_PAGE_PHONE_TEL = "+18318185680";
+async function publishLandingPageToLiveSite({ env, hdr, dash, campaignId, productName, title, headline, phoneCtaLabel, emailFormHeading, emailFormSubtext, emailButtonLabel, socialProof }) {
+  const GT = (env.GITHUB_TOKEN || '').trim();
+  if (!GT) return { published: false, error: "GITHUB_TOKEN not set — asset saved, but not pushed to the live site" };
+
+  const campaignTag = await resolveDeployPath(campaignId, hdr, dash);
+
+  const slugify = str => String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70);
+  const slug = slugify(`${productName || ''}-${title || ''}`) || `landing-${Date.now()}`;
+
+  const REPO = 'cabuzzard/dash', BRANCH = 'main';
+  const gh = { Authorization: `Bearer ${GT}`, Accept: 'application/vnd.github+json', 'User-Agent': 'dash-worker' };
+  const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
+  const getFile = async path => {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+    if (!r.ok) return { sha: null };
+    const j = await r.json().catch(() => null);
+    return { sha: j?.sha || null };
+  };
+  const putFile = async (path, text, message) => {
+    const { sha } = await getFile(path);
+    const putBody = { message, content: toB64Text(text), branch: BRANCH };
+    if (sha) putBody.sha = sha;
+    const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'PUT', headers: { ...gh, 'Content-Type': 'application/json' }, body: JSON.stringify(putBody) });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `GitHub commit failed for ${path}`); }
+  };
+
+  const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const displayHeadline = headline || title || productName || 'Get Started Today';
+  const proofItems = (Array.isArray(socialProof) ? socialProof : []).filter(Boolean).slice(0, 4);
+
+  const path = `web/landing/${slug}/index.html`;
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(displayHeadline)}</title>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+* { box-sizing: border-box; }
+body { margin:0; background:#0f1720; color:#eef2f6; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; line-height:1.5; }
+.wrap { max-width:560px; margin:0 auto; padding:64px 24px; text-align:center; }
+h1 { font-size:2rem; line-height:1.25; margin:0 0 32px; font-weight:800; }
+.call-btn { display:inline-block; width:100%; background:#ff6a3d; color:#fff; text-decoration:none; font-weight:700; font-size:1.15rem; padding:18px 24px; border-radius:10px; margin-bottom:28px; }
+.divider { color:#7c8a99; font-size:0.85rem; margin:0 0 28px; text-transform:uppercase; letter-spacing:0.08em; }
+.form-card { background:#16212c; border:1px solid #24313f; border-radius:12px; padding:28px 22px; text-align:left; }
+.form-card h2 { font-size:1.15rem; margin:0 0 6px; }
+.form-card p.sub { color:#a7b4c0; font-size:0.92rem; margin:0 0 18px; }
+input[type=email] { width:100%; padding:14px; border-radius:8px; border:1px solid #33424f; background:#0f1720; color:#eef2f6; font-size:1rem; margin-bottom:14px; }
+.submit-btn { width:100%; background:#3d8bff; color:#fff; border:none; padding:15px; border-radius:8px; font-size:1.05rem; font-weight:700; cursor:pointer; }
+.submit-btn:disabled { opacity:0.6; cursor:default; }
+.form-msg { margin-top:14px; font-size:0.9rem; }
+.form-msg.error { color:#ff8a80; }
+.form-msg.success { color:#7fe3a3; }
+.cf-turnstile { margin:4px 0 14px; }
+.proof { margin-top:36px; padding-top:24px; border-top:1px solid #24313f; }
+.proof p { color:#c3ccd4; font-size:0.95rem; margin:0 0 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>${esc(displayHeadline)}</h1>
+
+  <a class="call-btn" href="tel:${LANDING_PAGE_PHONE_TEL}">${esc(phoneCtaLabel || `Call ${LANDING_PAGE_PHONE_DISPLAY}`)}</a>
+
+  <p class="divider">or</p>
+
+  <div class="form-card">
+    <h2>${esc(emailFormHeading || 'Get in Touch')}</h2>
+    ${emailFormSubtext ? `<p class="sub">${esc(emailFormSubtext)}</p>` : ''}
+    <form id="leadForm">
+      <input type="email" id="f-email" name="email" placeholder="you@email.com" required>
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-theme="dark"></div>
+      <button type="submit" class="submit-btn" id="submitBtn">${esc(emailButtonLabel || 'Send Me Info')}</button>
+    </form>
+    <div class="form-msg" id="formMsg"></div>
+  </div>
+
+  ${proofItems.length ? `<div class="proof">\n${proofItems.map(p => `<p>${esc(p)}</p>`).join('\n')}\n</div>` : ''}
+</div>
+
+<script>
+const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+document.getElementById('leadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const msg = document.getElementById('formMsg');
+  const email = document.getElementById('f-email').value.trim();
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+    msg.textContent = 'Please enter a valid email address.';
+    msg.className = 'form-msg error';
+    return;
+  }
+  const tsToken = document.querySelector('[name="cf-turnstile-response"]')?.value || '';
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  msg.textContent = '';
+  try {
+    const res = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'submitLead', campaign: ${JSON.stringify(campaignTag)}, email, fraudType: 'Landing Page - General Inquiry', note: ${JSON.stringify(String(title || '').slice(0, 200))}, tsToken })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    document.getElementById('leadForm').style.display = 'none';
+    msg.innerHTML = '<strong>Thanks — you\\'re all set.</strong> We\\'ll be in touch shortly.';
+    msg.className = 'form-msg success';
+  } catch (err) {
+    msg.textContent = 'Something went wrong. Please try again, or use the call button above.';
+    msg.className = 'form-msg error';
+    btn.disabled = false;
+    btn.textContent = ${JSON.stringify(emailButtonLabel || 'Send Me Info')};
+  }
+});
+</script>
+</body>
+</html>`;
+
+  await putFile(path, html, `Landing Page: ${displayHeadline}`);
+  return { published: true, liveUrl: `https://cabuzzard.github.io/dash/${path.replace(/index\.html$/, '')}` };
+}
+
 // Reads just the "Pillar Content" heading_3 section of a title's own page
 // body — mirrors generateCarouselPreview's parseSlides() section-scanning
 // approach (a title's page can carry several distinct heading_3 sections —
@@ -4447,7 +4584,7 @@ export default {
       if (!email || !fraudType) return json({ error: "email and fraudType are required" }, 400);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "Invalid email address" }, 400);
       if (phone && !/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) return json({ error: "Invalid phone number" }, 400);
-      const validFraudTypes = ["Robo-signing","Chain of title fraud","Loan modification fraud","Improper procedures","Mortgage servicing fraud","MERS assignment void","Divorce - property dispute","Probate - estate sale","Will contest","Executor dispute","Coaching - one hour session","Coaching - package","Coaching - general inquiry","Webguy B2C - done-for-you system","Webguy B2C - template","Webguy B2B - content machine","Webguy B2B - AI implementation","Webguy B2B - retainer","Webguy - general inquiry","Webguy - Financial Freedom","Webguy - Retirement Ready","Webguy - Dream Home Build","Webguy - Hard Grind","Webguy - Mountainwize Purpose Coaching","Webguy - Sm Biz Tools Audit","Webguy - Sm Biz Tools Retainer","Evergreen Home - Garden Planning Book","Other"];
+      const validFraudTypes = ["Robo-signing","Chain of title fraud","Loan modification fraud","Improper procedures","Mortgage servicing fraud","MERS assignment void","Divorce - property dispute","Probate - estate sale","Will contest","Executor dispute","Coaching - one hour session","Coaching - package","Coaching - general inquiry","Webguy B2C - done-for-you system","Webguy B2C - template","Webguy B2B - content machine","Webguy B2B - AI implementation","Webguy B2B - retainer","Webguy - general inquiry","Webguy - Financial Freedom","Webguy - Retirement Ready","Webguy - Dream Home Build","Webguy - Hard Grind","Webguy - Mountainwize Purpose Coaching","Webguy - Sm Biz Tools Audit","Webguy - Sm Biz Tools Retainer","Evergreen Home - Garden Planning Book","Landing Page - General Inquiry","Other"];
       if (!validFraudTypes.includes(fraudType)) return json({ error: "Invalid fraud type" }, 400);
 
       const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
@@ -13920,6 +14057,145 @@ Return ONLY this JSON object:
           }).catch(() => {});
 
           return json({ success: true, created: 1, assets: [{ id: assetId, title }], offer: { name: offer.offerName || title, kicker: offer.kicker || "", hasUrl: !!ctaUrl } });
+        }
+
+        // ── Landing Page asset type: a whole standalone, disposable
+        // conversion page for one product — distinct from Offer (a card
+        // meant to live inside a content hub). Per the operator's
+        // ad-supported-hub vs. traffic-supported-landing-page split, this
+        // is deliberately minimal: one headline, a click-to-call button,
+        // a one-field email form, and social proof below it — nothing
+        // else. Always product-tied. Grounds in the product's 🔬 Product
+        // Research (STRATEGY_FIELDS) + the product page's own fields, and
+        // the attached "Landing Page" Method's own framework, same as the
+        // Offer branch above. Publishes immediately to its own
+        // web/landing/{slug}/ page via publishLandingPageToLiveSite —
+        // never folded into the campaign's own site or a hub.
+        if (/\blanding\s*pages?\b/i.test(assetType)) {
+          if (!hasProduct) return json({ error: "The Landing Page asset type needs a product — attach a Product to this title, then Generate again." }, 400);
+          const hasMethod = methodId && methodId !== "__none__";
+          const [prodPage, researchRec, methodFrameworkText] = await Promise.all([
+            fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null),
+            findBestProductResearchRecord(dsHdr, productId).catch(() => null),
+            hasMethod ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
+          ]);
+          const rtp = (props, key) => (props?.[key]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          const pp = prodPage?.properties || {};
+          const productName = (pp.Name?.title || []).map(t => t.plain_text).join("").trim() || "this product";
+          const productLines = [
+            rtp(pp, "Description")     && `Description: ${rtp(pp, "Description")}`,
+            rtp(pp, "Transformation")  && `Transformation: ${rtp(pp, "Transformation")}`,
+            rtp(pp, "Offer Structure") && `Offer Structure: ${rtp(pp, "Offer Structure")}`,
+            rtp(pp, "Proof Points")    && `Proof Points: ${rtp(pp, "Proof Points")}`,
+            rtp(pp, "Objections")      && `Objections: ${rtp(pp, "Objections")}`,
+            rtp(pp, "Unique Angle")    && `Unique Angle: ${rtp(pp, "Unique Angle")}`,
+            rtp(pp, "Avatar")          && `Avatar: ${rtp(pp, "Avatar")}`,
+          ].filter(Boolean).join("\n");
+          const researchLines = researchRec?.properties
+            ? STRATEGY_FIELDS.map(f => rtp(researchRec.properties, f) && `${f}: ${rtp(researchRec.properties, f)}`).filter(Boolean).join("\n")
+            : "";
+
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are writing the copy for ONE minimal, high-conversion landing page for a product — a single-purpose page with only four elements: a headline, a click-to-call button, a one-field email form, and social proof. No hero section, no feature list, no navigation — this page has one job.
+
+PRODUCT: ${productName}
+WORKING TITLE / ANGLE: ${title}${description ? `\nOPERATOR NOTES: ${description}` : ""}${researchInstructions ? `\nRESEARCH INSTRUCTIONS: ${researchInstructions}` : ""}
+
+${methodFrameworkText ? `LANDING PAGE METHOD FRAMEWORK (how this operator wants landing pages structured — follow it):\n${methodFrameworkText}\n\n` : ""}PRODUCT PAGE FIELDS:
+${productLines || "(sparse — infer from the research and title)"}
+
+${researchLines ? `PRODUCT RESEARCH (🔬 positioning doc):\n${researchLines}\n` : ""}
+RULES
+- "headline" must be ONE short, punchy line — the entire pitch compressed. No subheadline, no supporting paragraph.
+- "socialProof" lines must be grounded in the product's real Proof Points — never invent a statistic, review, or credential. If there's nothing real to draw on, return fewer lines (even zero) rather than fabricate one.
+- Everything is written to convert a warm/paid-traffic visitor who is already interested — direct, concrete, no throat-clearing.
+
+Return ONLY this JSON object:
+{
+  "headline": "one short punchy line",
+  "phoneCtaLabel": "click-to-call button text, e.g. 'Call Now — Free Consultation'",
+  "emailFormHeading": "short heading above the email field",
+  "emailFormSubtext": "one supporting sentence under that heading",
+  "emailButtonLabel": "email form submit button text",
+  "socialProof": ["short real trust line", "..."]
+}`;
+
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content: prompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+          let lp;
+          try {
+            const raw = aiData.content?.[0]?.text || "";
+            const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+            if (start === -1 || end === -1 || end < start) throw new Error("No JSON object found");
+            lp = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          } catch (e) {
+            return json({ error: "Failed to parse landing page JSON: " + e.message }, 502);
+          }
+          const socialProof = (Array.isArray(lp.socialProof) ? lp.socialProof : []).map(s => String(s).trim()).filter(Boolean);
+
+          const assetProps = {
+            "Asset Title":  { title: [{ text: { content: String(title).slice(0, 200) } }] },
+            "Asset Status": { select: { name: "Publish" } },
+            "Asset Type":   { select: { name: String(assetType).slice(0, 100) } },
+            "Body":         { rich_text: [{ text: { content: String(lp.headline || "").slice(0, 2000) } }] },
+            "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+          };
+          if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          const assetResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST",
+            headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+          });
+          const assetResult = await assetResp.json();
+          if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create Landing Page asset" }, 502);
+          const assetId = assetResult.id.replace(/-/g, "");
+
+          const rtBlock = text => text ? [{ type: "text", text: { content: String(text), link: null } }] : [];
+          const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
+          const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+          const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
+          const children = [
+            heading2("Headline"), para(lp.headline || ""),
+            heading2("Click-to-Call"), para(`${lp.phoneCtaLabel || "Call Now"} — ${LANDING_PAGE_PHONE_DISPLAY}`),
+            heading2("Email Form"), para(lp.emailFormHeading || ""), lp.emailFormSubtext ? para(lp.emailFormSubtext) : null, para(`Button: ${lp.emailButtonLabel || "Send Me Info"}`),
+            socialProof.length ? heading2("Social Proof") : null,
+            ...socialProof.map(bullet),
+          ].filter(Boolean);
+          const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dsDash(assetId)}/children`, {
+            method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children }),
+          });
+          if (!blocksResp.ok) { const r = await blocksResp.json(); return json({ error: r.message || "Landing Page asset created but failed to write its body" }, 502); }
+
+          await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
+            method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+          }).catch(() => {});
+
+          let siteResult = { published: false };
+          try {
+            siteResult = await publishLandingPageToLiveSite({
+              env, hdr: dsHdr, dash: dsDash, campaignId, productName, title,
+              headline: lp.headline, phoneCtaLabel: lp.phoneCtaLabel,
+              emailFormHeading: lp.emailFormHeading, emailFormSubtext: lp.emailFormSubtext,
+              emailButtonLabel: lp.emailButtonLabel, socialProof,
+            });
+            if (siteResult.published && siteResult.liveUrl) {
+              await fetch(`https://api.notion.com/v1/pages/${dsDash(assetId)}`, {
+                method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { "Content URL": { url: siteResult.liveUrl } } }),
+              }).catch(() => {});
+            }
+          } catch (e) { siteResult = { published: false, error: e.message }; }
+
+          return json({
+            success: true, created: 1, assets: [{ id: assetId, title }],
+            sitePublished: !!siteResult.published, liveUrl: siteResult.liveUrl || null, siteError: siteResult.error || null,
+          });
         }
 
         // ── LinkedIn Post asset type: reshapes the title's own pillar
