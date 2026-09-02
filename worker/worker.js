@@ -13940,11 +13940,23 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       // record in the Assets DB linked to the title via its Content Strategy
       // relation — so they render as rows under the publish title.
       if (body.action === "generateTitleAssets") {
-        const { titleId, campaignId, productId, methodId, subMethodId, title, description, seedKeywords, researchInstructions, assetType, platformName, platformId, loginId } = body;
+        const { titleId, campaignId, methodId, subMethodId, title, description, seedKeywords, researchInstructions, assetType, platformName, platformId, loginId } = body;
         const count = Math.min(Math.max(parseInt(body.count) || 4, 1), 8);
         if (!titleId || !title) return json({ error: "titleId and title required" }, 400);
         if (!assetType) return json({ error: "assetType required — every asset must have a type" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        // The Generate Assets modal doesn't surface a Product picker (it's
+        // parked), so when the caller doesn't pass one, fall back to the
+        // title's own `product` relation — the Offer types in particular
+        // need it (an offer is an offer OF something).
+        let productId = body.productId;
+        if (!productId || productId === "__none__") {
+          try {
+            const tp = await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, { headers: dsHdr }).then(r => r.json());
+            const tpid = (tp?.properties?.product?.relation || [])[0]?.id?.replace(/-/g, "");
+            if (tpid) productId = tpid;
+          } catch (e) { /* keep whatever the caller sent */ }
+        }
         const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
         // SEO Post is the one asset type where the pillar itself needs to be
         // written with on-page SEO/keyword practices in mind (per operator
