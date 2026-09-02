@@ -1468,6 +1468,27 @@
   </div>
 </div>
 
+<!-- Hub → add a weekly To-Do (Weekly Planner row, attached to the hub's campaign) -->
+<div class="modal-bg" id="hubTdModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-title" id="hubTdTitle">Add weekly To-Do</div>
+    <div id="hubTdSub" style="font-size:12px;color:var(--text3);line-height:1.5;margin-bottom:10px;"></div>
+    <div class="modal-field">
+      <label class="modal-label">Task</label>
+      <input class="modal-input" id="hubTdName" type="text" placeholder="e.g. Post the weekly reel" onkeydown="if(event.key==='Enter')hubTdSave()">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Day of the week <span style="color:var(--text3);font-weight:400;">— recurs every week until marked done</span></label>
+      <div id="hubTdDays" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="modal-btn" id="hubTdSaveBtn" onclick="hubTdSave()">Add to This Week</button>
+      <button class="modal-btn" onclick="document.getElementById('hubTdModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);margin-left:auto;">Cancel</button>
+    </div>
+    <div id="hubTdMsg" style="font-size:12px;color:var(--text3);margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- Google Account / Channel Modal -->
 <div class="modal-bg" id="gaccModal" onclick="if(event.target===this)closeGaccModal()">
   <div class="modal" style="max-width:420px;">
@@ -10039,6 +10060,56 @@ function hubChecklistModal(slug) {
   document.getElementById('hubChecklistModal').classList.add('open');
 }
 
+// ── Content Hubs → add a weekly To-Do for the hub's campaign ──────────
+// Writes a real WEEKLY_PLANNER_DB row (the same standalone system behind
+// the TD tab's "This Week" board) attached to the hub's campaign, on the
+// chosen weekday. Open items recur on that weekday every week until
+// marked Done — see wpFetchProjectedItems in worker.js. wpMonday / wpIso
+// / WP_DAY_NAMES are defined further down (module scope) and are safe to
+// call from here at click time.
+let _hubTd = { slug: null, dayIdx: 0 };
+function openHubTdModal(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  if (!h.campaignId) { alert('This hub has no campaign linked — cannot attach a To-Do.'); return; }
+  _hubTd = { slug, dayIdx: (new Date().getDay() + 6) % 7 };  // 0 = Mon; default to today
+  document.getElementById('hubTdTitle').textContent = 'Add weekly To-Do — ' + h.name;
+  document.getElementById('hubTdSub').textContent = 'Attaches to ' + (h.campaign || 'the linked campaign') + ' and shows on the TD tab’s This Week board.';
+  document.getElementById('hubTdName').value = '';
+  const msg = document.getElementById('hubTdMsg'); msg.textContent = ''; msg.style.color = 'var(--text3)';
+  const btn = document.getElementById('hubTdSaveBtn'); btn.disabled = false; btn.textContent = 'Add to This Week';
+  hubTdRenderDays();
+  document.getElementById('hubTdModal').classList.add('open');
+  setTimeout(() => { const i = document.getElementById('hubTdName'); if (i) i.focus(); }, 30);
+}
+function hubTdRenderDays() {
+  document.getElementById('hubTdDays').innerHTML = WP_DAY_NAMES.map((d, i) => {
+    const on = i === _hubTd.dayIdx;
+    return `<button type="button" onclick="_hubTd.dayIdx=${i};hubTdRenderDays()" style="font-size:11px;padding:5px 9px;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};border-radius:5px;background:${on ? 'var(--accent)' : 'transparent'};color:${on ? '#0b0b0b' : 'var(--text3)'};font-weight:${on ? '600' : '400'};cursor:pointer;">${d}</button>`;
+  }).join('');
+}
+async function hubTdSave() {
+  const h = HUB_SITES.find(x => x.slug === _hubTd.slug); if (!h) return;
+  const name = (document.getElementById('hubTdName').value || '').trim();
+  const msg = document.getElementById('hubTdMsg');
+  if (!name) { msg.style.color = '#ff6b6b'; msg.textContent = 'Enter a task first.'; return; }
+  const btn = document.getElementById('hubTdSaveBtn');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  const monday = wpMonday(0);
+  const target = new Date(monday); target.setUTCDate(monday.getUTCDate() + _hubTd.dayIdx);
+  try {
+    const r = await call('addWeeklyPlannerItem', { name, day: wpIso(target), weekStart: wpIso(monday), campaignId: h.campaignId });
+    if (r.error) throw new Error(r.error);
+    msg.style.color = '#4cff4c';
+    msg.textContent = 'Added to This Week (' + WP_DAY_NAMES[_hubTd.dayIdx] + ') — open the TD tab to see it.';
+    btn.textContent = '✓ Added';
+    if (typeof loadWpBoard === 'function') loadWpBoard();
+    setTimeout(() => document.getElementById('hubTdModal').classList.remove('open'), 900);
+  } catch (e) {
+    msg.style.color = '#ff6b6b'; msg.textContent = e.message;
+    btn.disabled = false; btn.textContent = 'Add to This Week';
+  }
+}
+
 function renderHubsTab() {
   const el = document.getElementById('hubsTabContent');
   if (!el) return;
@@ -10086,7 +10157,10 @@ function renderHubsTab() {
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
       <div><a href="${hubUrl}" target="_blank" rel="noopener" style="font-size:18px;font-weight:700;color:var(--text);text-decoration:none;">${esc(h.name)}</a>
         <span style="font-size:11px;color:var(--text3);margin-left:10px;">${esc(h.campaign || '')}</span></div>
-      <span style="font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 8px;border-radius:4px;color:${badge.color};background:${badge.bg};">${badge.text}</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button onclick="openHubTdModal('${slug}')" title="Add a weekly to-do for this hub's campaign — lands on the TD tab's This Week board" style="font-size:10px;font-weight:600;padding:4px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">+ TD</button>
+        <span style="font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 8px;border-radius:4px;color:${badge.color};background:${badge.bg};">${badge.text}</span>
+      </div>
     </div>
 
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);">
