@@ -9666,6 +9666,8 @@ const HUB_SITES = [
   { name: "AI Implementation", slug: "ai-implementation", campaign: "Sm business software tools", microsite: "sm-business-software-tools", domain: "aisystemimplementation.com", contact: null, products: 0, blogPosts: 0,
     routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/ai-implementation/). A cPanel addon domain + doc root (~/aisystemimplementation.com) are set and it served the hub briefly, but the auto-WordPress-service park (root A → 204.11.56.246) took back over. Same fix: disconnect the placeholder WordPress service, or Bluehost support; then add its line to bluehost-sites.tsv.",
     domainOptions: ["aisystemimplementation.com", "aisystemimplementation.online", "roi-systems.com", "facttracking.com", "webguyleadgeneration.com"] },
+  { name: "Mountainwize", slug: "mountainwize", campaign: "🏔️ Mountainwize Coaching — Purpose", microsite: "mountainwize-coaching-purpose", domain: null, contact: null, products: 0, blogPosts: 0,
+    domainOptions: ["mountainwize.com", "intentionwarrior.com", "thirdpathcoaching.com", "growthcoachmindset.com", "naturebasedcoach.com"] },
   { name: "The Care Gap", slug: "care-gap", campaign: "Fundraising Caregivers - Stable Home", microsite: "mobility-mentor-fundraising", domain: "stablehomefoundation.com", contact: "flipoclock@gmail.com", products: 0, blogPosts: 0,
     routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/care-gap/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect stablehomefoundation.com's placeholder WordPress service (Domains → stablehomefoundation.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
     domainOptions: ["stablehomefoundation.com", "stablehomefoundation.online", "foundationfuturesllc.com"] },
@@ -9698,6 +9700,7 @@ const HUB_READY_SEED = {
   'creative-flow-guitar': { name: true, hero: true, seo: true, social: true, livesite: true },
   'ai-implementation':     { name: true, hero: true, seo: true, designbrief: true },
   'care-gap':              { name: true, hero: true, seo: true },
+  'mountainwize':          { name: true, hero: true, seo: true, designbrief: true },
 };
 
 function hubReadyState(slug) {

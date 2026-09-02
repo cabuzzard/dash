@@ -400,6 +400,7 @@ Deploy target for every hub is now `/home3/evraymon/<domain>/`.
 | `owners-rep` (Build Watcher) | Build Watcher | `homestructionconsulting.com` | ⚠️ WP-service park — see below |
 | `home-services` | Home Services | `generalservices2020.com` | ⚠️ WP-service park — see below |
 | `surf-vacations` | Surfing Vacations | `outsidesessions.com` | ⚠️ WP-service park — see below |
+| `mountainwize` | 🏔️ Mountainwize Coaching — Purpose | — (shortlist: `mountainwize.com`) | — |
 
 The domains were chosen via the Content Hubs tab's Domain dropdown (which only
 saves to browser localStorage) and are now persisted in `HUB_SITES`. The dash

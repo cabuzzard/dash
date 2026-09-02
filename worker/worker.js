@@ -154,6 +154,7 @@ const HUB_ORIGINS = new Set([
   "https://foundationfuturesllc.com",      "https://www.foundationfuturesllc.com",
   "https://homestructionconsulting.com",   "https://www.homestructionconsulting.com",
   "https://generalservices2020.com",       "https://www.generalservices2020.com",
+  "https://mountainwize.com",               "https://www.mountainwize.com",
   "https://outsidesessions.com",           "https://www.outsidesessions.com",
 ]);
 function resolveOrigin(request) {
